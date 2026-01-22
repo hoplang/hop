@@ -22,6 +22,7 @@ pub fn optimize(mut module: IrModule) -> IrModule {
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
     use crate::dop::Type;
     use crate::ir::syntax::builder::IrModuleBuilder;
@@ -38,7 +39,7 @@ mod tests {
     #[test]
     fn should_optimize_single_component() {
         let module = IrModuleBuilder::new()
-            .component("Test", [], |t| {
+            .component_no_params("Test", |t| {
                 t.let_stmt("unused", t.str("value"), |t| {
                     t.write("Hello");
                     t.write(" ");
@@ -70,13 +71,13 @@ mod tests {
     #[test]
     fn should_optimize_multiple_components() {
         let module = IrModuleBuilder::new()
-            .component("First", [], |t| {
+            .component_no_params("First", |t| {
                 t.let_stmt("unused", t.str("x"), |t| {
                     t.write("A");
                     t.write("B");
                 });
             })
-            .component("Second", [], |t| {
+            .component_no_params("Second", |t| {
                 t.if_stmt(t.bool(true), |t| {
                     t.write("C");
                     t.write("D");
@@ -115,7 +116,7 @@ mod tests {
     #[test]
     fn should_apply_constant_propagation_before_unused_let_elimination() {
         let module = IrModuleBuilder::new()
-            .component("Test", [], |t| {
+            .component_no_params("Test", |t| {
                 t.let_stmt("flag", t.bool(true), |t| {
                     t.if_stmt(t.var("flag"), |t| {
                         t.write("yes");
@@ -152,7 +153,7 @@ mod tests {
                 r.field("age", Type::Int);
             })
             .enum_decl("Status", ["Active", "Inactive"])
-            .component("Test", [], |t| {
+            .component_no_params("Test", |t| {
                 t.write("Hello");
             })
             .build();
@@ -192,7 +193,7 @@ mod tests {
     #[test]
     fn should_chain_multiple_optimizations() {
         let module = IrModuleBuilder::new()
-            .component("Test", [], |t| {
+            .component_no_params("Test", |t| {
                 // let x = "hello"
                 // let unused = x  -- unused, should be eliminated
                 // if true { write("A"); write("B") }  -- if should be eliminated, writes coalesced

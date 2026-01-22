@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::document::{DocumentRange, Ranged};
 use crate::dop::{self, Type, VarName};
 use thiserror::Error;
@@ -59,7 +61,7 @@ pub enum TypeError {
     },
 
     #[error("Expected boolean condition, got {found}")]
-    ExpectedBooleanCondition { found: String, range: DocumentRange },
+    ExpectedBooleanCondition { found: Arc<Type>, range: DocumentRange },
 
     #[error("Missing required parameter '{param}'")]
     MissingRequiredParameter {
@@ -75,8 +77,8 @@ pub enum TypeError {
 
     #[error("Argument '{arg_name}' of type {found} is incompatible with expected type {expected}")]
     ArgumentIsIncompatible {
-        expected: Type,
-        found: Type,
+        expected: Arc<Type>,
+        found: Arc<Type>,
         arg_name: DocumentRange,
         expr_range: DocumentRange,
     },
@@ -84,29 +86,29 @@ pub enum TypeError {
     #[error("Default value for parameter '{param_name}' has type {found}, expected {expected}")]
     DefaultValueTypeMismatch {
         param_name: String,
-        expected: Type,
-        found: Type,
+        expected: Arc<Type>,
+        found: Arc<Type>,
         range: DocumentRange,
     },
 
     #[error("Expected String or Bool attribute, got {found}")]
-    ExpectedStringOrBoolAttribute { found: String, range: DocumentRange },
+    ExpectedStringOrBoolAttribute { found: Arc<Type>, range: DocumentRange },
 
     #[error("Can not iterate over {typ}")]
-    CannotIterateOver { typ: String, range: DocumentRange },
+    CannotIterateOver { typ: Arc<Type>, range: DocumentRange },
 
     #[error("Range bound must be Int, got {found}")]
-    RangeBoundTypeMismatch { found: String, range: DocumentRange },
+    RangeBoundTypeMismatch { found: Arc<Type>, range: DocumentRange },
 
     #[error("Let binding has type {found}, expected {expected}")]
     LetBindingTypeMismatch {
-        expected: String,
-        found: String,
+        expected: Arc<Type>,
+        found: Arc<Type>,
         range: DocumentRange,
     },
 
     #[error("Expected string for text expression, got {found}")]
-    ExpectedStringForTextExpression { found: Type, range: DocumentRange },
+    ExpectedStringForTextExpression { found: Arc<Type>, range: DocumentRange },
 
     #[error("{err}")]
     DopError {
@@ -142,7 +144,7 @@ impl TypeError {
     }
 
     pub fn missing_arguments(
-        params: &[(VarName, crate::dop::Type, bool)],
+        params: &[(VarName, Arc<Type>, bool)],
         range: DocumentRange,
     ) -> Self {
         // Only list required (non-default) parameters

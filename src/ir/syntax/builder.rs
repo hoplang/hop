@@ -11,11 +11,12 @@ use crate::ir::ast::{IrComponentDeclaration, IrEnumDeclaration, IrModule, IrReco
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::rc::Rc;
+use std::sync::Arc;
 
 pub struct IrModuleBuilder {
     /// Enums with their variants. Each variant has a name and optional fields.
-    enums: BTreeMap<String, Vec<(String, Vec<(String, Type)>)>>,
-    records: BTreeMap<String, Vec<(String, Type)>>,
+    enums: BTreeMap<String, Vec<(String, Vec<(String, Arc<Type>)>)>>,
+    records: BTreeMap<String, Vec<(String, Arc<Type>)>>,
     entrypoints: Vec<IrComponentDeclaration>,
 }
 
@@ -34,7 +35,7 @@ impl IrModuleBuilder {
         I: IntoIterator<Item = S>,
         S: AsRef<str>,
     {
-        let variants: Vec<(String, Vec<(String, Type)>)> = variants
+        let variants: Vec<(String, Vec<(String, Arc<Type>)>)> = variants
             .into_iter()
             .map(|s| (s.as_ref().to_string(), vec![]))
             .collect();
@@ -65,21 +66,41 @@ impl IrModuleBuilder {
         self
     }
 
-    pub fn component<F, P>(mut self, name: &str, params: P, body_fn: F) -> Self
+    pub fn component_no_params<F>(mut self, name: &str, body_fn: F) -> Self
     where
         F: FnOnce(&mut IrBuilder),
-        P: IntoIterator<Item = (&'static str, Type)>,
     {
-        let params_owned: Vec<(String, Type)> = params
-            .into_iter()
-            .map(|(k, v)| (k.to_string(), v))
-            .collect();
-
-        let records_map: BTreeMap<String, BTreeMap<String, Type>> = self
+        let records_map: BTreeMap<String, BTreeMap<String, Arc<Type>>> = self
             .records
             .iter()
             .map(|(name, fields)| {
-                let fields_map: BTreeMap<String, Type> = fields.iter().cloned().collect();
+                let fields_map: BTreeMap<String, Arc<Type>> = fields.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+                (name.clone(), fields_map)
+            })
+            .collect();
+
+        let mut builder = IrBuilder::new(vec![], records_map, self.enums.clone());
+        body_fn(&mut builder);
+        self.entrypoints.push(builder.build(name));
+        self
+    }
+
+    pub fn component<F, P, T>(mut self, name: &str, params: P, body_fn: F) -> Self
+    where
+        F: FnOnce(&mut IrBuilder),
+        P: IntoIterator<Item = (&'static str, T)>,
+        T: Into<Arc<Type>>,
+    {
+        let params_owned: Vec<(String, Arc<Type>)> = params
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v.into()))
+            .collect();
+
+        let records_map: BTreeMap<String, BTreeMap<String, Arc<Type>>> = self
+            .records
+            .iter()
+            .map(|(name, fields)| {
+                let fields_map: BTreeMap<String, Arc<Type>> = fields.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
                 (name.clone(), fields_map)
             })
             .collect();
@@ -138,19 +159,19 @@ impl Default for IrModuleBuilder {
 }
 
 pub struct RecordBuilder {
-    fields: Vec<(String, Type)>,
+    fields: Vec<(String, Arc<Type>)>,
 }
 
 impl RecordBuilder {
-    pub fn field(&mut self, name: &str, typ: Type) -> &mut Self {
-        self.fields.push((name.to_string(), typ));
+    pub fn field(&mut self, name: &str, typ: impl Into<Arc<Type>>) -> &mut Self {
+        self.fields.push((name.to_string(), typ.into()));
         self
     }
 }
 
 /// Builder for defining enum variants with optional fields
 pub struct EnumBuilder {
-    variants: Vec<(String, Vec<(String, Type)>)>,
+    variants: Vec<(String, Vec<(String, Arc<Type>)>)>,
 }
 
 impl EnumBuilder {
@@ -161,12 +182,12 @@ impl EnumBuilder {
     }
 
     /// Add a variant with fields
-    pub fn variant_with_fields(&mut self, name: &str, fields: Vec<(&str, Type)>) -> &mut Self {
+    pub fn variant_with_fields<T: Into<Arc<Type>>>(&mut self, name: &str, fields: Vec<(&str, T)>) -> &mut Self {
         self.variants.push((
             name.to_string(),
             fields
                 .into_iter()
-                .map(|(n, t)| (n.to_string(), t))
+                .map(|(n, t)| (n.to_string(), t.into()))
                 .collect(),
         ));
         self
@@ -175,44 +196,47 @@ impl EnumBuilder {
 
 /// Helper function to extract (VarName, Type) from an IrExpr.
 /// Panics if the expression is not a variable reference.
-fn extract_var_subject(expr: &IrExpr) -> (VarName, Type) {
+fn extract_var_subject(expr: &IrExpr) -> (VarName, Arc<Type>) {
     match expr {
         IrExpr::Var { value, kind, .. } => (value.clone(), kind.clone()),
         _ => panic!("Match subject must be a variable reference, got {:?}", expr),
     }
 }
 
-pub fn build_ir<F, P>(name: &str, params: P, body_fn: F) -> IrComponentDeclaration
+pub fn build_ir_no_params<F>(name: &str, body_fn: F) -> IrComponentDeclaration
 where
     F: FnOnce(&mut IrBuilder),
-    P: IntoIterator<Item = (&'static str, Type)>,
 {
-    let params_owned: Vec<(String, Type)> = params
+    let mut builder = IrBuilder::new(vec![], BTreeMap::new(), BTreeMap::new());
+    body_fn(&mut builder);
+    builder.build(name)
+}
+
+pub fn build_ir<F, P, T>(name: &str, params: P, body_fn: F) -> IrComponentDeclaration
+where
+    F: FnOnce(&mut IrBuilder),
+    P: IntoIterator<Item = (&'static str, T)>,
+    T: Into<Arc<Type>>,
+{
+    let params_owned: Vec<(String, Arc<Type>)> = params
         .into_iter()
-        .map(|(k, v)| (k.to_string(), v))
+        .map(|(k, v)| (k.to_string(), v.into()))
         .collect();
     let mut builder = IrBuilder::new(params_owned, BTreeMap::new(), BTreeMap::new());
     body_fn(&mut builder);
     builder.build(name)
 }
 
-pub fn build_ir_with_enums<F, P>(
+pub fn build_ir_with_enums_no_params<F>(
     name: &str,
-    params: P,
     enums: Vec<(&str, Vec<&str>)>,
     body_fn: F,
 ) -> IrComponentDeclaration
 where
     F: FnOnce(&mut IrBuilder),
-    P: IntoIterator<Item = (&'static str, Type)>,
 {
-    let params_owned: Vec<(String, Type)> = params
-        .into_iter()
-        .map(|(k, v)| (k.to_string(), v))
-        .collect();
-
     // Convert unit variants to the new format (variant_name, empty fields)
-    let enums_map: BTreeMap<String, Vec<(String, Vec<(String, Type)>)>> = enums
+    let enums_map: BTreeMap<String, Vec<(String, Vec<(String, Arc<Type>)>)>> = enums
         .into_iter()
         .map(|(name, variants)| {
             (
@@ -225,7 +249,7 @@ where
         })
         .collect();
 
-    let mut builder = IrBuilder::new(params_owned, BTreeMap::new(), enums_map);
+    let mut builder = IrBuilder::new(vec![], BTreeMap::new(), enums_map);
     body_fn(&mut builder);
     builder.build(name)
 }
@@ -233,19 +257,19 @@ where
 pub struct IrBuilder {
     next_expr_id: Rc<RefCell<ExprId>>,
     next_node_id: Rc<RefCell<StatementId>>,
-    var_stack: RefCell<Vec<(String, Type)>>,
-    params: Vec<(VarName, Type)>,
-    records: BTreeMap<String, BTreeMap<String, Type>>,
+    var_stack: RefCell<Vec<(String, Arc<Type>)>>,
+    params: Vec<(VarName, Arc<Type>)>,
+    records: BTreeMap<String, BTreeMap<String, Arc<Type>>>,
     /// Enums with their variants. Each variant has a name and optional fields.
-    enums: BTreeMap<String, Vec<(String, Vec<(String, Type)>)>>,
+    enums: BTreeMap<String, Vec<(String, Vec<(String, Arc<Type>)>)>>,
     statements: Vec<IrStatement>,
 }
 
 impl IrBuilder {
     fn new(
-        params: Vec<(String, Type)>,
-        records: BTreeMap<String, BTreeMap<String, Type>>,
-        enums: BTreeMap<String, Vec<(String, Vec<(String, Type)>)>>,
+        params: Vec<(String, Arc<Type>)>,
+        records: BTreeMap<String, BTreeMap<String, Arc<Type>>>,
+        enums: BTreeMap<String, Vec<(String, Vec<(String, Arc<Type>)>)>>,
     ) -> Self {
         let initial_vars = params.clone();
 
@@ -401,12 +425,12 @@ impl IrBuilder {
     pub fn array(&self, elements: Vec<IrExpr>) -> IrExpr {
         let element_type = elements
             .first()
-            .map(|first| Box::new(first.as_type().clone()))
+            .map(|first| first.get_type())
             .expect("Cannot create empty array literal in test builder - use typed_array for empty arrays");
 
         IrExpr::ArrayLiteral {
             elements,
-            kind: Type::Array(element_type),
+            kind: Arc::new(Type::Array(element_type)),
             id: self.next_expr_id(),
         }
     }
@@ -414,7 +438,7 @@ impl IrBuilder {
     pub fn typed_array(&self, element_type: Type, elements: Vec<IrExpr>) -> IrExpr {
         IrExpr::ArrayLiteral {
             elements,
-            kind: Type::Array(Box::new(element_type)),
+            kind: Arc::new(Type::Array(element_type.into())),
             id: self.next_expr_id(),
         }
     }
@@ -448,14 +472,14 @@ impl IrBuilder {
                 .into_iter()
                 .map(|(k, v)| (FieldName::new(k).unwrap(), v))
                 .collect(),
-            kind: Type::Record {
+            kind: Arc::new(Type::Record {
                 module: test_module,
                 name: TypeName::new(record_name).unwrap(),
                 fields: record_fields
                     .iter()
                     .map(|(k, v)| (FieldName::new(k).unwrap(), v.clone()))
                     .collect(),
-            },
+            }),
             id: self.next_expr_id(),
         }
     }
@@ -493,7 +517,7 @@ impl IrBuilder {
                 .into_iter()
                 .map(|(k, v)| (FieldName::new(k).unwrap(), v))
                 .collect(),
-            kind: Type::Enum {
+            kind: Arc::new(Type::Enum {
                 module: test_module,
                 name: TypeName::new(enum_name).unwrap(),
                 variants: variants
@@ -508,17 +532,17 @@ impl IrBuilder {
                         )
                     })
                     .collect(),
-            },
+            }),
             id: self.next_expr_id(),
         }
     }
 
     /// Create a Some option literal
     pub fn some(&self, inner: IrExpr) -> IrExpr {
-        let inner_type = inner.as_type().clone();
+        let inner_type = inner.get_type();
         IrExpr::OptionLiteral {
             value: Some(Box::new(inner)),
-            kind: Type::Option(Box::new(inner_type)),
+            kind: Arc::new(Type::Option(inner_type)),
             id: self.next_expr_id(),
         }
     }
@@ -527,7 +551,7 @@ impl IrBuilder {
     pub fn none(&self, inner_type: Type) -> IrExpr {
         IrExpr::OptionLiteral {
             value: None,
-            kind: Type::Option(Box::new(inner_type)),
+            kind: Arc::new(Type::Option(Arc::new(inner_type))),
             id: self.next_expr_id(),
         }
     }
@@ -541,8 +565,8 @@ impl IrBuilder {
                 // Use the type of the first arm's body as the result type
                 let result_type = arms
                     .first()
-                    .map(|(_, body)| body.as_type().clone())
-                    .unwrap_or(Type::String);
+                    .map(|(_, body)| body.get_type())
+                    .unwrap_or_else(|| Arc::new(Type::String));
                 (name.to_cheap_string(), result_type)
             }
             _ => panic!("Match subject must be an enum type"),
@@ -577,7 +601,7 @@ impl IrBuilder {
         true_body: IrExpr,
         false_body: IrExpr,
     ) -> IrExpr {
-        let result_type = true_body.as_type().clone();
+        let result_type = true_body.get_type();
 
         IrExpr::Match {
             match_: Match::Bool {
@@ -597,7 +621,7 @@ impl IrBuilder {
         some_body: IrExpr,
         none_body: IrExpr,
     ) -> IrExpr {
-        let result_type = some_body.as_type().clone();
+        let result_type = some_body.get_type();
 
         IrExpr::Match {
             match_: Match::Option {
@@ -613,28 +637,29 @@ impl IrBuilder {
 
     /// Create a match expression over an option value with a binding for the Some case.
     /// The `some_body_fn` closure receives the builder with the binding in scope.
-    pub fn option_match_expr_with_binding<F>(
+    pub fn option_match_expr_with_binding<F, T>(
         &self,
         subject: IrExpr,
         binding_name: &str,
-        inner_type: Type,
+        inner_type: T,
         some_body_fn: F,
         none_body: IrExpr,
     ) -> IrExpr
     where
         F: FnOnce(&Self) -> IrExpr,
+        T: Into<Arc<Type>>,
     {
         // Push the binding onto the variable stack
         self.var_stack
             .borrow_mut()
-            .push((binding_name.to_string(), inner_type.clone()));
+            .push((binding_name.to_string(), inner_type.into()));
 
         let some_body = some_body_fn(self);
 
         // Pop the binding from the variable stack
         self.var_stack.borrow_mut().pop();
 
-        let result_type = some_body.as_type().clone();
+        let result_type = some_body.get_type();
 
         IrExpr::Match {
             match_: Match::Option {
@@ -662,7 +687,7 @@ impl IrBuilder {
         let enum_name = name.to_cheap_string();
 
         // Use the type of the first arm's body as the result type (computed after building arms)
-        let mut result_type: Option<Type> = None;
+        let mut result_type: Option<Arc<Type>> = None;
 
         let ir_arms: Vec<EnumMatchArm<IrExpr>> = arms
             .into_iter()
@@ -703,7 +728,7 @@ impl IrBuilder {
                 }
 
                 if result_type.is_none() {
-                    result_type = Some(body.as_type().clone());
+                    result_type = Some(body.get_type());
                 }
 
                 EnumMatchArm {
@@ -722,7 +747,7 @@ impl IrBuilder {
                 subject: extract_var_subject(&subject),
                 arms: ir_arms,
             },
-            kind: result_type.unwrap_or(Type::String),
+            kind: result_type.unwrap_or_else(|| Arc::new(Type::String)),
             id: self.next_expr_id(),
         }
     }
@@ -767,7 +792,7 @@ impl IrBuilder {
     where
         F: FnOnce(&Self) -> IrExpr,
     {
-        let value_type = value.as_type().clone();
+        let value_type = value.get_type();
 
         // Push the binding onto the variable stack
         self.var_stack
@@ -779,7 +804,7 @@ impl IrBuilder {
         // Pop the binding from the variable stack
         self.var_stack.borrow_mut().pop();
 
-        let kind = body.as_type().clone();
+        let kind = body.get_type();
 
         IrExpr::Let {
             var: VarName::new(var_name).unwrap(),
@@ -892,7 +917,7 @@ impl IrBuilder {
         F: FnOnce(&mut Self),
     {
         let element_type = match array.as_type() {
-            Type::Array(elem_type) => (**elem_type).clone(),
+            Type::Array(elem_type) => elem_type.clone(),
             _ => panic!("Cannot iterate over non-array type"),
         };
 
@@ -921,7 +946,7 @@ impl IrBuilder {
         // Range loops iterate over integers
         self.var_stack
             .borrow_mut()
-            .push((var.to_string(), Type::Int));
+            .push((var.to_string(), Arc::new(Type::Int)));
 
         let mut inner_builder = self.new_scoped();
         body_fn(&mut inner_builder);
@@ -956,7 +981,7 @@ impl IrBuilder {
     where
         F: FnOnce(&mut Self),
     {
-        let value_type = value.as_type().clone();
+        let value_type = value.get_type();
 
         self.var_stack
             .borrow_mut()
@@ -1017,7 +1042,7 @@ impl IrBuilder {
         use crate::dop::patterns::Match;
 
         let inner_type = match subject.as_type() {
-            Type::Option(inner) => (**inner).clone(),
+            Type::Option(inner) => inner.clone(),
             _ => panic!("Cannot match on non-option type"),
         };
 
@@ -1025,7 +1050,7 @@ impl IrBuilder {
         let some_arm_binding = binding_var.map(|var| {
             self.var_stack
                 .borrow_mut()
-                .push((var.to_string(), inner_type.clone()));
+                .push((var.to_string(), inner_type.into()));
             VarName::try_from(var.to_string()).unwrap()
         });
 

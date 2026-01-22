@@ -12,6 +12,7 @@ use crate::hop::syntax::parsed_ast::{
     ParsedEnumDeclaration, ParsedImportDeclaration, ParsedRecordDeclaration,
 };
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use crate::dop::patterns::compiler::Decision;
 use crate::dop::patterns::{EnumMatchArm, EnumPattern, Match};
@@ -29,7 +30,7 @@ use crate::hop::syntax::parsed_node::{ParsedLetBinding, ParsedNode};
 
 #[derive(Default, Debug)]
 pub struct TypeChecker {
-    state: HashMap<ModuleName, HashMap<String, Type>>,
+    state: HashMap<ModuleName, HashMap<String, Arc<Type>>>,
     pub type_errors: HashMap<ModuleName, ErrorCollector<TypeError>>,
     pub type_annotations: HashMap<ModuleName, Vec<TypeAnnotation>>,
     pub typed_asts: HashMap<ModuleName, TypedAst>,
@@ -80,12 +81,12 @@ impl TypeChecker {
 
 fn typecheck_module(
     parsed_ast: &ParsedAst,
-    state: &mut HashMap<ModuleName, HashMap<String, Type>>,
+    state: &mut HashMap<ModuleName, HashMap<String, Arc<Type>>>,
     errors: &mut ErrorCollector<TypeError>,
     annotations: &mut Vec<TypeAnnotation>,
 ) -> TypedAst {
-    let mut type_env = Environment::new();
-    let mut var_env = Environment::new();
+    let mut type_env: Environment<Arc<Type>> = Environment::new();
+    let mut var_env: Environment<Arc<Type>> = Environment::new();
 
     let mut typed_records = Vec::new();
     let mut typed_enums = Vec::new();
@@ -141,7 +142,7 @@ fn typecheck_module(
 
                         // Validate that Option[TrustedHTML] children must have a default value
                         if param.var_name.as_str() == "children" {
-                            if let Type::Option(inner) = &param_type {
+                            if let Type::Option(inner) = param_type.as_ref() {
                                 if **inner == Type::TrustedHTML && param.default_value.is_none() {
                                     errors.push(TypeError::OptionalChildrenRequiresDefault {
                                         range: param.var_name_range.clone(),
@@ -163,12 +164,12 @@ fn typecheck_module(
                                     )
                                     .map_err(|e| e.into()),
                                 ) {
-                                    let default_type = typed_default.as_type();
-                                    if *default_type != param_type {
+                                    let default_type = typed_default.get_type();
+                                    if *default_type != *param_type {
                                         errors.push(TypeError::DefaultValueTypeMismatch {
                                             param_name: param.var_name.to_string(),
                                             expected: param_type.clone(),
-                                            found: default_type.clone(),
+                                            found: default_type,
                                             range: default_expr.range().clone(),
                                         });
                                         None
@@ -219,11 +220,11 @@ fn typecheck_module(
                     }
                 }
 
-                let component_type = Type::Component {
+                let component_type = Arc::new(Type::Component {
                     module: parsed_ast.name.clone(),
                     name: TypeName::new(component_name.as_str()).unwrap(),
                     parameters: resolved_param_types,
-                };
+                });
 
                 let _ = type_env.push(component_name.to_string(), component_type.clone());
 
@@ -279,11 +280,11 @@ fn typecheck_module(
                 });
                 let _ = type_env.push(
                     record_name.to_string(),
-                    Type::Record {
+                    Arc::new(Type::Record {
                         module: parsed_ast.name.clone(),
                         name: record_name.clone(),
                         fields: typed_fields,
-                    },
+                    }),
                 );
             }
             ParsedDeclaration::Enum(ParsedEnumDeclaration {
@@ -316,11 +317,11 @@ fn typecheck_module(
 
                 let _ = type_env.push(
                     enum_name.to_string(),
-                    Type::Enum {
+                    Arc::new(Type::Enum {
                         module: parsed_ast.name.clone(),
                         name: enum_name.clone(),
                         variants: typed_variants.clone(),
-                    },
+                    }),
                 );
 
                 typed_enums.push(TypedEnumDeclaration {
@@ -358,12 +359,12 @@ fn typecheck_module(
                                 )
                                 .map_err(|e| e.into()),
                             ) {
-                                let default_type = typed_default.as_type();
-                                if *default_type != param_type {
+                                let default_type = typed_default.get_type();
+                                if *default_type != *param_type {
                                     errors.push(TypeError::DefaultValueTypeMismatch {
                                         param_name: param.var_name.to_string(),
                                         expected: param_type.clone(),
-                                        found: default_type.clone(),
+                                        found: default_type,
                                         range: default_expr.range().clone(),
                                     });
                                     None
@@ -407,7 +408,7 @@ fn typecheck_module(
                 // Add type annotation for the entrypoint name
                 annotations.push(TypeAnnotation {
                     range: name_range.clone(),
-                    typ: Type::TrustedHTML,
+                    typ: Arc::new(Type::TrustedHTML),
                     name: name.as_str().to_string(),
                 });
 
@@ -449,10 +450,10 @@ fn typecheck_module(
 
 fn typecheck_node(
     node: &ParsedNode,
-    var_env: &mut Environment<Type>,
+    var_env: &mut Environment<Arc<Type>>,
     annotations: &mut Vec<TypeAnnotation>,
     errors: &mut ErrorCollector<TypeError>,
-    type_env: &mut Environment<Type>,
+    type_env: &mut Environment<Arc<Type>>,
 ) -> Option<TypedNode> {
     match node {
         ParsedNode::If {
@@ -470,10 +471,10 @@ fn typecheck_node(
                     .map_err(Into::into),
             )?;
 
-            let condition_type = typed_condition.as_type();
+            let condition_type = typed_condition.get_type();
             if *condition_type != Type::Bool {
                 errors.push(TypeError::ExpectedBooleanCondition {
-                    found: condition_type.to_string(),
+                    found: condition_type,
                     range: condition.range().clone(),
                 })
             }
@@ -498,12 +499,12 @@ fn typecheck_node(
                         dop::typecheck_expr(array_expr, var_env, type_env, annotations, None)
                             .map_err(Into::into),
                     )?;
-                    let array_type = typed_array.as_type();
-                    let element_type = match &array_type {
-                        Type::Array(inner) => (**inner).clone(),
+                    let array_type = typed_array.get_type();
+                    let element_type = match array_type.as_ref() {
+                        Type::Array(inner) => inner.clone(),
                         _ => {
                             errors.push(TypeError::CannotIterateOver {
-                                typ: array_type.to_string(),
+                                typ: array_type,
                                 range: array_expr.range().clone(),
                             });
                             return None;
@@ -522,15 +523,17 @@ fn typecheck_node(
                     )?;
 
                     // Both bounds must be Int
-                    if *typed_start.as_type() != Type::Int {
+                    let start_type = typed_start.get_type();
+                    if *start_type != Type::Int {
                         errors.push(TypeError::RangeBoundTypeMismatch {
-                            found: typed_start.as_type().to_string(),
+                            found: start_type,
                             range: start.range().clone(),
                         });
                     }
-                    if *typed_end.as_type() != Type::Int {
+                    let end_type = typed_end.get_type();
+                    if *end_type != Type::Int {
                         errors.push(TypeError::RangeBoundTypeMismatch {
-                            found: typed_end.as_type().to_string(),
+                            found: end_type,
                             range: end.range().clone(),
                         });
                     }
@@ -540,7 +543,7 @@ fn typecheck_node(
                             start: typed_start,
                             end: typed_end,
                         },
-                        Type::Int,
+                        Arc::new(Type::Int),
                     )
                 }
             };
@@ -651,11 +654,11 @@ fn typecheck_node(
                 };
 
                 // Validate that the expression type matches the declared type
-                let value_type = typed_value.as_type();
-                if *value_type != resolved_type {
+                let value_type = typed_value.get_type();
+                if *value_type != *resolved_type {
                     errors.push(TypeError::LetBindingTypeMismatch {
-                        expected: resolved_type.to_string(),
-                        found: value_type.to_string(),
+                        expected: resolved_type.clone(),
+                        found: value_type,
                         range: binding.value_expr.range().clone(),
                     });
                 }
@@ -709,7 +712,7 @@ fn typecheck_node(
 
             // Look up the component type from type_env
             let (component_module, component_type_name, component_params) =
-                match type_env.lookup(component_name.as_str()) {
+                match type_env.lookup(component_name.as_str()).map(|t| t.as_ref()) {
                     Some(Type::Component {
                         module,
                         name,
@@ -724,13 +727,14 @@ fn typecheck_node(
                 };
 
             // Add type annotation for the component reference
+            let component_type = Arc::new(Type::Component {
+                module: component_module.clone(),
+                name: component_type_name,
+                parameters: component_params.clone(),
+            });
             annotations.push(TypeAnnotation {
                 range: tag_name.clone(),
-                typ: Type::Component {
-                    module: component_module.clone(),
-                    name: component_type_name.clone(),
-                    parameters: component_params.clone(),
-                },
+                typ: component_type.clone(),
                 name: component_name.as_str().to_string(),
             });
 
@@ -738,11 +742,7 @@ fn typecheck_node(
             if let Some(closing_range) = component_name_closing_range {
                 annotations.push(TypeAnnotation {
                     range: closing_range.clone(),
-                    typ: Type::Component {
-                        module: component_module.clone(),
-                        name: component_type_name,
-                        parameters: component_params.clone(),
-                    },
+                    typ: component_type,
                     name: component_name.as_str().to_string(),
                 });
             }
@@ -765,7 +765,7 @@ fn typecheck_node(
             let children_required = component_params
                 .iter()
                 .find(|(name, _, _)| name.as_str() == "children")
-                .is_some_and(|(_, typ, has_default)| *typ == Type::TrustedHTML && !has_default);
+                .is_some_and(|(_, typ, has_default)| **typ == Type::TrustedHTML && !has_default);
 
             if children_required && children.is_empty() {
                 errors.push(TypeError::MissingChildren {
@@ -877,13 +877,13 @@ fn typecheck_node(
                                 continue;
                             }
                         };
-                        let arg_type = typed_expr.as_type().clone();
+                        let arg_type = typed_expr.get_type();
 
                         // param_type is already resolved from the component's defining module
-                        if arg_type != *param_type {
+                        if *arg_type != **param_type {
                             errors.push(TypeError::ArgumentIsIncompatible {
                                 expected: param_type.clone(),
-                                found: arg_type.clone(),
+                                found: arg_type,
                                 arg_name: arg.name.clone(),
                                 expr_range: arg_expr.range().clone(),
                             });
@@ -936,10 +936,10 @@ fn typecheck_node(
                 dop::typecheck_expr(expression, var_env, type_env, annotations, None)
                     .map_err(Into::into),
             ) {
-                let expr_type = typed_expr.as_type();
+                let expr_type = typed_expr.get_type();
                 if *expr_type != Type::String && *expr_type != Type::TrustedHTML {
                     errors.push(TypeError::ExpectedStringForTextExpression {
-                        found: expr_type.clone(),
+                        found: expr_type,
                         range: expression.range().clone(),
                     });
                 }
@@ -960,8 +960,6 @@ fn typecheck_node(
                 dop::typecheck_expr(subject, var_env, type_env, annotations, None)
                     .map_err(Into::into),
             )?;
-            let subject_type = typed_subject.as_type().clone();
-
             let patterns = cases
                 .iter()
                 .map(|case| case.pattern.clone())
@@ -976,7 +974,7 @@ fn typecheck_node(
             let decision = match PatMatchCompiler::new(var_env).compile(
                 &patterns,
                 &subject_name,
-                &subject_type,
+                typed_subject.get_type(),
                 subject.range(),
                 range,
             ) {
@@ -991,7 +989,10 @@ fn typecheck_node(
                 .iter()
                 .map(|case| {
                     // Extract bindings from pattern
-                    let bindings = dop::extract_bindings_from_pattern(&case.pattern, &subject_type);
+                    let bindings = dop::extract_bindings_from_pattern(
+                        &case.pattern,
+                        typed_subject.get_type(),
+                    );
 
                     // Push bindings into scope
                     let mut pushed_count = 0;
@@ -1081,10 +1082,10 @@ fn typecheck_node(
 
 fn typecheck_attributes(
     attributes: &[ParsedAttribute],
-    var_env: &mut Environment<Type>,
+    var_env: &mut Environment<Arc<Type>>,
     annotations: &mut Vec<TypeAnnotation>,
     errors: &mut ErrorCollector<TypeError>,
-    type_env: &mut Environment<Type>,
+    type_env: &mut Environment<Arc<Type>>,
 ) -> Vec<TypedAttribute> {
     let mut typed_attributes = Vec::new();
 
@@ -1096,10 +1097,10 @@ fn typecheck_attributes(
                         .map_err(Into::into),
                 ) {
                     // Check that attributes evaluate to strings or booleans
-                    let expr_type = typed_expr.as_type();
+                    let expr_type = typed_expr.get_type();
                     if *expr_type != Type::String && *expr_type != Type::Bool {
                         errors.push(TypeError::ExpectedStringOrBoolAttribute {
-                            found: expr_type.to_string(),
+                            found: expr_type,
                             range: expr.range().clone(),
                         });
                     }

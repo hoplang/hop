@@ -1132,6 +1132,7 @@ impl TypeTranspiler for PythonTranspiler {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
     use super::*;
     use crate::ir::syntax::builder::IrModuleBuilder;
     use expect_test::{Expect, expect};
@@ -1147,7 +1148,7 @@ mod tests {
     fn simple_component() {
         check(
             IrModuleBuilder::new()
-                .component("TestMainComp", [], |t| {
+                .component_no_params("TestMainComp", |t| {
                     t.write("<div>Hello World</div>\n");
                 })
                 .build(),
@@ -1256,7 +1257,7 @@ mod tests {
             IrModuleBuilder::new()
                 .component(
                     "TestMainComp",
-                    [("items", Type::Array(Box::new(Type::String)))],
+                    [("items", Type::Array(Arc::new(Type::String)))],
                     |t| {
                         t.for_loop("item", t.var("items"), |t| {
                             t.write("<li>");
@@ -1300,7 +1301,7 @@ mod tests {
     fn for_loop_with_range() {
         check(
             IrModuleBuilder::new()
-                .component("Counter", [], |t| {
+                .component_no_params("Counter", |t| {
                     t.for_range("i", t.int(1), t.int(3), |t| {
                         t.write_expr(t.int_to_string(t.var("i")), false);
                         t.write(" ");
@@ -1331,7 +1332,7 @@ mod tests {
     fn let_binding() {
         check(
             IrModuleBuilder::new()
-                .component("TestGreeting", [], |t| {
+                .component_no_params("TestGreeting", |t| {
                     t.let_stmt("greeting", t.str("Hello from Python!"), |t| {
                         t.write("<p>");
                         t.write_expr_escaped(t.var("greeting"));
@@ -1511,9 +1512,9 @@ mod tests {
             module: ModuleName::new("test").unwrap(),
             name: TypeName::new("User").unwrap(),
             fields: vec![
-                (FieldName::new("name").unwrap(), Type::String),
-                (FieldName::new("age").unwrap(), Type::Int),
-                (FieldName::new("active").unwrap(), Type::Bool),
+                (FieldName::new("name").unwrap(), Arc::new(Type::String)),
+                (FieldName::new("age").unwrap(), Arc::new(Type::Int)),
+                (FieldName::new("active").unwrap(), Arc::new(Type::Bool)),
             ],
         };
 
@@ -1587,7 +1588,7 @@ mod tests {
                 .record("User", |r| {
                     r.field("name", Type::String).field("age", Type::Int);
                 })
-                .component("CreateUser", [], |t| {
+                .component_no_params("CreateUser", |t| {
                     t.write("<div>");
                     let user = t.record("User", vec![("name", t.str("John")), ("age", t.int(30))]);
                     t.write_expr_escaped(t.field_access(user, "name"));
@@ -1748,7 +1749,7 @@ mod tests {
     fn nested_bool_match_expr() {
         check(
             IrModuleBuilder::new()
-                .component("TestNestedBoolMatch", [], |t| {
+                .component_no_params("TestNestedBoolMatch", |t| {
                     t.let_stmt("outer", t.bool(true), |t| {
                         t.let_stmt("inner", t.bool(false), |t| {
                             let result = t.bool_match_expr(
@@ -1789,12 +1790,12 @@ mod tests {
     fn nested_option_match_expr() {
         check(
             IrModuleBuilder::new()
-                .component("TestNestedOptionMatch", [], |t| {
+                .component_no_params("TestNestedOptionMatch", |t| {
                     t.let_stmt("nested", t.some(t.some(t.str("deep"))), |t| {
                         let result = t.option_match_expr_with_binding(
                             t.var("nested"),
                             "outer",
-                            Type::Option(Box::new(Type::String)),
+                            Type::Option(Arc::new(Type::String)),
                             |t| {
                                 t.option_match_expr_with_binding(
                                     t.var("outer"),
@@ -1850,7 +1851,7 @@ mod tests {
     fn option_match_statement() {
         check(
             IrModuleBuilder::new()
-                .component("TestOption", [], |t| {
+                .component_no_params("TestOption", |t| {
                     t.let_stmt("some_val", t.some(t.str("hello")), |t| {
                         t.option_match_stmt(
                             t.var("some_val"),
@@ -1952,11 +1953,11 @@ mod tests {
             variants: vec![
                 (
                     TypeName::new("Ok").unwrap(),
-                    vec![(FieldName::new("value").unwrap(), Type::Int)],
+                    vec![(FieldName::new("value").unwrap(), Arc::new(Type::Int))],
                 ),
                 (
                     TypeName::new("Err").unwrap(),
-                    vec![(FieldName::new("message").unwrap(), Type::String)],
+                    vec![(FieldName::new("message").unwrap(), Arc::new(Type::String))],
                 ),
             ],
         };
@@ -2037,11 +2038,11 @@ mod tests {
             variants: vec![
                 (
                     TypeName::new("Ok").unwrap(),
-                    vec![(FieldName::new("value").unwrap(), Type::String)],
+                    vec![(FieldName::new("value").unwrap(), Arc::new(Type::String))],
                 ),
                 (
                     TypeName::new("Err").unwrap(),
-                    vec![(FieldName::new("message").unwrap(), Type::String)],
+                    vec![(FieldName::new("message").unwrap(), Arc::new(Type::String))],
                 ),
             ],
         };

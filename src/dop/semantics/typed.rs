@@ -1,4 +1,5 @@
 use std::fmt::{self, Display};
+use std::sync::Arc;
 
 use crate::document::CheapString;
 use crate::dop::patterns::{EnumPattern, Match};
@@ -11,13 +12,13 @@ use super::r#type::{ComparableType, EquatableType, NumericType, Type};
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypedExpr {
     /// A variable expression, e.g. foo
-    Var { value: VarName, kind: Type },
+    Var { value: VarName, kind: Arc<Type> },
 
     /// A field access expression, e.g. foo.bar
     FieldAccess {
         record: Box<Self>,
         field: FieldName,
-        kind: Type,
+        kind: Arc<Type>,
     },
 
     /// A string literal expression, e.g. "foo bar"
@@ -33,13 +34,13 @@ pub enum TypedExpr {
     IntLiteral { value: i64 },
 
     /// An array literal expression, e.g. [1, 2, 3]
-    ArrayLiteral { elements: Vec<Self>, kind: Type },
+    ArrayLiteral { elements: Vec<Self>, kind: Arc<Type> },
 
     /// A record literal expression, e.g. User(name: "John", age: 30)
     RecordLiteral {
         record_name: String,
         fields: Vec<(FieldName, Self)>,
-        kind: Type,
+        kind: Arc<Type>,
     },
 
     /// An enum literal expression, e.g. Color::Red or Result::Ok(value: 42)
@@ -48,18 +49,18 @@ pub enum TypedExpr {
         variant_name: CheapString,
         /// Field values for variants with fields (empty for unit variants)
         fields: Vec<(FieldName, Self)>,
-        kind: Type,
+        kind: Arc<Type>,
     },
 
     /// An option literal expression, e.g. Some(42) or None
     OptionLiteral {
         /// The inner value (Some) or None
         value: Option<Box<Self>>,
-        kind: Type,
+        kind: Arc<Type>,
     },
 
     /// A match expression (enum, bool, or option)
-    Match { match_: Match<Self>, kind: Type },
+    Match { match_: Match<Self>, kind: Arc<Type> },
 
     /// String concatenation expression for joining two string expressions
     StringConcat { left: Box<Self>, right: Box<Self> },
@@ -147,7 +148,7 @@ pub enum TypedExpr {
         var: VarName,
         value: Box<Self>,
         body: Box<Self>,
-        kind: Type,
+        kind: Arc<Type>,
     },
 
     /// Merge CSS classes expression, e.g. classes!(a, b, c)
@@ -170,6 +171,52 @@ pub enum TypedExpr {
 }
 
 impl TypedExpr {
+    pub fn get_type(&self) -> Arc<Type> {
+        match self {
+            TypedExpr::Var { kind, .. }
+            | TypedExpr::FieldAccess { kind, .. }
+            | TypedExpr::ArrayLiteral { kind, .. }
+            | TypedExpr::RecordLiteral { kind, .. }
+            | TypedExpr::EnumLiteral { kind, .. }
+            | TypedExpr::OptionLiteral { kind, .. }
+            | TypedExpr::Match { kind, .. }
+            | TypedExpr::Let { kind, .. } => kind.clone(),
+
+            TypedExpr::FloatLiteral { .. } | TypedExpr::IntToFloat { .. } => Arc::new(Type::Float),
+            TypedExpr::IntLiteral { .. } => Arc::new(Type::Int),
+
+            TypedExpr::StringConcat { .. }
+            | TypedExpr::StringLiteral { .. }
+            | TypedExpr::MergeClasses { .. }
+            | TypedExpr::IntToString { .. }
+            | TypedExpr::FloatToString { .. } => Arc::new(Type::String),
+
+            TypedExpr::NumericAdd { operand_types, .. }
+            | TypedExpr::NumericSubtract { operand_types, .. }
+            | TypedExpr::NumericMultiply { operand_types, .. }
+            | TypedExpr::NumericNegation {
+                operand_type: operand_types,
+                ..
+            } => match operand_types {
+                NumericType::Int => Arc::new(Type::Int),
+                NumericType::Float => Arc::new(Type::Float),
+            },
+
+            TypedExpr::BooleanLiteral { .. }
+            | TypedExpr::BooleanNegation { .. }
+            | TypedExpr::Equals { .. }
+            | TypedExpr::NotEquals { .. }
+            | TypedExpr::LessThan { .. }
+            | TypedExpr::GreaterThan { .. }
+            | TypedExpr::LessThanOrEqual { .. }
+            | TypedExpr::GreaterThanOrEqual { .. }
+            | TypedExpr::BooleanLogicalAnd { .. }
+            | TypedExpr::BooleanLogicalOr { .. } => Arc::new(Type::Bool),
+
+            TypedExpr::ArrayLength { .. } | TypedExpr::FloatToInt { .. } => Arc::new(Type::Int),
+        }
+    }
+
     pub fn as_type(&self) -> &Type {
         static STRING_TYPE: Type = Type::String;
         static BOOL_TYPE: Type = Type::Bool;
@@ -184,7 +231,7 @@ impl TypedExpr {
             | TypedExpr::EnumLiteral { kind, .. }
             | TypedExpr::OptionLiteral { kind, .. }
             | TypedExpr::Match { kind, .. }
-            | TypedExpr::Let { kind, .. } => kind,
+            | TypedExpr::Let { kind, .. } => kind.as_ref(),
 
             TypedExpr::FloatLiteral { .. } | TypedExpr::IntToFloat { .. } => &FLOAT_TYPE,
             TypedExpr::IntLiteral { .. } => &INT_TYPE,

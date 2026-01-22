@@ -44,7 +44,7 @@ impl DoctypeInjector {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::inlined::builder::build_inlined;
+    use crate::inlined::builder::build_inlined_no_params;
     use expect_test::{Expect, expect};
 
     /// Helper to pretty-print entrypoint children for testing
@@ -68,7 +68,7 @@ mod tests {
 
     #[test]
     fn should_not_inject_when_doctype_is_already_present() {
-        let entrypoint = build_inlined("MainComp", [], |t| {
+        let entrypoint = build_inlined_no_params("MainComp", |t| {
             t.doctype("<!DOCTYPE html>");
         });
 
@@ -85,7 +85,7 @@ mod tests {
 
     #[test]
     fn should_not_inject_when_doctype_is_already_present_after_leading_whitespace() {
-        let entrypoint = build_inlined("MainComp", [], |t| {
+        let entrypoint = build_inlined_no_params("MainComp", |t| {
             t.text("\n");
             t.doctype("<!DOCTYPE html>");
         });
@@ -107,7 +107,7 @@ mod tests {
 
     #[test]
     fn should_inject_doctype_for_whitespace_only_entrypoint() {
-        let entrypoint = build_inlined("EmptyComp", [], |t| {
+        let entrypoint = build_inlined_no_params("EmptyComp", |t| {
             t.text("\n");
         });
 
@@ -127,7 +127,7 @@ mod tests {
 
     #[test]
     fn should_inject_doctype_for_text_only_entrypoint() {
-        let entrypoint = build_inlined("TextComp", [], |t| {
+        let entrypoint = build_inlined_no_params("TextComp", |t| {
             t.text("Just some text content");
         });
 

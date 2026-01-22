@@ -1,3 +1,6 @@
+use std::sync::Arc;
+use std::{collections::HashMap, fmt};
+
 use crate::document::CheapString;
 use crate::dop::VarName;
 use crate::dop::patterns::{EnumPattern, Match};
@@ -6,7 +9,6 @@ use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::type_name::TypeName;
 use crate::hop::symbols::component_name::ComponentName;
 use pretty::BoxDoc;
-use std::{collections::HashMap, fmt};
 
 /// Unique identifier for each expression in the IR
 pub type ExprId = usize;
@@ -35,7 +37,7 @@ pub struct IrComponentDeclaration {
     /// Component name (e.g. MyComponent)
     pub name: ComponentName,
     /// Original parameter names with their types (for function signature)
-    pub parameters: Vec<(VarName, Type)>,
+    pub parameters: Vec<(VarName, Arc<Type>)>,
     /// IR nodes for the entrypoint body
     pub body: Vec<IrStatement>,
 }
@@ -43,14 +45,14 @@ pub struct IrComponentDeclaration {
 #[derive(Debug, Clone)]
 pub struct IrRecordDeclaration {
     pub name: String,
-    pub fields: Vec<(FieldName, Type)>,
+    pub fields: Vec<(FieldName, Arc<Type>)>,
 }
 
 #[derive(Debug, Clone)]
 pub struct IrEnumDeclaration {
     pub name: String,
     /// Variants with their fields: (variant_name, fields)
-    pub variants: Vec<(TypeName, Vec<(FieldName, Type)>)>,
+    pub variants: Vec<(TypeName, Vec<(FieldName, Arc<Type>)>)>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -106,7 +108,7 @@ pub enum IrExpr {
     /// A variable expression, e.g. foo
     Var {
         value: VarName,
-        kind: Type,
+        kind: Arc<Type>,
         id: ExprId,
     },
 
@@ -114,7 +116,7 @@ pub enum IrExpr {
     FieldAccess {
         record: Box<IrExpr>,
         field: FieldName,
-        kind: Type,
+        kind: Arc<Type>,
         id: ExprId,
     },
 
@@ -133,7 +135,7 @@ pub enum IrExpr {
     /// An array literal expression, e.g. [1, 2, 3]
     ArrayLiteral {
         elements: Vec<IrExpr>,
-        kind: Type,
+        kind: Arc<Type>,
         id: ExprId,
     },
 
@@ -141,7 +143,7 @@ pub enum IrExpr {
     RecordLiteral {
         record_name: String,
         fields: Vec<(FieldName, IrExpr)>,
-        kind: Type,
+        kind: Arc<Type>,
         id: ExprId,
     },
 
@@ -151,21 +153,21 @@ pub enum IrExpr {
         variant_name: CheapString,
         /// Field values for variants with fields (empty for unit variants)
         fields: Vec<(FieldName, IrExpr)>,
-        kind: Type,
+        kind: Arc<Type>,
         id: ExprId,
     },
 
     /// An option literal expression, e.g. Some(42) or None
     OptionLiteral {
         value: Option<Box<IrExpr>>,
-        kind: Type,
+        kind: Arc<Type>,
         id: ExprId,
     },
 
     /// A match expression (enum, bool, or option)
     Match {
         match_: Match<IrExpr>,
-        kind: Type,
+        kind: Arc<Type>,
         id: ExprId,
     },
 
@@ -266,7 +268,7 @@ pub enum IrExpr {
         var: VarName,
         value: Box<IrExpr>,
         body: Box<IrExpr>,
-        kind: Type,
+        kind: Arc<Type>,
         id: ExprId,
     },
 
@@ -764,6 +766,52 @@ impl IrExpr {
         }
     }
 
+    /// Get the type of this expression as an Arc
+    pub fn get_type(&self) -> Arc<Type> {
+        match self {
+            IrExpr::Var { kind, .. }
+            | IrExpr::FieldAccess { kind, .. }
+            | IrExpr::ArrayLiteral { kind, .. }
+            | IrExpr::RecordLiteral { kind, .. }
+            | IrExpr::EnumLiteral { kind, .. }
+            | IrExpr::OptionLiteral { kind, .. }
+            | IrExpr::Match { kind, .. }
+            | IrExpr::Let { kind, .. } => kind.clone(),
+
+            IrExpr::FloatLiteral { .. } | IrExpr::IntToFloat { .. } => Arc::new(Type::Float),
+            IrExpr::IntLiteral { .. } => Arc::new(Type::Int),
+
+            IrExpr::JsonEncode { .. }
+            | IrExpr::EnvLookup { .. }
+            | IrExpr::StringConcat { .. }
+            | IrExpr::MergeClasses { .. }
+            | IrExpr::StringLiteral { .. }
+            | IrExpr::IntToString { .. }
+            | IrExpr::FloatToString { .. } => Arc::new(Type::String),
+
+            IrExpr::NumericAdd { operand_types, .. }
+            | IrExpr::NumericSubtract { operand_types, .. }
+            | IrExpr::NumericMultiply { operand_types, .. }
+            | IrExpr::NumericNegation {
+                operand_type: operand_types,
+                ..
+            } => match operand_types {
+                NumericType::Int => Arc::new(Type::Int),
+                NumericType::Float => Arc::new(Type::Float),
+            },
+
+            IrExpr::BooleanLiteral { .. }
+            | IrExpr::BooleanNegation { .. }
+            | IrExpr::Equals { .. }
+            | IrExpr::LessThan { .. }
+            | IrExpr::LessThanOrEqual { .. }
+            | IrExpr::BooleanLogicalAnd { .. }
+            | IrExpr::BooleanLogicalOr { .. } => Arc::new(Type::Bool),
+
+            IrExpr::ArrayLength { .. } | IrExpr::FloatToInt { .. } => Arc::new(Type::Int),
+        }
+    }
+
     /// Get the type of this expression
     pub fn as_type(&self) -> &Type {
         static STRING_TYPE: Type = Type::String;
@@ -972,7 +1020,7 @@ impl IrExpr {
             }
             IrExpr::OptionLiteral { value, kind, .. } => {
                 // Extract inner type from Option[T] -> T
-                let inner_type = match kind {
+                let inner_type = match kind.as_ref() {
                     Type::Option(inner) => inner.to_doc(),
                     _ => panic!("OptionLiteral must have Option type, got {:?}", kind),
                 };

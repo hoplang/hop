@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+use std::sync::Arc;
+
 use super::Pass;
 use crate::document::CheapString;
 use crate::dop::patterns::{EnumPattern, Match};
@@ -9,7 +12,6 @@ use crate::ir::{
     ast::{IrComponentDeclaration, IrForSource, IrStatement},
 };
 use datafrog::{Iteration, Relation};
-use std::collections::HashMap;
 use tailwind_merge::tw_merge;
 
 /// Binary operations that can be folded when both operands are constant.
@@ -43,7 +45,7 @@ impl Const {
     fn to_expr(
         &self,
         id: ExprId,
-        kind: &Type,
+        kind: Arc<Type>,
         const_map: &HashMap<ExprId, Const>,
     ) -> Option<IrExpr> {
         Some(match self {
@@ -58,7 +60,7 @@ impl Const {
                 fields,
             } => {
                 // Reconstruct field expressions from const_map
-                let Type::Enum { variants, .. } = kind else {
+                let Type::Enum { variants, .. } = &*kind else {
                     return None;
                 };
                 let variant_fields = variants
@@ -72,7 +74,7 @@ impl Const {
                         let field_type = variant_fields
                             .iter()
                             .find(|(f, _)| f.as_str() == field_name.as_str())
-                            .map(|(_, t)| t)?;
+                            .map(|(_, t)| t.clone())?;
                         let field_const = const_map.get(field_id)?;
                         let field_expr = field_const.to_expr(*field_id, field_type, const_map)?;
                         Some((field_name.clone(), field_expr))
@@ -93,8 +95,8 @@ impl Const {
                     Some(id) => {
                         let inner_const = const_map.get(id)?;
                         // Extract the inner type: Option<T> -> T
-                        let inner_kind = match kind {
-                            Type::Option(inner) => inner.as_ref(),
+                        let inner_kind = match &*kind {
+                            Type::Option(inner) => inner.clone(),
                             _ => panic!("Const::Option must have Option type, got {:?}", kind),
                         };
                         Some(Box::new(inner_const.to_expr(*id, inner_kind, const_map)?))
@@ -102,7 +104,7 @@ impl Const {
                 };
                 IrExpr::OptionLiteral {
                     value: inner_expr,
-                    kind: kind.clone(),
+                    kind,
                     id,
                 }
             }
@@ -668,7 +670,7 @@ impl Pass for ConstantPropagationPass {
                 if let Some(expr) = s.expr_mut() {
                     expr.traverse_mut(&mut |e| {
                         if let Some(const_val) = const_map.get(&e.id()) {
-                            if let Some(expr) = const_val.to_expr(e.id(), e.as_type(), &const_map) {
+                            if let Some(expr) = const_val.to_expr(e.id(), e.get_type(), &const_map) {
                                 *e = expr;
                             }
                         }
@@ -682,7 +684,7 @@ impl Pass for ConstantPropagationPass {
 
 #[cfg(test)]
 mod tests {
-    use crate::ir::syntax::builder::{build_ir, build_ir_with_enums};
+    use crate::ir::syntax::builder::{build_ir_no_params, build_ir_with_enums_no_params};
     use expect_test::{Expect, expect};
 
     use super::*;
@@ -698,7 +700,7 @@ mod tests {
     #[test]
     fn should_fold_simple_boolean_negation() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.if_stmt(t.not(t.bool(false)), |t| {
                     t.write("Should be true");
                 });
@@ -724,7 +726,7 @@ mod tests {
     #[test]
     fn should_fold_double_boolean_negation() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.if_stmt(t.not(t.not(t.bool(true))), |t| {
                     t.write("Double negation");
                 });
@@ -750,7 +752,7 @@ mod tests {
     #[test]
     fn should_fold_triple_boolean_negation() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.if_stmt(t.not(t.not(t.not(t.bool(false)))), |t| {
                     t.write("Triple negation");
                 });
@@ -775,7 +777,7 @@ mod tests {
 
     #[test]
     fn should_fold_boolean_equality_comparisons() {
-        let ep = build_ir("Test", [], |t| {
+        let ep = build_ir_no_params("Test", |t| {
             t.if_stmt(t.eq(t.bool(true), t.bool(true)), |t| {
                 t.write("true == true");
             });
@@ -821,7 +823,7 @@ mod tests {
     #[test]
     fn should_fold_equality_with_nested_negations() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.if_stmt(
                     t.eq(t.not(t.not(t.bool(false))), t.not(t.bool(false))),
                     |t| {
@@ -850,7 +852,7 @@ mod tests {
     #[test]
     fn should_propagate_constants_through_variables() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.let_stmt("x", t.not(t.not(t.bool(true))), |t| {
                     t.if_stmt(t.var("x"), |t| {
                         t.write("x is true");
@@ -891,7 +893,7 @@ mod tests {
     #[test]
     fn should_fold_equality_with_variable_operands() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.let_stmt("x", t.bool(true), |t| {
                     t.let_stmt("y", t.not(t.bool(true)), |t| {
                         t.if_stmt(t.eq(t.var("x"), t.var("y")), |t| {
@@ -938,7 +940,7 @@ mod tests {
     #[test]
     fn should_propagate_string_constants_through_variables() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.let_stmt("message", t.str("Hello, World!"), |t| {
                     t.write_expr_escaped(t.var("message"));
                 });
@@ -964,7 +966,7 @@ mod tests {
     #[test]
     fn should_propagate_nested_string_variables() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.let_stmt("greeting", t.str("Hello"), |t| {
                     t.let_stmt("name", t.str("World"), |t| {
                         t.write_expr_escaped(t.var("greeting"));
@@ -999,7 +1001,7 @@ mod tests {
     #[test]
     fn should_propagate_string_variable_to_multiple_uses() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.let_stmt("title", t.str("Welcome"), |t| {
                     t.write_expr_escaped(t.var("title"));
                     t.write_expr_escaped(t.var("title"));
@@ -1037,7 +1039,7 @@ mod tests {
     #[test]
     fn should_fold_string_equality_comparisons() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.if_stmt(t.eq(t.str("hello"), t.str("hello")), |t| {
                     t.write("Strings are equal");
                 });
@@ -1093,7 +1095,7 @@ mod tests {
     #[test]
     fn should_fold_nested_string_concatenation() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.write_expr_escaped(
                     t.string_concat(t.string_concat(t.str("Hello"), t.str(" ")), t.str("World")),
                 );
@@ -1115,7 +1117,7 @@ mod tests {
     #[test]
     fn should_fold_string_concatenation_in_equality() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.if_stmt(
                     t.eq(t.string_concat(t.str("foo"), t.str("bar")), t.str("foobar")),
                     |t| {
@@ -1159,7 +1161,7 @@ mod tests {
     #[test]
     fn should_fold_string_concatenation_with_propagated_variables() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.let_stmt("prefix", t.str("Hello"), |t| {
                     t.let_stmt("suffix", t.string_concat(t.str(" "), t.str("World")), |t| {
                         t.let_stmt(
@@ -1201,7 +1203,7 @@ mod tests {
     #[test]
     fn should_fold_simple_match_expression() {
         check(
-            build_ir_with_enums("Test", [], vec![("Color", vec!["Red", "Blue"])], |t| {
+            build_ir_with_enums_no_params("Test", vec![("Color", vec!["Red", "Blue"])], |t| {
                 t.let_stmt("color", t.enum_variant("Color", "Red"), |t| {
                     t.write_expr_escaped(t.match_expr(
                         t.var("color"),
@@ -1233,7 +1235,7 @@ mod tests {
     #[test]
     fn should_fold_match_with_variable_subject() {
         check(
-            build_ir_with_enums("Test", [], vec![("Color", vec!["Red", "Blue"])], |t| {
+            build_ir_with_enums_no_params("Test", vec![("Color", vec!["Red", "Blue"])], |t| {
                 t.let_stmt("color", t.enum_variant("Color", "Blue"), |t| {
                     t.write_expr_escaped(t.match_expr(
                         t.var("color"),
@@ -1265,7 +1267,7 @@ mod tests {
     #[test]
     fn should_fold_match_with_constant_arm_body() {
         check(
-            build_ir_with_enums("Test", [], vec![("Color", vec!["Red", "Blue"])], |t| {
+            build_ir_with_enums_no_params("Test", vec![("Color", vec!["Red", "Blue"])], |t| {
                 t.let_stmt("color", t.enum_variant("Color", "Red"), |t| {
                     t.if_stmt(
                         t.match_expr(
@@ -1306,9 +1308,8 @@ mod tests {
     #[test]
     fn should_fold_nested_match_in_equality() {
         check(
-            build_ir_with_enums(
+            build_ir_with_enums_no_params(
                 "Test",
-                [],
                 vec![("Status", vec!["Active", "Inactive"])],
                 |t| {
                     t.let_stmt("status", t.enum_variant("Status", "Active"), |t| {
@@ -1355,7 +1356,7 @@ mod tests {
     #[test]
     fn should_propagate_enum_constant_through_variables() {
         check(
-            build_ir_with_enums("Test", [], vec![("Color", vec!["Red", "Blue"])], |t| {
+            build_ir_with_enums_no_params("Test", vec![("Color", vec!["Red", "Blue"])], |t| {
                 t.let_stmt("x", t.enum_variant("Color", "Red"), |t| {
                     t.let_stmt("y", t.var("x"), |t| {
                         t.write_expr_escaped(t.match_expr(
@@ -1393,7 +1394,7 @@ mod tests {
     #[test]
     fn sibling_let_constant_propagation() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.let_stmt("x", t.str("first"), |t| {
                     t.write_expr_escaped(t.var("x"));
                 });
@@ -1434,7 +1435,7 @@ mod tests {
             .enum_with_fields("Msg", |e| {
                 e.variant_with_fields("Say", vec![("text", Type::String)]);
             })
-            .component("Test", [], |t| {
+            .component_no_params("Test", |t| {
                 t.let_stmt(
                     "x",
                     t.enum_variant_with_fields("Msg", "Say", vec![("text", t.str("hi"))]),
@@ -1462,7 +1463,7 @@ mod tests {
     #[test]
     fn should_fold_merge_classes_with_constant_strings() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.write_expr_escaped(t.merge_classes(vec![
                     t.str("flex"),
                     t.str("items-center"),
@@ -1486,7 +1487,7 @@ mod tests {
     #[test]
     fn should_fold_merge_classes_with_tailwind_conflicts() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.write_expr_escaped(t.merge_classes(vec![
                     t.str("px-4"),
                     t.str("py-2"),
@@ -1510,7 +1511,7 @@ mod tests {
     #[test]
     fn should_fold_merge_classes_with_propagated_variables() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.let_stmt("base", t.str("flex items-center"), |t| {
                     t.let_stmt("extra", t.str("gap-4 text-red-500"), |t| {
                         t.write_expr_escaped(t.merge_classes(vec![t.var("base"), t.var("extra")]));
@@ -1542,7 +1543,7 @@ mod tests {
     #[test]
     fn should_fold_empty_merge_classes() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.write_expr_escaped(t.merge_classes(vec![]));
             }),
             expect![[r#"
@@ -1562,7 +1563,7 @@ mod tests {
     #[test]
     fn should_fold_nested_merge_classes() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.write_expr_escaped(t.merge_classes(vec![
                     t.str("px-4"),
                     t.merge_classes(vec![t.str("px-2"), t.str("p-3")]),
@@ -1585,7 +1586,7 @@ mod tests {
     #[test]
     fn should_fold_merge_classes_with_enum_match() {
         check(
-            build_ir_with_enums("Test", [], vec![("Size", vec!["Small", "Large"])], |t| {
+            build_ir_with_enums_no_params("Test", vec![("Size", vec!["Small", "Large"])], |t| {
                 t.let_stmt("size", t.enum_variant("Size", "Large"), |t| {
                     t.write_expr_escaped(t.merge_classes(vec![
                         t.str("px-4"),
@@ -1620,7 +1621,7 @@ mod tests {
     #[test]
     fn should_fold_merge_classes_with_enum_match_containing_merge_classes() {
         check(
-            build_ir_with_enums("Test", [], vec![("Size", vec!["Small", "Large"])], |t| {
+            build_ir_with_enums_no_params("Test", vec![("Size", vec!["Small", "Large"])], |t| {
                 t.let_stmt("size", t.enum_variant("Size", "Large"), |t| {
                     t.write_expr_escaped(t.merge_classes(vec![
                         t.str("flex"),
@@ -1664,7 +1665,7 @@ mod tests {
     #[test]
     fn should_fold_option_match_with_some() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.let_stmt("opt", t.some(t.str("hello")), |t| {
                     t.write_expr_escaped(t.option_match_expr(
                         t.var("opt"),
@@ -1699,7 +1700,7 @@ mod tests {
         use crate::dop::Type;
 
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.let_stmt("opt", t.none(Type::String), |t| {
                     t.write_expr_escaped(t.option_match_expr(
                         t.var("opt"),
@@ -1732,7 +1733,7 @@ mod tests {
     #[test]
     fn should_propagate_option_constant_through_variables() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.let_stmt("x", t.some(t.str("hello")), |t| {
                     t.let_stmt("y", t.var("x"), |t| {
                         t.write_expr_escaped(t.option_match_expr(
@@ -1773,7 +1774,7 @@ mod tests {
         use crate::dop::Type;
 
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.let_stmt("opt", t.some(t.str("hello")), |t| {
                     t.write_expr_escaped(t.option_match_expr_with_binding(
                         t.var("opt"),
@@ -1811,7 +1812,7 @@ mod tests {
 
         // Test that the binding value propagates into nested expressions
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.let_stmt("opt", t.some(t.str("hello")), |t| {
                     t.write_expr_escaped(t.option_match_expr_with_binding(
                         t.var("opt"),
@@ -1852,7 +1853,7 @@ mod tests {
 
         // Test that the binding value propagates into equality comparisons
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.let_stmt("opt", t.some(t.str("hello")), |t| {
                     t.if_stmt(
                         t.option_match_expr_with_binding(
@@ -1899,7 +1900,7 @@ mod tests {
 
         // Test nested option matches using let statements to bind intermediate values
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.let_stmt("outer", t.some(t.some(t.str("nested"))), |t| {
                     // First match extracts inner_opt from outer
                     t.let_stmt(
@@ -1907,7 +1908,7 @@ mod tests {
                         t.option_match_expr_with_binding(
                             t.var("outer"),
                             "inner_opt",
-                            Type::Option(Box::new(Type::String)),
+                            Type::Option(Arc::new(Type::String)),
                             |t| t.var("inner_opt"),
                             t.none(Type::String),
                         ),
@@ -1958,12 +1959,12 @@ mod tests {
 
         // Test nested option match where inner match is inside a let expression in the Some arm
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.let_stmt("outer", t.some(t.some(t.str("nested"))), |t| {
                     t.write_expr_escaped(t.option_match_expr_with_binding(
                         t.var("outer"),
                         "inner_opt",
-                        Type::Option(Box::new(Type::String)),
+                        Type::Option(Arc::new(Type::String)),
                         |t| {
                             // let inner_opt_var = inner_opt in match inner_opt_var { ... }
                             t.let_expr("inner_opt_var", t.var("inner_opt"), |t| {
@@ -2013,7 +2014,7 @@ mod tests {
             .enum_with_fields("Msg", |e| {
                 e.variant_with_fields("Say", vec![("text", Type::String)]);
             })
-            .component("Test", [], |t| {
+            .component_no_params("Test", |t| {
                 t.let_stmt(
                     "msg",
                     t.enum_variant_with_fields("Msg", "Say", vec![("text", t.str("hello"))]),
@@ -2060,7 +2061,7 @@ mod tests {
             .enum_with_fields("Msg", |e| {
                 e.variant_with_fields("Say", vec![("text", Type::String)]);
             })
-            .component("Test", [], |t| {
+            .component_no_params("Test", |t| {
                 t.let_stmt(
                     "msg",
                     t.enum_variant_with_fields("Msg", "Say", vec![("text", t.str("world"))]),
@@ -2111,7 +2112,7 @@ mod tests {
             .enum_with_fields("Msg", |e| {
                 e.variant_with_fields("Say", vec![("text", Type::String)]);
             })
-            .component("Test", [], |t| {
+            .component_no_params("Test", |t| {
                 t.let_stmt(
                     "msg",
                     t.enum_variant_with_fields("Msg", "Say", vec![("text", t.str("hello"))]),
@@ -2168,7 +2169,7 @@ mod tests {
             .enum_with_fields("Msg", |e| {
                 e.variant_with_fields("Say", vec![("text", Type::String)]);
             })
-            .component("Test", [], |t| {
+            .component_no_params("Test", |t| {
                 t.let_stmt(
                     "x",
                     t.enum_variant_with_fields("Msg", "Say", vec![("text", t.str("hello"))]),
@@ -2225,7 +2226,7 @@ mod tests {
                     vec![("first", Type::String), ("second", Type::String)],
                 );
             })
-            .component("Test", [], |t| {
+            .component_no_params("Test", |t| {
                 t.let_stmt(
                     "pair",
                     t.enum_variant_with_fields(
@@ -2285,7 +2286,7 @@ mod tests {
                 e.variant_with_fields("Ok", vec![("value", Type::String)]);
                 e.variant_with_fields("Err", vec![("msg", Type::String)]);
             })
-            .component("Test", [], |t| {
+            .component_no_params("Test", |t| {
                 t.let_stmt(
                     "result",
                     t.enum_variant_with_fields("Result", "Ok", vec![("value", t.str("success"))]),
@@ -2347,7 +2348,7 @@ mod tests {
             .enum_with_fields("Msg", |e| {
                 e.variant_with_fields("Say", vec![("text", Type::String)]);
             })
-            .component("Test", [], |t| {
+            .component_no_params("Test", |t| {
                 t.let_stmt("choice", t.enum_variant("Choice", "A"), |t| {
                     t.let_stmt(
                         "x",
@@ -2417,7 +2418,7 @@ mod tests {
     #[test]
     fn should_fold_bool_match_with_true() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.let_stmt("flag", t.bool(true), |t| {
                     t.write_expr_escaped(t.bool_match_expr(
                         t.var("flag"),
@@ -2447,7 +2448,7 @@ mod tests {
     #[test]
     fn should_fold_bool_match_with_false() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.let_stmt("flag", t.bool(false), |t| {
                     t.write_expr_escaped(t.bool_match_expr(
                         t.var("flag"),
@@ -2477,7 +2478,7 @@ mod tests {
     #[test]
     fn should_propagate_bool_constant_through_variables_in_match() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.let_stmt("x", t.bool(true), |t| {
                     t.let_stmt("y", t.var("x"), |t| {
                         t.write_expr_escaped(t.bool_match_expr(
@@ -2513,7 +2514,7 @@ mod tests {
     #[test]
     fn should_fold_bool_match_with_negated_subject() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.let_stmt("flag", t.not(t.bool(false)), |t| {
                     t.write_expr_escaped(t.bool_match_expr(
                         t.var("flag"),
@@ -2556,7 +2557,7 @@ mod tests {
             .enum_with_fields("Msg", |e| {
                 e.variant_with_fields("Say", vec![("text", Type::String)]);
             })
-            .component("Test", [], |t| {
+            .component_no_params("Test", |t| {
                 t.let_stmt("choice", t.enum_variant("Choice", "A"), |t| {
                     t.let_stmt(
                         "y",
@@ -2631,7 +2632,7 @@ mod tests {
     #[test]
     fn should_fold_logical_or_with_literals() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.if_stmt(t.or(t.bool(false), t.bool(false)), |t| {
                     t.write("false || false");
                 });
@@ -2684,7 +2685,7 @@ mod tests {
     #[test]
     fn should_fold_logical_and_with_literals() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.if_stmt(t.and(t.bool(false), t.bool(false)), |t| {
                     t.write("false && false");
                 });
@@ -2737,7 +2738,7 @@ mod tests {
     #[test]
     fn should_fold_logical_operations_with_propagated_variables() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.let_stmt("a", t.bool(true), |t| {
                     t.let_stmt("b", t.bool(false), |t| {
                         t.if_stmt(t.or(t.var("a"), t.var("b")), |t| {
@@ -2784,7 +2785,7 @@ mod tests {
     #[test]
     fn should_fold_nested_logical_operations() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 // (true && false) || (false || true) => false || true => true
                 t.if_stmt(
                     t.or(
@@ -2817,7 +2818,7 @@ mod tests {
     #[test]
     fn should_fold_logical_operations_with_negation() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 // !false && !false => true && true => true
                 t.if_stmt(t.and(t.not(t.bool(false)), t.not(t.bool(false))), |t| {
                     t.write("both negated");

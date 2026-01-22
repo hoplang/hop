@@ -365,7 +365,7 @@ mod tests {
     use super::*;
     use crate::{
         dop::Type,
-        ir::syntax::builder::{IrBuilder, IrModuleBuilder, build_ir},
+        ir::syntax::builder::{IrBuilder, IrModuleBuilder, build_ir_no_params},
     };
     use expect_test::{Expect, expect};
 
@@ -380,7 +380,7 @@ mod tests {
     #[test]
     fn should_eliminate_unused_let_in_outermost_scope() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.let_stmt("unused", t.str("value"), |t| {
                     t.write("Hello");
                 });
@@ -404,7 +404,7 @@ mod tests {
     #[test]
     fn should_preserve_let_statement_when_variable_is_used_in_text_expression() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.let_stmt("message", t.str("Hello"), |t| {
                     t.write_expr(t.var("message"), false);
                 });
@@ -430,7 +430,7 @@ mod tests {
     #[test]
     fn should_preserve_let_statement_when_variable_is_used_in_if_statement() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.let_stmt("cond", t.bool(true), |t| {
                     t.if_stmt(t.var("cond"), |t| {
                         t.write("Condition is true");
@@ -462,7 +462,7 @@ mod tests {
     #[test]
     fn should_eliminate_let_statement_inside_if_body() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.if_stmt(t.bool(true), |t| {
                     t.let_stmt("unused", t.str("value"), |t| {
                         t.write("Inside if");
@@ -492,7 +492,7 @@ mod tests {
     #[test]
     fn should_eliminate_let_statement_inside_for_loop_body() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 let items = t.array(vec![t.str("a"), t.str("b")]);
                 t.for_loop("item", items, |t| {
                     t.let_stmt("unused", t.str("value"), |t| {
@@ -523,7 +523,7 @@ mod tests {
     #[test]
     fn should_preserve_let_statement_when_variable_is_used_in_binary_op() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.let_stmt("x", t.bool(true), |t| {
                     t.let_stmt("y", t.bool(false), |t| {
                         t.if_stmt(t.eq(t.var("x"), t.var("y")), |t| {
@@ -561,7 +561,7 @@ mod tests {
     #[test]
     fn should_eliminate_let_statements_declared_in_sequence() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.let_stmt("a", t.str("a_value"), |t| {
                     t.write("First");
                 });
@@ -595,7 +595,7 @@ mod tests {
     #[test]
     fn should_preserve_let_statement_when_variable_is_used_inside_array() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 let items = t.array(vec![t.str("a"), t.str("b")]);
                 t.let_stmt("items", items, |t| {
                     t.for_loop("item", t.var("items"), |t| {
@@ -628,7 +628,7 @@ mod tests {
     #[test]
     fn should_preserve_let_statement_when_variable_is_used_in_for_range_end() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.let_stmt("count", t.int(3), |t| {
                     t.for_range("i", t.int(1), t.var("count"), |t| {
                         t.write_expr(t.int_to_string(t.var("i")), false);
@@ -660,7 +660,7 @@ mod tests {
     #[test]
     fn should_preserve_let_statement_when_variable_is_used_in_for_range_start() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.let_stmt("start", t.int(1), |t| {
                     t.for_range("i", t.var("start"), t.int(5), |t| {
                         t.write_expr(t.int_to_string(t.var("i")), false);
@@ -692,7 +692,7 @@ mod tests {
     #[test]
     fn should_preserve_let_statement_when_variable_is_used_in_discarded_for_range() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.let_stmt("count", t.int(3), |t| {
                     t.for_range_discarded(t.int(1), t.var("count"), |t| {
                         t.write("x");
@@ -724,7 +724,7 @@ mod tests {
     #[test]
     fn should_eliminate_let_statement_when_sibling_statement_uses_same_variable() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.let_stmt("x", t.str("first x"), |t| {
                     t.write_expr(t.var("x"), false);
                 });
@@ -757,7 +757,7 @@ mod tests {
     #[test]
     fn should_eliminate_nested_unused_let_statements() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.let_stmt("outer", t.str("outer_value"), |t| {
                     t.let_stmt("inner", t.str("inner_value"), |t| {
                         t.write("No variables used");
@@ -785,7 +785,7 @@ mod tests {
     #[test]
     fn should_eliminate_deeply_nested_unused_let_statements() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.let_stmt("level1", t.str("value1"), |t| {
                     t.let_stmt("level2", t.str("value2"), |t| {
                         t.let_stmt("level3", t.str("value3"), |t| {
@@ -821,7 +821,7 @@ mod tests {
     #[test]
     fn should_preserve_let_used_in_bool_match_expr() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.let_stmt("flag", t.bool(true), |t| {
                     t.write_expr(
                         t.bool_match_expr(t.var("flag"), t.str("yes"), t.str("no")),
@@ -854,7 +854,7 @@ mod tests {
                 e.variant("Span");
                 e.variant_with_fields("Link", vec![("href", Type::String)]);
             })
-            .component("Test", [], |t| {
+            .component_no_params("Test", |t| {
                 t.let_stmt("element", t.enum_variant("BadgeElement", "Span"), |t| {
                     t.let_stmt("match_subject", t.var("element"), |t| {
                         t.enum_match_stmt_with_bindings(
@@ -926,7 +926,7 @@ mod tests {
             .enum_with_fields("MyEnum", |e| {
                 e.variant_with_fields("Foo", vec![("value", Type::String)]);
             })
-            .component("Test", [], |t| {
+            .component_no_params("Test", |t| {
                 // let x = "hello"
                 // let foo = MyEnum::Foo(value: x)
                 // match foo { Foo(v) => write(v) }  -- uses foo, which uses x
@@ -991,7 +991,7 @@ mod tests {
                 e.variant("Span");
                 e.variant_with_fields("Link", vec![("href", Type::String)]);
             })
-            .component("Test", [], |t| {
+            .component_no_params("Test", |t| {
                 // let href = "/home"
                 t.let_stmt("href", t.str("/home"), |t| {
                     // let element = BadgeElement::Link(href: href)
@@ -1078,7 +1078,7 @@ mod tests {
     #[test]
     fn should_eliminate_unused_let_inside_option_match_arm_body() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.let_stmt("opt", t.some(t.str("hello")), |t| {
                     t.option_match_stmt(
                         t.var("opt"),
@@ -1131,7 +1131,7 @@ mod tests {
     #[test]
     fn should_eliminate_unused_option_match_binding() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.let_stmt("opt", t.some(t.str("hello")), |t| {
                     t.option_match_stmt(
                         t.var("opt"),
@@ -1180,7 +1180,7 @@ mod tests {
     #[test]
     fn should_preserve_option_match_binding_when_used_as_nested_match_subject() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.let_stmt("outer_opt", t.some(t.some(t.str("deep"))), |t| {
                     t.option_match_stmt(
                         t.var("outer_opt"),
@@ -1252,7 +1252,7 @@ mod tests {
     #[test]
     fn should_eliminate_cascading_unused_variables() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.let_stmt("opt", t.some(t.str("hello")), |t| {
                     t.option_match_stmt(
                         t.var("opt"),
@@ -1305,7 +1305,7 @@ mod tests {
     #[test]
     fn should_eliminate_unused_let_inside_bool_match_arm_body() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.let_stmt("flag", t.bool(true), |t| {
                     t.bool_match_stmt(
                         t.var("flag"),

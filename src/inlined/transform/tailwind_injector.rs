@@ -98,7 +98,7 @@ impl TailwindInjector {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::inlined::builder::build_inlined;
+    use crate::inlined::builder::build_inlined_no_params;
     use expect_test::{Expect, expect};
 
     /// Helper to pretty-print entrypoint children for testing
@@ -134,7 +134,7 @@ mod tests {
 
     #[test]
     fn should_inject_css_into_head() {
-        let entrypoint = build_inlined("MainComp", [], |t| {
+        let entrypoint = build_inlined_no_params("MainComp", |t| {
             t.html("html", vec![], |t| {
                 t.html("head", vec![], |_| {});
                 t.html("body", vec![], |t| {

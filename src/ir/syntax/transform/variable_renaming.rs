@@ -705,8 +705,10 @@ impl Pass for VariableRenamingPass {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
-    use crate::ir::syntax::builder::build_ir;
+    use crate::ir::syntax::builder::{build_ir, build_ir_no_params};
     use crate::{document::CheapString, dop::Type};
     use expect_test::{Expect, expect};
 
@@ -767,7 +769,7 @@ mod tests {
     #[test]
     fn sibling_scopes() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.for_loop("x", t.array(vec![t.str("a")]), |t| {
                     t.write_expr_escaped(t.var("x"));
                 });
@@ -802,7 +804,7 @@ mod tests {
     #[test]
     fn nested_let_bindings() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.let_stmt("x", t.str("hello"), |t| {
                     t.write_expr_escaped(t.var("x"));
                     t.let_stmt("x", t.str("world"), |t| {
@@ -873,7 +875,7 @@ mod tests {
     #[test]
     fn sibling_let_bindings() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.let_stmt("x", t.str("first"), |t| {
                     t.write_expr_escaped(t.var("x"));
                 });
@@ -910,7 +912,7 @@ mod tests {
         check(
             build_ir(
                 "Test",
-                vec![("items", Type::Array(Box::new(Type::String)))],
+                vec![("items", Type::Array(Arc::new(Type::String)))],
                 |t| {
                     t.for_loop("item", t.var("items"), |t| {
                         t.write("<div>");
@@ -987,7 +989,7 @@ mod tests {
     fn should_rename_reserved_keywords() {
         // Test that reserved keywords from target languages are renamed
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 // `delete` is reserved in TypeScript
                 t.let_stmt("delete", t.str("value"), |t| {
                     t.write_expr_escaped(t.var("delete"));
@@ -1015,7 +1017,7 @@ mod tests {
     fn should_rename_multiple_reserved_keywords() {
         // Test multiple reserved keywords from different target languages
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 // `def` is reserved in Python
                 t.let_stmt("def", t.str("python"), |t| {
                     t.write_expr_escaped(t.var("def"));

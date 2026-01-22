@@ -848,8 +848,9 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value> {
 mod tests {
     use super::*;
     use crate::dop::Type;
-    use crate::ir::syntax::builder::{build_ir, build_ir_with_enums};
+    use crate::ir::syntax::builder::{build_ir, build_ir_no_params, build_ir_with_enums_no_params};
     use expect_test::{Expect, expect};
+    use std::sync::Arc;
 
     fn check(entrypoint: IrComponentDeclaration, args: Vec<(&str, Value)>, expected: Expect) {
         let before = entrypoint.to_string();
@@ -864,7 +865,7 @@ mod tests {
     #[test]
     fn should_evaluate_simple_write() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.write("<div>Hello World</div>");
             }),
             vec![],
@@ -953,7 +954,7 @@ mod tests {
         check(
             build_ir(
                 "Test",
-                vec![("items", Type::Array(Box::new(Type::String)))],
+                vec![("items", Type::Array(Arc::new(Type::String)))],
                 |t| {
                     t.for_loop("item", t.var("items"), |t| {
                         t.write("<li>");
@@ -992,9 +993,8 @@ mod tests {
     #[test]
     fn should_evaluate_enum_literal_in_condition() {
         check(
-            build_ir_with_enums(
+            build_ir_with_enums_no_params(
                 "Test",
-                vec![],
                 vec![("Color", vec!["Red", "Green", "Blue"])],
                 |t| {
                     let color = t.enum_variant("Color", "Red");
@@ -1022,9 +1022,8 @@ mod tests {
     #[test]
     fn should_evaluate_enum_equality_true() {
         check(
-            build_ir_with_enums(
+            build_ir_with_enums_no_params(
                 "Test",
-                vec![],
                 vec![("Status", vec!["Active", "Inactive", "Pending"])],
                 |t| {
                     let active1 = t.enum_variant("Status", "Active");
@@ -1052,9 +1051,8 @@ mod tests {
     #[test]
     fn should_evaluate_enum_equality_false() {
         check(
-            build_ir_with_enums(
+            build_ir_with_enums_no_params(
                 "Test",
-                vec![],
                 vec![("Status", vec!["Active", "Inactive", "Pending"])],
                 |t| {
                     let active = t.enum_variant("Status", "Active");

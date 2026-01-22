@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::document::{DocumentRange, Ranged};
 use crate::dop::symbols::type_name::TypeName;
 
@@ -17,12 +19,15 @@ pub enum TypeError {
     },
 
     #[error("{typ} can not be used as a record")]
-    CannotUseAsRecord { typ: String, range: DocumentRange },
+    CannotUseAsRecord {
+        typ: Arc<Type>,
+        range: DocumentRange,
+    },
 
     #[error("Can not compare {left} to {right}")]
     CannotCompareTypes {
-        left: String,
-        right: String,
+        left: Arc<Type>,
+        right: Arc<Type>,
         range: DocumentRange,
     },
 
@@ -34,8 +39,8 @@ pub enum TypeError {
 
     #[error("Array elements must all have the same type, found {expected} and {found}")]
     ArrayTypeMismatch {
-        expected: String,
-        found: String,
+        expected: Arc<Type>,
+        found: Arc<Type>,
         range: DocumentRange,
     },
 
@@ -46,7 +51,7 @@ pub enum TypeError {
     CannotInferNoneType { range: DocumentRange },
 
     #[error("Type {t} is not comparable")]
-    TypeIsNotComparable { t: Type, range: DocumentRange },
+    TypeIsNotComparable { t: Arc<Type>, range: DocumentRange },
 
     #[error("&& operator can only be applied to Bool values")]
     LogicalAndRequiresBoolean { range: DocumentRange },
@@ -56,22 +61,22 @@ pub enum TypeError {
 
     #[error("Cannot add values of incompatible types: {left_type} + {right_type}")]
     IncompatibleTypesForAddition {
-        left_type: String,
-        right_type: String,
+        left_type: Arc<Type>,
+        right_type: Arc<Type>,
         range: DocumentRange,
     },
 
     #[error("Cannot subtract values of incompatible types: {left_type} - {right_type}")]
     IncompatibleTypesForSubtraction {
-        left_type: String,
-        right_type: String,
+        left_type: Arc<Type>,
+        right_type: Arc<Type>,
         range: DocumentRange,
     },
 
     #[error("Cannot multiply values of incompatible types: {left_type} * {right_type}")]
     IncompatibleTypesForMultiplication {
-        left_type: String,
-        right_type: String,
+        left_type: Arc<Type>,
+        right_type: Arc<Type>,
         range: DocumentRange,
     },
 
@@ -104,8 +109,8 @@ pub enum TypeError {
     #[error("Field '{field_name}' expects type {expected}, but got {found}")]
     RecordLiteralFieldTypeMismatch {
         field_name: String,
-        expected: String,
-        found: String,
+        expected: Arc<Type>,
+        found: Arc<Type>,
         range: DocumentRange,
     },
 
@@ -145,13 +150,16 @@ pub enum TypeError {
         enum_name: String,
         variant_name: String,
         field_name: String,
-        expected: String,
-        found: String,
+        expected: Arc<Type>,
+        found: Arc<Type>,
         range: DocumentRange,
     },
 
     #[error("Match is not implemented for type {found}")]
-    MatchNotImplementedForType { found: String, range: DocumentRange },
+    MatchNotImplementedForType {
+        found: Arc<Type>,
+        range: DocumentRange,
+    },
 
     #[error("Match pattern enum '{pattern_enum}' does not match subject enum '{subject_enum}'")]
     MatchPatternEnumMismatch {
@@ -171,8 +179,8 @@ pub enum TypeError {
 
     #[error("Match arms must all have the same type, expected {expected} but found {found}")]
     MatchArmTypeMismatch {
-        expected: String,
-        found: String,
+        expected: Arc<Type>,
+        found: Arc<Type>,
         range: DocumentRange,
     },
 
@@ -211,14 +219,14 @@ pub enum TypeError {
     MacroArgumentTypeMismatch {
         macro_name: String,
         expected: String,
-        actual: String,
+        actual: Arc<Type>,
         range: DocumentRange,
     },
 
     #[error("Method '{method}' is not available on type {typ}")]
     MethodNotAvailable {
         method: String,
-        typ: String,
+        typ: Arc<Type>,
         range: DocumentRange,
     },
 }

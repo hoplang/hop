@@ -1,4 +1,5 @@
 use std::fmt::{self, Display};
+use std::sync::Arc;
 
 use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::type_name::TypeName;
@@ -10,7 +11,7 @@ use pretty::BoxDoc;
 #[derive(Debug, Clone)]
 pub struct TypedRecordDeclaration {
     pub name: TypeName,
-    pub fields: Vec<(FieldName, Type)>,
+    pub fields: Vec<(FieldName, Arc<Type>)>,
 }
 
 impl TypedRecordDeclaration {
@@ -44,7 +45,7 @@ impl TypedRecordDeclaration {
 pub struct TypedEnumDeclaration {
     pub name: TypeName,
     /// Variants with their fields: (variant_name, fields)
-    pub variants: Vec<(TypeName, Vec<(FieldName, Type)>)>,
+    pub variants: Vec<(TypeName, Vec<(FieldName, Arc<Type>)>)>,
 }
 
 impl TypedEnumDeclaration {
@@ -90,14 +91,14 @@ impl TypedEnumDeclaration {
 pub struct TypedComponentDeclaration {
     pub component_name: ComponentName,
     pub children: Vec<TypedNode>,
-    pub params: Vec<(VarName, Type, Option<TypedExpr>)>,
+    pub params: Vec<(VarName, Arc<Type>, Option<TypedExpr>)>,
 }
 
 #[derive(Debug, Clone)]
 pub struct TypedEntrypointDeclaration {
     pub name: ComponentName,
     pub children: Vec<TypedNode>,
-    pub params: Vec<(VarName, Type, Option<TypedExpr>)>,
+    pub params: Vec<(VarName, Arc<Type>, Option<TypedExpr>)>,
 }
 
 impl TypedComponentDeclaration {

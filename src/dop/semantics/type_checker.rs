@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use super::r#type::{NumericType, Type};
 use super::type_error::TypeError;
 use crate::document::DocumentRange;
@@ -14,21 +16,21 @@ use crate::hop::semantics::type_annotation::TypeAnnotation;
 /// Resolve a parsed Type to a semantic Type.
 pub fn resolve_type(
     parsed_type: &ParsedType,
-    type_env: &mut Environment<Type>,
-) -> Result<Type, TypeError> {
+    type_env: &mut Environment<Arc<Type>>,
+) -> Result<Arc<Type>, TypeError> {
     match parsed_type {
-        ParsedType::String { .. } => Ok(Type::String),
-        ParsedType::Bool { .. } => Ok(Type::Bool),
-        ParsedType::Int { .. } => Ok(Type::Int),
-        ParsedType::Float { .. } => Ok(Type::Float),
-        ParsedType::TrustedHTML { .. } => Ok(Type::TrustedHTML),
+        ParsedType::String { .. } => Ok(Arc::new(Type::String)),
+        ParsedType::Bool { .. } => Ok(Arc::new(Type::Bool)),
+        ParsedType::Int { .. } => Ok(Arc::new(Type::Int)),
+        ParsedType::Float { .. } => Ok(Arc::new(Type::Float)),
+        ParsedType::TrustedHTML { .. } => Ok(Arc::new(Type::TrustedHTML)),
         ParsedType::Option { element, .. } => {
             let elem_type = resolve_type(element, type_env)?;
-            Ok(Type::Option(Box::new(elem_type)))
+            Ok(Arc::new(Type::Option(elem_type)))
         }
         ParsedType::Array { element, .. } => {
             let elem_type = resolve_type(element, type_env)?;
-            Ok(Type::Array(Box::new(elem_type)))
+            Ok(Arc::new(Type::Array(elem_type)))
         }
         ParsedType::Named { name, range } => {
             let record_type =
@@ -49,10 +51,10 @@ pub fn resolve_type(
 /// empty array literals to infer their element type from context.
 pub fn typecheck_expr(
     parsed_expr: &ParsedExpr,
-    var_env: &mut Environment<Type>,
-    type_env: &mut Environment<Type>,
+    var_env: &mut Environment<Arc<Type>>,
+    type_env: &mut Environment<Arc<Type>>,
     annotations: &mut Vec<TypeAnnotation>,
-    expected_type: Option<&Type>,
+    expected_type: Option<&Arc<Type>>,
 ) -> Result<TypedExpr, TypeError> {
     match parsed_expr {
         ParsedExpr::Var { value: name, .. } => {
@@ -111,7 +113,7 @@ pub fn typecheck_expr(
                     }
                 }
                 _ => Err(TypeError::CannotUseAsRecord {
-                    typ: base_type.to_string(),
+                    typ: typed_base.get_type(),
                     range: record.range().clone(),
                 }),
             }
@@ -132,7 +134,7 @@ pub fn typecheck_expr(
                         var_env,
                         type_env,
                         annotations,
-                        Some(typed_right.as_type()),
+                        Some(&typed_right.get_type()),
                     )
                     .map_err(|_| left_err)
                 })?;
@@ -142,7 +144,7 @@ pub fn typecheck_expr(
                 var_env,
                 type_env,
                 annotations,
-                Some(typed_left.as_type()),
+                Some(&typed_left.get_type()),
             )?;
 
             let left_type = typed_left.as_type();
@@ -150,22 +152,22 @@ pub fn typecheck_expr(
 
             let Some(left_comparable) = left_type.as_equatable_type() else {
                 return Err(TypeError::TypeIsNotComparable {
-                    t: left_type.clone(),
+                    t: typed_left.get_type(),
                     range: left.range().clone(),
                 });
             };
 
             let Some(right_comparable) = right_type.as_equatable_type() else {
                 return Err(TypeError::TypeIsNotComparable {
-                    t: left_type.clone(),
-                    range: left.range().clone(),
+                    t: typed_right.get_type(),
+                    range: right.range().clone(),
                 });
             };
 
             if left_comparable != right_comparable {
                 return Err(TypeError::CannotCompareTypes {
-                    left: left_type.to_string(),
-                    right: right_type.to_string(),
+                    left: typed_left.get_type(),
+                    right: typed_right.get_type(),
                     range: parsed_expr.range().clone(),
                 });
             }
@@ -189,22 +191,22 @@ pub fn typecheck_expr(
 
             let Some(left_comparable) = left_type.as_equatable_type() else {
                 return Err(TypeError::TypeIsNotComparable {
-                    t: left_type.clone(),
+                    t: typed_left.get_type(),
                     range: left.range().clone(),
                 });
             };
 
             let Some(right_comparable) = right_type.as_equatable_type() else {
                 return Err(TypeError::TypeIsNotComparable {
-                    t: left_type.clone(),
-                    range: left.range().clone(),
+                    t: typed_right.get_type(),
+                    range: right.range().clone(),
                 });
             };
 
             if left_comparable != right_comparable {
                 return Err(TypeError::CannotCompareTypes {
-                    left: left_type.to_string(),
-                    right: right_type.to_string(),
+                    left: typed_left.get_type(),
+                    right: typed_right.get_type(),
                     range: parsed_expr.range().clone(),
                 });
             }
@@ -230,7 +232,7 @@ pub fn typecheck_expr(
                 left_type
                     .as_comparable_type()
                     .ok_or_else(|| TypeError::TypeIsNotComparable {
-                        t: left_type.clone(),
+                        t: typed_left.get_type(),
                         range: left.range().clone(),
                     })?;
 
@@ -238,15 +240,15 @@ pub fn typecheck_expr(
                 right_type
                     .as_comparable_type()
                     .ok_or_else(|| TypeError::TypeIsNotComparable {
-                        t: right_type.clone(),
+                        t: typed_right.get_type(),
                         range: right.range().clone(),
                     })?;
 
             // Both operands must be the same comparable type
             if left_comparable != right_comparable {
                 return Err(TypeError::CannotCompareTypes {
-                    left: left_type.to_string(),
-                    right: right_type.to_string(),
+                    left: typed_left.get_type(),
+                    right: typed_right.get_type(),
                     range: parsed_expr.range().clone(),
                 });
             }
@@ -273,7 +275,7 @@ pub fn typecheck_expr(
                 left_type
                     .as_comparable_type()
                     .ok_or_else(|| TypeError::TypeIsNotComparable {
-                        t: left_type.clone(),
+                        t: typed_left.get_type(),
                         range: left.range().clone(),
                     })?;
 
@@ -281,15 +283,15 @@ pub fn typecheck_expr(
                 right_type
                     .as_comparable_type()
                     .ok_or_else(|| TypeError::TypeIsNotComparable {
-                        t: right_type.clone(),
+                        t: typed_right.get_type(),
                         range: right.range().clone(),
                     })?;
 
             // Both operands must be the same comparable type
             if left_comparable != right_comparable {
                 return Err(TypeError::CannotCompareTypes {
-                    left: left_type.to_string(),
-                    right: right_type.to_string(),
+                    left: typed_left.get_type(),
+                    right: typed_right.get_type(),
                     range: parsed_expr.range().clone(),
                 });
             }
@@ -316,7 +318,7 @@ pub fn typecheck_expr(
                 left_type
                     .as_comparable_type()
                     .ok_or_else(|| TypeError::TypeIsNotComparable {
-                        t: left_type.clone(),
+                        t: typed_left.get_type(),
                         range: left.range().clone(),
                     })?;
 
@@ -324,15 +326,15 @@ pub fn typecheck_expr(
                 right_type
                     .as_comparable_type()
                     .ok_or_else(|| TypeError::TypeIsNotComparable {
-                        t: right_type.clone(),
+                        t: typed_right.get_type(),
                         range: right.range().clone(),
                     })?;
 
             // Both operands must be the same comparable type
             if left_comparable != right_comparable {
                 return Err(TypeError::CannotCompareTypes {
-                    left: left_type.to_string(),
-                    right: right_type.to_string(),
+                    left: typed_left.get_type(),
+                    right: typed_right.get_type(),
                     range: parsed_expr.range().clone(),
                 });
             }
@@ -358,7 +360,7 @@ pub fn typecheck_expr(
                 left_type
                     .as_comparable_type()
                     .ok_or_else(|| TypeError::TypeIsNotComparable {
-                        t: left_type.clone(),
+                        t: typed_left.get_type(),
                         range: left.range().clone(),
                     })?;
 
@@ -366,15 +368,15 @@ pub fn typecheck_expr(
                 right_type
                     .as_comparable_type()
                     .ok_or_else(|| TypeError::TypeIsNotComparable {
-                        t: right_type.clone(),
+                        t: typed_right.get_type(),
                         range: right.range().clone(),
                     })?;
 
             // Both operands must be the same comparable type
             if left_comparable != right_comparable {
                 return Err(TypeError::CannotCompareTypes {
-                    left: left_type.to_string(),
-                    right: right_type.to_string(),
+                    left: typed_left.get_type(),
+                    right: typed_right.get_type(),
                     range: parsed_expr.range().clone(),
                 });
             }
@@ -471,8 +473,8 @@ pub fn typecheck_expr(
                 _ => {
                     // Incompatible types for addition
                     Err(TypeError::IncompatibleTypesForAddition {
-                        left_type: left_type.to_string(),
-                        right_type: right_type.to_string(),
+                        left_type: typed_left.get_type(),
+                        right_type: typed_right.get_type(),
                         range: left.range().clone().to(right.range().clone()),
                     })
                 }
@@ -503,8 +505,8 @@ pub fn typecheck_expr(
                 _ => {
                     // Incompatible types for subtraction
                     Err(TypeError::IncompatibleTypesForSubtraction {
-                        left_type: left_type.to_string(),
-                        right_type: right_type.to_string(),
+                        left_type: typed_left.get_type(),
+                        right_type: typed_right.get_type(),
                         range: left.range().clone().to(right.range().clone()),
                     })
                 }
@@ -535,8 +537,8 @@ pub fn typecheck_expr(
                 _ => {
                     // Incompatible types for multiplication
                     Err(TypeError::IncompatibleTypesForMultiplication {
-                        left_type: left_type.to_string(),
-                        right_type: right_type.to_string(),
+                        left_type: typed_left.get_type(),
+                        right_type: typed_right.get_type(),
                         range: left.range().clone().to(right.range().clone()),
                     })
                 }
@@ -577,8 +579,8 @@ pub fn typecheck_expr(
         ParsedExpr::ArrayLiteral { elements, range } => {
             if elements.is_empty() {
                 // Empty array: infer element type from expected type
-                let elem_type = match expected_type {
-                    Some(Type::Array(elem)) => (**elem).clone(),
+                let elem_type = match expected_type.map(|t| t.as_ref()) {
+                    Some(Type::Array(elem)) => elem.clone(),
                     _ => {
                         return Err(TypeError::CannotInferEmptyArrayType {
                             range: range.clone(),
@@ -587,12 +589,13 @@ pub fn typecheck_expr(
                 };
                 Ok(TypedExpr::ArrayLiteral {
                     elements: vec![],
-                    kind: Type::Array(Box::new(elem_type)),
+                    kind: Arc::new(Type::Array(elem_type)),
                 })
             } else {
                 // Determine expected element type from context if available
-                let expected_elem_type = match expected_type {
-                    Some(Type::Array(elem)) => Some(elem.as_ref()),
+                let expected_elem_type: Option<Arc<Type>> = match expected_type.map(|t| t.as_ref())
+                {
+                    Some(Type::Array(elem)) => Some(elem.clone()),
                     _ => None,
                 };
 
@@ -604,14 +607,14 @@ pub fn typecheck_expr(
                     var_env,
                     type_env,
                     annotations,
-                    expected_elem_type,
+                    expected_elem_type.as_ref(),
                 )?;
-                let first_type = first_typed.as_type().clone();
+                let first_type = first_typed.get_type();
                 typed_elements.push(first_typed);
 
                 // Check that all elements have the same type
                 // Use first element's type as context for subsequent elements
-                let elem_context = expected_elem_type.unwrap_or(&first_type);
+                let elem_context = expected_elem_type.as_ref().unwrap_or(&first_type);
                 for element in elements.iter().skip(1) {
                     let typed_element = typecheck_expr(
                         element,
@@ -620,11 +623,11 @@ pub fn typecheck_expr(
                         annotations,
                         Some(elem_context),
                     )?;
-                    let element_type = typed_element.as_type();
-                    if *element_type != first_type {
+                    let element_type = typed_element.get_type();
+                    if *element_type != *first_type {
                         return Err(TypeError::ArrayTypeMismatch {
-                            expected: first_type.to_string(),
-                            found: element_type.to_string(),
+                            expected: first_type.clone(),
+                            found: element_type,
                             range: element.range().clone(),
                         });
                     }
@@ -633,7 +636,7 @@ pub fn typecheck_expr(
 
                 Ok(TypedExpr::ArrayLiteral {
                     elements: typed_elements,
-                    kind: Type::Array(Box::new(first_type)),
+                    kind: Arc::new(Type::Array(first_type)),
                 })
             }
         }
@@ -652,7 +655,7 @@ pub fn typecheck_expr(
                 .clone();
 
             // Extract fields from the record type
-            let record_fields = match &record_type {
+            let record_fields = match record_type.as_ref() {
                 Type::Record { fields, .. } => fields,
                 _ => {
                     return Err(TypeError::UndefinedRecord {
@@ -663,7 +666,7 @@ pub fn typecheck_expr(
             };
 
             // Build a map of expected fields from the record type
-            let expected_fields: std::collections::HashMap<&str, Type> = record_fields
+            let expected_fields: std::collections::HashMap<&str, Arc<Type>> = record_fields
                 .iter()
                 .map(|(name, typ)| (name.as_str(), typ.clone()))
                 .collect();
@@ -693,14 +696,14 @@ pub fn typecheck_expr(
                     annotations,
                     Some(expected_type),
                 )?;
-                let actual_type = typed_value.as_type();
+                let actual_type = typed_value.get_type();
 
                 // Check that the types match
-                if *actual_type != *expected_type {
+                if *actual_type != **expected_type {
                     return Err(TypeError::RecordLiteralFieldTypeMismatch {
                         field_name: field_name_str.to_string(),
-                        expected: expected_type.to_string(),
-                        found: actual_type.to_string(),
+                        expected: expected_type.clone(),
+                        found: actual_type,
                         range: field_value.range().clone(),
                     });
                 }
@@ -746,7 +749,7 @@ pub fn typecheck_expr(
                 .clone();
 
             // Verify it's actually an enum type and get the variant's fields
-            let variant_fields = match &enum_type {
+            let variant_fields = match enum_type.as_ref() {
                 Type::Enum { variants, .. } => {
                     let variant = variants.iter().find(|(v, _)| v.as_str() == variant_name);
                     match variant {
@@ -793,14 +796,14 @@ pub fn typecheck_expr(
                             )?;
 
                             // Verify type matches
-                            let actual_type = typed_field_expr.as_type();
-                            if actual_type != expected_type {
+                            let actual_type = typed_field_expr.get_type();
+                            if *actual_type != **expected_type {
                                 return Err(TypeError::EnumVariantFieldTypeMismatch {
                                     enum_name: enum_name.to_string(),
                                     variant_name: variant_name.to_string(),
                                     field_name: field_name.as_str().to_string(),
-                                    expected: expected_type.to_string(),
-                                    found: actual_type.to_string(),
+                                    expected: expected_type.clone(),
+                                    found: actual_type,
                                     range: field_expr.range().clone(),
                                 });
                             }
@@ -848,10 +851,11 @@ pub fn typecheck_expr(
             match value {
                 Some(inner_expr) => {
                     // Some(value): determine expected inner type from context if available
-                    let expected_inner_type = match expected_type {
-                        Some(Type::Option(elem)) => Some(elem.as_ref()),
-                        _ => None,
-                    };
+                    let expected_inner_type: Option<Arc<Type>> =
+                        match expected_type.map(|t| t.as_ref()) {
+                            Some(Type::Option(elem)) => Some(elem.clone()),
+                            _ => None,
+                        };
 
                     // Type check the inner value
                     let typed_inner = typecheck_expr(
@@ -859,19 +863,18 @@ pub fn typecheck_expr(
                         var_env,
                         type_env,
                         annotations,
-                        expected_inner_type,
+                        expected_inner_type.as_ref(),
                     )?;
-                    let inner_type = typed_inner.as_type().clone();
-
+                    let inner_type = typed_inner.get_type();
                     Ok(TypedExpr::OptionLiteral {
                         value: Some(Box::new(typed_inner)),
-                        kind: Type::Option(Box::new(inner_type)),
+                        kind: Arc::new(Type::Option(inner_type)),
                     })
                 }
                 None => {
                     // None: infer element type from expected type
-                    let elem_type = match expected_type {
-                        Some(Type::Option(elem)) => (**elem).clone(),
+                    let elem_type = match expected_type.map(|t| t.as_ref()) {
+                        Some(Type::Option(elem)) => elem.clone(),
                         _ => {
                             return Err(TypeError::CannotInferNoneType {
                                 range: range.clone(),
@@ -880,7 +883,7 @@ pub fn typecheck_expr(
                     };
                     Ok(TypedExpr::OptionLiteral {
                         value: None,
-                        kind: Type::Option(Box::new(elem_type)),
+                        kind: Arc::new(Type::Option(elem_type)),
                     })
                 }
             }
@@ -900,9 +903,9 @@ pub fn typecheck_expr(
             range,
         } => {
             let typed_receiver = typecheck_expr(receiver, var_env, type_env, annotations, None)?;
-            let receiver_type = typed_receiver.as_type();
+            let receiver_type = typed_receiver.get_type();
 
-            match (receiver_type, method.as_str()) {
+            match (receiver_type.as_ref(), method.as_str()) {
                 (Type::Array(_), "len") => Ok(TypedExpr::ArrayLength {
                     array: Box::new(typed_receiver),
                 }),
@@ -920,7 +923,7 @@ pub fn typecheck_expr(
                 }),
                 _ => Err(TypeError::MethodNotAvailable {
                     method: method.as_str().to_string(),
-                    typ: receiver_type.to_string(),
+                    typ: receiver_type,
                     range: range.clone(),
                 }),
             }
@@ -932,20 +935,21 @@ pub fn typecheck_expr(
 fn expand_classes_macro(
     args: &[ParsedExpr],
     _range: &DocumentRange,
-    var_env: &mut Environment<Type>,
-    type_env: &mut Environment<Type>,
+    var_env: &mut Environment<Arc<Type>>,
+    type_env: &mut Environment<Arc<Type>>,
     annotations: &mut Vec<TypeAnnotation>,
 ) -> Result<TypedExpr, TypeError> {
     // Type-check all arguments, expecting String
     let mut typed_args = Vec::new();
+    let string_type = Arc::new(Type::String);
     for arg in args {
-        let typed = typecheck_expr(arg, var_env, type_env, annotations, Some(&Type::String))?;
+        let typed = typecheck_expr(arg, var_env, type_env, annotations, Some(&string_type))?;
         // Verify it's actually a String
         if typed.as_type() != &Type::String {
             return Err(TypeError::MacroArgumentTypeMismatch {
                 macro_name: "classes".to_string(),
                 expected: "String".to_string(),
-                actual: typed.as_type().to_string(),
+                actual: typed.get_type(),
                 range: arg.range().clone(),
             });
         }
@@ -960,13 +964,11 @@ fn typecheck_match(
     subject: &ParsedExpr,
     arms: &[ParsedMatchArm],
     range: &DocumentRange,
-    var_env: &mut Environment<Type>,
-    type_env: &mut Environment<Type>,
+    var_env: &mut Environment<Arc<Type>>,
+    type_env: &mut Environment<Arc<Type>>,
     annotations: &mut Vec<TypeAnnotation>,
 ) -> Result<TypedExpr, TypeError> {
     let typed_subject = typecheck_expr(subject, var_env, type_env, annotations, None)?;
-    let subject_type = typed_subject.as_type().clone();
-
     // If subject is already a variable, use it directly; otherwise wrap in a let
     let (subject_name, needs_wrapper) = match &typed_subject {
         TypedExpr::Var { value, .. } => (value.as_str().to_string(), false),
@@ -977,13 +979,18 @@ fn typecheck_match(
     let tree = Compiler::new(var_env).compile(
         &patterns,
         &subject_name,
-        &subject_type,
+        typed_subject.get_type(),
         subject.range(),
         range,
     )?;
 
-    let (typed_bodies, result_type) =
-        typecheck_arm_bodies(arms, &subject_type, var_env, type_env, annotations)?;
+    let (typed_bodies, result_type) = typecheck_arm_bodies(
+        arms,
+        typed_subject.get_type(),
+        var_env,
+        type_env,
+        annotations,
+    )?;
 
     let mut result = decision_to_typed_expr(&tree, &typed_bodies, result_type.clone());
 
@@ -1004,11 +1011,11 @@ fn typecheck_match(
 /// The type is derived from the subject type and the position in the pattern.
 pub fn extract_bindings_from_pattern(
     pattern: &ParsedMatchPattern,
-    subject_type: &Type,
-) -> Vec<(String, Type, DocumentRange)> {
+    subject_type: Arc<Type>,
+) -> Vec<(String, Arc<Type>, DocumentRange)> {
     match pattern {
         ParsedMatchPattern::Binding { name, range } => {
-            vec![(name.to_string(), subject_type.clone(), range.clone())]
+            vec![(name.to_string(), subject_type, range.clone())]
         }
         ParsedMatchPattern::Wildcard { .. } => vec![],
         ParsedMatchPattern::Constructor {
@@ -1018,19 +1025,19 @@ pub fn extract_bindings_from_pattern(
             ..
         } => match constructor {
             Constructor::OptionSome => {
-                let Type::Option(inner_type) = subject_type else {
+                let Type::Option(inner_type) = &*subject_type else {
                     unreachable!("OptionSome pattern requires Option type")
                 };
                 let Some(inner_pattern) = args.first() else {
                     unreachable!("OptionSome pattern requires an argument")
                 };
-                extract_bindings_from_pattern(inner_pattern, inner_type)
+                extract_bindings_from_pattern(inner_pattern, inner_type.clone())
             }
             Constructor::Record { .. } => {
                 let Type::Record {
                     fields: type_fields,
                     ..
-                } = subject_type
+                } = &*subject_type
                 else {
                     unreachable!("Record pattern requires Record type")
                 };
@@ -1040,14 +1047,14 @@ pub fn extract_bindings_from_pattern(
                     let field_type = type_fields
                         .iter()
                         .find(|(name, _)| name == field_name)
-                        .map(|(_, typ)| typ)
+                        .map(|(_, typ)| typ.clone())
                         .expect("field type not found");
                     bindings.extend(extract_bindings_from_pattern(field_pattern, field_type));
                 }
                 bindings
             }
             Constructor::EnumVariant { variant_name, .. } => {
-                let Type::Enum { variants, .. } = subject_type else {
+                let Type::Enum { variants, .. } = &*subject_type else {
                     unreachable!("EnumVariant pattern requires Enum type")
                 };
 
@@ -1062,7 +1069,7 @@ pub fn extract_bindings_from_pattern(
                     let field_type = variant_fields
                         .iter()
                         .find(|(name, _)| name == field_name)
-                        .map(|(_, typ)| typ)
+                        .map(|(_, typ)| typ.clone())
                         .expect("field type not found");
                     bindings.extend(extract_bindings_from_pattern(field_pattern, field_type));
                 }
@@ -1079,17 +1086,17 @@ pub fn extract_bindings_from_pattern(
 /// Returns the typed bodies and the common result type.
 fn typecheck_arm_bodies(
     arms: &[ParsedMatchArm],
-    subject_type: &Type,
-    env: &mut Environment<Type>,
-    type_env: &mut Environment<Type>,
+    subject_type: Arc<Type>,
+    env: &mut Environment<Arc<Type>>,
+    type_env: &mut Environment<Arc<Type>>,
     annotations: &mut Vec<TypeAnnotation>,
-) -> Result<(Vec<TypedExpr>, Type), TypeError> {
+) -> Result<(Vec<TypedExpr>, Arc<Type>), TypeError> {
     let mut typed_bodies = Vec::new();
-    let mut result_type: Option<Type> = None;
+    let mut result_type: Option<Arc<Type>> = None;
 
     for arm in arms {
         // Extract binding variables from the pattern and add them to the environment
-        let bindings = extract_bindings_from_pattern(&arm.pattern, subject_type);
+        let bindings = extract_bindings_from_pattern(&arm.pattern, subject_type.clone());
         let mut pushed_count = 0;
         for (name, typ, range) in &bindings {
             match env.push(name.clone(), typ.clone()) {
@@ -1108,7 +1115,7 @@ fn typecheck_arm_bodies(
         // Use the first arm's type as context for subsequent arms
         let typed_body =
             typecheck_expr(&arm.body, env, type_env, annotations, result_type.as_ref())?;
-        let body_type = typed_body.as_type().clone();
+        let body_type = typed_body.get_type();
 
         // Remove bindings from environment and check for unused bindings
         for (_, _, range) in bindings.iter().rev().take(pushed_count) {
@@ -1123,13 +1130,13 @@ fn typecheck_arm_bodies(
 
         match &result_type {
             None => {
-                result_type = Some(body_type);
+                result_type = Some(body_type.clone());
             }
             Some(expected) => {
-                if body_type != *expected {
+                if *body_type != **expected {
                     return Err(TypeError::MatchArmTypeMismatch {
-                        expected: expected.to_string(),
-                        found: body_type.to_string(),
+                        expected: expected.clone(),
+                        found: body_type.clone(),
                         range: arm.body.range().clone(),
                     });
                 }
@@ -1146,7 +1153,7 @@ fn typecheck_arm_bodies(
 fn decision_to_typed_expr(
     decision: &Decision,
     typed_bodies: &[TypedExpr],
-    result_type: Type,
+    result_type: Arc<Type>,
 ) -> TypedExpr {
     match decision {
         Decision::Success(body) => {
@@ -1158,7 +1165,7 @@ fn decision_to_typed_expr(
                     value: VarName::new(&binding.source_name).expect("invalid variable name"),
                     kind: binding.typ.clone(),
                 });
-                let kind = result.as_type().clone();
+                let kind = result.get_type();
                 result = TypedExpr::Let {
                     var: var_name,
                     value,
@@ -1266,7 +1273,7 @@ fn decision_to_typed_expr(
                             kind: binding.typ.clone(),
                         };
 
-                        let kind = body.as_type().clone();
+                        let kind = body.get_type();
                         body = TypedExpr::Let {
                             var: var_name,
                             value: Box::new(field_access),
@@ -1318,7 +1325,7 @@ fn decision_to_typed_expr(
                     kind: binding.typ.clone(),
                 };
 
-                let kind = body.as_type().clone();
+                let kind = body.get_type();
                 body = TypedExpr::Let {
                     var: var_name,
                     value: Box::new(field_access),
@@ -1347,8 +1354,8 @@ mod tests {
     use std::collections::VecDeque;
 
     fn check(declarations_str: &str, env_vars: &[(&str, &str)], expr_str: &str, expected: Expect) {
-        let mut env = Environment::new();
-        let mut type_env: Environment<Type> = Environment::new();
+        let mut env: Environment<Arc<Type>> = Environment::new();
+        let mut type_env: Environment<Arc<Type>> = Environment::new();
         let test_module = ModuleName::new("test").unwrap();
 
         // Parse and process declarations
@@ -1381,7 +1388,7 @@ mod tests {
                         name: TypeName::new(name.as_str()).unwrap(),
                         variants: typed_variants,
                     };
-                    let _ = type_env.push(name.to_string(), enum_type);
+                    let _ = type_env.push(name.to_string(), Arc::new(enum_type));
                 }
                 ParsedDeclaration::Record {
                     name,
@@ -1401,7 +1408,7 @@ mod tests {
                         name: TypeName::new(name.as_str()).unwrap(),
                         fields,
                     };
-                    let _ = type_env.push(name.to_string(), record_type);
+                    let _ = type_env.push(name.to_string(), Arc::new(record_type));
                 }
                 ParsedDeclaration::Import { .. } => {
                     panic!("Import declarations not supported in tests");

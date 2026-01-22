@@ -1346,6 +1346,7 @@ mod tests {
     use super::*;
     use crate::ir::syntax::builder::{IrBuilder, IrModuleBuilder};
     use expect_test::{Expect, expect};
+    use std::sync::Arc;
 
     fn check(module: IrModule, expected: Expect) {
         let before = module.to_string();
@@ -1358,7 +1359,7 @@ mod tests {
     fn simple_component() {
         check(
             IrModuleBuilder::new()
-                .component("TestMainComp", [], |t| {
+                .component_no_params("TestMainComp", |t| {
                     t.write("<div>Hello World</div>\n");
                 })
                 .build(),
@@ -1439,7 +1440,7 @@ mod tests {
         // In Go, []string{} is the correct way to declare an empty string slice.
         check(
             IrModuleBuilder::new()
-                .component("TestMainComp", [], |t| {
+                .component_no_params("TestMainComp", |t| {
                     t.write_expr(t.json_encode(t.typed_array(Type::String, vec![])), false);
                 })
                 .build(),
@@ -1514,7 +1515,7 @@ mod tests {
             IrModuleBuilder::new()
                 .component(
                     "TestMainComp",
-                    [("items", Type::Array(Box::new(Type::String)))],
+                    [("items", Type::Array(Arc::new(Type::String)))],
                     |t| {
                         t.for_loop("item", t.var("items"), |t| {
                             t.write("<li>");
@@ -1562,7 +1563,7 @@ mod tests {
     fn for_loop_with_range() {
         check(
             IrModuleBuilder::new()
-                .component("Counter", [], |t| {
+                .component_no_params("Counter", |t| {
                     t.for_range("i", t.int(1), t.int(3), |t| {
                         t.write_expr(t.int_to_string(t.var("i")), false);
                         t.write(" ");
@@ -1600,7 +1601,7 @@ mod tests {
     fn loop_over_array_literal() {
         check(
             IrModuleBuilder::new()
-                .component("TestArrayLiteralLoop", [], |t| {
+                .component_no_params("TestArrayLiteralLoop", |t| {
                     t.write("<ul>\n");
                     t.for_loop(
                         "color",
@@ -1653,7 +1654,10 @@ mod tests {
             IrModuleBuilder::new()
                 .component(
                     "TestAuthCheck",
-                    [("user_role", Type::String), ("expected_role", Type::String)],
+                    [
+                        ("user_role", Type::String),
+                        ("expected_role", Type::String),
+                    ],
                     |t| {
                         t.if_stmt(t.eq(t.var("user_role"), t.var("expected_role")), |t| {
                             t.write("<div>Access granted</div>\n");
@@ -1762,7 +1766,7 @@ mod tests {
     fn env_lookup() {
         check(
             IrModuleBuilder::new()
-                .component("TestEnv", [], |t| {
+                .component_no_params("TestEnv", |t| {
                     t.write("<div>API URL: ");
                     t.write_expr(t.env_lookup(t.str("API_URL")), false);
                     t.write("</div>\n");
@@ -1802,9 +1806,9 @@ mod tests {
             module: ModuleName::new("test").unwrap(),
             name: TypeName::new("User").unwrap(),
             fields: vec![
-                (FieldName::new("name").unwrap(), Type::String),
-                (FieldName::new("age").unwrap(), Type::Int),
-                (FieldName::new("active").unwrap(), Type::Bool),
+                (FieldName::new("name").unwrap(), Arc::new(Type::String)),
+                (FieldName::new("age").unwrap(), Arc::new(Type::Int)),
+                (FieldName::new("active").unwrap(), Arc::new(Type::Bool)),
             ],
         };
 
@@ -1816,7 +1820,8 @@ mod tests {
                         .field("active", Type::Bool);
                 })
                 .record("Address", |r| {
-                    r.field("street", Type::String).field("city", Type::String);
+                    r.field("street", Type::String)
+                        .field("city", Type::String);
                 })
                 .component("UserProfile", [("user", user_type)], |t| {
                     t.write("<div>");
@@ -1879,9 +1884,10 @@ mod tests {
         check(
             IrModuleBuilder::new()
                 .record("User", |r| {
-                    r.field("name", Type::String).field("age", Type::Int);
+                    r.field("name", Type::String)
+                        .field("age", Type::Int);
                 })
-                .component("CreateUser", [], |t| {
+                .component_no_params("CreateUser", |t| {
                     t.write("<div>");
                     let user = t.record("User", vec![("name", t.str("John")), ("age", t.int(30))]);
                     t.write_expr_escaped(t.field_access(user, "name"));
@@ -2193,7 +2199,7 @@ mod tests {
     fn option_literal() {
         check(
             IrModuleBuilder::new()
-                .component("TestOption", [], |t| {
+                .component_no_params("TestOption", |t| {
                     t.let_stmt("opt1", t.some(t.str("hello")), |t| {
                         t.option_match_stmt(
                             t.var("opt1"),
@@ -2441,7 +2447,7 @@ mod tests {
         check(
             IrModuleBuilder::new()
                 .enum_decl("Color", ["Red", "Green", "Blue"])
-                .component("ColorName", [], |t| {
+                .component_no_params("ColorName", |t| {
                     t.let_stmt("color", t.enum_variant("Color", "Green"), |t| {
                         let result = t.match_expr(
                             t.var("color"),
@@ -2534,11 +2540,11 @@ mod tests {
             variants: vec![
                 (
                     TypeName::new("Ok").unwrap(),
-                    vec![(FieldName::new("value").unwrap(), Type::Int)],
+                    vec![(FieldName::new("value").unwrap(), Arc::new(Type::Int))],
                 ),
                 (
                     TypeName::new("Err").unwrap(),
-                    vec![(FieldName::new("message").unwrap(), Type::String)],
+                    vec![(FieldName::new("message").unwrap(), Arc::new(Type::String))],
                 ),
             ],
         };
@@ -2630,11 +2636,11 @@ mod tests {
             variants: vec![
                 (
                     TypeName::new("Ok").unwrap(),
-                    vec![(FieldName::new("value").unwrap(), Type::String)],
+                    vec![(FieldName::new("value").unwrap(), Arc::new(Type::String))],
                 ),
                 (
                     TypeName::new("Err").unwrap(),
-                    vec![(FieldName::new("message").unwrap(), Type::String)],
+                    vec![(FieldName::new("message").unwrap(), Arc::new(Type::String))],
                 ),
             ],
         };

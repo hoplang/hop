@@ -1,4 +1,5 @@
 use core::fmt;
+use std::sync::Arc;
 
 use pretty::BoxDoc;
 
@@ -35,32 +36,32 @@ pub enum NumericType {
     Float,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum Type {
     String,
     Bool,
     Int,
     Float,
     TrustedHTML,
-    Array(Box<Type>),
-    Option(Box<Type>),
+    Array(Arc<Type>),
+    Option(Arc<Type>),
     Record {
         module: ModuleName,
         name: TypeName,
-        fields: Vec<(FieldName, Type)>,
+        fields: Vec<(FieldName, Arc<Type>)>,
     },
     Enum {
         module: ModuleName,
         name: TypeName,
         /// Variants with their optional fields: (variant_name, fields)
         /// Empty fields Vec for unit variants
-        variants: Vec<(TypeName, Vec<(FieldName, Type)>)>,
+        variants: Vec<(TypeName, Vec<(FieldName, Arc<Type>)>)>,
     },
     Component {
         module: ModuleName,
         name: TypeName,
         /// Parameters: (name, type, has_default)
-        parameters: Vec<(VarName, Type, bool)>,
+        parameters: Vec<(VarName, Arc<Type>, bool)>,
     },
 }
 

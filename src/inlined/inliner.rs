@@ -88,7 +88,7 @@ impl Inliner {
             .params
             .iter()
             .find(|(var_name, _, _)| var_name.as_str() == "children")
-            .map(|(_, var_type, _)| var_type)
+            .map(|(_, var_type, _)| var_type.as_ref())
     }
 
     /// Inline a component reference, pushing results to output
@@ -271,7 +271,7 @@ impl Inliner {
                 if let TypedExpr::Var { value, kind, .. } = expression {
                     if children_vars.iter().any(|v| v == value.as_str()) {
                         assert_eq!(
-                            *kind,
+                            **kind,
                             Type::TrustedHTML,
                             "children-derived variable in TextExpression must be TrustedHTML"
                         );
@@ -317,7 +317,7 @@ impl Inliner {
                     } => {
                         if children_vars.iter().any(|v| v == subject.0.as_str()) {
                             assert!(
-                                matches!(&subject.1, Type::Option(inner) if **inner == Type::TrustedHTML),
+                                matches!(subject.1.as_ref(), Type::Option(inner) if **inner == Type::TrustedHTML),
                                 "children-holding variable in Match::Option must be Option[TrustedHTML]"
                             );
                             // Statically resolve based on whether slot content was provided

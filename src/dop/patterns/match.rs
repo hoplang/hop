@@ -1,5 +1,7 @@
 //! Generic match types that can be used across different AST representations.
 
+use std::sync::Arc;
+
 use crate::document::CheapString;
 use crate::dop::semantics::r#type::Type;
 use crate::dop::symbols::field_name::FieldName;
@@ -33,20 +35,20 @@ pub struct EnumMatchArm<Body> {
 pub enum Match<Body> {
     /// An enum match, e.g. `match color { Color::Red => "red", ... }`
     Enum {
-        subject: (VarName, Type),
+        subject: (VarName, Arc<Type>),
         arms: Vec<EnumMatchArm<Body>>,
     },
 
     /// A boolean match, e.g. `match flag { true => "yes", false => "no" }`
     Bool {
-        subject: (VarName, Type),
+        subject: (VarName, Arc<Type>),
         true_body: Box<Body>,
         false_body: Box<Body>,
     },
 
     /// An option match, e.g. `match opt { Some(x) => x, None => "empty" }`
     Option {
-        subject: (VarName, Type),
+        subject: (VarName, Arc<Type>),
         some_arm_binding: Option<VarName>,
         some_arm_body: Box<Body>,
         none_arm_body: Box<Body>,

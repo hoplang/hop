@@ -1,10 +1,11 @@
 use crate::document::{DocumentRange, Ranged};
 use crate::dop::Type;
 use std::fmt::{self, Display};
+use std::sync::Arc;
 
 #[derive(Debug, Clone)]
 pub struct TypeAnnotation {
-    pub typ: Type,
+    pub typ: Arc<Type>,
     pub name: String,
     pub range: DocumentRange,
 }

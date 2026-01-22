@@ -11,6 +11,7 @@
 //! errors in some languages). Make sure that this invariant holds when
 //! introducing new match subjects.
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use crate::document::{CheapString, DocumentRange, Ranged};
 use crate::dop::syntax::parsed::{Constructor, ParsedMatchPattern};
@@ -28,11 +29,11 @@ pub struct Binding {
     /// The name of the source variable to bind from.
     pub source_name: String,
     /// The type of the binding.
-    pub typ: Type,
+    pub typ: Arc<Type>,
 }
 
 impl Binding {
-    pub fn new(name: String, source_name: String, typ: Type) -> Self {
+    pub fn new(name: String, source_name: String, typ: Arc<Type>) -> Self {
         Self {
             name,
             source_name,
@@ -63,14 +64,14 @@ impl Body {
 #[derive(Clone, Debug)]
 pub struct Variable {
     pub name: String,
-    pub typ: Type,
+    pub typ: Arc<Type>,
     /// Whether this variable's pattern introduces no bindings.
     /// When true, the variable should not generate a binding in the output.
     is_free_from_bindings: bool,
 }
 
 impl Variable {
-    pub fn new(name: String, typ: Type) -> Self {
+    pub fn new(name: String, typ: Arc<Type>) -> Self {
         Self {
             name,
             typ,
@@ -144,7 +145,7 @@ pub struct FieldBinding {
     /// The name to bind this field's value to, or None if wildcard pattern.
     pub bound_name: Option<String>,
     /// The type of the field.
-    pub typ: Type,
+    pub typ: Arc<Type>,
 }
 
 /// A case for an enum variant - may have multiple field bindings.
@@ -241,7 +242,7 @@ fn is_free_from_bindings(pattern: &ParsedMatchPattern, typ: &Type) -> bool {
 /// The `match` compiler itself.
 pub struct Compiler<'a> {
     /// Environment for generating fresh variable names.
-    env: &'a mut crate::environment::Environment<Type>,
+    env: &'a mut crate::environment::Environment<Arc<Type>>,
     /// The arm indices that are reachable.
     reachable: Vec<usize>,
     /// Missing pattern strings collected during compilation.
@@ -253,7 +254,7 @@ pub struct Compiler<'a> {
 }
 
 impl<'a> Compiler<'a> {
-    pub fn new(env: &'a mut crate::environment::Environment<Type>) -> Self {
+    pub fn new(env: &'a mut crate::environment::Environment<Arc<Type>>) -> Self {
         Self {
             env,
             reachable: Vec::new(),
@@ -290,17 +291,17 @@ impl<'a> Compiler<'a> {
         mut self,
         patterns: &[ParsedMatchPattern],
         subject_name: &str,
-        subject_type: &Type,
+        subject_type: Arc<Type>,
         subject_range: &DocumentRange,
         match_range: &DocumentRange,
     ) -> Result<Decision, TypeError> {
         // Validate subject type is matchable
         if !matches!(
-            subject_type,
+            *subject_type,
             Type::Enum { .. } | Type::Bool | Type::Option(_) | Type::Record { .. }
         ) {
             return Err(TypeError::MatchNotImplementedForType {
-                found: subject_type.to_string(),
+                found: subject_type.clone(),
                 range: subject_range.clone(),
             });
         }
@@ -314,7 +315,7 @@ impl<'a> Compiler<'a> {
 
         // Validate all patterns against the subject type
         for pattern in patterns {
-            Self::validate_pattern(pattern, subject_type)?;
+            Self::validate_pattern(pattern, subject_type.clone())?;
         }
 
         let subject_var = Variable::new(subject_name.to_string(), subject_type.clone());
@@ -390,7 +391,7 @@ impl<'a> Compiler<'a> {
                     false
                 }
                 ParsedMatchPattern::Constructor { .. } => {
-                    !is_free_from_bindings(&col.pattern, &col.variable.typ)
+                    !is_free_from_bindings(&col.pattern, col.variable.typ.as_ref())
                 }
             });
         }
@@ -406,7 +407,7 @@ impl<'a> Compiler<'a> {
 
         let branch_var = self.find_branch_variable(&rows);
 
-        let mut cases = match &branch_var.typ {
+        let mut cases = match branch_var.typ.as_ref() {
             Type::Bool => {
                 vec![
                     (Constructor::BooleanFalse, Vec::new(), Vec::new()),
@@ -417,7 +418,7 @@ impl<'a> Compiler<'a> {
                 vec![
                     (
                         Constructor::OptionSome,
-                        vec![self.fresh_var(inner.as_ref().clone())],
+                        vec![self.fresh_var(inner.clone())],
                         Vec::new(),
                     ),
                     (Constructor::OptionNone, Vec::new(), Vec::new()),
@@ -498,7 +499,7 @@ impl<'a> Compiler<'a> {
                         if let Type::Record {
                             fields: type_fields,
                             ..
-                        } = &branch_var.typ
+                        } = branch_var.typ.as_ref()
                         {
                             for (field_name, _, field_pattern) in fields {
                                 // Find the index of this field in the record type
@@ -507,12 +508,12 @@ impl<'a> Compiler<'a> {
                                     .position(|(name, _)| name == &field_name)
                                     .expect("field not found in record type");
                                 let var = &mut cases[idx].1[field_idx];
-                                if is_free_from_bindings(&field_pattern, &var.typ) {
+                                if is_free_from_bindings(&field_pattern, var.typ.as_ref()) {
                                     var.is_free_from_bindings = true;
                                 }
                                 cols.push(Column::new(var.clone(), field_pattern));
                             }
-                        } else if let Type::Enum { variants, .. } = &branch_var.typ {
+                        } else if let Type::Enum { variants, .. } = branch_var.typ.as_ref() {
                             // Get the variant fields for the matched constructor
                             if let Constructor::EnumVariant { variant_name, .. } = &cons {
                                 let variant_fields = variants
@@ -527,7 +528,7 @@ impl<'a> Compiler<'a> {
                                         .position(|(name, _)| name == &field_name)
                                         .expect("field not found in variant");
                                     let var = &mut cases[idx].1[field_idx];
-                                    if is_free_from_bindings(&field_pattern, &var.typ) {
+                                    if is_free_from_bindings(&field_pattern, var.typ.as_ref()) {
                                         var.is_free_from_bindings = true;
                                     }
                                     cols.push(Column::new(var.clone(), field_pattern));
@@ -537,7 +538,7 @@ impl<'a> Compiler<'a> {
                     } else {
                         // Positional args (Option Some, etc.)
                         for (var, pat) in cases[idx].1.iter_mut().zip(args.into_iter()) {
-                            if is_free_from_bindings(&pat, &var.typ) {
+                            if is_free_from_bindings(&pat, var.typ.as_ref()) {
                                 var.is_free_from_bindings = true;
                             }
                             cols.push(Column::new(var.clone(), pat));
@@ -558,7 +559,7 @@ impl<'a> Compiler<'a> {
 
         for (cons, vars, rows) in cases {
             let args = if let Constructor::Record { .. } = &cons {
-                if let Type::Record { fields, .. } = &branch_var.typ {
+                if let Type::Record { fields, .. } = branch_var.typ.as_ref() {
                     vars.iter()
                         .zip(fields.iter())
                         .map(|(v, (field_name, _))| (v.name.clone(), Some(field_name.to_string())))
@@ -568,7 +569,7 @@ impl<'a> Compiler<'a> {
                 }
             } else if let Constructor::EnumVariant { variant_name, .. } = &cons {
                 // For enum variants with fields, include field names
-                if let Type::Enum { variants, .. } = &branch_var.typ {
+                if let Type::Enum { variants, .. } = branch_var.typ.as_ref() {
                     let variant_fields = variants
                         .iter()
                         .find(|(v, _)| v.as_str() == variant_name)
@@ -611,7 +612,7 @@ impl<'a> Compiler<'a> {
         // All case bodies are Some, build the appropriate typed Decision variant
         // Clone the type to avoid borrow issues when moving branch_var
         let branch_typ = branch_var.typ.clone();
-        match branch_typ {
+        match branch_typ.as_ref() {
             Type::Bool => {
                 // compiled_cases is ordered: [false, true]
                 let mut iter = compiled_cases.into_iter();
@@ -719,7 +720,7 @@ impl<'a> Compiler<'a> {
                 Some(Decision::SwitchRecord {
                     variable: branch_var,
                     case: Box::new(RecordCase {
-                        type_name: name,
+                        type_name: name.clone(),
                         bindings,
                         body: body.unwrap(),
                     }),
@@ -747,7 +748,7 @@ impl<'a> Compiler<'a> {
     }
 
     /// Returns a new variable to use in the decision tree.
-    fn fresh_var(&mut self, typ: Type) -> Variable {
+    fn fresh_var(&mut self, typ: Arc<Type>) -> Variable {
         let name = self.env.fresh_var();
         Variable::new(name, typ)
     }
@@ -783,7 +784,7 @@ impl<'a> Compiler<'a> {
     /// Validates that a pattern is compatible with a given type.
     fn validate_pattern(
         pattern: &ParsedMatchPattern,
-        subject_type: &Type,
+        subject_type: Arc<Type>,
     ) -> Result<(), TypeError> {
         match pattern {
             ParsedMatchPattern::Wildcard { .. } => Ok(()),
@@ -794,12 +795,12 @@ impl<'a> Compiler<'a> {
                 fields,
                 constructor_range,
                 range,
-            } => match (constructor, subject_type) {
+            } => match (constructor, subject_type.as_ref()) {
                 (Constructor::BooleanTrue | Constructor::BooleanFalse, Type::Bool) => Ok(()),
 
                 (Constructor::OptionSome, Type::Option(inner_type)) => {
                     if let Some(inner_pattern) = args.first() {
-                        Self::validate_pattern(inner_pattern, inner_type)?;
+                        Self::validate_pattern(inner_pattern, inner_type.clone())?;
                     }
                     Ok(())
                 }
@@ -827,7 +828,7 @@ impl<'a> Compiler<'a> {
 
                     let variant_fields = variants
                         .iter()
-                        .find(|(v, _)| v.as_str() == pattern_variant_name)
+                        .find(|(v, _)| pattern_variant_name == v.as_str())
                         .map(|(_, f)| f);
 
                     let variant_fields = match variant_fields {
@@ -849,7 +850,7 @@ impl<'a> Compiler<'a> {
                             .map(|(_, typ)| typ);
 
                         match field_type {
-                            Some(typ) => Self::validate_pattern(field_pattern, typ)?,
+                            Some(typ) => Self::validate_pattern(field_pattern, typ.clone())?,
                             None => {
                                 return Err(TypeError::EnumVariantUnknownField {
                                     enum_name: pattern_enum_name.to_string(),
@@ -908,7 +909,7 @@ impl<'a> Compiler<'a> {
                             .map(|(_, typ)| typ);
 
                         match field_type {
-                            Some(typ) => Self::validate_pattern(field_pattern, typ)?,
+                            Some(typ) => Self::validate_pattern(field_pattern, typ.clone())?,
                             None => {
                                 return Err(TypeError::RecordUnknownField {
                                     field_name: field_name.to_string(),
@@ -939,14 +940,14 @@ impl<'a> Compiler<'a> {
                 }
 
                 _ => {
-                    let expected = match subject_type {
+                    let expected = match subject_type.as_ref() {
                         Type::Enum { .. } => "enum",
                         Type::Bool => "boolean",
                         Type::Option(_) => "option",
                         Type::Record { .. } => "record",
                         _ => {
                             return Err(TypeError::MatchNotImplementedForType {
-                                found: subject_type.to_string(),
+                                found: subject_type.clone(),
                                 range: range.clone(),
                             });
                         }
@@ -1007,11 +1008,11 @@ mod tests {
             _ => panic!("Expected match expression"),
         };
 
-        let mut env = crate::environment::Environment::<Type>::new();
+        let mut env = crate::environment::Environment::<Arc<Type>>::new();
         let result = Compiler::new(&mut env).compile(
             &patterns,
             &subject_name,
-            &subject_type,
+            Arc::new(subject_type),
             &subject_range,
             &match_range,
         );
@@ -1243,7 +1244,7 @@ mod tests {
     #[test]
     fn option_exhaustive() {
         check(
-            Type::Option(Box::new(Type::String)),
+            Type::Option(Arc::new(Type::String)),
             indoc! {"
                 match x {
                     Some(item) => 0,
@@ -1263,7 +1264,7 @@ mod tests {
     #[test]
     fn option_missing_none() {
         check(
-            Type::Option(Box::new(Type::String)),
+            Type::Option(Arc::new(Type::String)),
             indoc! {"
                 match x {
                     Some(item) => 0,
@@ -1284,7 +1285,7 @@ mod tests {
     #[test]
     fn option_missing_some() {
         check(
-            Type::Option(Box::new(Type::String)),
+            Type::Option(Arc::new(Type::String)),
             indoc! {"
                 match x {
                     None => 0,
@@ -1305,7 +1306,7 @@ mod tests {
     #[test]
     fn nested_option_exhaustive() {
         check(
-            Type::Option(Box::new(Type::Option(Box::new(Type::String)))),
+            Type::Option(Arc::new(Type::Option(Arc::new(Type::String)))),
             indoc! {"
                 match x {
                     Some(Some(item)) => 0,
@@ -1456,11 +1457,11 @@ mod tests {
                 variants: vec![
                     (
                         TypeName::new("Success").unwrap(),
-                        vec![(FieldName::new("value").unwrap(), Type::Int)],
+                        vec![(FieldName::new("value").unwrap(), Arc::new(Type::Int))],
                     ),
                     (
                         TypeName::new("Failure").unwrap(),
-                        vec![(FieldName::new("message").unwrap(), Type::String)],
+                        vec![(FieldName::new("message").unwrap(), Arc::new(Type::String))],
                     ),
                 ],
             },
@@ -1490,7 +1491,7 @@ mod tests {
                 variants: vec![
                     (
                         TypeName::new("Just").unwrap(),
-                        vec![(FieldName::new("value").unwrap(), Type::Int)],
+                        vec![(FieldName::new("value").unwrap(), Arc::new(Type::Int))],
                     ),
                     (TypeName::new("Nothing").unwrap(), vec![]),
                 ],
@@ -1520,11 +1521,11 @@ mod tests {
                 variants: vec![
                     (
                         TypeName::new("Success").unwrap(),
-                        vec![(FieldName::new("value").unwrap(), Type::Int)],
+                        vec![(FieldName::new("value").unwrap(), Arc::new(Type::Int))],
                     ),
                     (
                         TypeName::new("Failure").unwrap(),
-                        vec![(FieldName::new("message").unwrap(), Type::String)],
+                        vec![(FieldName::new("message").unwrap(), Arc::new(Type::String))],
                     ),
                 ],
             },
@@ -1552,13 +1553,13 @@ mod tests {
                 variants: vec![
                     (
                         TypeName::new("Pending").unwrap(),
-                        vec![(FieldName::new("since").unwrap(), Type::Int)],
+                        vec![(FieldName::new("since").unwrap(), Arc::new(Type::Int))],
                     ),
                     (
                         TypeName::new("Active").unwrap(),
                         vec![
-                            (FieldName::new("id").unwrap(), Type::Int),
-                            (FieldName::new("name").unwrap(), Type::String),
+                            (FieldName::new("id").unwrap(), Arc::new(Type::Int)),
+                            (FieldName::new("name").unwrap(), Arc::new(Type::String)),
                         ],
                     ),
                     (TypeName::new("Inactive").unwrap(), vec![]),
@@ -1594,9 +1595,9 @@ mod tests {
                 variants: vec![(
                     TypeName::new("Coords").unwrap(),
                     vec![
-                        (FieldName::new("x").unwrap(), Type::Int),
-                        (FieldName::new("y").unwrap(), Type::Int),
-                        (FieldName::new("z").unwrap(), Type::Int),
+                        (FieldName::new("x").unwrap(), Arc::new(Type::Int)),
+                        (FieldName::new("y").unwrap(), Arc::new(Type::Int)),
+                        (FieldName::new("z").unwrap(), Arc::new(Type::Int)),
                     ],
                 )],
             },
@@ -1624,9 +1625,9 @@ mod tests {
                 variants: vec![(
                     TypeName::new("Coords").unwrap(),
                     vec![
-                        (FieldName::new("x").unwrap(), Type::Int),
-                        (FieldName::new("y").unwrap(), Type::Int),
-                        (FieldName::new("z").unwrap(), Type::Int),
+                        (FieldName::new("x").unwrap(), Arc::new(Type::Int)),
+                        (FieldName::new("y").unwrap(), Arc::new(Type::Int)),
+                        (FieldName::new("z").unwrap(), Arc::new(Type::Int)),
                     ],
                 )],
             },
@@ -1651,9 +1652,9 @@ mod tests {
                 variants: vec![(
                     TypeName::new("Coords").unwrap(),
                     vec![
-                        (FieldName::new("x").unwrap(), Type::Int),
-                        (FieldName::new("y").unwrap(), Type::Int),
-                        (FieldName::new("z").unwrap(), Type::Int),
+                        (FieldName::new("x").unwrap(), Arc::new(Type::Int)),
+                        (FieldName::new("y").unwrap(), Arc::new(Type::Int)),
+                        (FieldName::new("z").unwrap(), Arc::new(Type::Int)),
                     ],
                 )],
             },
@@ -1680,11 +1681,11 @@ mod tests {
                 variants: vec![
                     (
                         TypeName::new("Ok").unwrap(),
-                        vec![(FieldName::new("value").unwrap(), Type::Int)],
+                        vec![(FieldName::new("value").unwrap(), Arc::new(Type::Int))],
                     ),
                     (
                         TypeName::new("Err").unwrap(),
-                        vec![(FieldName::new("message").unwrap(), Type::String)],
+                        vec![(FieldName::new("message").unwrap(), Arc::new(Type::String))],
                     ),
                 ],
             },
@@ -1714,11 +1715,11 @@ mod tests {
                 variants: vec![
                     (
                         TypeName::new("Ok").unwrap(),
-                        vec![(FieldName::new("value").unwrap(), Type::Int)],
+                        vec![(FieldName::new("value").unwrap(), Arc::new(Type::Int))],
                     ),
                     (
                         TypeName::new("Err").unwrap(),
-                        vec![(FieldName::new("message").unwrap(), Type::String)],
+                        vec![(FieldName::new("message").unwrap(), Arc::new(Type::String))],
                     ),
                 ],
             },
@@ -1743,11 +1744,11 @@ mod tests {
                 variants: vec![
                     (
                         TypeName::new("Pending").unwrap(),
-                        vec![(FieldName::new("since").unwrap(), Type::Int)],
+                        vec![(FieldName::new("since").unwrap(), Arc::new(Type::Int))],
                     ),
                     (
                         TypeName::new("Active").unwrap(),
-                        vec![(FieldName::new("id").unwrap(), Type::Int)],
+                        vec![(FieldName::new("id").unwrap(), Arc::new(Type::Int))],
                     ),
                     (TypeName::new("Inactive").unwrap(), vec![]),
                 ],
@@ -1779,11 +1780,11 @@ mod tests {
                 variants: vec![
                     (
                         TypeName::new("Success").unwrap(),
-                        vec![(FieldName::new("value").unwrap(), Type::Int)],
+                        vec![(FieldName::new("value").unwrap(), Arc::new(Type::Int))],
                     ),
                     (
                         TypeName::new("Failure").unwrap(),
-                        vec![(FieldName::new("message").unwrap(), Type::String)],
+                        vec![(FieldName::new("message").unwrap(), Arc::new(Type::String))],
                     ),
                 ],
             },
@@ -1813,11 +1814,11 @@ mod tests {
                 variants: vec![
                     (
                         TypeName::new("Pending").unwrap(),
-                        vec![(FieldName::new("since").unwrap(), Type::Int)],
+                        vec![(FieldName::new("since").unwrap(), Arc::new(Type::Int))],
                     ),
                     (
                         TypeName::new("Active").unwrap(),
-                        vec![(FieldName::new("id").unwrap(), Type::Int)],
+                        vec![(FieldName::new("id").unwrap(), Arc::new(Type::Int))],
                     ),
                     (TypeName::new("Inactive").unwrap(), vec![]),
                 ],
@@ -1848,11 +1849,11 @@ mod tests {
                 variants: vec![
                     (
                         TypeName::new("Success").unwrap(),
-                        vec![(FieldName::new("value").unwrap(), Type::Int)],
+                        vec![(FieldName::new("value").unwrap(), Arc::new(Type::Int))],
                     ),
                     (
                         TypeName::new("Failure").unwrap(),
-                        vec![(FieldName::new("message").unwrap(), Type::String)],
+                        vec![(FieldName::new("message").unwrap(), Arc::new(Type::String))],
                     ),
                 ],
             },
@@ -1880,11 +1881,11 @@ mod tests {
                 variants: vec![
                     (
                         TypeName::new("Success").unwrap(),
-                        vec![(FieldName::new("value").unwrap(), Type::Int)],
+                        vec![(FieldName::new("value").unwrap(), Arc::new(Type::Int))],
                     ),
                     (
                         TypeName::new("Failure").unwrap(),
-                        vec![(FieldName::new("message").unwrap(), Type::String)],
+                        vec![(FieldName::new("message").unwrap(), Arc::new(Type::String))],
                     ),
                 ],
             },
@@ -1911,11 +1912,11 @@ mod tests {
                 variants: vec![
                     (
                         TypeName::new("Success").unwrap(),
-                        vec![(FieldName::new("value").unwrap(), Type::Int)],
+                        vec![(FieldName::new("value").unwrap(), Arc::new(Type::Int))],
                     ),
                     (
                         TypeName::new("Failure").unwrap(),
-                        vec![(FieldName::new("message").unwrap(), Type::String)],
+                        vec![(FieldName::new("message").unwrap(), Arc::new(Type::String))],
                     ),
                 ],
             },
@@ -1942,8 +1943,8 @@ mod tests {
                 variants: vec![(
                     TypeName::new("XY").unwrap(),
                     vec![
-                        (FieldName::new("x").unwrap(), Type::Int),
-                        (FieldName::new("y").unwrap(), Type::Int),
+                        (FieldName::new("x").unwrap(), Arc::new(Type::Int)),
+                        (FieldName::new("y").unwrap(), Arc::new(Type::Int)),
                     ],
                 )],
             },
@@ -1969,8 +1970,8 @@ mod tests {
                 variants: vec![(
                     TypeName::new("XY").unwrap(),
                     vec![
-                        (FieldName::new("x").unwrap(), Type::Int),
-                        (FieldName::new("y").unwrap(), Type::Int),
+                        (FieldName::new("x").unwrap(), Arc::new(Type::Int)),
+                        (FieldName::new("y").unwrap(), Arc::new(Type::Int)),
                     ],
                 )],
             },
@@ -1996,8 +1997,8 @@ mod tests {
                 variants: vec![(
                     TypeName::new("XY").unwrap(),
                     vec![
-                        (FieldName::new("x").unwrap(), Type::Int),
-                        (FieldName::new("y").unwrap(), Type::Int),
+                        (FieldName::new("x").unwrap(), Arc::new(Type::Int)),
+                        (FieldName::new("y").unwrap(), Arc::new(Type::Int)),
                     ],
                 )],
             },
@@ -2023,9 +2024,9 @@ mod tests {
                 variants: vec![(
                     TypeName::new("XYZ").unwrap(),
                     vec![
-                        (FieldName::new("x").unwrap(), Type::Int),
-                        (FieldName::new("y").unwrap(), Type::Int),
-                        (FieldName::new("z").unwrap(), Type::Int),
+                        (FieldName::new("x").unwrap(), Arc::new(Type::Int)),
+                        (FieldName::new("y").unwrap(), Arc::new(Type::Int)),
+                        (FieldName::new("z").unwrap(), Arc::new(Type::Int)),
                     ],
                 )],
             },
@@ -2051,8 +2052,8 @@ mod tests {
                 variants: vec![(
                     TypeName::new("XY").unwrap(),
                     vec![
-                        (FieldName::new("x").unwrap(), Type::Int),
-                        (FieldName::new("y").unwrap(), Type::Int),
+                        (FieldName::new("x").unwrap(), Arc::new(Type::Int)),
+                        (FieldName::new("y").unwrap(), Arc::new(Type::Int)),
                     ],
                 )],
             },
@@ -2078,7 +2079,7 @@ mod tests {
                 variants: vec![
                     (
                         TypeName::new("Just").unwrap(),
-                        vec![(FieldName::new("value").unwrap(), Type::Int)],
+                        vec![(FieldName::new("value").unwrap(), Arc::new(Type::Int))],
                     ),
                     (TypeName::new("Nothing").unwrap(), vec![]),
                 ],
@@ -2107,7 +2108,7 @@ mod tests {
                     TypeName::new("Wrapped").unwrap(),
                     vec![(
                         FieldName::new("inner").unwrap(),
-                        Type::Option(Box::new(Type::Int)),
+                        Arc::new(Type::Option(Arc::new(Type::Int))),
                     )],
                 )],
             },
@@ -2138,7 +2139,7 @@ mod tests {
                     TypeName::new("Wrapped").unwrap(),
                     vec![(
                         FieldName::new("inner").unwrap(),
-                        Type::Option(Box::new(Type::Int)),
+                        Arc::new(Type::Option(Arc::new(Type::Int))),
                     )],
                 )],
             },
@@ -2167,7 +2168,7 @@ mod tests {
                 name: TypeName::new("Flag").unwrap(),
                 variants: vec![(
                     TypeName::new("Active").unwrap(),
-                    vec![(FieldName::new("enabled").unwrap(), Type::Bool)],
+                    vec![(FieldName::new("enabled").unwrap(), Arc::new(Type::Bool))],
                 )],
             },
             indoc! {"
@@ -2194,7 +2195,7 @@ mod tests {
                 name: TypeName::new("Flag").unwrap(),
                 variants: vec![(
                     TypeName::new("Active").unwrap(),
-                    vec![(FieldName::new("enabled").unwrap(), Type::Bool)],
+                    vec![(FieldName::new("enabled").unwrap(), Arc::new(Type::Bool))],
                 )],
             },
             indoc! {"
@@ -2223,10 +2224,10 @@ mod tests {
                 variants: vec![(
                     TypeName::new("Bounds").unwrap(),
                     vec![
-                        (FieldName::new("x").unwrap(), Type::Int),
-                        (FieldName::new("y").unwrap(), Type::Int),
-                        (FieldName::new("width").unwrap(), Type::Int),
-                        (FieldName::new("height").unwrap(), Type::Int),
+                        (FieldName::new("x").unwrap(), Arc::new(Type::Int)),
+                        (FieldName::new("y").unwrap(), Arc::new(Type::Int)),
+                        (FieldName::new("width").unwrap(), Arc::new(Type::Int)),
+                        (FieldName::new("height").unwrap(), Arc::new(Type::Int)),
                     ],
                 )],
             },
@@ -2256,13 +2257,13 @@ mod tests {
                     (
                         TypeName::new("Click").unwrap(),
                         vec![
-                            (FieldName::new("x").unwrap(), Type::Int),
-                            (FieldName::new("y").unwrap(), Type::Int),
+                            (FieldName::new("x").unwrap(), Arc::new(Type::Int)),
+                            (FieldName::new("y").unwrap(), Arc::new(Type::Int)),
                         ],
                     ),
                     (
                         TypeName::new("KeyPress").unwrap(),
-                        vec![(FieldName::new("key").unwrap(), Type::String)],
+                        vec![(FieldName::new("key").unwrap(), Arc::new(Type::String))],
                     ),
                     (TypeName::new("Focus").unwrap(), vec![]),
                     (TypeName::new("Blur").unwrap(), vec![]),
@@ -2301,8 +2302,8 @@ mod tests {
                 module: ModuleName::new("test").unwrap(),
                 name: TypeName::new("User").unwrap(),
                 fields: vec![
-                    (FieldName::new("name").unwrap(), Type::String),
-                    (FieldName::new("age").unwrap(), Type::Int),
+                    (FieldName::new("name").unwrap(), Arc::new(Type::String)),
+                    (FieldName::new("age").unwrap(), Arc::new(Type::Int)),
                 ],
             },
             indoc! {"
@@ -2326,8 +2327,8 @@ mod tests {
                 module: ModuleName::new("test").unwrap(),
                 name: TypeName::new("Foo").unwrap(),
                 fields: vec![
-                    (FieldName::new("a").unwrap(), Type::Bool),
-                    (FieldName::new("b").unwrap(), Type::Bool),
+                    (FieldName::new("a").unwrap(), Arc::new(Type::Bool)),
+                    (FieldName::new("b").unwrap(), Arc::new(Type::Bool)),
                 ],
             },
             indoc! {"
@@ -2435,7 +2436,7 @@ mod tests {
     #[test]
     fn option_wildcard_covers_all() {
         check(
-            Type::Option(Box::new(Type::String)),
+            Type::Option(Arc::new(Type::String)),
             indoc! {"
                 match x {
                     _ => 0,
@@ -2456,7 +2457,7 @@ mod tests {
     #[test]
     fn option_some_with_wildcard() {
         check(
-            Type::Option(Box::new(Type::String)),
+            Type::Option(Arc::new(Type::String)),
             indoc! {"
                 match x {
                     Some(v) => 0,
@@ -2476,7 +2477,7 @@ mod tests {
     #[test]
     fn option_duplicate_some() {
         check(
-            Type::Option(Box::new(Type::String)),
+            Type::Option(Arc::new(Type::String)),
             indoc! {"
                 match x {
                     Some(_) => 0,
@@ -2495,7 +2496,7 @@ mod tests {
     #[test]
     fn option_duplicate_none() {
         check(
-            Type::Option(Box::new(Type::String)),
+            Type::Option(Arc::new(Type::String)),
             indoc! {"
                 match x {
                     Some(_) => 0,
@@ -2514,7 +2515,7 @@ mod tests {
     #[test]
     fn nested_option_missing_some_none() {
         check(
-            Type::Option(Box::new(Type::Option(Box::new(Type::Int)))),
+            Type::Option(Arc::new(Type::Option(Arc::new(Type::Int)))),
             indoc! {"
                 match x {
                     Some(Some(_)) => 0,
@@ -2538,7 +2539,7 @@ mod tests {
     #[test]
     fn nested_option_with_bool_missing() {
         check(
-            Type::Option(Box::new(Type::Option(Box::new(Type::Bool)))),
+            Type::Option(Arc::new(Type::Option(Arc::new(Type::Bool)))),
             indoc! {"
                 match x {
                     Some(Some(false)) => 0,
@@ -2565,7 +2566,7 @@ mod tests {
     #[test]
     fn nested_option_with_bool_exhaustive() {
         check(
-            Type::Option(Box::new(Type::Option(Box::new(Type::Bool)))),
+            Type::Option(Arc::new(Type::Option(Arc::new(Type::Bool)))),
             indoc! {"
                 match x {
                     Some(Some(true)) => 0,
@@ -2592,7 +2593,7 @@ mod tests {
     #[test]
     fn nested_option_with_bool_missing_multiple() {
         check(
-            Type::Option(Box::new(Type::Option(Box::new(Type::Bool)))),
+            Type::Option(Arc::new(Type::Option(Arc::new(Type::Bool)))),
             indoc! {"
                 match x {
                     Some(None) => 1,
@@ -2728,8 +2729,8 @@ mod tests {
                 module: ModuleName::new("test").unwrap(),
                 name: TypeName::new("User").unwrap(),
                 fields: vec![
-                    (FieldName::new("name").unwrap(), Type::String),
-                    (FieldName::new("age").unwrap(), Type::Int),
+                    (FieldName::new("name").unwrap(), Arc::new(Type::String)),
+                    (FieldName::new("age").unwrap(), Arc::new(Type::Int)),
                 ],
             },
             indoc! {"
@@ -2756,10 +2757,10 @@ mod tests {
                 module: ModuleName::new("test").unwrap(),
                 name: TypeName::new("User").unwrap(),
                 fields: vec![
-                    (FieldName::new("name").unwrap(), Type::String),
+                    (FieldName::new("name").unwrap(), Arc::new(Type::String)),
                     (
                         FieldName::new("email").unwrap(),
-                        Type::Option(Box::new(Type::String)),
+                        Arc::new(Type::Option(Arc::new(Type::String))),
                     ),
                 ],
             },
@@ -2789,10 +2790,10 @@ mod tests {
                 module: ModuleName::new("test").unwrap(),
                 name: TypeName::new("User").unwrap(),
                 fields: vec![
-                    (FieldName::new("name").unwrap(), Type::String),
+                    (FieldName::new("name").unwrap(), Arc::new(Type::String)),
                     (
                         FieldName::new("email").unwrap(),
-                        Type::Option(Box::new(Type::String)),
+                        Arc::new(Type::Option(Arc::new(Type::String))),
                     ),
                 ],
             },
@@ -2820,8 +2821,8 @@ mod tests {
                 module: ModuleName::new("test").unwrap(),
                 name: TypeName::new("Foo").unwrap(),
                 fields: vec![
-                    (FieldName::new("a").unwrap(), Type::Bool),
-                    (FieldName::new("b").unwrap(), Type::Bool),
+                    (FieldName::new("a").unwrap(), Arc::new(Type::Bool)),
+                    (FieldName::new("b").unwrap(), Arc::new(Type::Bool)),
                 ],
             },
             indoc! {"
@@ -2854,8 +2855,8 @@ mod tests {
                 module: ModuleName::new("test").unwrap(),
                 name: TypeName::new("Foo").unwrap(),
                 fields: vec![
-                    (FieldName::new("a").unwrap(), Type::Bool),
-                    (FieldName::new("b").unwrap(), Type::Bool),
+                    (FieldName::new("a").unwrap(), Arc::new(Type::Bool)),
+                    (FieldName::new("b").unwrap(), Arc::new(Type::Bool)),
                 ],
             },
             indoc! {"
@@ -2881,12 +2882,12 @@ mod tests {
     #[test]
     fn option_of_record_exhaustive() {
         check(
-            Type::Option(Box::new(Type::Record {
+            Type::Option(Arc::new(Type::Record {
                 module: ModuleName::new("test").unwrap(),
                 name: TypeName::new("User").unwrap(),
                 fields: vec![
-                    (FieldName::new("name").unwrap(), Type::String),
-                    (FieldName::new("age").unwrap(), Type::Int),
+                    (FieldName::new("name").unwrap(), Arc::new(Type::String)),
+                    (FieldName::new("age").unwrap(), Arc::new(Type::Int)),
                 ],
             })),
             indoc! {"
@@ -2910,12 +2911,12 @@ mod tests {
     #[test]
     fn option_of_record_with_wildcard_fields() {
         check(
-            Type::Option(Box::new(Type::Record {
+            Type::Option(Arc::new(Type::Record {
                 module: ModuleName::new("test").unwrap(),
                 name: TypeName::new("User").unwrap(),
                 fields: vec![
-                    (FieldName::new("name").unwrap(), Type::String),
-                    (FieldName::new("age").unwrap(), Type::Int),
+                    (FieldName::new("name").unwrap(), Arc::new(Type::String)),
+                    (FieldName::new("age").unwrap(), Arc::new(Type::Int)),
                 ],
             })),
             indoc! {"
@@ -2936,21 +2937,21 @@ mod tests {
     #[test]
     fn option_of_nested_records_with_wildcard_fields() {
         // Role is a nested record inside User
-        let role_type = Type::Record {
+        let role_type = Arc::new(Type::Record {
             module: ModuleName::new("test").unwrap(),
             name: TypeName::new("Role").unwrap(),
             fields: vec![
-                (FieldName::new("title").unwrap(), Type::String),
-                (FieldName::new("salary").unwrap(), Type::Int),
+                (FieldName::new("title").unwrap(), Arc::new(Type::String)),
+                (FieldName::new("salary").unwrap(), Arc::new(Type::Int)),
             ],
-        };
+        });
         check(
-            Type::Option(Box::new(Type::Record {
+            Type::Option(Arc::new(Type::Record {
                 module: ModuleName::new("test").unwrap(),
                 name: TypeName::new("User").unwrap(),
                 fields: vec![
                     (FieldName::new("role").unwrap(), role_type),
-                    (FieldName::new("created_at").unwrap(), Type::Int),
+                    (FieldName::new("created_at").unwrap(), Arc::new(Type::Int)),
                 ],
             })),
             indoc! {"
@@ -2971,20 +2972,20 @@ mod tests {
     #[test]
     fn record_with_all_effectively_wildcard_fields() {
         // All fields are effectively wildcards (one literal, one nested record)
-        let address_type = Type::Record {
+        let address_type = Arc::new(Type::Record {
             module: ModuleName::new("test").unwrap(),
             name: TypeName::new("Address").unwrap(),
             fields: vec![
-                (FieldName::new("street").unwrap(), Type::String),
-                (FieldName::new("city").unwrap(), Type::String),
+                (FieldName::new("street").unwrap(), Arc::new(Type::String)),
+                (FieldName::new("city").unwrap(), Arc::new(Type::String)),
             ],
-        };
+        });
         check(
             Type::Record {
                 module: ModuleName::new("test").unwrap(),
                 name: TypeName::new("User").unwrap(),
                 fields: vec![
-                    (FieldName::new("name").unwrap(), Type::String),
+                    (FieldName::new("name").unwrap(), Arc::new(Type::String)),
                     (FieldName::new("address").unwrap(), address_type),
                 ],
             },
@@ -3008,21 +3009,21 @@ mod tests {
     #[test]
     fn record_with_nested_wildcard_fields_followed_by_wildcard() {
         // First arm has all wildcard fields (effectively a wildcard), second arm is unreachable
-        let role_type = Type::Record {
+        let role_type = Arc::new(Type::Record {
             module: ModuleName::new("test").unwrap(),
             name: TypeName::new("Role").unwrap(),
             fields: vec![
-                (FieldName::new("title").unwrap(), Type::String),
-                (FieldName::new("salary").unwrap(), Type::Int),
+                (FieldName::new("title").unwrap(), Arc::new(Type::String)),
+                (FieldName::new("salary").unwrap(), Arc::new(Type::Int)),
             ],
-        };
+        });
         check(
             Type::Record {
                 module: ModuleName::new("test").unwrap(),
                 name: TypeName::new("User").unwrap(),
                 fields: vec![
                     (FieldName::new("role").unwrap(), role_type),
-                    (FieldName::new("created_at").unwrap(), Type::Int),
+                    (FieldName::new("created_at").unwrap(), Arc::new(Type::Int)),
                 ],
             },
             indoc! {"
@@ -3042,20 +3043,20 @@ mod tests {
     #[test]
     fn record_with_binding_and_nested_wildcard_record() {
         // User has a binding for `name` but `address` is an effectively-wildcard record
-        let address_type = Type::Record {
+        let address_type = Arc::new(Type::Record {
             module: ModuleName::new("test").unwrap(),
             name: TypeName::new("Address").unwrap(),
             fields: vec![
-                (FieldName::new("street").unwrap(), Type::String),
-                (FieldName::new("city").unwrap(), Type::String),
+                (FieldName::new("street").unwrap(), Arc::new(Type::String)),
+                (FieldName::new("city").unwrap(), Arc::new(Type::String)),
             ],
-        };
+        });
         check(
             Type::Record {
                 module: ModuleName::new("test").unwrap(),
                 name: TypeName::new("User").unwrap(),
                 fields: vec![
-                    (FieldName::new("name").unwrap(), Type::String),
+                    (FieldName::new("name").unwrap(), Arc::new(Type::String)),
                     (FieldName::new("address").unwrap(), address_type),
                 ],
             },
@@ -3075,14 +3076,14 @@ mod tests {
     #[test]
     fn enum_variant_with_binding_and_nested_wildcard_record() {
         // Outcome::Success has a binding for `value` but `metadata` is an effectively-wildcard record
-        let metadata_type = Type::Record {
+        let metadata_type = Arc::new(Type::Record {
             module: ModuleName::new("test").unwrap(),
             name: TypeName::new("Metadata").unwrap(),
             fields: vec![
-                (FieldName::new("created").unwrap(), Type::Int),
-                (FieldName::new("updated").unwrap(), Type::Int),
+                (FieldName::new("created").unwrap(), Arc::new(Type::Int)),
+                (FieldName::new("updated").unwrap(), Arc::new(Type::Int)),
             ],
-        };
+        });
         check(
             Type::Enum {
                 module: ModuleName::new("test").unwrap(),
@@ -3091,13 +3092,13 @@ mod tests {
                     (
                         TypeName::new("Success").unwrap(),
                         vec![
-                            (FieldName::new("value").unwrap(), Type::String),
+                            (FieldName::new("value").unwrap(), Arc::new(Type::String)),
                             (FieldName::new("metadata").unwrap(), metadata_type),
                         ],
                     ),
                     (
                         TypeName::new("Failure").unwrap(),
-                        vec![(FieldName::new("message").unwrap(), Type::String)],
+                        vec![(FieldName::new("message").unwrap(), Arc::new(Type::String))],
                     ),
                 ],
             },
@@ -3124,23 +3125,23 @@ mod tests {
             module: ModuleName::new("test").unwrap(),
             name: TypeName::new("Inner").unwrap(),
             fields: vec![
-                (FieldName::new("x").unwrap(), Type::Int),
-                (FieldName::new("y").unwrap(), Type::Int),
+                (FieldName::new("x").unwrap(), Arc::new(Type::Int)),
+                (FieldName::new("y").unwrap(), Arc::new(Type::Int)),
             ],
         };
         let middle_type = Type::Record {
             module: ModuleName::new("test").unwrap(),
             name: TypeName::new("Middle").unwrap(),
             fields: vec![
-                (FieldName::new("name").unwrap(), Type::String),
-                (FieldName::new("inner").unwrap(), inner_type),
+                (FieldName::new("name").unwrap(), Arc::new(Type::String)),
+                (FieldName::new("inner").unwrap(), Arc::new(inner_type)),
             ],
         };
         check(
             Type::Record {
                 module: ModuleName::new("test").unwrap(),
                 name: TypeName::new("Outer").unwrap(),
-                fields: vec![(FieldName::new("middle").unwrap(), middle_type)],
+                fields: vec![(FieldName::new("middle").unwrap(), Arc::new(middle_type))],
             },
             indoc! {"
                 match x {
@@ -3190,8 +3191,8 @@ mod tests {
                 module: ModuleName::new("test").unwrap(),
                 name: TypeName::new("User").unwrap(),
                 fields: vec![
-                    (FieldName::new("name").unwrap(), Type::String),
-                    (FieldName::new("age").unwrap(), Type::Int),
+                    (FieldName::new("name").unwrap(), Arc::new(Type::String)),
+                    (FieldName::new("age").unwrap(), Arc::new(Type::Int)),
                 ],
             },
             indoc! {"
@@ -3213,7 +3214,7 @@ mod tests {
             Type::Record {
                 module: ModuleName::new("test").unwrap(),
                 name: TypeName::new("User").unwrap(),
-                fields: vec![(FieldName::new("name").unwrap(), Type::String)],
+                fields: vec![(FieldName::new("name").unwrap(), Arc::new(Type::String))],
             },
             indoc! {"
                 match x {
@@ -3281,7 +3282,7 @@ mod tests {
     #[test]
     fn validation_nested_option_wrong_inner_type() {
         check(
-            Type::Option(Box::new(Type::Bool)),
+            Type::Option(Arc::new(Type::Bool)),
             indoc! {"
                 match x {
                     Some(Some(v)) => 0,

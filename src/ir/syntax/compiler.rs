@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::common::is_void_element;
 use crate::document::CheapString;
 use crate::dop::TypedExpr;
@@ -110,7 +112,7 @@ impl Compiler {
         &mut self,
         module_name: &str,
         component_name: &str,
-        params: &[(VarName, Type)],
+        params: &[(VarName, Arc<Type>)],
     ) -> Vec<IrStatement> {
         let mut body = Vec::new();
 
@@ -766,7 +768,7 @@ impl Compiler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::inlined::builder::build_inlined;
+    use crate::inlined::builder::{build_inlined, build_inlined_no_params};
     use expect_test::{Expect, expect};
 
     fn check(entrypoint: InlinedEntrypointDeclaration, expected: Expect) {
@@ -780,7 +782,7 @@ mod tests {
     #[test]
     fn should_compile_simple_text() {
         check(
-            build_inlined("MainComp", [], |t| {
+            build_inlined_no_params("MainComp", |t| {
                 t.text("Hello World");
             }),
             expect![[r#"
@@ -845,7 +847,7 @@ mod tests {
     #[test]
     fn should_compile_html_element() {
         check(
-            build_inlined("MainComp", [], |t| {
+            build_inlined_no_params("MainComp", |t| {
                 t.div(vec![], |t| {
                     t.text("Content");
                 });
@@ -929,7 +931,7 @@ mod tests {
         check(
             build_inlined(
                 "MainComp",
-                vec![("items", Type::Array(Box::new(Type::String)))],
+                vec![("items", Type::Array(Arc::new(Type::String)))],
                 |t| {
                     t.ul(vec![], |t| {
                         t.for_node("item", t.var_expr("items"), |t| {
@@ -983,7 +985,7 @@ mod tests {
     #[test]
     fn should_compile_static_attributes() {
         check(
-            build_inlined("MainComp", [], |t| {
+            build_inlined_no_params("MainComp", |t| {
                 t.div(
                     vec![("class", t.attr_str("base")), ("id", t.attr_str("test"))],
                     |t| {

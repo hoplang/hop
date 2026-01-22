@@ -59,9 +59,10 @@ impl Pass for UnusedIfEliminationPass {
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
     use crate::dop::Type;
-    use crate::ir::syntax::builder::build_ir;
+    use crate::ir::syntax::builder::{build_ir, build_ir_no_params};
     use expect_test::{Expect, expect};
 
     fn check(entrypoint: IrComponentDeclaration, expected: Expect) {
@@ -75,7 +76,7 @@ mod tests {
     #[test]
     fn should_eliminate_if_statement_that_is_always_true() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.if_stmt(t.bool(true), |t| {
                     t.write("Always shown");
                 });
@@ -99,7 +100,7 @@ mod tests {
     #[test]
     fn should_eliminate_if_statement_that_is_always_false() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.if_stmt(t.bool(false), |t| {
                     t.write("Never shown");
                 });

@@ -1,4 +1,5 @@
 use std::fmt;
+use std::sync::Arc;
 
 use crate::document::CheapString;
 use crate::dop::Type;
@@ -13,7 +14,7 @@ use pretty::BoxDoc;
 #[derive(Debug, Clone)]
 pub struct InlinedParameter {
     pub var_name: VarName,
-    pub var_type: Type,
+    pub var_type: Arc<Type>,
     pub default_value: Option<TypedExpr>,
 }
 

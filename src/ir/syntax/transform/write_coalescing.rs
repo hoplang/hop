@@ -204,7 +204,7 @@ impl Pass for WriteCoalescingPass {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{dop::Type, ir::syntax::builder::build_ir};
+    use crate::{dop::Type, ir::syntax::builder::{build_ir, build_ir_no_params}};
     use expect_test::{Expect, expect};
 
     fn check(entrypoint: IrComponentDeclaration, expected: Expect) {
@@ -218,7 +218,7 @@ mod tests {
     #[test]
     fn coalesce_consecutive_writes() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.write("Hello");
                 t.write(" ");
                 t.write("World");
@@ -244,7 +244,7 @@ mod tests {
     #[test]
     fn coalesce_with_interruption() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.write("Before");
                 t.write(" if");
                 t.if_stmt(t.bool(true), |t| {
@@ -280,7 +280,7 @@ mod tests {
     #[test]
     fn coalesce_inside_if() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.if_stmt(t.bool(true), |t| {
                     t.write("Line");
                     t.write(" ");
@@ -310,7 +310,7 @@ mod tests {
     #[test]
     fn coalesce_inside_for() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.for_loop("item", t.array(vec![t.str("x")]), |t| {
                     t.write("Item");
                     t.write(": ");
@@ -346,7 +346,7 @@ mod tests {
     #[test]
     fn coalesce_inside_let() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.let_stmt("x", t.str("value"), |t| {
                     t.write("The");
                     t.write(" value");
@@ -376,7 +376,7 @@ mod tests {
     #[test]
     fn nested_coalescing() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.write("Start");
                 t.write(": ");
                 t.if_stmt(t.bool(true), |t| {
@@ -460,7 +460,7 @@ mod tests {
     #[test]
     fn empty_input() {
         check(
-            build_ir("Test", [], |_| {}),
+            build_ir_no_params("Test", |_| {}),
             expect![[r#"
                 -- before --
                 Test() {}
@@ -474,7 +474,7 @@ mod tests {
     #[test]
     fn single_write() {
         check(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.write("Single");
             }),
             expect![[r#"
@@ -505,7 +505,7 @@ mod tests {
         // "Hello" (5) + " " (1) = 6, which is >= limit of 6, so no merge
         // " " (1) + "World" (5) = 6, which is >= limit of 6, so no merge
         check_with_limit(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.write("Hello");
                 t.write(" ");
                 t.write("World");
@@ -534,7 +534,7 @@ mod tests {
         // "Hello" (5) + " " (1) = 6, which is < limit of 7, so merge to "Hello " (6)
         // "Hello " (6) + "World" (5) = 11, which is >= limit of 7, so no merge
         check_with_limit(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.write("Hello");
                 t.write(" ");
                 t.write("World");
@@ -562,7 +562,7 @@ mod tests {
         // With limit 5, we can't merge anything since each write is 3 chars
         // "AAA" + "BBB" = 6 >= 5, so no merge
         check_with_limit(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.write("AAA");
                 t.write("BBB");
                 t.write("CCC");
@@ -595,7 +595,7 @@ mod tests {
         // Then "AAABBB" (6) + "CCC" (3) = 9 >= 7, flush and start new
         // "CCC" (3) + "DDD" (3) = 6 < 7, merge to "CCCDDD"
         check_with_limit(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.write("AAA");
                 t.write("BBB");
                 t.write("CCC");
@@ -623,7 +623,7 @@ mod tests {
     #[test]
     fn limit_zero_prevents_all_merges() {
         check_with_limit(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.write("A");
                 t.write("B");
             }),
@@ -647,7 +647,7 @@ mod tests {
     #[test]
     fn limit_applies_inside_nested_structures() {
         check_with_limit(
-            build_ir("Test", [], |t| {
+            build_ir_no_params("Test", |t| {
                 t.if_stmt(t.bool(true), |t| {
                     t.write("AAA");
                     t.write("BBB");

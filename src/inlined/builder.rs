@@ -1,3 +1,6 @@
+use std::cell::RefCell;
+use std::sync::Arc;
+
 use super::inlined_ast::{
     InlinedAttribute, InlinedAttributeValue, InlinedEntrypointDeclaration, InlinedNode,
     InlinedParameter,
@@ -9,29 +12,41 @@ use crate::dop::VarName;
 use crate::hop::semantics::typed_node::TypedLoopSource;
 use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
-use std::cell::RefCell;
 
-/// Helper function to extract (VarName, Type) from a TypedExpr.
+/// Helper function to extract (VarName, Arc<Type>) from a TypedExpr.
 /// Panics if the expression is not a variable reference.
-fn extract_var_subject(expr: &TypedExpr) -> (VarName, Type) {
+fn extract_var_subject(expr: &TypedExpr) -> (VarName, Arc<Type>) {
     match expr {
         TypedExpr::Var { value, kind, .. } => (value.clone(), kind.clone()),
         _ => panic!("Match subject must be a variable reference, got {:?}", expr),
     }
 }
 
-pub fn build_inlined<F, P>(
+pub fn build_inlined_no_params<F>(
+    tag_name: &str,
+    children_fn: F,
+) -> InlinedEntrypointDeclaration
+where
+    F: FnOnce(&mut InlinedBuilder),
+{
+    let mut builder = InlinedBuilder::new(vec![]);
+    children_fn(&mut builder);
+    builder.build(tag_name)
+}
+
+pub fn build_inlined<F, P, T>(
     tag_name: &str,
     params: P,
     children_fn: F,
 ) -> InlinedEntrypointDeclaration
 where
     F: FnOnce(&mut InlinedBuilder),
-    P: IntoIterator<Item = (&'static str, Type)>,
+    P: IntoIterator<Item = (&'static str, T)>,
+    T: Into<Arc<Type>>,
 {
-    let params_owned: Vec<(String, Type)> = params
+    let params_owned: Vec<(String, Arc<Type>)> = params
         .into_iter()
-        .map(|(k, v)| (k.to_string(), v))
+        .map(|(k, v)| (k.to_string(), v.into()))
         .collect();
     let mut builder = InlinedBuilder::new(params_owned);
     children_fn(&mut builder);
@@ -39,13 +54,13 @@ where
 }
 
 pub struct InlinedBuilder {
-    var_stack: RefCell<Vec<(String, Type)>>,
+    var_stack: RefCell<Vec<(String, Arc<Type>)>>,
     params: Vec<InlinedParameter>,
     children: Vec<InlinedNode>,
 }
 
 impl InlinedBuilder {
-    fn new(params: Vec<(String, Type)>) -> Self {
+    fn new(params: Vec<(String, Arc<Type>)>) -> Self {
         let initial_vars = params.clone();
 
         Self {
@@ -135,7 +150,7 @@ impl InlinedBuilder {
         F: FnOnce(&mut Self),
     {
         let element_type = match array.as_type() {
-            Type::Array(elem_type) => (**elem_type).clone(),
+            Type::Array(elem_type) => elem_type.clone(),
             _ => panic!("Cannot iterate over non-array type"),
         };
 
@@ -261,7 +276,7 @@ mod tests {
     #[test]
     fn simple_text() {
         check(
-            build_inlined("Hello", [], |b| {
+            build_inlined_no_params("Hello", |b| {
                 b.text("Hello, World!");
             }),
             expect![[r#"
@@ -275,7 +290,7 @@ mod tests {
     #[test]
     fn html_with_attributes() {
         check(
-            build_inlined("Card", [], |b| {
+            build_inlined_no_params("Card", |b| {
                 b.div(vec![("class", b.attr_str("container"))], |b| {
                     b.text("Content");
                 });
@@ -311,7 +326,7 @@ mod tests {
         check(
             build_inlined(
                 "List",
-                [("items", Type::Array(Box::new(Type::String)))],
+                [("items", Type::Array(Arc::new(Type::String)))],
                 |b| {
                     b.ul(vec![], |b| {
                         b.for_node("item", b.var_expr("items"), |b| {
@@ -361,7 +376,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "Variable 'missing' not found in scope")]
     fn panics_on_undefined_variable() {
-        build_inlined("Bad", [], |b| {
+        build_inlined_no_params("Bad", |b| {
             b.text_expr(b.var_expr("missing"));
         });
     }
@@ -371,7 +386,7 @@ mod tests {
     fn loop_variable_not_accessible_outside_loop() {
         build_inlined(
             "Bad",
-            [("items", Type::Array(Box::new(Type::String)))],
+            [("items", Type::Array(Arc::new(Type::String)))],
             |b| {
                 b.for_node("item", b.var_expr("items"), |_| {});
                 // item should not be accessible here
