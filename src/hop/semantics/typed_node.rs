@@ -33,13 +33,13 @@ impl TypedAttributeValue {
 
 #[derive(Debug, Clone)]
 pub struct TypedAttribute {
-    pub name: String,
+    pub name: CheapString,
     pub value: Option<TypedAttributeValue>,
 }
 
 impl TypedAttribute {
     pub fn to_doc(&self) -> BoxDoc<'_> {
-        let name_doc = BoxDoc::text(&self.name);
+        let name_doc = BoxDoc::text(self.name.as_str());
         match &self.value {
             Some(value) => name_doc.append(BoxDoc::text("=")).append(value.to_doc()),
             None => name_doc,

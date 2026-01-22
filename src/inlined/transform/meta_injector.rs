@@ -1,6 +1,6 @@
-use crate::{
-    document::CheapString,
-    inlined::{InlinedAttribute, InlinedAttributeValue, InlinedEntrypointDeclaration, InlinedNode},
+use crate::document::CheapString;
+use crate::inlined::{
+    InlinedAttribute, InlinedAttributeValue, InlinedEntrypointDeclaration, InlinedNode,
 };
 
 /// Transform that injects meta tags into the <head> element
@@ -11,8 +11,8 @@ impl MetaInjector {
     /// Create an attribute with a string value
     fn create_attribute(name: &str, value: &str) -> InlinedAttribute {
         InlinedAttribute {
-            name: name.to_string(),
-            value: Some(InlinedAttributeValue::String(value.to_string())),
+            name: CheapString::new(name.to_string()),
+            value: Some(InlinedAttributeValue::String(CheapString::new(value.to_string()))),
         }
     }
 

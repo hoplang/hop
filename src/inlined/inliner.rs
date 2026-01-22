@@ -122,7 +122,7 @@ impl Inliner {
                 TypedAttributeValue::Expression(expr) => {
                     InlinedAttributeValue::Expression(expr.clone())
                 }
-                TypedAttributeValue::String(s) => InlinedAttributeValue::String(s.to_string()),
+                TypedAttributeValue::String(s) => InlinedAttributeValue::String(s.clone()),
             }),
         }
     }

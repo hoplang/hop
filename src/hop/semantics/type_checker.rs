@@ -1119,7 +1119,7 @@ fn typecheck_attributes(
         };
 
         typed_attributes.push(TypedAttribute {
-            name: attr.name.to_string(),
+            name: attr.name.to_cheap_string(),
             value: typed_value,
         });
     }

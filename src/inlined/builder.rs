@@ -176,7 +176,7 @@ impl InlinedBuilder {
         let attrs: Vec<InlinedAttribute> = attributes
             .into_iter()
             .map(|(k, mut v)| {
-                v.name = k.to_string();
+                v.name = CheapString::new(k.to_string());
                 v
             })
             .collect();
@@ -211,14 +211,14 @@ impl InlinedBuilder {
 
     pub fn attr_str(&self, value: &str) -> InlinedAttribute {
         InlinedAttribute {
-            name: String::new(),
-            value: Some(InlinedAttributeValue::String(value.to_string())),
+            name: CheapString::new(String::new()),
+            value: Some(InlinedAttributeValue::String(CheapString::new(value.to_string()))),
         }
     }
 
     pub fn attr_expr(&self, expr: TypedExpr) -> InlinedAttribute {
         InlinedAttribute {
-            name: String::new(),
+            name: CheapString::new(String::new()),
             value: Some(InlinedAttributeValue::Expression(expr)),
         }
     }

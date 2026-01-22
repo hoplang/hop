@@ -20,12 +20,12 @@ pub struct InlinedParameter {
 #[derive(Debug, Clone)]
 pub enum InlinedAttributeValue {
     Expression(TypedExpr),
-    String(String),
+    String(CheapString),
 }
 
 #[derive(Debug, Clone)]
 pub struct InlinedAttribute {
-    pub name: String,
+    pub name: CheapString,
     pub value: Option<InlinedAttributeValue>,
 }
 
@@ -97,7 +97,7 @@ impl InlinedAttributeValue {
 
 impl InlinedAttribute {
     pub fn to_doc(&self) -> BoxDoc<'_> {
-        let name_doc = BoxDoc::text(&self.name);
+        let name_doc = BoxDoc::text(self.name.as_str());
         match &self.value {
             Some(value) => name_doc.append(BoxDoc::text("=")).append(value.to_doc()),
             None => name_doc,

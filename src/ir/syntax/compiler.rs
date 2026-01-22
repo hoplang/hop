@@ -366,12 +366,12 @@ impl Compiler {
         // Push attributes
         for attr in attributes {
             if let Some(val) = attr.value {
-                self.compile_attribute(attr.name, val, output);
+                self.compile_attribute(&attr.name, val, output);
             } else {
                 // Boolean attribute
                 output.push(IrStatement::Write {
                     id: self.next_node_id(),
-                    content: format!(" {}", attr.name),
+                    content: format!(" {}", attr.name.as_str()),
                 });
             }
         }
@@ -407,7 +407,7 @@ impl Compiler {
     /// Helper to compile an attribute to IR statements
     fn compile_attribute(
         &mut self,
-        name: String,
+        name: &CheapString,
         value: InlinedAttributeValue,
         output: &mut Vec<IrStatement>,
     ) {
@@ -415,7 +415,7 @@ impl Compiler {
             InlinedAttributeValue::String(s) => {
                 output.push(IrStatement::Write {
                     id: self.next_node_id(),
-                    content: format!(" {}=\"{}\"", name, s),
+                    content: format!(" {}=\"{}\"", name.as_str(), s.as_str()),
                 });
             }
             InlinedAttributeValue::Expression(expr) => {
@@ -427,7 +427,7 @@ impl Compiler {
                         condition: compiled_expr,
                         body: vec![IrStatement::Write {
                             id: self.next_node_id(),
-                            content: format!(" {}", name),
+                            content: format!(" {}", name.as_str()),
                         }],
                         else_body: None,
                     });
@@ -435,7 +435,7 @@ impl Compiler {
                     // String attributes: output attribute="value"
                     output.push(IrStatement::Write {
                         id: self.next_node_id(),
-                        content: format!(" {}=\"", name),
+                        content: format!(" {}=\"", name.as_str()),
                     });
                     let compiled_expr = self.compile_expr(&expr);
                     let should_escape = expr.as_type() != &Type::TrustedHTML;
