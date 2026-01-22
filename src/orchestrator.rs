@@ -66,47 +66,41 @@ pub fn orchestrate(
             Inliner::inline_ast_entrypoints(typed_asts)
         };
 
-    let entrypoints = inlined_entrypoints
-        .into_iter()
-        // transform ASTs (skip if options.skip_html_structure is set)
-        .map(|e| {
-            if options.skip_html_structure {
-                e
-            } else {
-                DoctypeInjector::run(e)
-            }
-        })
-        .map(|e| {
-            if options.skip_html_structure {
-                e
-            } else {
-                HtmlStructureInjector::run(e)
-            }
-        })
-        .map(|e| {
-            if options.skip_html_structure {
-                e
-            } else {
-                MetaInjector::run(e)
-            }
-        })
-        .map(|e| {
-            if options.skip_html_structure {
-                e
-            } else {
-                TailwindInjector::run(e, generated_tailwind_css)
-            }
-        })
-        // compile to IR
-        .map(|e| {
-            if options.skip_dev_mode_wrapper {
-                Compiler::compile_without_dev_wrapper(e)
-            } else {
-                Compiler::compile(e)
-            }
-        })
-        .map(VariableRenamingPass::run)
-        .collect();
+    // Transform and compile each entrypoint
+    let mut entrypoints = Vec::with_capacity(inlined_entrypoints.len());
+    for e in inlined_entrypoints {
+        // Transform ASTs (skip if options.skip_html_structure is set)
+        let e = if options.skip_html_structure {
+            e
+        } else {
+            DoctypeInjector::run(e)
+        };
+        let e = if options.skip_html_structure {
+            e
+        } else {
+            HtmlStructureInjector::run(e)
+        };
+        let e = if options.skip_html_structure {
+            e
+        } else {
+            MetaInjector::run(e)
+        };
+        let e = if options.skip_html_structure {
+            e
+        } else {
+            TailwindInjector::run(e, generated_tailwind_css)
+        };
+
+        // Compile to IR
+        let mut e = if options.skip_dev_mode_wrapper {
+            Compiler::compile_without_dev_wrapper(e)
+        } else {
+            Compiler::compile(e)
+        };
+        VariableRenamingPass::run(&mut e);
+
+        entrypoints.push(e);
+    }
 
     let module = IrModule {
         entrypoints,

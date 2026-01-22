@@ -119,7 +119,7 @@ impl Const {
 pub struct ConstantPropagationPass;
 
 impl Pass for ConstantPropagationPass {
-    fn run(entrypoint: IrComponentDeclaration) -> IrComponentDeclaration {
+    fn run(entrypoint: &mut IrComponentDeclaration) {
         let mut iteration = Iteration::new();
 
         let mut initial_constants = Vec::new();
@@ -664,8 +664,7 @@ impl Pass for ConstantPropagationPass {
 
         let const_map: HashMap<ExprId, Const> = const_value.complete().iter().cloned().collect();
 
-        let mut result = entrypoint;
-        for stmt in &mut result.body {
+        for stmt in &mut entrypoint.body {
             stmt.traverse_mut(&mut |s| {
                 if let Some(expr) = s.expr_mut() {
                     expr.traverse_mut(&mut |e| {
@@ -678,7 +677,6 @@ impl Pass for ConstantPropagationPass {
                 }
             });
         }
-        result
     }
 }
 
@@ -689,10 +687,10 @@ mod tests {
 
     use super::*;
 
-    fn check(entrypoint: IrComponentDeclaration, expected: Expect) {
+    fn check(mut entrypoint: IrComponentDeclaration, expected: Expect) {
         let before = entrypoint.to_string();
-        let result = ConstantPropagationPass::run(entrypoint);
-        let after = result.to_string();
+        ConstantPropagationPass::run(&mut entrypoint);
+        let after = entrypoint.to_string();
         let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
         expected.assert_eq(&output);
     }

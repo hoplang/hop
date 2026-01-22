@@ -5,18 +5,13 @@ use super::syntax::transform::{
 };
 
 pub fn optimize(mut module: IrModule) -> IrModule {
-    module.entrypoints = module
-        .entrypoints
-        .into_iter()
-        .map(|entrypoint| {
-            let entrypoint = ConstantPropagationPass::run(entrypoint);
-            let entrypoint = UnusedLetEliminationPass::run(entrypoint);
-            let entrypoint = UnusedIfEliminationPass::run(entrypoint);
-            let entrypoint = WriteExprSimplificationPass::run(entrypoint);
-            let entrypoint = WriteCoalescingPass::with_limit(60).run_with_limit(entrypoint);
-            entrypoint
-        })
-        .collect();
+    for entrypoint in &mut module.entrypoints {
+        ConstantPropagationPass::run(entrypoint);
+        UnusedLetEliminationPass::run(entrypoint);
+        UnusedIfEliminationPass::run(entrypoint);
+        WriteExprSimplificationPass::run(entrypoint);
+        WriteCoalescingPass::with_limit(60).run_with_limit_mut(entrypoint);
+    }
     module
 }
 

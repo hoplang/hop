@@ -246,12 +246,12 @@ impl UnusedLetEliminationPass {
 }
 
 impl Pass for UnusedLetEliminationPass {
-    fn run(mut entrypoint: IrComponentDeclaration) -> IrComponentDeclaration {
+    fn run(entrypoint: &mut IrComponentDeclaration) {
         // Iterate until no more changes are made.
         // This is necessary because removing a let statement may make another
         // variable unused (e.g., removing `let val = v0` makes `v0` unused).
         loop {
-            let unused_vars = Self::collect_unused_vars(&entrypoint);
+            let unused_vars = Self::collect_unused_vars(entrypoint);
             let mut made_changes = false;
 
             // Use visit_mut to recursively process nested bodies and transform match bindings
@@ -346,7 +346,8 @@ impl Pass for UnusedLetEliminationPass {
             }
 
             // Then transform top-level statements
-            let (new_body, changed) = Self::transform_statements(entrypoint.body, &unused_vars);
+            let (new_body, changed) =
+                Self::transform_statements(std::mem::take(&mut entrypoint.body), &unused_vars);
             entrypoint.body = new_body;
             if changed {
                 made_changes = true;
@@ -356,7 +357,6 @@ impl Pass for UnusedLetEliminationPass {
                 break;
             }
         }
-        entrypoint
     }
 }
 
@@ -369,10 +369,10 @@ mod tests {
     };
     use expect_test::{Expect, expect};
 
-    fn check(entrypoint: IrComponentDeclaration, expected: Expect) {
+    fn check(mut entrypoint: IrComponentDeclaration, expected: Expect) {
         let before = entrypoint.to_string();
-        let result = UnusedLetEliminationPass::run(entrypoint);
-        let after = result.to_string();
+        UnusedLetEliminationPass::run(&mut entrypoint);
+        let after = entrypoint.to_string();
         let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
         expected.assert_eq(&output);
     }

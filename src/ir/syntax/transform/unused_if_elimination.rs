@@ -34,7 +34,7 @@ impl UnusedIfEliminationPass {
 }
 
 impl Pass for UnusedIfEliminationPass {
-    fn run(mut comp_decl: IrComponentDeclaration) -> IrComponentDeclaration {
+    fn run(comp_decl: &mut IrComponentDeclaration) {
         // First, recursively process all nested bodies using visit_mut
         for stmt in &mut comp_decl.body {
             stmt.traverse_mut(&mut |s| match s {
@@ -52,8 +52,7 @@ impl Pass for UnusedIfEliminationPass {
         }
 
         // Then transform top-level statements
-        comp_decl.body = Self::transform_statements(comp_decl.body);
-        comp_decl
+        comp_decl.body = Self::transform_statements(std::mem::take(&mut comp_decl.body));
     }
 }
 
@@ -65,10 +64,10 @@ mod tests {
     use crate::ir::syntax::builder::{build_ir, build_ir_no_params};
     use expect_test::{Expect, expect};
 
-    fn check(entrypoint: IrComponentDeclaration, expected: Expect) {
+    fn check(mut entrypoint: IrComponentDeclaration, expected: Expect) {
         let before = entrypoint.to_string();
-        let result = UnusedIfEliminationPass::run(entrypoint);
-        let after = result.to_string();
+        UnusedIfEliminationPass::run(&mut entrypoint);
+        let after = entrypoint.to_string();
         let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
         expected.assert_eq(&output);
     }

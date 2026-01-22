@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::dop::VarName;
 
-use crate::dop::patterns::{EnumMatchArm, Match};
+use crate::dop::patterns::Match;
 use crate::ir::ast::{IrComponentDeclaration, IrExpr, IrForSource, IrStatement};
 
 use super::Pass;
@@ -132,117 +132,85 @@ impl VariableRenamingPass {
         }
     }
 
-    /// Rename variables in a list of statements
-    fn rename_statements(&mut self, statements: Vec<IrStatement>) -> Vec<IrStatement> {
-        statements
-            .into_iter()
-            .map(|stmt| self.rename_statement(stmt))
-            .collect()
+    /// Rename variables in a list of statements (in place)
+    fn rename_statements(&mut self, statements: &mut Vec<IrStatement>) {
+        for stmt in statements {
+            self.rename_statement(stmt);
+        }
     }
 
-    /// Rename variables in a single statement
-    fn rename_statement(&mut self, statement: IrStatement) -> IrStatement {
+    /// Rename variables in a single statement (in place)
+    fn rename_statement(&mut self, statement: &mut IrStatement) {
         match statement {
-            IrStatement::Write { id, content } => IrStatement::Write { id, content },
+            IrStatement::Write { .. } => {}
 
-            IrStatement::WriteExpr { id, expr, escape } => IrStatement::WriteExpr {
-                id,
-                expr: self.rename_expr(&expr),
-                escape,
-            },
+            IrStatement::WriteExpr { expr, .. } => {
+                self.rename_expr(expr);
+            }
 
             IrStatement::If {
-                id,
                 condition,
                 body,
                 else_body,
+                ..
             } => {
+                self.rename_expr(condition);
                 self.push_scope();
-                let renamed_body = self.rename_statements(body);
+                self.rename_statements(body);
                 self.pop_scope();
 
-                let renamed_else_body = if let Some(else_stmts) = else_body {
+                if let Some(else_stmts) = else_body {
                     self.push_scope();
-                    let renamed = self.rename_statements(else_stmts);
+                    self.rename_statements(else_stmts);
                     self.pop_scope();
-                    Some(renamed)
-                } else {
-                    None
-                };
-
-                IrStatement::If {
-                    id,
-                    condition: self.rename_expr(&condition),
-                    body: renamed_body,
-                    else_body: renamed_else_body,
                 }
             }
 
             IrStatement::For {
-                id,
                 var,
                 source,
                 body,
+                ..
             } => {
-                let renamed_source = match source {
-                    IrForSource::Array(array) => IrForSource::Array(self.rename_expr(&array)),
-                    IrForSource::RangeInclusive { start, end } => IrForSource::RangeInclusive {
-                        start: self.rename_expr(&start),
-                        end: self.rename_expr(&end),
-                    },
-                };
-                self.push_scope();
-                let renamed_var = var.as_ref().map(|v| self.bind_var(v));
-                let renamed_body = self.rename_statements(body);
-                self.pop_scope();
-
-                IrStatement::For {
-                    id,
-                    var: renamed_var,
-                    source: renamed_source,
-                    body: renamed_body,
+                match source {
+                    IrForSource::Array(array) => self.rename_expr(array),
+                    IrForSource::RangeInclusive { start, end } => {
+                        self.rename_expr(start);
+                        self.rename_expr(end);
+                    }
                 }
+                self.push_scope();
+                if let Some(v) = var {
+                    *v = self.bind_var(v);
+                }
+                self.rename_statements(body);
+                self.pop_scope();
             }
 
             IrStatement::Let {
-                id,
-                var,
-                value,
-                body,
+                var, value, body, ..
             } => {
-                let renamed_value = self.rename_expr(&value);
+                self.rename_expr(value);
                 self.push_scope();
-                let renamed_var = self.bind_var(&var);
-                let renamed_body = self.rename_statements(body);
+                *var = self.bind_var(var);
+                self.rename_statements(body);
                 self.pop_scope();
-
-                IrStatement::Let {
-                    id,
-                    var: renamed_var,
-                    value: renamed_value,
-                    body: renamed_body,
-                }
             }
 
-            IrStatement::Match { id, match_ } => {
-                let renamed_match = match match_ {
+            IrStatement::Match { match_, .. } => {
+                match match_ {
                     Match::Bool {
                         subject,
                         true_body,
                         false_body,
                     } => {
-                        let renamed_subject = (self.lookup_var(&subject.0), subject.1.clone());
+                        subject.0 = self.lookup_var(&subject.0);
                         self.push_scope();
-                        let renamed_true_body = self.rename_statements(*true_body);
+                        self.rename_statements(true_body);
                         self.pop_scope();
                         self.push_scope();
-                        let renamed_false_body = self.rename_statements(*false_body);
+                        self.rename_statements(false_body);
                         self.pop_scope();
-                        Match::Bool {
-                            subject: renamed_subject,
-                            true_body: Box::new(renamed_true_body),
-                            false_body: Box::new(renamed_false_body),
-                        }
                     }
                     Match::Option {
                         subject,
@@ -250,344 +218,146 @@ impl VariableRenamingPass {
                         some_arm_body,
                         none_arm_body,
                     } => {
-                        let renamed_subject = (self.lookup_var(&subject.0), subject.1.clone());
+                        subject.0 = self.lookup_var(&subject.0);
                         self.push_scope();
-                        let renamed_binding = some_arm_binding.map(|var| self.bind_var(&var));
-                        let renamed_some_body = self.rename_statements(*some_arm_body);
-                        self.pop_scope();
-                        self.push_scope();
-                        let renamed_none_body = self.rename_statements(*none_arm_body);
-                        self.pop_scope();
-                        Match::Option {
-                            subject: renamed_subject,
-                            some_arm_binding: renamed_binding,
-                            some_arm_body: Box::new(renamed_some_body),
-                            none_arm_body: Box::new(renamed_none_body),
+                        if let Some(var) = some_arm_binding {
+                            *var = self.bind_var(var);
                         }
+                        self.rename_statements(some_arm_body);
+                        self.pop_scope();
+                        self.push_scope();
+                        self.rename_statements(none_arm_body);
+                        self.pop_scope();
                     }
                     Match::Enum { subject, arms } => {
-                        let renamed_subject = (self.lookup_var(&subject.0), subject.1.clone());
-                        let renamed_arms = arms
-                            .into_iter()
-                            .map(|arm| {
-                                self.push_scope();
-                                // Rename bindings and add them to scope
-                                let renamed_bindings: Vec<_> = arm
-                                    .bindings
-                                    .into_iter()
-                                    .map(|(field, var)| {
-                                        let renamed_var = self.bind_var(&var);
-                                        (field, renamed_var)
-                                    })
-                                    .collect();
-                                let renamed_body = self.rename_statements(arm.body);
-                                self.pop_scope();
-                                EnumMatchArm {
-                                    pattern: arm.pattern,
-                                    bindings: renamed_bindings,
-                                    body: renamed_body,
-                                }
-                            })
-                            .collect();
-                        Match::Enum {
-                            subject: renamed_subject,
-                            arms: renamed_arms,
+                        subject.0 = self.lookup_var(&subject.0);
+                        for arm in arms {
+                            self.push_scope();
+                            for (_, var) in &mut arm.bindings {
+                                *var = self.bind_var(var);
+                            }
+                            self.rename_statements(&mut arm.body);
+                            self.pop_scope();
                         }
                     }
-                };
-                IrStatement::Match {
-                    id,
-                    match_: renamed_match,
                 }
             }
         }
     }
 
-    /// Rename variables in an expression
-    fn rename_expr(&mut self, expr: &IrExpr) -> IrExpr {
+    /// Rename variables in an expression (in place)
+    fn rename_expr(&mut self, expr: &mut IrExpr) {
         match expr {
-            IrExpr::Var { value, kind, id } => {
-                let renamed = self.lookup_var(value);
-                IrExpr::Var {
-                    value: renamed,
-                    kind: kind.clone(),
-                    id: *id,
+            IrExpr::Var { value, .. } => {
+                *value = self.lookup_var(value);
+            }
+            IrExpr::FieldAccess { record, .. } => {
+                self.rename_expr(record);
+            }
+            IrExpr::BooleanNegation { operand, .. } | IrExpr::NumericNegation { operand, .. } => {
+                self.rename_expr(operand);
+            }
+            IrExpr::ArrayLiteral { elements, .. } => {
+                for elem in elements {
+                    self.rename_expr(elem);
                 }
             }
-            IrExpr::FieldAccess {
-                record: object,
-                field,
-                kind,
-                id,
-            } => IrExpr::FieldAccess {
-                record: Box::new(self.rename_expr(object)),
-                field: field.clone(),
-                kind: kind.clone(),
-                id: *id,
-            },
-            IrExpr::BooleanNegation { operand, id } => IrExpr::BooleanNegation {
-                operand: Box::new(self.rename_expr(operand)),
-                id: *id,
-            },
-            IrExpr::NumericNegation {
-                operand,
-                operand_type,
-                id,
-            } => IrExpr::NumericNegation {
-                operand: Box::new(self.rename_expr(operand)),
-                operand_type: operand_type.clone(),
-                id: *id,
-            },
-            IrExpr::ArrayLiteral { elements, kind, id } => IrExpr::ArrayLiteral {
-                elements: elements.iter().map(|e| self.rename_expr(e)).collect(),
-                kind: kind.clone(),
-                id: *id,
-            },
-            IrExpr::RecordLiteral {
-                record_name,
-                fields,
-                kind,
-                id,
-            } => IrExpr::RecordLiteral {
-                record_name: record_name.clone(),
-                fields: fields
-                    .iter()
-                    .map(|(k, v)| (k.clone(), self.rename_expr(v)))
-                    .collect(),
-                kind: kind.clone(),
-                id: *id,
-            },
-            IrExpr::JsonEncode { value, id } => IrExpr::JsonEncode {
-                value: Box::new(self.rename_expr(value)),
-                id: *id,
-            },
-            IrExpr::EnvLookup { key, id } => IrExpr::EnvLookup {
-                key: Box::new(self.rename_expr(key)),
-                id: *id,
-            },
-            IrExpr::StringConcat { left, right, id } => IrExpr::StringConcat {
-                left: Box::new(self.rename_expr(left)),
-                right: Box::new(self.rename_expr(right)),
-                id: *id,
-            },
-            IrExpr::Equals {
-                left,
-                right,
-                operand_types,
-                id,
-            } => IrExpr::Equals {
-                left: Box::new(self.rename_expr(left)),
-                right: Box::new(self.rename_expr(right)),
-                operand_types: operand_types.clone(),
-                id: *id,
-            },
-            IrExpr::LessThan {
-                left,
-                right,
-                operand_types,
-                id,
-            } => IrExpr::LessThan {
-                left: Box::new(self.rename_expr(left)),
-                right: Box::new(self.rename_expr(right)),
-                operand_types: operand_types.clone(),
-                id: *id,
-            },
-            IrExpr::LessThanOrEqual {
-                left,
-                right,
-                operand_types,
-                id,
-            } => IrExpr::LessThanOrEqual {
-                left: Box::new(self.rename_expr(left)),
-                right: Box::new(self.rename_expr(right)),
-                operand_types: operand_types.clone(),
-                id: *id,
-            },
-            // Literals and enum variants don't contain variables
-            IrExpr::StringLiteral { value, id } => IrExpr::StringLiteral {
-                value: value.clone(),
-                id: *id,
-            },
-            IrExpr::BooleanLiteral { value, id } => IrExpr::BooleanLiteral {
-                value: *value,
-                id: *id,
-            },
-            IrExpr::FloatLiteral { value, id } => IrExpr::FloatLiteral {
-                value: *value,
-                id: *id,
-            },
-            IrExpr::IntLiteral { value, id } => IrExpr::IntLiteral {
-                value: *value,
-                id: *id,
-            },
-            IrExpr::EnumLiteral {
-                enum_name,
-                variant_name,
-                fields,
-                kind,
-                id,
-            } => IrExpr::EnumLiteral {
-                enum_name: enum_name.clone(),
-                variant_name: variant_name.clone(),
-                fields: fields
-                    .iter()
-                    .map(|(field_name, field_expr)| {
-                        (field_name.clone(), self.rename_expr(field_expr))
-                    })
-                    .collect(),
-                kind: kind.clone(),
-                id: *id,
-            },
-            IrExpr::Match { match_, kind, id } => {
-                let renamed_match = match match_ {
+            IrExpr::RecordLiteral { fields, .. } => {
+                for (_, field_expr) in fields {
+                    self.rename_expr(field_expr);
+                }
+            }
+            IrExpr::JsonEncode { value, .. } => {
+                self.rename_expr(value);
+            }
+            IrExpr::EnvLookup { key, .. } => {
+                self.rename_expr(key);
+            }
+            IrExpr::StringConcat { left, right, .. }
+            | IrExpr::Equals { left, right, .. }
+            | IrExpr::LessThan { left, right, .. }
+            | IrExpr::LessThanOrEqual { left, right, .. }
+            | IrExpr::BooleanLogicalAnd { left, right, .. }
+            | IrExpr::BooleanLogicalOr { left, right, .. }
+            | IrExpr::NumericAdd { left, right, .. }
+            | IrExpr::NumericSubtract { left, right, .. }
+            | IrExpr::NumericMultiply { left, right, .. }
+            | IrExpr::MergeClasses { left, right, .. } => {
+                self.rename_expr(left);
+                self.rename_expr(right);
+            }
+            // Literals don't contain variables - nothing to do
+            IrExpr::StringLiteral { .. }
+            | IrExpr::BooleanLiteral { .. }
+            | IrExpr::FloatLiteral { .. }
+            | IrExpr::IntLiteral { .. } => {}
+            IrExpr::EnumLiteral { fields, .. } => {
+                for (_, field_expr) in fields {
+                    self.rename_expr(field_expr);
+                }
+            }
+            IrExpr::Match { match_, .. } => {
+                match match_ {
                     Match::Enum { subject, arms } => {
-                        let renamed_arms = arms
-                            .iter()
-                            .map(|arm| {
-                                self.push_scope();
-                                // Rename bindings and add them to scope
-                                let renamed_bindings: Vec<_> = arm
-                                    .bindings
-                                    .iter()
-                                    .map(|(field, var)| {
-                                        let renamed_var = self.bind_var(var);
-                                        (field.clone(), renamed_var)
-                                    })
-                                    .collect();
-                                let renamed_body = self.rename_expr(&arm.body);
-                                self.pop_scope();
-                                EnumMatchArm {
-                                    pattern: arm.pattern.clone(),
-                                    bindings: renamed_bindings,
-                                    body: renamed_body,
-                                }
-                            })
-                            .collect();
-                        Match::Enum {
-                            subject: (self.lookup_var(&subject.0), subject.1.clone()),
-                            arms: renamed_arms,
+                        subject.0 = self.lookup_var(&subject.0);
+                        for arm in arms {
+                            self.push_scope();
+                            for (_, var) in &mut arm.bindings {
+                                *var = self.bind_var(var);
+                            }
+                            self.rename_expr(&mut arm.body);
+                            self.pop_scope();
                         }
                     }
                     Match::Bool {
                         subject,
                         true_body,
                         false_body,
-                    } => Match::Bool {
-                        subject: (self.lookup_var(&subject.0), subject.1.clone()),
-                        true_body: Box::new(self.rename_expr(true_body)),
-                        false_body: Box::new(self.rename_expr(false_body)),
-                    },
+                    } => {
+                        subject.0 = self.lookup_var(&subject.0);
+                        self.rename_expr(true_body);
+                        self.rename_expr(false_body);
+                    }
                     Match::Option {
                         subject,
                         some_arm_binding,
                         some_arm_body,
                         none_arm_body,
-                    } => Match::Option {
-                        subject: (self.lookup_var(&subject.0), subject.1.clone()),
-                        some_arm_binding: some_arm_binding.clone(),
-                        some_arm_body: Box::new(self.rename_expr(some_arm_body)),
-                        none_arm_body: Box::new(self.rename_expr(none_arm_body)),
-                    },
-                };
-                IrExpr::Match {
-                    match_: renamed_match,
-                    kind: kind.clone(),
-                    id: *id,
+                    } => {
+                        subject.0 = self.lookup_var(&subject.0);
+                        self.push_scope();
+                        if let Some(var) = some_arm_binding {
+                            *var = self.bind_var(var);
+                        }
+                        self.rename_expr(some_arm_body);
+                        self.pop_scope();
+                        self.rename_expr(none_arm_body);
+                    }
                 }
             }
-            IrExpr::BooleanLogicalAnd { left, right, id } => IrExpr::BooleanLogicalAnd {
-                left: Box::new(self.rename_expr(left)),
-                right: Box::new(self.rename_expr(right)),
-                id: *id,
-            },
-            IrExpr::BooleanLogicalOr { left, right, id } => IrExpr::BooleanLogicalOr {
-                left: Box::new(self.rename_expr(left)),
-                right: Box::new(self.rename_expr(right)),
-                id: *id,
-            },
-            IrExpr::NumericAdd {
-                left,
-                right,
-                operand_types,
-                id,
-            } => IrExpr::NumericAdd {
-                left: Box::new(self.rename_expr(left)),
-                right: Box::new(self.rename_expr(right)),
-                operand_types: operand_types.clone(),
-                id: *id,
-            },
-            IrExpr::NumericSubtract {
-                left,
-                right,
-                operand_types,
-                id,
-            } => IrExpr::NumericSubtract {
-                left: Box::new(self.rename_expr(left)),
-                right: Box::new(self.rename_expr(right)),
-                operand_types: operand_types.clone(),
-                id: *id,
-            },
-            IrExpr::NumericMultiply {
-                left,
-                right,
-                operand_types,
-                id,
-            } => IrExpr::NumericMultiply {
-                left: Box::new(self.rename_expr(left)),
-                right: Box::new(self.rename_expr(right)),
-                operand_types: operand_types.clone(),
-                id: *id,
-            },
             IrExpr::Let {
-                var,
-                value,
-                body,
-                kind,
-                id,
+                var, value, body, ..
             } => {
-                let renamed_value = self.rename_expr(value);
+                self.rename_expr(value);
                 self.push_scope();
-                let new_var = self.bind_var(var);
-                let renamed_body = self.rename_expr(body);
+                *var = self.bind_var(var);
+                self.rename_expr(body);
                 self.pop_scope();
-                IrExpr::Let {
-                    var: new_var,
-                    value: Box::new(renamed_value),
-                    body: Box::new(renamed_body),
-                    kind: kind.clone(),
-                    id: *id,
+            }
+            IrExpr::OptionLiteral { value, .. } => {
+                if let Some(inner) = value {
+                    self.rename_expr(inner);
                 }
             }
-            IrExpr::OptionLiteral { value, kind, id } => IrExpr::OptionLiteral {
-                value: value.as_ref().map(|v| Box::new(self.rename_expr(v))),
-                kind: kind.clone(),
-                id: *id,
-            },
-            IrExpr::MergeClasses { left, right, id } => IrExpr::MergeClasses {
-                left: Box::new(self.rename_expr(left)),
-                right: Box::new(self.rename_expr(right)),
-                id: *id,
-            },
-            IrExpr::ArrayLength { array, id } => IrExpr::ArrayLength {
-                array: Box::new(self.rename_expr(array)),
-                id: *id,
-            },
-            IrExpr::IntToString { value, id } => IrExpr::IntToString {
-                value: Box::new(self.rename_expr(value)),
-                id: *id,
-            },
-            IrExpr::FloatToInt { value, id } => IrExpr::FloatToInt {
-                value: Box::new(self.rename_expr(value)),
-                id: *id,
-            },
-            IrExpr::FloatToString { value, id } => IrExpr::FloatToString {
-                value: Box::new(self.rename_expr(value)),
-                id: *id,
-            },
-            IrExpr::IntToFloat { value, id } => IrExpr::IntToFloat {
-                value: Box::new(self.rename_expr(value)),
-                id: *id,
-            },
+            IrExpr::ArrayLength { array, .. } => {
+                self.rename_expr(array);
+            }
+            IrExpr::IntToString { value, .. }
+            | IrExpr::FloatToInt { value, .. }
+            | IrExpr::FloatToString { value, .. }
+            | IrExpr::IntToFloat { value, .. } => {
+                self.rename_expr(value);
+            }
         }
     }
 
@@ -662,7 +432,7 @@ impl VariableRenamingPass {
 }
 
 impl Pass for VariableRenamingPass {
-    fn run(mut comp_decl: IrComponentDeclaration) -> IrComponentDeclaration {
+    fn run(comp_decl: &mut IrComponentDeclaration) {
         let mut pass = VariableRenamingPass::new();
 
         pass.push_scope();
@@ -674,18 +444,17 @@ impl Pass for VariableRenamingPass {
             renamed_params.push(renamed);
         }
 
-        // Rename the body
-        let body = pass.rename_statements(comp_decl.body);
+        // Rename the body in place
+        pass.rename_statements(&mut comp_decl.body);
 
         pass.pop_scope();
 
         // Create Let bindings for parameters if they were renamed
-        let mut result_body = body;
         for (renamed, (original, typ)) in
             renamed_params.into_iter().zip(&comp_decl.parameters).rev()
         {
             if renamed != *original {
-                result_body = vec![IrStatement::Let {
+                comp_decl.body = vec![IrStatement::Let {
                     id: 0, // ID will be assigned later if needed
                     var: renamed,
                     value: IrExpr::Var {
@@ -693,13 +462,10 @@ impl Pass for VariableRenamingPass {
                         kind: typ.clone(),
                         id: 0,
                     },
-                    body: result_body,
+                    body: std::mem::take(&mut comp_decl.body),
                 }];
             }
         }
-
-        comp_decl.body = result_body;
-        comp_decl
     }
 }
 
@@ -712,10 +478,10 @@ mod tests {
     use crate::{document::CheapString, dop::Type};
     use expect_test::{Expect, expect};
 
-    fn check(input_entrypoint: IrComponentDeclaration, expected: Expect) {
+    fn check(mut input_entrypoint: IrComponentDeclaration, expected: Expect) {
         let before = input_entrypoint.to_string();
-        let renamed = VariableRenamingPass::run(input_entrypoint);
-        let after = renamed.to_string();
+        VariableRenamingPass::run(&mut input_entrypoint);
+        let after = input_entrypoint.to_string();
         let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
         expected.assert_eq(&output);
     }
@@ -981,7 +747,7 @@ mod tests {
         }
 
         let mut pass = VariableRenamingPass::new();
-        let _result = pass.rename_expr(&expr);
+        pass.rename_expr(&mut expr);
         // If we get here without stack overflow, the test passes
     }
 

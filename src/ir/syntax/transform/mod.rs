@@ -20,6 +20,6 @@ use super::ast::IrComponentDeclaration;
 /// traversing the entrypoint. Since entrypoints are independent, there's
 /// no need for cross-entrypoint analysis.
 pub trait Pass {
-    /// Run the pass on a single IR entrypoint, transforming it into a new entrypoint
-    fn run(entrypoint: IrComponentDeclaration) -> IrComponentDeclaration;
+    /// Run the pass on a single IR entrypoint, mutating it in place
+    fn run(entrypoint: &mut IrComponentDeclaration);
 }

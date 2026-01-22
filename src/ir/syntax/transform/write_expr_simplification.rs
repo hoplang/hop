@@ -8,7 +8,7 @@ use crate::ir::ast::{IrComponentDeclaration, IrStatement};
 pub struct WriteExprSimplificationPass;
 
 impl Pass for WriteExprSimplificationPass {
-    fn run(mut entrypoint: IrComponentDeclaration) -> IrComponentDeclaration {
+    fn run(entrypoint: &mut IrComponentDeclaration) {
         // Use visit_mut to transform all statements in the tree
         for stmt in &mut entrypoint.body {
             stmt.traverse_mut(&mut |statement| {
@@ -29,7 +29,6 @@ impl Pass for WriteExprSimplificationPass {
                 }
             });
         }
-        entrypoint
     }
 }
 
@@ -39,10 +38,10 @@ mod tests {
     use crate::{dop::Type, ir::syntax::builder::{build_ir, build_ir_no_params}};
     use expect_test::{Expect, expect};
 
-    fn check(entrypoint: IrComponentDeclaration, expected: Expect) {
+    fn check(mut entrypoint: IrComponentDeclaration, expected: Expect) {
         let before = entrypoint.to_string();
-        let result = WriteExprSimplificationPass::run(entrypoint);
-        let after = result.to_string();
+        WriteExprSimplificationPass::run(&mut entrypoint);
+        let after = entrypoint.to_string();
         let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
         expected.assert_eq(&output);
     }

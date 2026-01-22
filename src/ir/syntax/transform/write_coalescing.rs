@@ -182,10 +182,9 @@ impl WriteCoalescingPass {
         result
     }
 
-    /// Run the pass on a component with the configured limit
-    pub fn run_with_limit(&self, mut entrypoint: IrComponentDeclaration) -> IrComponentDeclaration {
-        entrypoint.body = self.transform_statements(entrypoint.body);
-        entrypoint
+    /// Run the pass on a component with the configured limit (mutates in place)
+    pub fn run_with_limit_mut(&self, entrypoint: &mut IrComponentDeclaration) {
+        entrypoint.body = self.transform_statements(std::mem::take(&mut entrypoint.body));
     }
 }
 
@@ -196,8 +195,8 @@ impl Default for WriteCoalescingPass {
 }
 
 impl Pass for WriteCoalescingPass {
-    fn run(entrypoint: IrComponentDeclaration) -> IrComponentDeclaration {
-        Self::default().run_with_limit(entrypoint)
+    fn run(entrypoint: &mut IrComponentDeclaration) {
+        entrypoint.body = Self::default().transform_statements(std::mem::take(&mut entrypoint.body));
     }
 }
 
@@ -207,10 +206,10 @@ mod tests {
     use crate::{dop::Type, ir::syntax::builder::{build_ir, build_ir_no_params}};
     use expect_test::{Expect, expect};
 
-    fn check(entrypoint: IrComponentDeclaration, expected: Expect) {
+    fn check(mut entrypoint: IrComponentDeclaration, expected: Expect) {
         let before = entrypoint.to_string();
-        let result = WriteCoalescingPass::run(entrypoint);
-        let after = result.to_string();
+        WriteCoalescingPass::run(&mut entrypoint);
+        let after = entrypoint.to_string();
         let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
         expected.assert_eq(&output);
     }
@@ -491,11 +490,11 @@ mod tests {
         );
     }
 
-    fn check_with_limit(entrypoint: IrComponentDeclaration, limit: usize, expected: Expect) {
+    fn check_with_limit(mut entrypoint: IrComponentDeclaration, limit: usize, expected: Expect) {
         let before = entrypoint.to_string();
         let pass = WriteCoalescingPass::with_limit(limit);
-        let result = pass.run_with_limit(entrypoint);
-        let after = result.to_string();
+        pass.run_with_limit_mut(&mut entrypoint);
+        let after = entrypoint.to_string();
         let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
         expected.assert_eq(&output);
     }
