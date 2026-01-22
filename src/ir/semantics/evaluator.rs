@@ -6,6 +6,7 @@ use crate::{
 };
 use anyhow::{Result, anyhow};
 use std::collections::HashMap;
+use tailwind_merge::tw_merge;
 
 use crate::dop::patterns::{EnumPattern, Match};
 use crate::ir::syntax::ast::{IrComponentDeclaration, IrForSource, IrStatement};
@@ -797,7 +798,8 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value> {
             let right_val = evaluate_expr(right, env)?;
             match (left_val, right_val) {
                 (Value::String(l), Value::String(r)) => {
-                    Ok(Value::String(format!("{} {}", l, r)))
+                    let combined = format!("{} {}", l, r);
+                    Ok(Value::String(tw_merge(&combined)))
                 }
                 _ => Err(anyhow!("MergeClasses requires string arguments")),
             }
