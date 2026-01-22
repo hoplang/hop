@@ -10,52 +10,7 @@ use crate::inlined::inlined_ast::{
     InlinedAttribute, InlinedAttributeValue, InlinedEntrypointDeclaration, InlinedNode,
     InlinedParameter,
 };
-use std::collections::{HashMap, HashSet};
-
-/// Context for inlining, carrying slot content and variable bindings.
-#[derive(Debug, Clone)]
-struct InlineContext<'a> {
-    /// The already-inlined slot content passed to this component (if any)
-    slot_content: Option<Vec<InlinedNode>>,
-    /// Variables that are derived from `children` (directly or transitively)
-    children_vars: HashSet<String>,
-    /// Reference to all ASTs for component lookups
-    asts: &'a HashMap<ModuleName, TypedAst>,
-}
-
-impl<'a> InlineContext<'a> {
-    fn new(asts: &'a HashMap<ModuleName, TypedAst>) -> Self {
-        Self {
-            slot_content: None,
-            children_vars: HashSet::new(),
-            asts,
-        }
-    }
-
-    fn with_slot_content(&self, content: Vec<InlinedNode>) -> Self {
-        Self {
-            slot_content: Some(content),
-            children_vars: self.children_vars.clone(),
-            asts: self.asts,
-        }
-    }
-
-    /// Create a child context with an additional children-derived variable
-    fn with_children_var(&self, var: &str) -> Self {
-        let mut children_vars = self.children_vars.clone();
-        children_vars.insert(var.to_string());
-        Self {
-            slot_content: self.slot_content.clone(),
-            children_vars,
-            asts: self.asts,
-        }
-    }
-
-    /// Check if a variable holds children (directly or transitively)
-    fn variable_holds_children(&self, var: &str) -> bool {
-        self.children_vars.contains(var)
-    }
-}
+use std::collections::HashMap;
 
 /// The Inliner transforms ASTs by replacing ComponentReference nodes with their
 /// inlined component declarations, using Let nodes for parameter binding and
@@ -64,18 +19,9 @@ pub struct Inliner;
 
 impl Inliner {
     /// Inline all entrypoint declarations found in the ASTs.
-    /// Returns a vector of inlined component declarations (entrypoints are treated
-    /// as components in the compilation pipeline).
-    ///
-    /// # Arguments
-    /// * `asts` - Map of module name to typed AST
-    ///
-    /// # Returns
-    /// Vector of inlined component declarations from entrypoints
     pub fn inline_ast_entrypoints(
         asts: &HashMap<ModuleName, TypedAst>,
     ) -> Vec<InlinedEntrypointDeclaration> {
-        // Collect all entrypoints from all modules, maintaining deterministic order
         let mut module_names: Vec<_> = asts.keys().collect();
         module_names.sort();
 
@@ -97,10 +43,14 @@ impl Inliner {
         entrypoint: &TypedEntrypointDeclaration,
         asts: &HashMap<ModuleName, TypedAst>,
     ) -> InlinedEntrypointDeclaration {
+        let mut children = Vec::new();
+        let mut children_vars = Vec::new();
+        Self::inline_nodes(&entrypoint.children, asts, None, &mut children_vars, &mut children);
+
         InlinedEntrypointDeclaration {
             module_name: module_name.clone(),
             component_name: entrypoint.name.clone(),
-            children: Self::inline_nodes(&entrypoint.children, asts),
+            children,
             params: entrypoint
                 .params
                 .iter()
@@ -141,37 +91,39 @@ impl Inliner {
             .map(|(_, var_type, _)| var_type)
     }
 
-    /// Inline a component reference
-    /// `parent_ctx` is used to inline slot_children before passing to the component
+    /// Inline a component reference, pushing results to output
     fn inline_component_reference(
         module_name: &ModuleName,
         component: &TypedComponentDeclaration,
         args: &[(VarName, TypedExpr)],
         slot_children: &[TypedNode],
-        parent_ctx: Option<&InlineContext>,
+        parent_slot_content: Option<&[InlinedNode]>,
+        parent_children_vars: &mut Vec<String>,
         asts: &HashMap<ModuleName, TypedAst>,
-    ) -> Vec<InlinedNode> {
-        // Inline slot_children in parent context (resolves any children-derived variables)
+        output: &mut Vec<InlinedNode>,
+    ) {
+        // Inline slot_children in parent context
         let children_type = Self::get_children_param_type(component);
-        let inlined_slot_content = if children_type.is_some() && !slot_children.is_empty() {
-            let content = if let Some(ctx) = parent_ctx {
-                Self::inline_nodes_with_ctx(slot_children, ctx)
+        let inlined_slot_content: Option<Vec<InlinedNode>> =
+            if children_type.is_some() && !slot_children.is_empty() {
+                let mut content = Vec::new();
+                Self::inline_nodes(
+                    slot_children,
+                    asts,
+                    parent_slot_content,
+                    parent_children_vars,
+                    &mut content,
+                );
+                Some(content)
             } else {
-                Self::inline_nodes(slot_children, asts)
+                None
             };
-            Some(content)
-        } else {
-            None
-        };
 
-        // Create fresh context for this component with the inlined slot content
-        let mut ctx = InlineContext::new(asts);
-        if let Some(content) = inlined_slot_content {
-            ctx = ctx.with_slot_content(content);
-        }
+        // Create fresh children_vars for this component
+        let mut children_vars = Vec::new();
         match children_type {
             Some(Type::TrustedHTML | Type::Option(_)) => {
-                ctx = ctx.with_children_var("children");
+                children_vars.push("children".to_string());
             }
             Some(other) => {
                 panic!("Invalid children parameter type: {other}");
@@ -179,12 +131,17 @@ impl Inliner {
             None => {}
         }
 
-        let inlined_children = Self::inline_nodes_with_ctx(&component.children, &ctx);
+        let mut inlined_children = Vec::new();
+        Self::inline_nodes(
+            &component.children,
+            asts,
+            inlined_slot_content.as_deref(),
+            &mut children_vars,
+            &mut inlined_children,
+        );
 
         // Build parameter bindings (excluding children - handled via slot mechanism)
         let mut body = inlined_children;
-        // Process parameters in reverse order to create proper nesting
-        // Skip the children parameter - it's handled via slot_content
         for (var_name, _var_type, default_value) in component.params.iter().rev() {
             if var_name.as_str() == "children" {
                 continue;
@@ -192,7 +149,6 @@ impl Inliner {
 
             let param_name = var_name.clone();
 
-            // Find corresponding argument value, or use default if not provided
             let value = args
                 .iter()
                 .find(|(name, _)| name.as_str() == param_name.as_str())
@@ -207,7 +163,6 @@ impl Inliner {
                     )
                 });
 
-            // Wrap the body in a Let node
             body = vec![InlinedNode::Let {
                 var: param_name,
                 value,
@@ -215,26 +170,30 @@ impl Inliner {
             }];
         }
 
-        // Return the inlined children without a wrapper
-        body
+        output.extend(body);
     }
 
-    /// Inline nodes without any slot content
-    fn inline_nodes(nodes: &[TypedNode], asts: &HashMap<ModuleName, TypedAst>) -> Vec<InlinedNode> {
-        let ctx = InlineContext::new(asts);
-        Self::inline_nodes_with_ctx(nodes, &ctx)
+    /// Inline nodes, pushing results to output
+    fn inline_nodes(
+        nodes: &[TypedNode],
+        asts: &HashMap<ModuleName, TypedAst>,
+        slot_content: Option<&[InlinedNode]>,
+        children_vars: &mut Vec<String>,
+        output: &mut Vec<InlinedNode>,
+    ) {
+        for node in nodes {
+            Self::inline_node(node, asts, slot_content, children_vars, output);
+        }
     }
 
-    /// Inline nodes with the given context
-    fn inline_nodes_with_ctx(nodes: &[TypedNode], ctx: &InlineContext) -> Vec<InlinedNode> {
-        nodes
-            .iter()
-            .flat_map(|node| Self::inline_node_with_ctx(node, ctx))
-            .collect()
-    }
-
-    /// Inline a single node using the context for environment-based resolution
-    fn inline_node_with_ctx(node: &TypedNode, ctx: &InlineContext) -> Vec<InlinedNode> {
+    /// Inline a single node, pushing results to output
+    fn inline_node(
+        node: &TypedNode,
+        asts: &HashMap<ModuleName, TypedAst>,
+        slot_content: Option<&[InlinedNode]>,
+        children_vars: &mut Vec<String>,
+        output: &mut Vec<InlinedNode>,
+    ) {
         match node {
             TypedNode::ComponentReference {
                 component_name,
@@ -245,77 +204,93 @@ impl Inliner {
                 let module = declaring_module
                     .as_ref()
                     .expect("Component reference should have module");
-                let ast = ctx.asts.get(module).expect("Component module should exist");
+                let ast = asts.get(module).expect("Component module should exist");
                 let component = ast
                     .get_component_declaration(component_name.as_str())
                     .expect("Component declaration should exist");
 
-                // Pass current context so slot_children can be inlined with children-derived vars resolved
                 Self::inline_component_reference(
                     module,
                     component,
                     args,
                     children,
-                    Some(ctx),
-                    ctx.asts,
-                )
+                    slot_content,
+                    children_vars,
+                    asts,
+                    output,
+                );
             }
 
             TypedNode::Html {
                 tag_name,
                 attributes,
                 children,
-            } => vec![InlinedNode::Html {
-                tag_name: tag_name.clone(),
-                attributes: Self::convert_attributes(attributes),
-                children: Self::inline_nodes_with_ctx(children, ctx),
-            }],
+            } => {
+                let mut child_output = Vec::new();
+                Self::inline_nodes(children, asts, slot_content, children_vars, &mut child_output);
+                output.push(InlinedNode::Html {
+                    tag_name: tag_name.clone(),
+                    attributes: Self::convert_attributes(attributes),
+                    children: child_output,
+                });
+            }
 
             TypedNode::If {
                 condition,
                 children,
-            } => vec![InlinedNode::If {
-                condition: condition.clone(),
-                children: Self::inline_nodes_with_ctx(children, ctx),
-            }],
+            } => {
+                let mut child_output = Vec::new();
+                Self::inline_nodes(children, asts, slot_content, children_vars, &mut child_output);
+                output.push(InlinedNode::If {
+                    condition: condition.clone(),
+                    children: child_output,
+                });
+            }
 
             TypedNode::For {
                 var_name,
                 source,
                 children,
-            } => vec![InlinedNode::For {
-                var_name: var_name.clone(),
-                source: source.clone(),
-                children: Self::inline_nodes_with_ctx(children, ctx),
-            }],
+            } => {
+                let mut child_output = Vec::new();
+                Self::inline_nodes(children, asts, slot_content, children_vars, &mut child_output);
+                output.push(InlinedNode::For {
+                    var_name: var_name.clone(),
+                    source: source.clone(),
+                    children: child_output,
+                });
+            }
 
-            // Leaf nodes - return as is
-            TypedNode::Text { value } => vec![InlinedNode::Text {
-                value: value.clone(),
-            }],
+            TypedNode::Text { value } => {
+                output.push(InlinedNode::Text {
+                    value: value.clone(),
+                });
+            }
 
             TypedNode::TextExpression { expression } => {
                 if let TypedExpr::Var { value, kind, .. } = expression {
-                    if ctx.variable_holds_children(value.as_str()) {
+                    if children_vars.iter().any(|v| v == value.as_str()) {
                         assert_eq!(
                             *kind,
                             Type::TrustedHTML,
                             "children-derived variable in TextExpression must be TrustedHTML"
                         );
-                        // slot_content is already inlined, just return it
-                        return ctx.slot_content.clone().expect(
+                        output.extend_from_slice(slot_content.expect(
                             "children-derived TrustedHTML variable should have slot content",
-                        );
+                        ));
+                        return;
                     }
                 }
-                vec![InlinedNode::TextExpression {
+                output.push(InlinedNode::TextExpression {
                     expression: expression.clone(),
-                }]
+                });
             }
 
-            TypedNode::Doctype { value } => vec![InlinedNode::Doctype {
-                value: value.clone(),
-            }],
+            TypedNode::Doctype { value } => {
+                output.push(InlinedNode::Doctype {
+                    value: value.clone(),
+                });
+            }
 
             TypedNode::Match { match_ } => {
                 let inlined_match = match match_ {
@@ -323,67 +298,77 @@ impl Inliner {
                         subject,
                         true_body,
                         false_body,
-                    } => Match::Bool {
-                        subject: subject.clone(),
-                        true_body: Box::new(Self::inline_nodes_with_ctx(true_body, ctx)),
-                        false_body: Box::new(Self::inline_nodes_with_ctx(false_body, ctx)),
-                    },
+                    } => {
+                        let mut true_output = Vec::new();
+                        Self::inline_nodes(true_body, asts, slot_content, children_vars, &mut true_output);
+                        let mut false_output = Vec::new();
+                        Self::inline_nodes(false_body, asts, slot_content, children_vars, &mut false_output);
+                        Match::Bool {
+                            subject: subject.clone(),
+                            true_body: Box::new(true_output),
+                            false_body: Box::new(false_output),
+                        }
+                    }
                     Match::Option {
                         subject,
                         some_arm_binding,
                         some_arm_body,
                         none_arm_body,
                     } => {
-                        if ctx.variable_holds_children(subject.0.as_str()) {
+                        if children_vars.iter().any(|v| v == subject.0.as_str()) {
                             assert!(
                                 matches!(&subject.1, Type::Option(inner) if **inner == Type::TrustedHTML),
                                 "children-holding variable in Match::Option must be Option[TrustedHTML]"
                             );
                             // Statically resolve based on whether slot content was provided
-                            if ctx.slot_content.is_some() {
-                                // Children provided → inline Some arm with binding marked as children-derived
-                                let child_ctx = if let Some(binding) = some_arm_binding {
-                                    ctx.with_children_var(binding.as_str())
+                            if slot_content.is_some() {
+                                if let Some(binding) = some_arm_binding {
+                                    children_vars.push(binding.as_str().to_string());
+                                    Self::inline_nodes(some_arm_body, asts, slot_content, children_vars, output);
+                                    children_vars.pop();
                                 } else {
-                                    ctx.clone()
-                                };
-                                return Self::inline_nodes_with_ctx(some_arm_body, &child_ctx);
+                                    Self::inline_nodes(some_arm_body, asts, slot_content, children_vars, output);
+                                }
                             } else {
-                                // No children → inline None arm
-                                let fresh_ctx = InlineContext::new(ctx.asts);
-                                return Self::inline_nodes_with_ctx(none_arm_body, &fresh_ctx);
+                                let mut fresh_vars = Vec::new();
+                                Self::inline_nodes(none_arm_body, asts, None, &mut fresh_vars, output);
                             }
+                            return;
                         }
 
                         // Regular Option match
+                        let mut some_output = Vec::new();
+                        Self::inline_nodes(some_arm_body, asts, slot_content, children_vars, &mut some_output);
+                        let mut none_output = Vec::new();
+                        Self::inline_nodes(none_arm_body, asts, slot_content, children_vars, &mut none_output);
                         Match::Option {
                             subject: subject.clone(),
                             some_arm_binding: some_arm_binding.clone(),
-                            some_arm_body: Box::new(Self::inline_nodes_with_ctx(
-                                some_arm_body,
-                                ctx,
-                            )),
-                            none_arm_body: Box::new(Self::inline_nodes_with_ctx(
-                                none_arm_body,
-                                ctx,
-                            )),
+                            some_arm_body: Box::new(some_output),
+                            none_arm_body: Box::new(none_output),
                         }
                     }
-                    Match::Enum { subject, arms } => Match::Enum {
-                        subject: subject.clone(),
-                        arms: arms
-                            .iter()
-                            .map(|arm| EnumMatchArm {
-                                pattern: arm.pattern.clone(),
-                                bindings: arm.bindings.clone(),
-                                body: Self::inline_nodes_with_ctx(&arm.body, ctx),
-                            })
-                            .collect(),
-                    },
+                    Match::Enum { subject, arms } => {
+                        Match::Enum {
+                            subject: subject.clone(),
+                            arms: arms
+                                .iter()
+                                .map(|arm| {
+                                    let mut arm_output = Vec::new();
+                                    Self::inline_nodes(&arm.body, asts, slot_content, children_vars, &mut arm_output);
+                                    EnumMatchArm {
+                                        pattern: arm.pattern.clone(),
+                                        bindings: arm.bindings.clone(),
+                                        body: arm_output,
+                                    }
+                                })
+                                .collect(),
+                        }
+                    }
                 };
-                vec![InlinedNode::Match {
+                output.push(InlinedNode::Match {
                     match_: inlined_match,
-                }]
+                });
             }
 
             TypedNode::Let {
@@ -396,17 +381,21 @@ impl Inliner {
                     value: var_value, ..
                 } = value
                 {
-                    if ctx.variable_holds_children(var_value.as_str()) {
-                        let child_ctx = ctx.with_children_var(var.as_str());
-                        return Self::inline_nodes_with_ctx(children, &child_ctx);
+                    if children_vars.iter().any(|v| v == var_value.as_str()) {
+                        children_vars.push(var.as_str().to_string());
+                        Self::inline_nodes(children, asts, slot_content, children_vars, output);
+                        children_vars.pop();
+                        return;
                     }
                 }
 
-                vec![InlinedNode::Let {
+                let mut child_output = Vec::new();
+                Self::inline_nodes(children, asts, slot_content, children_vars, &mut child_output);
+                output.push(InlinedNode::Let {
                     var: var.clone(),
                     value: value.clone(),
-                    children: Self::inline_nodes_with_ctx(children, ctx),
-                }]
+                    children: child_output,
+                });
             }
         }
     }
@@ -425,7 +414,6 @@ mod tests {
     fn create_typed_asts_from_sources(sources: Vec<(&str, &str)>) -> HashMap<ModuleName, TypedAst> {
         let mut errors = ErrorCollector::new();
 
-        // Parse all sources first
         let mut untyped_asts = HashMap::new();
         for (module_name_str, source) in sources {
             let module_name = ModuleName::new(module_name_str).unwrap();
@@ -439,12 +427,10 @@ mod tests {
 
         assert!(errors.is_empty(), "Parse errors: {:?}", errors);
 
-        // Type check all ASTs
         let mut typechecker = TypeChecker::default();
         let untyped_asts_refs: Vec<_> = untyped_asts.values().collect();
         typechecker.typecheck(&untyped_asts_refs);
 
-        // Check for type errors
         for module_name in untyped_asts.keys() {
             assert!(
                 typechecker.type_errors.get(module_name).unwrap().is_empty(),
@@ -857,10 +843,6 @@ mod tests {
 
     #[test]
     fn deterministic_output_order_with_multiple_modules() {
-        // Test that output order is deterministic when there are multiple modules.
-        // Modules should be sorted alphabetically by name.
-        // This test would be flaky if the implementation used HashMap iteration order.
-        // With 8 modules, there's only 1/40320 chance of accidental success.
         check_entrypoint_inlining(
             vec![
                 (
@@ -928,7 +910,6 @@ mod tests {
                     "#,
                 ),
             ],
-            // Output should be sorted alphabetically by module name
             expect![[r#"
                 entrypoint AlphaPage() {
                   <div>
