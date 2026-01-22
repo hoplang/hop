@@ -1,5 +1,6 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
+use crate::document::CheapString;
 use crate::dop::VarName;
 
 use crate::dop::patterns::Match;
@@ -7,102 +8,73 @@ use crate::ir::ast::{IrComponentDeclaration, IrExpr, IrForSource, IrStatement};
 
 use super::Pass;
 
-// Reserved keywords across all target languages
+// Reserved keywords across all target languages (sorted for binary search)
 const RESERVED_KEYWORDS: &[&str] = &[
-    // JavaScript/TypeScript
+    "and",
+    "as",
+    "assert",
     "await",
     "break",
     "case",
     "catch",
+    "chan",
     "class",
     "const",
     "continue",
     "debugger",
+    "def",
     "default",
+    "defer",
+    "del",
     "delete",
     "do",
+    "elif",
     "else",
+    "except",
     "export",
     "extends",
+    "fallthrough",
     "false",
     "finally",
     "for",
+    "from",
+    "func",
     "function",
+    "global",
+    "go",
+    "goto",
     "if",
     "import",
     "in",
     "instanceof",
+    "interface",
+    "is",
+    "lambda",
     "let",
+    "map",
     "new",
+    "nonlocal",
+    "not",
     "null",
+    "or",
+    "package",
+    "pass",
+    "raise",
+    "range",
     "return",
+    "select",
     "static",
+    "struct",
     "super",
     "switch",
     "this",
     "throw",
     "true",
     "try",
+    "type",
     "typeof",
     "var",
     "void",
-    "while",
-    "with",
-    "yield",
-    // Go
-    "break",
-    "case",
-    "chan",
-    "const",
-    "continue",
-    "default",
-    "defer",
-    "else",
-    "fallthrough",
-    "for",
-    "func",
-    "go",
-    "goto",
-    "if",
-    "import",
-    "interface",
-    "map",
-    "package",
-    "range",
-    "return",
-    "select",
-    "struct",
-    "switch",
-    "type",
-    "var",
-    // Python
-    "and",
-    "as",
-    "assert",
-    "break",
-    "class",
-    "continue",
-    "def",
-    "del",
-    "elif",
-    "else",
-    "except",
-    "finally",
-    "for",
-    "from",
-    "global",
-    "if",
-    "import",
-    "in",
-    "is",
-    "lambda",
-    "nonlocal",
-    "not",
-    "or",
-    "pass",
-    "raise",
-    "return",
-    "try",
     "while",
     "with",
     "yield",
@@ -118,16 +90,20 @@ pub struct VariableRenamingPass {
     /// Counter for generating unique variable names
     var_counter: usize,
     /// Stack of scopes mapping original names to renamed names
-    scope_stack: Vec<HashMap<String, VarName>>,
+    scope_stack: Vec<Vec<(VarName, VarName)>>,
     /// Track all variable names ever used to ensure uniqueness
-    all_used_names: HashSet<String>,
+    all_used_names: HashSet<CheapString>,
 }
 
 impl VariableRenamingPass {
     pub fn new() -> Self {
+        debug_assert!(
+            RESERVED_KEYWORDS.windows(2).all(|w| w[0] < w[1]),
+            "RESERVED_KEYWORDS must be sorted and have no duplicates"
+        );
         Self {
             var_counter: 0,
-            scope_stack: vec![HashMap::new()],
+            scope_stack: vec![Vec::new()],
             all_used_names: HashSet::new(),
         }
     }
@@ -167,10 +143,7 @@ impl VariableRenamingPass {
             }
 
             IrStatement::For {
-                var,
-                source,
-                body,
-                ..
+                var, source, body, ..
             } => {
                 match source {
                     IrForSource::Array(array) => self.rename_expr(array),
@@ -197,51 +170,49 @@ impl VariableRenamingPass {
                 self.pop_scope();
             }
 
-            IrStatement::Match { match_, .. } => {
-                match match_ {
-                    Match::Bool {
-                        subject,
-                        true_body,
-                        false_body,
-                    } => {
-                        subject.0 = self.lookup_var(&subject.0);
-                        self.push_scope();
-                        self.rename_statements(true_body);
-                        self.pop_scope();
-                        self.push_scope();
-                        self.rename_statements(false_body);
-                        self.pop_scope();
+            IrStatement::Match { match_, .. } => match match_ {
+                Match::Bool {
+                    subject,
+                    true_body,
+                    false_body,
+                } => {
+                    subject.0 = self.lookup_var(&subject.0);
+                    self.push_scope();
+                    self.rename_statements(true_body);
+                    self.pop_scope();
+                    self.push_scope();
+                    self.rename_statements(false_body);
+                    self.pop_scope();
+                }
+                Match::Option {
+                    subject,
+                    some_arm_binding,
+                    some_arm_body,
+                    none_arm_body,
+                } => {
+                    subject.0 = self.lookup_var(&subject.0);
+                    self.push_scope();
+                    if let Some(var) = some_arm_binding {
+                        *var = self.bind_var(var);
                     }
-                    Match::Option {
-                        subject,
-                        some_arm_binding,
-                        some_arm_body,
-                        none_arm_body,
-                    } => {
-                        subject.0 = self.lookup_var(&subject.0);
+                    self.rename_statements(some_arm_body);
+                    self.pop_scope();
+                    self.push_scope();
+                    self.rename_statements(none_arm_body);
+                    self.pop_scope();
+                }
+                Match::Enum { subject, arms } => {
+                    subject.0 = self.lookup_var(&subject.0);
+                    for arm in arms {
                         self.push_scope();
-                        if let Some(var) = some_arm_binding {
+                        for (_, var) in &mut arm.bindings {
                             *var = self.bind_var(var);
                         }
-                        self.rename_statements(some_arm_body);
+                        self.rename_statements(&mut arm.body);
                         self.pop_scope();
-                        self.push_scope();
-                        self.rename_statements(none_arm_body);
-                        self.pop_scope();
-                    }
-                    Match::Enum { subject, arms } => {
-                        subject.0 = self.lookup_var(&subject.0);
-                        for arm in arms {
-                            self.push_scope();
-                            for (_, var) in &mut arm.bindings {
-                                *var = self.bind_var(var);
-                            }
-                            self.rename_statements(&mut arm.body);
-                            self.pop_scope();
-                        }
                     }
                 }
-            }
+            },
         }
     }
 
@@ -296,45 +267,43 @@ impl VariableRenamingPass {
                     self.rename_expr(field_expr);
                 }
             }
-            IrExpr::Match { match_, .. } => {
-                match match_ {
-                    Match::Enum { subject, arms } => {
-                        subject.0 = self.lookup_var(&subject.0);
-                        for arm in arms {
-                            self.push_scope();
-                            for (_, var) in &mut arm.bindings {
-                                *var = self.bind_var(var);
-                            }
-                            self.rename_expr(&mut arm.body);
-                            self.pop_scope();
-                        }
-                    }
-                    Match::Bool {
-                        subject,
-                        true_body,
-                        false_body,
-                    } => {
-                        subject.0 = self.lookup_var(&subject.0);
-                        self.rename_expr(true_body);
-                        self.rename_expr(false_body);
-                    }
-                    Match::Option {
-                        subject,
-                        some_arm_binding,
-                        some_arm_body,
-                        none_arm_body,
-                    } => {
-                        subject.0 = self.lookup_var(&subject.0);
+            IrExpr::Match { match_, .. } => match match_ {
+                Match::Enum { subject, arms } => {
+                    subject.0 = self.lookup_var(&subject.0);
+                    for arm in arms {
                         self.push_scope();
-                        if let Some(var) = some_arm_binding {
+                        for (_, var) in &mut arm.bindings {
                             *var = self.bind_var(var);
                         }
-                        self.rename_expr(some_arm_body);
+                        self.rename_expr(&mut arm.body);
                         self.pop_scope();
-                        self.rename_expr(none_arm_body);
                     }
                 }
-            }
+                Match::Bool {
+                    subject,
+                    true_body,
+                    false_body,
+                } => {
+                    subject.0 = self.lookup_var(&subject.0);
+                    self.rename_expr(true_body);
+                    self.rename_expr(false_body);
+                }
+                Match::Option {
+                    subject,
+                    some_arm_binding,
+                    some_arm_body,
+                    none_arm_body,
+                } => {
+                    subject.0 = self.lookup_var(&subject.0);
+                    self.push_scope();
+                    if let Some(var) = some_arm_binding {
+                        *var = self.bind_var(var);
+                    }
+                    self.rename_expr(some_arm_body);
+                    self.pop_scope();
+                    self.rename_expr(none_arm_body);
+                }
+            },
             IrExpr::Let {
                 var, value, body, ..
             } => {
@@ -363,7 +332,7 @@ impl VariableRenamingPass {
 
     /// Push a new scope onto the stack
     fn push_scope(&mut self) {
-        self.scope_stack.push(HashMap::new());
+        self.scope_stack.push(Vec::new());
     }
 
     /// Pop a scope from the stack
@@ -379,7 +348,7 @@ impl VariableRenamingPass {
 
     /// Check if a name is a reserved keyword in any target language
     fn is_reserved_keyword(name: &str) -> bool {
-        RESERVED_KEYWORDS.contains(&name)
+        RESERVED_KEYWORDS.binary_search(&name).is_ok()
     }
 
     /// Bind a variable in the current scope, renaming if necessary
@@ -397,12 +366,12 @@ impl VariableRenamingPass {
         };
 
         // Track this name as used
-        self.all_used_names.insert(renamed.to_string());
+        self.all_used_names.insert(renamed.as_cheap_string().clone());
 
         self.scope_stack
             .last_mut()
             .expect("Scope stack should not be empty")
-            .insert(name.to_string(), renamed.clone());
+            .push((name.clone(), renamed.clone()));
 
         renamed
     }
@@ -411,7 +380,7 @@ impl VariableRenamingPass {
     fn is_name_in_scope(&self, name: &VarName) -> bool {
         // Check if name exists in any parent scope (not the current one)
         for scope in self.scope_stack.iter().rev().skip(1) {
-            if scope.contains_key(name.as_str()) {
+            if scope.iter().any(|(k, _)| k == name) {
                 return true;
             }
         }
@@ -421,7 +390,7 @@ impl VariableRenamingPass {
     /// Look up the renamed version of a variable
     fn lookup_var(&self, name: &VarName) -> VarName {
         for scope in self.scope_stack.iter().rev() {
-            if let Some(renamed) = scope.get(name.as_str()) {
+            if let Some((_, renamed)) = scope.iter().find(|(k, _)| k == name) {
                 return renamed.clone();
             }
         }
