@@ -728,18 +728,11 @@ impl Compiler {
                         id: expr_id,
                     }
                 } else {
-                    // Fold N-ary to binary right-associatively: classes!(a, b, c) -> MergeClasses(a, MergeClasses(b, c))
-                    let mut iter = args.iter().rev();
-                    let mut result = self.compile_expr(iter.next().unwrap());
-                    for arg in iter {
-                        let left = self.compile_expr(arg);
-                        result = IrExpr::MergeClasses {
-                            left: Box::new(left),
-                            right: Box::new(result),
-                            id: self.next_expr_id(),
-                        };
+                    // Emit N-ary form directly
+                    IrExpr::MergeClasses {
+                        args: args.iter().map(|a| self.compile_expr(a)).collect(),
+                        id: expr_id,
                     }
-                    result
                 }
             }
             TypedExpr::ArrayLength { array } => IrExpr::ArrayLength {

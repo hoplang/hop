@@ -184,12 +184,8 @@ pub enum IrExpr {
         id: ExprId,
     },
 
-    /// Binary merge of CSS classes, produced by folding classes!(a, b, c, ...) left-to-right
-    MergeClasses {
-        left: Box<IrExpr>,
-        right: Box<IrExpr>,
-        id: ExprId,
-    },
+    /// N-ary merge of CSS classes from classes!(a, b, c, ...)
+    MergeClasses { args: Vec<IrExpr>, id: ExprId },
 
     /// Numeric addition expression for adding numeric values
     NumericAdd {
@@ -1163,10 +1159,11 @@ impl IrExpr {
                 .append(value.to_doc())
                 .append(BoxDoc::text(" in "))
                 .append(body.to_doc()),
-            IrExpr::MergeClasses { left, right, .. } => BoxDoc::text("tw_merge(")
-                .append(left.to_doc())
-                .append(BoxDoc::text(", "))
-                .append(right.to_doc())
+            IrExpr::MergeClasses { args, .. } => BoxDoc::text("tw_merge(")
+                .append(BoxDoc::intersperse(
+                    args.iter().map(|arg| arg.to_doc()),
+                    BoxDoc::text(", "),
+                ))
                 .append(BoxDoc::text(")")),
             IrExpr::ArrayLength { array, .. } => array.to_doc().append(BoxDoc::text(".len()")),
             IrExpr::IntToString { value, .. } => {
@@ -1263,9 +1260,10 @@ impl IrExpr {
             | IrExpr::BooleanLiteral { .. }
             | IrExpr::FloatLiteral { .. }
             | IrExpr::IntLiteral { .. } => {}
-            IrExpr::MergeClasses { left, right, .. } => {
-                left.traverse(f);
-                right.traverse(f);
+            IrExpr::MergeClasses { args, .. } => {
+                for arg in args {
+                    arg.traverse(f);
+                }
             }
             IrExpr::ArrayLength { array, .. } => {
                 array.traverse(f);
@@ -1368,9 +1366,10 @@ impl IrExpr {
             | IrExpr::BooleanLiteral { .. }
             | IrExpr::FloatLiteral { .. }
             | IrExpr::IntLiteral { .. } => {}
-            IrExpr::MergeClasses { left, right, .. } => {
-                left.traverse_mut(f);
-                right.traverse_mut(f);
+            IrExpr::MergeClasses { args, .. } => {
+                for arg in args {
+                    arg.traverse_mut(f);
+                }
             }
             IrExpr::ArrayLength { array, .. } => {
                 array.traverse_mut(f);

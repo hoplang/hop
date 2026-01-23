@@ -1051,10 +1051,15 @@ impl ExpressionTranspiler for PythonTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_merge_classes<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
-        self.transpile_expr(left)
-            .append(BoxDoc::text(" + \" \" + "))
-            .append(self.transpile_expr(right))
+    fn transpile_merge_classes<'a>(&self, args: &'a [IrExpr]) -> BoxDoc<'a> {
+        if args.is_empty() {
+            BoxDoc::text("\"\"")
+        } else {
+            BoxDoc::intersperse(
+                args.iter().map(|arg| self.transpile_expr(arg)),
+                BoxDoc::text(" + \" \" + "),
+            )
+        }
     }
 
     fn transpile_array_length<'a>(&self, array: &'a IrExpr) -> BoxDoc<'a> {

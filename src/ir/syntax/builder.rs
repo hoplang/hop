@@ -835,17 +835,11 @@ impl IrBuilder {
                 id: self.next_expr_id(),
             }
         } else {
-            // Fold right-associatively: classes!(a, b, c) -> MergeClasses(a, MergeClasses(b, c))
-            let mut iter = args.into_iter().rev();
-            let mut result = iter.next().unwrap();
-            for left in iter {
-                result = IrExpr::MergeClasses {
-                    left: Box::new(left),
-                    right: Box::new(result),
-                    id: self.next_expr_id(),
-                };
+            // Emit N-ary form directly
+            IrExpr::MergeClasses {
+                args,
+                id: self.next_expr_id(),
             }
-            result
         }
     }
 

@@ -252,10 +252,14 @@ impl VariableRenamingPass {
             | IrExpr::BooleanLogicalOr { left, right, .. }
             | IrExpr::NumericAdd { left, right, .. }
             | IrExpr::NumericSubtract { left, right, .. }
-            | IrExpr::NumericMultiply { left, right, .. }
-            | IrExpr::MergeClasses { left, right, .. } => {
+            | IrExpr::NumericMultiply { left, right, .. } => {
                 self.rename_expr(left);
                 self.rename_expr(right);
+            }
+            IrExpr::MergeClasses { args, .. } => {
+                for arg in args {
+                    self.rename_expr(arg);
+                }
             }
             // Literals don't contain variables - nothing to do
             IrExpr::StringLiteral { .. }

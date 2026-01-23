@@ -793,16 +793,17 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value> {
             env.pop();
             Ok(result)
         }
-        IrExpr::MergeClasses { left, right, .. } => {
-            let left_val = evaluate_expr(left, env)?;
-            let right_val = evaluate_expr(right, env)?;
-            match (left_val, right_val) {
-                (Value::String(l), Value::String(r)) => {
-                    let combined = format!("{} {}", l, r);
-                    Ok(Value::String(tw_merge(&combined)))
+        IrExpr::MergeClasses { args, .. } => {
+            let mut strings = Vec::with_capacity(args.len());
+            for arg in args {
+                let val = evaluate_expr(arg, env)?;
+                match val {
+                    Value::String(s) => strings.push(s),
+                    _ => return Err(anyhow!("MergeClasses requires string arguments")),
                 }
-                _ => Err(anyhow!("MergeClasses requires string arguments")),
             }
+            let combined = strings.join(" ");
+            Ok(Value::String(tw_merge(&combined)))
         }
         IrExpr::ArrayLength { array, .. } => {
             let array_val = evaluate_expr(array, env)?;

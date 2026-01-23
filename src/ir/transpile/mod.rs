@@ -164,7 +164,7 @@ pub trait ExpressionTranspiler {
         value: &'a IrExpr,
         body: &'a IrExpr,
     ) -> BoxDoc<'a>;
-    fn transpile_merge_classes<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
+    fn transpile_merge_classes<'a>(&self, args: &'a [IrExpr]) -> BoxDoc<'a>;
     fn transpile_array_length<'a>(&self, array: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_int_to_string<'a>(&self, value: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_float_to_int<'a>(&self, value: &'a IrExpr) -> BoxDoc<'a>;
@@ -277,7 +277,7 @@ pub trait ExpressionTranspiler {
             IrExpr::Let {
                 var, value, body, ..
             } => self.transpile_let(var, value, body),
-            IrExpr::MergeClasses { left, right, .. } => self.transpile_merge_classes(left, right),
+            IrExpr::MergeClasses { args, .. } => self.transpile_merge_classes(args),
             IrExpr::ArrayLength { array, .. } => self.transpile_array_length(array),
             IrExpr::IntToString { value, .. } => self.transpile_int_to_string(value),
             IrExpr::FloatToInt { value, .. } => self.transpile_float_to_int(value),

@@ -122,6 +122,10 @@ impl Pass for ConstantPropagationPass {
     fn run(entrypoint: &mut IrEntrypointDeclaration) {
         let mut iteration = Iteration::new();
 
+        // Synthetic IDs for intermediate results in N-ary operations
+        // Start at a high value to avoid collision with real ExprIds
+        let mut synthetic_id_counter: ExprId = 1_000_000;
+
         let mut initial_constants = Vec::new();
         let mut not_operands = Vec::new();
         // Binary operations: (operand_id => (result_id, op))
@@ -358,11 +362,31 @@ impl Pass for ConstantPropagationPass {
                                     .push(((*subject_def_id, field_name.clone()), expr.id()));
                             }
                         }
-                        IrExpr::MergeClasses { left, right, .. } => {
-                            binary_left_operands
-                                .push((left.id(), (expr.id(), BinaryOp::MergeClasses)));
-                            binary_right_operands
-                                .push((right.id(), (expr.id(), BinaryOp::MergeClasses)));
+                        IrExpr::MergeClasses { args, .. } => {
+                            // Convert N-ary MergeClasses to binary chain for Datalog processing
+                            // For args = [a, b, c, d], create:
+                            //   synthetic_1 = merge(a, b)
+                            //   synthetic_2 = merge(synthetic_1, c)
+                            //   result = merge(synthetic_2, d)
+                            if args.len() >= 2 {
+                                let mut left_id = args[0].id();
+                                for (i, arg) in args.iter().enumerate().skip(1) {
+                                    let result_id = if i == args.len() - 1 {
+                                        // Final result uses the real expression ID
+                                        expr.id()
+                                    } else {
+                                        // Intermediate results use synthetic IDs
+                                        let id = synthetic_id_counter;
+                                        synthetic_id_counter += 1;
+                                        id
+                                    };
+                                    binary_left_operands
+                                        .push((left_id, (result_id, BinaryOp::MergeClasses)));
+                                    binary_right_operands
+                                        .push((arg.id(), (result_id, BinaryOp::MergeClasses)));
+                                    left_id = result_id;
+                                }
+                            }
                         }
                         IrExpr::ArrayLength { .. } => {
                             // Not yet implemented
@@ -1473,7 +1497,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 Test() {
-                  write_escaped(tw_merge("flex", tw_merge("items-center", "gap-4")))
+                  write_escaped(tw_merge("flex", "items-center", "gap-4"))
                 }
 
                 -- after --
@@ -1497,7 +1521,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 Test() {
-                  write_escaped(tw_merge("px-4", tw_merge("py-2", "p-6")))
+                  write_escaped(tw_merge("px-4", "py-2", "p-6"))
                 }
 
                 -- after --
