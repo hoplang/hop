@@ -983,6 +983,15 @@ fn format_expr<'a>(
                         .append(trailing_comments)
                         .nest(2)
                         .group()
+                } else if name == "classes" {
+                    // Always break classes! macro onto multiple lines for easier
+                    // editing and minimal version control diffs
+                    arena
+                        .hardline()
+                        .append(args_doc)
+                        .append(arena.text(","))
+                        .nest(2)
+                        .append(arena.hardline())
                 } else {
                     soft_block(arena, args_doc)
                 };
@@ -1853,7 +1862,12 @@ mod tests {
             "#},
             expect![[r#"
                 <Card {base_class: String, extra_class: String}>
-                  <div class={classes!(base_class, extra_class)}></div>
+                  <div class={
+                    classes!(
+                      base_class,
+                      extra_class,
+                    )
+                  }></div>
                 </Card>
             "#]],
         );
@@ -1874,7 +1888,11 @@ mod tests {
                   custom_class: String,
                 }>
                   <button class={
-                    classes!(size_class, variant_class, custom_class)
+                    classes!(
+                      size_class,
+                      variant_class,
+                      custom_class,
+                    )
                   }>
                     Click
                   </button>
@@ -1921,7 +1939,12 @@ mod tests {
             "#},
             expect![[r#"
                 <Card>
-                  <div class={classes!("foo", "bar")}></div>
+                  <div class={
+                    classes!(
+                      "foo",
+                      "bar",
+                    )
+                  }></div>
                 </Card>
             "#]],
         );
@@ -1937,7 +1960,13 @@ mod tests {
             "#},
             expect![[r#"
                 <Card>
-                  <div class={classes!("a", "b", "c")}></div>
+                  <div class={
+                    classes!(
+                      "a",
+                      "b",
+                      "c",
+                    )
+                  }></div>
                 </Card>
             "#]],
         );
@@ -1954,7 +1983,15 @@ mod tests {
             expect![[r#"
                 <Card {a: String, b: String, c: String}>
                   <div class={
-                    classes!(a, "foo", "bar", b, "baz", "qux", c)
+                    classes!(
+                      a,
+                      "foo",
+                      "bar",
+                      b,
+                      "baz",
+                      "qux",
+                      c,
+                    )
                   }></div>
                 </Card>
             "#]],
@@ -1971,7 +2008,12 @@ mod tests {
             "#},
             expect![[r#"
                 <Card>
-                  <div class={classes!("foo", "bar")}></div>
+                  <div class={
+                    classes!(
+                      "foo",
+                      "bar",
+                    )
+                  }></div>
                 </Card>
             "#]],
         );
@@ -1987,7 +2029,13 @@ mod tests {
             "#},
             expect![[r#"
                 <Card>
-                  <div class={classes!("foo", "bar", "baz")}></div>
+                  <div class={
+                    classes!(
+                      "foo",
+                      "bar",
+                      "baz",
+                    )
+                  }></div>
                 </Card>
             "#]],
         );

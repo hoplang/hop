@@ -5632,7 +5632,13 @@ mod tests {
         check(
             indoc! {r#"
                 entrypoint Test {
-                  <div class={classes!("foo", "bar", "baz")}></div>
+                  <div class={
+                    classes!(
+                      "foo",
+                      "bar",
+                      "baz",
+                    )
+                  }></div>
                 }
             "#},
             r#"<div class="foo bar baz"></div>"#,
@@ -5641,7 +5647,7 @@ mod tests {
                 Test() {
                   write("<div")
                   write(" class=\"")
-                  write_escaped(tw_merge("foo", tw_merge("bar", "baz")))
+                  write_escaped(tw_merge("foo", "bar", "baz"))
                   write("\"")
                   write(">")
                   write("</div>")
