@@ -200,8 +200,9 @@ where
 {
     parse(iter, comments, range)?;
     while advance_if(iter, comments, Token::Comma).is_some() {
-        let at_end = peek(iter).and_then(|r| r.ok()).map(|(t, _)| t).as_ref() == end_token;
-        if at_end {
+        let next_token = peek(iter).and_then(|r| r.ok()).map(|(t, _)| t);
+        // Allow trailing comma: break if next is closing delimiter or EOF (in delimited context)
+        if next_token.as_ref() == end_token || (end_token.is_some() && next_token.is_none()) {
             break;
         }
         parse(iter, comments, range)?;
@@ -3481,6 +3482,54 @@ mod tests {
                 error: Unknown macro 'unknown'
                 unknown!(x)
                 ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_classes_macro_with_missing_closing_paren() {
+        check_parse_expr(
+            r#"classes!("p-3""#,
+            expect![[r#"
+                error: Unmatched '('
+                classes!("p-3"
+                        ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_classes_macro_with_trailing_comma_and_missing_closing_paren() {
+        check_parse_expr(
+            r#"classes!("p-3","#,
+            expect![[r#"
+                error: Unmatched '('
+                classes!("p-3",
+                        ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_array_with_trailing_comma_and_missing_closing_bracket() {
+        check_parse_expr(
+            "[1, 2,",
+            expect![[r#"
+                error: Unmatched '['
+                [1, 2,
+                ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_record_with_trailing_comma_and_missing_closing_paren() {
+        check_parse_expr(
+            r#"User(name: "John","#,
+            expect![[r#"
+                error: Unmatched '('
+                User(name: "John",
+                    ^
             "#]],
         );
     }
