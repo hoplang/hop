@@ -4542,3 +4542,12 @@ fn test_646_inset_ring_arbitrary_width() {
     // inset-ring should have the same behavior
     assert_eq!(tw_merge("inset-ring-[3px] inset-ring-2"), "inset-ring-2");
 }
+
+#[test]
+fn test_647_text_color_vs_text_size_no_conflict() {
+    // text-muted-foreground (custom color) should not conflict with text-md (font size)
+    assert_eq!(
+        tw_merge("text-muted-foreground text-md"),
+        "text-muted-foreground text-md"
+    );
+}
