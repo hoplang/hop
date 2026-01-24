@@ -1,3 +1,4 @@
+use super::frontend;
 use crate::document::DocumentAnnotator;
 use crate::hop::program::Program;
 use crate::hop::symbols::component_name::ComponentName;
@@ -131,10 +132,13 @@ async fn handle_render(
     }
 
     if !error_output_parts.is_empty() {
+        let error_html = frontend::overlay(frontend::OverlayParams {
+            message: &error_output_parts.join("\n"),
+        });
         return Response::builder()
             .status(StatusCode::BAD_REQUEST)
-            .header("Content-Type", "text/plain")
-            .body(Body::from(error_output_parts.join("\n")))
+            .header("Content-Type", "text/html")
+            .body(Body::from(error_html))
             .unwrap();
     }
 

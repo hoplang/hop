@@ -796,8 +796,10 @@ impl ExpressionTranspiler for RustTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_json_encode<'a>(&self, _value: &'a IrExpr) -> BoxDoc<'a> {
-        BoxDoc::text("todo!(\"JSON encoding not yet implemented\")")
+    fn transpile_json_encode<'a>(&self, value: &'a IrExpr) -> BoxDoc<'a> {
+        BoxDoc::text("serde_json::to_string(&")
+            .append(self.transpile_expr(value))
+            .append(BoxDoc::text(").unwrap()"))
     }
 
     fn transpile_env_lookup<'a>(&self, key: &'a IrExpr) -> BoxDoc<'a> {

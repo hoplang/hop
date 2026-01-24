@@ -1,3 +1,4 @@
+mod frontend;
 mod server;
 
 use crate::filesystem::adaptive_watcher::{AdaptiveWatcher, WatchEvent};

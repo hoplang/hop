@@ -18,16 +18,14 @@ const DEV_SERVER_URL = (() => {
 const EVENT_SOURCE_URL = `${DEV_SERVER_URL}/event_source`;
 const RENDER_URL = `${DEV_SERVER_URL}/render`;
 const DEBOUNCE_DELAY_MS = 15;
-const MONOSPACE_FONTS = 'Menlo, Consolas, Monaco, Adwaita Mono, Liberation Mono, Lucida Console, monospace';
-const EXCLAMATION_MARK_SVG = "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' fill='%23ff6a6a' viewBox='0 0 256 256'%3E%3Cpath d='M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm-8-80V80a8,8,0,0,1,16,0v56a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,172Z'%3E%3C/path%3E%3C/svg%3E\")";
 const ERROR_OVERLAY_ID = 'hop-error-overlay';
 
 /**
- * Shows the error overlay with the given error message.
+ * Shows the error overlay with pre-styled HTML from the server.
  * Uses Shadow DOM to isolate styles from the host page.
- * @param {string} errorMessage - The escaped HTML error message to display
+ * @param {string} html - The pre-styled HTML to display
  */
-function showErrorOverlay(errorMessage) {
+function showErrorOverlay(html) {
 	let overlay = document.getElementById(ERROR_OVERLAY_ID);
 	if (!overlay) {
 		overlay = document.createElement('div');
@@ -36,87 +34,10 @@ function showErrorOverlay(errorMessage) {
 		document.body.appendChild(overlay);
 	}
 
-	// Style the error message with bold location hints
-	const styledError = errorMessage
-		.replace(/^(  --&gt; .+)$/gm, '<span class="location">$1</span>')
-		.replace(/^(\s*\d*\s*\|)/gm, '<span class="line-number">$1</span>');
-
 	overlay.style.cssText = 'position: fixed; inset: 0; z-index: 2147483647;';
 
-	overlay.shadowRoot.innerHTML = `
-		<style>
-			:host {
-				all: initial;
-			}
-			* {
-				box-sizing: border-box;
-			}
-			@keyframes hopErrorSlideIn {
-				from {
-					opacity: 0;
-					transform: translateY(-10px);
-				}
-				to {
-					opacity: 1;
-					transform: translateY(0);
-				}
-			}
-			.overlay {
-				position: absolute;
-				inset: 0;
-				background: rgba(41, 39, 39, 0.98);
-				overflow: auto;
-			}
-			.container {
-				max-width: 840px;
-				margin: 0 auto;
-				padding: 64px 32px;
-			}
-			.banner-container {
-				display: flex;
-				justify-content: center;
-				margin-bottom: 16px;
-			}
-			.banner {
-				color: #ff6a6a;
-				font-family: ${MONOSPACE_FONTS};
-				font-size: 14px;
-				font-weight: bold;
-				margin: 0;
-			}
-			.error-message {
-				animation: hopErrorSlideIn 0.2s ease-out;
-				font-family: ${MONOSPACE_FONTS};
-				overflow-x: auto;
-				font-size: 16px;
-				line-height: 1.8;
-				background: #201f1f ${EXCLAMATION_MARK_SVG} no-repeat calc(100% - 48px) 32px;
-				padding: 32px 48px 48px;
-				border-radius: 4px;
-				color: white;
-				border-top: 5px solid #ff6a6a;
-				box-shadow: 0 12px 0px -6px rgba(0,0,0,0.05);
-				margin: 0;
-			}
-			.location {
-				font-weight: bold;
-			}
-			.line-number {
-				color: rgba(255,255,255,0.5);
-			}
-		</style>
-		<div class="overlay">
-			<div class="container">
-				<div class="banner-container">
-					<pre class="banner">  ___  ______________  _____
- / _ \\/ ___/ ___/ __ \\/ ___/
-/  __/ /  / /  / /_/ / /
-\\___/_/  /_/   \\____/_/</pre>
-				</div>
-				<pre class="error-message">${styledError}</pre>
-			</div>
-		</div>
-	`;
+	const shadowRoot = overlay.shadowRoot ?? overlay.attachShadow({ mode: 'open' });
+	shadowRoot.innerHTML = html;
 }
 
 /**
@@ -127,17 +48,6 @@ function hideErrorOverlay() {
 	if (overlay) {
 		overlay.remove();
 	}
-}
-
-/**
- * @param {string} str
- * @returns {string}
- */
-function escapeHtml(str) {
-	return str
-		.replace(/&/g, '&amp;')
-		.replace(/</g, '&lt;')
-		.replace(/>/g, '&gt;');
 }
 
 /**
@@ -214,8 +124,7 @@ function setupHMR(cfg) {
 			await morphDOM(html, cfg);
 		} catch (error) {
 			if (error instanceof Error) {
-				const escaped = escapeHtml(error?.message ?? '');
-				showErrorOverlay(escaped);
+				showErrorOverlay(error.message);
 			}
 		}
 		reloadTimeout = null;

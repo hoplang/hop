@@ -1,0 +1,3 @@
+[compile]
+target = "rust"
+output_path = "frontend.rs"
