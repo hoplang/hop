@@ -23,6 +23,147 @@ pub struct AppState {
     pub tailwind_css: Arc<RwLock<Option<String>>>,
 }
 
+async fn handle_program(State(state): State<AppState>) -> Response<Body> {
+    let program = state.program.read().unwrap();
+    let mut output = String::new();
+
+    output.push_str("=== HOP PROGRAM DEBUG INFO ===\n\n");
+
+    // List all modules
+    let typed_modules = program.get_typed_modules();
+    let mut module_names: Vec<_> = typed_modules.keys().collect();
+    module_names.sort_by_key(|m| m.to_string());
+
+    output.push_str(&format!("MODULES ({})\n", module_names.len()));
+    output.push_str(&"-".repeat(40));
+    output.push('\n');
+
+    for module_name in &module_names {
+        output.push_str(&format!("  {}\n", module_name));
+    }
+    output.push('\n');
+
+    // Parse errors
+    let parse_errors = program.get_parse_errors();
+    let modules_with_parse_errors: Vec<_> = parse_errors
+        .iter()
+        .filter(|(_, errors)| !errors.is_empty())
+        .collect();
+
+    output.push_str(&format!(
+        "PARSE ERRORS ({} modules with errors)\n",
+        modules_with_parse_errors.len()
+    ));
+    output.push_str(&"-".repeat(40));
+    output.push('\n');
+
+    if modules_with_parse_errors.is_empty() {
+        output.push_str("  (none)\n");
+    } else {
+        for (module_name, errors) in &modules_with_parse_errors {
+            output.push_str(&format!("  {}:\n", module_name));
+            for error in errors.iter() {
+                output.push_str(&format!("    - {}\n", error));
+            }
+        }
+    }
+    output.push('\n');
+
+    // Type errors (only if no parse errors)
+    let type_errors = program.get_type_errors();
+    let modules_with_type_errors: Vec<_> = type_errors
+        .iter()
+        .filter(|(_, errors)| !errors.is_empty())
+        .collect();
+
+    output.push_str(&format!(
+        "TYPE ERRORS ({} modules with errors)\n",
+        modules_with_type_errors.len()
+    ));
+    output.push_str(&"-".repeat(40));
+    output.push('\n');
+
+    if modules_with_type_errors.is_empty() {
+        output.push_str("  (none)\n");
+    } else {
+        for (module_name, errors) in &modules_with_type_errors {
+            output.push_str(&format!("  {}:\n", module_name));
+            for error in errors.iter() {
+                output.push_str(&format!("    - {}\n", error));
+            }
+        }
+    }
+    output.push('\n');
+
+    // Entrypoints per module
+    output.push_str("ENTRYPOINTS\n");
+    output.push_str(&"-".repeat(40));
+    output.push('\n');
+
+    let mut has_entrypoints = false;
+    for module_name in &module_names {
+        if let Some(typed_ast) = typed_modules.get(module_name) {
+            let entrypoints = typed_ast.get_entrypoint_declarations();
+            if !entrypoints.is_empty() {
+                has_entrypoints = true;
+                output.push_str(&format!("  {}:\n", module_name));
+                for ep in entrypoints {
+                    output.push_str(&format!("    - {}\n", ep.name));
+                }
+            }
+        }
+    }
+    if !has_entrypoints {
+        output.push_str("  (none)\n");
+    }
+    output.push('\n');
+
+    // Components per module
+    output.push_str("COMPONENTS\n");
+    output.push_str(&"-".repeat(40));
+    output.push('\n');
+
+    for module_name in &module_names {
+        if let Some(typed_ast) = typed_modules.get(module_name) {
+            let components: Vec<_> = typed_ast.get_component_declarations().collect();
+            if !components.is_empty() {
+                output.push_str(&format!("  {}:\n", module_name));
+                for comp in components {
+                    output.push_str(&format!("    - {}\n", comp.component_name));
+                }
+            }
+        }
+    }
+    output.push('\n');
+
+    // Records per module
+    output.push_str("RECORDS\n");
+    output.push_str(&"-".repeat(40));
+    output.push('\n');
+
+    let mut has_records = false;
+    for module_name in &module_names {
+        if let Some(typed_ast) = typed_modules.get(module_name) {
+            let records = typed_ast.get_records();
+            if !records.is_empty() {
+                has_records = true;
+                output.push_str(&format!("  {}:\n", module_name));
+                for record in records {
+                    output.push_str(&format!("    - {}\n", record.name));
+                }
+            }
+        }
+    }
+    if !has_records {
+        output.push_str("  (none)\n");
+    }
+
+    Response::builder()
+        .header("Content-Type", "text/plain; charset=utf-8")
+        .body(Body::from(output))
+        .unwrap()
+}
+
 async fn handle_development_mode_js() -> Response<Body> {
     Response::builder()
         .header("Content-Type", "application/javascript")
@@ -199,6 +340,7 @@ pub fn create_router() -> axum::Router<AppState> {
         .route("/development_mode.js", get(handle_development_mode_js))
         .route("/event_source", get(handle_event_source))
         .route("/render", get(handle_render))
+        .route("/program", get(handle_program))
         .layer(cors)
 }
 
@@ -230,6 +372,7 @@ mod tests {
 
         let router = axum::Router::new()
             .route("/render", axum::routing::get(handle_render))
+            .route("/program", axum::routing::get(handle_program))
             .with_state(app_state);
 
         TestServer::new(router).unwrap()
