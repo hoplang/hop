@@ -1,4 +1,4 @@
-mod frontend;
+mod hop;
 
-pub use frontend::OverlayParams;
-pub use frontend::overlay;
+pub use hop::OverlayParams;
+pub use hop::overlay;

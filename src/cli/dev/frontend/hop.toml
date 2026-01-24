@@ -1,6 +1,8 @@
 [compile]
 target = "rust"
-output_path = "frontend.rs"
+output_path = "hop.rs"
 
 [dev]
-server_commands = ["hop dev --projectdir ~/projects/hop-ui --port 3001"]
+server_commands = [
+    "hop dev --projectdir ~/projects/hop-ui --port 3001"
+]

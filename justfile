@@ -12,10 +12,13 @@ update-tests:
 
 build:
 	tsc --project src/cli/dev/js/tsconfig.json
-	cargo build -vv
+	hop compile --projectdir src/cli/dev/frontend/
+	cargo build
 
 build-release:
-	cargo build -vv --release
+	tsc --project src/cli/dev/js/tsconfig.json
+	hop compile --projectdir src/cli/dev/frontend/
+	cargo build --release
 
 install: build
 	sudo cp target/debug/hop /usr/local/bin/hop
