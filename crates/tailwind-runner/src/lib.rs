@@ -8,6 +8,7 @@ pub struct TailwindRunner {
 pub struct TailwindConfig {
     pub input: PathBuf,
     pub output: PathBuf,
+    pub working_dir: PathBuf,
 }
 
 impl TailwindRunner {
@@ -23,6 +24,7 @@ impl TailwindRunner {
             .arg("--output")
             .arg(&config.output)
             .arg("--minify")
+            .current_dir(&config.working_dir)
             .output()
             .await?;
 
@@ -44,6 +46,7 @@ impl TailwindRunner {
             .arg("--output")
             .arg(&config.output)
             .arg("--minify")
+            .current_dir(&config.working_dir)
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())

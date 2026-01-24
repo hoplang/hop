@@ -203,11 +203,13 @@ async fn main() -> anyhow::Result<()> {
                     let output = if cfg!(target_os = "windows") {
                         tokio::process::Command::new("cmd")
                             .args(["/C", command])
+                            .current_dir(root.get_path())
                             .output()
                             .await?
                     } else {
                         tokio::process::Command::new("sh")
                             .args(["-c", command])
+                            .current_dir(root.get_path())
                             .output()
                             .await?
                     };
@@ -234,12 +236,14 @@ async fn main() -> anyhow::Result<()> {
                 let mut backend_server = if cfg!(target_os = "windows") {
                     tokio::process::Command::new("cmd")
                         .args(["/C", last_command])
+                        .current_dir(root.get_path())
                         .env("HOP_DEV_MODE", "enabled")
                         .env("HOP_DEV_PORT", port.to_string())
                         .spawn()
                 } else {
                     tokio::process::Command::new("sh")
                         .args(["-c", last_command])
+                        .current_dir(root.get_path())
                         .env("HOP_DEV_MODE", "enabled")
                         .env("HOP_DEV_PORT", port.to_string())
                         .spawn()

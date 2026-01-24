@@ -14,7 +14,7 @@ pub struct CompileResult {
     pub output_path: PathBuf,
 }
 
-async fn compile_tailwind(input_path: &Path) -> Result<String> {
+async fn compile_tailwind(input_path: &Path, working_dir: &Path) -> Result<String> {
     let cache_dir = PathBuf::from("/tmp/.hop-cache");
     tokio::fs::create_dir_all(&cache_dir).await?;
 
@@ -23,6 +23,7 @@ async fn compile_tailwind(input_path: &Path) -> Result<String> {
     let tailwind_config = TailwindConfig {
         input: input_path.to_path_buf(),
         output: cache_dir.join("compiled-tailwind.css"),
+        working_dir: working_dir.to_path_buf(),
     };
 
     // Run Tailwind compilation
@@ -60,11 +61,11 @@ pub async fn execute(project_root: &ProjectRoot, skip_optimization: bool) -> Res
     timer.start_phase("tailwind");
     let tailwind_css = if let Some(p) = project_root.get_tailwind_input_path().await? {
         // Use user-specified Tailwind input
-        Some(compile_tailwind(&p).await?)
+        Some(compile_tailwind(&p, project_root.get_path()).await?)
     } else {
         // Use default Tailwind configuration
         let default_input = create_default_tailwind_input().await?;
-        Some(compile_tailwind(&default_input).await?)
+        Some(compile_tailwind(&default_input, project_root.get_path()).await?)
     };
 
     // Load all .hop files

@@ -46,6 +46,7 @@ async fn start_tailwind_watcher(
     let tailwind_config = tailwind_runner::TailwindConfig {
         input: input_path.to_path_buf(),
         output: output_path.clone(),
+        working_dir: root.get_path().to_path_buf(),
     };
 
     // Run once initially to generate CSS - return error if it fails
