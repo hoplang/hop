@@ -2,7 +2,7 @@ use crate::document::DocumentAnnotator;
 use crate::filesystem::config::TargetLanguage;
 use crate::filesystem::project_root::ProjectRoot;
 use crate::hop::program::Program;
-use crate::ir::{GoTranspiler, PythonTranspiler, Transpiler, TsTranspiler};
+use crate::ir::{GoTranspiler, PythonTranspiler, RustTranspiler, Transpiler, TsTranspiler};
 use crate::orchestrator::{OrchestrateOptions, orchestrate};
 use crate::tui::timing;
 use anyhow::Result;
@@ -142,6 +142,11 @@ pub async fn execute(project_root: &ProjectRoot, skip_optimization: bool) -> Res
         TargetLanguage::Python => {
             timer.start_phase("transpiling to python");
             let transpiler = PythonTranspiler::new();
+            transpiler.transpile_module(&ir_module)
+        }
+        TargetLanguage::Rust => {
+            timer.start_phase("transpiling to rust");
+            let transpiler = RustTranspiler::new();
             transpiler.transpile_module(&ir_module)
         }
     };

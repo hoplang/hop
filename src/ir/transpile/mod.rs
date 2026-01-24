@@ -1,10 +1,12 @@
 pub mod go;
 pub mod python;
+pub mod rust;
 pub mod ts;
 
 pub use go::GoTranspiler;
 use pretty::BoxDoc;
 pub use python::PythonTranspiler;
+pub use rust::RustTranspiler;
 pub use ts::TsTranspiler;
 
 use crate::dop::patterns::Match;

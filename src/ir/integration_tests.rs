@@ -1,5 +1,5 @@
 use super::semantics::evaluator::evaluate_entrypoint;
-use super::transpile::{GoTranspiler, PythonTranspiler, Transpiler, TsTranspiler};
+use super::transpile::{GoTranspiler, PythonTranspiler, RustTranspiler, Transpiler, TsTranspiler};
 use crate::document::Document;
 use crate::hop::program::Program;
 use crate::hop::symbols::module_name::ModuleName;
@@ -210,6 +210,80 @@ fn typecheck_go(code: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn execute_rust(code: &str) -> Result<String, String> {
+    let temp_dir = TempDir::new().map_err(|e| format!("Failed to create temp dir: {}", e))?;
+    let main_file = temp_dir.path().join("main.rs");
+
+    // Create wrapper that calls the test function
+    let main_code = format!(
+        r#"{}
+
+fn main() {{
+    print!("{{}}", test());
+}}
+"#,
+        code
+    );
+
+    fs::write(&main_file, main_code).map_err(|e| format!("Failed to write main.rs: {}", e))?;
+
+    // Compile with rustc
+    let compile_output = Command::new("rustc")
+        .arg(&main_file)
+        .arg("-o")
+        .arg(temp_dir.path().join("main"))
+        .output()
+        .map_err(|e| format!("Failed to compile Rust: {}", e))?;
+
+    if !compile_output.status.success() {
+        return Err(format!(
+            "Rust compilation failed:\n{}",
+            String::from_utf8_lossy(&compile_output.stderr)
+        ));
+    }
+
+    // Execute
+    let output = Command::new(temp_dir.path().join("main"))
+        .output()
+        .map_err(|e| format!("Failed to execute Rust binary: {}", e))?;
+
+    if !output.status.success() {
+        return Err(format!(
+            "Rust execution failed:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+fn typecheck_rust(code: &str) -> Result<(), String> {
+    let temp_dir = TempDir::new().map_err(|e| format!("Failed to create temp dir: {}", e))?;
+    let lib_file = temp_dir.path().join("lib.rs");
+
+    // Add #![allow(dead_code)] to suppress warnings
+    let code_with_attrs = format!("#![allow(dead_code)]\n{}", code);
+    fs::write(&lib_file, code_with_attrs).map_err(|e| format!("Failed to write lib.rs: {}", e))?;
+
+    let output = Command::new("rustc")
+        .arg("--crate-type=lib")
+        .arg("--emit=metadata")
+        .arg("-o")
+        .arg(temp_dir.path().join("lib.rmeta"))
+        .arg(&lib_file)
+        .output()
+        .map_err(|e| format!("Failed to execute rustc: {}", e))?;
+
+    if !output.status.success() {
+        return Err(format!(
+            "Rust type checking failed:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+
+    Ok(())
+}
+
 fn execute_evaluator(module: &super::IrModule) -> Result<String, String> {
     let entrypoint = module
         .entrypoints
@@ -379,6 +453,28 @@ fn check(hop_source: &str, expected_output: &str, expected: Expect) {
     );
     output.push_str("-- python (unoptimized) --\nOK\n");
 
+    let rust_transpiler = RustTranspiler::new();
+    let rust_code = rust_transpiler.transpile_module(&unoptimized_module);
+    if let Err(e) = typecheck_rust(&rust_code) {
+        panic!(
+            "Rust typecheck failed (unoptimized):\n{}\n\nIR:\n{}\nGenerated code:\n{}",
+            e, unoptimized_ir, rust_code
+        );
+    }
+    let rust_output = match execute_rust(&rust_code) {
+        Ok(out) => out,
+        Err(e) => panic!(
+            "Rust execution failed (unoptimized):\n{}\n\nIR:\n{}\nGenerated code:\n{}",
+            e, unoptimized_ir, rust_code
+        ),
+    };
+    assert_eq!(
+        rust_output, expected_output,
+        "Rust output mismatch (unoptimized)\n\nIR:\n{}\nGenerated code:\n{}",
+        unoptimized_ir, rust_code
+    );
+    output.push_str("-- rust (unoptimized) --\nOK\n");
+
     // Test optimized version
     let ts_code = ts_transpiler.transpile_module(&optimized_module);
     if let Err(e) = typecheck_typescript(&ts_code) {
@@ -442,6 +538,27 @@ fn check(hop_source: &str, expected_output: &str, expected: Expect) {
         optimized_ir, python_code
     );
     output.push_str("-- python (optimized) --\nOK\n");
+
+    let rust_code = rust_transpiler.transpile_module(&optimized_module);
+    if let Err(e) = typecheck_rust(&rust_code) {
+        panic!(
+            "Rust typecheck failed (optimized):\n{}\n\nIR:\n{}\nGenerated code:\n{}",
+            e, optimized_ir, rust_code
+        );
+    }
+    let rust_output = match execute_rust(&rust_code) {
+        Ok(out) => out,
+        Err(e) => panic!(
+            "Rust execution failed (optimized):\n{}\n\nIR:\n{}\nGenerated code:\n{}",
+            e, optimized_ir, rust_code
+        ),
+    };
+    assert_eq!(
+        rust_output, expected_output,
+        "Rust output mismatch (optimized)\n\nIR:\n{}\nGenerated code:\n{}",
+        optimized_ir, rust_code
+    );
+    output.push_str("-- rust (optimized) --\nOK\n");
 
     expected.assert_eq(&output);
 }
@@ -528,11 +645,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -611,11 +732,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -665,11 +790,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -724,11 +853,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -797,11 +930,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -865,11 +1002,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -918,11 +1059,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -965,11 +1110,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -1012,11 +1161,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -1058,11 +1211,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -1105,11 +1262,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -1160,11 +1321,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -1209,11 +1374,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -1258,11 +1427,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -1305,11 +1478,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -1366,11 +1543,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -1411,11 +1592,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -1456,11 +1641,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -1505,11 +1694,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -1560,11 +1753,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -1605,11 +1802,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -1661,11 +1862,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -1717,11 +1922,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -1782,11 +1991,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -1868,11 +2081,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -1936,11 +2153,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -2004,11 +2225,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -2073,11 +2298,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -2161,11 +2390,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -2259,11 +2492,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -2318,11 +2555,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -2377,11 +2618,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -2436,11 +2681,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -2503,11 +2752,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -2570,11 +2823,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -2635,11 +2892,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -2707,11 +2968,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -2775,11 +3040,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -2858,11 +3127,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -2942,11 +3215,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -3011,11 +3288,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -3104,11 +3385,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -3197,11 +3482,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -3292,11 +3581,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -3393,11 +3686,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -3440,11 +3737,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -3487,11 +3788,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -3540,11 +3845,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -3593,11 +3902,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -3640,11 +3953,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -3687,11 +4004,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -3734,11 +4055,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -3781,11 +4106,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -3828,11 +4157,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -3875,11 +4208,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -3922,11 +4259,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -3969,11 +4310,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -4016,11 +4361,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -4069,11 +4418,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -4122,11 +4475,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -4175,11 +4532,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -4216,11 +4577,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -4257,11 +4622,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -4298,11 +4667,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -4339,11 +4712,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -4380,11 +4757,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -4471,11 +4852,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -4539,11 +4924,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -4607,11 +4996,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -4655,11 +5048,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -4703,11 +5100,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -4789,11 +5190,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -4858,11 +5263,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -4940,11 +5349,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -5024,11 +5437,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -5099,11 +5516,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -5206,11 +5627,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -5320,11 +5745,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -5366,11 +5795,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -5412,11 +5845,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -5515,11 +5952,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -5616,11 +6057,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -5668,11 +6113,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -5713,11 +6162,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -5758,11 +6211,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -5803,11 +6260,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -5853,11 +6314,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -5903,11 +6368,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -5952,11 +6421,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );
@@ -5999,11 +6472,15 @@ mod tests {
                 OK
                 -- python (unoptimized) --
                 OK
+                -- rust (unoptimized) --
+                OK
                 -- ts (optimized) --
                 OK
                 -- go (optimized) --
                 OK
                 -- python (optimized) --
+                OK
+                -- rust (optimized) --
                 OK
             "#]],
         );

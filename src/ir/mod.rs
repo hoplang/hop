@@ -9,4 +9,4 @@ mod integration_tests;
 pub use optimizer::optimize;
 pub use syntax::ast;
 pub use syntax::{Compiler, IrEnumDeclaration, IrExpr, IrModule, IrRecordDeclaration};
-pub use transpile::{GoTranspiler, PythonTranspiler, Transpiler, TsTranspiler};
+pub use transpile::{GoTranspiler, PythonTranspiler, RustTranspiler, Transpiler, TsTranspiler};
