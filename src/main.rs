@@ -152,7 +152,10 @@ async fn main() -> anyhow::Result<()> {
                 let resolved = config.get_resolved_config();
 
                 let elapsed = start_time.elapsed();
-                let listener = tokio::net::TcpListener::bind(&format!("{}:{}", host, port)).await?;
+                let addr = format!("{}:{}", host, port);
+                let listener = tokio::net::TcpListener::bind(&addr)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("failed to bind to {}: {}", addr, e))?;
 
                 // Print header inline since print_header is defined outside
                 println!();
