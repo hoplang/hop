@@ -1,23 +1,40 @@
+<AsciiError>
+  <pre class="text-[#ff6a6a] text-md leading-none">
+    {"   ___  ______________  _____ 
+"}
+    {" / _ \/ ___/ ___/ __ \/ ___/ 
+"}
+    {"/  __/ /  / /  / /_/ / /     
+"}
+    {"\___/_/  /_/   \____/_/      
+"}
+  </pre>
+</AsciiError>
+
 entrypoint Overlay(message: String) {
   <div class="bg-[rgba(41,_39,_39,_0.98)] absolute inset-0 overflow-auto">
-    <div class="max-w-4xl mx-auto px-12 py-8">
-      <div class="flex justify-center mb-4">
-        <pre class="text-[#ff6a6a] text-md leading-none">
-          {"   ___  ______________  _____ 
-"}
-          {" / _ \/ ___/ ___/ __ \/ ___/ 
-"}
-          {"/  __/ /  / /  / /_/ / /     
-"}
-          {"\___/_/  /_/   \____/_/      
-"}
-        </pre>
+    <div class="max-w-4xl mx-auto md:px-14 py-12 h-full flex flex-col gap-6">
+      <div class="flex justify-center">
+        <AsciiError/>
       </div>
-      <pre class="bg-[#201f1f] p-12 py-8 rounded-md border-t-[#ff6a6a] border-t-5 text-white grid grid-cols-[1fr_32px]">
-        <div>
+      <pre class={
+        classes!(
+          "bg-[#201f1f]",
+          "p-12",
+          "py-8",
+          "md:rounded-md",
+          "border-t-[#ff6a6a]",
+          "border-t-5",
+          "text-white",
+          "grid",
+          "md:grid-cols-[1fr_32px]",
+        )
+      }>
+        <div class="overflow-scroll">
           {message}
         </div>
         <svg
+          class="hidden md:block"
           xmlns="http://www.w3.org/2000/svg"
           width="32"
           height="32"
