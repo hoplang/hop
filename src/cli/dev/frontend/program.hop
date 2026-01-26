@@ -1,0 +1,28 @@
+record Module {
+  name: String,
+  components: Array[String],
+}
+
+entrypoint Program(modules: Array[Module]) {
+  <div class="max-w-lg mx-auto">
+    <for {module in modules}>
+      <div class="p-4">
+        <h1 class="text-xl">
+          {module.name}
+        </h1>
+        <details>
+          <summary>
+            Components
+          </summary>
+          <ul>
+            <for {cmp in module.components}>
+              <li>
+                {cmp}
+              </li>
+            </for>
+          </ul>
+        </details>
+      </div>
+    </for>
+  </div>
+}

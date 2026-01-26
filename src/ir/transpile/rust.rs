@@ -125,7 +125,9 @@ impl Transpiler for RustTranspiler {
 
         let needs_trusted_html = self.scan_for_trusted_html(entrypoints);
 
-        let mut result = BoxDoc::nil();
+        let mut result = BoxDoc::text("use serde::Serialize;")
+            .append(BoxDoc::line())
+            .append(BoxDoc::line());
 
         // Add TrustedHTML type definition if needed
         if needs_trusted_html {
@@ -160,7 +162,7 @@ impl Transpiler for RustTranspiler {
         // Add enum type definitions
         for enum_def in &module.enums {
             result = result
-                .append(BoxDoc::text("#[derive(Clone, Debug)]"))
+                .append(BoxDoc::text("#[derive(Clone, Debug, Serialize)]"))
                 .append(BoxDoc::line())
                 .append(BoxDoc::text("pub enum "))
                 .append(BoxDoc::text(enum_def.name.as_str()))
@@ -203,7 +205,7 @@ impl Transpiler for RustTranspiler {
         // Add record struct definitions
         for record in records {
             result = result
-                .append(BoxDoc::text("#[derive(Clone, Debug)]"))
+                .append(BoxDoc::text("#[derive(Clone, Debug, Serialize)]"))
                 .append(BoxDoc::line())
                 .append(BoxDoc::text("pub struct "))
                 .append(BoxDoc::text(record.name.as_str()))
