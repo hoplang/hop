@@ -1,28 +1,76 @@
+import lucide::Form
+
+record Component {
+  name: String,
+}
+
 record Module {
   name: String,
-  components: Array[String],
+  components: Array[Component],
 }
 
 entrypoint Program(modules: Array[Module]) {
-  <div class="max-w-lg mx-auto">
-    <for {module in modules}>
-      <div class="p-4">
-        <h1 class="text-xl">
-          {module.name}
-        </h1>
-        <details>
-          <summary>
-            Components
-          </summary>
-          <ul>
-            <for {cmp in module.components}>
-              <li>
-                {cmp}
-              </li>
-            </for>
-          </ul>
-        </details>
+  <body class="mt-12 mb-30" style="background: #308d60;">
+    <div
+      class="max-w-7xl mx-auto"
+      style="font-family: monospace;"
+    >
+      <h1 class="bg-black text-white text-lg p-4 mb-12 inline-block">
+        modules
+      </h1>
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <for {module in modules}>
+          <div class="p-4 bg-black text-white">
+            <div class="flex items-center justify-between">
+              <h1 class="text-lg">
+                {module.name}
+              </h1>
+            </div>
+            <details class="text-[14px] p-2 mt-2">
+              <summary>
+                Components
+              </summary>
+              <ul>
+                <for {c in module.components}>
+                  <li>
+                    {c.name}
+                  </li>
+                </for>
+              </ul>
+            </details>
+          </div>
+        </for>
       </div>
-    </for>
-  </div>
+      <pre class="bg-black text-white m-4 inline-block p-3 leading-tight">
+        {"   ___  ______________  _____ 
+"}
+        {" / _ \/ ___/ ___/ __ \/ ___/ 
+"}
+        {"/  __/ /  / /  / /_/ / /     
+"}
+        {"\___/_/  /_/   \____/_/      
+"}
+      </pre>
+      <pre class="bg-black text-white p-4 inline-block m-4 leading-tight">
+        {"Linux
+"}
+        {"├─Android
+"}
+        {"├─Debian
+"}
+        {"│  ├─Ubuntu
+"}
+        {"│  │  ├─Lubuntu
+"}
+        {"│  │  └─Kubuntu
+"}
+        {"│  └─Mint
+"}
+        {"├─Centos
+"}
+        {"└─Fedora
+"}
+      </pre>
+    </div>
+  </body>
 }

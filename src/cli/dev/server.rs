@@ -1,9 +1,9 @@
 use super::frontend;
-use crate::document::DocumentAnnotator;
 use crate::hop::program::Program;
 use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
 use crate::log_info;
+use crate::{cli::dev::frontend::Component, document::DocumentAnnotator};
 use axum::body::Body;
 use axum::extract::State;
 use axum::http::StatusCode;
@@ -31,7 +31,9 @@ async fn handle_program(State(state): State<AppState>) -> Response<Body> {
     for (module_name, ast) in _program.get_typed_modules() {
         let mut components = Vec::new();
         for c in ast.get_component_declarations() {
-            components.push(c.component_name.to_string());
+            components.push(Component {
+                name: c.component_name.to_string(),
+            });
         }
         modules.push(frontend::Module {
             name: module_name.to_string(),
@@ -80,37 +82,24 @@ async fn handle_event_source(
 }
 
 #[derive(serde::Deserialize)]
-struct RenderQuery {
+struct RenderRequest {
     module: String,
     component: String,
     #[serde(default)]
-    params: Option<String>,
+    params: std::collections::HashMap<String, serde_json::Value>,
 }
 
 async fn handle_render(
     State(state): State<AppState>,
-    axum::extract::Query(query): axum::extract::Query<RenderQuery>,
+    axum::extract::Json(request): axum::extract::Json<RenderRequest>,
 ) -> Response<Body> {
-    // Parse the params JSON string
-    let params: std::collections::HashMap<String, serde_json::Value> = match &query.params {
-        Some(params_str) => match serde_json::from_str(params_str) {
-            Ok(p) => p,
-            Err(e) => {
-                return Response::builder()
-                    .status(StatusCode::BAD_REQUEST)
-                    .header("Content-Type", "text/html")
-                    .body(Body::from(format!("Invalid params JSON: {}", e)))
-                    .unwrap();
-            }
-        },
-        None => std::collections::HashMap::new(),
-    };
+    let params = request.params;
     let render_start = std::time::Instant::now();
     log_info!(
         "render",
         step = "enter",
-        module = query.module.clone(),
-        entrypoint = query.component.clone(),
+        module = request.module.clone(),
+        entrypoint = request.component.clone(),
     );
 
     let program = state.program.read().unwrap();
@@ -119,10 +108,10 @@ async fn handle_render(
     let css = state.tailwind_css.read().unwrap();
     let css_content = css.as_deref();
 
-    let entrypoint_name_for_log = query.component.clone();
+    let entrypoint_name_for_log = request.component.clone();
 
     // Parse module name
-    let module_name = match ModuleName::new(&query.module) {
+    let module_name = match ModuleName::new(&request.module) {
         Ok(name) => name,
         Err(e) => {
             return Response::builder()
@@ -134,7 +123,7 @@ async fn handle_render(
     };
 
     // Parse component name
-    let component_name = match ComponentName::new(query.component.clone()) {
+    let component_name = match ComponentName::new(request.component.clone()) {
         Ok(name) => name,
         Err(e) => {
             return Response::builder()
@@ -222,7 +211,7 @@ pub fn create_router() -> axum::Router<AppState> {
     axum::Router::new()
         .route("/development_mode.js", get(handle_development_mode_js))
         .route("/event_source", get(handle_event_source))
-        .route("/render", get(handle_render))
+        .route("/render", axum::routing::post(handle_render))
         .route("/program", get(handle_program))
         .layer(cors)
 }
@@ -254,7 +243,7 @@ mod tests {
         };
 
         let router = axum::Router::new()
-            .route("/render", axum::routing::get(handle_render))
+            .route("/render", axum::routing::post(handle_render))
             .route("/program", axum::routing::get(handle_program))
             .with_state(app_state);
 
@@ -272,10 +261,12 @@ mod tests {
         "#});
 
         let response = server
-            .get("/render")
-            .add_query_param("module", "test")
-            .add_query_param("component", "GreetingComp")
-            .add_query_param("params", r#"{"name":"Alice","title":"Welcome"}"#)
+            .post("/render")
+            .json(&serde_json::json!({
+                "module": "test",
+                "component": "GreetingComp",
+                "params": {"name": "Alice", "title": "Welcome"}
+            }))
             .await;
 
         response.assert_status_ok();
@@ -293,9 +284,11 @@ mod tests {
         "#});
 
         let response = server
-            .get("/render")
-            .add_query_param("module", "test")
-            .add_query_param("component", "SimpleComp")
+            .post("/render")
+            .json(&serde_json::json!({
+                "module": "test",
+                "component": "SimpleComp"
+            }))
             .await;
 
         response.assert_status_ok();
@@ -321,9 +314,11 @@ mod tests {
         "#});
 
         let response = server
-            .get("/render")
-            .add_query_param("module", "page")
-            .add_query_param("component", "Page")
+            .post("/render")
+            .json(&serde_json::json!({
+                "module": "page",
+                "component": "Page"
+            }))
             .await;
 
         response.assert_status_ok();
@@ -347,9 +342,11 @@ mod tests {
         "#});
 
         let response = server
-            .get("/render")
-            .add_query_param("module", "test")
-            .add_query_param("component", "NonExistent")
+            .post("/render")
+            .json(&serde_json::json!({
+                "module": "test",
+                "component": "NonExistent"
+            }))
             .await;
 
         response.assert_status_bad_request();
@@ -358,7 +355,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn should_return_status_bad_request_for_render_when_receiving_invalid_params_json() {
+    async fn should_return_status_bad_request_for_render_when_receiving_invalid_json() {
         let server = create_test_server(indoc::indoc! {r#"
             -- test.hop --
             entrypoint SimpleComp() {
@@ -367,16 +364,12 @@ mod tests {
         "#});
 
         let response = server
-            .get("/render")
-            .add_query_param("module", "test")
-            .add_query_param("component", "SimpleComp")
-            .add_query_param("params", "invalid-json")
+            .post("/render")
+            .content_type("application/json")
+            .bytes("invalid-json".into())
             .await;
 
         response.assert_status_bad_request();
-
-        expect!["Invalid params JSON: expected value at line 1 column 1"]
-            .assert_eq(&response.text());
     }
 
     #[tokio::test]
@@ -394,9 +387,11 @@ mod tests {
         "#});
 
         let response = server
-            .get("/render")
-            .add_query_param("module", "good")
-            .add_query_param("component", "GoodComp")
+            .post("/render")
+            .json(&serde_json::json!({
+                "module": "good",
+                "component": "GoodComp"
+            }))
             .await;
 
         response.assert_status_bad_request();
@@ -424,9 +419,11 @@ mod tests {
         "#});
 
         let response = server
-            .get("/render")
-            .add_query_param("module", "good")
-            .add_query_param("component", "GoodComp")
+            .post("/render")
+            .json(&serde_json::json!({
+                "module": "good",
+                "component": "GoodComp"
+            }))
             .await;
 
         response.assert_status_bad_request();
