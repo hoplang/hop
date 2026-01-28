@@ -22,7 +22,8 @@ use super::tokenizer::{self, Token};
 fn parse_attribute(
     attr: &tokenizer::TokenizedAttribute,
     comments: &mut VecDeque<DocumentRange>,
-) -> Result<parsed_ast::ParsedAttribute, ParseError> {
+    errors: &mut ErrorCollector<ParseError>,
+) -> Option<parsed_ast::ParsedAttribute> {
     let value = match &attr.value {
         Some(tokenizer::TokenizedAttributeValue::String { content }) => {
             Some(parsed_ast::ParsedAttributeValue::String(content.clone()))
@@ -30,21 +31,15 @@ fn parse_attribute(
         Some(tokenizer::TokenizedAttributeValue::Expression(range)) => {
             let mut iter = range.cursor().peekable();
             let mut dop_errors = ErrorCollector::new();
-            match dop::parser::parse_expr(&mut iter, comments, &mut dop_errors, range) {
-                Some(expr) => Some(parsed_ast::ParsedAttributeValue::Expression(expr)),
-                None => {
-                    // Return the first error from dop_errors
-                    let err = dop_errors
-                        .to_vec()
-                        .pop()
-                        .expect("parse_expr returned None but no errors were collected");
-                    return Err(err.into());
-                }
+            let result = dop::parser::parse_expr(&mut iter, comments, &mut dop_errors, range);
+            for err in dop_errors.to_vec() {
+                errors.push(err.into());
             }
+            Some(result.map(parsed_ast::ParsedAttributeValue::Expression)?)
         }
         None => None,
     };
-    Ok(parsed_ast::ParsedAttribute {
+    Some(parsed_ast::ParsedAttribute {
         name: attr.name.clone(),
         value,
     })
@@ -53,10 +48,11 @@ fn parse_attribute(
 fn parse_attributes(
     attributes: &[tokenizer::TokenizedAttribute],
     comments: &mut VecDeque<DocumentRange>,
-) -> Vec<Result<parsed_ast::ParsedAttribute, ParseError>> {
+    errors: &mut ErrorCollector<ParseError>,
+) -> Vec<parsed_ast::ParsedAttribute> {
     attributes
         .iter()
-        .map(|attr| parse_attribute(attr, comments))
+        .filter_map(|attr| parse_attribute(attr, comments, errors))
         .collect()
 }
 
@@ -336,11 +332,8 @@ fn parse_component_declaration(
         let mut expr_iter = expr.cursor().peekable();
         let mut dop_errors = ErrorCollector::new();
         let result = dop::parser::parse_parameters(&mut expr_iter, comments, &mut dop_errors, expr);
-        if result.is_none() {
-            for err in dop_errors.to_vec() {
-                errors.push(err.into());
-            }
-            return None;
+        for err in dop_errors.to_vec() {
+            errors.push(err.into());
         }
         result.map(|parsed_params| {
             let params = parsed_params
@@ -646,15 +639,15 @@ fn construct_node(
         Token::TextExpression { content, range } => {
             let mut iter = content.cursor().peekable();
             let mut dop_errors = ErrorCollector::new();
-            match dop::parser::parse_expr(&mut iter, comments, &mut dop_errors, &content) {
-                Some(expression) => Some(ParsedNode::TextExpression { expression, range }),
-                None => {
-                    for err in dop_errors.to_vec() {
-                        errors.push(err.into());
-                    }
-                    None
-                }
+            let result =
+                match dop::parser::parse_expr(&mut iter, comments, &mut dop_errors, &content) {
+                    Some(expression) => Some(ParsedNode::TextExpression { expression, range }),
+                    None => None,
+                };
+            for err in dop_errors.to_vec() {
+                errors.push(err.into());
             }
+            result
         }
         Token::RawTextTag {
             tag_name,
@@ -663,10 +656,7 @@ fn construct_node(
             range,
             ..
         } => {
-            let attributes = parse_attributes(&attributes, comments)
-                .into_iter()
-                .filter_map(|attr| errors.ok_or_add(attr))
-                .collect();
+            let attributes = parse_attributes(&attributes, comments, errors);
 
             // Convert content to a Text child if present
             let children = content
@@ -695,10 +685,8 @@ fn construct_node(
                     let mut iter = e.cursor().peekable();
                     let mut dop_errors = ErrorCollector::new();
                     let result = dop::parser::parse_expr(&mut iter, comments, &mut dop_errors, &e);
-                    if result.is_none() {
-                        for err in dop_errors.to_vec() {
-                            errors.push(err.into());
-                        }
+                    for err in dop_errors.to_vec() {
+                        errors.push(err.into());
                     }
                     result
                 } else {
@@ -755,10 +743,8 @@ fn construct_node(
                                     &mut dop_errors,
                                     &pattern_range,
                                 );
-                                if result.is_none() {
-                                    for err in dop_errors.to_vec() {
-                                        errors.push(err.into());
-                                    }
+                                for err in dop_errors.to_vec() {
+                                    errors.push(err.into());
                                 }
                                 result
                             };
@@ -825,10 +811,8 @@ fn construct_node(
                         let mut dop_errors = ErrorCollector::new();
                         let result =
                             dop::parser::parse_expr(&mut iter, comments, &mut dop_errors, &e);
-                        if result.is_none() {
-                            for err in dop_errors.to_vec() {
-                                errors.push(err.into());
-                            }
+                        for err in dop_errors.to_vec() {
+                            errors.push(err.into());
                         }
                         result
                     } else {
@@ -856,10 +840,8 @@ fn construct_node(
                             &mut dop_errors,
                             &e,
                         );
-                        if result.is_none() {
-                            for err in dop_errors.to_vec() {
-                                errors.push(err.into());
-                            }
+                        for err in dop_errors.to_vec() {
+                            errors.push(err.into());
                         }
                         result
                     } else {
@@ -898,10 +880,8 @@ fn construct_node(
                             &mut dop_errors,
                             &bindings_range,
                         );
-                        if result.is_none() {
-                            for err in dop_errors.to_vec() {
-                                errors.push(err.into());
-                            }
+                        for err in dop_errors.to_vec() {
+                            errors.push(err.into());
                         }
                         result
                     };
@@ -1014,10 +994,7 @@ fn construct_node(
 
                 _ => {
                     // Default case: treat as HTML
-                    let attributes = parse_attributes(&attributes, comments)
-                        .into_iter()
-                        .filter_map(|attr| errors.ok_or_add(attr))
-                        .collect();
+                    let attributes = parse_attributes(&attributes, comments, errors);
 
                     Some(ParsedNode::Html {
                         tag_name,
@@ -3452,6 +3429,40 @@ mod tests {
                     {required}: {optional}
                   </div>
                 }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_escape_sequences_in_strings() {
+        check(
+            indoc! {r#"
+                <Test>
+                    {"hello\nworld"}
+                    {"tab\there"}
+                    {"back\\slash"}
+                    {"quote\"here"}
+                </Test>
+            "#},
+            expect![[r#"
+                <Test>
+                  {"hello\nworld"}
+                  {"tab\there"}
+                  {"back\\slash"}
+                  {"quote\"here"}
+                </Test>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_invalid_escape_sequences_in_strings() {
+        check(
+            r#"<Test>{"invalid\q"}</Test>"#,
+            expect![[r#"
+                error: Invalid escape sequence '\q'
+                1 | <Test>{"invalid\q"}</Test>
+                  |                ^^
             "#]],
         );
     }

@@ -6517,4 +6517,186 @@ mod tests {
             "#]],
         );
     }
+
+    #[test]
+    #[ignore]
+    fn escape_sequence_newline() {
+        check(
+            indoc! {r#"
+                entrypoint Test {
+                  {"Hello\nWorld"}
+                }
+            "#},
+            "Hello\nWorld",
+            expect![[r#"
+                -- ir (unoptimized) --
+                Test() {
+                  write_escaped("Hello\nWorld")
+                }
+                -- ir (optimized) --
+                Test() {
+                  write("Hello\nWorld")
+                }
+                -- expected output --
+                Hello
+                World
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- go (unoptimized) --
+                OK
+                -- python (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn escape_sequence_tab() {
+        check(
+            indoc! {r#"
+                entrypoint Test {
+                  {"Col1\tCol2"}
+                }
+            "#},
+            "Col1\tCol2",
+            expect![[r#"
+                -- ir (unoptimized) --
+                Test() {
+                  write_escaped("Col1\tCol2")
+                }
+                -- ir (optimized) --
+                Test() {
+                  write("Col1\tCol2")
+                }
+                -- expected output --
+                Col1	Col2
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- go (unoptimized) --
+                OK
+                -- python (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn escape_sequence_backslash() {
+        check(
+            indoc! {r#"
+                entrypoint Test {
+                  {"C:\\Users\\name"}
+                }
+            "#},
+            "C:\\Users\\name",
+            expect![[r#"
+                -- ir (unoptimized) --
+                Test() {
+                  write_escaped("C:\\Users\\name")
+                }
+                -- ir (optimized) --
+                Test() {
+                  write("C:\\Users\\name")
+                }
+                -- expected output --
+                C:\Users\name
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- go (unoptimized) --
+                OK
+                -- python (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn escape_sequences_combined() {
+        check(
+            indoc! {r#"
+                entrypoint Test {
+                  {"Name:\tJohn\nAge:\t30"}
+                }
+            "#},
+            "Name:\tJohn\nAge:\t30",
+            expect![[r#"
+                -- ir (unoptimized) --
+                Test() {
+                  write_escaped("Name:\tJohn\nAge:\t30")
+                }
+                -- ir (optimized) --
+                Test() {
+                  write("Name:\tJohn\nAge:\t30")
+                }
+                -- expected output --
+                Name:	John
+                Age:	30
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- go (unoptimized) --
+                OK
+                -- python (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
 }

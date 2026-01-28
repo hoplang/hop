@@ -867,7 +867,7 @@ impl IrExpr {
                 .to_doc()
                 .append(BoxDoc::text("."))
                 .append(BoxDoc::text(field.as_str())),
-            IrExpr::StringLiteral { value, .. } => BoxDoc::text(format!("\"{}\"", value)),
+            IrExpr::StringLiteral { value, .. } => BoxDoc::text(format!("{:?}", value.as_str())),
             IrExpr::BooleanLiteral { value, .. } => BoxDoc::text(value.to_string()),
             IrExpr::FloatLiteral { value, .. } => BoxDoc::text(value.to_string()),
             IrExpr::IntLiteral { value, .. } => BoxDoc::text(value.to_string()),

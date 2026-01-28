@@ -18,6 +18,12 @@ pub enum ParseError {
     #[error("Unterminated string literal")]
     UnterminatedStringLiteral { range: DocumentRange },
 
+    #[error("Invalid escape sequence '\\{ch}'")]
+    InvalidEscapeSequence { ch: char, range: DocumentRange },
+
+    #[error("Invalid escape sequence at end of string")]
+    InvalidEscapeSequenceAtEndOfString { range: DocumentRange },
+
     #[error("Unmatched '{token}'")]
     UnmatchedToken { token: Token, range: DocumentRange },
 
@@ -126,6 +132,8 @@ impl Ranged for ParseError {
         match self {
             ParseError::UnexpectedEof { range, .. }
             | ParseError::UnterminatedStringLiteral { range }
+            | ParseError::InvalidEscapeSequence { range, .. }
+            | ParseError::InvalidEscapeSequenceAtEndOfString { range }
             | ParseError::UnmatchedToken { range, .. }
             | ParseError::UnexpectedCharacter { range, .. }
             | ParseError::InvalidNumberFormat { range, .. }

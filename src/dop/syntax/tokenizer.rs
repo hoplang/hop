@@ -112,20 +112,79 @@ pub fn next(
             _ => (Token::Assign, start),
         },
         '"' => {
-            let content: Option<DocumentRange> =
-                iter.peeking_take_while(|s| s.ch() != '"').collect();
-            match iter.next() {
-                None => {
-                    errors.push(ParseError::UnterminatedStringLiteral {
-                        range: content.map(|c| start.clone().to(c)).unwrap_or(start),
-                    });
-                    return None;
-                }
-                Some(end) => {
-                    let value = content
-                        .map(|c| c.to_cheap_string())
-                        .unwrap_or_else(|| CheapString::new(String::new()));
-                    (Token::StringLiteral(value), start.to(end))
+            // Parse string with escape sequence validation
+            let mut content: Option<DocumentRange> = None;
+            loop {
+                match iter.peek().map(|s| s.ch()) {
+                    None => {
+                        // Unterminated string
+                        errors.push(ParseError::UnterminatedStringLiteral {
+                            range: content
+                                .map(|c| start.clone().to(c))
+                                .unwrap_or(start.clone()),
+                        });
+                        return None;
+                    }
+                    Some('"') => {
+                        // End of string
+                        let end = iter.next().unwrap();
+                        let value = content
+                            .map(|c| c.to_cheap_string())
+                            .unwrap_or_else(|| CheapString::new(String::new()));
+                        break (Token::StringLiteral(value), start.to(end));
+                    }
+                    Some('\\') => {
+                        // Escape sequence - consume backslash
+                        let backslash = iter.next().unwrap();
+                        content = Some(
+                            content
+                                .map(|c| c.to(backslash.clone()))
+                                .unwrap_or(backslash.clone()),
+                        );
+
+                        // Check what follows the backslash
+                        match iter.peek().map(|s| s.ch()) {
+                            None => {
+                                // Backslash at end of input
+                                errors.push(ParseError::InvalidEscapeSequenceAtEndOfString {
+                                    range: backslash.clone(),
+                                });
+                                errors.push(ParseError::UnterminatedStringLiteral {
+                                    range: start.clone().to(backslash),
+                                });
+                                return None;
+                            }
+                            Some(ch @ ('n' | 't' | 'r' | '\\' | '"')) => {
+                                // Valid escape sequence - consume the character
+                                let escape_char = iter.next().unwrap();
+                                content = Some(
+                                    content
+                                        .map(|c| c.to(escape_char.clone()))
+                                        .unwrap_or(escape_char),
+                                );
+                                // Continue parsing - the raw escape sequence is kept
+                                let _ = ch; // silence unused warning
+                            }
+                            Some(ch) => {
+                                // Invalid escape sequence - report error but continue
+                                let escape_char = iter.next().unwrap();
+                                errors.push(ParseError::InvalidEscapeSequence {
+                                    ch,
+                                    range: backslash.to(escape_char.clone()),
+                                });
+                                content = Some(
+                                    content
+                                        .map(|c| c.to(escape_char.clone()))
+                                        .unwrap_or(escape_char),
+                                );
+                            }
+                        }
+                    }
+                    Some(_) => {
+                        // Regular character - consume it
+                        let ch = iter.next().unwrap();
+                        content = Some(content.map(|c| c.to(ch.clone())).unwrap_or(ch));
+                    }
                 }
             }
         }
@@ -2092,6 +2151,76 @@ mod tests {
                 token: Reserved("yield")
                 yield
                 ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_valid_escape_sequences_in_strings() {
+        // Note: The expected output uses Debug format, so backslashes appear doubled
+        check(
+            r#""hello\nworld" "tab\there" "quote\"here" "back\\slash" "cr\rhere""#,
+            expect![[r#"
+                token: StringLiteral("hello\\nworld")
+                "hello\nworld" "tab\there" "quote\"here" "back\\slash" "cr\rhere"
+                ^^^^^^^^^^^^^^
+
+                token: StringLiteral("tab\\there")
+                "hello\nworld" "tab\there" "quote\"here" "back\\slash" "cr\rhere"
+                               ^^^^^^^^^^^
+
+                token: StringLiteral("quote\\\"here")
+                "hello\nworld" "tab\there" "quote\"here" "back\\slash" "cr\rhere"
+                                           ^^^^^^^^^^^^^
+
+                token: StringLiteral("back\\\\slash")
+                "hello\nworld" "tab\there" "quote\"here" "back\\slash" "cr\rhere"
+                                                         ^^^^^^^^^^^^^
+
+                token: StringLiteral("cr\\rhere")
+                "hello\nworld" "tab\there" "quote\"here" "back\\slash" "cr\rhere"
+                                                                       ^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_invalid_escape_sequences_in_strings() {
+        // Note: tokens appear first, then errors at the end
+        check(
+            r#""invalid\q" "also\xinvalid""#,
+            expect![[r#"
+                token: StringLiteral("invalid\\q")
+                "invalid\q" "also\xinvalid"
+                ^^^^^^^^^^^
+
+                token: StringLiteral("also\\xinvalid")
+                "invalid\q" "also\xinvalid"
+                            ^^^^^^^^^^^^^^^
+
+                error: Invalid escape sequence '\q'
+                "invalid\q" "also\xinvalid"
+                        ^^
+
+                error: Invalid escape sequence '\x'
+                "invalid\q" "also\xinvalid"
+                                 ^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_trailing_backslash_in_string() {
+        check(
+            r#""trailing\"#,
+            expect![[r#"
+                error: Invalid escape sequence at end of string
+                "trailing\
+                         ^
+
+                error: Unterminated string literal
+                "trailing\
+                ^^^^^^^^^^
             "#]],
         );
     }

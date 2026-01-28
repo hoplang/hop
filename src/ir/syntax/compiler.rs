@@ -508,7 +508,7 @@ impl Compiler {
                 id: expr_id,
             },
             TypedExpr::StringLiteral { value, .. } => IrExpr::StringLiteral {
-                value: value.clone(),
+                value: CheapString::new(process_escape_sequences(value.as_str())),
                 id: expr_id,
             },
             TypedExpr::BooleanLiteral { value, .. } => IrExpr::BooleanLiteral {
@@ -757,6 +757,46 @@ impl Compiler {
             },
         }
     }
+}
+
+/// Processes escape sequences in a string, converting raw escape sequences
+/// like `\n` to their actual character values.
+///
+/// Supported escape sequences:
+/// - `\n` → newline
+/// - `\t` → tab
+/// - `\r` → carriage return
+/// - `\\` → backslash
+/// - `\"` → double quote
+fn process_escape_sequences(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        if ch == '\\' {
+            match chars.next() {
+                Some('n') => result.push('\n'),
+                Some('t') => result.push('\t'),
+                Some('r') => result.push('\r'),
+                Some('\\') => result.push('\\'),
+                Some('"') => result.push('"'),
+                Some(other) => {
+                    // Invalid escape sequence - keep as-is
+                    // (tokenizer already reported the error)
+                    result.push('\\');
+                    result.push(other);
+                }
+                None => {
+                    // Trailing backslash - keep as-is
+                    result.push('\\');
+                }
+            }
+        } else {
+            result.push(ch);
+        }
+    }
+
+    result
 }
 
 #[cfg(test)]

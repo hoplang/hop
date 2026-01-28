@@ -42,34 +42,21 @@ entrypoint Program(modules: Array[Module]) {
         </for>
       </div>
       <pre class="bg-black text-white m-4 inline-block p-3 leading-tight">
-        {"   ___  ______________  _____ 
-"}
-        {" / _ \/ ___/ ___/ __ \/ ___/ 
-"}
-        {"/  __/ /  / /  / /_/ / /     
-"}
-        {"\___/_/  /_/   \____/_/      
-"}
+        {"   ___  ______________  _____ \n"}
+        {" / _ \\/ ___/ ___/ __ \\/ ___/ \n"}
+        {"/  __/ /  / /  / /_/ / /     \n"}
+        {"\\___/_/  /_/   \\____/_/      \n"}
       </pre>
       <pre class="bg-black text-white p-4 inline-block m-4 leading-tight">
-        {"Linux
-"}
-        {"├─Android
-"}
-        {"├─Debian
-"}
-        {"│  ├─Ubuntu
-"}
-        {"│  │  ├─Lubuntu
-"}
-        {"│  │  └─Kubuntu
-"}
-        {"│  └─Mint
-"}
-        {"├─Centos
-"}
-        {"└─Fedora
-"}
+        {"Linux\n"}
+        {"├─Android\n"}
+        {"├─Debian\n"}
+        {"│  ├─Ubuntu\n"}
+        {"│  │  ├─Lubuntu\n"}
+        {"│  │  └─Kubuntu\n"}
+        {"│  └─Mint\n"}
+        {"├─Centos\n"}
+        {"└─Fedora\n"}
       </pre>
     </div>
   </body>
