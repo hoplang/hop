@@ -212,7 +212,23 @@ fn typecheck_go(code: &str) -> Result<(), String> {
 
 fn execute_rust(code: &str) -> Result<String, String> {
     let temp_dir = TempDir::new().map_err(|e| format!("Failed to create temp dir: {}", e))?;
-    let main_file = temp_dir.path().join("main.rs");
+
+    // Create a minimal Cargo project structure
+    let src_dir = temp_dir.path().join("src");
+    fs::create_dir(&src_dir).map_err(|e| format!("Failed to create src dir: {}", e))?;
+
+    // Write Cargo.toml with serde dependency
+    let cargo_toml = r#"[package]
+name = "hoptest"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+"#;
+    fs::write(temp_dir.path().join("Cargo.toml"), cargo_toml)
+        .map_err(|e| format!("Failed to write Cargo.toml: {}", e))?;
 
     // Create wrapper that calls the test function
     let main_code = format!(
@@ -225,13 +241,14 @@ fn main() {{
         code
     );
 
-    fs::write(&main_file, main_code).map_err(|e| format!("Failed to write main.rs: {}", e))?;
+    fs::write(src_dir.join("main.rs"), main_code)
+        .map_err(|e| format!("Failed to write main.rs: {}", e))?;
 
-    // Compile with rustc
-    let compile_output = Command::new("rustc")
-        .arg(&main_file)
-        .arg("-o")
-        .arg(temp_dir.path().join("main"))
+    // Build with cargo
+    let compile_output = Command::new("cargo")
+        .arg("build")
+        .arg("--quiet")
+        .current_dir(temp_dir.path())
         .output()
         .map_err(|e| format!("Failed to compile Rust: {}", e))?;
 
@@ -243,7 +260,7 @@ fn main() {{
     }
 
     // Execute
-    let output = Command::new(temp_dir.path().join("main"))
+    let output = Command::new(temp_dir.path().join("target/debug/hoptest"))
         .output()
         .map_err(|e| format!("Failed to execute Rust binary: {}", e))?;
 
@@ -259,20 +276,35 @@ fn main() {{
 
 fn typecheck_rust(code: &str) -> Result<(), String> {
     let temp_dir = TempDir::new().map_err(|e| format!("Failed to create temp dir: {}", e))?;
-    let lib_file = temp_dir.path().join("lib.rs");
+
+    // Create a minimal Cargo project structure
+    let src_dir = temp_dir.path().join("src");
+    fs::create_dir(&src_dir).map_err(|e| format!("Failed to create src dir: {}", e))?;
+
+    // Write Cargo.toml with serde dependency
+    let cargo_toml = r#"[package]
+name = "hoptest"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+"#;
+    fs::write(temp_dir.path().join("Cargo.toml"), cargo_toml)
+        .map_err(|e| format!("Failed to write Cargo.toml: {}", e))?;
 
     // Add #![allow(dead_code)] to suppress warnings
     let code_with_attrs = format!("#![allow(dead_code)]\n{}", code);
-    fs::write(&lib_file, code_with_attrs).map_err(|e| format!("Failed to write lib.rs: {}", e))?;
+    fs::write(src_dir.join("lib.rs"), code_with_attrs)
+        .map_err(|e| format!("Failed to write lib.rs: {}", e))?;
 
-    let output = Command::new("rustc")
-        .arg("--crate-type=lib")
-        .arg("--emit=metadata")
-        .arg("-o")
-        .arg(temp_dir.path().join("lib.rmeta"))
-        .arg(&lib_file)
+    let output = Command::new("cargo")
+        .arg("check")
+        .arg("--quiet")
+        .current_dir(temp_dir.path())
         .output()
-        .map_err(|e| format!("Failed to execute rustc: {}", e))?;
+        .map_err(|e| format!("Failed to execute cargo: {}", e))?;
 
     if !output.status.success() {
         return Err(format!(

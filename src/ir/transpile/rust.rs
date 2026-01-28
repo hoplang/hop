@@ -125,9 +125,16 @@ impl Transpiler for RustTranspiler {
 
         let needs_trusted_html = self.scan_for_trusted_html(entrypoints);
 
-        let mut result = BoxDoc::text("use serde::Serialize;")
-            .append(BoxDoc::line())
-            .append(BoxDoc::line());
+        // Add serde import if we have enums or records that need Serialize
+        let needs_serde = !module.enums.is_empty() || !records.is_empty();
+
+        let mut result = if needs_serde {
+            BoxDoc::text("use serde::Serialize;")
+                .append(BoxDoc::line())
+                .append(BoxDoc::line())
+        } else {
+            BoxDoc::nil()
+        };
 
         // Add TrustedHTML type definition if needed
         if needs_trusted_html {
