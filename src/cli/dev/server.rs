@@ -57,6 +57,28 @@ async fn handle_development_mode_js() -> Response<Body> {
         .unwrap()
 }
 
+async fn handle_hmr(
+    axum::extract::Path((module, component)): axum::extract::Path<(String, String)>,
+) -> Response<Body> {
+    let config = serde_json::json!({
+        "module": module,
+        "component": component,
+        "params": {}
+    });
+
+    let html = format!(
+        r#"<!DOCTYPE html>
+<script type="application/json">{config}</script>
+<script src="/development_mode.js"></script>"#,
+        config = config
+    );
+
+    Response::builder()
+        .header("Content-Type", "text/html")
+        .body(Body::from(html))
+        .unwrap()
+}
+
 async fn handle_event_source(
     State(state): State<AppState>,
 ) -> axum::response::sse::Sse<
@@ -87,6 +109,58 @@ struct RenderRequest {
     component: String,
     #[serde(default)]
     params: std::collections::HashMap<String, serde_json::Value>,
+}
+
+#[derive(serde::Serialize)]
+struct EntrypointParam {
+    name: String,
+    #[serde(rename = "type")]
+    typ: String,
+}
+
+#[derive(serde::Serialize)]
+struct Entrypoint {
+    name: String,
+    params: Vec<EntrypointParam>,
+}
+
+#[derive(serde::Serialize)]
+struct ModuleEntrypoints {
+    module: String,
+    entrypoints: Vec<Entrypoint>,
+}
+
+async fn handle_entrypoints(State(state): State<AppState>) -> axum::Json<Vec<ModuleEntrypoints>> {
+    let program = state.program.read().unwrap();
+
+    let mut result = Vec::new();
+
+    for (module_name, ast) in program.get_typed_modules() {
+        let entrypoints: Vec<Entrypoint> = ast
+            .get_entrypoint_declarations()
+            .iter()
+            .map(|ep| Entrypoint {
+                name: ep.name.to_string(),
+                params: ep
+                    .params
+                    .iter()
+                    .map(|(name, typ, _default)| EntrypointParam {
+                        name: name.to_string(),
+                        typ: typ.to_string(),
+                    })
+                    .collect(),
+            })
+            .collect();
+
+        if !entrypoints.is_empty() {
+            result.push(ModuleEntrypoints {
+                module: module_name.to_string(),
+                entrypoints,
+            });
+        }
+    }
+
+    axum::Json(result)
 }
 
 async fn handle_render(
@@ -211,6 +285,8 @@ pub fn create_router() -> axum::Router<AppState> {
         .route("/event_source", get(handle_event_source))
         .route("/render", axum::routing::post(handle_render))
         .route("/program", get(handle_program))
+        .route("/entrypoints", get(handle_entrypoints))
+        .route("/hmr/{module}/{component}", get(handle_hmr))
         .layer(cors)
 }
 
@@ -243,6 +319,7 @@ mod tests {
         let router = axum::Router::new()
             .route("/render", axum::routing::post(handle_render))
             .route("/program", axum::routing::get(handle_program))
+            .route("/entrypoints", axum::routing::get(handle_entrypoints))
             .with_state(app_state);
 
         TestServer::new(router).unwrap()
