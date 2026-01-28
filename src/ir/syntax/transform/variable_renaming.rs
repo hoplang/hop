@@ -238,12 +238,6 @@ impl VariableRenamingPass {
                     self.rename_expr(field_expr);
                 }
             }
-            IrExpr::JsonEncode { value, .. } => {
-                self.rename_expr(value);
-            }
-            IrExpr::EnvLookup { key, .. } => {
-                self.rename_expr(key);
-            }
             IrExpr::StringConcat { left, right, .. }
             | IrExpr::Equals { left, right, .. }
             | IrExpr::LessThan { left, right, .. }

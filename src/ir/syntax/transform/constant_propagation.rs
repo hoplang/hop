@@ -189,9 +189,6 @@ impl Pass for ConstantPropagationPass {
 
                 primary_expr.traverse(&mut |expr| {
                     match expr {
-                        IrExpr::EnvLookup { .. } | IrExpr::JsonEncode { .. } => {
-                            // Runtime only
-                        }
                         IrExpr::LessThanOrEqual { .. } => {
                             // Not yet implemented
                         }

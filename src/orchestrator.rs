@@ -11,7 +11,6 @@ use std::collections::HashMap;
 #[derive(Default)]
 pub struct OrchestrateOptions {
     pub skip_html_structure: bool,
-    pub skip_dev_mode_wrapper: bool,
     pub skip_optimization: bool,
     /// When set, only compile the specified entrypoint instead of all entrypoints.
     pub entrypoint_filter: Option<(ModuleName, ComponentName)>,
@@ -92,11 +91,7 @@ pub fn orchestrate(
         };
 
         // Compile to IR
-        let mut e = if options.skip_dev_mode_wrapper {
-            Compiler::compile_without_dev_wrapper(e)
-        } else {
-            Compiler::compile(e)
-        };
+        let mut e = Compiler::compile(e);
         VariableRenamingPass::run(&mut e);
 
         entrypoints.push(e);
