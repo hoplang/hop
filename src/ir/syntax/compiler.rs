@@ -4,8 +4,7 @@ use crate::common::is_void_element;
 use crate::document::CheapString;
 use crate::dop::TypedExpr;
 use crate::dop::patterns::{EnumMatchArm, Match};
-use crate::dop::semantics::r#type::EquatableType;
-use crate::dop::{Type, VarName};
+use crate::dop::Type;
 use crate::hop::semantics::typed_node::TypedLoopSource;
 use crate::inlined::{
     InlinedAttribute, InlinedAttributeValue, InlinedEntrypointDeclaration, InlinedNode,
@@ -28,68 +27,6 @@ impl Compiler {
             node_id_counter: 0,
         };
 
-        // Extract parameter information by moving
-        let param_info = entrypoint
-            .params
-            .into_iter()
-            .map(|param| (param.var_name, param.var_type))
-            .collect::<Vec<_>>();
-
-        let component_name = entrypoint.component_name;
-        let module_name = &entrypoint.module_name;
-        let children = entrypoint.children;
-
-        // Always generate both development and production bodies
-        let dev_body = compiler.generate_development_mode_body(
-            &module_name.to_path().to_string(),
-            component_name.as_str(),
-            &param_info,
-        );
-        let prod_body = compiler.compile_nodes(children, None);
-
-        // Create condition: EnvLookup("HOP_DEV_MODE") == "enabled"
-        let env_lookup_expr = IrExpr::EnvLookup {
-            key: Box::new(IrExpr::StringLiteral {
-                value: CheapString::new("HOP_DEV_MODE".to_string()),
-                id: compiler.next_expr_id(),
-            }),
-            id: compiler.next_expr_id(),
-        };
-
-        let condition_expr = IrExpr::Equals {
-            left: Box::new(env_lookup_expr),
-            right: Box::new(IrExpr::StringLiteral {
-                value: CheapString::new("enabled".to_string()),
-                id: compiler.next_expr_id(),
-            }),
-            operand_types: EquatableType::String,
-            id: compiler.next_expr_id(),
-        };
-
-        // Wrap both bodies in an If statement
-        let body = vec![IrStatement::If {
-            id: compiler.next_node_id(),
-            condition: condition_expr,
-            body: dev_body,
-            else_body: Some(prod_body),
-        }];
-
-        IrEntrypointDeclaration {
-            name: component_name,
-            parameters: param_info,
-            body,
-        }
-    }
-
-    /// Compile without the development mode wrapper (useful for tests)
-    pub fn compile_without_dev_wrapper(
-        entrypoint: InlinedEntrypointDeclaration,
-    ) -> IrEntrypointDeclaration {
-        let mut compiler = Compiler {
-            expr_id_counter: 0,
-            node_id_counter: 0,
-        };
-
         let param_info = entrypoint
             .params
             .into_iter()
@@ -106,94 +43,6 @@ impl Compiler {
             parameters: param_info,
             body,
         }
-    }
-
-    fn generate_development_mode_body(
-        &mut self,
-        module_name: &str,
-        component_name: &str,
-        params: &[(VarName, Arc<Type>)],
-    ) -> Vec<IrStatement> {
-        let mut body = Vec::new();
-
-        // Generate the HTML bootstrap
-        body.push(IrStatement::Write {
-            id: self.next_node_id(),
-            content: "<!DOCTYPE html>\n".to_string(),
-        });
-
-        // Write module and component as separate fields for development mode
-        body.push(IrStatement::Write {
-            id: self.next_node_id(),
-            content: format!(
-                r#"<script type="application/json">{{"module": "{}", "component": "{}", "params": "#,
-                module_name,
-                component_name
-            ),
-        });
-
-        // Create params object by manually building JSON
-        body.push(IrStatement::Write {
-            id: self.next_node_id(),
-            content: "{".to_string(),
-        });
-
-        for (i, (name, typ)) in params.iter().enumerate() {
-            if i > 0 {
-                body.push(IrStatement::Write {
-                    id: self.next_node_id(),
-                    content: ",".to_string(),
-                });
-            }
-            // Write the key
-            body.push(IrStatement::Write {
-                id: self.next_node_id(),
-                content: format!("\"{}\":", name.as_str()),
-            });
-            // Write the JSON-encoded value
-            body.push(IrStatement::WriteExpr {
-                id: self.next_node_id(),
-                expr: IrExpr::JsonEncode {
-                    value: Box::new(IrExpr::Var {
-                        value: name.clone(),
-                        kind: typ.clone(),
-                        id: self.next_expr_id(),
-                    }),
-                    id: self.next_expr_id(),
-                },
-                escape: false,
-            });
-        }
-
-        body.push(IrStatement::Write {
-            id: self.next_node_id(),
-            content: "}".to_string(),
-        });
-
-        body.push(IrStatement::Write {
-            id: self.next_node_id(),
-            content: "}</script>\n<script src=\"http://localhost:".to_string(),
-        });
-
-        // Insert the port from HOP_DEV_PORT environment variable
-        body.push(IrStatement::WriteExpr {
-            id: self.next_node_id(),
-            expr: IrExpr::EnvLookup {
-                key: Box::new(IrExpr::StringLiteral {
-                    value: CheapString::new("HOP_DEV_PORT".to_string()),
-                    id: self.next_expr_id(),
-                }),
-                id: self.next_expr_id(),
-            },
-            escape: false,
-        });
-
-        body.push(IrStatement::Write {
-            id: self.next_node_id(),
-            content: "/development_mode.js\"></script>".to_string(),
-        });
-
-        body
     }
 
     fn compile_nodes(
@@ -827,17 +676,7 @@ mod tests {
 
                 -- after --
                 MainComp() {
-                  if (EnvLookup("HOP_DEV_MODE") == "enabled") {
-                    write("<!DOCTYPE html>\n")
-                    write("<script type=\"application/json\">{\"module\": \"test\", \"component\": \"MainComp\", \"params\": ")
-                    write("{")
-                    write("}")
-                    write("}</script>\n<script src=\"http://localhost:")
-                    write_expr(EnvLookup("HOP_DEV_PORT"))
-                    write("/development_mode.js\"></script>")
-                  } else {
-                    write("Hello World")
-                  }
+                  write("Hello World")
                 }
             "#]],
         );
@@ -859,20 +698,8 @@ mod tests {
 
                 -- after --
                 MainComp(name: String) {
-                  if (EnvLookup("HOP_DEV_MODE") == "enabled") {
-                    write("<!DOCTYPE html>\n")
-                    write("<script type=\"application/json\">{\"module\": \"test\", \"component\": \"MainComp\", \"params\": ")
-                    write("{")
-                    write("\"name\":")
-                    write_expr(JsonEncode(name))
-                    write("}")
-                    write("}</script>\n<script src=\"http://localhost:")
-                    write_expr(EnvLookup("HOP_DEV_PORT"))
-                    write("/development_mode.js\"></script>")
-                  } else {
-                    write("Hello ")
-                    write_escaped(name)
-                  }
+                  write("Hello ")
+                  write_escaped(name)
                 }
             "#]],
         );
@@ -896,20 +723,10 @@ mod tests {
 
                 -- after --
                 MainComp() {
-                  if (EnvLookup("HOP_DEV_MODE") == "enabled") {
-                    write("<!DOCTYPE html>\n")
-                    write("<script type=\"application/json\">{\"module\": \"test\", \"component\": \"MainComp\", \"params\": ")
-                    write("{")
-                    write("}")
-                    write("}</script>\n<script src=\"http://localhost:")
-                    write_expr(EnvLookup("HOP_DEV_PORT"))
-                    write("/development_mode.js\"></script>")
-                  } else {
-                    write("<div")
-                    write(">")
-                    write("Content")
-                    write("</div>")
-                  }
+                  write("<div")
+                  write(">")
+                  write("Content")
+                  write("</div>")
                 }
             "#]],
         );
@@ -937,23 +754,11 @@ mod tests {
 
                 -- after --
                 MainComp(show: Bool) {
-                  if (EnvLookup("HOP_DEV_MODE") == "enabled") {
-                    write("<!DOCTYPE html>\n")
-                    write("<script type=\"application/json\">{\"module\": \"test\", \"component\": \"MainComp\", \"params\": ")
-                    write("{")
-                    write("\"show\":")
-                    write_expr(JsonEncode(show))
-                    write("}")
-                    write("}</script>\n<script src=\"http://localhost:")
-                    write_expr(EnvLookup("HOP_DEV_PORT"))
-                    write("/development_mode.js\"></script>")
-                  } else {
-                    if show {
-                      write("<div")
-                      write(">")
-                      write("Visible")
-                      write("</div>")
-                    }
+                  if show {
+                    write("<div")
+                    write(">")
+                    write("Visible")
+                    write("</div>")
                   }
                 }
             "#]],
@@ -990,27 +795,15 @@ mod tests {
 
                 -- after --
                 MainComp(items: Array[String]) {
-                  if (EnvLookup("HOP_DEV_MODE") == "enabled") {
-                    write("<!DOCTYPE html>\n")
-                    write("<script type=\"application/json\">{\"module\": \"test\", \"component\": \"MainComp\", \"params\": ")
-                    write("{")
-                    write("\"items\":")
-                    write_expr(JsonEncode(items))
-                    write("}")
-                    write("}</script>\n<script src=\"http://localhost:")
-                    write_expr(EnvLookup("HOP_DEV_PORT"))
-                    write("/development_mode.js\"></script>")
-                  } else {
-                    write("<ul")
+                  write("<ul")
+                  write(">")
+                  for item in items {
+                    write("<li")
                     write(">")
-                    for item in items {
-                      write("<li")
-                      write(">")
-                      write_escaped(item)
-                      write("</li>")
-                    }
-                    write("</ul>")
+                    write_escaped(item)
+                    write("</li>")
                   }
+                  write("</ul>")
                 }
             "#]],
         );
@@ -1037,22 +830,12 @@ mod tests {
 
                 -- after --
                 MainComp() {
-                  if (EnvLookup("HOP_DEV_MODE") == "enabled") {
-                    write("<!DOCTYPE html>\n")
-                    write("<script type=\"application/json\">{\"module\": \"test\", \"component\": \"MainComp\", \"params\": ")
-                    write("{")
-                    write("}")
-                    write("}</script>\n<script src=\"http://localhost:")
-                    write_expr(EnvLookup("HOP_DEV_PORT"))
-                    write("/development_mode.js\"></script>")
-                  } else {
-                    write("<div")
-                    write(" class=\"base\"")
-                    write(" id=\"test\"")
-                    write(">")
-                    write("Content")
-                    write("</div>")
-                  }
+                  write("<div")
+                  write(" class=\"base\"")
+                  write(" id=\"test\"")
+                  write(">")
+                  write("Content")
+                  write("</div>")
                 }
             "#]],
         );
@@ -1082,26 +865,14 @@ mod tests {
 
                 -- after --
                 MainComp(cls: String) {
-                  if (EnvLookup("HOP_DEV_MODE") == "enabled") {
-                    write("<!DOCTYPE html>\n")
-                    write("<script type=\"application/json\">{\"module\": \"test\", \"component\": \"MainComp\", \"params\": ")
-                    write("{")
-                    write("\"cls\":")
-                    write_expr(JsonEncode(cls))
-                    write("}")
-                    write("}</script>\n<script src=\"http://localhost:")
-                    write_expr(EnvLookup("HOP_DEV_PORT"))
-                    write("/development_mode.js\"></script>")
-                  } else {
-                    write("<div")
-                    write(" class=\"base\"")
-                    write(" data-value=\"")
-                    write_escaped(cls)
-                    write("\"")
-                    write(">")
-                    write("Content")
-                    write("</div>")
-                  }
+                  write("<div")
+                  write(" class=\"base\"")
+                  write(" data-value=\"")
+                  write_escaped(cls)
+                  write("\"")
+                  write(">")
+                  write("Content")
+                  write("</div>")
                 }
             "#]],
         );
@@ -1135,28 +906,13 @@ mod tests {
 
                 -- after --
                 TestComp(name: String, count: String) {
-                  if (EnvLookup("HOP_DEV_MODE") == "enabled") {
-                    write("<!DOCTYPE html>\n")
-                    write("<script type=\"application/json\">{\"module\": \"test\", \"component\": \"TestComp\", \"params\": ")
-                    write("{")
-                    write("\"name\":")
-                    write_expr(JsonEncode(name))
-                    write(",")
-                    write("\"count\":")
-                    write_expr(JsonEncode(count))
-                    write("}")
-                    write("}</script>\n<script src=\"http://localhost:")
-                    write_expr(EnvLookup("HOP_DEV_PORT"))
-                    write("/development_mode.js\"></script>")
-                  } else {
-                    write("<div")
-                    write(">")
-                    write("Hello ")
-                    write_escaped(name)
-                    write(", count: ")
-                    write_escaped(count)
-                    write("</div>")
-                  }
+                  write("<div")
+                  write(">")
+                  write("Hello ")
+                  write_escaped(name)
+                  write(", count: ")
+                  write_escaped(count)
+                  write("</div>")
                 }
             "#]],
         );
@@ -1191,24 +947,12 @@ mod tests {
 
                 -- after --
                 TestComp(flag: Bool) {
-                  if (EnvLookup("HOP_DEV_MODE") == "enabled") {
-                    write("<!DOCTYPE html>\n")
-                    write("<script type=\"application/json\">{\"module\": \"test\", \"component\": \"TestComp\", \"params\": ")
-                    write("{")
-                    write("\"flag\":")
-                    write_expr(JsonEncode(flag))
-                    write("}")
-                    write("}</script>\n<script src=\"http://localhost:")
-                    write_expr(EnvLookup("HOP_DEV_PORT"))
-                    write("/development_mode.js\"></script>")
-                  } else {
-                    match flag {
-                      true => {
-                        write("yes")
-                      }
-                      false => {
-                        write("no")
-                      }
+                  match flag {
+                    true => {
+                      write("yes")
+                    }
+                    false => {
+                      write("no")
                     }
                   }
                 }
@@ -1234,23 +978,11 @@ mod tests {
 
                 -- after --
                 TestComp(disabled: Bool) {
-                  if (EnvLookup("HOP_DEV_MODE") == "enabled") {
-                    write("<!DOCTYPE html>\n")
-                    write("<script type=\"application/json\">{\"module\": \"test\", \"component\": \"TestComp\", \"params\": ")
-                    write("{")
-                    write("\"disabled\":")
-                    write_expr(JsonEncode(disabled))
-                    write("}")
-                    write("}</script>\n<script src=\"http://localhost:")
-                    write_expr(EnvLookup("HOP_DEV_PORT"))
-                    write("/development_mode.js\"></script>")
-                  } else {
-                    write("<input")
-                    if disabled {
-                      write(" disabled")
-                    }
-                    write(">")
+                  write("<input")
+                  if disabled {
+                    write(" disabled")
                   }
+                  write(">")
                 }
             "#]],
         );

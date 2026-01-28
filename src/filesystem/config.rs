@@ -40,12 +40,7 @@ pub struct CompileConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
-pub struct DevConfig {
-    /// The commands to run to compile and start your backend server.
-    /// Used by `hop dev`.
-    #[serde(default)]
-    pub server_commands: Vec<String>,
-}
+pub struct DevConfig {}
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
@@ -69,7 +64,6 @@ pub struct TailwindConfig {
 pub struct ResolvedConfig {
     pub target: TargetLanguage,
     pub output_path: String,
-    pub server_commands: Vec<String>,
     /// For Go targets, the package name derived from output_path
     pub go_package: Option<String>,
 }
@@ -132,7 +126,6 @@ impl HopConfig {
         ResolvedConfig {
             target,
             output_path,
-            server_commands: self.dev.server_commands.clone(),
             go_package,
         }
     }
@@ -207,37 +200,7 @@ mod tests {
         let resolved = config.get_resolved_config();
         assert_eq!(resolved.target, TargetLanguage::Typescript);
         assert_eq!(resolved.output_path, "app.ts");
-        assert!(resolved.server_commands.is_empty());
         assert!(resolved.go_package.is_none());
-    }
-
-    #[test]
-    fn should_accept_config_with_server_commands() {
-        let toml_str = indoc! {r#"
-            [compile]
-            target = "ts"
-            output_path = "app.ts"
-
-            [dev]
-            server_commands = ["npm install", "npm start"]
-        "#};
-        let config = HopConfig::from_toml_str(toml_str).unwrap();
-        let resolved = config.get_resolved_config();
-        assert_eq!(resolved.target, TargetLanguage::Typescript);
-        assert_eq!(resolved.output_path, "app.ts");
-        assert_eq!(resolved.server_commands, vec!["npm install", "npm start"]);
-    }
-
-    #[test]
-    fn should_accept_config_without_server_commands() {
-        let toml_str = indoc! {r#"
-            [compile]
-            target = "ts"
-            output_path = "app.ts"
-        "#};
-        let config = HopConfig::from_toml_str(toml_str).unwrap();
-        assert_eq!(config.compile.target, Some(TargetLanguage::Typescript));
-        assert!(config.dev.server_commands.is_empty());
     }
 
     #[test]

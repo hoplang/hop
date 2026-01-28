@@ -37,12 +37,6 @@ impl GoTranspiler {
             stmt.traverse(&mut |s| {
                 if let Some(primary_expr) = s.expr() {
                     primary_expr.traverse(&mut |expr| match expr {
-                        IrExpr::JsonEncode { .. } => {
-                            imports.insert("encoding/json".to_string());
-                        }
-                        IrExpr::EnvLookup { .. } => {
-                            imports.insert("os".to_string());
-                        }
                         IrExpr::IntToString { .. } => {
                             imports.insert("strconv".to_string());
                         }
@@ -946,18 +940,6 @@ impl ExpressionTranspiler for GoTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_json_encode<'a>(&self, value: &'a IrExpr) -> BoxDoc<'a> {
-        BoxDoc::text("mustJSONMarshal(")
-            .append(self.transpile_expr(value))
-            .append(BoxDoc::text(")"))
-    }
-
-    fn transpile_env_lookup<'a>(&self, key: &'a IrExpr) -> BoxDoc<'a> {
-        BoxDoc::text("os.Getenv(")
-            .append(self.transpile_expr(key))
-            .append(BoxDoc::text(")"))
-    }
-
     fn transpile_string_concat<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("(")
             .append(self.transpile_expr(left))
@@ -1441,41 +1423,6 @@ mod tests {
     }
 
     #[test]
-    fn json_encode_empty_array_literal() {
-        // In Go, []string{} is the correct way to declare an empty string slice.
-        check(
-            IrModuleBuilder::new()
-                .component_no_params("TestMainComp", |t| {
-                    t.write_expr(t.json_encode(t.typed_array(Type::String, vec![])), false);
-                })
-                .build(),
-            expect![[r#"
-                -- before --
-                TestMainComp() {
-                  write_expr(JsonEncode([]))
-                }
-
-                -- after --
-                package components
-
-                import (
-                	"encoding/json"
-                	"io"
-                )
-
-                func mustJSONMarshal(v any) string {
-                	data, _ := json.Marshal(v)
-                	return string(data)
-                }
-
-                func TestMainComp(w io.Writer) {
-                	io.WriteString(w, mustJSONMarshal([]string{}))
-                }
-            "#]],
-        );
-    }
-
-    #[test]
     fn if_condition() {
         check(
             IrModuleBuilder::new()
@@ -1759,41 +1706,6 @@ mod tests {
                 	io.WriteString(w, "</div><div>")
                 	io.WriteString(w, html.EscapeString(user_input))
                 	io.WriteString(w, "</div>")
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn env_lookup() {
-        check(
-            IrModuleBuilder::new()
-                .component_no_params("TestEnv", |t| {
-                    t.write("<div>API URL: ");
-                    t.write_expr(t.env_lookup(t.str("API_URL")), false);
-                    t.write("</div>\n");
-                })
-                .build(),
-            expect![[r#"
-                -- before --
-                TestEnv() {
-                  write("<div>API URL: ")
-                  write_expr(EnvLookup("API_URL"))
-                  write("</div>\n")
-                }
-
-                -- after --
-                package components
-
-                import (
-                	"io"
-                	"os"
-                )
-
-                func TestEnv(w io.Writer) {
-                	io.WriteString(w, "<div>API URL: ")
-                	io.WriteString(w, os.Getenv("API_URL"))
-                	io.WriteString(w, "</div>\n")
                 }
             "#]],
         );

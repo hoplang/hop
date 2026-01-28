@@ -213,23 +213,6 @@ fn typecheck_go(code: &str) -> Result<(), String> {
 fn execute_rust(code: &str) -> Result<String, String> {
     let temp_dir = TempDir::new().map_err(|e| format!("Failed to create temp dir: {}", e))?;
 
-    // Create a minimal Cargo project structure
-    let src_dir = temp_dir.path().join("src");
-    fs::create_dir(&src_dir).map_err(|e| format!("Failed to create src dir: {}", e))?;
-
-    // Write Cargo.toml with serde dependency
-    let cargo_toml = r#"[package]
-name = "hoptest"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-"#;
-    fs::write(temp_dir.path().join("Cargo.toml"), cargo_toml)
-        .map_err(|e| format!("Failed to write Cargo.toml: {}", e))?;
-
     // Create wrapper that calls the test function
     let main_code = format!(
         r#"{}
@@ -241,14 +224,16 @@ fn main() {{
         code
     );
 
-    fs::write(src_dir.join("main.rs"), main_code)
-        .map_err(|e| format!("Failed to write main.rs: {}", e))?;
+    let main_rs = temp_dir.path().join("main.rs");
+    fs::write(&main_rs, main_code).map_err(|e| format!("Failed to write main.rs: {}", e))?;
 
-    // Build with cargo
-    let compile_output = Command::new("cargo")
-        .arg("build")
-        .arg("--quiet")
-        .current_dir(temp_dir.path())
+    // Compile with rustc
+    let binary_path = temp_dir.path().join("hoptest");
+    let compile_output = Command::new("rustc")
+        .arg("--edition=2021")
+        .arg(&main_rs)
+        .arg("-o")
+        .arg(&binary_path)
         .output()
         .map_err(|e| format!("Failed to compile Rust: {}", e))?;
 
@@ -260,7 +245,7 @@ fn main() {{
     }
 
     // Execute
-    let output = Command::new(temp_dir.path().join("target/debug/hoptest"))
+    let output = Command::new(&binary_path)
         .output()
         .map_err(|e| format!("Failed to execute Rust binary: {}", e))?;
 
@@ -277,34 +262,21 @@ fn main() {{
 fn typecheck_rust(code: &str) -> Result<(), String> {
     let temp_dir = TempDir::new().map_err(|e| format!("Failed to create temp dir: {}", e))?;
 
-    // Create a minimal Cargo project structure
-    let src_dir = temp_dir.path().join("src");
-    fs::create_dir(&src_dir).map_err(|e| format!("Failed to create src dir: {}", e))?;
-
-    // Write Cargo.toml with serde dependency
-    let cargo_toml = r#"[package]
-name = "hoptest"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-"#;
-    fs::write(temp_dir.path().join("Cargo.toml"), cargo_toml)
-        .map_err(|e| format!("Failed to write Cargo.toml: {}", e))?;
-
     // Add #![allow(dead_code)] to suppress warnings
     let code_with_attrs = format!("#![allow(dead_code)]\n{}", code);
-    fs::write(src_dir.join("lib.rs"), code_with_attrs)
-        .map_err(|e| format!("Failed to write lib.rs: {}", e))?;
+    let lib_rs = temp_dir.path().join("lib.rs");
+    fs::write(&lib_rs, code_with_attrs).map_err(|e| format!("Failed to write lib.rs: {}", e))?;
 
-    let output = Command::new("cargo")
-        .arg("check")
-        .arg("--quiet")
-        .current_dir(temp_dir.path())
+    // Type check with rustc (emit metadata only, no codegen)
+    let output = Command::new("rustc")
+        .arg("--edition=2021")
+        .arg("--crate-type=lib")
+        .arg("--emit=metadata")
+        .arg("-o")
+        .arg(temp_dir.path().join("libhoptest.rmeta"))
+        .arg(&lib_rs)
         .output()
-        .map_err(|e| format!("Failed to execute cargo: {}", e))?;
+        .map_err(|e| format!("Failed to execute rustc: {}", e))?;
 
     if !output.status.success() {
         return Err(format!(
@@ -365,7 +337,6 @@ fn check(hop_source: &str, expected_output: &str, expected: Expect) {
     // Compile to IR without optimization
     let unoptimized_options = OrchestrateOptions {
         skip_html_structure: true,
-        skip_dev_mode_wrapper: true,
         skip_optimization: true,
         ..Default::default()
     };
@@ -374,7 +345,6 @@ fn check(hop_source: &str, expected_output: &str, expected: Expect) {
     // Compile to IR with optimization
     let optimized_options = OrchestrateOptions {
         skip_html_structure: true,
-        skip_dev_mode_wrapper: true,
         skip_optimization: false,
         ..Default::default()
     };

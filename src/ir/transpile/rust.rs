@@ -125,16 +125,7 @@ impl Transpiler for RustTranspiler {
 
         let needs_trusted_html = self.scan_for_trusted_html(entrypoints);
 
-        // Add serde import if we have enums or records that need Serialize
-        let needs_serde = !module.enums.is_empty() || !records.is_empty();
-
-        let mut result = if needs_serde {
-            BoxDoc::text("use serde::Serialize;")
-                .append(BoxDoc::line())
-                .append(BoxDoc::line())
-        } else {
-            BoxDoc::nil()
-        };
+        let mut result = BoxDoc::nil();
 
         // Add TrustedHTML type definition if needed
         if needs_trusted_html {
@@ -169,7 +160,7 @@ impl Transpiler for RustTranspiler {
         // Add enum type definitions
         for enum_def in &module.enums {
             result = result
-                .append(BoxDoc::text("#[derive(Clone, Debug, Serialize)]"))
+                .append(BoxDoc::text("#[derive(Clone, Debug)]"))
                 .append(BoxDoc::line())
                 .append(BoxDoc::text("pub enum "))
                 .append(BoxDoc::text(enum_def.name.as_str()))
@@ -212,7 +203,7 @@ impl Transpiler for RustTranspiler {
         // Add record struct definitions
         for record in records {
             result = result
-                .append(BoxDoc::text("#[derive(Clone, Debug, Serialize)]"))
+                .append(BoxDoc::text("#[derive(Clone, Debug)]"))
                 .append(BoxDoc::line())
                 .append(BoxDoc::text("pub struct "))
                 .append(BoxDoc::text(record.name.as_str()))
@@ -803,18 +794,6 @@ impl ExpressionTranspiler for RustTranspiler {
         BoxDoc::text("(-")
             .append(self.transpile_expr(operand))
             .append(BoxDoc::text(")"))
-    }
-
-    fn transpile_json_encode<'a>(&self, value: &'a IrExpr) -> BoxDoc<'a> {
-        BoxDoc::text("serde_json::to_string(&")
-            .append(self.transpile_expr(value))
-            .append(BoxDoc::text(").unwrap()"))
-    }
-
-    fn transpile_env_lookup<'a>(&self, key: &'a IrExpr) -> BoxDoc<'a> {
-        BoxDoc::text("std::env::var(")
-            .append(self.transpile_expr(key))
-            .append(BoxDoc::text(").unwrap_or_default()"))
     }
 
     fn transpile_string_concat<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {

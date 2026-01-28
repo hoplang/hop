@@ -856,20 +856,6 @@ impl ExpressionTranspiler for TsTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_json_encode<'a>(&self, value: &'a IrExpr) -> BoxDoc<'a> {
-        BoxDoc::nil()
-            .append(BoxDoc::text("JSON.stringify("))
-            .append(self.transpile_expr(value))
-            .append(BoxDoc::text(")"))
-    }
-
-    fn transpile_env_lookup<'a>(&self, key: &'a IrExpr) -> BoxDoc<'a> {
-        BoxDoc::nil()
-            .append(BoxDoc::text("(process?.env?.["))
-            .append(self.transpile_expr(key))
-            .append(BoxDoc::text("] ?? \"\")"))
-    }
-
     fn transpile_string_concat<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::nil()
             .append(BoxDoc::text("("))

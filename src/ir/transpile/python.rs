@@ -15,36 +15,18 @@ impl PythonTranspiler {
         Self {}
     }
 
-    fn scan_for_imports(&self, entrypoint: &IrEntrypointDeclaration) -> (bool, bool, bool) {
+    fn scan_for_html_escape(&self, entrypoint: &IrEntrypointDeclaration) -> bool {
         let mut needs_html_escape = false;
-        let mut needs_json = false;
-        let mut needs_os = false;
 
         for stmt in &entrypoint.body {
-            // Check for HTML escaping
             stmt.traverse(&mut |s| {
                 if let IrStatement::WriteExpr { escape: true, .. } = s {
                     needs_html_escape = true;
                 }
             });
-
-            // Check for JSON encoding
-            stmt.traverse(&mut |s| {
-                if let Some(primary_expr) = s.expr() {
-                    primary_expr.traverse(&mut |expr| match expr {
-                        IrExpr::JsonEncode { .. } => {
-                            needs_json = true;
-                        }
-                        IrExpr::EnvLookup { .. } => {
-                            needs_os = true;
-                        }
-                        _ => {}
-                    });
-                }
-            });
         }
 
-        (needs_html_escape, needs_json, needs_os)
+        needs_html_escape
     }
 
     fn scan_for_trusted_html(&self, entrypoints: &[IrEntrypointDeclaration]) -> bool {
@@ -128,17 +110,12 @@ impl Transpiler for PythonTranspiler {
         let records = &module.records;
 
         let mut needs_html_escape = false;
-        let mut needs_json = false;
         let mut needs_dataclasses = false;
-        let mut needs_os = false;
         let mut needs_optional = false;
 
         // First pass: scan all entrypoints to determine imports
         for entrypoint in entrypoints {
-            let (has_escape, has_json, has_os) = self.scan_for_imports(entrypoint);
-            needs_html_escape |= has_escape;
-            needs_json |= has_json;
-            needs_os |= has_os;
+            needs_html_escape |= self.scan_for_html_escape(entrypoint);
             needs_optional |= self.scan_for_options(entrypoint);
             if !entrypoint.parameters.is_empty() {
                 needs_dataclasses = true;
@@ -166,12 +143,6 @@ impl Transpiler for PythonTranspiler {
         let mut result = BoxDoc::nil();
 
         // Add imports if needed
-        if needs_os {
-            result = result
-                .append(BoxDoc::text("import os"))
-                .append(BoxDoc::line());
-        }
-
         if needs_dataclasses {
             result = result
                 .append(BoxDoc::text("from dataclasses import dataclass"))
@@ -194,24 +165,13 @@ impl Transpiler for PythonTranspiler {
                 .append(BoxDoc::line());
         }
 
-        if needs_json {
-            result = result
-                .append(BoxDoc::text("import json"))
-                .append(BoxDoc::line());
-        }
-
         if needs_html_escape {
             result = result
                 .append(BoxDoc::text("from html import escape as html_escape"))
                 .append(BoxDoc::line());
         }
 
-        if needs_dataclasses
-            || needs_json
-            || needs_html_escape
-            || needs_trusted_html
-            || needs_optional
-        {
+        if needs_dataclasses || needs_html_escape || needs_trusted_html || needs_optional {
             result = result.append(BoxDoc::line());
         }
 
@@ -852,18 +812,6 @@ impl ExpressionTranspiler for PythonTranspiler {
         BoxDoc::text("-(")
             .append(self.transpile_expr(operand))
             .append(BoxDoc::text(")"))
-    }
-
-    fn transpile_json_encode<'a>(&self, value: &'a IrExpr) -> BoxDoc<'a> {
-        BoxDoc::text("json.dumps(")
-            .append(self.transpile_expr(value))
-            .append(BoxDoc::text(", separators=(',', ':'))"))
-    }
-
-    fn transpile_env_lookup<'a>(&self, key: &'a IrExpr) -> BoxDoc<'a> {
-        BoxDoc::text("os.environ.get(")
-            .append(self.transpile_expr(key))
-            .append(BoxDoc::text(", \"\")"))
     }
 
     fn transpile_string_concat<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {

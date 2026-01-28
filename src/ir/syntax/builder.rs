@@ -785,13 +785,6 @@ impl IrBuilder {
         }
     }
 
-    pub fn json_encode(&self, value: IrExpr) -> IrExpr {
-        IrExpr::JsonEncode {
-            value: Box::new(value),
-            id: self.next_expr_id(),
-        }
-    }
-
     /// Create a let expression that binds a variable to a value and evaluates a body expression.
     pub fn let_expr<F>(&self, var_name: &str, value: IrExpr, body_fn: F) -> IrExpr
     where
@@ -840,13 +833,6 @@ impl IrBuilder {
                 args,
                 id: self.next_expr_id(),
             }
-        }
-    }
-
-    pub fn env_lookup(&self, key: IrExpr) -> IrExpr {
-        IrExpr::EnvLookup {
-            key: Box::new(key),
-            id: self.next_expr_id(),
         }
     }
 

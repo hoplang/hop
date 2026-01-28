@@ -171,12 +171,6 @@ pub enum IrExpr {
         id: ExprId,
     },
 
-    /// JSON encode expression for converting values to JSON strings
-    JsonEncode { value: Box<IrExpr>, id: ExprId },
-
-    /// Environment variable lookup expression
-    EnvLookup { key: Box<IrExpr>, id: ExprId },
-
     /// String concatenation expression for joining two string expressions
     StringConcat {
         left: Box<IrExpr>,
@@ -739,8 +733,6 @@ impl IrExpr {
             | IrExpr::EnumLiteral { id, .. }
             | IrExpr::OptionLiteral { id, .. }
             | IrExpr::Match { id, .. }
-            | IrExpr::JsonEncode { id, .. }
-            | IrExpr::EnvLookup { id, .. }
             | IrExpr::StringConcat { id, .. }
             | IrExpr::MergeClasses { id, .. }
             | IrExpr::NumericAdd { id, .. }
@@ -777,9 +769,7 @@ impl IrExpr {
             IrExpr::FloatLiteral { .. } | IrExpr::IntToFloat { .. } => Arc::new(Type::Float),
             IrExpr::IntLiteral { .. } => Arc::new(Type::Int),
 
-            IrExpr::JsonEncode { .. }
-            | IrExpr::EnvLookup { .. }
-            | IrExpr::StringConcat { .. }
+            IrExpr::StringConcat { .. }
             | IrExpr::MergeClasses { .. }
             | IrExpr::StringLiteral { .. }
             | IrExpr::IntToString { .. }
@@ -828,9 +818,7 @@ impl IrExpr {
             IrExpr::FloatLiteral { .. } | IrExpr::IntToFloat { .. } => &FLOAT_TYPE,
             IrExpr::IntLiteral { .. } => &INT_TYPE,
 
-            IrExpr::JsonEncode { .. }
-            | IrExpr::EnvLookup { .. }
-            | IrExpr::StringConcat { .. }
+            IrExpr::StringConcat { .. }
             | IrExpr::MergeClasses { .. }
             | IrExpr::StringLiteral { .. }
             | IrExpr::IntToString { .. }
@@ -918,14 +906,6 @@ impl IrExpr {
                         .append(BoxDoc::text(")"))
                 }
             }
-            IrExpr::JsonEncode { value, .. } => BoxDoc::nil()
-                .append(BoxDoc::text("JsonEncode("))
-                .append(value.to_doc())
-                .append(BoxDoc::text(")")),
-            IrExpr::EnvLookup { key, .. } => BoxDoc::nil()
-                .append(BoxDoc::text("EnvLookup("))
-                .append(key.to_doc())
-                .append(BoxDoc::text(")")),
             IrExpr::StringConcat { left, right, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(left.to_doc())
@@ -1200,12 +1180,6 @@ impl IrExpr {
             IrExpr::BooleanNegation { operand, .. } | IrExpr::NumericNegation { operand, .. } => {
                 operand.traverse(f);
             }
-            IrExpr::JsonEncode { value, .. } => {
-                value.traverse(f);
-            }
-            IrExpr::EnvLookup { key, .. } => {
-                key.traverse(f);
-            }
             IrExpr::Equals { left, right, .. }
             | IrExpr::LessThan { left, right, .. }
             | IrExpr::LessThanOrEqual { left, right, .. }
@@ -1305,12 +1279,6 @@ impl IrExpr {
             }
             IrExpr::BooleanNegation { operand, .. } | IrExpr::NumericNegation { operand, .. } => {
                 operand.traverse_mut(f);
-            }
-            IrExpr::JsonEncode { value, .. } => {
-                value.traverse_mut(f);
-            }
-            IrExpr::EnvLookup { key, .. } => {
-                key.traverse_mut(f);
             }
             IrExpr::StringConcat { left, right, .. }
             | IrExpr::NumericAdd { left, right, .. }

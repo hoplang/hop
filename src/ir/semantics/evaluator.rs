@@ -148,45 +148,6 @@ impl Value {
         }
     }
 
-    /// Convert Value to serde_json::Value for JSON encoding
-    pub fn to_json(&self) -> serde_json::Value {
-        match self {
-            Value::String(s) => serde_json::Value::String(s.clone()),
-            Value::Bool(b) => serde_json::Value::Bool(*b),
-            Value::Int(i) => serde_json::Value::Number((*i).into()),
-            Value::Float(f) => serde_json::Value::Number(
-                serde_json::Number::from_f64(*f).unwrap_or_else(|| serde_json::Number::from(0)),
-            ),
-            Value::Array(arr) => {
-                serde_json::Value::Array(arr.iter().map(|v| v.to_json()).collect())
-            }
-            Value::Record(rec) => {
-                let obj: serde_json::Map<String, serde_json::Value> =
-                    rec.iter().map(|(k, v)| (k.clone(), v.to_json())).collect();
-                serde_json::Value::Object(obj)
-            }
-            Value::Some(inner) => inner.to_json(),
-            Value::None => serde_json::Value::Null,
-            Value::Enum {
-                variant_name,
-                fields,
-            } => {
-                if fields.is_empty() {
-                    serde_json::Value::String(variant_name.to_string())
-                } else {
-                    let mut obj = serde_json::Map::new();
-                    obj.insert(
-                        "_variant".to_string(),
-                        serde_json::Value::String(variant_name.to_string()),
-                    );
-                    for (k, v) in fields {
-                        obj.insert(k.clone(), v.to_json());
-                    }
-                    serde_json::Value::Object(obj)
-                }
-            }
-        }
-    }
 }
 
 /// Evaluate an IR entrypoint with the given arguments
@@ -432,19 +393,6 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value> {
                 rec.insert(key.as_str().to_string(), evaluate_expr(value, env)?);
             }
             Ok(Value::Record(rec))
-        }
-        IrExpr::JsonEncode { value, .. } => {
-            let val = evaluate_expr(value, env)?;
-            let json_str = serde_json::to_string(&val.to_json())?;
-            Ok(Value::String(json_str))
-        }
-        IrExpr::EnvLookup { key, .. } => {
-            let key_val = evaluate_expr(key, env)?;
-            let key_str = key_val
-                .as_str()
-                .ok_or_else(|| anyhow!("EnvLookup key must be a string"))?;
-            let env_val = std::env::var(key_str).unwrap_or_default();
-            Ok(Value::String(env_val))
         }
         IrExpr::StringConcat { left, right, .. } => {
             let left_val = evaluate_expr(left, env)?;
