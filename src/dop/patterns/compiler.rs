@@ -972,6 +972,7 @@ mod tests {
     use crate::dop::symbols::field_name::FieldName;
     use crate::dop::symbols::type_name::TypeName;
     use crate::dop::syntax::parsed::ParsedExpr;
+    use crate::error_collector::ErrorCollector;
     use crate::hop::symbols::module_name::ModuleName;
     use expect_test::{Expect, expect};
     use indoc::indoc;
@@ -982,7 +983,8 @@ mod tests {
         let range = cursor.range();
         let mut iter = cursor.peekable();
         let mut comments = VecDeque::new();
-        let expr = parser::parse_expr(&mut iter, &mut comments, &range)
+        let mut errors = ErrorCollector::new();
+        let expr = parser::parse_expr(&mut iter, &mut comments, &mut errors, &range)
             .expect("Failed to parse expression");
 
         let (subject_name, subject_range, patterns, match_range) = match expr {

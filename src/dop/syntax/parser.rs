@@ -5,6 +5,7 @@ use crate::document::{CheapString, DocumentCursor, DocumentRange};
 use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::type_name::TypeName;
 use crate::dop::symbols::var_name::VarName;
+use crate::error_collector::ErrorCollector;
 use crate::hop::symbols::module_name::ModuleName;
 
 use super::parse_error::ParseError;
@@ -18,37 +19,41 @@ use super::tokenizer;
 fn next(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
-) -> Option<Result<(Token, DocumentRange), ParseError>> {
-    tokenizer::next_collecting_comments(iter, comments)
+    errors: &mut ErrorCollector<ParseError>,
+) -> Option<(Token, DocumentRange)> {
+    tokenizer::next_collecting_comments(iter, comments, errors)
 }
 
-fn peek(iter: &Peekable<DocumentCursor>) -> Option<Result<(Token, DocumentRange), ParseError>> {
+fn peek(iter: &Peekable<DocumentCursor>) -> Option<(Token, DocumentRange)> {
     tokenizer::peek_past_comments(iter)
-}
-
-fn next_if<F>(
-    iter: &mut Peekable<DocumentCursor>,
-    comments: &mut VecDeque<DocumentRange>,
-    predicate: F,
-) -> Option<Result<(Token, DocumentRange), ParseError>>
-where
-    F: FnOnce(&Result<(Token, DocumentRange), ParseError>) -> bool,
-{
-    match peek(iter) {
-        Some(ref result) if predicate(result) => next(iter, comments),
-        _ => None,
-    }
 }
 
 fn advance_if(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
+    errors: &mut ErrorCollector<ParseError>,
     token: Token,
 ) -> Option<DocumentRange> {
-    match next_if(iter, comments, |res| {
-        res.as_ref().is_ok_and(|(t, _)| *t == token)
-    }) {
-        Some(Ok((_, range))) => Some(range),
+    match peek(iter) {
+        Some((t, _)) if t == token => {
+            let (_, range) = next(iter, comments, errors)?;
+            Some(range)
+        }
+        _ => None,
+    }
+}
+
+fn next_if<F>(
+    iter: &mut Peekable<DocumentCursor>,
+    comments: &mut VecDeque<DocumentRange>,
+    errors: &mut ErrorCollector<ParseError>,
+    predicate: F,
+) -> Option<(Token, DocumentRange)>
+where
+    F: FnOnce(&(Token, DocumentRange)) -> bool,
+{
+    match peek(iter) {
+        Some(ref result) if predicate(result) => next(iter, comments, errors),
         _ => None,
     }
 }
@@ -56,214 +61,269 @@ fn advance_if(
 fn expect_token(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
+    errors: &mut ErrorCollector<ParseError>,
     range: &DocumentRange,
     expected: &Token,
-) -> Result<DocumentRange, ParseError> {
-    match next(iter, comments).transpose()? {
-        Some((token, token_range)) if token == *expected => Ok(token_range),
-        Some((actual, token_range)) => Err(ParseError::ExpectedTokenButGot {
-            expected: expected.clone(),
-            actual,
-            range: token_range,
-        }),
-        None => Err(ParseError::ExpectedTokenButGotEof {
-            expected: expected.clone(),
-            range: range.clone(),
-        }),
+) -> Option<DocumentRange> {
+    match next(iter, comments, errors) {
+        Some((token, token_range)) if token == *expected => Some(token_range),
+        Some((actual, token_range)) => {
+            errors.push(ParseError::ExpectedTokenButGot {
+                expected: expected.clone(),
+                actual,
+                range: token_range,
+            });
+            None
+        }
+        None => {
+            errors.push(ParseError::ExpectedTokenButGotEof {
+                expected: expected.clone(),
+                range: range.clone(),
+            });
+            None
+        }
     }
 }
 
 fn expect_opposite(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
+    errors: &mut ErrorCollector<ParseError>,
     token: &Token,
     token_range: &DocumentRange,
-) -> Result<DocumentRange, ParseError> {
+) -> Option<DocumentRange> {
     let expected = token.opposite_token();
 
-    match next(iter, comments).transpose()? {
-        Some((actual, actual_range)) if actual == expected => Ok(actual_range),
-        Some((actual, actual_range)) => Err(ParseError::ExpectedTokenButGot {
-            expected,
-            actual,
-            range: actual_range,
-        }),
-        None => Err(ParseError::UnmatchedToken {
-            token: token.clone(),
-            range: token_range.clone(),
-        }),
+    match next(iter, comments, errors) {
+        Some((actual, actual_range)) if actual == expected => Some(actual_range),
+        Some((actual, actual_range)) => {
+            errors.push(ParseError::ExpectedTokenButGot {
+                expected,
+                actual,
+                range: actual_range,
+            });
+            None
+        }
+        None => {
+            errors.push(ParseError::UnmatchedToken {
+                token: token.clone(),
+                range: token_range.clone(),
+            });
+            None
+        }
     }
 }
 
 fn expect_variable_name(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
+    errors: &mut ErrorCollector<ParseError>,
     range: &DocumentRange,
-) -> Result<(VarName, DocumentRange), ParseError> {
-    match next(iter, comments).transpose()? {
+) -> Option<(VarName, DocumentRange)> {
+    match next(iter, comments, errors) {
         Some((Token::Identifier(name), name_range)) => {
-            let var_name = VarName::from_cheap_string(name.clone()).map_err(|error| {
-                ParseError::InvalidVariableName {
-                    name,
-                    error,
-                    range: name_range.clone(),
+            match VarName::from_cheap_string(name.clone()) {
+                Ok(var_name) => Some((var_name, name_range)),
+                Err(error) => {
+                    errors.push(ParseError::InvalidVariableName {
+                        name,
+                        error,
+                        range: name_range,
+                    });
+                    None
                 }
-            })?;
-            Ok((var_name, name_range))
+            }
         }
-        Some((actual, actual_range)) => Err(ParseError::ExpectedVariableNameButGot {
-            actual,
-            range: actual_range,
-        }),
-        None => Err(ParseError::UnexpectedEof {
-            range: range.clone(),
-        }),
+        Some((actual, actual_range)) => {
+            errors.push(ParseError::ExpectedVariableNameButGot {
+                actual,
+                range: actual_range,
+            });
+            None
+        }
+        None => {
+            errors.push(ParseError::UnexpectedEof {
+                range: range.clone(),
+            });
+            None
+        }
     }
 }
 
 fn expect_field_name(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
+    errors: &mut ErrorCollector<ParseError>,
     range: &DocumentRange,
-) -> Result<(FieldName, DocumentRange), ParseError> {
-    match next(iter, comments).transpose()? {
+) -> Option<(FieldName, DocumentRange)> {
+    match next(iter, comments, errors) {
         Some((Token::Identifier(name), name_range)) => {
-            let prop_name = FieldName::from_cheap_string(name.clone()).map_err(|error| {
-                ParseError::InvalidFieldName {
-                    name,
-                    error,
-                    range: name_range.clone(),
+            match FieldName::from_cheap_string(name.clone()) {
+                Ok(prop_name) => Some((prop_name, name_range)),
+                Err(error) => {
+                    errors.push(ParseError::InvalidFieldName {
+                        name,
+                        error,
+                        range: name_range,
+                    });
+                    None
                 }
-            })?;
-            Ok((prop_name, name_range))
+            }
         }
-        Some((token, token_range)) => Err(ParseError::ExpectedFieldNameButGot {
-            actual: token,
-            range: token_range,
-        }),
-        None => Err(ParseError::UnexpectedEof {
-            range: range.clone(),
-        }),
+        Some((token, token_range)) => {
+            errors.push(ParseError::ExpectedFieldNameButGot {
+                actual: token,
+                range: token_range,
+            });
+            None
+        }
+        None => {
+            errors.push(ParseError::UnexpectedEof {
+                range: range.clone(),
+            });
+            None
+        }
     }
 }
 
 fn expect_type_name(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
+    errors: &mut ErrorCollector<ParseError>,
     range: &DocumentRange,
-) -> Result<(TypeName, DocumentRange), ParseError> {
-    match next(iter, comments).transpose()? {
+) -> Option<(TypeName, DocumentRange)> {
+    match next(iter, comments, errors) {
         Some((Token::TypeName(name), name_range)) => {
-            let type_name =
-                TypeName::from_cheap_string(name).map_err(|error| ParseError::InvalidTypeName {
-                    error,
-                    range: name_range.clone(),
-                })?;
-            Ok((type_name, name_range))
+            match TypeName::from_cheap_string(name) {
+                Ok(type_name) => Some((type_name, name_range)),
+                Err(error) => {
+                    errors.push(ParseError::InvalidTypeName {
+                        error,
+                        range: name_range,
+                    });
+                    None
+                }
+            }
         }
-        Some((actual, actual_range)) => Err(ParseError::ExpectedTypeNameButGot {
-            actual,
-            range: actual_range,
-        }),
-        None => Err(ParseError::ExpectedTypeNameButGotEof {
-            range: range.clone(),
-        }),
+        Some((actual, actual_range)) => {
+            errors.push(ParseError::ExpectedTypeNameButGot {
+                actual,
+                range: actual_range,
+            });
+            None
+        }
+        None => {
+            errors.push(ParseError::ExpectedTypeNameButGotEof {
+                range: range.clone(),
+            });
+            None
+        }
     }
 }
 
 fn expect_eof(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
-) -> Result<(), ParseError> {
-    match next(iter, comments).transpose()? {
-        None => Ok(()),
-        Some((token, token_range)) => Err(ParseError::UnexpectedToken {
-            token,
-            range: token_range,
-        }),
+    errors: &mut ErrorCollector<ParseError>,
+) -> Option<()> {
+    match next(iter, comments, errors) {
+        None => Some(()),
+        Some((token, token_range)) => {
+            errors.push(ParseError::UnexpectedToken {
+                token,
+                range: token_range,
+            });
+            None
+        }
     }
 }
 
 fn parse_comma_separated<F>(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
+    errors: &mut ErrorCollector<ParseError>,
     range: &DocumentRange,
     mut parse: F,
     end_token: Option<&Token>,
-) -> Result<(), ParseError>
+) -> Option<()>
 where
     F: FnMut(
         &mut Peekable<DocumentCursor>,
         &mut VecDeque<DocumentRange>,
+        &mut ErrorCollector<ParseError>,
         &DocumentRange,
-    ) -> Result<(), ParseError>,
+    ) -> Option<()>,
 {
-    parse(iter, comments, range)?;
-    while advance_if(iter, comments, Token::Comma).is_some() {
-        let next_token = peek(iter).and_then(|r| r.ok()).map(|(t, _)| t);
+    parse(iter, comments, errors, range)?;
+    while advance_if(iter, comments, errors, Token::Comma).is_some() {
+        let next_token = peek(iter).map(|(t, _)| t);
         // Allow trailing comma: break if next is closing delimiter or EOF (in delimited context)
         if next_token.as_ref() == end_token || (end_token.is_some() && next_token.is_none()) {
             break;
         }
-        parse(iter, comments, range)?;
+        parse(iter, comments, errors, range)?;
     }
 
-    Ok(())
+    Some(())
 }
 
 fn parse_delimited_list<F>(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
+    errors: &mut ErrorCollector<ParseError>,
     range: &DocumentRange,
     opening_token: &Token,
     opening_range: &DocumentRange,
     parse: F,
-) -> Result<DocumentRange, ParseError>
+) -> Option<DocumentRange>
 where
     F: FnMut(
         &mut Peekable<DocumentCursor>,
         &mut VecDeque<DocumentRange>,
+        &mut ErrorCollector<ParseError>,
         &DocumentRange,
-    ) -> Result<(), ParseError>,
+    ) -> Option<()>,
 {
     let closing_token = opening_token.opposite_token();
-    if let Some(closing_range) = advance_if(iter, comments, closing_token.clone()) {
-        return Ok(closing_range);
+    if let Some(closing_range) = advance_if(iter, comments, errors, closing_token.clone()) {
+        return Some(closing_range);
     }
-    parse_comma_separated(iter, comments, range, parse, Some(&closing_token))?;
-    expect_opposite(iter, comments, opening_token, opening_range)
+    parse_comma_separated(iter, comments, errors, range, parse, Some(&closing_token))?;
+    expect_opposite(iter, comments, errors, opening_token, opening_range)
 }
 
 pub fn parse_expr(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
+    errors: &mut ErrorCollector<ParseError>,
     range: &DocumentRange,
-) -> Result<ParsedExpr, ParseError> {
-    let result = parse_logical(iter, comments, range)?;
-    expect_eof(iter, comments)?;
-    Ok(result)
+) -> Option<ParsedExpr> {
+    let result = parse_logical(iter, comments, errors, range)?;
+    expect_eof(iter, comments, errors)?;
+    Some(result)
 }
 
 pub fn parse_loop_header(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
+    errors: &mut ErrorCollector<ParseError>,
     range: &DocumentRange,
-) -> Result<(Option<VarName>, Option<DocumentRange>, ParsedLoopSource), ParseError> {
+) -> Option<(Option<VarName>, Option<DocumentRange>, ParsedLoopSource)> {
     // Check for underscore (discarded binding) or variable name
     let (var_name, var_name_range) =
-        if let Some(underscore_range) = advance_if(iter, comments, Token::Underscore) {
+        if let Some(underscore_range) = advance_if(iter, comments, errors, Token::Underscore) {
             // Underscore means "don't bind the loop variable"
             (None, Some(underscore_range))
         } else {
-            let (name, name_range) = expect_variable_name(iter, comments, range)?;
+            let (name, name_range) = expect_variable_name(iter, comments, errors, range)?;
             (Some(name), Some(name_range))
         };
-    expect_token(iter, comments, range, &Token::In)?;
+    expect_token(iter, comments, errors, range, &Token::In)?;
     // Parse the start expression (could be array or start of range)
-    let start_expr = parse_logical(iter, comments, range)?;
+    let start_expr = parse_logical(iter, comments, errors, range)?;
     // Check if this is a range expression (..=)
-    let source = if advance_if(iter, comments, Token::DotDotEq).is_some() {
-        let end_expr = parse_logical(iter, comments, range)?;
+    let source = if advance_if(iter, comments, errors, Token::DotDotEq).is_some() {
+        let end_expr = parse_logical(iter, comments, errors, range)?;
         ParsedLoopSource::RangeInclusive {
             start: start_expr,
             end: end_expr,
@@ -271,135 +331,149 @@ pub fn parse_loop_header(
     } else {
         ParsedLoopSource::Array(start_expr)
     };
-    expect_eof(iter, comments)?;
-    Ok((var_name, var_name_range, source))
+    expect_eof(iter, comments, errors)?;
+    Some((var_name, var_name_range, source))
 }
 
 pub fn parse_let_bindings(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
+    errors: &mut ErrorCollector<ParseError>,
     range: &DocumentRange,
-) -> Result<Vec<(VarName, DocumentRange, ParsedType, ParsedExpr)>, ParseError> {
+) -> Option<Vec<(VarName, DocumentRange, ParsedType, ParsedExpr)>> {
     let mut bindings = Vec::new();
     parse_comma_separated(
         iter,
         comments,
+        errors,
         range,
-        |iter, comments, range| {
-            let (var_name, var_name_range) = expect_variable_name(iter, comments, range)?;
-            expect_token(iter, comments, range, &Token::Colon)?;
-            let var_type = parse_type(iter, comments, range)?;
-            expect_token(iter, comments, range, &Token::Assign)?;
-            let value_expr = parse_logical(iter, comments, range)?;
+        |iter, comments, errors, range| {
+            let (var_name, var_name_range) = expect_variable_name(iter, comments, errors, range)?;
+            expect_token(iter, comments, errors, range, &Token::Colon)?;
+            let var_type = parse_type(iter, comments, errors, range)?;
+            expect_token(iter, comments, errors, range, &Token::Assign)?;
+            let value_expr = parse_logical(iter, comments, errors, range)?;
             bindings.push((var_name, var_name_range, var_type, value_expr));
-            Ok(())
+            Some(())
         },
         None,
     )?;
-    expect_eof(iter, comments)?;
-    Ok(bindings)
+    expect_eof(iter, comments, errors)?;
+    Some(bindings)
 }
 
 fn parse_parameter(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
+    errors: &mut ErrorCollector<ParseError>,
     range: &DocumentRange,
-) -> Result<((VarName, DocumentRange), ParsedType, Option<ParsedExpr>), ParseError> {
-    let (var_name, var_name_range) = expect_variable_name(iter, comments, range)?;
-    expect_token(iter, comments, range, &Token::Colon)?;
-    let var_type = parse_type(iter, comments, range)?;
-    let default_value = if advance_if(iter, comments, Token::Assign).is_some() {
-        Some(parse_primary(iter, comments, range)?)
+) -> Option<((VarName, DocumentRange), ParsedType, Option<ParsedExpr>)> {
+    let (var_name, var_name_range) = expect_variable_name(iter, comments, errors, range)?;
+    expect_token(iter, comments, errors, range, &Token::Colon)?;
+    let var_type = parse_type(iter, comments, errors, range)?;
+    let default_value = if advance_if(iter, comments, errors, Token::Assign).is_some() {
+        Some(parse_primary(iter, comments, errors, range)?)
     } else {
         None
     };
-    Ok(((var_name, var_name_range), var_type, default_value))
+    Some(((var_name, var_name_range), var_type, default_value))
 }
 
 pub fn parse_parameters(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
+    errors: &mut ErrorCollector<ParseError>,
     range: &DocumentRange,
-) -> Result<Vec<((VarName, DocumentRange), ParsedType, Option<ParsedExpr>)>, ParseError> {
+) -> Option<Vec<((VarName, DocumentRange), ParsedType, Option<ParsedExpr>)>> {
     let mut params = Vec::new();
     let mut seen_names = HashSet::new();
     parse_comma_separated(
         iter,
         comments,
+        errors,
         range,
-        |iter, comments, range| {
-            let param = parse_parameter(iter, comments, range)?;
+        |iter, comments, errors, range| {
+            let param = parse_parameter(iter, comments, errors, range)?;
             let (_, var_name_range) = &param.0;
             if !seen_names.insert(var_name_range.to_cheap_string()) {
-                return Err(ParseError::DuplicateParameter {
+                errors.push(ParseError::DuplicateParameter {
                     name: var_name_range.to_cheap_string(),
                     range: var_name_range.clone(),
                 });
+                return None;
             }
             params.push(param);
-            Ok(())
+            Some(())
         },
         None,
     )?;
-    expect_eof(iter, comments)?;
-    Ok(params)
+    expect_eof(iter, comments, errors)?;
+    Some(params)
 }
 
 pub fn parse_type(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
+    errors: &mut ErrorCollector<ParseError>,
     range: &DocumentRange,
-) -> Result<ParsedType, ParseError> {
-    match next(iter, comments).transpose()? {
-        Some((Token::TypeString, type_range)) => Ok(ParsedType::String { range: type_range }),
-        Some((Token::TypeInt, type_range)) => Ok(ParsedType::Int { range: type_range }),
-        Some((Token::TypeFloat, type_range)) => Ok(ParsedType::Float { range: type_range }),
-        Some((Token::TypeBoolean, type_range)) => Ok(ParsedType::Bool { range: type_range }),
+) -> Option<ParsedType> {
+    match next(iter, comments, errors) {
+        Some((Token::TypeString, type_range)) => Some(ParsedType::String { range: type_range }),
+        Some((Token::TypeInt, type_range)) => Some(ParsedType::Int { range: type_range }),
+        Some((Token::TypeFloat, type_range)) => Some(ParsedType::Float { range: type_range }),
+        Some((Token::TypeBoolean, type_range)) => Some(ParsedType::Bool { range: type_range }),
         Some((Token::TypeTrustedHTML, type_range)) => {
-            Ok(ParsedType::TrustedHTML { range: type_range })
+            Some(ParsedType::TrustedHTML { range: type_range })
         }
         Some((Token::TypeArray, type_array)) => {
-            let left_bracket = expect_token(iter, comments, range, &Token::LeftBracket)?;
-            let element = parse_type(iter, comments, range)?;
+            let left_bracket = expect_token(iter, comments, errors, range, &Token::LeftBracket)?;
+            let element = parse_type(iter, comments, errors, range)?;
             let right_bracket =
-                expect_opposite(iter, comments, &Token::LeftBracket, &left_bracket)?;
-            Ok(ParsedType::Array {
+                expect_opposite(iter, comments, errors, &Token::LeftBracket, &left_bracket)?;
+            Some(ParsedType::Array {
                 element: Box::new(element),
                 range: type_array.to(right_bracket),
             })
         }
         Some((Token::TypeOption, type_option)) => {
-            let left_bracket = expect_token(iter, comments, range, &Token::LeftBracket)?;
-            let element = parse_type(iter, comments, range)?;
+            let left_bracket = expect_token(iter, comments, errors, range, &Token::LeftBracket)?;
+            let element = parse_type(iter, comments, errors, range)?;
             let right_bracket =
-                expect_opposite(iter, comments, &Token::LeftBracket, &left_bracket)?;
-            Ok(ParsedType::Option {
+                expect_opposite(iter, comments, errors, &Token::LeftBracket, &left_bracket)?;
+            Some(ParsedType::Option {
                 element: Box::new(element),
                 range: type_option.to(right_bracket),
             })
         }
-        Some((Token::TypeName(name), type_range)) => Ok(ParsedType::Named {
+        Some((Token::TypeName(name), type_range)) => Some(ParsedType::Named {
             name,
             range: type_range,
         }),
-        Some((actual, actual_range)) => Err(ParseError::ExpectedTypeNameButGot {
-            actual,
-            range: actual_range,
-        }),
-        None => Err(ParseError::ExpectedTypeNameButGotEof {
-            range: range.clone(),
-        }),
+        Some((actual, actual_range)) => {
+            errors.push(ParseError::ExpectedTypeNameButGot {
+                actual,
+                range: actual_range,
+            });
+            None
+        }
+        None => {
+            errors.push(ParseError::ExpectedTypeNameButGotEof {
+                range: range.clone(),
+            });
+            None
+        }
     }
 }
 
 fn parse_logical(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
+    errors: &mut ErrorCollector<ParseError>,
     range: &DocumentRange,
-) -> Result<ParsedExpr, ParseError> {
-    let mut expr = parse_logical_and(iter, comments, range)?;
-    while advance_if(iter, comments, Token::LogicalOr).is_some() {
-        let right = parse_logical_and(iter, comments, range)?;
+) -> Option<ParsedExpr> {
+    let mut expr = parse_logical_and(iter, comments, errors, range)?;
+    while advance_if(iter, comments, errors, Token::LogicalOr).is_some() {
+        let right = parse_logical_and(iter, comments, errors, range)?;
         expr = ParsedExpr::BinaryOp {
             range: expr.range().clone().to(right.range().clone()),
             left: Box::new(expr),
@@ -407,17 +481,18 @@ fn parse_logical(
             right: Box::new(right),
         };
     }
-    Ok(expr)
+    Some(expr)
 }
 
 fn parse_logical_and(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
+    errors: &mut ErrorCollector<ParseError>,
     range: &DocumentRange,
-) -> Result<ParsedExpr, ParseError> {
-    let mut expr = parse_equality(iter, comments, range)?;
-    while advance_if(iter, comments, Token::LogicalAnd).is_some() {
-        let right = parse_equality(iter, comments, range)?;
+) -> Option<ParsedExpr> {
+    let mut expr = parse_equality(iter, comments, errors, range)?;
+    while advance_if(iter, comments, errors, Token::LogicalAnd).is_some() {
+        let right = parse_equality(iter, comments, errors, range)?;
         expr = ParsedExpr::BinaryOp {
             range: expr.range().clone().to(right.range().clone()),
             left: Box::new(expr),
@@ -425,26 +500,27 @@ fn parse_logical_and(
             right: Box::new(right),
         };
     }
-    Ok(expr)
+    Some(expr)
 }
 
 fn parse_equality(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
+    errors: &mut ErrorCollector<ParseError>,
     range: &DocumentRange,
-) -> Result<ParsedExpr, ParseError> {
-    let mut expr = parse_relational(iter, comments, range)?;
+) -> Option<ParsedExpr> {
+    let mut expr = parse_relational(iter, comments, errors, range)?;
     loop {
-        if advance_if(iter, comments, Token::Eq).is_some() {
-            let right = parse_relational(iter, comments, range)?;
+        if advance_if(iter, comments, errors, Token::Eq).is_some() {
+            let right = parse_relational(iter, comments, errors, range)?;
             expr = ParsedExpr::BinaryOp {
                 range: expr.range().clone().to(right.range().clone()),
                 left: Box::new(expr),
                 operator: ParsedBinaryOp::Eq,
                 right: Box::new(right),
             };
-        } else if advance_if(iter, comments, Token::NotEq).is_some() {
-            let right = parse_relational(iter, comments, range)?;
+        } else if advance_if(iter, comments, errors, Token::NotEq).is_some() {
+            let right = parse_relational(iter, comments, errors, range)?;
             expr = ParsedExpr::BinaryOp {
                 range: expr.range().clone().to(right.range().clone()),
                 left: Box::new(expr),
@@ -455,42 +531,43 @@ fn parse_equality(
             break;
         }
     }
-    Ok(expr)
+    Some(expr)
 }
 
 fn parse_relational(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
+    errors: &mut ErrorCollector<ParseError>,
     range: &DocumentRange,
-) -> Result<ParsedExpr, ParseError> {
-    let mut expr = parse_additive(iter, comments, range)?;
+) -> Option<ParsedExpr> {
+    let mut expr = parse_additive(iter, comments, errors, range)?;
     loop {
-        if advance_if(iter, comments, Token::LessThan).is_some() {
-            let right = parse_additive(iter, comments, range)?;
+        if advance_if(iter, comments, errors, Token::LessThan).is_some() {
+            let right = parse_additive(iter, comments, errors, range)?;
             expr = ParsedExpr::BinaryOp {
                 range: expr.range().clone().to(right.range().clone()),
                 left: Box::new(expr),
                 operator: ParsedBinaryOp::LessThan,
                 right: Box::new(right),
             };
-        } else if advance_if(iter, comments, Token::GreaterThan).is_some() {
-            let right = parse_additive(iter, comments, range)?;
+        } else if advance_if(iter, comments, errors, Token::GreaterThan).is_some() {
+            let right = parse_additive(iter, comments, errors, range)?;
             expr = ParsedExpr::BinaryOp {
                 range: expr.range().clone().to(right.range().clone()),
                 left: Box::new(expr),
                 operator: ParsedBinaryOp::GreaterThan,
                 right: Box::new(right),
             };
-        } else if advance_if(iter, comments, Token::LessThanOrEqual).is_some() {
-            let right = parse_additive(iter, comments, range)?;
+        } else if advance_if(iter, comments, errors, Token::LessThanOrEqual).is_some() {
+            let right = parse_additive(iter, comments, errors, range)?;
             expr = ParsedExpr::BinaryOp {
                 range: expr.range().clone().to(right.range().clone()),
                 left: Box::new(expr),
                 operator: ParsedBinaryOp::LessThanOrEqual,
                 right: Box::new(right),
             };
-        } else if advance_if(iter, comments, Token::GreaterThanOrEqual).is_some() {
-            let right = parse_additive(iter, comments, range)?;
+        } else if advance_if(iter, comments, errors, Token::GreaterThanOrEqual).is_some() {
+            let right = parse_additive(iter, comments, errors, range)?;
             expr = ParsedExpr::BinaryOp {
                 range: expr.range().clone().to(right.range().clone()),
                 left: Box::new(expr),
@@ -501,26 +578,27 @@ fn parse_relational(
             break;
         }
     }
-    Ok(expr)
+    Some(expr)
 }
 
 fn parse_additive(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
+    errors: &mut ErrorCollector<ParseError>,
     range: &DocumentRange,
-) -> Result<ParsedExpr, ParseError> {
-    let mut expr = parse_multiplicative(iter, comments, range)?;
+) -> Option<ParsedExpr> {
+    let mut expr = parse_multiplicative(iter, comments, errors, range)?;
     loop {
-        if advance_if(iter, comments, Token::Plus).is_some() {
-            let right = parse_multiplicative(iter, comments, range)?;
+        if advance_if(iter, comments, errors, Token::Plus).is_some() {
+            let right = parse_multiplicative(iter, comments, errors, range)?;
             expr = ParsedExpr::BinaryOp {
                 range: expr.range().clone().to(right.range().clone()),
                 left: Box::new(expr),
                 operator: ParsedBinaryOp::Plus,
                 right: Box::new(right),
             };
-        } else if advance_if(iter, comments, Token::Minus).is_some() {
-            let right = parse_multiplicative(iter, comments, range)?;
+        } else if advance_if(iter, comments, errors, Token::Minus).is_some() {
+            let right = parse_multiplicative(iter, comments, errors, range)?;
             expr = ParsedExpr::BinaryOp {
                 range: expr.range().clone().to(right.range().clone()),
                 left: Box::new(expr),
@@ -531,17 +609,18 @@ fn parse_additive(
             break;
         }
     }
-    Ok(expr)
+    Some(expr)
 }
 
 fn parse_multiplicative(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
+    errors: &mut ErrorCollector<ParseError>,
     range: &DocumentRange,
-) -> Result<ParsedExpr, ParseError> {
-    let mut expr = parse_unary(iter, comments, range)?;
-    while advance_if(iter, comments, Token::Asterisk).is_some() {
-        let right = parse_unary(iter, comments, range)?;
+) -> Option<ParsedExpr> {
+    let mut expr = parse_unary(iter, comments, errors, range)?;
+    while advance_if(iter, comments, errors, Token::Asterisk).is_some() {
+        let right = parse_unary(iter, comments, errors, range)?;
         expr = ParsedExpr::BinaryOp {
             range: expr.range().clone().to(right.range().clone()),
             left: Box::new(expr),
@@ -549,50 +628,53 @@ fn parse_multiplicative(
             right: Box::new(right),
         };
     }
-    Ok(expr)
+    Some(expr)
 }
 
 fn parse_unary(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
+    errors: &mut ErrorCollector<ParseError>,
     range: &DocumentRange,
-) -> Result<ParsedExpr, ParseError> {
-    if let Some(operator_range) = advance_if(iter, comments, Token::Not) {
-        let expr = parse_unary(iter, comments, range)?; // Right associative for multiple !
-        Ok(ParsedExpr::Negation {
+) -> Option<ParsedExpr> {
+    if let Some(operator_range) = advance_if(iter, comments, errors, Token::Not) {
+        let expr = parse_unary(iter, comments, errors, range)?; // Right associative for multiple !
+        Some(ParsedExpr::Negation {
             range: operator_range.to(expr.range().clone()),
             operand: Box::new(expr),
         })
-    } else if let Some(operator_range) = advance_if(iter, comments, Token::Minus) {
-        let expr = parse_unary(iter, comments, range)?; // Right associative for multiple -
-        Ok(ParsedExpr::NumericNegation {
+    } else if let Some(operator_range) = advance_if(iter, comments, errors, Token::Minus) {
+        let expr = parse_unary(iter, comments, errors, range)?; // Right associative for multiple -
+        Some(ParsedExpr::NumericNegation {
             range: operator_range.to(expr.range().clone()),
             operand: Box::new(expr),
         })
     } else {
-        parse_primary(iter, comments, range)
+        parse_primary(iter, comments, errors, range)
     }
 }
 
 fn parse_array_literal(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
+    errors: &mut ErrorCollector<ParseError>,
     range: &DocumentRange,
     left_bracket: DocumentRange,
-) -> Result<ParsedExpr, ParseError> {
+) -> Option<ParsedExpr> {
     let mut elements = Vec::new();
     let right_bracket = parse_delimited_list(
         iter,
         comments,
+        errors,
         range,
         &Token::LeftBracket,
         &left_bracket,
-        |iter, comments, range| {
-            elements.push(parse_logical(iter, comments, range)?);
-            Ok(())
+        |iter, comments, errors, range| {
+            elements.push(parse_logical(iter, comments, errors, range)?);
+            Some(())
         },
     )?;
-    Ok(ParsedExpr::ArrayLiteral {
+    Some(ParsedExpr::ArrayLiteral {
         elements,
         range: left_bracket.to(right_bracket),
     })
@@ -601,33 +683,36 @@ fn parse_array_literal(
 pub fn parse_primary(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
+    errors: &mut ErrorCollector<ParseError>,
     range: &DocumentRange,
-) -> Result<ParsedExpr, ParseError> {
-    let mut expr = match next(iter, comments).transpose()? {
+) -> Option<ParsedExpr> {
+    let mut expr = match next(iter, comments, errors) {
         Some((Token::Identifier(name), name_range)) => {
             // Check for macro invocation: identifier!
-            if advance_if(iter, comments, Token::Not).is_some() {
-                return parse_macro_invocation(iter, comments, range, name, name_range);
+            if advance_if(iter, comments, errors, Token::Not).is_some() {
+                return parse_macro_invocation(iter, comments, errors, range, name, name_range);
             }
-            let var_name = VarName::from_cheap_string(name.clone()).map_err(|error| {
-                ParseError::InvalidVariableName {
-                    name,
-                    error,
-                    range: name_range.clone(),
+            match VarName::from_cheap_string(name.clone()) {
+                Ok(var_name) => ParsedExpr::Var {
+                    range: name_range,
+                    value: var_name,
+                },
+                Err(error) => {
+                    errors.push(ParseError::InvalidVariableName {
+                        name,
+                        error,
+                        range: name_range,
+                    });
+                    return None;
                 }
-            })?;
-            ParsedExpr::Var {
-                range: name_range,
-                value: var_name,
             }
         }
         Some((Token::TypeName(name), name_range)) => {
-            let is_enum_variant =
-                peek(iter).and_then(|r| r.ok()).map(|(t, _)| t) == Some(Token::ColonColon);
+            let is_enum_variant = peek(iter).map(|(t, _)| t) == Some(Token::ColonColon);
             if is_enum_variant {
-                parse_enum_literal(iter, comments, range, name, name_range)?
+                parse_enum_literal(iter, comments, errors, range, name, name_range)?
             } else {
-                parse_record_literal(iter, comments, range, name, name_range)?
+                parse_record_literal(iter, comments, errors, range, name, name_range)?
             }
         }
         Some((Token::StringLiteral(value), lit_range)) => ParsedExpr::StringLiteral {
@@ -651,18 +736,21 @@ pub fn parse_primary(
             range: lit_range,
         },
         Some((Token::LeftBracket, left_bracket)) => {
-            parse_array_literal(iter, comments, range, left_bracket)?
+            parse_array_literal(iter, comments, errors, range, left_bracket)?
         }
         Some((Token::LeftParen, left_paren)) => {
-            let inner = parse_logical(iter, comments, range)?;
-            expect_opposite(iter, comments, &Token::LeftParen, &left_paren)?;
+            let inner = parse_logical(iter, comments, errors, range)?;
+            expect_opposite(iter, comments, errors, &Token::LeftParen, &left_paren)?;
             inner
         }
-        Some((Token::Match, match_range)) => parse_match_expr(iter, comments, range, match_range)?,
+        Some((Token::Match, match_range)) => {
+            parse_match_expr(iter, comments, errors, range, match_range)?
+        }
         Some((Token::Some, some_range)) => {
-            let left_paren = expect_token(iter, comments, range, &Token::LeftParen)?;
-            let value = parse_logical(iter, comments, range)?;
-            let right_paren = expect_opposite(iter, comments, &Token::LeftParen, &left_paren)?;
+            let left_paren = expect_token(iter, comments, errors, range, &Token::LeftParen)?;
+            let value = parse_logical(iter, comments, errors, range)?;
+            let right_paren =
+                expect_opposite(iter, comments, errors, &Token::LeftParen, &left_paren)?;
             ParsedExpr::OptionLiteral {
                 value: Some(Box::new(value)),
                 range: some_range.to(right_paren),
@@ -673,34 +761,39 @@ pub fn parse_primary(
             range: none_range,
         },
         Some((token, token_range)) => {
-            return Err(ParseError::UnexpectedToken {
+            errors.push(ParseError::UnexpectedToken {
                 token,
                 range: token_range,
             });
+            return None;
         }
         None => {
-            return Err(ParseError::UnexpectedEof {
+            errors.push(ParseError::UnexpectedEof {
                 range: range.clone(),
             });
+            return None;
         }
     };
 
     // Handle postfix field access (.field) and method calls (.method())
-    while let Some(dot) = advance_if(iter, comments, Token::Dot) {
-        match next(iter, comments).transpose()? {
+    while let Some(dot) = advance_if(iter, comments, errors, Token::Dot) {
+        match next(iter, comments, errors) {
             Some((Token::Identifier(field_ident), field_range)) => {
-                let field_name =
-                    FieldName::from_cheap_string(field_ident.clone()).map_err(|error| {
-                        ParseError::InvalidFieldName {
+                let field_name = match FieldName::from_cheap_string(field_ident.clone()) {
+                    Ok(name) => name,
+                    Err(error) => {
+                        errors.push(ParseError::InvalidFieldName {
                             name: field_ident,
                             error,
-                            range: field_range.clone(),
-                        }
-                    })?;
+                            range: field_range,
+                        });
+                        return None;
+                    }
+                };
 
-                if let Some(left_paren) = advance_if(iter, comments, Token::LeftParen) {
+                if let Some(left_paren) = advance_if(iter, comments, errors, Token::LeftParen) {
                     let right_paren =
-                        expect_opposite(iter, comments, &Token::LeftParen, &left_paren)?;
+                        expect_opposite(iter, comments, errors, &Token::LeftParen, &left_paren)?;
                     let new_range = expr.range().clone().to(right_paren);
                     expr = ParsedExpr::MethodCall {
                         receiver: Box::new(expr),
@@ -717,49 +810,54 @@ pub fn parse_primary(
                 }
             }
             Some((_, token_range)) => {
-                return Err(ParseError::ExpectedIdentifierAfterDot { range: token_range });
+                errors.push(ParseError::ExpectedIdentifierAfterDot { range: token_range });
+                return None;
             }
             None => {
-                return Err(ParseError::UnexpectedEndOfFieldAccess {
+                errors.push(ParseError::UnexpectedEndOfFieldAccess {
                     range: expr.range().clone().to(dot),
                 });
+                return None;
             }
         }
     }
 
-    Ok(expr)
+    Some(expr)
 }
 
 fn parse_macro_invocation(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
+    errors: &mut ErrorCollector<ParseError>,
     range: &DocumentRange,
     macro_name: CheapString,
     name_range: DocumentRange,
-) -> Result<ParsedExpr, ParseError> {
+) -> Option<ParsedExpr> {
     let name_str = macro_name.as_str();
     if name_str != "classes" {
-        return Err(ParseError::UnknownMacro {
+        errors.push(ParseError::UnknownMacro {
             name: macro_name,
             range: name_range,
         });
+        return None;
     }
 
-    let left_paren = expect_token(iter, comments, range, &Token::LeftParen)?;
+    let left_paren = expect_token(iter, comments, errors, range, &Token::LeftParen)?;
     let mut args = Vec::new();
     let right_paren = parse_delimited_list(
         iter,
         comments,
+        errors,
         range,
         &Token::LeftParen,
         &left_paren,
-        |iter, comments, range| {
-            args.push(parse_logical(iter, comments, range)?);
-            Ok(())
+        |iter, comments, errors, range| {
+            args.push(parse_logical(iter, comments, errors, range)?);
+            Some(())
         },
     )?;
 
-    Ok(ParsedExpr::MacroInvocation {
+    Some(ParsedExpr::MacroInvocation {
         name: macro_name,
         args,
         range: name_range.to(right_paren),
@@ -769,26 +867,28 @@ fn parse_macro_invocation(
 fn parse_record_literal(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
+    errors: &mut ErrorCollector<ParseError>,
     range: &DocumentRange,
     name: CheapString,
     name_range: DocumentRange,
-) -> Result<ParsedExpr, ParseError> {
-    let left_paren = expect_token(iter, comments, range, &Token::LeftParen)?;
+) -> Option<ParsedExpr> {
+    let left_paren = expect_token(iter, comments, errors, range, &Token::LeftParen)?;
     let mut fields = Vec::new();
     let right_paren = parse_delimited_list(
         iter,
         comments,
+        errors,
         range,
         &Token::LeftParen,
         &left_paren,
-        |iter, comments, range| {
-            let (field_name, _) = expect_field_name(iter, comments, range)?;
-            expect_token(iter, comments, range, &Token::Colon)?;
-            fields.push((field_name, parse_logical(iter, comments, range)?));
-            Ok(())
+        |iter, comments, errors, range| {
+            let (field_name, _) = expect_field_name(iter, comments, errors, range)?;
+            expect_token(iter, comments, errors, range, &Token::Colon)?;
+            fields.push((field_name, parse_logical(iter, comments, errors, range)?));
+            Some(())
         },
     )?;
-    Ok(ParsedExpr::RecordLiteral {
+    Some(ParsedExpr::RecordLiteral {
         record_name: name,
         fields,
         range: name_range.to(right_paren),
@@ -798,40 +898,43 @@ fn parse_record_literal(
 fn parse_enum_literal(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
+    errors: &mut ErrorCollector<ParseError>,
     range: &DocumentRange,
     enum_name: CheapString,
     enum_name_range: DocumentRange,
-) -> Result<ParsedExpr, ParseError> {
-    expect_token(iter, comments, range, &Token::ColonColon)?;
-    let (variant_name, variant_range) = expect_type_name(iter, comments, range)?;
+) -> Option<ParsedExpr> {
+    expect_token(iter, comments, errors, range, &Token::ColonColon)?;
+    let (variant_name, variant_range) = expect_type_name(iter, comments, errors, range)?;
     let constructor_range = enum_name_range.clone().to(variant_range.clone());
 
-    let (fields, end_range) = if let Some(left_paren) = advance_if(iter, comments, Token::LeftParen)
-    {
-        let mut fields = Vec::new();
-        let right_paren = parse_delimited_list(
-            iter,
-            comments,
-            range,
-            &Token::LeftParen,
-            &left_paren,
-            |iter, comments, range| {
-                let (field_name, field_name_range) = expect_field_name(iter, comments, range)?;
-                expect_token(iter, comments, range, &Token::Colon)?;
-                fields.push((
-                    field_name,
-                    field_name_range,
-                    parse_logical(iter, comments, range)?,
-                ));
-                Ok(())
-            },
-        )?;
-        (fields, right_paren)
-    } else {
-        (Vec::new(), variant_range)
-    };
+    let (fields, end_range) =
+        if let Some(left_paren) = advance_if(iter, comments, errors, Token::LeftParen) {
+            let mut fields = Vec::new();
+            let right_paren = parse_delimited_list(
+                iter,
+                comments,
+                errors,
+                range,
+                &Token::LeftParen,
+                &left_paren,
+                |iter, comments, errors, range| {
+                    let (field_name, field_name_range) =
+                        expect_field_name(iter, comments, errors, range)?;
+                    expect_token(iter, comments, errors, range, &Token::Colon)?;
+                    fields.push((
+                        field_name,
+                        field_name_range,
+                        parse_logical(iter, comments, errors, range)?,
+                    ));
+                    Some(())
+                },
+            )?;
+            (fields, right_paren)
+        } else {
+            (Vec::new(), variant_range)
+        };
 
-    Ok(ParsedExpr::EnumLiteral {
+    Some(ParsedExpr::EnumLiteral {
         enum_name,
         variant_name: CheapString::new(variant_name.to_string()),
         fields,
@@ -843,16 +946,17 @@ fn parse_enum_literal(
 pub fn parse_match_pattern(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
+    errors: &mut ErrorCollector<ParseError>,
     range: &DocumentRange,
-) -> Result<ParsedMatchPattern, ParseError> {
-    if let Some(pattern_range) = advance_if(iter, comments, Token::Underscore) {
-        return Ok(ParsedMatchPattern::Wildcard {
+) -> Option<ParsedMatchPattern> {
+    if let Some(pattern_range) = advance_if(iter, comments, errors, Token::Underscore) {
+        return Some(ParsedMatchPattern::Wildcard {
             range: pattern_range,
         });
     }
 
-    if let Some(pattern_range) = advance_if(iter, comments, Token::True) {
-        return Ok(ParsedMatchPattern::Constructor {
+    if let Some(pattern_range) = advance_if(iter, comments, errors, Token::True) {
+        return Some(ParsedMatchPattern::Constructor {
             constructor: Constructor::BooleanTrue,
             args: Vec::new(),
             fields: Vec::new(),
@@ -860,8 +964,8 @@ pub fn parse_match_pattern(
             range: pattern_range,
         });
     }
-    if let Some(pattern_range) = advance_if(iter, comments, Token::False) {
-        return Ok(ParsedMatchPattern::Constructor {
+    if let Some(pattern_range) = advance_if(iter, comments, errors, Token::False) {
+        return Some(ParsedMatchPattern::Constructor {
             constructor: Constructor::BooleanFalse,
             args: Vec::new(),
             fields: Vec::new(),
@@ -870,11 +974,11 @@ pub fn parse_match_pattern(
         });
     }
 
-    if let Some(some_range) = advance_if(iter, comments, Token::Some) {
-        expect_token(iter, comments, range, &Token::LeftParen)?;
-        let inner_pattern = parse_match_pattern(iter, comments, range)?;
-        let right_paren = expect_token(iter, comments, range, &Token::RightParen)?;
-        return Ok(ParsedMatchPattern::Constructor {
+    if let Some(some_range) = advance_if(iter, comments, errors, Token::Some) {
+        expect_token(iter, comments, errors, range, &Token::LeftParen)?;
+        let inner_pattern = parse_match_pattern(iter, comments, errors, range)?;
+        let right_paren = expect_token(iter, comments, errors, range, &Token::RightParen)?;
+        return Some(ParsedMatchPattern::Constructor {
             constructor: Constructor::OptionSome,
             args: vec![inner_pattern],
             fields: Vec::new(),
@@ -882,8 +986,8 @@ pub fn parse_match_pattern(
             range: some_range.to(right_paren),
         });
     }
-    if let Some(pattern_range) = advance_if(iter, comments, Token::None) {
-        return Ok(ParsedMatchPattern::Constructor {
+    if let Some(pattern_range) = advance_if(iter, comments, errors, Token::None) {
+        return Some(ParsedMatchPattern::Constructor {
             constructor: Constructor::OptionNone,
             args: Vec::new(),
             fields: Vec::new(),
@@ -892,46 +996,51 @@ pub fn parse_match_pattern(
         });
     }
 
-    if let Some(Ok((Token::TypeName(type_name_str), type_name_range))) =
-        next_if(iter, comments, |res| {
-            matches!(res, Ok((Token::TypeName(_), _)))
+    if let Some((Token::TypeName(type_name_str), type_name_range)) =
+        next_if(iter, comments, errors, |res| {
+            matches!(res, (Token::TypeName(_), _))
         })
     {
-        let type_name = TypeName::from_cheap_string(type_name_str).map_err(|error| {
-            ParseError::InvalidTypeName {
-                error,
-                range: type_name_range.clone(),
+        let type_name = match TypeName::from_cheap_string(type_name_str) {
+            Ok(name) => name,
+            Err(error) => {
+                errors.push(ParseError::InvalidTypeName {
+                    error,
+                    range: type_name_range.clone(),
+                });
+                return None;
             }
-        })?;
+        };
 
-        if advance_if(iter, comments, Token::ColonColon).is_some() {
-            let (variant_name, variant_range) = expect_type_name(iter, comments, range)?;
+        if advance_if(iter, comments, errors, Token::ColonColon).is_some() {
+            let (variant_name, variant_range) = expect_type_name(iter, comments, errors, range)?;
 
-            let (fields, end_range) = if let Some(left_paren) =
-                advance_if(iter, comments, Token::LeftParen)
-            {
-                let mut fields = Vec::new();
-                let right_paren = parse_delimited_list(
-                    iter,
-                    comments,
-                    range,
-                    &Token::LeftParen,
-                    &left_paren,
-                    |iter, comments, range| {
-                        let (field_name, field_range) = expect_field_name(iter, comments, range)?;
-                        expect_token(iter, comments, range, &Token::Colon)?;
-                        let pattern = parse_match_pattern(iter, comments, range)?;
-                        fields.push((field_name, field_range, pattern));
-                        Ok(())
-                    },
-                )?;
-                (fields, right_paren)
-            } else {
-                (Vec::new(), variant_range.clone())
-            };
+            let (fields, end_range) =
+                if let Some(left_paren) = advance_if(iter, comments, errors, Token::LeftParen) {
+                    let mut fields = Vec::new();
+                    let right_paren = parse_delimited_list(
+                        iter,
+                        comments,
+                        errors,
+                        range,
+                        &Token::LeftParen,
+                        &left_paren,
+                        |iter, comments, errors, range| {
+                            let (field_name, field_range) =
+                                expect_field_name(iter, comments, errors, range)?;
+                            expect_token(iter, comments, errors, range, &Token::Colon)?;
+                            let pattern = parse_match_pattern(iter, comments, errors, range)?;
+                            fields.push((field_name, field_range, pattern));
+                            Some(())
+                        },
+                    )?;
+                    (fields, right_paren)
+                } else {
+                    (Vec::new(), variant_range.clone())
+                };
 
             let constructor_range = type_name_range.clone().to(variant_range);
-            return Ok(ParsedMatchPattern::Constructor {
+            return Some(ParsedMatchPattern::Constructor {
                 constructor: Constructor::EnumVariant {
                     enum_name: type_name,
                     variant_name: CheapString::new(variant_name.to_string()),
@@ -942,23 +1051,25 @@ pub fn parse_match_pattern(
                 range: type_name_range.to(end_range),
             });
         } else {
-            let left_paren = expect_token(iter, comments, range, &Token::LeftParen)?;
+            let left_paren = expect_token(iter, comments, errors, range, &Token::LeftParen)?;
             let mut fields = Vec::new();
             let right_paren = parse_delimited_list(
                 iter,
                 comments,
+                errors,
                 range,
                 &Token::LeftParen,
                 &left_paren,
-                |iter, comments, range| {
-                    let (field_name, field_range) = expect_field_name(iter, comments, range)?;
-                    expect_token(iter, comments, range, &Token::Colon)?;
-                    let pattern = parse_match_pattern(iter, comments, range)?;
+                |iter, comments, errors, range| {
+                    let (field_name, field_range) =
+                        expect_field_name(iter, comments, errors, range)?;
+                    expect_token(iter, comments, errors, range, &Token::Colon)?;
+                    let pattern = parse_match_pattern(iter, comments, errors, range)?;
                     fields.push((field_name, field_range, pattern));
-                    Ok(())
+                    Some(())
                 },
             )?;
-            return Ok(ParsedMatchPattern::Constructor {
+            return Some(ParsedMatchPattern::Constructor {
                 constructor: Constructor::Record { type_name },
                 args: Vec::new(),
                 fields,
@@ -968,8 +1079,8 @@ pub fn parse_match_pattern(
         }
     }
 
-    let (var_name, var_range) = expect_variable_name(iter, comments, range)?;
-    Ok(ParsedMatchPattern::Binding {
+    let (var_name, var_range) = expect_variable_name(iter, comments, errors, range)?;
+    Some(ParsedMatchPattern::Binding {
         name: CheapString::new(var_name.to_string()),
         range: var_range,
     })
@@ -978,29 +1089,31 @@ pub fn parse_match_pattern(
 fn parse_match_expr(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
+    errors: &mut ErrorCollector<ParseError>,
     range: &DocumentRange,
     match_range: DocumentRange,
-) -> Result<ParsedExpr, ParseError> {
-    let subject = parse_primary(iter, comments, range)?;
-    let left_brace = expect_token(iter, comments, range, &Token::LeftBrace)?;
+) -> Option<ParsedExpr> {
+    let subject = parse_primary(iter, comments, errors, range)?;
+    let left_brace = expect_token(iter, comments, errors, range, &Token::LeftBrace)?;
 
     let mut arms = Vec::new();
     let right_brace = parse_delimited_list(
         iter,
         comments,
+        errors,
         range,
         &Token::LeftBrace,
         &left_brace,
-        |iter, comments, range| {
-            let pattern = parse_match_pattern(iter, comments, range)?;
-            expect_token(iter, comments, range, &Token::FatArrow)?;
-            let body = parse_logical(iter, comments, range)?;
+        |iter, comments, errors, range| {
+            let pattern = parse_match_pattern(iter, comments, errors, range)?;
+            expect_token(iter, comments, errors, range, &Token::FatArrow)?;
+            let body = parse_logical(iter, comments, errors, range)?;
             arms.push(ParsedMatchArm { pattern, body });
-            Ok(())
+            Some(())
         },
     )?;
 
-    Ok(ParsedExpr::Match {
+    Some(ParsedExpr::Match {
         subject: Box::new(subject),
         arms,
         range: match_range.to(right_brace),
@@ -1010,58 +1123,68 @@ fn parse_match_expr(
 pub fn parse_import_declaration(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
+    errors: &mut ErrorCollector<ParseError>,
     range: &DocumentRange,
-) -> Result<ParsedDeclaration, ParseError> {
-    let import_range = expect_token(iter, comments, range, &Token::Import)?;
+) -> Option<ParsedDeclaration> {
+    let import_range = expect_token(iter, comments, errors, range, &Token::Import)?;
 
     let mut path_segments: Vec<DocumentRange> = Vec::new();
 
-    let first_segment = match next(iter, comments).transpose()? {
+    let first_segment = match next(iter, comments, errors) {
         Some((Token::Identifier(_), seg_range)) | Some((Token::TypeName(_), seg_range)) => {
             seg_range
         }
         Some((_, seg_range)) => {
-            return Err(ParseError::ExpectedModulePath { range: seg_range });
+            errors.push(ParseError::ExpectedModulePath { range: seg_range });
+            return None;
         }
         None => {
-            return Err(ParseError::ExpectedModulePath {
+            errors.push(ParseError::ExpectedModulePath {
                 range: range.clone(),
             });
+            return None;
         }
     };
     path_segments.push(first_segment);
 
-    while advance_if(iter, comments, Token::ColonColon).is_some() {
-        let segment = match next(iter, comments).transpose()? {
+    while advance_if(iter, comments, errors, Token::ColonColon).is_some() {
+        let segment = match next(iter, comments, errors) {
             Some((Token::Identifier(_), seg_range)) | Some((Token::TypeName(_), seg_range)) => {
                 seg_range
             }
             Some((_, seg_range)) => {
-                return Err(ParseError::ExpectedIdentifierAfterColonColon { range: seg_range });
+                errors.push(ParseError::ExpectedIdentifierAfterColonColon { range: seg_range });
+                return None;
             }
             None => {
-                return Err(ParseError::ExpectedIdentifierAfterColonColon {
+                errors.push(ParseError::ExpectedIdentifierAfterColonColon {
                     range: range.clone(),
                 });
+                return None;
             }
         };
         path_segments.push(segment);
     }
 
     if path_segments.len() < 2 {
-        return Err(ParseError::ImportPathTooShort {
+        errors.push(ParseError::ImportPathTooShort {
             range: path_segments[0].clone(),
         });
+        return None;
     }
 
     let name_range = path_segments.pop().unwrap();
 
-    let name = TypeName::from_cheap_string(name_range.to_cheap_string()).map_err(|e| {
-        ParseError::InvalidTypeName {
-            error: e,
-            range: name_range.clone(),
+    let name = match TypeName::from_cheap_string(name_range.to_cheap_string()) {
+        Ok(name) => name,
+        Err(e) => {
+            errors.push(ParseError::InvalidTypeName {
+                error: e,
+                range: name_range.clone(),
+            });
+            return None;
         }
-    })?;
+    };
 
     let module_path_str = path_segments
         .iter()
@@ -1069,15 +1192,20 @@ pub fn parse_import_declaration(
         .collect::<Vec<_>>()
         .join("/");
 
-    let module_name =
-        ModuleName::new(&module_path_str).map_err(|e| ParseError::InvalidModuleName {
-            error: e,
-            range: path_segments
-                .first()
-                .unwrap()
-                .clone()
-                .to(path_segments.last().unwrap().clone()),
-        })?;
+    let module_name = match ModuleName::new(&module_path_str) {
+        Ok(name) => name,
+        Err(e) => {
+            errors.push(ParseError::InvalidModuleName {
+                error: e,
+                range: path_segments
+                    .first()
+                    .unwrap()
+                    .clone()
+                    .to(path_segments.last().unwrap().clone()),
+            });
+            return None;
+        }
+    };
 
     let path_range = path_segments
         .first()
@@ -1085,7 +1213,7 @@ pub fn parse_import_declaration(
         .clone()
         .to(name_range.clone());
 
-    Ok(ParsedDeclaration::Import {
+    Some(ParsedDeclaration::Import {
         name,
         name_range: name_range.clone(),
         path: path_range,
@@ -1097,38 +1225,41 @@ pub fn parse_import_declaration(
 pub fn parse_record_declaration(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
+    errors: &mut ErrorCollector<ParseError>,
     range: &DocumentRange,
-) -> Result<ParsedDeclaration, ParseError> {
-    let start_range = expect_token(iter, comments, range, &Token::Record)?;
-    let (name, name_range) = expect_type_name(iter, comments, range)?;
-    let left_brace = expect_token(iter, comments, range, &Token::LeftBrace)?;
+) -> Option<ParsedDeclaration> {
+    let start_range = expect_token(iter, comments, errors, range, &Token::Record)?;
+    let (name, name_range) = expect_type_name(iter, comments, errors, range)?;
+    let left_brace = expect_token(iter, comments, errors, range, &Token::LeftBrace)?;
 
     let mut fields = Vec::new();
     let mut seen_names = HashSet::new();
     let right_brace = parse_delimited_list(
         iter,
         comments,
+        errors,
         range,
         &Token::LeftBrace,
         &left_brace,
-        |iter, comments, range| {
-            let (field_name, field_name_range) = expect_field_name(iter, comments, range)?;
-            expect_token(iter, comments, range, &Token::Colon)?;
-            let field_type = parse_type(iter, comments, range)?;
+        |iter, comments, errors, range| {
+            let (field_name, field_name_range) = expect_field_name(iter, comments, errors, range)?;
+            expect_token(iter, comments, errors, range, &Token::Colon)?;
+            let field_type = parse_type(iter, comments, errors, range)?;
             if !seen_names.insert(field_name_range.to_cheap_string()) {
-                return Err(ParseError::DuplicateField {
+                errors.push(ParseError::DuplicateField {
                     name: field_name_range.to_cheap_string(),
                     range: field_name_range.clone(),
                 });
+                return None;
             }
             fields.push((field_name, field_name_range, field_type));
-            Ok(())
+            Some(())
         },
     )?;
 
     let full_range = start_range.to(right_brace);
 
-    Ok(ParsedDeclaration::Record {
+    Some(ParsedDeclaration::Record {
         name,
         name_range,
         fields,
@@ -1139,43 +1270,46 @@ pub fn parse_record_declaration(
 pub fn parse_enum_declaration(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
+    errors: &mut ErrorCollector<ParseError>,
     range: &DocumentRange,
-) -> Result<ParsedDeclaration, ParseError> {
-    let start_range = expect_token(iter, comments, range, &Token::Enum)?;
-    let (name, name_range) = expect_type_name(iter, comments, range)?;
-    let left_brace = expect_token(iter, comments, range, &Token::LeftBrace)?;
+) -> Option<ParsedDeclaration> {
+    let start_range = expect_token(iter, comments, errors, range, &Token::Enum)?;
+    let (name, name_range) = expect_type_name(iter, comments, errors, range)?;
+    let left_brace = expect_token(iter, comments, errors, range, &Token::LeftBrace)?;
 
     let mut variants = Vec::new();
     let mut seen_names = HashSet::new();
     let right_brace = parse_delimited_list(
         iter,
         comments,
+        errors,
         range,
         &Token::LeftBrace,
         &left_brace,
-        |iter, comments, range| {
-            let (variant_name, variant_range) = expect_type_name(iter, comments, range)?;
+        |iter, comments, errors, range| {
+            let (variant_name, variant_range) = expect_type_name(iter, comments, errors, range)?;
             if !seen_names.insert(variant_range.to_cheap_string()) {
-                return Err(ParseError::DuplicateVariant {
+                errors.push(ParseError::DuplicateVariant {
                     name: variant_range.to_cheap_string(),
                     range: variant_range.clone(),
                 });
+                return None;
             }
 
-            let fields = if advance_if(iter, comments, Token::LeftParen).is_some() {
-                parse_enum_variant_fields(iter, comments, range)?
+            let fields = if advance_if(iter, comments, errors, Token::LeftParen).is_some() {
+                parse_enum_variant_fields(iter, comments, errors, range)?
             } else {
                 Vec::new()
             };
 
             variants.push((variant_name, variant_range, fields));
-            Ok(())
+            Some(())
         },
     )?;
 
     let full_range = start_range.to(right_brace);
 
-    Ok(ParsedDeclaration::Enum {
+    Some(ParsedDeclaration::Enum {
         name,
         name_range,
         variants,
@@ -1186,57 +1320,65 @@ pub fn parse_enum_declaration(
 fn parse_enum_variant_fields(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
+    errors: &mut ErrorCollector<ParseError>,
     range: &DocumentRange,
-) -> Result<Vec<(FieldName, DocumentRange, ParsedType)>, ParseError> {
+) -> Option<Vec<(FieldName, DocumentRange, ParsedType)>> {
     let mut fields = Vec::new();
     let mut seen_names = HashSet::new();
 
-    if advance_if(iter, comments, Token::RightParen).is_some() {
-        return Ok(fields);
+    if advance_if(iter, comments, errors, Token::RightParen).is_some() {
+        return Some(fields);
     }
 
     loop {
-        let (field_name, field_name_range) = expect_field_name(iter, comments, range)?;
-        expect_token(iter, comments, range, &Token::Colon)?;
-        let field_type = parse_type(iter, comments, range)?;
+        let (field_name, field_name_range) = expect_field_name(iter, comments, errors, range)?;
+        expect_token(iter, comments, errors, range, &Token::Colon)?;
+        let field_type = parse_type(iter, comments, errors, range)?;
 
         if !seen_names.insert(field_name_range.to_cheap_string()) {
-            return Err(ParseError::DuplicateField {
+            errors.push(ParseError::DuplicateField {
                 name: field_name_range.to_cheap_string(),
                 range: field_name_range.clone(),
             });
+            return None;
         }
 
         fields.push((field_name, field_name_range, field_type));
 
-        if advance_if(iter, comments, Token::Comma).is_some() {
-            if advance_if(iter, comments, Token::RightParen).is_some() {
+        if advance_if(iter, comments, errors, Token::Comma).is_some() {
+            if advance_if(iter, comments, errors, Token::RightParen).is_some() {
                 break;
             }
         } else {
-            expect_token(iter, comments, range, &Token::RightParen)?;
+            expect_token(iter, comments, errors, range, &Token::RightParen)?;
             break;
         }
     }
 
-    Ok(fields)
+    Some(fields)
 }
 
 /// Parse a single declaration (import, record, or enum).
 pub fn parse_declaration(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
+    errors: &mut ErrorCollector<ParseError>,
     range: &DocumentRange,
-) -> Result<ParsedDeclaration, ParseError> {
+) -> Option<ParsedDeclaration> {
     match peek(iter) {
-        Some(Ok((Token::Import, _))) => parse_import_declaration(iter, comments, range),
-        Some(Ok((Token::Record, _))) => parse_record_declaration(iter, comments, range),
-        Some(Ok((Token::Enum, _))) => parse_enum_declaration(iter, comments, range),
-        Some(Ok((_, token_range))) => Err(ParseError::ExpectedDeclaration { range: token_range }),
-        Some(Err(err)) => Err(err),
-        None => Err(ParseError::UnexpectedEof {
-            range: range.clone(),
-        }),
+        Some((Token::Import, _)) => parse_import_declaration(iter, comments, errors, range),
+        Some((Token::Record, _)) => parse_record_declaration(iter, comments, errors, range),
+        Some((Token::Enum, _)) => parse_enum_declaration(iter, comments, errors, range),
+        Some((_, token_range)) => {
+            errors.push(ParseError::ExpectedDeclaration { range: token_range });
+            None
+        }
+        None => {
+            errors.push(ParseError::UnexpectedEof {
+                range: range.clone(),
+            });
+            None
+        }
     }
 }
 
@@ -1266,9 +1408,13 @@ mod tests {
         let range = cursor.range();
         let mut iter = cursor.peekable();
         let mut comments = VecDeque::new();
-        let actual = match parse_expr(&mut iter, &mut comments, &range) {
-            Ok(result) => format!("{}\n", result),
-            Err(err) => annotate_error(err),
+        let mut errors = ErrorCollector::new();
+        let actual = match parse_expr(&mut iter, &mut comments, &mut errors, &range) {
+            Some(result) => format!("{}\n", result),
+            None => {
+                let err = errors.to_vec().pop().unwrap();
+                annotate_error(err)
+            }
         };
         expected.assert_eq(&actual);
     }
@@ -1278,9 +1424,10 @@ mod tests {
         let range = cursor.range();
         let mut iter = cursor.peekable();
         let mut comments = VecDeque::new();
+        let mut errors = ErrorCollector::new();
 
-        let actual = match parse_parameters(&mut iter, &mut comments, &range) {
-            Ok(result) => {
+        let actual = match parse_parameters(&mut iter, &mut comments, &mut errors, &range) {
+            Some(result) => {
                 let params: Vec<String> = result
                     .into_iter()
                     .map(|((var_name, _var_name_range), var_type, default_value)| {
@@ -1292,7 +1439,10 @@ mod tests {
                     .collect();
                 format!("[{}]\n", params.join(", "))
             }
-            Err(err) => annotate_error(err),
+            None => {
+                let err = errors.to_vec().pop().unwrap();
+                annotate_error(err)
+            }
         };
 
         expected.assert_eq(&actual);
@@ -1303,19 +1453,17 @@ mod tests {
         let range = cursor.range();
         let mut iter = cursor.peekable();
         let mut comments = VecDeque::new();
+        let mut parser_errors = ErrorCollector::new();
         let mut declarations = Vec::new();
-        let mut errors = Vec::new();
 
         while peek(&iter).is_some() {
-            match parse_declaration(&mut iter, &mut comments, &range) {
-                Ok(decl) => declarations.push(decl),
-                Err(err) => {
-                    errors.push(err);
-                    break;
-                }
+            match parse_declaration(&mut iter, &mut comments, &mut parser_errors, &range) {
+                Some(decl) => declarations.push(decl),
+                None => break,
             }
         }
 
+        let errors: Vec<_> = parser_errors.to_vec();
         let actual = if !errors.is_empty() {
             DocumentAnnotator::new()
                 .with_label("error")
@@ -2738,12 +2886,15 @@ mod tests {
 
     #[test]
     fn should_reject_unexpected_content_before_declaration() {
+        // Note: The '•' character causes a tokenizer error that is collected,
+        // then the tokenizer continues and finds "bullet" which is not a
+        // valid declaration keyword, resulting in an ExpectedDeclaration error.
         check_parse_declarations(
             "• bullet point\nrecord User {name: String}",
             expect![[r#"
-                error: Unexpected character: '•'
+                error: Expected declaration (import, record, or enum)
                 1 | • bullet point
-                  | ^
+                  |   ^^^^^^
             "#]],
         );
     }
@@ -3543,8 +3694,9 @@ mod tests {
         let range = cursor.range();
         let mut iter = cursor.peekable();
         let mut comments = VecDeque::new();
-        let actual = match parse_let_bindings(&mut iter, &mut comments, &range) {
-            Ok(result) => {
+        let mut errors = ErrorCollector::new();
+        let actual = match parse_let_bindings(&mut iter, &mut comments, &mut errors, &range) {
+            Some(result) => {
                 let bindings: Vec<String> = result
                     .into_iter()
                     .map(|(var_name, _range, var_type, value_expr)| {
@@ -3553,7 +3705,10 @@ mod tests {
                     .collect();
                 format!("[{}]\n", bindings.join(", "))
             }
-            Err(err) => annotate_error(err),
+            None => {
+                let err = errors.to_vec().pop().unwrap();
+                annotate_error(err)
+            }
         };
         expected.assert_eq(&actual);
     }
@@ -3673,8 +3828,9 @@ mod tests {
         let range = cursor.range();
         let mut iter = cursor.peekable();
         let mut comments = VecDeque::new();
-        let actual = match parse_loop_header(&mut iter, &mut comments, &range) {
-            Ok((var_name, _range, source)) => {
+        let mut errors = ErrorCollector::new();
+        let actual = match parse_loop_header(&mut iter, &mut comments, &mut errors, &range) {
+            Some((var_name, _range, source)) => {
                 let source_str = match source {
                     ParsedLoopSource::Array(expr) => format!("{}", expr),
                     ParsedLoopSource::RangeInclusive { start, end } => {
@@ -3687,7 +3843,10 @@ mod tests {
                 };
                 format!("{} in {}\n", var_str, source_str)
             }
-            Err(err) => annotate_error(err),
+            None => {
+                let err = errors.to_vec().pop().unwrap();
+                annotate_error(err)
+            }
         };
         expected.assert_eq(&actual);
     }

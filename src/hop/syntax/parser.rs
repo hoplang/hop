@@ -29,8 +29,18 @@ fn parse_attribute(
         }
         Some(tokenizer::TokenizedAttributeValue::Expression(range)) => {
             let mut iter = range.cursor().peekable();
-            let expr = dop::parser::parse_expr(&mut iter, comments, range)?;
-            Some(parsed_ast::ParsedAttributeValue::Expression(expr))
+            let mut dop_errors = ErrorCollector::new();
+            match dop::parser::parse_expr(&mut iter, comments, &mut dop_errors, range) {
+                Some(expr) => Some(parsed_ast::ParsedAttributeValue::Expression(expr)),
+                None => {
+                    // Return the first error from dop_errors
+                    let err = dop_errors
+                        .to_vec()
+                        .pop()
+                        .expect("parse_expr returned None but no errors were collected");
+                    return Err(err.into());
+                }
+            }
         }
         None => None,
     };
@@ -83,9 +93,15 @@ pub fn parse(
 
     loop {
         match dop::tokenizer::peek_past_comments(&iter) {
-            Some(Ok((dop::Token::Import | dop::Token::Record | dop::Token::Enum, _))) => {
-                match dop::parser::parse_declaration(&mut iter, &mut comments, &document_range) {
-                    Ok(dop::ParsedDeclaration::Import {
+            Some((dop::Token::Import | dop::Token::Record | dop::Token::Enum, _)) => {
+                let mut dop_errors = ErrorCollector::new();
+                match dop::parser::parse_declaration(
+                    &mut iter,
+                    &mut comments,
+                    &mut dop_errors,
+                    &document_range,
+                ) {
+                    Some(dop::ParsedDeclaration::Import {
                         name,
                         name_range,
                         path,
@@ -110,7 +126,7 @@ pub fn parse(
                         }
                         declarations.push(ParsedDeclaration::Import(import));
                     }
-                    Ok(dop::ParsedDeclaration::Record {
+                    Some(dop::ParsedDeclaration::Record {
                         name,
                         name_range,
                         fields,
@@ -146,7 +162,7 @@ pub fn parse(
                         }
                         declarations.push(ParsedDeclaration::Record(record));
                     }
-                    Ok(dop::ParsedDeclaration::Enum {
+                    Some(dop::ParsedDeclaration::Enum {
                         name,
                         name_range,
                         variants,
@@ -180,13 +196,15 @@ pub fn parse(
                         }
                         declarations.push(ParsedDeclaration::Enum(enum_decl));
                     }
-                    Err(err) => {
-                        errors.push(err.into());
+                    None => {
+                        for err in dop_errors.to_vec() {
+                            errors.push(err.into());
+                        }
                         break;
                     }
                 }
             }
-            Some(Ok((dop::Token::Entrypoint, _))) => {
+            Some((dop::Token::Entrypoint, _)) => {
                 // Entrypoint declaration
                 if let Some(entrypoint) = parse_entrypoint_declaration(
                     &mut iter,
@@ -213,7 +231,7 @@ pub fn parse(
                     declarations.push(ParsedDeclaration::Entrypoint(entrypoint));
                 }
             }
-            Some(Ok((dop::Token::LessThan, _))) => {
+            Some((dop::Token::LessThan, _)) => {
                 // Component declaration - delegate to hop parser
                 // First, consume whitespace and comments using dop tokenizer
                 // (peek_past_comments discards them, so we need to actually consume them)
@@ -222,9 +240,10 @@ pub fn parse(
                         iter.next();
                     }
                     match dop::tokenizer::peek(&iter) {
-                        Some(Ok((dop::Token::Comment(_), _))) => {
-                            if let Some(Ok((dop::Token::Comment(_), range))) =
-                                dop::tokenizer::next(&mut iter)
+                        Some((dop::Token::Comment(_), _)) => {
+                            let mut discard_errors = ErrorCollector::new();
+                            if let Some((dop::Token::Comment(_), range)) =
+                                dop::tokenizer::next(&mut iter, &mut discard_errors)
                             {
                                 comments.push_back(range);
                             }
@@ -256,13 +275,9 @@ pub fn parse(
                     declarations.push(ParsedDeclaration::Component(component));
                 }
             }
-            Some(Ok((_, token_range))) => {
+            Some((_, token_range)) => {
                 // Unexpected token at top level
                 errors.push(ParseError::UnexpectedTopLevelText { range: token_range });
-                break;
-            }
-            Some(Err(err)) => {
-                errors.push(err.into());
                 break;
             }
             None => break, // EOF
@@ -319,24 +334,28 @@ fn parse_component_declaration(
 
     let params = expression.as_ref().and_then(|expr| {
         let mut expr_iter = expr.cursor().peekable();
-        errors.ok_or_add(
-            dop::parser::parse_parameters(&mut expr_iter, comments, expr)
-                .map(|parsed_params| {
-                    let params = parsed_params
-                        .into_iter()
-                        .map(|((var_name, var_name_range), var_type, default_value)| {
-                            parsed_ast::ParsedParameter {
-                                var_name,
-                                var_name_range,
-                                var_type,
-                                default_value,
-                            }
-                        })
-                        .collect();
-                    (params, expr.clone())
+        let mut dop_errors = ErrorCollector::new();
+        let result = dop::parser::parse_parameters(&mut expr_iter, comments, &mut dop_errors, expr);
+        if result.is_none() {
+            for err in dop_errors.to_vec() {
+                errors.push(err.into());
+            }
+            return None;
+        }
+        result.map(|parsed_params| {
+            let params = parsed_params
+                .into_iter()
+                .map(|((var_name, var_name_range), var_type, default_value)| {
+                    parsed_ast::ParsedParameter {
+                        var_name,
+                        var_name_range,
+                        var_type,
+                        default_value,
+                    }
                 })
-                .map_err(|err| err.into()),
-        )
+                .collect();
+            (params, expr.clone())
+        })
     });
 
     errors.extend(disallow_attributes(&attributes, &tag_name));
@@ -378,9 +397,11 @@ fn parse_entrypoint_declaration(
     defined_components: &HashSet<String>,
     imported_components: &HashMap<String, ModuleName>,
 ) -> Option<ParsedEntrypointDeclaration> {
+    let mut dop_errors = ErrorCollector::new();
+
     // Consume the 'entrypoint' keyword
-    let Some(Ok((dop::Token::Entrypoint, keyword_range))) =
-        dop::tokenizer::next_collecting_comments(iter, comments)
+    let Some((dop::Token::Entrypoint, keyword_range)) =
+        dop::tokenizer::next_collecting_comments(iter, comments, &mut dop_errors)
     else {
         return None;
     };
@@ -388,14 +409,14 @@ fn parse_entrypoint_declaration(
     // Parse the entrypoint name (must be PascalCase)
     // First peek to check what type of token we have
     let (name_str, name_range) = match dop::tokenizer::peek_past_comments(iter) {
-        Some(Ok((dop::Token::TypeName(name_str), range))) => {
+        Some((dop::Token::TypeName(name_str), range)) => {
             // Consume the token
-            dop::tokenizer::next_collecting_comments(iter, comments);
+            dop::tokenizer::next_collecting_comments(iter, comments, &mut dop_errors);
             (name_str, range)
         }
-        Some(Ok((dop::Token::Identifier(_), range))) => {
+        Some((dop::Token::Identifier(_), range)) => {
             // Lowercase name - consume and report error
-            dop::tokenizer::next_collecting_comments(iter, comments);
+            dop::tokenizer::next_collecting_comments(iter, comments, &mut dop_errors);
             errors.push(ParseError::InvalidEntrypointName { range });
             return None;
         }
@@ -418,12 +439,12 @@ fn parse_entrypoint_declaration(
     };
 
     // Parse parameters (parentheses are optional if no parameters)
-    let (params, params_range) = if let Some(Ok((dop::Token::LeftParen, _))) =
+    let (params, params_range) = if let Some((dop::Token::LeftParen, _)) =
         dop::tokenizer::peek_past_comments(iter)
     {
         // Consume the opening parenthesis
-        let Some(Ok((dop::Token::LeftParen, params_start))) =
-            dop::tokenizer::next_collecting_comments(iter, comments)
+        let Some((dop::Token::LeftParen, params_start)) =
+            dop::tokenizer::next_collecting_comments(iter, comments, &mut dop_errors)
         else {
             unreachable!("we just peeked a LeftParen");
         };
@@ -433,16 +454,16 @@ fn parse_entrypoint_declaration(
 
         loop {
             // Check for closing paren
-            if let Some(Ok((dop::Token::RightParen, end_range))) = dop::tokenizer::peek(iter) {
+            if let Some((dop::Token::RightParen, end_range)) = dop::tokenizer::peek(iter) {
                 params_end = end_range;
-                dop::tokenizer::next_collecting_comments(iter, comments);
+                dop::tokenizer::next_collecting_comments(iter, comments, &mut dop_errors);
                 break;
             }
 
             // Skip comma if present (between parameters)
             if !params.is_empty() {
-                if let Some(Ok((dop::Token::Comma, _))) = dop::tokenizer::peek(iter) {
-                    dop::tokenizer::next_collecting_comments(iter, comments);
+                if let Some((dop::Token::Comma, _)) = dop::tokenizer::peek(iter) {
+                    dop::tokenizer::next_collecting_comments(iter, comments, &mut dop_errors);
                 } else {
                     // Missing comma or closing paren
                     break;
@@ -450,23 +471,23 @@ fn parse_entrypoint_declaration(
             }
 
             // Check for trailing comma before closing paren
-            if let Some(Ok((dop::Token::RightParen, end_range))) = dop::tokenizer::peek(iter) {
+            if let Some((dop::Token::RightParen, end_range)) = dop::tokenizer::peek(iter) {
                 params_end = end_range;
-                dop::tokenizer::next_collecting_comments(iter, comments);
+                dop::tokenizer::next_collecting_comments(iter, comments, &mut dop_errors);
                 break;
             }
 
             // Parse parameter: name: Type [= default]
-            let Some(Ok((dop::Token::Identifier(param_name), param_name_range))) =
-                dop::tokenizer::next_collecting_comments(iter, comments)
+            let Some((dop::Token::Identifier(param_name), param_name_range)) =
+                dop::tokenizer::next_collecting_comments(iter, comments, &mut dop_errors)
             else {
                 break;
             };
 
             // Expect colon
-            match dop::tokenizer::next_collecting_comments(iter, comments) {
-                Some(Ok((dop::Token::Colon, _))) => {}
-                Some(Ok((token, range))) => {
+            match dop::tokenizer::next_collecting_comments(iter, comments, &mut dop_errors) {
+                Some((dop::Token::Colon, _)) => {}
+                Some((token, range)) => {
                     errors.push(
                         dop::ParseError::ExpectedTokenButGot {
                             expected: dop::Token::Colon,
@@ -490,28 +511,32 @@ fn parse_entrypoint_declaration(
             }
 
             // Parse type
-            let param_type = match dop::parser::parse_type(iter, comments, &params_start) {
-                Ok(t) => t,
-                Err(e) => {
-                    errors.push(e.into());
-                    break;
-                }
-            };
+            let param_type =
+                match dop::parser::parse_type(iter, comments, &mut dop_errors, &params_start) {
+                    Some(t) => t,
+                    None => {
+                        for e in dop_errors.to_vec() {
+                            errors.push(e.into());
+                        }
+                        break;
+                    }
+                };
 
             // Check for default value - use parse_primary which doesn't consume past the literal
-            let default_value =
-                if let Some(Ok((dop::Token::Assign, _))) = dop::tokenizer::peek(iter) {
-                    dop::tokenizer::next_collecting_comments(iter, comments);
-                    match dop::parser::parse_primary(iter, comments, &params_start) {
-                        Ok(expr) => Some(expr),
-                        Err(e) => {
+            let default_value = if let Some((dop::Token::Assign, _)) = dop::tokenizer::peek(iter) {
+                dop::tokenizer::next_collecting_comments(iter, comments, &mut dop_errors);
+                match dop::parser::parse_primary(iter, comments, &mut dop_errors, &params_start) {
+                    Some(expr) => Some(expr),
+                    None => {
+                        for e in dop_errors.to_vec() {
                             errors.push(e.into());
-                            None
                         }
+                        None
                     }
-                } else {
-                    None
-                };
+                }
+            } else {
+                None
+            };
 
             let var_name = VarName::new(&param_name).expect("identifier should be valid var name");
             params.push(parsed_ast::ParsedParameter {
@@ -529,8 +554,8 @@ fn parse_entrypoint_declaration(
     };
 
     // Expect opening brace for body
-    let Some(Ok((dop::Token::LeftBrace, body_start))) =
-        dop::tokenizer::next_collecting_comments(iter, comments)
+    let Some((dop::Token::LeftBrace, body_start)) =
+        dop::tokenizer::next_collecting_comments(iter, comments, &mut dop_errors)
     else {
         errors.push(
             dop::ParseError::ExpectedTokenButGotEof {
@@ -554,8 +579,8 @@ fn parse_entrypoint_declaration(
         }
 
         // Check for closing brace
-        if let Some(Ok((dop::Token::RightBrace, body_end))) = dop::tokenizer::peek(iter) {
-            dop::tokenizer::next_collecting_comments(iter, comments);
+        if let Some((dop::Token::RightBrace, body_end)) = dop::tokenizer::peek(iter) {
+            dop::tokenizer::next_collecting_comments(iter, comments, &mut dop_errors);
             let range = keyword_range.to(body_end);
             return Some(ParsedEntrypointDeclaration {
                 name,
@@ -620,10 +645,13 @@ fn construct_node(
         Token::Newline { range } => Some(ParsedNode::Newline { range }),
         Token::TextExpression { content, range } => {
             let mut iter = content.cursor().peekable();
-            match dop::parser::parse_expr(&mut iter, comments, &content) {
-                Ok(expression) => Some(ParsedNode::TextExpression { expression, range }),
-                Err(err) => {
-                    errors.push(err.into());
+            let mut dop_errors = ErrorCollector::new();
+            match dop::parser::parse_expr(&mut iter, comments, &mut dop_errors, &content) {
+                Some(expression) => Some(ParsedNode::TextExpression { expression, range }),
+                None => {
+                    for err in dop_errors.to_vec() {
+                        errors.push(err.into());
+                    }
                     None
                 }
             }
@@ -663,13 +691,23 @@ fn construct_node(
             // Handle <match> specially - process children as <case> tags
             if tag_name.as_str() == "match" {
                 errors.extend(disallow_attributes(&attributes, &tag_name));
-                let expr = expression.ok_or_else(|| ParseError::MissingMatchExpression {
-                    range: opening_tag_range.clone(),
-                });
-                let Some(subject) = errors.ok_or_add(expr.and_then(|e| {
+                let subject = if let Some(e) = expression {
                     let mut iter = e.cursor().peekable();
-                    dop::parser::parse_expr(&mut iter, comments, &e).map_err(|err| err.into())
-                })) else {
+                    let mut dop_errors = ErrorCollector::new();
+                    let result = dop::parser::parse_expr(&mut iter, comments, &mut dop_errors, &e);
+                    if result.is_none() {
+                        for err in dop_errors.to_vec() {
+                            errors.push(err.into());
+                        }
+                    }
+                    result
+                } else {
+                    errors.push(ParseError::MissingMatchExpression {
+                        range: opening_tag_range.clone(),
+                    });
+                    None
+                };
+                let Some(subject) = subject else {
                     // Parse children to collect errors
                     for child in tree.children {
                         construct_node(
@@ -708,15 +746,23 @@ fn construct_node(
                                 });
                                 continue;
                             };
-                            let Some(pattern) = errors.ok_or_add({
+                            let pattern = {
                                 let mut iter = pattern_range.cursor().peekable();
-                                dop::parser::parse_match_pattern(
+                                let mut dop_errors = ErrorCollector::new();
+                                let result = dop::parser::parse_match_pattern(
                                     &mut iter,
                                     comments,
+                                    &mut dop_errors,
                                     &pattern_range,
-                                )
-                                .map_err(|err| err.into())
-                            }) else {
+                                );
+                                if result.is_none() {
+                                    for err in dop_errors.to_vec() {
+                                        errors.push(err.into());
+                                    }
+                                }
+                                result
+                            };
+                            let Some(pattern) = pattern else {
                                 continue;
                             };
                             // Parse case children normally
@@ -774,13 +820,23 @@ fn construct_node(
                 // <if {...}>
                 "if" => {
                     errors.extend(disallow_attributes(&attributes, &tag_name));
-                    let expr = expression.ok_or_else(|| ParseError::MissingIfExpression {
-                        range: opening_tag_range.clone(),
-                    });
-                    let condition = errors.ok_or_add(expr.and_then(|e| {
+                    let condition = if let Some(e) = expression {
                         let mut iter = e.cursor().peekable();
-                        dop::parser::parse_expr(&mut iter, comments, &e).map_err(|err| err.into())
-                    }))?;
+                        let mut dop_errors = ErrorCollector::new();
+                        let result =
+                            dop::parser::parse_expr(&mut iter, comments, &mut dop_errors, &e);
+                        if result.is_none() {
+                            for err in dop_errors.to_vec() {
+                                errors.push(err.into());
+                            }
+                        }
+                        result
+                    } else {
+                        errors.push(ParseError::MissingIfExpression {
+                            range: opening_tag_range.clone(),
+                        });
+                        None
+                    }?;
                     Some(ParsedNode::If {
                         condition,
                         range: tree.range.clone(),
@@ -791,17 +847,28 @@ fn construct_node(
                 // <for {...}>
                 "for" => {
                     errors.extend(disallow_attributes(&attributes, &tag_name));
-                    let parse_result = expression
-                        .ok_or_else(|| ParseError::MissingForExpression {
+                    let parse_result = if let Some(e) = expression {
+                        let mut iter = e.cursor().peekable();
+                        let mut dop_errors = ErrorCollector::new();
+                        let result = dop::parser::parse_loop_header(
+                            &mut iter,
+                            comments,
+                            &mut dop_errors,
+                            &e,
+                        );
+                        if result.is_none() {
+                            for err in dop_errors.to_vec() {
+                                errors.push(err.into());
+                            }
+                        }
+                        result
+                    } else {
+                        errors.push(ParseError::MissingForExpression {
                             range: opening_tag_range.clone(),
-                        })
-                        .and_then(|e| {
-                            let mut iter = e.cursor().peekable();
-                            dop::parser::parse_loop_header(&mut iter, comments, &e)
-                                .map_err(|err| err.into())
                         });
-                    let Some((var_name, var_name_range, source)) = errors.ok_or_add(parse_result)
-                    else {
+                        None
+                    };
+                    let Some((var_name, var_name_range, source)) = parse_result else {
                         return None;
                     };
                     Some(ParsedNode::For {
@@ -824,10 +891,21 @@ fn construct_node(
                     };
                     let parse_result = {
                         let mut iter = bindings_range.cursor().peekable();
-                        dop::parser::parse_let_bindings(&mut iter, comments, &bindings_range)
-                            .map_err(|err| err.into())
+                        let mut dop_errors = ErrorCollector::new();
+                        let result = dop::parser::parse_let_bindings(
+                            &mut iter,
+                            comments,
+                            &mut dop_errors,
+                            &bindings_range,
+                        );
+                        if result.is_none() {
+                            for err in dop_errors.to_vec() {
+                                errors.push(err.into());
+                            }
+                        }
+                        result
                     };
-                    let Some(parsed_bindings) = errors.ok_or_add(parse_result) else {
+                    let Some(parsed_bindings) = parse_result else {
                         return None;
                     };
                     let bindings = parsed_bindings
@@ -887,12 +965,20 @@ fn construct_node(
                         let value = match &attr.value {
                             Some(tokenizer::TokenizedAttributeValue::Expression(range)) => {
                                 let mut iter = range.cursor().peekable();
-                                match dop::parser::parse_expr(&mut iter, comments, range) {
-                                    Ok(expr) => {
+                                let mut dop_errors = ErrorCollector::new();
+                                match dop::parser::parse_expr(
+                                    &mut iter,
+                                    comments,
+                                    &mut dop_errors,
+                                    range,
+                                ) {
+                                    Some(expr) => {
                                         Some(parsed_ast::ParsedAttributeValue::Expression(expr))
                                     }
-                                    Err(err) => {
-                                        errors.push(err.into());
+                                    None => {
+                                        for err in dop_errors.to_vec() {
+                                            errors.push(err.into());
+                                        }
                                         continue;
                                     }
                                 }
@@ -1315,6 +1401,11 @@ mod tests {
             "},
             expect![[r#"
                 error: Unexpected character: '~'
+                1 | <Main>
+                2 |     <if {~}>
+                  |          ^
+
+                error: Unexpected end of expression
                 1 | <Main>
                 2 |     <if {~}>
                   |          ^

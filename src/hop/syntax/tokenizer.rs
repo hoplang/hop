@@ -244,13 +244,14 @@ fn step(
 /// Returns None if we reached EOF before finding the closing '}'.
 fn find_expression_end(mut iter: Peekable<DocumentCursor>) -> Option<DocumentRange> {
     let mut open_braces = 1;
+    let mut dop_errors = ErrorCollector::new();
     loop {
-        let token = dop::tokenizer::next(&mut iter)?;
+        let token = dop::tokenizer::next(&mut iter, &mut dop_errors)?;
         match token {
-            Ok((dop::Token::LeftBrace, _)) => {
+            (dop::Token::LeftBrace, _) => {
                 open_braces += 1;
             }
-            Ok((dop::Token::RightBrace, range)) => {
+            (dop::Token::RightBrace, range) => {
                 open_braces -= 1;
                 if open_braces == 0 {
                     return Some(range);

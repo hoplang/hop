@@ -1348,6 +1348,7 @@ mod tests {
     use crate::dop::parser;
     use crate::dop::symbols::type_name::TypeName;
     use crate::dop::syntax::tokenizer;
+    use crate::error_collector::ErrorCollector;
     use crate::hop::symbols::module_name::ModuleName;
     use expect_test::{Expect, expect};
     use indoc::indoc;
@@ -1363,9 +1364,11 @@ mod tests {
         let range = cursor.range();
         let mut iter = cursor.peekable();
         let mut comments = VecDeque::new();
+        let mut errors = ErrorCollector::new();
         while tokenizer::peek_past_comments(&iter).is_some() {
-            let declaration = parser::parse_declaration(&mut iter, &mut comments, &range)
-                .expect("Failed to parse declaration");
+            let declaration =
+                parser::parse_declaration(&mut iter, &mut comments, &mut errors, &range)
+                    .expect("Failed to parse declaration");
             match declaration {
                 ParsedDeclaration::Enum { name, variants, .. } => {
                     // Build variant types with properly resolved field types
@@ -1421,8 +1424,9 @@ mod tests {
             let range = cursor.range();
             let mut iter = cursor.peekable();
             let mut comments = VecDeque::new();
-            let parsed_type =
-                parser::parse_type(&mut iter, &mut comments, &range).expect("Failed to parse type");
+            let mut errors = ErrorCollector::new();
+            let parsed_type = parser::parse_type(&mut iter, &mut comments, &mut errors, &range)
+                .expect("Failed to parse type");
             let typ = resolve_type(&parsed_type, &mut type_env)
                 .expect("Test parameter type should be valid");
             let _ = env.push(var_name.to_string(), typ);
@@ -1432,7 +1436,8 @@ mod tests {
         let range = cursor.range();
         let mut iter = cursor.peekable();
         let mut comments = VecDeque::new();
-        let expr = parser::parse_expr(&mut iter, &mut comments, &range)
+        let mut errors = ErrorCollector::new();
+        let expr = parser::parse_expr(&mut iter, &mut comments, &mut errors, &range)
             .expect("Failed to parse expression");
 
         let mut annotations = Vec::new();
