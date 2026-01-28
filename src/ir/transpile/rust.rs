@@ -61,45 +61,23 @@ impl RustTranspiler {
             .replace('\t', "\\t")
     }
 
-    /// Check if entrypoint parameters need a lifetime (contain &str or &[T])
-    fn params_need_lifetime(&self, entrypoint: &IrEntrypointDeclaration) -> bool {
-        for (_, param_type) in &entrypoint.parameters {
-            if Self::type_needs_lifetime(param_type) {
-                return true;
-            }
-        }
-        false
-    }
-
-    fn type_needs_lifetime(t: &Type) -> bool {
-        match t {
-            Type::String => true,
-            Type::TrustedHTML => true,
-            Type::Array(_) => true,
-            Type::Option(inner) => Self::type_needs_lifetime(inner),
-            _ => false,
-        }
-    }
-
-    /// Transpile a type for use in a parameter struct (uses references)
+    /// Transpile a type for use in function parameters (uses references without explicit lifetimes)
     fn transpile_param_type<'a>(&self, t: &'a Type) -> BoxDoc<'a> {
         match t {
             Type::Bool => BoxDoc::text("bool"),
-            Type::String => BoxDoc::text("&'a str"),
+            Type::String => BoxDoc::text("&str"),
             Type::Float => BoxDoc::text("f64"),
             Type::Int => BoxDoc::text("i64"),
-            Type::TrustedHTML => BoxDoc::text("&'a TrustedHTML"),
-            Type::Array(elem) => BoxDoc::text("&'a [")
+            Type::TrustedHTML => BoxDoc::text("&TrustedHTML"),
+            Type::Array(elem) => BoxDoc::text("&[")
                 .append(self.transpile_type(elem))
                 .append(BoxDoc::text("]")),
             Type::Option(inner) => BoxDoc::text("Option<")
                 .append(self.transpile_param_type(inner))
                 .append(BoxDoc::text(">")),
-            Type::Record { name, .. } => BoxDoc::text("&'a ").append(BoxDoc::text(name.as_str())),
-            Type::Enum { name, .. } => BoxDoc::text("&'a ").append(BoxDoc::text(name.as_str())),
-            Type::Component { name, .. } => {
-                BoxDoc::text("&'a ").append(BoxDoc::text(name.as_str()))
-            }
+            Type::Record { name, .. } => BoxDoc::text("&").append(BoxDoc::text(name.as_str())),
+            Type::Enum { name, .. } => BoxDoc::text("&").append(BoxDoc::text(name.as_str())),
+            Type::Component { name, .. } => BoxDoc::text("&").append(BoxDoc::text(name.as_str())),
         }
     }
 }
@@ -226,43 +204,6 @@ impl Transpiler for RustTranspiler {
                 .append(BoxDoc::line());
         }
 
-        // Generate parameter structs for entrypoints that have parameters
-        for entrypoint in entrypoints {
-            if !entrypoint.parameters.is_empty() {
-                let struct_name = format!("{}Params", entrypoint.name.to_pascal_case());
-                let needs_lifetime = self.params_need_lifetime(entrypoint);
-
-                result = result.append(BoxDoc::text("pub struct "));
-
-                if needs_lifetime {
-                    result = result
-                        .append(BoxDoc::as_string(struct_name))
-                        .append(BoxDoc::text("<'a>"));
-                } else {
-                    result = result.append(BoxDoc::as_string(struct_name));
-                }
-
-                result = result
-                    .append(BoxDoc::text(" {"))
-                    .append(BoxDoc::line());
-
-                for (param_name, param_type) in &entrypoint.parameters {
-                    result = result
-                        .append(BoxDoc::text("    pub "))
-                        .append(BoxDoc::text(param_name.as_str()))
-                        .append(BoxDoc::text(": "))
-                        .append(self.transpile_param_type(param_type))
-                        .append(BoxDoc::text(","))
-                        .append(BoxDoc::line());
-                }
-
-                result = result
-                    .append(BoxDoc::text("}"))
-                    .append(BoxDoc::line())
-                    .append(BoxDoc::line());
-            }
-        }
-
         // Transpile each entrypoint as a function
         for (i, entrypoint) in entrypoints.iter().enumerate() {
             result = result.append(self.transpile_entrypoint(&entrypoint.name, entrypoint));
@@ -296,35 +237,21 @@ impl Transpiler for RustTranspiler {
         if entrypoint.parameters.is_empty() {
             result = result.append(BoxDoc::text("() -> String {"));
         } else {
-            let struct_name = format!("{}Params", name.to_pascal_case());
-            let needs_lifetime = self.params_need_lifetime(entrypoint);
-
-            if needs_lifetime {
-                result = result
-                    .append(BoxDoc::text("(params: "))
-                    .append(BoxDoc::as_string(struct_name))
-                    .append(BoxDoc::text("<'_>) -> String {"));
-            } else {
-                result = result
-                    .append(BoxDoc::text("(params: "))
-                    .append(BoxDoc::as_string(struct_name))
-                    .append(BoxDoc::text(") -> String {"));
-            }
+            result = result
+                .append(BoxDoc::text("("))
+                .append(BoxDoc::intersperse(
+                    entrypoint.parameters.iter().map(|(param_name, param_type)| {
+                        BoxDoc::text(param_name.as_str())
+                            .append(BoxDoc::text(": "))
+                            .append(self.transpile_param_type(param_type))
+                    }),
+                    BoxDoc::text(", "),
+                ))
+                .append(BoxDoc::text(") -> String {"));
         }
 
         // Build function body
         let mut body = BoxDoc::nil();
-
-        // Extract parameters into local variables
-        for (param_name, _) in &entrypoint.parameters {
-            body = body
-                .append(BoxDoc::text("let "))
-                .append(BoxDoc::text(param_name.as_str()))
-                .append(BoxDoc::text(" = params."))
-                .append(BoxDoc::text(param_name.as_str()))
-                .append(BoxDoc::text(";"))
-                .append(BoxDoc::hardline());
-        }
 
         // Initialize output string
         body = body
@@ -1146,12 +1073,7 @@ mod tests {
                 }
 
                 -- after --
-                pub struct TestParams {
-                    pub show: bool,
-                }
-
-                pub fn test(params: TestParams) -> String {
-                    let show = params.show;
+                pub fn test(show: bool) -> String {
                     let mut output = String::new();
                     if show {
                         output.push_str("<h1>Visible</h1>");
@@ -1189,12 +1111,7 @@ mod tests {
                 }
 
                 -- after --
-                pub struct TestParams {
-                    pub show: bool,
-                }
-
-                pub fn test(params: TestParams) -> String {
-                    let show = params.show;
+                pub fn test(show: bool) -> String {
                     let mut output = String::new();
                     if show {
                         output.push_str("yes");
@@ -1270,12 +1187,7 @@ mod tests {
                 }
 
                 -- after --
-                pub struct TestParams<'a> {
-                    pub opt: Option<&'a str>,
-                }
-
-                pub fn test(params: TestParams<'_>) -> String {
-                    let opt = params.opt;
+                pub fn test(opt: Option<&str>) -> String {
                     let mut output = String::new();
                     match opt {
                         Some(value) => {

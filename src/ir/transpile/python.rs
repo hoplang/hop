@@ -296,37 +296,6 @@ impl Transpiler for PythonTranspiler {
                 .append(BoxDoc::line());
         }
 
-        // Generate parameter dataclasses for entrypoints that have parameters
-        for entrypoint in entrypoints {
-            if !entrypoint.parameters.is_empty() {
-                let class_name = format!("{}Params", entrypoint.name.to_pascal_case());
-
-                let fields: Vec<_> = entrypoint
-                    .parameters
-                    .iter()
-                    .map(|(param_name, param_type)| {
-                        BoxDoc::text(param_name.as_str())
-                            .append(BoxDoc::text(": "))
-                            .append(self.transpile_type(param_type))
-                    })
-                    .collect();
-
-                result = result
-                    .append(BoxDoc::text("@dataclass"))
-                    .append(BoxDoc::line())
-                    .append(BoxDoc::text("class "))
-                    .append(BoxDoc::text(class_name))
-                    .append(BoxDoc::text(":"))
-                    .append(
-                        BoxDoc::line()
-                            .append(BoxDoc::intersperse(fields, BoxDoc::line()))
-                            .nest(4),
-                    )
-                    .append(BoxDoc::line())
-                    .append(BoxDoc::line());
-            }
-        }
-
         // Transpile each entrypoint as a function
         for (i, entrypoint) in entrypoints.iter().enumerate() {
             result = result.append(self.transpile_entrypoint(&entrypoint.name, entrypoint));
@@ -355,25 +324,21 @@ impl Transpiler for PythonTranspiler {
         if entrypoint.parameters.is_empty() {
             result = result.append(BoxDoc::text("() -> str:"));
         } else {
-            let class_name = format!("{}Params", name.to_pascal_case());
             result = result
-                .append(BoxDoc::text("(params: "))
-                .append(BoxDoc::as_string(class_name))
+                .append(BoxDoc::text("("))
+                .append(BoxDoc::intersperse(
+                    entrypoint.parameters.iter().map(|(param_name, param_type)| {
+                        BoxDoc::text(param_name.as_str())
+                            .append(BoxDoc::text(": "))
+                            .append(self.transpile_type(param_type))
+                    }),
+                    BoxDoc::text(", "),
+                ))
                 .append(BoxDoc::text(") -> str:"));
         }
 
         // Function body
         let mut body = Vec::new();
-
-        // Extract parameters from dataclass into local variables
-        for (param_name, _) in &entrypoint.parameters {
-            body.push(
-                BoxDoc::nil()
-                    .append(BoxDoc::text(param_name.as_str()))
-                    .append(BoxDoc::text(" = params."))
-                    .append(BoxDoc::text(param_name.as_str())),
-            );
-        }
 
         body.push(BoxDoc::text("output = []"));
 
@@ -1150,14 +1115,7 @@ mod tests {
                 from dataclasses import dataclass
                 from html import escape as html_escape
 
-                @dataclass
-                class TestGreetingCompParams:
-                    name: str
-                    message: str
-
-                def test_greeting_comp(params: TestGreetingCompParams) -> str:
-                    name = params.name
-                    message = params.message
+                def test_greeting_comp(name: str, message: str) -> str:
                     output = []
                     output.append("<h1>Hello ")
                     output.append(html_escape(name))
@@ -1190,12 +1148,7 @@ mod tests {
                 -- after --
                 from dataclasses import dataclass
 
-                @dataclass
-                class TestMainCompParams:
-                    show: bool
-
-                def test_main_comp(params: TestMainCompParams) -> str:
-                    show = params.show
+                def test_main_comp(show: bool) -> str:
                     output = []
                     if show:
                         output.append("<div>Visible</div>\n")
@@ -1234,12 +1187,7 @@ mod tests {
                 from dataclasses import dataclass
                 from html import escape as html_escape
 
-                @dataclass
-                class TestMainCompParams:
-                    items: list[str]
-
-                def test_main_comp(params: TestMainCompParams) -> str:
-                    items = params.items
+                def test_main_comp(items: list[str]) -> str:
                     output = []
                     for item in items:
                         output.append("<li>")
@@ -1348,14 +1296,7 @@ mod tests {
                 -- after --
                 from dataclasses import dataclass
 
-                @dataclass
-                class TestAuthCheckParams:
-                    user_role: str
-                    expected_role: str
-
-                def test_auth_check(params: TestAuthCheckParams) -> str:
-                    user_role = params.user_role
-                    expected_role = params.expected_role
+                def test_auth_check(user_role: str, expected_role: str) -> str:
                     output = []
                     if (user_role == expected_role):
                         output.append("<div>Access granted</div>\n")
@@ -1387,12 +1328,7 @@ mod tests {
                 -- after --
                 from dataclasses import dataclass
 
-                @dataclass
-                class TestNotParams:
-                    active: bool
-
-                def test_not(params: TestNotParams) -> str:
-                    active = params.active
+                def test_not(active: bool) -> str:
                     output = []
                     if not (active):
                         output.append("<div>Inactive</div>\n")
@@ -1437,14 +1373,7 @@ mod tests {
 
                 TrustedHTML = NewType('TrustedHTML', str)
 
-                @dataclass
-                class RenderHtmlParams:
-                    safe_content: TrustedHTML
-                    user_input: str
-
-                def render_html(params: RenderHtmlParams) -> str:
-                    safe_content = params.safe_content
-                    user_input = params.user_input
+                def render_html(safe_content: TrustedHTML, user_input: str) -> str:
                     output = []
                     output.append("<div>")
                     output.append(str(safe_content))
@@ -1519,12 +1448,7 @@ mod tests {
                     age: int
                     active: bool
 
-                @dataclass
-                class UserProfileParams:
-                    user: User
-
-                def user_profile(params: UserProfileParams) -> str:
-                    user = params.user
+                def user_profile(user: User) -> str:
                     output = []
                     output.append("<div>")
                     output.append(html_escape(user.name))
@@ -1636,12 +1560,7 @@ mod tests {
 
                 Color = ColorRed | ColorGreen | ColorBlue
 
-                @dataclass
-                class ColorDisplayParams:
-                    color: Color
-
-                def color_display(params: ColorDisplayParams) -> str:
-                    color = params.color
+                def color_display(color: Color) -> str:
                     output = []
                     if color.equals(ColorRed()):
                         output.append("<div>Red!</div>")
@@ -1682,12 +1601,7 @@ mod tests {
                 -- after --
                 from dataclasses import dataclass
 
-                @dataclass
-                class DisplayStatusParams:
-                    active: bool
-
-                def display_status(params: DisplayStatusParams) -> str:
-                    active = params.active
+                def display_status(active: bool) -> str:
                     output = []
                     if active:
                         output.append("<span class=\"active\">Active</span>")
@@ -1962,12 +1876,7 @@ mod tests {
 
                 Result = ResultOk | ResultErr
 
-                @dataclass
-                class ShowResultParams:
-                    r: Result
-
-                def show_result(params: ShowResultParams) -> str:
-                    r = params.r
+                def show_result(r: Result) -> str:
                     output = []
                     output.append("<div>")
                     ok = ResultOk(value=42)
@@ -2066,12 +1975,7 @@ mod tests {
 
                 Result = ResultOk | ResultErr
 
-                @dataclass
-                class ShowResultParams:
-                    r: Result
-
-                def show_result(params: ShowResultParams) -> str:
-                    r = params.r
+                def show_result(r: Result) -> str:
                     output = []
                     match r:
                         case ResultOk(value=v):

@@ -335,29 +335,14 @@ impl Transpiler for TsTranspiler {
             .append(BoxDoc::text("("));
 
         if !entrypoint.parameters.is_empty() {
-            result = result
-                .append(BoxDoc::text("{ "))
-                .append(BoxDoc::intersperse(
-                    entrypoint
-                        .parameters
-                        .iter()
-                        .map(|(name, _)| BoxDoc::text(name.as_str())),
-                    BoxDoc::text(", "),
-                ))
-                .append(BoxDoc::text(" }"));
-
-            // Generate TypeScript interface for parameters
-            result = result
-                .append(BoxDoc::text(": { "))
-                .append(BoxDoc::intersperse(
-                    entrypoint.parameters.iter().map(|(name, ty)| {
-                        BoxDoc::text(name.as_str())
-                            .append(BoxDoc::text(": "))
-                            .append(self.transpile_type(ty))
-                    }),
-                    BoxDoc::text(", "),
-                ))
-                .append(BoxDoc::text(" }"));
+            result = result.append(BoxDoc::intersperse(
+                entrypoint.parameters.iter().map(|(name, ty)| {
+                    BoxDoc::text(name.as_str())
+                        .append(BoxDoc::text(": "))
+                        .append(self.transpile_type(ty))
+                }),
+                BoxDoc::text(", "),
+            ));
         }
 
         // Function body
@@ -1322,7 +1307,7 @@ mod tests {
                         .replace(/'/g, '&#39;');
                 }
 
-                export function UserInfo({ name, age }: { name: string, age: string }): string {
+                export function UserInfo(name: string, age: string): string {
                     let output: string = "";
                     output += "<div>\n";
                     output += "<h2>Name: ";
@@ -1384,7 +1369,7 @@ mod tests {
                         .replace(/'/g, '&#39;');
                 }
 
-                export function ConditionalDisplay({ title, show }: { title: string, show: boolean }): string {
+                export function ConditionalDisplay(title: string, show: boolean): string {
                     let output: string = "";
                     if (show) {
                         output += "<h1>";
@@ -1447,7 +1432,7 @@ mod tests {
                         .replace(/'/g, '&#39;');
                 }
 
-                export function ListItems({ items }: { items: string[] }): string {
+                export function ListItems(items: string[]): string {
                     let output: string = "";
                     output += "<ul>\n";
                     for (const item of items) {
@@ -1678,7 +1663,7 @@ mod tests {
                         .replace(/'/g, '&#39;');
                 }
 
-                export function RenderHtml({ safe_content, user_input }: { safe_content: TrustedHTML, user_input: string }): string {
+                export function RenderHtml(safe_content: TrustedHTML, user_input: string): string {
                     let output: string = "";
                     output += "<div>";
                     output += safe_content;
@@ -1774,7 +1759,7 @@ mod tests {
                         .replace(/'/g, '&#39;');
                 }
 
-                export function UserProfile({ user }: { user: User }): string {
+                export function UserProfile(user: User): string {
                     let output: string = "";
                     output += "<div>";
                     output += escapeHtml(user.name);
@@ -1911,7 +1896,7 @@ mod tests {
                     }
                 }
 
-                export function ColorDisplay({ color }: { color: Color.Color }): string {
+                export function ColorDisplay(color: Color.Color): string {
                     let output: string = "";
                     if ((color.tag === Color.Red().tag)) {
                         output += "<div>Red!</div>";
@@ -2002,7 +1987,7 @@ mod tests {
                         .replace(/'/g, '&#39;');
                 }
 
-                export function ColorName({ color }: { color: Color.Color }): string {
+                export function ColorName(color: Color.Color): string {
                     let output: string = "";
                     output += escapeHtml((() => {
                       switch (color.tag) {
@@ -2053,7 +2038,7 @@ mod tests {
                         .replace(/'/g, '&#39;');
                 }
 
-                export function IsActive({ active }: { active: boolean }): string {
+                export function IsActive(active: boolean): string {
                     let output: string = "";
                     output += escapeHtml((active ? "yes" : "no"));
                     return output;
@@ -2105,7 +2090,7 @@ mod tests {
                         .replace(/'/g, '&#39;');
                 }
 
-                export function CheckOption({ opt }: { opt: Option.Option<number> }): string {
+                export function CheckOption(opt: Option.Option<number>): string {
                     let output: string = "";
                     output += escapeHtml((() => {
                       switch (opt.tag) {
@@ -2190,7 +2175,7 @@ mod tests {
                         .replace(/'/g, '&#39;');
                 }
 
-                export function CheckNestedOption({ opt }: { opt: Option.Option<Option.Option<boolean>> }): string {
+                export function CheckNestedOption(opt: Option.Option<Option.Option<boolean>>): string {
                     let output: string = "";
                     output += escapeHtml((() => {
                       switch (opt.tag) {
@@ -2251,7 +2236,7 @@ mod tests {
                         .replace(/'/g, '&#39;');
                 }
 
-                export function LetExpr({ name }: { name: string }): string {
+                export function LetExpr(name: string): string {
                     let output: string = "";
                     output += escapeHtml((() => {
                       const x = name;
@@ -2321,7 +2306,7 @@ mod tests {
                         .replace(/'/g, '&#39;');
                 }
 
-                export function DisplayOption({ opt }: { opt: Option.Option<string> }): string {
+                export function DisplayOption(opt: Option.Option<string>): string {
                     let output: string = "";
                     switch (opt.tag) {
                         case "Some": {
@@ -2389,7 +2374,7 @@ mod tests {
                     }
                 }
 
-                export function TestOptionLiteral({ opt1, opt2 }: { opt1: Option.Option<string>, opt2: Option.Option<string> }): string {
+                export function TestOptionLiteral(opt1: Option.Option<string>, opt2: Option.Option<string>): string {
                     let output: string = "";
                     output += (() => {
                       switch (opt1.tag) {
@@ -2551,7 +2536,7 @@ mod tests {
                     }
                 }
 
-                export function ShowResult({ r }: { r: Result.Result }): string {
+                export function ShowResult(r: Result.Result): string {
                     let output: string = "";
                     output += "<div>";
                     const ok = Result.Ok(42);
@@ -2656,7 +2641,7 @@ mod tests {
                     }
                 }
 
-                export function ShowResult({ r }: { r: Result.Result }): string {
+                export function ShowResult(r: Result.Result): string {
                     let output: string = "";
                     switch (r.tag) {
                         case "Ok": {

@@ -329,46 +329,6 @@ impl Transpiler for GoTranspiler {
                 .append(BoxDoc::line());
         }
 
-        // Generate parameter structs for entrypoints that have parameters
-
-        for entrypoint in entrypoints {
-            if !entrypoint.parameters.is_empty() {
-                let struct_name = format!("{}Params", entrypoint.name.to_pascal_case());
-
-                // Process each parameter
-                let fields: Vec<_> = entrypoint
-                    .parameters
-                    .iter()
-                    .map(|(param_name, param_type)| {
-                        let field_name = param_name.to_pascal_case();
-                        let field_type_doc = self.transpile_type(param_type);
-
-                        BoxDoc::as_string(field_name)
-                            .append(BoxDoc::text(" "))
-                            .append(field_type_doc)
-                            .append(BoxDoc::text(" `json:\""))
-                            .append(BoxDoc::text(param_name.as_str()))
-                            .append(BoxDoc::text("\"`"))
-                    })
-                    .collect();
-
-                // Add the parameter struct
-                result = result
-                    .append(BoxDoc::text("type "))
-                    .append(BoxDoc::text(struct_name))
-                    .append(BoxDoc::text(" struct {"))
-                    .append(
-                        BoxDoc::line()
-                            .append(BoxDoc::intersperse(fields, BoxDoc::line()))
-                            .nest(1),
-                    )
-                    .append(BoxDoc::line())
-                    .append(BoxDoc::text("}"))
-                    .append(BoxDoc::line())
-                    .append(BoxDoc::line());
-            }
-        }
-
         // Transpile each entrypoint as a function
         for (i, entrypoint) in entrypoints.iter().enumerate() {
             result = result.append(self.transpile_entrypoint(&entrypoint.name, entrypoint));
@@ -415,26 +375,21 @@ impl Transpiler for GoTranspiler {
         if entrypoint.parameters.is_empty() {
             result = result.append(BoxDoc::text("(w io.Writer) {"));
         } else {
-            let struct_name = format!("{}Params", func_name);
             result = result
-                .append(BoxDoc::text("(w io.Writer, params "))
-                .append(BoxDoc::as_string(struct_name))
+                .append(BoxDoc::text("(w io.Writer, "))
+                .append(BoxDoc::intersperse(
+                    entrypoint.parameters.iter().map(|(param_name, param_type)| {
+                        BoxDoc::text(param_name.as_str())
+                            .append(BoxDoc::text(" "))
+                            .append(self.transpile_type(param_type))
+                    }),
+                    BoxDoc::text(", "),
+                ))
                 .append(BoxDoc::text(") {"));
         }
 
         // Function body
         let mut body = Vec::new();
-
-        // Extract parameters into local variables
-        for (param_name, _) in &entrypoint.parameters {
-            let field_name = param_name.to_pascal_case();
-            body.push(
-                BoxDoc::nil()
-                    .append(BoxDoc::text(param_name.as_str()))
-                    .append(BoxDoc::text(" := params."))
-                    .append(BoxDoc::as_string(field_name)),
-            )
-        }
 
         body.push(self.transpile_statements(&entrypoint.body));
 
@@ -1404,14 +1359,7 @@ mod tests {
                 	"io"
                 )
 
-                type TestGreetingCompParams struct {
-                	Name string `json:"name"`
-                	Message string `json:"message"`
-                }
-
-                func TestGreetingComp(w io.Writer, params TestGreetingCompParams) {
-                	name := params.Name
-                	message := params.Message
+                func TestGreetingComp(w io.Writer, name string, message string) {
                 	io.WriteString(w, "<h1>Hello ")
                 	io.WriteString(w, html.EscapeString(name))
                 	io.WriteString(w, ", ")
@@ -1447,12 +1395,7 @@ mod tests {
                 	"io"
                 )
 
-                type TestMainCompParams struct {
-                	Show bool `json:"show"`
-                }
-
-                func TestMainComp(w io.Writer, params TestMainCompParams) {
-                	show := params.Show
+                func TestMainComp(w io.Writer, show bool) {
                 	if show {
                 		io.WriteString(w, "<div>Visible</div>\n")
                 	}
@@ -1495,12 +1438,7 @@ mod tests {
                 	"io"
                 )
 
-                type TestMainCompParams struct {
-                	Items []string `json:"items"`
-                }
-
-                func TestMainComp(w io.Writer, params TestMainCompParams) {
-                	items := params.Items
+                func TestMainComp(w io.Writer, items []string) {
                 	for _, item := range items {
                 		io.WriteString(w, "<li>")
                 		io.WriteString(w, html.EscapeString(item))
@@ -1635,14 +1573,7 @@ mod tests {
                 	"io"
                 )
 
-                type TestAuthCheckParams struct {
-                	UserRole string `json:"user_role"`
-                	ExpectedRole string `json:"expected_role"`
-                }
-
-                func TestAuthCheck(w io.Writer, params TestAuthCheckParams) {
-                	user_role := params.UserRole
-                	expected_role := params.ExpectedRole
+                func TestAuthCheck(w io.Writer, user_role string, expected_role string) {
                 	if (user_role == expected_role) {
                 		io.WriteString(w, "<div>Access granted</div>\n")
                 	}
@@ -1693,14 +1624,7 @@ mod tests {
 
                 type TrustedHTML string
 
-                type RenderHtmlParams struct {
-                	SafeContent TrustedHTML `json:"safe_content"`
-                	UserInput string `json:"user_input"`
-                }
-
-                func RenderHtml(w io.Writer, params RenderHtmlParams) {
-                	safe_content := params.SafeContent
-                	user_input := params.UserInput
+                func RenderHtml(w io.Writer, safe_content TrustedHTML, user_input string) {
                 	io.WriteString(w, "<div>")
                 	io.WriteString(w, string(safe_content))
                 	io.WriteString(w, "</div><div>")
@@ -1778,12 +1702,7 @@ mod tests {
                 	Active bool `json:"active"`
                 }
 
-                type UserProfileParams struct {
-                	User User `json:"user"`
-                }
-
-                func UserProfile(w io.Writer, params UserProfileParams) {
-                	user := params.User
+                func UserProfile(w io.Writer, user User) {
                 	io.WriteString(w, "<div>")
                 	io.WriteString(w, html.EscapeString(user.Name))
                 	io.WriteString(w, "</div>")
@@ -1912,12 +1831,7 @@ mod tests {
                 	return ok
                 }
 
-                type ColorDisplayParams struct {
-                	Color Color `json:"color"`
-                }
-
-                func ColorDisplay(w io.Writer, params ColorDisplayParams) {
-                	color := params.Color
+                func ColorDisplay(w io.Writer, color Color) {
                 	if color.Equals(ColorRed{}) {
                 		io.WriteString(w, "<div>It's red!</div>")
                 	}
@@ -2007,12 +1921,7 @@ mod tests {
                 	return ok
                 }
 
-                type StatusCheckParams struct {
-                	Status Status `json:"status"`
-                }
-
-                func StatusCheck(w io.Writer, params StatusCheckParams) {
-                	status := params.Status
+                func StatusCheck(w io.Writer, status Status) {
                 	if status.Equals(StatusActive{}) {
                 		io.WriteString(w, "<span class=\"active\">Active</span>")
                 	}
@@ -2093,12 +2002,7 @@ mod tests {
                 	return ok
                 }
 
-                type ColorDisplayParams struct {
-                	Color Color `json:"color"`
-                }
-
-                func ColorDisplay(w io.Writer, params ColorDisplayParams) {
-                	color := params.Color
+                func ColorDisplay(w io.Writer, color Color) {
                 	if color.Equals(ColorRed{}) {
                 		io.WriteString(w, "<div>Red!</div>")
                 	}
@@ -2237,12 +2141,7 @@ mod tests {
                 	"io"
                 )
 
-                type DisplayStatusParams struct {
-                	Active bool `json:"active"`
-                }
-
-                func DisplayStatus(w io.Writer, params DisplayStatusParams) {
-                	active := params.Active
+                func DisplayStatus(w io.Writer, active bool) {
                 	if active {
                 		io.WriteString(w, "<span class=\"active\">Active</span>")
                 	} else {
@@ -2335,12 +2234,7 @@ mod tests {
                 	return ok
                 }
 
-                type ColorNameParams struct {
-                	Color Color `json:"color"`
-                }
-
-                func ColorName(w io.Writer, params ColorNameParams) {
-                	color := params.Color
+                func ColorName(w io.Writer, color Color) {
                 	switch color.(type) {
                 		case ColorRed:
                 			io.WriteString(w, "red")
@@ -2520,12 +2414,7 @@ mod tests {
                 	return ok
                 }
 
-                type ShowResultParams struct {
-                	R Result `json:"r"`
-                }
-
-                func ShowResult(w io.Writer, params ShowResultParams) {
-                	r := params.R
+                func ShowResult(w io.Writer, r Result) {
                 	io.WriteString(w, "<div>")
                 	var ok Result = ResultOk{Value: 42}
                 	io.WriteString(w, "Created Ok!")
@@ -2635,12 +2524,7 @@ mod tests {
                 	return ok
                 }
 
-                type ShowResultParams struct {
-                	R Result `json:"r"`
-                }
-
-                func ShowResult(w io.Writer, params ShowResultParams) {
-                	r := params.R
+                func ShowResult(w io.Writer, r Result) {
                 	switch _v := r.(type) {
                 		case ResultOk:
                 			v := _v.Value

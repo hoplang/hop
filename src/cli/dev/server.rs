@@ -41,7 +41,7 @@ async fn handle_program(State(state): State<AppState>) -> Response<Body> {
         })
     }
 
-    let html = frontend::program(frontend::ProgramParams { modules: &modules });
+    let html = frontend::program(&modules);
 
     Response::builder()
         .header("Content-Type", "text/html")
@@ -160,9 +160,7 @@ async fn handle_render(
     }
 
     if !error_output_parts.is_empty() {
-        let error_html = frontend::overlay(frontend::OverlayParams {
-            message: &error_output_parts.join("\n"),
-        });
+        let error_html = frontend::overlay(&error_output_parts.join("\n"));
         return Response::builder()
             .status(StatusCode::BAD_REQUEST)
             .header("Content-Type", "text/html")

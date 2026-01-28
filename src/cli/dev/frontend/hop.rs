@@ -17,16 +17,7 @@ pub struct Module {
     pub components: Vec<Component>,
 }
 
-pub struct OverlayParams<'a> {
-    pub message: &'a str,
-}
-
-pub struct ProgramParams<'a> {
-    pub modules: &'a [Module],
-}
-
-pub fn overlay(params: OverlayParams<'_>) -> String {
-    let message = params.message;
+pub fn overlay(message: &str) -> String {
     let mut output = String::new();
     output.push_str("<!DOCTYPE html><html><head><meta charset=\"utf-8\"><meta");
     output.push_str(" content=\"width=device-width, initial-scale=1\"");
@@ -53,8 +44,7 @@ pub fn overlay(params: OverlayParams<'_>) -> String {
     output
 }
 
-pub fn program(params: ProgramParams<'_>) -> String {
-    let modules = params.modules;
+pub fn program(modules: &[Module]) -> String {
     let mut output = String::new();
     output.push_str("<!DOCTYPE html><html><head><meta charset=\"utf-8\"><meta");
     output.push_str(" content=\"width=device-width, initial-scale=1\"");
