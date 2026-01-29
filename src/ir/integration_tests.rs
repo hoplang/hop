@@ -6085,7 +6085,8 @@ mod tests {
                       "bar",
                       "baz",
                     )
-                  }></div>
+                  }>
+                  </div>
                 }
             "#},
             r#"<div class="foo bar baz"></div>"#,
@@ -6283,7 +6284,8 @@ mod tests {
             indoc! {r#"
                 entrypoint Test {
                   <let {class: String = "my-class"}>
-                    <div class={class}></div>
+                    <div class={class}>
+                    </div>
                   </let>
                 }
             "#},

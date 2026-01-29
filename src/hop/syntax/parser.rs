@@ -1753,9 +1753,12 @@ mod tests {
                       class="size-12"
                     >
                       <g style="fill: none; stroke: currentcolor; stroke-width: 5px; stroke-linecap: round; stroke-linejoin: round;">
-                        <path d="M20.04 38 64 22l43.96 16L64 54Z"></path>
-                        <path d="M17.54 47.09v48l35.099 12.775"></path>
-                        <path d="M64 112V64l46.46-16.91v48L77.988 106.91"></path>
+                        <path d="M20.04 38 64 22l43.96 16L64 54Z">
+                        </path>
+                        <path d="M17.54 47.09v48l35.099 12.775">
+                        </path>
+                        <path d="M64 112V64l46.46-16.91v48L77.988 106.91">
+                        </path>
                       </g>
                     </svg>
                     <ul>
@@ -2170,7 +2173,8 @@ mod tests {
                       Color::Red => "text-red",
                       Color::Blue => "text-blue",
                     }
-                  }></div>
+                  }>
+                  </div>
                 </Main>
             "#]],
         );
@@ -2254,7 +2258,8 @@ mod tests {
             "},
             expect![[r#"
                 <Main {enabled: Bool = true}>
-                  <div></div>
+                  <div>
+                  </div>
                 </Main>
             "#]],
         );
@@ -2318,7 +2323,8 @@ mod tests {
                 }
 
                 <Main {config: Config = Config(debug: false, timeout: 30)}>
-                  <div></div>
+                  <div>
+                  </div>
                 </Main>
             "#]],
         );
@@ -2341,7 +2347,8 @@ mod tests {
                 }
 
                 <Main {status: Status = Status::Active}>
-                  <div></div>
+                  <div>
+                  </div>
                 </Main>
             "#]],
         );
@@ -2357,7 +2364,8 @@ mod tests {
             "},
             expect![[r#"
                 <Main {name: Option[String]}>
-                  <div></div>
+                  <div>
+                  </div>
                 </Main>
             "#]],
         );
@@ -2373,7 +2381,8 @@ mod tests {
             "},
             expect![[r#"
                 <Main {name: Option[String] = None}>
-                  <div></div>
+                  <div>
+                  </div>
                 </Main>
             "#]],
         );
@@ -2389,7 +2398,8 @@ mod tests {
             "#},
             expect![[r#"
                 <Main {name: Option[String] = Some("default")}>
-                  <div></div>
+                  <div>
+                  </div>
                 </Main>
             "#]],
         );

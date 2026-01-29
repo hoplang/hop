@@ -583,8 +583,9 @@ fn format_node<'a>(
             if is_void_element(tag_name_str) {
                 opening_tag_doc
             } else if children.is_empty() {
-                // Empty or only whitespace/newlines - compact closing tag
+                // Empty element - put opening and closing tags on separate lines
                 opening_tag_doc
+                    .append(arena.line())
                     .append(arena.text("</"))
                     .append(arena.text(tag_name_str))
                     .append(arena.text(">"))
@@ -1273,7 +1274,8 @@ mod tests {
                       Color::Green => "green",
                       Color::Blue => "blue",
                     }
-                  }></div>
+                  }>
+                  </div>
                 </Main>
             "#]],
         );
@@ -1295,7 +1297,8 @@ mod tests {
                 }
 
                 <Main {color: Color}>
-                  <div class={match color {Color::Red => "red"}}></div>
+                  <div class={match color {Color::Red => "red"}}>
+                  </div>
                 </Main>
             "#]],
         );
@@ -1366,7 +1369,8 @@ mod tests {
             "#},
             expect![[r#"
                 <Main>
-                  <div class={"p-2"}></div>
+                  <div class={"p-2"}>
+                  </div>
                 </Main>
             "#]],
         );
@@ -1867,7 +1871,8 @@ mod tests {
                       base_class,
                       extra_class,
                     )
-                  }></div>
+                  }>
+                  </div>
                 </Card>
             "#]],
         );
@@ -1923,7 +1928,8 @@ mod tests {
                       interactive_styles,
                       custom_overrides,
                     )
-                  }></div>
+                  }>
+                  </div>
                 </Component>
             "#]],
         );
@@ -1944,7 +1950,8 @@ mod tests {
                       "foo",
                       "bar",
                     )
-                  }></div>
+                  }>
+                  </div>
                 </Card>
             "#]],
         );
@@ -1966,7 +1973,8 @@ mod tests {
                       "b",
                       "c",
                     )
-                  }></div>
+                  }>
+                  </div>
                 </Card>
             "#]],
         );
@@ -1992,7 +2000,8 @@ mod tests {
                       "qux",
                       c,
                     )
-                  }></div>
+                  }>
+                  </div>
                 </Card>
             "#]],
         );
@@ -2013,7 +2022,8 @@ mod tests {
                       "foo",
                       "bar",
                     )
-                  }></div>
+                  }>
+                  </div>
                 </Card>
             "#]],
         );
@@ -2035,7 +2045,8 @@ mod tests {
                       "bar",
                       "baz",
                     )
-                  }></div>
+                  }>
+                  </div>
                 </Card>
             "#]],
         );
@@ -2731,7 +2742,8 @@ mod tests {
                       Orientation::Vertical => "vertical",
                       // c
                     }
-                  }></div>
+                  }>
+                  </div>
                 </Main>
             "#]],
         );
@@ -2761,7 +2773,8 @@ mod tests {
                       "items-center",
                       // more to come
                     )
-                  }></div>
+                  }>
+                  </div>
                 </Main>
             "#]],
         );
@@ -2793,7 +2806,8 @@ mod tests {
                       "gap-4",
                       // more to come
                     )
-                  }></div>
+                  }>
+                  </div>
                 </Main>
             "#]],
         );
