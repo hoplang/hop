@@ -583,9 +583,15 @@ fn format_node<'a>(
             if is_void_element(tag_name_str) {
                 opening_tag_doc
             } else if children.is_empty() {
-                // Empty element - put opening and closing tags on separate lines
+                // Empty element - put opening and closing tags on separate lines,
+                // except for script/style where whitespace would become content
+                let sep = if tag_name_str == "script" || tag_name_str == "style" {
+                    arena.nil()
+                } else {
+                    arena.line()
+                };
                 opening_tag_doc
-                    .append(arena.line())
+                    .append(sep)
                     .append(arena.text("</"))
                     .append(arena.text(tag_name_str))
                     .append(arena.text(">"))
@@ -3348,6 +3354,38 @@ mod tests {
                     {(1 + 2) * 3}
                   </div>
                 </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn entrypoint_with_html_elements_to_doc() {
+        check(
+            indoc! {r#"
+                entrypoint Index {
+                  <head>
+                    <script
+                      defer="true"
+                      src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"
+                    ></script>
+                  </head>
+                  <body>
+                    hello world
+                  </body>
+                }
+            "#},
+            expect![[r#"
+                entrypoint Index {
+                  <head>
+                    <script
+                      defer="true"
+                      src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"
+                    ></script>
+                  </head>
+                  <body>
+                    hello world
+                  </body>
+                }
             "#]],
         );
     }
