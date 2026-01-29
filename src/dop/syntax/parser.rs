@@ -93,7 +93,6 @@ fn expect_opposite(
     token_range: &DocumentRange,
 ) -> Option<DocumentRange> {
     let expected = token.opposite_token();
-
     match next(iter, comments, errors) {
         Some((actual, actual_range)) if actual == expected => Some(actual_range),
         Some((actual, actual_range)) => {
@@ -193,18 +192,16 @@ fn expect_type_name(
     range: &DocumentRange,
 ) -> Option<(TypeName, DocumentRange)> {
     match next(iter, comments, errors) {
-        Some((Token::TypeName(name), name_range)) => {
-            match TypeName::from_cheap_string(name) {
-                Ok(type_name) => Some((type_name, name_range)),
-                Err(error) => {
-                    errors.push(ParseError::InvalidTypeName {
-                        error,
-                        range: name_range,
-                    });
-                    None
-                }
+        Some((Token::TypeName(name), name_range)) => match TypeName::from_cheap_string(name) {
+            Ok(type_name) => Some((type_name, name_range)),
+            Err(error) => {
+                errors.push(ParseError::InvalidTypeName {
+                    error,
+                    range: name_range,
+                });
+                None
             }
-        }
+        },
         Some((actual, actual_range)) => {
             errors.push(ParseError::ExpectedTypeNameButGot {
                 actual,
@@ -257,7 +254,6 @@ where
     parse(iter, comments, errors, range)?;
     while advance_if(iter, comments, errors, Token::Comma).is_some() {
         let next_token = peek(iter).map(|(t, _)| t);
-        // Allow trailing comma: break if next is closing delimiter or EOF (in delimited context)
         if next_token.as_ref() == end_token || (end_token.is_some() && next_token.is_none()) {
             break;
         }
@@ -309,19 +305,15 @@ pub fn parse_loop_header(
     errors: &mut ErrorCollector<ParseError>,
     range: &DocumentRange,
 ) -> Option<(Option<VarName>, Option<DocumentRange>, ParsedLoopSource)> {
-    // Check for underscore (discarded binding) or variable name
     let (var_name, var_name_range) =
         if let Some(underscore_range) = advance_if(iter, comments, errors, Token::Underscore) {
-            // Underscore means "don't bind the loop variable"
             (None, Some(underscore_range))
         } else {
             let (name, name_range) = expect_variable_name(iter, comments, errors, range)?;
             (Some(name), Some(name_range))
         };
     expect_token(iter, comments, errors, range, &Token::In)?;
-    // Parse the start expression (could be array or start of range)
     let start_expr = parse_logical(iter, comments, errors, range)?;
-    // Check if this is a range expression (..=)
     let source = if advance_if(iter, comments, errors, Token::DotDotEq).is_some() {
         let end_expr = parse_logical(iter, comments, errors, range)?;
         ParsedLoopSource::RangeInclusive {
@@ -688,7 +680,6 @@ pub fn parse_primary(
 ) -> Option<ParsedExpr> {
     let mut expr = match next(iter, comments, errors) {
         Some((Token::Identifier(name), name_range)) => {
-            // Check for macro invocation: identifier!
             if advance_if(iter, comments, errors, Token::Not).is_some() {
                 return parse_macro_invocation(iter, comments, errors, range, name, name_range);
             }
@@ -774,8 +765,6 @@ pub fn parse_primary(
             return None;
         }
     };
-
-    // Handle postfix field access (.field) and method calls (.method())
     while let Some(dot) = advance_if(iter, comments, errors, Token::Dot) {
         match next(iter, comments, errors) {
             Some((Token::Identifier(field_ident), field_range)) => {
@@ -790,7 +779,6 @@ pub fn parse_primary(
                         return None;
                     }
                 };
-
                 if let Some(left_paren) = advance_if(iter, comments, errors, Token::LeftParen) {
                     let right_paren =
                         expect_opposite(iter, comments, errors, &Token::LeftParen, &left_paren)?;
@@ -821,7 +809,6 @@ pub fn parse_primary(
             }
         }
     }
-
     Some(expr)
 }
 
@@ -841,7 +828,6 @@ fn parse_macro_invocation(
         });
         return None;
     }
-
     let left_paren = expect_token(iter, comments, errors, range, &Token::LeftParen)?;
     let mut args = Vec::new();
     let right_paren = parse_delimited_list(
@@ -856,7 +842,6 @@ fn parse_macro_invocation(
             Some(())
         },
     )?;
-
     Some(ParsedExpr::MacroInvocation {
         name: macro_name,
         args,
@@ -906,7 +891,6 @@ fn parse_enum_literal(
     expect_token(iter, comments, errors, range, &Token::ColonColon)?;
     let (variant_name, variant_range) = expect_type_name(iter, comments, errors, range)?;
     let constructor_range = enum_name_range.clone().to(variant_range.clone());
-
     let (fields, end_range) =
         if let Some(left_paren) = advance_if(iter, comments, errors, Token::LeftParen) {
             let mut fields = Vec::new();
@@ -933,7 +917,6 @@ fn parse_enum_literal(
         } else {
             (Vec::new(), variant_range)
         };
-
     Some(ParsedExpr::EnumLiteral {
         enum_name,
         variant_name: CheapString::new(variant_name.to_string()),
@@ -954,7 +937,6 @@ pub fn parse_match_pattern(
             range: pattern_range,
         });
     }
-
     if let Some(pattern_range) = advance_if(iter, comments, errors, Token::True) {
         return Some(ParsedMatchPattern::Constructor {
             constructor: Constructor::BooleanTrue,
@@ -973,7 +955,6 @@ pub fn parse_match_pattern(
             range: pattern_range,
         });
     }
-
     if let Some(some_range) = advance_if(iter, comments, errors, Token::Some) {
         expect_token(iter, comments, errors, range, &Token::LeftParen)?;
         let inner_pattern = parse_match_pattern(iter, comments, errors, range)?;
@@ -995,7 +976,6 @@ pub fn parse_match_pattern(
             range: pattern_range,
         });
     }
-
     if let Some((Token::TypeName(type_name_str), type_name_range)) =
         next_if(iter, comments, errors, |res| {
             matches!(res, (Token::TypeName(_), _))
@@ -1011,7 +991,6 @@ pub fn parse_match_pattern(
                 return None;
             }
         };
-
         if advance_if(iter, comments, errors, Token::ColonColon).is_some() {
             let (variant_name, variant_range) = expect_type_name(iter, comments, errors, range)?;
 
@@ -1078,7 +1057,6 @@ pub fn parse_match_pattern(
             });
         }
     }
-
     let (var_name, var_range) = expect_variable_name(iter, comments, errors, range)?;
     Some(ParsedMatchPattern::Binding {
         name: CheapString::new(var_name.to_string()),
@@ -1095,7 +1073,6 @@ fn parse_match_expr(
 ) -> Option<ParsedExpr> {
     let subject = parse_primary(iter, comments, errors, range)?;
     let left_brace = expect_token(iter, comments, errors, range, &Token::LeftBrace)?;
-
     let mut arms = Vec::new();
     let right_brace = parse_delimited_list(
         iter,
@@ -1112,7 +1089,6 @@ fn parse_match_expr(
             Some(())
         },
     )?;
-
     Some(ParsedExpr::Match {
         subject: Box::new(subject),
         arms,
@@ -1127,9 +1103,7 @@ pub fn parse_import_declaration(
     range: &DocumentRange,
 ) -> Option<ParsedDeclaration> {
     let import_range = expect_token(iter, comments, errors, range, &Token::Import)?;
-
     let mut path_segments: Vec<DocumentRange> = Vec::new();
-
     let first_segment = match next(iter, comments, errors) {
         Some((Token::Identifier(_), seg_range)) | Some((Token::TypeName(_), seg_range)) => {
             seg_range
@@ -1146,7 +1120,6 @@ pub fn parse_import_declaration(
         }
     };
     path_segments.push(first_segment);
-
     while advance_if(iter, comments, errors, Token::ColonColon).is_some() {
         let segment = match next(iter, comments, errors) {
             Some((Token::Identifier(_), seg_range)) | Some((Token::TypeName(_), seg_range)) => {
@@ -1165,16 +1138,13 @@ pub fn parse_import_declaration(
         };
         path_segments.push(segment);
     }
-
     if path_segments.len() < 2 {
         errors.push(ParseError::ImportPathTooShort {
             range: path_segments[0].clone(),
         });
         return None;
     }
-
     let name_range = path_segments.pop().unwrap();
-
     let name = match TypeName::from_cheap_string(name_range.to_cheap_string()) {
         Ok(name) => name,
         Err(e) => {
@@ -1185,13 +1155,11 @@ pub fn parse_import_declaration(
             return None;
         }
     };
-
     let module_path_str = path_segments
         .iter()
         .map(|s| s.as_str())
         .collect::<Vec<_>>()
         .join("/");
-
     let module_name = match ModuleName::new(&module_path_str) {
         Ok(name) => name,
         Err(e) => {
@@ -1206,13 +1174,11 @@ pub fn parse_import_declaration(
             return None;
         }
     };
-
     let path_range = path_segments
         .first()
         .unwrap()
         .clone()
         .to(name_range.clone());
-
     Some(ParsedDeclaration::Import {
         name,
         name_range: name_range.clone(),
@@ -1231,7 +1197,6 @@ pub fn parse_record_declaration(
     let start_range = expect_token(iter, comments, errors, range, &Token::Record)?;
     let (name, name_range) = expect_type_name(iter, comments, errors, range)?;
     let left_brace = expect_token(iter, comments, errors, range, &Token::LeftBrace)?;
-
     let mut fields = Vec::new();
     let mut seen_names = HashSet::new();
     let right_brace = parse_delimited_list(
@@ -1256,9 +1221,7 @@ pub fn parse_record_declaration(
             Some(())
         },
     )?;
-
     let full_range = start_range.to(right_brace);
-
     Some(ParsedDeclaration::Record {
         name,
         name_range,
@@ -1276,7 +1239,6 @@ pub fn parse_enum_declaration(
     let start_range = expect_token(iter, comments, errors, range, &Token::Enum)?;
     let (name, name_range) = expect_type_name(iter, comments, errors, range)?;
     let left_brace = expect_token(iter, comments, errors, range, &Token::LeftBrace)?;
-
     let mut variants = Vec::new();
     let mut seen_names = HashSet::new();
     let right_brace = parse_delimited_list(
@@ -1306,9 +1268,7 @@ pub fn parse_enum_declaration(
             Some(())
         },
     )?;
-
     let full_range = start_range.to(right_brace);
-
     Some(ParsedDeclaration::Enum {
         name,
         name_range,
@@ -1325,11 +1285,9 @@ fn parse_enum_variant_fields(
 ) -> Option<Vec<(FieldName, DocumentRange, ParsedType)>> {
     let mut fields = Vec::new();
     let mut seen_names = HashSet::new();
-
     if advance_if(iter, comments, errors, Token::RightParen).is_some() {
         return Some(fields);
     }
-
     loop {
         let (field_name, field_name_range) = expect_field_name(iter, comments, errors, range)?;
         expect_token(iter, comments, errors, range, &Token::Colon)?;
@@ -1342,9 +1300,7 @@ fn parse_enum_variant_fields(
             });
             return None;
         }
-
         fields.push((field_name, field_name_range, field_type));
-
         if advance_if(iter, comments, errors, Token::Comma).is_some() {
             if advance_if(iter, comments, errors, Token::RightParen).is_some() {
                 break;
@@ -1354,11 +1310,9 @@ fn parse_enum_variant_fields(
             break;
         }
     }
-
     Some(fields)
 }
 
-/// Parse a single declaration (import, record, or enum).
 pub fn parse_declaration(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
