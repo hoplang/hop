@@ -318,18 +318,28 @@ fn check(hop_source: &str, expected_output: &str, expected: Expect) {
         "Test input is not properly formatted. Update the test input (right) to match the formatted output (left)."
     );
 
-    // Check for errors and report them for easier debugging
+    // Check for parse errors
     let parse_errors = program.get_parse_errors();
-    for (module, errors) in parse_errors.iter() {
-        for error in errors.iter() {
-            eprintln!("Parse Error in {:?}: {:?}", module, error);
+    let has_parse_errors = parse_errors.values().any(|e| !e.is_empty());
+    if has_parse_errors {
+        for (module, errors) in parse_errors.iter() {
+            for error in errors.iter() {
+                eprintln!("Parse Error in {:?}: {:?}", module, error);
+            }
         }
+        panic!("Parse errors found");
     }
+
+    // Check for type errors
     let type_errors = program.get_type_errors();
-    for (module, errors) in type_errors.iter() {
-        for error in errors.iter() {
-            eprintln!("Type Error in {:?}: {:?}", module, error);
+    let has_type_errors = type_errors.values().any(|e| !e.is_empty());
+    if has_type_errors {
+        for (module, errors) in type_errors.iter() {
+            for error in errors.iter() {
+                eprintln!("Type Error in {:?}: {:?}", module, error);
+            }
         }
+        panic!("Type errors found");
     }
 
     let typed_asts = program.get_typed_modules();
