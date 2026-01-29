@@ -969,10 +969,12 @@ mod tests {
                 <Second></Second>
             "},
             expect![[r#"
-                <First></First>
+                <First>
+                </First>
 
                 // This is a comment
-                <Second></Second>
+                <Second>
+                </Second>
             "#]],
         );
     }
@@ -1014,12 +1016,14 @@ mod tests {
                 <Main {i: Array[S]}>
                   <for {j in i}>
                     <for {k in j.s.t}>
-                      <if {k}></if>
+                      <if {k}>
+                      </if>
                     </for>
                   </for>
                   <for {p in i}>
                     <for {k in p.s.t}>
-                      <for {item in k}></for>
+                      <for {item in k}>
+                      </for>
                     </for>
                   </for>
                 </Main>
@@ -1133,7 +1137,8 @@ mod tests {
                   <input>
                 </Main>
 
-                <Foo></Foo>
+                <Foo>
+                </Foo>
             "#]],
         );
     }
@@ -3068,7 +3073,8 @@ mod tests {
                 }
             "},
             expect![[r#"
-                entrypoint Index {}
+                entrypoint Index {
+                }
             "#]],
         );
     }

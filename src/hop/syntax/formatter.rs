@@ -615,7 +615,7 @@ fn format_children<'a>(
     comments: &mut VecDeque<&'a DocumentRange>,
 ) -> DocBuilder<'a, Arena<'a>> {
     if children.is_empty() {
-        return arena.nil();
+        return arena.hardline();
     }
 
     // Collect non-Newline nodes with their "preceded by newline" flag.
@@ -1246,7 +1246,8 @@ mod tests {
                   age: Int,
                   active: Bool,
                   role: String,
-                }></Main>
+                }>
+                </Main>
             "#]],
         );
     }
@@ -1317,7 +1318,8 @@ mod tests {
                   Bar,
                 }
 
-                <Main></Main>
+                <Main>
+                </Main>
             "#]],
         );
     }
@@ -1664,7 +1666,8 @@ mod tests {
                 </Toggle>
             "},
             expect![[r#"
-                <Toggle {enabled: Bool = true}></Toggle>
+                <Toggle {enabled: Bool = true}>
+                </Toggle>
             "#]],
         );
     }
@@ -1697,9 +1700,8 @@ mod tests {
                 </ItemList>
             "#},
             expect![[r#"
-                <ItemList {
-                  items: Array[String] = ["one", "two"],
-                }></ItemList>
+                <ItemList {items: Array[String] = ["one", "two"]}>
+                </ItemList>
             "#]],
         );
     }
@@ -1712,7 +1714,8 @@ mod tests {
                 </ItemList>
             "},
             expect![[r#"
-                <ItemList {items: Array[String] = []}></ItemList>
+                <ItemList {items: Array[String] = []}>
+                </ItemList>
             "#]],
         );
     }
@@ -1733,7 +1736,8 @@ mod tests {
 
                 <Settings {
                   config: Config = Config(debug: false, timeout: 30),
-                }></Settings>
+                }>
+                </Settings>
             "#]],
         );
     }
@@ -1753,7 +1757,8 @@ mod tests {
                   Pending,
                 }
 
-                <Badge {status: Status = Status::Active}></Badge>
+                <Badge {status: Status = Status::Active}>
+                </Badge>
             "#]],
         );
     }
@@ -1768,7 +1773,8 @@ mod tests {
             "#},
             expect![[r#"
                 <Main>
-                  <let {x: Option[String] = Some("short")}></let>
+                  <let {x: Option[String] = Some("short")}>
+                  </let>
                 </Main>
             "#]],
         );
@@ -1786,7 +1792,8 @@ mod tests {
                   x: Option[String] = Some(
                     "this is a very long string that causes a line break because Some uses soft lines"
                   ),
-                }></Main>
+                }>
+                </Main>
             "#]],
         );
     }
@@ -2441,7 +2448,8 @@ mod tests {
             "#},
             expect![[r#"
                 <Main>
-                  <let {x: String = "unused"}></let>
+                  <let {x: String = "unused"}>
+                  </let>
                 </Main>
             "#]],
         );
@@ -2491,7 +2499,8 @@ mod tests {
                 // External component
                 import components::Button
 
-                <Main></Main>
+                <Main>
+                </Main>
             "#]],
         );
     }
@@ -2596,7 +2605,8 @@ mod tests {
                 }
 
                 // Main component
-                <Main></Main>
+                <Main>
+                </Main>
             "#]],
         );
     }
@@ -2675,7 +2685,8 @@ mod tests {
                 }
 
                 // e
-                <Main></Main>
+                <Main>
+                </Main>
             "#]],
         );
     }
