@@ -682,7 +682,6 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "toml",
- "tower",
  "tower-http",
  "tower-lsp-server",
  "unicode-width 0.2.1",
