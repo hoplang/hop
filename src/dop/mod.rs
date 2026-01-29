@@ -5,4 +5,4 @@ pub mod syntax;
 
 pub use semantics::{Type, TypedExpr, extract_bindings_from_pattern, resolve_type, typecheck_expr};
 pub use symbols::VarName;
-pub use syntax::{ParseError, ParsedDeclaration, ParsedExpr, ParsedType, Token, parser, tokenizer};
+pub use syntax::{ParsedDeclaration, ParsedExpr, ParsedType, Token, parser, tokenizer};

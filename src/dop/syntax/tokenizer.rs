@@ -7,7 +7,7 @@ use itertools::Itertools as _;
 use crate::document::{CheapString, DocumentCursor, DocumentRange};
 use crate::error_collector::ErrorCollector;
 
-use super::parse_error::ParseError;
+use crate::parse_error::ParseError;
 use super::token::Token;
 
 pub fn next(

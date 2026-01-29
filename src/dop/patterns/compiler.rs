@@ -17,7 +17,7 @@ use crate::document::{CheapString, DocumentRange, Ranged};
 use crate::dop::syntax::parsed::{Constructor, ParsedMatchPattern};
 
 use crate::dop::semantics::r#type::Type;
-use crate::dop::semantics::type_error::TypeError;
+use crate::type_error::TypeError;
 use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::type_name::TypeName;
 

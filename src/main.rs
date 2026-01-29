@@ -9,9 +9,11 @@ mod hop;
 mod inlined;
 mod ir;
 mod orchestrator;
+mod parse_error;
 mod test_utils;
 mod toposorter;
 mod tui;
+mod type_error;
 
 use clap::{CommandFactory, Parser, Subcommand};
 use filesystem::project_root::ProjectRoot;

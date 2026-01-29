@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use super::r#type::{NumericType, Type};
-use super::type_error::TypeError;
+use crate::type_error::TypeError;
 use crate::document::DocumentRange;
 use crate::dop::TypedExpr;
 use crate::dop::patterns::compiler::{Compiler, Decision};

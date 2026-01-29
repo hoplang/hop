@@ -1,6 +1,5 @@
 pub mod r#type;
 pub mod type_checker;
-pub mod type_error;
 pub mod typed;
 
 pub use r#type::Type;

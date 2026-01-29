@@ -1105,7 +1105,7 @@ mod tests {
     use crate::document::Document;
     use crate::error_collector::ErrorCollector;
     use crate::hop::symbols::module_name::ModuleName;
-    use crate::hop::syntax::parse_error::ParseError;
+    use crate::parse_error::ParseError;
     use crate::hop::syntax::parser;
 
     fn check(source: &str, expected: Expect) {

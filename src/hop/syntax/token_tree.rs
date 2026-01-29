@@ -1,7 +1,7 @@
 use std::fmt::{self, Display};
 use std::iter::Peekable;
 
-use super::parse_error::ParseError;
+use crate::parse_error::ParseError;
 use super::tokenizer::{Token, Tokenizer};
 use crate::common::is_void_element;
 use crate::document::{DocumentCursor, DocumentRange, Ranged as _};

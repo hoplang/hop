@@ -8,7 +8,7 @@ use crate::dop::symbols::var_name::VarName;
 use crate::error_collector::ErrorCollector;
 use crate::hop::symbols::module_name::ModuleName;
 
-use super::parse_error::ParseError;
+use crate::parse_error::ParseError;
 use super::parsed::{
     Constructor, ParsedBinaryOp, ParsedDeclaration, ParsedExpr, ParsedLoopSource, ParsedMatchArm,
     ParsedMatchPattern, ParsedType,

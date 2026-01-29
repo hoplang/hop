@@ -1,5 +1,5 @@
 use super::type_annotation::TypeAnnotation;
-use super::type_error::TypeError;
+use crate::type_error::TypeError;
 use crate::document::CheapString;
 use crate::dop::patterns::compiler::Compiler as PatMatchCompiler;
 use crate::dop::symbols::type_name::TypeName;
@@ -561,8 +561,8 @@ fn typecheck_node(
                         true
                     }
                     Err(_) => {
-                        errors.push(TypeError::VariableIsAlreadyDefined {
-                            var: var_name.as_str().to_string(),
+                        errors.push(TypeError::VariableAlreadyDefined {
+                            name: var_name.as_str().to_string(),
                             range: var_name_range.clone(),
                         });
                         false
@@ -627,8 +627,8 @@ fn typecheck_node(
                         true
                     }
                     Err(_) => {
-                        errors.push(TypeError::VariableIsAlreadyDefined {
-                            var: binding.var_name.as_str().to_string(),
+                        errors.push(TypeError::VariableAlreadyDefined {
+                            name: binding.var_name.as_str().to_string(),
                             range: binding.var_name_range.clone(),
                         });
                         false
@@ -1007,8 +1007,8 @@ fn typecheck_node(
                                 pushed_count += 1;
                             }
                             Err(_) => {
-                                errors.push(TypeError::VariableIsAlreadyDefined {
-                                    var: name.clone(),
+                                errors.push(TypeError::VariableAlreadyDefined {
+                                    name: name.clone(),
                                     range: bind_range.clone(),
                                 });
                             }
@@ -4513,7 +4513,7 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                error: Variable 'x' is already defined
+                error: Variable x is already defined
                   --> main.hop (line 6, col 14)
                  5 |         None    => x,
                  6 |         Some(x) => x,
