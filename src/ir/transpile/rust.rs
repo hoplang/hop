@@ -31,6 +31,30 @@ impl RustTranspiler {
             .replace('\t', "\\t")
     }
 
+    /// Check if a type needs `.to_owned()` when used in an ownership context
+    fn needs_to_owned(&self, kind: &Type) -> bool {
+        match kind {
+            Type::Bool | Type::Int | Type::Float => false, // Copy types
+            Type::String | Type::TrustedHTML => true,
+            Type::Array(_) | Type::Option(_) => true,
+            Type::Record { .. } | Type::Enum { .. } => true,
+            Type::Component { .. } => false, // Not used as values
+        }
+    }
+
+    /// Transpile an expression for use in an ownership context.
+    /// Adds `.to_owned()` for FieldAccess and Var of non-Copy types.
+    fn transpile_expr_owned<'a>(&mut self, expr: &'a IrExpr) -> BoxDoc<'a> {
+        match expr {
+            IrExpr::FieldAccess { kind, .. } | IrExpr::Var { kind, .. }
+                if self.needs_to_owned(kind) =>
+            {
+                self.transpile_expr(expr).append(BoxDoc::text(".to_owned()"))
+            }
+            _ => self.transpile_expr(expr),
+        }
+    }
+
     /// Transpile a type for use in function parameters (uses references without explicit lifetimes)
     fn transpile_param_type<'a>(&mut self, t: &'a Type) -> BoxDoc<'a> {
         match t {
@@ -333,7 +357,7 @@ impl StatementTranspiler for RustTranspiler {
                 doc = doc
                     .append(BoxDoc::text(" in "))
                     .append(self.transpile_expr(array))
-                    .append(BoxDoc::text(".iter() {"));
+                    .append(BoxDoc::text(".iter().cloned() {"));
             }
             IrForSource::RangeInclusive { start, end } => {
                 doc = doc
@@ -363,7 +387,7 @@ impl StatementTranspiler for RustTranspiler {
         BoxDoc::text("let ")
             .append(BoxDoc::text(var))
             .append(BoxDoc::text(" = "))
-            .append(self.transpile_expr(value))
+            .append(self.transpile_expr_owned(value))
             .append(BoxDoc::text(";"))
             .append(BoxDoc::hardline())
             .append(self.transpile_statements(body))
@@ -604,7 +628,7 @@ impl ExpressionTranspiler for RustTranspiler {
         } else {
             BoxDoc::text("vec![")
                 .append(BoxDoc::intersperse(
-                    elements.iter().map(|e| self.transpile_expr(e)),
+                    elements.iter().map(|e| self.transpile_expr_owned(e)),
                     BoxDoc::text(", "),
                 ))
                 .append(BoxDoc::text("]"))
@@ -788,7 +812,7 @@ impl ExpressionTranspiler for RustTranspiler {
                     fields.iter().map(|(name, value)| {
                         BoxDoc::text(name.as_str())
                             .append(BoxDoc::text(": "))
-                            .append(self.transpile_expr(value))
+                            .append(self.transpile_expr_owned(value))
                     }),
                     BoxDoc::text(", "),
                 ))
@@ -815,7 +839,7 @@ impl ExpressionTranspiler for RustTranspiler {
                     fields.iter().map(|(name, value)| {
                         BoxDoc::text(name.as_str())
                             .append(BoxDoc::text(": "))
-                            .append(self.transpile_expr(value))
+                            .append(self.transpile_expr_owned(value))
                     }),
                     BoxDoc::text(", "),
                 ))
@@ -830,7 +854,7 @@ impl ExpressionTranspiler for RustTranspiler {
     ) -> BoxDoc<'a> {
         match value {
             Some(expr) => BoxDoc::text("Some(")
-                .append(self.transpile_expr(expr))
+                .append(self.transpile_expr_owned(expr))
                 .append(BoxDoc::text(")")),
             None => BoxDoc::text("None::<")
                 .append(self.transpile_type(inner_type))
@@ -847,9 +871,9 @@ impl ExpressionTranspiler for RustTranspiler {
             } => BoxDoc::text("if ")
                 .append(BoxDoc::text(subject.0.as_str()))
                 .append(BoxDoc::text(" { "))
-                .append(self.transpile_expr(true_body))
+                .append(self.transpile_expr_owned(true_body))
                 .append(BoxDoc::text(" } else { "))
-                .append(self.transpile_expr(false_body))
+                .append(self.transpile_expr_owned(false_body))
                 .append(BoxDoc::text(" }")),
             Match::Option {
                 subject,
@@ -866,9 +890,9 @@ impl ExpressionTranspiler for RustTranspiler {
                     .append(BoxDoc::text(" { "))
                     .append(BoxDoc::as_string(some_pattern))
                     .append(BoxDoc::text(" => "))
-                    .append(self.transpile_expr(some_arm_body))
+                    .append(self.transpile_expr_owned(some_arm_body))
                     .append(BoxDoc::text(", None => "))
-                    .append(self.transpile_expr(none_arm_body))
+                    .append(self.transpile_expr_owned(none_arm_body))
                     .append(BoxDoc::text(" }"))
             }
             Match::Enum { subject, arms } => {
@@ -920,7 +944,7 @@ impl ExpressionTranspiler for RustTranspiler {
                     doc = doc
                         .append(BoxDoc::as_string(pattern))
                         .append(BoxDoc::text(" => "))
-                        .append(self.transpile_expr(&arm.body));
+                        .append(self.transpile_expr_owned(&arm.body));
 
                     if i < arms.len() - 1 {
                         doc = doc.append(BoxDoc::text(", "));
@@ -941,7 +965,7 @@ impl ExpressionTranspiler for RustTranspiler {
         BoxDoc::text("{ let ")
             .append(BoxDoc::text(var.as_str()))
             .append(BoxDoc::text(" = "))
-            .append(self.transpile_expr(value))
+            .append(self.transpile_expr_owned(value))
             .append(BoxDoc::text("; "))
             .append(self.transpile_expr(body))
             .append(BoxDoc::text(" }"))

@@ -6671,4 +6671,967 @@ mod tests {
             "#]],
         );
     }
+
+    #[test]
+    #[ignore]
+    fn for_loop_record_field_in_let_binding() {
+        check(
+            indoc! {r#"
+                record Item {
+                  name: String,
+                  value: String,
+                }
+
+                entrypoint Test {
+                  <let {
+                    items: Array[Item] = [
+                      Item(name: "a", value: "1"),
+                      Item(name: "b", value: "2"),
+                    ],
+                  }>
+                    <for {item in items}>
+                      <let {n: String = item.name}>
+                        [{n}]
+                      </let>
+                    </for>
+                  </let>
+                }
+            "#},
+            "[a][b]",
+            expect![[r#"
+                -- ir (unoptimized) --
+                record Item {
+                  name: String,
+                  value: String,
+                }
+                Test() {
+                  let items = [
+                    Item(name: "a", value: "1"),
+                    Item(name: "b", value: "2"),
+                  ] in {
+                    for item in items {
+                      let n = item.name in {
+                        write("[")
+                        write_escaped(n)
+                        write("]")
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                record Item {
+                  name: String,
+                  value: String,
+                }
+                Test() {
+                  let items = [
+                    Item(name: "a", value: "1"),
+                    Item(name: "b", value: "2"),
+                  ] in {
+                    for item in items {
+                      let n = item.name in {
+                        write("[")
+                        write_escaped(n)
+                        write("]")
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                [a][b]
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- go (unoptimized) --
+                OK
+                -- python (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn for_loop_nested_record_field_in_let_binding() {
+        check(
+            indoc! {r#"
+                record Address {
+                  city: String,
+                }
+
+                record Person {
+                  name: String,
+                  address: Address,
+                }
+
+                entrypoint Test {
+                  <let {
+                    people: Array[Person] = [
+                      Person(
+                        name: "alice",
+                        address: Address(city: "paris"),
+                      ),
+                      Person(name: "bob", address: Address(city: "london")),
+                    ],
+                  }>
+                    <for {person in people}>
+                      <let {city: String = person.address.city}>
+                        [{city}]
+                      </let>
+                    </for>
+                  </let>
+                }
+            "#},
+            "[paris][london]",
+            expect![[r#"
+                -- ir (unoptimized) --
+                record Address {
+                  city: String,
+                }
+                record Person {
+                  name: String,
+                  address: Address,
+                }
+                Test() {
+                  let people = [
+                    Person(name: "alice", address: Address(city: "paris")),
+                    Person(name: "bob", address: Address(city: "london")),
+                  ] in {
+                    for person in people {
+                      let city = person.address.city in {
+                        write("[")
+                        write_escaped(city)
+                        write("]")
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                record Address {
+                  city: String,
+                }
+                record Person {
+                  name: String,
+                  address: Address,
+                }
+                Test() {
+                  let people = [
+                    Person(name: "alice", address: Address(city: "paris")),
+                    Person(name: "bob", address: Address(city: "london")),
+                  ] in {
+                    for person in people {
+                      let city = person.address.city in {
+                        write("[")
+                        write_escaped(city)
+                        write("]")
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                [paris][london]
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- go (unoptimized) --
+                OK
+                -- python (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn for_loop_record_field_in_record_literal() {
+        check(
+            indoc! {r#"
+                record Source {
+                  name: String,
+                  value: String,
+                }
+
+                record Target {
+                  label: String,
+                }
+
+                entrypoint Test {
+                  <let {
+                    sources: Array[Source] = [
+                      Source(name: "a", value: "1"),
+                      Source(name: "b", value: "2"),
+                    ],
+                  }>
+                    <for {src in sources}>
+                      <let {target: Target = Target(label: src.name)}>
+                        [{target.label}]
+                      </let>
+                    </for>
+                  </let>
+                }
+            "#},
+            "[a][b]",
+            expect![[r#"
+                -- ir (unoptimized) --
+                record Source {
+                  name: String,
+                  value: String,
+                }
+                record Target {
+                  label: String,
+                }
+                Test() {
+                  let sources = [
+                    Source(name: "a", value: "1"),
+                    Source(name: "b", value: "2"),
+                  ] in {
+                    for src in sources {
+                      let target = Target(label: src.name) in {
+                        write("[")
+                        write_escaped(target.label)
+                        write("]")
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                record Source {
+                  name: String,
+                  value: String,
+                }
+                record Target {
+                  label: String,
+                }
+                Test() {
+                  let sources = [
+                    Source(name: "a", value: "1"),
+                    Source(name: "b", value: "2"),
+                  ] in {
+                    for src in sources {
+                      let target = Target(label: src.name) in {
+                        write("[")
+                        write_escaped(target.label)
+                        write("]")
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                [a][b]
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- go (unoptimized) --
+                OK
+                -- python (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn for_loop_record_field_in_option_construction() {
+        check(
+            indoc! {r#"
+                record Item {
+                  name: String,
+                }
+
+                entrypoint Test {
+                  <let {
+                    items: Array[Item] = [Item(name: "a"), Item(name: "b")],
+                  }>
+                    <for {item in items}>
+                      <let {opt: Option[String] = Some(item.name)}>
+                        <match {opt}>
+                          <case {Some(s)}>
+                            [{s}]
+                          </case>
+                          <case {None}>
+                            [-]
+                          </case>
+                        </match>
+                      </let>
+                    </for>
+                  </let>
+                }
+            "#},
+            "[a][b]",
+            expect![[r#"
+                -- ir (unoptimized) --
+                record Item {
+                  name: String,
+                }
+                Test() {
+                  let items = [Item(name: "a"), Item(name: "b")] in {
+                    for item in items {
+                      let opt = Option[String]::Some(item.name) in {
+                        match opt {
+                          Some(v_0) => {
+                            let s = v_0 in {
+                              write("[")
+                              write_escaped(s)
+                              write("]")
+                            }
+                          }
+                          None => {
+                            write("[-]")
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                record Item {
+                  name: String,
+                }
+                Test() {
+                  let items = [Item(name: "a"), Item(name: "b")] in {
+                    for item in items {
+                      let opt = Option[String]::Some(item.name) in {
+                        match opt {
+                          Some(v_0) => {
+                            let s = v_0 in {
+                              write("[")
+                              write_escaped(s)
+                              write("]")
+                            }
+                          }
+                          None => {
+                            write("[-]")
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                [a][b]
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- go (unoptimized) --
+                OK
+                -- python (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn string_concat_in_let_binding() {
+        check(
+            indoc! {r#"
+                entrypoint Test {
+                  <let {a: String = "hello"}>
+                    <let {b: String = "world"}>
+                      <let {c: String = a + " " + b}>
+                        [{c}]
+                      </let>
+                    </let>
+                  </let>
+                }
+            "#},
+            "[hello world]",
+            expect![[r#"
+                -- ir (unoptimized) --
+                Test() {
+                  let a = "hello" in {
+                    let b = "world" in {
+                      let c = ((a + " ") + b) in {
+                        write("[")
+                        write_escaped(c)
+                        write("]")
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                Test() {
+                  write("[hello world]")
+                }
+                -- expected output --
+                [hello world]
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- go (unoptimized) --
+                OK
+                -- python (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn string_concat_in_record_field() {
+        check(
+            indoc! {r#"
+                record Greeting {
+                  message: String,
+                }
+
+                entrypoint Test {
+                  <let {
+                    g: Greeting = Greeting(message: "hello" + " world"),
+                  }>
+                    {g.message}
+                  </let>
+                }
+            "#},
+            "hello world",
+            expect![[r#"
+                -- ir (unoptimized) --
+                record Greeting {
+                  message: String,
+                }
+                Test() {
+                  let g = Greeting(message: ("hello" + " world")) in {
+                    write_escaped(g.message)
+                  }
+                }
+                -- ir (optimized) --
+                record Greeting {
+                  message: String,
+                }
+                Test() {
+                  let g = Greeting(message: "hello world") in {
+                    write_escaped(g.message)
+                  }
+                }
+                -- expected output --
+                hello world
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- go (unoptimized) --
+                OK
+                -- python (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn int_to_string_in_let_binding() {
+        check(
+            indoc! {r#"
+                entrypoint Test {
+                  <let {n: Int = 42}>
+                    <let {s: String = n.to_string()}>
+                      [{s}]
+                    </let>
+                  </let>
+                }
+            "#},
+            "[42]",
+            expect![[r#"
+                -- ir (unoptimized) --
+                Test() {
+                  let n = 42 in {
+                    let s = n.to_string() in {
+                      write("[")
+                      write_escaped(s)
+                      write("]")
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                Test() {
+                  let n = 42 in {
+                    let s = n.to_string() in {
+                      write("[")
+                      write_escaped(s)
+                      write("]")
+                    }
+                  }
+                }
+                -- expected output --
+                [42]
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- go (unoptimized) --
+                OK
+                -- python (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn record_with_array_field() {
+        check(
+            indoc! {r#"
+                record Container {
+                  items: Array[String],
+                }
+
+                entrypoint Test {
+                  <let {c: Container = Container(items: ["a", "b"])}>
+                    <for {item in c.items}>
+                      [{item}]
+                    </for>
+                  </let>
+                }
+            "#},
+            "[a][b]",
+            expect![[r#"
+                -- ir (unoptimized) --
+                record Container {
+                  items: Array[String],
+                }
+                Test() {
+                  let c = Container(items: ["a", "b"]) in {
+                    for item in c.items {
+                      write("[")
+                      write_escaped(item)
+                      write("]")
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                record Container {
+                  items: Array[String],
+                }
+                Test() {
+                  let c = Container(items: ["a", "b"]) in {
+                    for item in c.items {
+                      write("[")
+                      write_escaped(item)
+                      write("]")
+                    }
+                  }
+                }
+                -- expected output --
+                [a][b]
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- go (unoptimized) --
+                OK
+                -- python (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn int_to_string_in_record_field() {
+        check(
+            indoc! {r#"
+                record Label {
+                  text: String,
+                }
+
+                entrypoint Test {
+                  <let {l: Label = Label(text: 42.to_string())}>
+                    [{l.text}]
+                  </let>
+                }
+            "#},
+            "[42]",
+            expect![[r#"
+                -- ir (unoptimized) --
+                record Label {
+                  text: String,
+                }
+                Test() {
+                  let l = Label(text: 42.to_string()) in {
+                    write("[")
+                    write_escaped(l.text)
+                    write("]")
+                  }
+                }
+                -- ir (optimized) --
+                record Label {
+                  text: String,
+                }
+                Test() {
+                  let l = Label(text: 42.to_string()) in {
+                    write("[")
+                    write_escaped(l.text)
+                    write("]")
+                  }
+                }
+                -- expected output --
+                [42]
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- go (unoptimized) --
+                OK
+                -- python (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn nested_record_with_array() {
+        check(
+            indoc! {r#"
+                record Inner {
+                  values: Array[String],
+                }
+
+                record Outer {
+                  inner: Inner,
+                }
+
+                entrypoint Test {
+                  <let {o: Outer = Outer(inner: Inner(values: ["x", "y"]))}>
+                    <for {v in o.inner.values}>
+                      [{v}]
+                    </for>
+                  </let>
+                }
+            "#},
+            "[x][y]",
+            expect![[r#"
+                -- ir (unoptimized) --
+                record Inner {
+                  values: Array[String],
+                }
+                record Outer {
+                  inner: Inner,
+                }
+                Test() {
+                  let o = Outer(inner: Inner(values: ["x", "y"])) in {
+                    for v in o.inner.values {
+                      write("[")
+                      write_escaped(v)
+                      write("]")
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                record Inner {
+                  values: Array[String],
+                }
+                record Outer {
+                  inner: Inner,
+                }
+                Test() {
+                  let o = Outer(inner: Inner(values: ["x", "y"])) in {
+                    for v in o.inner.values {
+                      write("[")
+                      write_escaped(v)
+                      write("]")
+                    }
+                  }
+                }
+                -- expected output --
+                [x][y]
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- go (unoptimized) --
+                OK
+                -- python (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn move_field_into_record_literal() {
+        check(
+            indoc! {r#"
+                record Foo {
+                  a: String,
+                }
+
+                entrypoint Test {
+                  <let {x: Foo = Foo(a: "hello"), y: Foo = Foo(a: x.a)}>
+                    [{x.a}][{y.a}]
+                  </let>
+                }
+            "#},
+            "[hello][hello]",
+            expect![[r#"
+                -- ir (unoptimized) --
+                record Foo {
+                  a: String,
+                }
+                Test() {
+                  let x = Foo(a: "hello") in {
+                    let y = Foo(a: x.a) in {
+                      write("[")
+                      write_escaped(x.a)
+                      write("][")
+                      write_escaped(y.a)
+                      write("]")
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                record Foo {
+                  a: String,
+                }
+                Test() {
+                  let x = Foo(a: "hello") in {
+                    let y = Foo(a: x.a) in {
+                      write("[")
+                      write_escaped(x.a)
+                      write("][")
+                      write_escaped(y.a)
+                      write("]")
+                    }
+                  }
+                }
+                -- expected output --
+                [hello][hello]
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- go (unoptimized) --
+                OK
+                -- python (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn match_expr_field_access_reused() {
+        check(
+            indoc! {r#"
+                record Foo {
+                  a: String,
+                }
+
+                entrypoint Test {
+                  <let {x: Foo = Foo(a: "hello"), b: Bool = true}>
+                    <let {
+                      result: String = match b {
+                        true => x.a,
+                        false => "default",
+                      },
+                    }>
+                      [{result}][{x.a}]
+                    </let>
+                  </let>
+                }
+            "#},
+            "[hello][hello]",
+            expect![[r#"
+                -- ir (unoptimized) --
+                record Foo {
+                  a: String,
+                }
+                Test() {
+                  let x = Foo(a: "hello") in {
+                    let b = true in {
+                      let result = match b {
+                        true => x.a,
+                        false => "default",
+                      } in {
+                        write("[")
+                        write_escaped(result)
+                        write("][")
+                        write_escaped(x.a)
+                        write("]")
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                record Foo {
+                  a: String,
+                }
+                Test() {
+                  let x = Foo(a: "hello") in {
+                    let b = true in {
+                      let result = match b {
+                        true => x.a,
+                        false => "default",
+                      } in {
+                        write("[")
+                        write_escaped(result)
+                        write("][")
+                        write_escaped(x.a)
+                        write("]")
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                [hello][hello]
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- go (unoptimized) --
+                OK
+                -- python (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
 }

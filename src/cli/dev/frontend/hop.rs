@@ -57,14 +57,14 @@ pub fn program(modules: &[Module]) -> String {
     output.push_str(" class=\"bg-black text-white text-lg p-4 mb-12 inline-block\"");
     output.push_str(">modules</h1><div");
     output.push_str(" class=\"grid grid-cols-2 lg:grid-cols-4 gap-4\">");
-    for module in modules.iter() {
+    for module in modules.iter().cloned() {
         output.push_str("<div class=\"p-4 bg-black text-white\"><div");
         output.push_str(" class=\"flex items-center justify-between\"><h1");
         output.push_str(" class=\"text-lg\">");
         output.push_str(&escape_html(&module.name));
         output.push_str("</h1></div><details class=\"text-[14px] p-2 mt-2\"><summary>");
         output.push_str("Components</summary><ul>");
-        for c in module.components.iter() {
+        for c in module.components.iter().cloned() {
             output.push_str("<li>");
             output.push_str(&escape_html(&c.name));
             output.push_str("</li>");
