@@ -1764,9 +1764,9 @@ version = "0.1.0"
 name = "tailwind-runner"
 version = "0.0.0"
 dependencies = [
- "anyhow",
  "reqwest",
  "sha2",
+ "thiserror",
  "tokio",
  "zstd",
 ]

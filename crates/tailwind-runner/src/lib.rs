@@ -1,5 +1,16 @@
-use anyhow::Result;
 use std::path::PathBuf;
+
+#[derive(Debug, thiserror::Error)]
+pub enum TailwindError {
+    #[error("Failed to extract binary: {0}")]
+    Extraction(#[source] std::io::Error),
+    #[error("Failed to decompress binary: {0}")]
+    Decompression(#[source] std::io::Error),
+    #[error("Tailwind CSS failed: {stderr}")]
+    ExecutionFailed { stderr: String },
+    #[error("Failed to spawn process: {0}")]
+    Spawn(#[source] std::io::Error),
+}
 
 pub struct TailwindRunner {
     binary_path: PathBuf,
@@ -12,12 +23,12 @@ pub struct TailwindConfig {
 }
 
 impl TailwindRunner {
-    pub async fn new(extraction_path: PathBuf) -> Result<Self> {
+    pub async fn new(extraction_path: PathBuf) -> Result<Self, TailwindError> {
         let binary_path = extract_binary(extraction_path).await?;
         Ok(Self { binary_path })
     }
 
-    pub async fn run_once(&self, config: &TailwindConfig) -> Result<String> {
+    pub async fn run_once(&self, config: &TailwindConfig) -> Result<String, TailwindError> {
         let output = tokio::process::Command::new(&self.binary_path)
             .arg("--input")
             .arg(&config.input)
@@ -26,19 +37,19 @@ impl TailwindRunner {
             .arg("--minify")
             .current_dir(&config.working_dir)
             .output()
-            .await?;
+            .await
+            .map_err(TailwindError::Spawn)?;
 
         if !output.status.success() {
-            return Err(anyhow::anyhow!(
-                "Tailwind CSS failed: {}",
-                String::from_utf8_lossy(&output.stderr)
-            ));
+            return Err(TailwindError::ExecutionFailed {
+                stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+            });
         }
 
         Ok(String::from_utf8_lossy(&output.stdout).to_string())
     }
 
-    pub fn watch(&self, config: &TailwindConfig) -> Result<tokio::process::Child> {
+    pub fn watch(&self, config: &TailwindConfig) -> Result<tokio::process::Child, TailwindError> {
         let child = tokio::process::Command::new(&self.binary_path)
             .arg("--watch=always")
             .arg("--input")
@@ -50,7 +61,8 @@ impl TailwindRunner {
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
-            .spawn()?;
+            .spawn()
+            .map_err(TailwindError::Spawn)?;
 
         Ok(child)
     }
@@ -67,7 +79,7 @@ static TAILWIND_BINARY: &[u8] =
 #[cfg(not(any(target_os = "linux", target_os = "macos")))]
 compile_error!("Only Linux and macOS are supported");
 
-async fn extract_binary(extraction_path: PathBuf) -> Result<PathBuf> {
+async fn extract_binary(extraction_path: PathBuf) -> Result<PathBuf, TailwindError> {
     use std::os::unix::fs::PermissionsExt;
 
     // Use the checksum from build.rs (first 8 chars for brevity)
@@ -83,16 +95,25 @@ async fn extract_binary(extraction_path: PathBuf) -> Result<PathBuf> {
     let binary_path = extraction_path.join(binary_name);
 
     if !binary_path.exists() {
-        tokio::fs::create_dir_all(&extraction_path).await?;
+        tokio::fs::create_dir_all(&extraction_path)
+            .await
+            .map_err(TailwindError::Extraction)?;
 
         // Decompress the binary
-        let decompressed = zstd::decode_all(TAILWIND_BINARY)?;
-        tokio::fs::write(&binary_path, decompressed).await?;
+        let decompressed =
+            zstd::decode_all(TAILWIND_BINARY).map_err(TailwindError::Decompression)?;
+        tokio::fs::write(&binary_path, decompressed)
+            .await
+            .map_err(TailwindError::Extraction)?;
 
-        let metadata = tokio::fs::metadata(&binary_path).await?;
+        let metadata = tokio::fs::metadata(&binary_path)
+            .await
+            .map_err(TailwindError::Extraction)?;
         let mut permissions = metadata.permissions();
         permissions.set_mode(0o755);
-        tokio::fs::set_permissions(&binary_path, permissions).await?;
+        tokio::fs::set_permissions(&binary_path, permissions)
+            .await
+            .map_err(TailwindError::Extraction)?;
     }
 
     Ok(binary_path)

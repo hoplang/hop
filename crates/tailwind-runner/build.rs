@@ -1,9 +1,10 @@
-use anyhow::Result;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::path::Path;
+
+type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 const TAILWIND_VERSION: &str = "v4.1.13";
 
@@ -57,7 +58,7 @@ fn main() -> Result<()> {
             download_and_compress_binary("macos", "x64", &binaries_dir, &checksums)?
         }
     } else {
-        return Err(anyhow::anyhow!("Unsupported target platform: {}", target));
+        return Err(format!("Unsupported target platform: {}", target).into());
     };
 
     // Export the checksum as an environment variable for use in lib.rs
@@ -80,7 +81,7 @@ fn download_and_compress_binary(
     // Get expected checksum
     let expected_checksum = checksums
         .get(&download_name)
-        .ok_or_else(|| anyhow::anyhow!("No checksum found for {}", download_name))?;
+        .ok_or_else(|| format!("No checksum found for {}", download_name))?;
 
     if compressed_path.exists() {
         println!("Using cached binary: {}", compressed_path.display());
@@ -99,10 +100,7 @@ fn download_and_compress_binary(
         .build()?;
     let response = client.get(&url).send()?;
     if !response.status().is_success() {
-        return Err(anyhow::anyhow!(
-            "Failed to download binary: HTTP {}",
-            response.status()
-        ));
+        return Err(format!("Failed to download binary: HTTP {}", response.status()).into());
     }
 
     let binary_data = response.bytes()?;
@@ -116,12 +114,11 @@ fn download_and_compress_binary(
     let actual_checksum = format!("{:x}", result);
 
     if actual_checksum != *expected_checksum {
-        return Err(anyhow::anyhow!(
+        return Err(format!(
             "Checksum verification failed for {}!\nExpected: {}\nActual: {}",
-            download_name,
-            expected_checksum,
-            actual_checksum
-        ));
+            download_name, expected_checksum, actual_checksum
+        )
+        .into());
     }
     println!("Checksum verified successfully");
 
