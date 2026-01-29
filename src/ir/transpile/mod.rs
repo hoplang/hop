@@ -18,36 +18,36 @@ use crate::ir::ast::{IrEntrypointDeclaration, IrExpr, IrForSource, IrModule, IrS
 
 pub trait Transpiler {
     fn transpile_entrypoint<'a>(
-        &self,
+        &mut self,
         name: &'a ComponentName,
         entrypoint: &'a IrEntrypointDeclaration,
     ) -> BoxDoc<'a>;
-    fn transpile_module(&self, module: &IrModule) -> String;
+    fn transpile_module(&mut self, module: &IrModule) -> String;
 }
 
 pub trait StatementTranspiler {
-    fn transpile_write<'a>(&self, content: &'a str) -> BoxDoc<'a>;
-    fn transpile_write_expr<'a>(&self, expr: &'a IrExpr, escape: bool) -> BoxDoc<'a>;
+    fn transpile_write<'a>(&mut self, content: &'a str) -> BoxDoc<'a>;
+    fn transpile_write_expr<'a>(&mut self, expr: &'a IrExpr, escape: bool) -> BoxDoc<'a>;
     fn transpile_if<'a>(
-        &self,
+        &mut self,
         condition: &'a IrExpr,
         body: &'a [IrStatement],
         else_body: Option<&'a [IrStatement]>,
     ) -> BoxDoc<'a>;
     fn transpile_for<'a>(
-        &self,
+        &mut self,
         var: Option<&'a str>,
         source: &'a IrForSource,
         body: &'a [IrStatement],
     ) -> BoxDoc<'a>;
     fn transpile_let_statement<'a>(
-        &self,
+        &mut self,
         var: &'a str,
         value: &'a IrExpr,
         body: &'a [IrStatement],
     ) -> BoxDoc<'a>;
-    fn transpile_match_statement<'a>(&self, match_: &'a Match<Vec<IrStatement>>) -> BoxDoc<'a>;
-    fn transpile_statement<'a>(&self, statement: &'a IrStatement) -> BoxDoc<'a> {
+    fn transpile_match_statement<'a>(&mut self, match_: &'a Match<Vec<IrStatement>>) -> BoxDoc<'a>;
+    fn transpile_statement<'a>(&mut self, statement: &'a IrStatement) -> BoxDoc<'a> {
         match statement {
             IrStatement::Write { content, .. } => self.transpile_write(content),
             IrStatement::WriteExpr { expr, escape, .. } => self.transpile_write_expr(expr, *escape),
@@ -66,25 +66,20 @@ pub trait StatementTranspiler {
             IrStatement::Match { match_, .. } => self.transpile_match_statement(match_),
         }
     }
-    fn transpile_statements<'a>(&self, statements: &'a [IrStatement]) -> BoxDoc<'a> {
-        BoxDoc::intersperse(
-            statements.iter().map(|stmt| self.transpile_statement(stmt)),
-            BoxDoc::hardline(),
-        )
-    }
+    fn transpile_statements<'a>(&mut self, statements: &'a [IrStatement]) -> BoxDoc<'a>;
 }
 
 pub trait TypeTranspiler {
-    fn transpile_bool_type<'a>(&self) -> BoxDoc<'a>;
-    fn transpile_string_type<'a>(&self) -> BoxDoc<'a>;
-    fn transpile_float_type<'a>(&self) -> BoxDoc<'a>;
-    fn transpile_int_type<'a>(&self) -> BoxDoc<'a>;
-    fn transpile_trusted_html_type<'a>(&self) -> BoxDoc<'a>;
-    fn transpile_array_type<'a>(&self, element_type: &'a Type) -> BoxDoc<'a>;
-    fn transpile_option_type<'a>(&self, inner_type: &'a Type) -> BoxDoc<'a>;
-    fn transpile_named_type<'a>(&self, name: &'a str) -> BoxDoc<'a>;
-    fn transpile_enum_type<'a>(&self, name: &'a str) -> BoxDoc<'a>;
-    fn transpile_type<'a>(&self, t: &'a Type) -> BoxDoc<'a> {
+    fn transpile_bool_type<'a>(&mut self) -> BoxDoc<'a>;
+    fn transpile_string_type<'a>(&mut self) -> BoxDoc<'a>;
+    fn transpile_float_type<'a>(&mut self) -> BoxDoc<'a>;
+    fn transpile_int_type<'a>(&mut self) -> BoxDoc<'a>;
+    fn transpile_trusted_html_type<'a>(&mut self) -> BoxDoc<'a>;
+    fn transpile_array_type<'a>(&mut self, element_type: &'a Type) -> BoxDoc<'a>;
+    fn transpile_option_type<'a>(&mut self, inner_type: &'a Type) -> BoxDoc<'a>;
+    fn transpile_named_type<'a>(&mut self, name: &'a str) -> BoxDoc<'a>;
+    fn transpile_enum_type<'a>(&mut self, name: &'a str) -> BoxDoc<'a>;
+    fn transpile_type<'a>(&mut self, t: &'a Type) -> BoxDoc<'a> {
         match t {
             Type::Bool => self.transpile_bool_type(),
             Type::String => self.transpile_string_type(),
@@ -102,75 +97,76 @@ pub trait TypeTranspiler {
 
 /// Expression transpilation trait using pretty-printing
 pub trait ExpressionTranspiler {
-    fn transpile_var<'a>(&self, name: &'a str) -> BoxDoc<'a>;
-    fn transpile_field_access<'a>(&self, object: &'a IrExpr, field: &'a FieldName) -> BoxDoc<'a>;
-    fn transpile_string_literal<'a>(&self, value: &'a str) -> BoxDoc<'a>;
-    fn transpile_boolean_literal<'a>(&self, value: bool) -> BoxDoc<'a>;
-    fn transpile_float_literal<'a>(&self, value: f64) -> BoxDoc<'a>;
-    fn transpile_int_literal<'a>(&self, value: i64) -> BoxDoc<'a>;
+    fn transpile_var<'a>(&mut self, name: &'a str) -> BoxDoc<'a>;
+    fn transpile_field_access<'a>(&mut self, object: &'a IrExpr, field: &'a FieldName)
+        -> BoxDoc<'a>;
+    fn transpile_string_literal<'a>(&mut self, value: &'a str) -> BoxDoc<'a>;
+    fn transpile_boolean_literal<'a>(&mut self, value: bool) -> BoxDoc<'a>;
+    fn transpile_float_literal<'a>(&mut self, value: f64) -> BoxDoc<'a>;
+    fn transpile_int_literal<'a>(&mut self, value: i64) -> BoxDoc<'a>;
     fn transpile_array_literal<'a>(
-        &self,
+        &mut self,
         elements: &'a [IrExpr],
         elem_type: &'a Type,
     ) -> BoxDoc<'a>;
-    fn transpile_string_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
-    fn transpile_bool_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
-    fn transpile_int_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
-    fn transpile_float_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
-    fn transpile_enum_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
-    fn transpile_int_less_than<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
-    fn transpile_float_less_than<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
+    fn transpile_string_equals<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
+    fn transpile_bool_equals<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
+    fn transpile_int_equals<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
+    fn transpile_float_equals<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
+    fn transpile_enum_equals<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
+    fn transpile_int_less_than<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
+    fn transpile_float_less_than<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_int_less_than_or_equal<'a>(
-        &self,
+        &mut self,
         left: &'a IrExpr,
         right: &'a IrExpr,
     ) -> BoxDoc<'a>;
     fn transpile_float_less_than_or_equal<'a>(
-        &self,
+        &mut self,
         left: &'a IrExpr,
         right: &'a IrExpr,
     ) -> BoxDoc<'a>;
-    fn transpile_not<'a>(&self, operand: &'a IrExpr) -> BoxDoc<'a>;
-    fn transpile_numeric_negation<'a>(&self, operand: &'a IrExpr) -> BoxDoc<'a>;
-    fn transpile_string_concat<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
-    fn transpile_logical_and<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
-    fn transpile_logical_or<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
-    fn transpile_int_add<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
-    fn transpile_float_add<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
-    fn transpile_int_subtract<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
-    fn transpile_float_subtract<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
-    fn transpile_int_multiply<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
-    fn transpile_float_multiply<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
+    fn transpile_not<'a>(&mut self, operand: &'a IrExpr) -> BoxDoc<'a>;
+    fn transpile_numeric_negation<'a>(&mut self, operand: &'a IrExpr) -> BoxDoc<'a>;
+    fn transpile_string_concat<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
+    fn transpile_logical_and<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
+    fn transpile_logical_or<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
+    fn transpile_int_add<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
+    fn transpile_float_add<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
+    fn transpile_int_subtract<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
+    fn transpile_float_subtract<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
+    fn transpile_int_multiply<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
+    fn transpile_float_multiply<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_record_literal<'a>(
-        &self,
+        &mut self,
         record_name: &'a str,
         fields: &'a [(FieldName, IrExpr)],
     ) -> BoxDoc<'a>;
     fn transpile_enum_literal<'a>(
-        &self,
+        &mut self,
         enum_name: &'a str,
         variant_name: &'a str,
         fields: &'a [(FieldName, IrExpr)],
     ) -> BoxDoc<'a>;
     fn transpile_option_literal<'a>(
-        &self,
+        &mut self,
         value: Option<&'a IrExpr>,
         inner_type: &'a Type,
     ) -> BoxDoc<'a>;
-    fn transpile_match_expr<'a>(&self, match_: &'a Match<IrExpr>) -> BoxDoc<'a>;
+    fn transpile_match_expr<'a>(&mut self, match_: &'a Match<IrExpr>) -> BoxDoc<'a>;
     fn transpile_let<'a>(
-        &self,
+        &mut self,
         var: &'a VarName,
         value: &'a IrExpr,
         body: &'a IrExpr,
     ) -> BoxDoc<'a>;
-    fn transpile_merge_classes<'a>(&self, args: &'a [IrExpr]) -> BoxDoc<'a>;
-    fn transpile_array_length<'a>(&self, array: &'a IrExpr) -> BoxDoc<'a>;
-    fn transpile_int_to_string<'a>(&self, value: &'a IrExpr) -> BoxDoc<'a>;
-    fn transpile_float_to_int<'a>(&self, value: &'a IrExpr) -> BoxDoc<'a>;
-    fn transpile_float_to_string<'a>(&self, value: &'a IrExpr) -> BoxDoc<'a>;
-    fn transpile_int_to_float<'a>(&self, value: &'a IrExpr) -> BoxDoc<'a>;
-    fn transpile_expr<'a>(&self, expr: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_merge_classes<'a>(&mut self, args: &'a [IrExpr]) -> BoxDoc<'a>;
+    fn transpile_array_length<'a>(&mut self, array: &'a IrExpr) -> BoxDoc<'a>;
+    fn transpile_int_to_string<'a>(&mut self, value: &'a IrExpr) -> BoxDoc<'a>;
+    fn transpile_float_to_int<'a>(&mut self, value: &'a IrExpr) -> BoxDoc<'a>;
+    fn transpile_float_to_string<'a>(&mut self, value: &'a IrExpr) -> BoxDoc<'a>;
+    fn transpile_int_to_float<'a>(&mut self, value: &'a IrExpr) -> BoxDoc<'a>;
+    fn transpile_expr<'a>(&mut self, expr: &'a IrExpr) -> BoxDoc<'a> {
         match expr {
             IrExpr::Var { value, .. } => self.transpile_var(value.as_str()),
             IrExpr::FieldAccess {

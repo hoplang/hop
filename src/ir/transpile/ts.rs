@@ -10,50 +10,25 @@ use crate::ir::ast::{IrEntrypointDeclaration, IrExpr, IrForSource, IrModule, IrS
 pub struct TsTranspiler {
     /// Internal flag to use template literals instead of double quotes
     use_template_literals: bool,
+    /// Tracks whether Option type is used during transpilation
+    needs_option: bool,
+    /// Tracks whether escapeHtml function is used during transpilation
+    needs_escape_html: bool,
+    /// Tracks whether TrustedHTML type is used during transpilation
+    needs_trusted_html: bool,
 }
 
 impl TsTranspiler {
     pub fn new() -> Self {
         Self {
             use_template_literals: false,
+            needs_option: false,
+            needs_escape_html: false,
+            needs_trusted_html: false,
         }
     }
 
-    fn scan_for_escape_html(&self, entrypoint: &IrEntrypointDeclaration) -> bool {
-        let mut needs_escape = false;
-        for stmt in &entrypoint.body {
-            stmt.traverse(&mut |s| {
-                if let IrStatement::WriteExpr { escape: true, .. } = s {
-                    needs_escape = true;
-                }
-            });
-            if needs_escape {
-                break;
-            }
-        }
-        needs_escape
-    }
-
-    fn scan_for_trusted_html(&self, entrypoints: &[IrEntrypointDeclaration]) -> bool {
-        for entrypoint in entrypoints {
-            for (_, param_type) in &entrypoint.parameters {
-                if Self::type_contains_trusted_html(param_type) {
-                    return true;
-                }
-            }
-        }
-        false
-    }
-
-    fn type_contains_trusted_html(t: &Type) -> bool {
-        match t {
-            Type::TrustedHTML => true,
-            Type::Array(elem) => Self::type_contains_trusted_html(elem),
-            _ => false,
-        }
-    }
-
-    fn escape_string(&self, s: &str) -> String {
+    fn escape_string(&mut self, s: &str) -> String {
         if self.use_template_literals {
             // For template literals, only escape backticks and ${
             s.replace('\\', "\\\\")
@@ -70,7 +45,7 @@ impl TsTranspiler {
     }
 
     // Helper method to wrap a string in the appropriate quotes
-    fn quote_string(&self, s: &str) -> String {
+    fn quote_string(&mut self, s: &str) -> String {
         if self.use_template_literals {
             format!("`{}`", self.escape_string(s))
         } else {
@@ -86,64 +61,16 @@ impl Default for TsTranspiler {
 }
 
 impl Transpiler for TsTranspiler {
-    fn transpile_module(&self, module: &IrModule) -> String {
+    fn transpile_module(&mut self, module: &IrModule) -> String {
         let entrypoints = &module.entrypoints;
         let records = &module.records;
 
-        let mut needs_escape_html = false;
-        for entrypoint in entrypoints {
-            if self.scan_for_escape_html(entrypoint) {
-                needs_escape_html = true;
-                break;
-            }
-        }
-
-        let needs_trusted_html = self.scan_for_trusted_html(entrypoints);
+        // Reset tracking flags for this module
+        self.needs_option = false;
+        self.needs_escape_html = false;
+        self.needs_trusted_html = false;
 
         let mut result = BoxDoc::nil();
-
-        // Add TrustedHTML type definition
-        if needs_trusted_html {
-            result = result
-                .append(BoxDoc::text(
-                    "type TrustedHTML = string & { readonly __brand: unique symbol };",
-                ))
-                .append(BoxDoc::line())
-                .append(BoxDoc::line());
-        }
-
-        // Add Option type definitions and constructors
-        result = result
-            .append(BoxDoc::text("export namespace Option {"))
-            .append(BoxDoc::line())
-            .append(BoxDoc::text(
-                "    export type Option<T> = { readonly tag: \"None\" } | { readonly tag: \"Some\", value: T };",
-            ))
-            .append(BoxDoc::line())
-            .append(BoxDoc::line())
-            .append(BoxDoc::text(
-                "    export function some<T>(value: T): Option<T> {",
-            ))
-            .append(BoxDoc::line())
-            .append(BoxDoc::text(
-                "        return { tag: \"Some\", value };",
-            ))
-            .append(BoxDoc::line())
-            .append(BoxDoc::text("    }"))
-            .append(BoxDoc::line())
-            .append(BoxDoc::text(
-                "    export function none<T>(): Option<T> {",
-            ))
-            .append(BoxDoc::line())
-            .append(BoxDoc::text(
-                "        return { tag: \"None\" };",
-            ))
-            .append(BoxDoc::line())
-            .append(BoxDoc::text("    }"))
-            .append(BoxDoc::line())
-            .append(BoxDoc::text("}"))
-            .append(BoxDoc::line())
-            .append(BoxDoc::line());
 
         // Add enum type definitions (namespace-based)
         for enum_def in &module.enums {
@@ -282,8 +209,16 @@ impl Transpiler for TsTranspiler {
             }
         }
 
-        if needs_escape_html {
-            result = result
+        result = result.append(BoxDoc::intersperse(
+            entrypoints
+                .iter()
+                .map(|entrypoint| self.transpile_entrypoint(&entrypoint.name, entrypoint)),
+            BoxDoc::hardline().append(BoxDoc::hardline()),
+        ));
+
+        // Prepend escapeHtml function if needed (after transpilation determined it's used)
+        if self.needs_escape_html {
+            let escape_fn = BoxDoc::nil()
                 .append(BoxDoc::text("function escapeHtml(str: string): string {"))
                 .append(
                     BoxDoc::nil()
@@ -310,14 +245,55 @@ impl Transpiler for TsTranspiler {
                 .append(BoxDoc::text("}"))
                 .append(BoxDoc::line())
                 .append(BoxDoc::line());
+            result = escape_fn.append(result);
         }
 
-        result = result.append(BoxDoc::intersperse(
-            entrypoints
-                .iter()
-                .map(|entrypoint| self.transpile_entrypoint(&entrypoint.name, entrypoint)),
-            BoxDoc::hardline().append(BoxDoc::hardline()),
-        ));
+        // Prepend Option namespace if needed (after transpilation determined it's used)
+        if self.needs_option {
+            let option_ns = BoxDoc::nil()
+                .append(BoxDoc::text("export namespace Option {"))
+                .append(BoxDoc::line())
+                .append(BoxDoc::text(
+                    "    export type Option<T> = { readonly tag: \"None\" } | { readonly tag: \"Some\", value: T };",
+                ))
+                .append(BoxDoc::line())
+                .append(BoxDoc::line())
+                .append(BoxDoc::text(
+                    "    export function some<T>(value: T): Option<T> {",
+                ))
+                .append(BoxDoc::line())
+                .append(BoxDoc::text(
+                    "        return { tag: \"Some\", value };",
+                ))
+                .append(BoxDoc::line())
+                .append(BoxDoc::text("    }"))
+                .append(BoxDoc::line())
+                .append(BoxDoc::text(
+                    "    export function none<T>(): Option<T> {",
+                ))
+                .append(BoxDoc::line())
+                .append(BoxDoc::text(
+                    "        return { tag: \"None\" };",
+                ))
+                .append(BoxDoc::line())
+                .append(BoxDoc::text("    }"))
+                .append(BoxDoc::line())
+                .append(BoxDoc::text("}"))
+                .append(BoxDoc::line())
+                .append(BoxDoc::line());
+            result = option_ns.append(result);
+        }
+
+        // Prepend TrustedHTML type if needed (after transpilation determined it's used)
+        if self.needs_trusted_html {
+            let trusted_html = BoxDoc::nil()
+                .append(BoxDoc::text(
+                    "type TrustedHTML = string & { readonly __brand: unique symbol };",
+                ))
+                .append(BoxDoc::line())
+                .append(BoxDoc::line());
+            result = trusted_html.append(result);
+        }
 
         // Render to string
         let mut buffer = Vec::new();
@@ -326,7 +302,7 @@ impl Transpiler for TsTranspiler {
     }
 
     fn transpile_entrypoint<'a>(
-        &self,
+        &mut self,
         name: &'a ComponentName,
         entrypoint: &'a IrEntrypointDeclaration,
     ) -> BoxDoc<'a> {
@@ -364,15 +340,16 @@ impl Transpiler for TsTranspiler {
 }
 
 impl StatementTranspiler for TsTranspiler {
-    fn transpile_write<'a>(&self, content: &'a str) -> BoxDoc<'a> {
+    fn transpile_write<'a>(&mut self, content: &'a str) -> BoxDoc<'a> {
         BoxDoc::nil()
             .append(BoxDoc::text("output += "))
             .append(BoxDoc::as_string(self.quote_string(content)))
             .append(BoxDoc::text(";"))
     }
 
-    fn transpile_write_expr<'a>(&self, expr: &'a IrExpr, escape: bool) -> BoxDoc<'a> {
+    fn transpile_write_expr<'a>(&mut self, expr: &'a IrExpr, escape: bool) -> BoxDoc<'a> {
         if escape {
+            self.needs_escape_html = true;
             BoxDoc::nil()
                 .append(BoxDoc::text("output += escapeHtml("))
                 .append(self.transpile_expr(expr))
@@ -386,7 +363,7 @@ impl StatementTranspiler for TsTranspiler {
     }
 
     fn transpile_if<'a>(
-        &self,
+        &mut self,
         condition: &'a IrExpr,
         body: &'a [IrStatement],
         else_body: Option<&'a [IrStatement]>,
@@ -421,7 +398,7 @@ impl StatementTranspiler for TsTranspiler {
     }
 
     fn transpile_for<'a>(
-        &self,
+        &mut self,
         var: Option<&'a str>,
         source: &'a IrForSource,
         body: &'a [IrStatement],
@@ -466,7 +443,7 @@ impl StatementTranspiler for TsTranspiler {
     }
 
     fn transpile_let_statement<'a>(
-        &self,
+        &mut self,
         var: &'a str,
         value: &'a IrExpr,
         body: &'a [IrStatement],
@@ -481,7 +458,7 @@ impl StatementTranspiler for TsTranspiler {
             .append(self.transpile_statements(body))
     }
 
-    fn transpile_match_statement<'a>(&self, match_: &'a Match<Vec<IrStatement>>) -> BoxDoc<'a> {
+    fn transpile_match_statement<'a>(&mut self, match_: &'a Match<Vec<IrStatement>>) -> BoxDoc<'a> {
         match match_ {
             Match::Bool {
                 subject,
@@ -519,6 +496,7 @@ impl StatementTranspiler for TsTranspiler {
                 some_arm_body,
                 none_arm_body,
             } => {
+                self.needs_option = true;
                 // switch (subject.tag) {
                 //   case "Some": {
                 //     const [[var_name]] = subject.value;
@@ -650,41 +628,49 @@ impl StatementTranspiler for TsTranspiler {
             }
         }
     }
+
+    fn transpile_statements<'a>(&mut self, statements: &'a [IrStatement]) -> BoxDoc<'a> {
+        let mut docs: Vec<BoxDoc<'a>> = Vec::new();
+        for stmt in statements {
+            docs.push(self.transpile_statement(stmt));
+        }
+        BoxDoc::intersperse(docs, BoxDoc::hardline())
+    }
 }
 
 impl ExpressionTranspiler for TsTranspiler {
-    fn transpile_var<'a>(&self, name: &'a str) -> BoxDoc<'a> {
+    fn transpile_var<'a>(&mut self, name: &'a str) -> BoxDoc<'a> {
         BoxDoc::text(name)
     }
 
-    fn transpile_field_access<'a>(&self, object: &'a IrExpr, field: &'a FieldName) -> BoxDoc<'a> {
+    fn transpile_field_access<'a>(&mut self, object: &'a IrExpr, field: &'a FieldName) -> BoxDoc<'a> {
         BoxDoc::nil()
             .append(self.transpile_expr(object))
             .append(BoxDoc::text("."))
             .append(BoxDoc::as_string(field.as_str()))
     }
 
-    fn transpile_string_literal<'a>(&self, value: &'a str) -> BoxDoc<'a> {
+    fn transpile_string_literal<'a>(&mut self, value: &'a str) -> BoxDoc<'a> {
         BoxDoc::text(self.quote_string(value))
     }
 
-    fn transpile_boolean_literal<'a>(&self, value: bool) -> BoxDoc<'a> {
+    fn transpile_boolean_literal<'a>(&mut self, value: bool) -> BoxDoc<'a> {
         match value {
             true => BoxDoc::text("true"),
             false => BoxDoc::text("false"),
         }
     }
 
-    fn transpile_float_literal<'a>(&self, value: f64) -> BoxDoc<'a> {
+    fn transpile_float_literal<'a>(&mut self, value: f64) -> BoxDoc<'a> {
         BoxDoc::as_string(format!("{}", value))
     }
 
-    fn transpile_int_literal<'a>(&self, value: i64) -> BoxDoc<'a> {
+    fn transpile_int_literal<'a>(&mut self, value: i64) -> BoxDoc<'a> {
         BoxDoc::as_string(format!("{}", value))
     }
 
     fn transpile_array_literal<'a>(
-        &self,
+        &mut self,
         elements: &'a [IrExpr],
         _elem_type: &'a Type,
     ) -> BoxDoc<'a> {
@@ -698,7 +684,7 @@ impl ExpressionTranspiler for TsTranspiler {
     }
 
     fn transpile_record_literal<'a>(
-        &self,
+        &mut self,
         record_name: &'a str,
         fields: &'a [(FieldName, IrExpr)],
     ) -> BoxDoc<'a> {
@@ -715,7 +701,7 @@ impl ExpressionTranspiler for TsTranspiler {
     }
 
     fn transpile_enum_literal<'a>(
-        &self,
+        &mut self,
         enum_name: &'a str,
         variant_name: &'a str,
         fields: &'a [(FieldName, IrExpr)],
@@ -738,7 +724,7 @@ impl ExpressionTranspiler for TsTranspiler {
         }
     }
 
-    fn transpile_string_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_string_equals<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::nil()
             .append(BoxDoc::text("("))
             .append(self.transpile_expr(left))
@@ -747,7 +733,7 @@ impl ExpressionTranspiler for TsTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_bool_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_bool_equals<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::nil()
             .append(BoxDoc::text("("))
             .append(self.transpile_expr(left))
@@ -756,7 +742,7 @@ impl ExpressionTranspiler for TsTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_int_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_int_equals<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::nil()
             .append(BoxDoc::text("("))
             .append(self.transpile_expr(left))
@@ -765,7 +751,7 @@ impl ExpressionTranspiler for TsTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_float_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_float_equals<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::nil()
             .append(BoxDoc::text("("))
             .append(self.transpile_expr(left))
@@ -774,7 +760,7 @@ impl ExpressionTranspiler for TsTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_enum_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_enum_equals<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         // Compare tags directly: left.tag === right.tag
         BoxDoc::text("(")
             .append(self.transpile_expr(left))
@@ -783,7 +769,7 @@ impl ExpressionTranspiler for TsTranspiler {
             .append(BoxDoc::text(".tag)"))
     }
 
-    fn transpile_int_less_than<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_int_less_than<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::nil()
             .append(BoxDoc::text("("))
             .append(self.transpile_expr(left))
@@ -792,7 +778,7 @@ impl ExpressionTranspiler for TsTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_float_less_than<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_float_less_than<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::nil()
             .append(BoxDoc::text("("))
             .append(self.transpile_expr(left))
@@ -802,7 +788,7 @@ impl ExpressionTranspiler for TsTranspiler {
     }
 
     fn transpile_int_less_than_or_equal<'a>(
-        &self,
+        &mut self,
         left: &'a IrExpr,
         right: &'a IrExpr,
     ) -> BoxDoc<'a> {
@@ -815,7 +801,7 @@ impl ExpressionTranspiler for TsTranspiler {
     }
 
     fn transpile_float_less_than_or_equal<'a>(
-        &self,
+        &mut self,
         left: &'a IrExpr,
         right: &'a IrExpr,
     ) -> BoxDoc<'a> {
@@ -827,21 +813,21 @@ impl ExpressionTranspiler for TsTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_not<'a>(&self, operand: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_not<'a>(&mut self, operand: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::nil()
             .append(BoxDoc::text("!("))
             .append(self.transpile_expr(operand))
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_numeric_negation<'a>(&self, operand: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_numeric_negation<'a>(&mut self, operand: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::nil()
             .append(BoxDoc::text("-("))
             .append(self.transpile_expr(operand))
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_string_concat<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_string_concat<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::nil()
             .append(BoxDoc::text("("))
             .append(self.transpile_expr(left))
@@ -850,7 +836,7 @@ impl ExpressionTranspiler for TsTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_logical_and<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_logical_and<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::nil()
             .append(BoxDoc::text("("))
             .append(self.transpile_expr(left))
@@ -859,7 +845,7 @@ impl ExpressionTranspiler for TsTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_logical_or<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_logical_or<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::nil()
             .append(BoxDoc::text("("))
             .append(self.transpile_expr(left))
@@ -868,7 +854,7 @@ impl ExpressionTranspiler for TsTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_int_add<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_int_add<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::nil()
             .append(BoxDoc::text("("))
             .append(self.transpile_expr(left))
@@ -877,7 +863,7 @@ impl ExpressionTranspiler for TsTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_float_add<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_float_add<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::nil()
             .append(BoxDoc::text("("))
             .append(self.transpile_expr(left))
@@ -886,7 +872,7 @@ impl ExpressionTranspiler for TsTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_int_subtract<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_int_subtract<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::nil()
             .append(BoxDoc::text("("))
             .append(self.transpile_expr(left))
@@ -895,7 +881,7 @@ impl ExpressionTranspiler for TsTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_float_subtract<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_float_subtract<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::nil()
             .append(BoxDoc::text("("))
             .append(self.transpile_expr(left))
@@ -904,7 +890,7 @@ impl ExpressionTranspiler for TsTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_int_multiply<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_int_multiply<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::nil()
             .append(BoxDoc::text("("))
             .append(self.transpile_expr(left))
@@ -913,7 +899,7 @@ impl ExpressionTranspiler for TsTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_float_multiply<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_float_multiply<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::nil()
             .append(BoxDoc::text("("))
             .append(self.transpile_expr(left))
@@ -923,10 +909,11 @@ impl ExpressionTranspiler for TsTranspiler {
     }
 
     fn transpile_option_literal<'a>(
-        &self,
+        &mut self,
         value: Option<&'a IrExpr>,
         inner_type: &'a Type,
     ) -> BoxDoc<'a> {
+        self.needs_option = true;
         match value {
             Some(inner) => {
                 // Option.some<T>(value)
@@ -945,7 +932,7 @@ impl ExpressionTranspiler for TsTranspiler {
         }
     }
 
-    fn transpile_match_expr<'a>(&self, match_: &'a Match<IrExpr>) -> BoxDoc<'a> {
+    fn transpile_match_expr<'a>(&mut self, match_: &'a Match<IrExpr>) -> BoxDoc<'a> {
         match match_ {
             Match::Enum { subject, arms } => {
                 // (() => {
@@ -1040,6 +1027,7 @@ impl ExpressionTranspiler for TsTranspiler {
                 some_arm_body,
                 none_arm_body,
             } => {
+                self.needs_option = true;
                 // (() => {
                 //   switch (subject.tag) {
                 //     case "Some": {
@@ -1100,7 +1088,7 @@ impl ExpressionTranspiler for TsTranspiler {
     }
 
     fn transpile_let<'a>(
-        &self,
+        &mut self,
         var: &'a crate::dop::symbols::var_name::VarName,
         value: &'a IrExpr,
         body: &'a IrExpr,
@@ -1124,7 +1112,7 @@ impl ExpressionTranspiler for TsTranspiler {
             .append(BoxDoc::text("})()"))
     }
 
-    fn transpile_merge_classes<'a>(&self, args: &'a [IrExpr]) -> BoxDoc<'a> {
+    fn transpile_merge_classes<'a>(&mut self, args: &'a [IrExpr]) -> BoxDoc<'a> {
         if args.is_empty() {
             BoxDoc::text("\"\"")
         } else {
@@ -1135,70 +1123,71 @@ impl ExpressionTranspiler for TsTranspiler {
         }
     }
 
-    fn transpile_array_length<'a>(&self, array: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_array_length<'a>(&mut self, array: &'a IrExpr) -> BoxDoc<'a> {
         self.transpile_expr(array).append(BoxDoc::text(".length"))
     }
 
-    fn transpile_int_to_string<'a>(&self, value: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_int_to_string<'a>(&mut self, value: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("(")
             .append(self.transpile_expr(value))
             .append(BoxDoc::text(").toString()"))
     }
 
-    fn transpile_float_to_int<'a>(&self, value: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_float_to_int<'a>(&mut self, value: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("Math.trunc(")
             .append(self.transpile_expr(value))
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_float_to_string<'a>(&self, value: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_float_to_string<'a>(&mut self, value: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("(")
             .append(self.transpile_expr(value))
             .append(BoxDoc::text(").toString()"))
     }
 
-    fn transpile_int_to_float<'a>(&self, value: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_int_to_float<'a>(&mut self, value: &'a IrExpr) -> BoxDoc<'a> {
         // In JavaScript, all numbers are floats, so no conversion needed
         self.transpile_expr(value)
     }
 }
 
 impl TypeTranspiler for TsTranspiler {
-    fn transpile_bool_type<'a>(&self) -> BoxDoc<'a> {
+    fn transpile_bool_type<'a>(&mut self) -> BoxDoc<'a> {
         BoxDoc::text("boolean")
     }
 
-    fn transpile_string_type<'a>(&self) -> BoxDoc<'a> {
+    fn transpile_string_type<'a>(&mut self) -> BoxDoc<'a> {
         BoxDoc::text("string")
     }
 
-    fn transpile_trusted_html_type<'a>(&self) -> BoxDoc<'a> {
+    fn transpile_trusted_html_type<'a>(&mut self) -> BoxDoc<'a> {
+        self.needs_trusted_html = true;
         BoxDoc::text("TrustedHTML")
     }
 
-    fn transpile_float_type<'a>(&self) -> BoxDoc<'a> {
+    fn transpile_float_type<'a>(&mut self) -> BoxDoc<'a> {
         BoxDoc::text("number")
     }
 
-    fn transpile_int_type<'a>(&self) -> BoxDoc<'a> {
+    fn transpile_int_type<'a>(&mut self) -> BoxDoc<'a> {
         BoxDoc::text("number")
     }
 
-    fn transpile_array_type<'a>(&self, element_type: &'a Type) -> BoxDoc<'a> {
+    fn transpile_array_type<'a>(&mut self, element_type: &'a Type) -> BoxDoc<'a> {
         self.transpile_type(element_type).append(BoxDoc::text("[]"))
     }
 
-    fn transpile_option_type<'a>(&self, inner_type: &'a Type) -> BoxDoc<'a> {
+    fn transpile_option_type<'a>(&mut self, inner_type: &'a Type) -> BoxDoc<'a> {
         BoxDoc::text("Option.Option<")
             .append(self.transpile_type(inner_type))
             .append(BoxDoc::text(">"))
     }
 
-    fn transpile_named_type<'a>(&self, name: &'a str) -> BoxDoc<'a> {
+    fn transpile_named_type<'a>(&mut self, name: &'a str) -> BoxDoc<'a> {
         BoxDoc::text(name)
     }
 
-    fn transpile_enum_type<'a>(&self, name: &'a str) -> BoxDoc<'a> {
+    fn transpile_enum_type<'a>(&mut self, name: &'a str) -> BoxDoc<'a> {
         BoxDoc::text(name)
             .append(BoxDoc::text("."))
             .append(BoxDoc::text(name))
@@ -1235,17 +1224,6 @@ mod tests {
                 }
 
                 -- after --
-                export namespace Option {
-                    export type Option<T> = { readonly tag: "None" } | { readonly tag: "Some", value: T };
-
-                    export function some<T>(value: T): Option<T> {
-                        return { tag: "Some", value };
-                    }
-                    export function none<T>(): Option<T> {
-                        return { tag: "None" };
-                    }
-                }
-
                 export function HelloWorld(): string {
                     let output: string = "";
                     output += "<h1>Hello, World!</h1>\n";
@@ -1287,17 +1265,6 @@ mod tests {
                 }
 
                 -- after --
-                export namespace Option {
-                    export type Option<T> = { readonly tag: "None" } | { readonly tag: "Some", value: T };
-
-                    export function some<T>(value: T): Option<T> {
-                        return { tag: "Some", value };
-                    }
-                    export function none<T>(): Option<T> {
-                        return { tag: "None" };
-                    }
-                }
-
                 function escapeHtml(str: string): string {
                     return str
                         .replace(/&/g, '&amp;')
@@ -1349,17 +1316,6 @@ mod tests {
                 }
 
                 -- after --
-                export namespace Option {
-                    export type Option<T> = { readonly tag: "None" } | { readonly tag: "Some", value: T };
-
-                    export function some<T>(value: T): Option<T> {
-                        return { tag: "Some", value };
-                    }
-                    export function none<T>(): Option<T> {
-                        return { tag: "None" };
-                    }
-                }
-
                 function escapeHtml(str: string): string {
                     return str
                         .replace(/&/g, '&amp;')
@@ -1412,17 +1368,6 @@ mod tests {
                 }
 
                 -- after --
-                export namespace Option {
-                    export type Option<T> = { readonly tag: "None" } | { readonly tag: "Some", value: T };
-
-                    export function some<T>(value: T): Option<T> {
-                        return { tag: "Some", value };
-                    }
-                    export function none<T>(): Option<T> {
-                        return { tag: "None" };
-                    }
-                }
-
                 function escapeHtml(str: string): string {
                     return str
                         .replace(/&/g, '&amp;')
@@ -1467,17 +1412,6 @@ mod tests {
                 }
 
                 -- after --
-                export namespace Option {
-                    export type Option<T> = { readonly tag: "None" } | { readonly tag: "Some", value: T };
-
-                    export function some<T>(value: T): Option<T> {
-                        return { tag: "Some", value };
-                    }
-                    export function none<T>(): Option<T> {
-                        return { tag: "None" };
-                    }
-                }
-
                 export function Counter(): string {
                     let output: string = "";
                     for (let i = 1; i <= 3; i++) {
@@ -1516,17 +1450,6 @@ mod tests {
                 }
 
                 -- after --
-                export namespace Option {
-                    export type Option<T> = { readonly tag: "None" } | { readonly tag: "Some", value: T };
-
-                    export function some<T>(value: T): Option<T> {
-                        return { tag: "Some", value };
-                    }
-                    export function none<T>(): Option<T> {
-                        return { tag: "None" };
-                    }
-                }
-
                 function escapeHtml(str: string): string {
                     return str
                         .replace(/&/g, '&amp;')
@@ -1576,17 +1499,6 @@ mod tests {
                 }
 
                 -- after --
-                export namespace Option {
-                    export type Option<T> = { readonly tag: "None" } | { readonly tag: "Some", value: T };
-
-                    export function some<T>(value: T): Option<T> {
-                        return { tag: "Some", value };
-                    }
-                    export function none<T>(): Option<T> {
-                        return { tag: "None" };
-                    }
-                }
-
                 function escapeHtml(str: string): string {
                     return str
                         .replace(/&/g, '&amp;')
@@ -1642,17 +1554,6 @@ mod tests {
 
                 -- after --
                 type TrustedHTML = string & { readonly __brand: unique symbol };
-
-                export namespace Option {
-                    export type Option<T> = { readonly tag: "None" } | { readonly tag: "Some", value: T };
-
-                    export function some<T>(value: T): Option<T> {
-                        return { tag: "Some", value };
-                    }
-                    export function none<T>(): Option<T> {
-                        return { tag: "None" };
-                    }
-                }
 
                 function escapeHtml(str: string): string {
                     return str
@@ -1724,15 +1625,13 @@ mod tests {
                 }
 
                 -- after --
-                export namespace Option {
-                    export type Option<T> = { readonly tag: "None" } | { readonly tag: "Some", value: T };
-
-                    export function some<T>(value: T): Option<T> {
-                        return { tag: "Some", value };
-                    }
-                    export function none<T>(): Option<T> {
-                        return { tag: "None" };
-                    }
+                function escapeHtml(str: string): string {
+                    return str
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;');
                 }
 
                 export class Address {
@@ -1748,15 +1647,6 @@ mod tests {
                         public readonly age: number,
                         public readonly active: boolean,
                     ) {}
-                }
-
-                function escapeHtml(str: string): string {
-                    return str
-                        .replace(/&/g, '&amp;')
-                        .replace(/</g, '&lt;')
-                        .replace(/>/g, '&gt;')
-                        .replace(/"/g, '&quot;')
-                        .replace(/'/g, '&#39;');
                 }
 
                 export function UserProfile(user: User): string {
@@ -1796,24 +1686,6 @@ mod tests {
                 }
 
                 -- after --
-                export namespace Option {
-                    export type Option<T> = { readonly tag: "None" } | { readonly tag: "Some", value: T };
-
-                    export function some<T>(value: T): Option<T> {
-                        return { tag: "Some", value };
-                    }
-                    export function none<T>(): Option<T> {
-                        return { tag: "None" };
-                    }
-                }
-
-                export class User {
-                    constructor(
-                        public readonly name: string,
-                        public readonly age: number,
-                    ) {}
-                }
-
                 function escapeHtml(str: string): string {
                     return str
                         .replace(/&/g, '&amp;')
@@ -1821,6 +1693,13 @@ mod tests {
                         .replace(/>/g, '&gt;')
                         .replace(/"/g, '&quot;')
                         .replace(/'/g, '&#39;');
+                }
+
+                export class User {
+                    constructor(
+                        public readonly name: string,
+                        public readonly age: number,
+                    ) {}
                 }
 
                 export function CreateUser(): string {
@@ -1871,17 +1750,6 @@ mod tests {
                 }
 
                 -- after --
-                export namespace Option {
-                    export type Option<T> = { readonly tag: "None" } | { readonly tag: "Some", value: T };
-
-                    export function some<T>(value: T): Option<T> {
-                        return { tag: "Some", value };
-                    }
-                    export function none<T>(): Option<T> {
-                        return { tag: "None" };
-                    }
-                }
-
                 export namespace Color {
                     export type Color = { readonly tag: "Red" } | { readonly tag: "Green" } | { readonly tag: "Blue" };
 
@@ -1953,15 +1821,13 @@ mod tests {
                 }
 
                 -- after --
-                export namespace Option {
-                    export type Option<T> = { readonly tag: "None" } | { readonly tag: "Some", value: T };
-
-                    export function some<T>(value: T): Option<T> {
-                        return { tag: "Some", value };
-                    }
-                    export function none<T>(): Option<T> {
-                        return { tag: "None" };
-                    }
+                function escapeHtml(str: string): string {
+                    return str
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;');
                 }
 
                 export namespace Color {
@@ -1976,15 +1842,6 @@ mod tests {
                     export function Blue(): Color {
                         return { tag: "Blue" };
                     }
-                }
-
-                function escapeHtml(str: string): string {
-                    return str
-                        .replace(/&/g, '&amp;')
-                        .replace(/</g, '&lt;')
-                        .replace(/>/g, '&gt;')
-                        .replace(/"/g, '&quot;')
-                        .replace(/'/g, '&#39;');
                 }
 
                 export function ColorName(color: Color.Color): string {
@@ -2018,17 +1875,6 @@ mod tests {
                 }
 
                 -- after --
-                export namespace Option {
-                    export type Option<T> = { readonly tag: "None" } | { readonly tag: "Some", value: T };
-
-                    export function some<T>(value: T): Option<T> {
-                        return { tag: "Some", value };
-                    }
-                    export function none<T>(): Option<T> {
-                        return { tag: "None" };
-                    }
-                }
-
                 function escapeHtml(str: string): string {
                     return str
                         .replace(/&/g, '&amp;')
@@ -2216,17 +2062,6 @@ mod tests {
                 }
 
                 -- after --
-                export namespace Option {
-                    export type Option<T> = { readonly tag: "None" } | { readonly tag: "Some", value: T };
-
-                    export function some<T>(value: T): Option<T> {
-                        return { tag: "Some", value };
-                    }
-                    export function none<T>(): Option<T> {
-                        return { tag: "None" };
-                    }
-                }
-
                 function escapeHtml(str: string): string {
                     return str
                         .replace(/&/g, '&amp;')
@@ -2514,17 +2349,6 @@ mod tests {
                 }
 
                 -- after --
-                export namespace Option {
-                    export type Option<T> = { readonly tag: "None" } | { readonly tag: "Some", value: T };
-
-                    export function some<T>(value: T): Option<T> {
-                        return { tag: "Some", value };
-                    }
-                    export function none<T>(): Option<T> {
-                        return { tag: "None" };
-                    }
-                }
-
                 export namespace Result {
                     export type Result = { readonly tag: "Ok", readonly value: number } | { readonly tag: "Err", readonly message: string };
 
@@ -2619,17 +2443,6 @@ mod tests {
                 }
 
                 -- after --
-                export namespace Option {
-                    export type Option<T> = { readonly tag: "None" } | { readonly tag: "Some", value: T };
-
-                    export function some<T>(value: T): Option<T> {
-                        return { tag: "Some", value };
-                    }
-                    export function none<T>(): Option<T> {
-                        return { tag: "None" };
-                    }
-                }
-
                 export namespace Result {
                     export type Result = { readonly tag: "Ok", readonly value: string } | { readonly tag: "Err", readonly message: string };
 

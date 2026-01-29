@@ -11,112 +11,29 @@ use std::collections::BTreeSet;
 
 pub struct GoTranspiler {
     package_name: String,
+    /// Tracks whether html import is needed
+    needs_html: bool,
+    /// Tracks whether strconv import is needed
+    needs_strconv: bool,
+    /// Tracks whether TrustedHTML type is used
+    needs_trusted_html: bool,
+    /// Tracks whether Option type is used
+    needs_option: bool,
 }
 
 impl GoTranspiler {
     pub fn new(package_name: String) -> Self {
-        Self { package_name }
-    }
-
-    fn scan_for_imports(imports: &mut BTreeSet<String>, entrypoint: &IrEntrypointDeclaration) {
-        // Use visitor pattern to scan statements for imports
-        for stmt in &entrypoint.body {
-            // Check for HTML escaping and Int types in WriteExpr statements
-            stmt.traverse(&mut |s| {
-                if let IrStatement::WriteExpr { escape, expr, .. } = s {
-                    if *escape {
-                        imports.insert("html".to_string());
-                    }
-                    if matches!(expr.as_type(), Type::Int) {
-                        imports.insert("strconv".to_string());
-                    }
-                }
-            });
-
-            // Check expressions for other imports (like json, os, strconv)
-            stmt.traverse(&mut |s| {
-                if let Some(primary_expr) = s.expr() {
-                    primary_expr.traverse(&mut |expr| match expr {
-                        IrExpr::IntToString { .. } => {
-                            imports.insert("strconv".to_string());
-                        }
-                        IrExpr::FloatToString { .. } => {
-                            imports.insert("strconv".to_string());
-                        }
-                        _ => {}
-                    });
-                }
-            });
-        }
-    }
-
-    fn scan_for_trusted_html(&self, entrypoints: &[IrEntrypointDeclaration]) -> bool {
-        for entrypoint in entrypoints {
-            for (_, param_type) in &entrypoint.parameters {
-                if Self::type_contains_trusted_html(param_type) {
-                    return true;
-                }
-            }
-        }
-        false
-    }
-
-    fn type_contains_trusted_html(t: &Type) -> bool {
-        match t {
-            Type::TrustedHTML => true,
-            Type::Array(elem) => Self::type_contains_trusted_html(elem),
-            _ => false,
-        }
-    }
-
-    fn scan_for_options(&self, module: &IrModule) -> bool {
-        for entrypoint in &module.entrypoints {
-            // Check parameters
-            for (_, param_type) in &entrypoint.parameters {
-                if Self::type_contains_option(param_type) {
-                    return true;
-                }
-            }
-            // Check statements for option expressions
-            for stmt in &entrypoint.body {
-                let mut found = false;
-                stmt.traverse(&mut |s| {
-                    if let Some(expr) = s.expr() {
-                        expr.traverse(&mut |e| {
-                            if matches!(e, IrExpr::OptionLiteral { .. }) {
-                                found = true;
-                            }
-                            if let IrExpr::Match { match_, .. } = e {
-                                if matches!(match_, Match::Option { .. }) {
-                                    found = true;
-                                }
-                            }
-                        });
-                    }
-                    if let IrStatement::Match { match_, .. } = s {
-                        if matches!(match_, Match::Option { .. }) {
-                            found = true;
-                        }
-                    }
-                });
-                if found {
-                    return true;
-                }
-            }
-        }
-        false
-    }
-
-    fn type_contains_option(t: &Type) -> bool {
-        match t {
-            Type::Option(_) => true,
-            Type::Array(elem) => Self::type_contains_option(elem),
-            _ => false,
+        Self {
+            package_name,
+            needs_html: false,
+            needs_strconv: false,
+            needs_trusted_html: false,
+            needs_option: false,
         }
     }
 
     // Helper method to escape strings for Go string literals
-    fn escape_string(&self, s: &str) -> String {
+    fn escape_string(&mut self, s: &str) -> String {
         s.replace('\\', "\\\\")
             .replace('"', "\\\"")
             .replace('\n', "\\n")
@@ -126,98 +43,21 @@ impl GoTranspiler {
 }
 
 impl Transpiler for GoTranspiler {
-    fn transpile_module(&self, module: &IrModule) -> String {
+    fn transpile_module(&mut self, module: &IrModule) -> String {
         let entrypoints = &module.entrypoints;
         let records = &module.records;
 
-        let mut imports = BTreeSet::new();
+        // Reset tracking flags for this module
+        self.needs_html = false;
+        self.needs_strconv = false;
+        self.needs_trusted_html = false;
+        self.needs_option = false;
 
-        // First pass: scan to determine what imports we need
-        for entrypoint in entrypoints {
-            Self::scan_for_imports(&mut imports, entrypoint);
-        }
-
-        // We always need io for writing output
-        imports.insert("io".to_string());
-
-        // Check if we need TrustedHTML type
-        let needs_trusted_html = self.scan_for_trusted_html(entrypoints);
-
-        // Check if we need Option type
-        let needs_option = self.scan_for_options(module);
+        // Clone package_name to avoid borrow conflicts with &mut self
+        let package_name = self.package_name.clone();
 
         // Build the module content using BoxDoc
         let mut result = BoxDoc::nil();
-
-        // Write package declaration
-        result = result
-            .append(BoxDoc::text("package "))
-            .append(BoxDoc::text(&self.package_name))
-            .append(BoxDoc::line())
-            .append(BoxDoc::line());
-
-        // Write imports if needed
-        if !imports.is_empty() {
-            result = result
-                .append(BoxDoc::text("import ("))
-                .append(
-                    BoxDoc::nil()
-                        .append(BoxDoc::line())
-                        .append(BoxDoc::intersperse(
-                            imports.iter().map(|import| {
-                                BoxDoc::nil()
-                                    .append(BoxDoc::text("\""))
-                                    .append(BoxDoc::text(import.as_str()))
-                                    .append(BoxDoc::text("\""))
-                            }),
-                            BoxDoc::line(),
-                        ))
-                        .append(BoxDoc::line())
-                        .nest(1),
-                )
-                .append(BoxDoc::text(")"))
-                .append(BoxDoc::line())
-                .append(BoxDoc::line());
-        }
-
-        // Add TrustedHTML type definition if needed
-        if needs_trusted_html {
-            result = result
-                .append(BoxDoc::text("type TrustedHTML string"))
-                .append(BoxDoc::line())
-                .append(BoxDoc::line());
-        }
-
-        // Add Option type definition if needed
-        if needs_option {
-            result = result
-                .append(BoxDoc::text("type Option[T any] struct {"))
-                .append(BoxDoc::line())
-                .append(BoxDoc::text("\tvalue T"))
-                .append(BoxDoc::line())
-                .append(BoxDoc::text("\tsome  bool"))
-                .append(BoxDoc::line())
-                .append(BoxDoc::text("}"))
-                .append(BoxDoc::line())
-                .append(BoxDoc::line());
-        }
-
-        // Add JSON helper if needed
-        if imports.contains("encoding/json") {
-            result = result
-                .append(BoxDoc::text("func mustJSONMarshal(v any) string {"))
-                .append(
-                    BoxDoc::line()
-                        .append(BoxDoc::text("data, _ := json.Marshal(v)"))
-                        .append(BoxDoc::line())
-                        .append(BoxDoc::text("return string(data)"))
-                        .nest(1),
-                )
-                .append(BoxDoc::line())
-                .append(BoxDoc::text("}"))
-                .append(BoxDoc::line())
-                .append(BoxDoc::line());
-        }
 
         // Generate enum type definitions (interface-based)
         for enum_def in &module.enums {
@@ -337,6 +177,30 @@ impl Transpiler for GoTranspiler {
             }
         }
 
+        // Build imports based on flags (always need "io")
+        let mut imports: BTreeSet<String> = BTreeSet::new();
+        imports.insert("io".to_string());
+        if self.needs_html {
+            imports.insert("html".to_string());
+        }
+        if self.needs_strconv {
+            imports.insert("strconv".to_string());
+        }
+
+        // Build header string (package + imports + type definitions)
+        let imports_str: Vec<String> = imports.iter().map(|s| format!("\t\"{}\"", s)).collect();
+        let mut header = format!("package {}\n\nimport (\n{}\n)\n\n", package_name, imports_str.join("\n"));
+
+        if self.needs_trusted_html {
+            header.push_str("type TrustedHTML string\n\n");
+        }
+        if self.needs_option {
+            header.push_str("type Option[T any] struct {\n\tvalue T\n\tsome  bool\n}\n\n");
+        }
+
+        // Prepend header
+        result = BoxDoc::as_string(header).append(result);
+
         // Render to string
         let mut buffer = Vec::new();
         result.render(80, &mut buffer).unwrap();
@@ -364,7 +228,7 @@ impl Transpiler for GoTranspiler {
     }
 
     fn transpile_entrypoint<'a>(
-        &self,
+        &mut self,
         name: &'a ComponentName,
         entrypoint: &'a IrEntrypointDeclaration,
     ) -> BoxDoc<'a> {
@@ -407,14 +271,15 @@ impl Transpiler for GoTranspiler {
 }
 
 impl StatementTranspiler for GoTranspiler {
-    fn transpile_write<'a>(&self, content: &'a str) -> BoxDoc<'a> {
+    fn transpile_write<'a>(&mut self, content: &'a str) -> BoxDoc<'a> {
         BoxDoc::text("io.WriteString(w, \"")
             .append(BoxDoc::text(self.escape_string(content)))
             .append(BoxDoc::text("\")"))
     }
 
-    fn transpile_write_expr<'a>(&self, expr: &'a IrExpr, escape: bool) -> BoxDoc<'a> {
+    fn transpile_write_expr<'a>(&mut self, expr: &'a IrExpr, escape: bool) -> BoxDoc<'a> {
         if escape {
+            self.needs_html = true;
             BoxDoc::text("io.WriteString(w, html.EscapeString(")
                 .append(self.transpile_expr(expr))
                 .append(BoxDoc::text("))"))
@@ -423,6 +288,10 @@ impl StatementTranspiler for GoTranspiler {
             let expr_type = expr.as_type();
             let needs_trusted_html_conversion = matches!(expr_type, Type::TrustedHTML);
             let needs_int_conversion = matches!(expr_type, Type::Int);
+
+            if needs_int_conversion {
+                self.needs_strconv = true;
+            }
 
             let mut doc = BoxDoc::text("io.WriteString(w, ");
             if needs_trusted_html_conversion {
@@ -439,7 +308,7 @@ impl StatementTranspiler for GoTranspiler {
     }
 
     fn transpile_if<'a>(
-        &self,
+        &mut self,
         condition: &'a IrExpr,
         body: &'a [IrStatement],
         else_body: Option<&'a [IrStatement]>,
@@ -472,7 +341,7 @@ impl StatementTranspiler for GoTranspiler {
     }
 
     fn transpile_for<'a>(
-        &self,
+        &mut self,
         var: Option<&'a str>,
         source: &'a IrForSource,
         body: &'a [IrStatement],
@@ -538,7 +407,7 @@ impl StatementTranspiler for GoTranspiler {
     }
 
     fn transpile_let_statement<'a>(
-        &self,
+        &mut self,
         var: &'a str,
         value: &'a IrExpr,
         body: &'a [IrStatement],
@@ -562,7 +431,7 @@ impl StatementTranspiler for GoTranspiler {
             .append(self.transpile_statements(body))
     }
 
-    fn transpile_match_statement<'a>(&self, match_: &'a Match<Vec<IrStatement>>) -> BoxDoc<'a> {
+    fn transpile_match_statement<'a>(&mut self, match_: &'a Match<Vec<IrStatement>>) -> BoxDoc<'a> {
         match match_ {
             Match::Bool {
                 subject,
@@ -594,6 +463,7 @@ impl StatementTranspiler for GoTranspiler {
                 some_arm_body,
                 none_arm_body,
             } => {
+                self.needs_option = true;
                 // if subject.some {
                 //     val := subject.value
                 //     ...
@@ -692,38 +562,46 @@ impl StatementTranspiler for GoTranspiler {
             }
         }
     }
+
+    fn transpile_statements<'a>(&mut self, statements: &'a [IrStatement]) -> BoxDoc<'a> {
+        let mut docs: Vec<BoxDoc<'a>> = Vec::new();
+        for stmt in statements {
+            docs.push(self.transpile_statement(stmt));
+        }
+        BoxDoc::intersperse(docs, BoxDoc::hardline())
+    }
 }
 
 impl ExpressionTranspiler for GoTranspiler {
-    fn transpile_var<'a>(&self, name: &'a str) -> BoxDoc<'a> {
+    fn transpile_var<'a>(&mut self, name: &'a str) -> BoxDoc<'a> {
         BoxDoc::text(name)
     }
 
-    fn transpile_field_access<'a>(&self, object: &'a IrExpr, field: &'a FieldName) -> BoxDoc<'a> {
+    fn transpile_field_access<'a>(&mut self, object: &'a IrExpr, field: &'a FieldName) -> BoxDoc<'a> {
         let field_name = field.to_pascal_case();
         self.transpile_expr(object)
             .append(BoxDoc::text("."))
             .append(BoxDoc::as_string(field_name))
     }
 
-    fn transpile_string_literal<'a>(&self, value: &'a str) -> BoxDoc<'a> {
+    fn transpile_string_literal<'a>(&mut self, value: &'a str) -> BoxDoc<'a> {
         BoxDoc::as_string(format!("\"{}\"", self.escape_string(value)))
     }
 
-    fn transpile_boolean_literal<'a>(&self, value: bool) -> BoxDoc<'a> {
+    fn transpile_boolean_literal<'a>(&mut self, value: bool) -> BoxDoc<'a> {
         BoxDoc::text(if value { "true" } else { "false" })
     }
 
-    fn transpile_float_literal<'a>(&self, value: f64) -> BoxDoc<'a> {
+    fn transpile_float_literal<'a>(&mut self, value: f64) -> BoxDoc<'a> {
         BoxDoc::as_string(format!("{}", value))
     }
 
-    fn transpile_int_literal<'a>(&self, value: i64) -> BoxDoc<'a> {
+    fn transpile_int_literal<'a>(&mut self, value: i64) -> BoxDoc<'a> {
         BoxDoc::as_string(format!("{}", value))
     }
 
     fn transpile_array_literal<'a>(
-        &self,
+        &mut self,
         elements: &'a [IrExpr],
         elem_type: &'a Type,
     ) -> BoxDoc<'a> {
@@ -739,7 +617,7 @@ impl ExpressionTranspiler for GoTranspiler {
     }
 
     fn transpile_record_literal<'a>(
-        &self,
+        &mut self,
         record_name: &'a str,
         fields: &'a [(FieldName, IrExpr)],
     ) -> BoxDoc<'a> {
@@ -766,7 +644,7 @@ impl ExpressionTranspiler for GoTranspiler {
     }
 
     fn transpile_enum_literal<'a>(
-        &self,
+        &mut self,
         enum_name: &'a str,
         variant_name: &'a str,
         fields: &'a [(FieldName, IrExpr)],
@@ -799,7 +677,7 @@ impl ExpressionTranspiler for GoTranspiler {
         }
     }
 
-    fn transpile_string_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_string_equals<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("(")
             .append(self.transpile_expr(left))
             .append(BoxDoc::text(" == "))
@@ -807,7 +685,7 @@ impl ExpressionTranspiler for GoTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_bool_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_bool_equals<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("(")
             .append(self.transpile_expr(left))
             .append(BoxDoc::text(" == "))
@@ -815,7 +693,7 @@ impl ExpressionTranspiler for GoTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_int_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_int_equals<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("(")
             .append(self.transpile_expr(left))
             .append(BoxDoc::text(" == "))
@@ -823,7 +701,7 @@ impl ExpressionTranspiler for GoTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_float_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_float_equals<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("(")
             .append(self.transpile_expr(left))
             .append(BoxDoc::text(" == "))
@@ -831,7 +709,7 @@ impl ExpressionTranspiler for GoTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_enum_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_enum_equals<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         // Use the Equals method on the interface-based enum
         self.transpile_expr(left)
             .append(BoxDoc::text(".Equals("))
@@ -839,7 +717,7 @@ impl ExpressionTranspiler for GoTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_int_less_than<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_int_less_than<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::nil()
             .append(BoxDoc::text("("))
             .append(self.transpile_expr(left))
@@ -848,7 +726,7 @@ impl ExpressionTranspiler for GoTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_float_less_than<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_float_less_than<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::nil()
             .append(BoxDoc::text("("))
             .append(self.transpile_expr(left))
@@ -858,7 +736,7 @@ impl ExpressionTranspiler for GoTranspiler {
     }
 
     fn transpile_int_less_than_or_equal<'a>(
-        &self,
+        &mut self,
         left: &'a IrExpr,
         right: &'a IrExpr,
     ) -> BoxDoc<'a> {
@@ -871,7 +749,7 @@ impl ExpressionTranspiler for GoTranspiler {
     }
 
     fn transpile_float_less_than_or_equal<'a>(
-        &self,
+        &mut self,
         left: &'a IrExpr,
         right: &'a IrExpr,
     ) -> BoxDoc<'a> {
@@ -883,19 +761,19 @@ impl ExpressionTranspiler for GoTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_not<'a>(&self, operand: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_not<'a>(&mut self, operand: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("!(")
             .append(self.transpile_expr(operand))
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_numeric_negation<'a>(&self, operand: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_numeric_negation<'a>(&mut self, operand: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("-(")
             .append(self.transpile_expr(operand))
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_string_concat<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_string_concat<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("(")
             .append(self.transpile_expr(left))
             .append(BoxDoc::text(" + "))
@@ -903,7 +781,7 @@ impl ExpressionTranspiler for GoTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_logical_and<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_logical_and<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("(")
             .append(self.transpile_expr(left))
             .append(BoxDoc::text(" && "))
@@ -911,7 +789,7 @@ impl ExpressionTranspiler for GoTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_logical_or<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_logical_or<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("(")
             .append(self.transpile_expr(left))
             .append(BoxDoc::text(" || "))
@@ -919,7 +797,7 @@ impl ExpressionTranspiler for GoTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_int_add<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_int_add<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("(")
             .append(self.transpile_expr(left))
             .append(BoxDoc::text(" + "))
@@ -927,7 +805,7 @@ impl ExpressionTranspiler for GoTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_float_add<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_float_add<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("(")
             .append(self.transpile_expr(left))
             .append(BoxDoc::text(" + "))
@@ -935,7 +813,7 @@ impl ExpressionTranspiler for GoTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_int_subtract<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_int_subtract<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("(")
             .append(self.transpile_expr(left))
             .append(BoxDoc::text(" - "))
@@ -943,7 +821,7 @@ impl ExpressionTranspiler for GoTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_float_subtract<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_float_subtract<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("(")
             .append(self.transpile_expr(left))
             .append(BoxDoc::text(" - "))
@@ -951,7 +829,7 @@ impl ExpressionTranspiler for GoTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_int_multiply<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_int_multiply<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("(")
             .append(self.transpile_expr(left))
             .append(BoxDoc::text(" * "))
@@ -959,7 +837,7 @@ impl ExpressionTranspiler for GoTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_float_multiply<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_float_multiply<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("(")
             .append(self.transpile_expr(left))
             .append(BoxDoc::text(" * "))
@@ -968,10 +846,11 @@ impl ExpressionTranspiler for GoTranspiler {
     }
 
     fn transpile_option_literal<'a>(
-        &self,
+        &mut self,
         value: Option<&'a IrExpr>,
         inner_type: &'a Type,
     ) -> BoxDoc<'a> {
+        self.needs_option = true;
         match value {
             Some(inner) => {
                 // Option[T]{value: x, some: true}
@@ -990,7 +869,7 @@ impl ExpressionTranspiler for GoTranspiler {
         }
     }
 
-    fn transpile_match_expr<'a>(&self, match_: &'a Match<IrExpr>) -> BoxDoc<'a> {
+    fn transpile_match_expr<'a>(&mut self, match_: &'a Match<IrExpr>) -> BoxDoc<'a> {
         match match_ {
             Match::Bool {
                 subject,
@@ -1034,6 +913,7 @@ impl ExpressionTranspiler for GoTranspiler {
                 some_arm_body,
                 none_arm_body,
             } => {
+                self.needs_option = true;
                 // func() ReturnType {
                 //     if subject.some {
                 //         val := subject.value
@@ -1163,7 +1043,7 @@ impl ExpressionTranspiler for GoTranspiler {
     }
 
     fn transpile_let<'a>(
-        &self,
+        &mut self,
         var: &'a VarName,
         value: &'a IrExpr,
         body: &'a IrExpr,
@@ -1201,7 +1081,7 @@ impl ExpressionTranspiler for GoTranspiler {
             .append(BoxDoc::text("}()"))
     }
 
-    fn transpile_merge_classes<'a>(&self, args: &'a [IrExpr]) -> BoxDoc<'a> {
+    fn transpile_merge_classes<'a>(&mut self, args: &'a [IrExpr]) -> BoxDoc<'a> {
         if args.is_empty() {
             BoxDoc::text("\"\"")
         } else {
@@ -1212,31 +1092,33 @@ impl ExpressionTranspiler for GoTranspiler {
         }
     }
 
-    fn transpile_array_length<'a>(&self, array: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_array_length<'a>(&mut self, array: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("len(")
             .append(self.transpile_expr(array))
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_int_to_string<'a>(&self, value: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_int_to_string<'a>(&mut self, value: &'a IrExpr) -> BoxDoc<'a> {
+        self.needs_strconv = true;
         BoxDoc::text("strconv.Itoa(")
             .append(self.transpile_expr(value))
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_float_to_int<'a>(&self, value: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_float_to_int<'a>(&mut self, value: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("int(")
             .append(self.transpile_expr(value))
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_float_to_string<'a>(&self, value: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_float_to_string<'a>(&mut self, value: &'a IrExpr) -> BoxDoc<'a> {
+        self.needs_strconv = true;
         BoxDoc::text("strconv.FormatFloat(")
             .append(self.transpile_expr(value))
             .append(BoxDoc::text(", 'f', -1, 64)"))
     }
 
-    fn transpile_int_to_float<'a>(&self, value: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_int_to_float<'a>(&mut self, value: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("float64(")
             .append(self.transpile_expr(value))
             .append(BoxDoc::text(")"))
@@ -1244,41 +1126,43 @@ impl ExpressionTranspiler for GoTranspiler {
 }
 
 impl TypeTranspiler for GoTranspiler {
-    fn transpile_bool_type<'a>(&self) -> BoxDoc<'a> {
+    fn transpile_bool_type<'a>(&mut self) -> BoxDoc<'a> {
         BoxDoc::text("bool")
     }
 
-    fn transpile_string_type<'a>(&self) -> BoxDoc<'a> {
+    fn transpile_string_type<'a>(&mut self) -> BoxDoc<'a> {
         BoxDoc::text("string")
     }
 
-    fn transpile_trusted_html_type<'a>(&self) -> BoxDoc<'a> {
+    fn transpile_trusted_html_type<'a>(&mut self) -> BoxDoc<'a> {
+        self.needs_trusted_html = true;
         BoxDoc::text("TrustedHTML")
     }
 
-    fn transpile_float_type<'a>(&self) -> BoxDoc<'a> {
+    fn transpile_float_type<'a>(&mut self) -> BoxDoc<'a> {
         BoxDoc::text("float64")
     }
 
-    fn transpile_int_type<'a>(&self) -> BoxDoc<'a> {
+    fn transpile_int_type<'a>(&mut self) -> BoxDoc<'a> {
         BoxDoc::text("int")
     }
 
-    fn transpile_array_type<'a>(&self, element_type: &'a Type) -> BoxDoc<'a> {
+    fn transpile_array_type<'a>(&mut self, element_type: &'a Type) -> BoxDoc<'a> {
         BoxDoc::text("[]").append(self.transpile_type(element_type))
     }
 
-    fn transpile_option_type<'a>(&self, inner_type: &'a Type) -> BoxDoc<'a> {
+    fn transpile_option_type<'a>(&mut self, inner_type: &'a Type) -> BoxDoc<'a> {
+        self.needs_option = true;
         BoxDoc::text("Option[")
             .append(self.transpile_type(inner_type))
             .append(BoxDoc::text("]"))
     }
 
-    fn transpile_named_type<'a>(&self, name: &'a str) -> BoxDoc<'a> {
+    fn transpile_named_type<'a>(&mut self, name: &'a str) -> BoxDoc<'a> {
         BoxDoc::text(name)
     }
 
-    fn transpile_enum_type<'a>(&self, name: &'a str) -> BoxDoc<'a> {
+    fn transpile_enum_type<'a>(&mut self, name: &'a str) -> BoxDoc<'a> {
         BoxDoc::text(name)
     }
 }

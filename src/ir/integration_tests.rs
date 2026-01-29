@@ -389,7 +389,7 @@ fn check(hop_source: &str, expected_output: &str, expected: Expect) {
     output.push_str("-- eval (optimized) --\nOK\n");
 
     // Test unoptimized version
-    let ts_transpiler = TsTranspiler::new();
+    let mut ts_transpiler = TsTranspiler::new();
     let ts_code = ts_transpiler.transpile_module(&unoptimized_module);
     if let Err(e) = typecheck_typescript(&ts_code) {
         panic!(
@@ -411,7 +411,7 @@ fn check(hop_source: &str, expected_output: &str, expected: Expect) {
     );
     output.push_str("-- ts (unoptimized) --\nOK\n");
 
-    let go_transpiler = GoTranspiler::new("components".to_string());
+    let mut go_transpiler = GoTranspiler::new("components".to_string());
     let go_code = go_transpiler.transpile_module(&unoptimized_module);
     if let Err(e) = typecheck_go(&go_code) {
         panic!(
@@ -433,7 +433,7 @@ fn check(hop_source: &str, expected_output: &str, expected: Expect) {
     );
     output.push_str("-- go (unoptimized) --\nOK\n");
 
-    let python_transpiler = PythonTranspiler::new();
+    let mut python_transpiler = PythonTranspiler::new();
     let python_code = python_transpiler.transpile_module(&unoptimized_module);
     if let Err(e) = typecheck_python(&python_code) {
         panic!(
@@ -455,7 +455,7 @@ fn check(hop_source: &str, expected_output: &str, expected: Expect) {
     );
     output.push_str("-- python (unoptimized) --\nOK\n");
 
-    let rust_transpiler = RustTranspiler::new();
+    let mut rust_transpiler = RustTranspiler::new();
     let rust_code = rust_transpiler.transpile_module(&unoptimized_module);
     if let Err(e) = typecheck_rust(&rust_code) {
         panic!(

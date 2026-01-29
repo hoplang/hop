@@ -8,52 +8,22 @@ use crate::dop::symbols::var_name::VarName;
 use crate::hop::symbols::component_name::ComponentName;
 use crate::ir::ast::{IrEntrypointDeclaration, IrExpr, IrForSource, IrModule, IrStatement};
 
-pub struct RustTranspiler {}
+pub struct RustTranspiler {
+    /// Tracks whether escape_html function is used during transpilation
+    needs_escape_html: bool,
+    /// Tracks whether TrustedHTML type is used during transpilation
+    needs_trusted_html: bool,
+}
 
 impl RustTranspiler {
     pub fn new() -> Self {
-        Self {}
-    }
-
-    fn scan_for_escape_html(&self, entrypoint: &IrEntrypointDeclaration) -> bool {
-        let mut needs_escape = false;
-        for stmt in &entrypoint.body {
-            stmt.traverse(&mut |s| {
-                if let IrStatement::WriteExpr { escape: true, .. } = s {
-                    needs_escape = true;
-                }
-            });
-            if needs_escape {
-                break;
-            }
-        }
-        needs_escape
-    }
-
-    fn scan_for_trusted_html(&self, entrypoints: &[IrEntrypointDeclaration]) -> bool {
-        for entrypoint in entrypoints {
-            for (_, param_type) in &entrypoint.parameters {
-                if Self::type_contains_trusted_html(param_type) {
-                    return true;
-                }
-            }
-        }
-        false
-    }
-
-    fn type_contains_trusted_html(t: &Type) -> bool {
-        match t {
-            Type::TrustedHTML => true,
-            Type::Array(elem) => Self::type_contains_trusted_html(elem),
-            Type::Option(inner) => Self::type_contains_trusted_html(inner),
-            Type::Record { fields, .. } => {
-                fields.iter().any(|(_, ty)| Self::type_contains_trusted_html(ty))
-            }
-            _ => false,
+        Self {
+            needs_escape_html: false,
+            needs_trusted_html: false,
         }
     }
 
-    fn escape_string(&self, s: &str) -> String {
+    fn escape_string(&mut self, s: &str) -> String {
         s.replace('\\', "\\\\")
             .replace('"', "\\\"")
             .replace('\n', "\\n")
@@ -62,13 +32,16 @@ impl RustTranspiler {
     }
 
     /// Transpile a type for use in function parameters (uses references without explicit lifetimes)
-    fn transpile_param_type<'a>(&self, t: &'a Type) -> BoxDoc<'a> {
+    fn transpile_param_type<'a>(&mut self, t: &'a Type) -> BoxDoc<'a> {
         match t {
             Type::Bool => BoxDoc::text("bool"),
             Type::String => BoxDoc::text("&str"),
             Type::Float => BoxDoc::text("f64"),
             Type::Int => BoxDoc::text("i64"),
-            Type::TrustedHTML => BoxDoc::text("&TrustedHTML"),
+            Type::TrustedHTML => {
+                self.needs_trusted_html = true;
+                BoxDoc::text("&TrustedHTML")
+            }
             Type::Array(elem) => BoxDoc::text("&[")
                 .append(self.transpile_type(elem))
                 .append(BoxDoc::text("]")),
@@ -89,51 +62,15 @@ impl Default for RustTranspiler {
 }
 
 impl Transpiler for RustTranspiler {
-    fn transpile_module(&self, module: &IrModule) -> String {
+    fn transpile_module(&mut self, module: &IrModule) -> String {
         let entrypoints = &module.entrypoints;
         let records = &module.records;
 
-        let mut needs_escape_html = false;
-        for entrypoint in entrypoints {
-            if self.scan_for_escape_html(entrypoint) {
-                needs_escape_html = true;
-                break;
-            }
-        }
-
-        let needs_trusted_html = self.scan_for_trusted_html(entrypoints);
+        // Reset tracking flags for this module
+        self.needs_escape_html = false;
+        self.needs_trusted_html = false;
 
         let mut result = BoxDoc::nil();
-
-        // Add TrustedHTML type definition if needed
-        if needs_trusted_html {
-            result = result
-                .append(BoxDoc::text("#[derive(Clone, Debug)]"))
-                .append(BoxDoc::line())
-                .append(BoxDoc::text("pub struct TrustedHTML(pub String);"))
-                .append(BoxDoc::line())
-                .append(BoxDoc::line());
-        }
-
-        // Add escape_html helper function if needed
-        if needs_escape_html {
-            result = result
-                .append(BoxDoc::text("fn escape_html(s: &str) -> String {"))
-                .append(BoxDoc::line())
-                .append(BoxDoc::text("    s.replace('&', \"&amp;\")"))
-                .append(BoxDoc::line())
-                .append(BoxDoc::text("        .replace('<', \"&lt;\")"))
-                .append(BoxDoc::line())
-                .append(BoxDoc::text("        .replace('>', \"&gt;\")"))
-                .append(BoxDoc::line())
-                .append(BoxDoc::text("        .replace('\"', \"&quot;\")"))
-                .append(BoxDoc::line())
-                .append(BoxDoc::text("        .replace('\\'', \"&#39;\")"))
-                .append(BoxDoc::line())
-                .append(BoxDoc::text("}"))
-                .append(BoxDoc::line())
-                .append(BoxDoc::line());
-        }
 
         // Add enum type definitions
         for enum_def in &module.enums {
@@ -212,6 +149,38 @@ impl Transpiler for RustTranspiler {
             }
         }
 
+        // Prepend escape_html helper function if needed (after transpilation determined it's used)
+        if self.needs_escape_html {
+            let escape_fn = BoxDoc::nil()
+                .append(BoxDoc::text("fn escape_html(s: &str) -> String {"))
+                .append(BoxDoc::line())
+                .append(BoxDoc::text("    s.replace('&', \"&amp;\")"))
+                .append(BoxDoc::line())
+                .append(BoxDoc::text("        .replace('<', \"&lt;\")"))
+                .append(BoxDoc::line())
+                .append(BoxDoc::text("        .replace('>', \"&gt;\")"))
+                .append(BoxDoc::line())
+                .append(BoxDoc::text("        .replace('\"', \"&quot;\")"))
+                .append(BoxDoc::line())
+                .append(BoxDoc::text("        .replace('\\'', \"&#39;\")"))
+                .append(BoxDoc::line())
+                .append(BoxDoc::text("}"))
+                .append(BoxDoc::line())
+                .append(BoxDoc::line());
+            result = escape_fn.append(result);
+        }
+
+        // Prepend TrustedHTML type definition if needed (after transpilation determined it's used)
+        if self.needs_trusted_html {
+            let trusted_html = BoxDoc::nil()
+                .append(BoxDoc::text("#[derive(Clone, Debug)]"))
+                .append(BoxDoc::line())
+                .append(BoxDoc::text("pub struct TrustedHTML(pub String);"))
+                .append(BoxDoc::line())
+                .append(BoxDoc::line());
+            result = trusted_html.append(result);
+        }
+
         // Render to string
         let mut buffer = Vec::new();
         result.render(80, &mut buffer).unwrap();
@@ -226,7 +195,7 @@ impl Transpiler for RustTranspiler {
     }
 
     fn transpile_entrypoint<'a>(
-        &self,
+        &mut self,
         name: &'a ComponentName,
         entrypoint: &'a IrEntrypointDeclaration,
     ) -> BoxDoc<'a> {
@@ -275,16 +244,17 @@ impl Transpiler for RustTranspiler {
 }
 
 impl StatementTranspiler for RustTranspiler {
-    fn transpile_write<'a>(&self, content: &'a str) -> BoxDoc<'a> {
+    fn transpile_write<'a>(&mut self, content: &'a str) -> BoxDoc<'a> {
         BoxDoc::text("output.push_str(\"")
             .append(BoxDoc::text(self.escape_string(content)))
             .append(BoxDoc::text("\");"))
     }
 
-    fn transpile_write_expr<'a>(&self, expr: &'a IrExpr, escape: bool) -> BoxDoc<'a> {
+    fn transpile_write_expr<'a>(&mut self, expr: &'a IrExpr, escape: bool) -> BoxDoc<'a> {
         let expr_type = expr.as_type();
 
         if escape {
+            self.needs_escape_html = true;
             // HTML escaping needed
             match expr_type {
                 Type::String => BoxDoc::text("output.push_str(&escape_html(&")
@@ -317,7 +287,7 @@ impl StatementTranspiler for RustTranspiler {
     }
 
     fn transpile_if<'a>(
-        &self,
+        &mut self,
         condition: &'a IrExpr,
         body: &'a [IrStatement],
         else_body: Option<&'a [IrStatement]>,
@@ -349,7 +319,7 @@ impl StatementTranspiler for RustTranspiler {
     }
 
     fn transpile_for<'a>(
-        &self,
+        &mut self,
         var: Option<&'a str>,
         source: &'a IrForSource,
         body: &'a [IrStatement],
@@ -385,7 +355,7 @@ impl StatementTranspiler for RustTranspiler {
     }
 
     fn transpile_let_statement<'a>(
-        &self,
+        &mut self,
         var: &'a str,
         value: &'a IrExpr,
         body: &'a [IrStatement],
@@ -399,7 +369,7 @@ impl StatementTranspiler for RustTranspiler {
             .append(self.transpile_statements(body))
     }
 
-    fn transpile_match_statement<'a>(&self, match_: &'a Match<Vec<IrStatement>>) -> BoxDoc<'a> {
+    fn transpile_match_statement<'a>(&mut self, match_: &'a Match<Vec<IrStatement>>) -> BoxDoc<'a> {
         match match_ {
             Match::Bool {
                 subject,
@@ -530,68 +500,77 @@ impl StatementTranspiler for RustTranspiler {
             }
         }
     }
+
+    fn transpile_statements<'a>(&mut self, statements: &'a [IrStatement]) -> BoxDoc<'a> {
+        let mut docs: Vec<BoxDoc<'a>> = Vec::new();
+        for stmt in statements {
+            docs.push(self.transpile_statement(stmt));
+        }
+        BoxDoc::intersperse(docs, BoxDoc::hardline())
+    }
 }
 
 impl TypeTranspiler for RustTranspiler {
-    fn transpile_bool_type<'a>(&self) -> BoxDoc<'a> {
+    fn transpile_bool_type<'a>(&mut self) -> BoxDoc<'a> {
         BoxDoc::text("bool")
     }
 
-    fn transpile_string_type<'a>(&self) -> BoxDoc<'a> {
+    fn transpile_string_type<'a>(&mut self) -> BoxDoc<'a> {
         BoxDoc::text("String")
     }
 
-    fn transpile_float_type<'a>(&self) -> BoxDoc<'a> {
+    fn transpile_float_type<'a>(&mut self) -> BoxDoc<'a> {
         BoxDoc::text("f64")
     }
 
-    fn transpile_int_type<'a>(&self) -> BoxDoc<'a> {
+    fn transpile_int_type<'a>(&mut self) -> BoxDoc<'a> {
         BoxDoc::text("i64")
     }
 
-    fn transpile_trusted_html_type<'a>(&self) -> BoxDoc<'a> {
+    fn transpile_trusted_html_type<'a>(&mut self) -> BoxDoc<'a> {
+        self.needs_trusted_html = true;
         BoxDoc::text("TrustedHTML")
     }
 
-    fn transpile_array_type<'a>(&self, element_type: &'a Type) -> BoxDoc<'a> {
+    fn transpile_array_type<'a>(&mut self, element_type: &'a Type) -> BoxDoc<'a> {
         BoxDoc::text("Vec<")
             .append(self.transpile_type(element_type))
             .append(BoxDoc::text(">"))
     }
 
-    fn transpile_option_type<'a>(&self, inner_type: &'a Type) -> BoxDoc<'a> {
+    fn transpile_option_type<'a>(&mut self, inner_type: &'a Type) -> BoxDoc<'a> {
         BoxDoc::text("Option<")
             .append(self.transpile_type(inner_type))
             .append(BoxDoc::text(">"))
     }
 
-    fn transpile_named_type<'a>(&self, name: &'a str) -> BoxDoc<'a> {
+    fn transpile_named_type<'a>(&mut self, name: &'a str) -> BoxDoc<'a> {
         BoxDoc::text(name)
     }
 
-    fn transpile_enum_type<'a>(&self, name: &'a str) -> BoxDoc<'a> {
+    fn transpile_enum_type<'a>(&mut self, name: &'a str) -> BoxDoc<'a> {
         BoxDoc::text(name)
     }
 }
 
 impl ExpressionTranspiler for RustTranspiler {
-    fn transpile_var<'a>(&self, name: &'a str) -> BoxDoc<'a> {
+    fn transpile_var<'a>(&mut self, name: &'a str) -> BoxDoc<'a> {
         BoxDoc::text(name)
     }
 
-    fn transpile_field_access<'a>(&self, object: &'a IrExpr, field: &'a FieldName) -> BoxDoc<'a> {
+    fn transpile_field_access<'a>(&mut self, object: &'a IrExpr, field: &'a FieldName) -> BoxDoc<'a> {
         self.transpile_expr(object)
             .append(BoxDoc::text("."))
             .append(BoxDoc::text(field.as_str()))
     }
 
-    fn transpile_string_literal<'a>(&self, value: &'a str) -> BoxDoc<'a> {
+    fn transpile_string_literal<'a>(&mut self, value: &'a str) -> BoxDoc<'a> {
         BoxDoc::text("\"")
             .append(BoxDoc::text(self.escape_string(value)))
             .append(BoxDoc::text("\".to_string()"))
     }
 
-    fn transpile_boolean_literal<'a>(&self, value: bool) -> BoxDoc<'a> {
+    fn transpile_boolean_literal<'a>(&mut self, value: bool) -> BoxDoc<'a> {
         if value {
             BoxDoc::text("true")
         } else {
@@ -599,7 +578,7 @@ impl ExpressionTranspiler for RustTranspiler {
         }
     }
 
-    fn transpile_float_literal<'a>(&self, value: f64) -> BoxDoc<'a> {
+    fn transpile_float_literal<'a>(&mut self, value: f64) -> BoxDoc<'a> {
         // Ensure float literals have a decimal point
         let s = value.to_string();
         if s.contains('.') || s.contains('e') || s.contains('E') {
@@ -609,12 +588,12 @@ impl ExpressionTranspiler for RustTranspiler {
         }
     }
 
-    fn transpile_int_literal<'a>(&self, value: i64) -> BoxDoc<'a> {
+    fn transpile_int_literal<'a>(&mut self, value: i64) -> BoxDoc<'a> {
         BoxDoc::as_string(format!("{}_i64", value))
     }
 
     fn transpile_array_literal<'a>(
-        &self,
+        &mut self,
         elements: &'a [IrExpr],
         elem_type: &'a Type,
     ) -> BoxDoc<'a> {
@@ -632,7 +611,7 @@ impl ExpressionTranspiler for RustTranspiler {
         }
     }
 
-    fn transpile_string_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_string_equals<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("(")
             .append(self.transpile_expr(left))
             .append(BoxDoc::text(" == "))
@@ -640,7 +619,7 @@ impl ExpressionTranspiler for RustTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_bool_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_bool_equals<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("(")
             .append(self.transpile_expr(left))
             .append(BoxDoc::text(" == "))
@@ -648,7 +627,7 @@ impl ExpressionTranspiler for RustTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_int_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_int_equals<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("(")
             .append(self.transpile_expr(left))
             .append(BoxDoc::text(" == "))
@@ -656,7 +635,7 @@ impl ExpressionTranspiler for RustTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_float_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_float_equals<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("(")
             .append(self.transpile_expr(left))
             .append(BoxDoc::text(" == "))
@@ -664,7 +643,7 @@ impl ExpressionTranspiler for RustTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_enum_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_enum_equals<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("(std::mem::discriminant(&")
             .append(self.transpile_expr(left))
             .append(BoxDoc::text(") == std::mem::discriminant(&"))
@@ -672,7 +651,7 @@ impl ExpressionTranspiler for RustTranspiler {
             .append(BoxDoc::text("))"))
     }
 
-    fn transpile_int_less_than<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_int_less_than<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("(")
             .append(self.transpile_expr(left))
             .append(BoxDoc::text(" < "))
@@ -680,7 +659,7 @@ impl ExpressionTranspiler for RustTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_float_less_than<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_float_less_than<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("(")
             .append(self.transpile_expr(left))
             .append(BoxDoc::text(" < "))
@@ -689,7 +668,7 @@ impl ExpressionTranspiler for RustTranspiler {
     }
 
     fn transpile_int_less_than_or_equal<'a>(
-        &self,
+        &mut self,
         left: &'a IrExpr,
         right: &'a IrExpr,
     ) -> BoxDoc<'a> {
@@ -701,7 +680,7 @@ impl ExpressionTranspiler for RustTranspiler {
     }
 
     fn transpile_float_less_than_or_equal<'a>(
-        &self,
+        &mut self,
         left: &'a IrExpr,
         right: &'a IrExpr,
     ) -> BoxDoc<'a> {
@@ -712,18 +691,18 @@ impl ExpressionTranspiler for RustTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_not<'a>(&self, operand: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_not<'a>(&mut self, operand: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("!")
             .append(self.transpile_expr(operand))
     }
 
-    fn transpile_numeric_negation<'a>(&self, operand: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_numeric_negation<'a>(&mut self, operand: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("(-")
             .append(self.transpile_expr(operand))
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_string_concat<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_string_concat<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("format!(\"{}{}\", ")
             .append(self.transpile_expr(left))
             .append(BoxDoc::text(", "))
@@ -731,7 +710,7 @@ impl ExpressionTranspiler for RustTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_logical_and<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_logical_and<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("(")
             .append(self.transpile_expr(left))
             .append(BoxDoc::text(" && "))
@@ -739,7 +718,7 @@ impl ExpressionTranspiler for RustTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_logical_or<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_logical_or<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("(")
             .append(self.transpile_expr(left))
             .append(BoxDoc::text(" || "))
@@ -747,7 +726,7 @@ impl ExpressionTranspiler for RustTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_int_add<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_int_add<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("(")
             .append(self.transpile_expr(left))
             .append(BoxDoc::text(" + "))
@@ -755,7 +734,7 @@ impl ExpressionTranspiler for RustTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_float_add<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_float_add<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("(")
             .append(self.transpile_expr(left))
             .append(BoxDoc::text(" + "))
@@ -763,7 +742,7 @@ impl ExpressionTranspiler for RustTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_int_subtract<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_int_subtract<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("(")
             .append(self.transpile_expr(left))
             .append(BoxDoc::text(" - "))
@@ -771,7 +750,7 @@ impl ExpressionTranspiler for RustTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_float_subtract<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_float_subtract<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("(")
             .append(self.transpile_expr(left))
             .append(BoxDoc::text(" - "))
@@ -779,7 +758,7 @@ impl ExpressionTranspiler for RustTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_int_multiply<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_int_multiply<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("(")
             .append(self.transpile_expr(left))
             .append(BoxDoc::text(" * "))
@@ -787,7 +766,7 @@ impl ExpressionTranspiler for RustTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_float_multiply<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_float_multiply<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("(")
             .append(self.transpile_expr(left))
             .append(BoxDoc::text(" * "))
@@ -796,7 +775,7 @@ impl ExpressionTranspiler for RustTranspiler {
     }
 
     fn transpile_record_literal<'a>(
-        &self,
+        &mut self,
         record_name: &'a str,
         fields: &'a [(FieldName, IrExpr)],
     ) -> BoxDoc<'a> {
@@ -818,7 +797,7 @@ impl ExpressionTranspiler for RustTranspiler {
     }
 
     fn transpile_enum_literal<'a>(
-        &self,
+        &mut self,
         enum_name: &'a str,
         variant_name: &'a str,
         fields: &'a [(FieldName, IrExpr)],
@@ -845,7 +824,7 @@ impl ExpressionTranspiler for RustTranspiler {
     }
 
     fn transpile_option_literal<'a>(
-        &self,
+        &mut self,
         value: Option<&'a IrExpr>,
         inner_type: &'a Type,
     ) -> BoxDoc<'a> {
@@ -859,7 +838,7 @@ impl ExpressionTranspiler for RustTranspiler {
         }
     }
 
-    fn transpile_match_expr<'a>(&self, match_: &'a Match<IrExpr>) -> BoxDoc<'a> {
+    fn transpile_match_expr<'a>(&mut self, match_: &'a Match<IrExpr>) -> BoxDoc<'a> {
         match match_ {
             Match::Bool {
                 subject,
@@ -954,7 +933,7 @@ impl ExpressionTranspiler for RustTranspiler {
     }
 
     fn transpile_let<'a>(
-        &self,
+        &mut self,
         var: &'a VarName,
         value: &'a IrExpr,
         body: &'a IrExpr,
@@ -968,7 +947,7 @@ impl ExpressionTranspiler for RustTranspiler {
             .append(BoxDoc::text(" }"))
     }
 
-    fn transpile_merge_classes<'a>(&self, args: &'a [IrExpr]) -> BoxDoc<'a> {
+    fn transpile_merge_classes<'a>(&mut self, args: &'a [IrExpr]) -> BoxDoc<'a> {
         if args.is_empty() {
             BoxDoc::text("String::new()")
         } else if args.len() == 1 {
@@ -988,27 +967,27 @@ impl ExpressionTranspiler for RustTranspiler {
         }
     }
 
-    fn transpile_array_length<'a>(&self, array: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_array_length<'a>(&mut self, array: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("(")
             .append(self.transpile_expr(array))
             .append(BoxDoc::text(".len() as i64)"))
     }
 
-    fn transpile_int_to_string<'a>(&self, value: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_int_to_string<'a>(&mut self, value: &'a IrExpr) -> BoxDoc<'a> {
         self.transpile_expr(value).append(BoxDoc::text(".to_string()"))
     }
 
-    fn transpile_float_to_int<'a>(&self, value: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_float_to_int<'a>(&mut self, value: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("(")
             .append(self.transpile_expr(value))
             .append(BoxDoc::text(" as i64)"))
     }
 
-    fn transpile_float_to_string<'a>(&self, value: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_float_to_string<'a>(&mut self, value: &'a IrExpr) -> BoxDoc<'a> {
         self.transpile_expr(value).append(BoxDoc::text(".to_string()"))
     }
 
-    fn transpile_int_to_float<'a>(&self, value: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_int_to_float<'a>(&mut self, value: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("(")
             .append(self.transpile_expr(value))
             .append(BoxDoc::text(" as f64)"))

@@ -128,7 +128,7 @@ pub async fn execute(project_root: &ProjectRoot, skip_optimization: bool) -> Res
     let generated_code = match resolved.target {
         TargetLanguage::Typescript => {
             timer.start_phase("transpiling to ts");
-            let transpiler = TsTranspiler::new();
+            let mut transpiler = TsTranspiler::new();
             transpiler.transpile_module(&ir_module)
         }
         TargetLanguage::Go => {
@@ -137,17 +137,17 @@ pub async fn execute(project_root: &ProjectRoot, skip_optimization: bool) -> Res
                 .go_package
                 .clone()
                 .unwrap_or_else(|| "main".to_string());
-            let transpiler = GoTranspiler::new(package);
+            let mut transpiler = GoTranspiler::new(package);
             transpiler.transpile_module(&ir_module)
         }
         TargetLanguage::Python => {
             timer.start_phase("transpiling to python");
-            let transpiler = PythonTranspiler::new();
+            let mut transpiler = PythonTranspiler::new();
             transpiler.transpile_module(&ir_module)
         }
         TargetLanguage::Rust => {
             timer.start_phase("transpiling to rust");
-            let transpiler = RustTranspiler::new();
+            let mut transpiler = RustTranspiler::new();
             transpiler.transpile_module(&ir_module)
         }
     };
