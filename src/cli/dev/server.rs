@@ -23,6 +23,26 @@ pub struct AppState {
     pub tailwind_css: Arc<RwLock<Option<String>>>,
 }
 
+async fn handle_index(State(state): State<AppState>) -> Response<Body> {
+    let program = state.program.read().unwrap();
+
+    let mut entrypoints = Vec::new();
+    for (module_name, ast) in program.get_typed_modules() {
+        for ep in ast.get_entrypoint_declarations() {
+            entrypoints.push(frontend::EntrypointData {
+                name: ep.name.to_string(),
+                module: format!("{}.hop", module_name),
+            });
+        }
+    }
+
+    let html = frontend::index(&entrypoints);
+    Response::builder()
+        .header("Content-Type", "text/html")
+        .body(Body::from(html))
+        .unwrap()
+}
+
 async fn handle_program(State(state): State<AppState>) -> Response<Body> {
     let _program = state.program.read().unwrap();
 
@@ -281,6 +301,7 @@ pub fn create_router() -> axum::Router<AppState> {
         .allow_headers(Any);
 
     axum::Router::new()
+        .route("/", get(handle_index))
         .route("/development_mode.js", get(handle_development_mode_js))
         .route("/event_source", get(handle_event_source))
         .route("/render", axum::routing::post(handle_render))

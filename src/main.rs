@@ -121,9 +121,6 @@ async fn main() -> anyhow::Result<()> {
             port,
             host,
         }) => {
-            use std::time::Instant;
-
-            let start_time = Instant::now();
             let root = match projectdir {
                 Some(d) => ProjectRoot::from(Path::new(d))?,
                 None => ProjectRoot::find_upwards(Path::new("."))?,
@@ -133,7 +130,6 @@ async fn main() -> anyhow::Result<()> {
                 root: &ProjectRoot,
                 host: &str,
                 port: u16,
-                start_time: Instant,
             ) -> anyhow::Result<()> {
                 use colored::*;
 
@@ -153,11 +149,8 @@ async fn main() -> anyhow::Result<()> {
                 let mut res = cli::dev::execute(root).await?;
                 let dev_server = axum::serve(listener, res.router);
 
-                let elapsed = start_time.elapsed();
                 println!();
-                println!("  {} | ready in {} ms", "hop".bold(), elapsed.as_millis());
-                println!();
-                println!("    http://{}:{}/program", host, port);
+                println!("  {} | served at http://{}:{}", "hop".bold(), host, port);
                 println!();
 
                 // Block until Ctrl-C or server exit
@@ -186,7 +179,7 @@ async fn main() -> anyhow::Result<()> {
             }
 
             // Run the dev server and ensure cleanup always happens
-            run_dev_server(&root, host, *port, start_time).await?
+            run_dev_server(&root, host, *port).await?
         }
         None => {
             let mut cmd = Cli::command();
