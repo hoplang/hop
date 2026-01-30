@@ -157,9 +157,18 @@ pub fn evaluate_entrypoint(
 ) -> Result<String> {
     let mut env = Env::new();
 
-    for (param_name, _param_type) in &entrypoint.parameters {
+    for (param_name, _param_type, default_expr) in &entrypoint.parameters {
         if let Some(value) = args.get(param_name.as_str()) {
             env.push(param_name.as_cheap_string().clone(), value.clone());
+        } else if let Some(default) = default_expr {
+            let default_value = evaluate_expr(default, &mut env)?;
+            env.push(param_name.as_cheap_string().clone(), default_value);
+        } else {
+            return Err(anyhow!(
+                "Missing required parameter '{}' for entrypoint '{}'",
+                param_name,
+                entrypoint.name
+            ));
         }
     }
 
@@ -1032,5 +1041,111 @@ mod tests {
                 not equal
             "#]],
         );
+    }
+
+    #[test]
+    fn should_use_default_parameter_when_arg_not_provided() {
+        use crate::document::CheapString;
+        use crate::dop::VarName;
+        use crate::hop::symbols::component_name::ComponentName;
+        use crate::ir::ast::{IrEntrypointDeclaration, IrExpr, IrStatement};
+
+        // Create an entrypoint with a parameter that has a default value
+        let entrypoint = IrEntrypointDeclaration {
+            name: ComponentName::new("Test".to_string()).unwrap(),
+            parameters: vec![(
+                VarName::new("greeting").unwrap(),
+                Arc::new(Type::String),
+                Some(IrExpr::StringLiteral {
+                    value: CheapString::new("Hello, World!".to_string()),
+                    id: 0,
+                }),
+            )],
+            body: vec![IrStatement::WriteExpr {
+                id: 0,
+                expr: IrExpr::Var {
+                    value: VarName::new("greeting").unwrap(),
+                    kind: Arc::new(Type::String),
+                    id: 1,
+                },
+                escape: false,
+            }],
+        };
+
+        // Call without providing the argument
+        let result = evaluate_entrypoint(&entrypoint, HashMap::new())
+            .expect("Should use default parameter");
+        assert_eq!(result, "Hello, World!");
+    }
+
+    #[test]
+    fn should_use_provided_arg_over_default_parameter() {
+        use crate::document::CheapString;
+        use crate::dop::VarName;
+        use crate::hop::symbols::component_name::ComponentName;
+        use crate::ir::ast::{IrEntrypointDeclaration, IrExpr, IrStatement};
+
+        // Create an entrypoint with a parameter that has a default value
+        let entrypoint = IrEntrypointDeclaration {
+            name: ComponentName::new("Test".to_string()).unwrap(),
+            parameters: vec![(
+                VarName::new("greeting").unwrap(),
+                Arc::new(Type::String),
+                Some(IrExpr::StringLiteral {
+                    value: CheapString::new("Default greeting".to_string()),
+                    id: 0,
+                }),
+            )],
+            body: vec![IrStatement::WriteExpr {
+                id: 0,
+                expr: IrExpr::Var {
+                    value: VarName::new("greeting").unwrap(),
+                    kind: Arc::new(Type::String),
+                    id: 1,
+                },
+                escape: false,
+            }],
+        };
+
+        // Call with the argument - should override the default
+        let mut args = HashMap::new();
+        args.insert("greeting".to_string(), Value::String("Custom greeting".to_string()));
+
+        let result = evaluate_entrypoint(&entrypoint, args)
+            .expect("Should use provided argument");
+        assert_eq!(result, "Custom greeting");
+    }
+
+    #[test]
+    fn should_error_when_required_param_not_provided() {
+        use crate::dop::VarName;
+        use crate::hop::symbols::component_name::ComponentName;
+        use crate::ir::ast::{IrEntrypointDeclaration, IrExpr, IrStatement};
+
+        // Create an entrypoint with a required parameter (no default)
+        let entrypoint = IrEntrypointDeclaration {
+            name: ComponentName::new("Test".to_string()).unwrap(),
+            parameters: vec![(
+                VarName::new("name").unwrap(),
+                Arc::new(Type::String),
+                None, // No default
+            )],
+            body: vec![IrStatement::WriteExpr {
+                id: 0,
+                expr: IrExpr::Var {
+                    value: VarName::new("name").unwrap(),
+                    kind: Arc::new(Type::String),
+                    id: 1,
+                },
+                escape: false,
+            }],
+        };
+
+        // Call without providing the required argument
+        let result = evaluate_entrypoint(&entrypoint, HashMap::new());
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("Missing required parameter"));
+        assert!(err.to_string().contains("name"));
     }
 }

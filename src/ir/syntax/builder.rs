@@ -264,7 +264,7 @@ pub struct IrBuilder {
     next_expr_id: Rc<RefCell<ExprId>>,
     next_node_id: Rc<RefCell<StatementId>>,
     var_stack: RefCell<Vec<(String, Arc<Type>)>>,
-    params: Vec<(VarName, Arc<Type>)>,
+    params: Vec<(VarName, Arc<Type>, Option<IrExpr>)>,
     records: BTreeMap<String, BTreeMap<String, Arc<Type>>>,
     /// Enums with their variants. Each variant has a name and optional fields.
     enums: BTreeMap<String, Vec<(String, Vec<(String, Arc<Type>)>)>>,
@@ -285,7 +285,7 @@ impl IrBuilder {
             var_stack: RefCell::new(initial_vars),
             params: params
                 .into_iter()
-                .map(|(s, t)| (VarName::try_from(s).unwrap(), t))
+                .map(|(s, t)| (VarName::try_from(s).unwrap(), t, None))
                 .collect(),
             records,
             enums,

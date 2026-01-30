@@ -15,8 +15,8 @@ const DEV_SERVER_URL = (() => {
 	}
 	throw new Error('Could not determine dev server URL from script tag');
 })();
-const EVENT_SOURCE_URL = `${DEV_SERVER_URL}/event_source`;
-const RENDER_URL = `${DEV_SERVER_URL}/render`;
+const EVENT_SOURCE_URL = `${DEV_SERVER_URL}/api/events`;
+const RENDER_URL_BASE = `${DEV_SERVER_URL}/api/render`;
 const DEBOUNCE_DELAY_MS = 15;
 const ERROR_OVERLAY_ID = 'hop-error-overlay';
 
@@ -53,8 +53,7 @@ function hideErrorOverlay() {
 /**
  * @typedef {object} HopConfig
  *
- * @property {string} module
- * @property {string} component
+ * @property {string} entrypoint
  * @property {any} params
  */
 
@@ -75,17 +74,12 @@ function loadConfig() {
  * @param {HopConfig} cfg
  */
 async function fetchEntryPoint(cfg) {
-    const response = await fetch(RENDER_URL, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            module: cfg.module,
-            component: cfg.component,
-            params: cfg.params || {},
-        }),
-    });
+    const url = new URL(`${RENDER_URL_BASE}/${cfg.entrypoint}`);
+    const params = cfg.params || {};
+    if (Object.keys(params).length > 0) {
+        url.searchParams.set('params', JSON.stringify(params));
+    }
+    const response = await fetch(url);
     if (!response.ok) {
         const body = await response.text();
         throw new Error(body || `HTTP error! status: ${response.status}`);
@@ -102,7 +96,7 @@ async function morphDOM(html, cfg) {
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
     Idiomorph.morph(document.documentElement, doc.documentElement);
-    const cacheKey = `${LOCAL_STORAGE_PREFIX}-${cfg.module}/${cfg.component}`;
+    const cacheKey = `${LOCAL_STORAGE_PREFIX}-${cfg.entrypoint}`;
     localStorage.setItem(cacheKey, html);
 }
 
@@ -168,13 +162,13 @@ function setupHMR(cfg) {
 
 /**
  * Main bootstrap function that initializes the development environment
- * Fetches the initial component, updates the DOM, and sets up HMR
+ * Fetches the initial entrypoint, updates the DOM, and sets up HMR
  */
 async function bootstrap() {
 	const cfg = loadConfig();
 
 	// Check if we have cached HTML in localStorage and render it immediately
-	const cacheKey = `${LOCAL_STORAGE_PREFIX}-${cfg.module}/${cfg.component}`;
+	const cacheKey = `${LOCAL_STORAGE_PREFIX}-${cfg.entrypoint}`;
 	const cachedHTML = localStorage.getItem(cacheKey);
 	if (cachedHTML) {
 		const parser = new DOMParser();

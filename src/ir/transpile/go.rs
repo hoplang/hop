@@ -242,7 +242,7 @@ impl Transpiler for GoTranspiler {
             result = result
                 .append(BoxDoc::text("(w io.Writer, "))
                 .append(BoxDoc::intersperse(
-                    entrypoint.parameters.iter().map(|(param_name, param_type)| {
+                    entrypoint.parameters.iter().map(|(param_name, param_type, _)| {
                         BoxDoc::text(param_name.as_str())
                             .append(BoxDoc::text(" "))
                             .append(self.transpile_type(param_type))

@@ -3,12 +3,34 @@ use crate::hop::program::Program;
 use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
 use crate::log_info;
-use crate::{cli::dev::frontend::Component, document::DocumentAnnotator};
+use crate::document::DocumentAnnotator;
 use axum::body::Body;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::Response;
 use std::sync::{Arc, RwLock};
+
+/// Find which module contains a given entrypoint.
+/// Returns the module name if found, or an error message listing all available entrypoints.
+fn find_module_for_entrypoint(program: &Program, entrypoint: &str) -> Result<ModuleName, String> {
+    let mut all_entrypoints = Vec::new();
+
+    for (module_name, ast) in program.get_typed_modules() {
+        for ep in ast.get_entrypoint_declarations() {
+            if ep.name.as_str() == entrypoint {
+                return Ok(module_name.clone());
+            }
+            all_entrypoints.push(ep.name.to_string());
+        }
+    }
+
+    all_entrypoints.sort();
+    Err(format!(
+        "Entrypoint '{}' not found. Available entrypoints: {}",
+        entrypoint,
+        all_entrypoints.join(", ")
+    ))
+}
 
 #[derive(Clone)]
 pub struct AppState {
@@ -43,32 +65,6 @@ async fn handle_index(State(state): State<AppState>) -> Response<Body> {
         .unwrap()
 }
 
-async fn handle_program(State(state): State<AppState>) -> Response<Body> {
-    let _program = state.program.read().unwrap();
-
-    let mut modules = Vec::new();
-
-    for (module_name, ast) in _program.get_typed_modules() {
-        let mut components = Vec::new();
-        for c in ast.get_component_declarations() {
-            components.push(Component {
-                name: c.component_name.to_string(),
-            });
-        }
-        modules.push(frontend::Module {
-            name: module_name.to_string(),
-            components,
-        })
-    }
-
-    let html = frontend::program(&modules);
-
-    Response::builder()
-        .header("Content-Type", "text/html")
-        .body(Body::from(html))
-        .unwrap()
-}
-
 async fn handle_development_mode_js() -> Response<Body> {
     Response::builder()
         .header("Content-Type", "application/javascript")
@@ -78,11 +74,10 @@ async fn handle_development_mode_js() -> Response<Body> {
 }
 
 async fn handle_hmr(
-    axum::extract::Path((module, component)): axum::extract::Path<(String, String)>,
+    axum::extract::Path(entrypoint): axum::extract::Path<String>,
 ) -> Response<Body> {
     let config = serde_json::json!({
-        "module": module,
-        "component": component,
+        "entrypoint": entrypoint,
         "params": {}
     });
 
@@ -124,76 +119,36 @@ async fn handle_event_source(
 }
 
 #[derive(serde::Deserialize)]
-struct RenderRequest {
-    module: String,
-    component: String,
+struct RenderQuery {
     #[serde(default)]
-    params: std::collections::HashMap<String, serde_json::Value>,
-}
-
-#[derive(serde::Serialize)]
-struct EntrypointParam {
-    name: String,
-    #[serde(rename = "type")]
-    typ: String,
-}
-
-#[derive(serde::Serialize)]
-struct Entrypoint {
-    name: String,
-    params: Vec<EntrypointParam>,
-}
-
-#[derive(serde::Serialize)]
-struct ModuleEntrypoints {
-    module: String,
-    entrypoints: Vec<Entrypoint>,
-}
-
-async fn handle_entrypoints(State(state): State<AppState>) -> axum::Json<Vec<ModuleEntrypoints>> {
-    let program = state.program.read().unwrap();
-
-    let mut result = Vec::new();
-
-    for (module_name, ast) in program.get_typed_modules() {
-        let entrypoints: Vec<Entrypoint> = ast
-            .get_entrypoint_declarations()
-            .iter()
-            .map(|ep| Entrypoint {
-                name: ep.name.to_string(),
-                params: ep
-                    .params
-                    .iter()
-                    .map(|(name, typ, _default)| EntrypointParam {
-                        name: name.to_string(),
-                        typ: typ.to_string(),
-                    })
-                    .collect(),
-            })
-            .collect();
-
-        if !entrypoints.is_empty() {
-            result.push(ModuleEntrypoints {
-                module: module_name.to_string(),
-                entrypoints,
-            });
-        }
-    }
-
-    axum::Json(result)
+    params: Option<String>, // JSON-encoded params
 }
 
 async fn handle_render(
     State(state): State<AppState>,
-    axum::extract::Json(request): axum::extract::Json<RenderRequest>,
+    axum::extract::Path(entrypoint): axum::extract::Path<String>,
+    axum::extract::Query(query): axum::extract::Query<RenderQuery>,
 ) -> Response<Body> {
-    let params = request.params;
+    // Parse params from query string (JSON-encoded)
+    let params: std::collections::HashMap<String, serde_json::Value> = match &query.params {
+        Some(params_str) => match serde_json::from_str(params_str) {
+            Ok(p) => p,
+            Err(e) => {
+                return Response::builder()
+                    .status(StatusCode::BAD_REQUEST)
+                    .header("Content-Type", "text/html")
+                    .body(Body::from(format!("Invalid params JSON: {}", e)))
+                    .unwrap();
+            }
+        },
+        None => std::collections::HashMap::new(),
+    };
+
     let render_start = std::time::Instant::now();
     log_info!(
         "render",
         step = "enter",
-        module = request.module.clone(),
-        entrypoint = request.component.clone(),
+        entrypoint = entrypoint.clone(),
     );
 
     let program = state.program.read().unwrap();
@@ -202,28 +157,28 @@ async fn handle_render(
     let css = state.tailwind_css.read().unwrap();
     let css_content = css.as_deref();
 
-    let entrypoint_name_for_log = request.component.clone();
+    let entrypoint_name_for_log = entrypoint.clone();
 
-    // Parse module name
-    let module_name = match ModuleName::new(&request.module) {
+    // Find which module contains this entrypoint
+    let module_name = match find_module_for_entrypoint(&program, &entrypoint) {
         Ok(name) => name,
         Err(e) => {
             return Response::builder()
                 .status(StatusCode::BAD_REQUEST)
                 .header("Content-Type", "text/html")
-                .body(Body::from(format!("Invalid module name: {}", e)))
+                .body(Body::from(e))
                 .unwrap();
         }
     };
 
-    // Parse component name
-    let component_name = match ComponentName::new(request.component.clone()) {
+    // Parse entrypoint name
+    let entrypoint_name = match ComponentName::new(entrypoint.clone()) {
         Ok(name) => name,
         Err(e) => {
             return Response::builder()
                 .status(StatusCode::BAD_REQUEST)
                 .header("Content-Type", "text/html")
-                .body(Body::from(format!("Invalid component name: {}", e)))
+                .body(Body::from(format!("Invalid entrypoint name: {}", e)))
                 .unwrap();
         }
     };
@@ -264,7 +219,7 @@ async fn handle_render(
 
     let result = match program.evaluate_entrypoint(
         &module_name,
-        &component_name,
+        &entrypoint_name,
         params,
         css_content,
         true, // skip_optimization for faster hot-reload
@@ -303,11 +258,9 @@ pub fn create_router() -> axum::Router<AppState> {
     axum::Router::new()
         .route("/", get(handle_index))
         .route("/development_mode.js", get(handle_development_mode_js))
-        .route("/event_source", get(handle_event_source))
-        .route("/render", axum::routing::post(handle_render))
-        .route("/program", get(handle_program))
-        .route("/entrypoints", get(handle_entrypoints))
-        .route("/hmr/{module}/{component}", get(handle_hmr))
+        .route("/api/events", get(handle_event_source))
+        .route("/api/render/{entrypoint}", get(handle_render))
+        .route("/view/{entrypoint}", get(handle_hmr))
         .layer(cors)
 }
 
@@ -316,6 +269,7 @@ mod tests {
     use std::collections::HashMap;
 
     use super::*;
+    use axum::routing::get;
     use crate::{document::Document, hop::symbols::module_name::ModuleName};
     use axum_test::TestServer;
     use expect_test::expect;
@@ -338,9 +292,7 @@ mod tests {
         };
 
         let router = axum::Router::new()
-            .route("/render", axum::routing::post(handle_render))
-            .route("/program", axum::routing::get(handle_program))
-            .route("/entrypoints", axum::routing::get(handle_entrypoints))
+            .route("/render/{entrypoint}", get(handle_render))
             .with_state(app_state);
 
         TestServer::new(router).unwrap()
@@ -356,14 +308,12 @@ mod tests {
             }
         "#});
 
-        let response = server
-            .post("/render")
-            .json(&serde_json::json!({
-                "module": "test",
-                "component": "GreetingComp",
-                "params": {"name": "Alice", "title": "Welcome"}
-            }))
-            .await;
+        let params = serde_json::json!({"name": "Alice", "title": "Welcome"});
+        let url = format!(
+            "/render/GreetingComp?params={}",
+            urlencoding::encode(&params.to_string())
+        );
+        let response = server.get(&url).await;
 
         response.assert_status_ok();
         expect![[r#"<!DOCTYPE html><html><head><meta charset="utf-8"><meta content="width=device-width, initial-scale=1" name="viewport"></head><body><h1>Welcome</h1><p>Hello, Alice!</p></body></html>"#]]
@@ -379,13 +329,7 @@ mod tests {
             }
         "#});
 
-        let response = server
-            .post("/render")
-            .json(&serde_json::json!({
-                "module": "test",
-                "component": "SimpleComp"
-            }))
-            .await;
+        let response = server.get("/render/SimpleComp").await;
 
         response.assert_status_ok();
         expect![[r#"
@@ -409,13 +353,7 @@ mod tests {
             }
         "#});
 
-        let response = server
-            .post("/render")
-            .json(&serde_json::json!({
-                "module": "page",
-                "component": "Page"
-            }))
-            .await;
+        let response = server.get("/render/Page").await;
 
         response.assert_status_ok();
         expect![[r#"
@@ -424,7 +362,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn should_return_status_bad_request_for_render_when_asked_to_render_a_component_that_does_not_exist()
+    async fn should_return_status_bad_request_for_render_when_asked_to_render_an_entrypoint_that_does_not_exist()
      {
         let server = create_test_server(indoc::indoc! {r#"
             -- test.hop --
@@ -437,21 +375,15 @@ mod tests {
             }
         "#});
 
-        let response = server
-            .post("/render")
-            .json(&serde_json::json!({
-                "module": "test",
-                "component": "NonExistent"
-            }))
-            .await;
+        let response = server.get("/render/NonExistent").await;
 
         response.assert_status_bad_request();
-        expect!["Error rendering component: Entrypoint 'NonExistent' not found in module 'test'. Available entrypoints: GreetingComp, SimpleComp"]
+        expect!["Entrypoint 'NonExistent' not found. Available entrypoints: GreetingComp, SimpleComp"]
             .assert_eq(&response.text());
     }
 
     #[tokio::test]
-    async fn should_return_status_bad_request_for_render_when_receiving_invalid_json() {
+    async fn should_return_status_bad_request_for_render_when_receiving_invalid_params_json() {
         let server = create_test_server(indoc::indoc! {r#"
             -- test.hop --
             entrypoint SimpleComp() {
@@ -460,9 +392,7 @@ mod tests {
         "#});
 
         let response = server
-            .post("/render")
-            .content_type("application/json")
-            .bytes("invalid-json".into())
+            .get("/render/SimpleComp?params=invalid-json")
             .await;
 
         response.assert_status_bad_request();
@@ -472,9 +402,9 @@ mod tests {
     async fn should_return_status_bad_request_for_render_when_any_module_contains_parse_errors() {
         let server = create_test_server(indoc::indoc! {r#"
             -- good.hop --
-            <GoodComp>
+            entrypoint GoodComp() {
               <div>This is fine</div>
-            </GoodComp>
+            }
 
             -- broken.hop --
             <BrokenComp>
@@ -482,13 +412,7 @@ mod tests {
             </BrokenComp>
         "#});
 
-        let response = server
-            .post("/render")
-            .json(&serde_json::json!({
-                "module": "good",
-                "component": "GoodComp"
-            }))
-            .await;
+        let response = server.get("/render/GoodComp").await;
 
         response.assert_status_bad_request();
         let body = response.text();
@@ -500,9 +424,9 @@ mod tests {
     async fn should_return_status_bad_request_for_render_when_any_module_contains_type_errors() {
         let server = create_test_server(indoc::indoc! {r#"
             -- good.hop --
-            <GoodComp>
+            entrypoint GoodComp() {
               <div>This is fine</div>
-            </GoodComp>
+            }
 
             -- test.hop --
             <Foo {name: String}>
@@ -514,13 +438,7 @@ mod tests {
             </Bar>
         "#});
 
-        let response = server
-            .post("/render")
-            .json(&serde_json::json!({
-                "module": "good",
-                "component": "GoodComp"
-            }))
-            .await;
+        let response = server.get("/render/GoodComp").await;
 
         response.assert_status_bad_request();
         let body = response.text();

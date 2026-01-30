@@ -36,8 +36,8 @@ pub struct IrModule {
 pub struct IrEntrypointDeclaration {
     /// Entrypoint name (e.g. Index)
     pub name: ComponentName,
-    /// Original parameter names with their types (for function signature)
-    pub parameters: Vec<(VarName, Arc<Type>)>,
+    /// Original parameter names with their types and optional default values
+    pub parameters: Vec<(VarName, Arc<Type>, Option<IrExpr>)>,
     /// IR nodes for the entrypoint body
     pub body: Vec<IrStatement>,
 }
@@ -1367,10 +1367,16 @@ impl<'a> IrEntrypointDeclaration {
                     // soft line break
                     .append(BoxDoc::line_())
                     .append(BoxDoc::intersperse(
-                        self.parameters.iter().map(|(name, typ)| {
-                            BoxDoc::text(name.to_string())
+                        self.parameters.iter().map(|(name, typ, default)| {
+                            let base = BoxDoc::text(name.to_string())
                                 .append(BoxDoc::text(": "))
-                                .append(typ.to_doc())
+                                .append(typ.to_doc());
+                            match default {
+                                Some(expr) => base
+                                    .append(BoxDoc::text(" = "))
+                                    .append(expr.to_doc()),
+                                None => base,
+                            }
                         }),
                         BoxDoc::text(",").append(BoxDoc::line()),
                     ))

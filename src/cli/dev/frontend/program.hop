@@ -9,7 +9,7 @@ record Module {
   components: Array[Component],
 }
 
-entrypoint Program(modules: Array[Module]) {
+entrypoint Program(modules: Array[Module] = []) {
   <body class="mt-12 mb-30" style="background: #308d60;">
     <div
       class="max-w-7xl mx-auto"

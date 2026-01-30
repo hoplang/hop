@@ -30,7 +30,12 @@ impl Compiler {
         let param_info = entrypoint
             .params
             .into_iter()
-            .map(|param| (param.var_name, param.var_type))
+            .map(|param| {
+                let default = param
+                    .default_value
+                    .map(|expr| compiler.compile_expr(&expr));
+                (param.var_name, param.var_type, default)
+            })
             .collect::<Vec<_>>();
 
         let component_name = entrypoint.component_name;

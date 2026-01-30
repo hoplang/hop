@@ -4,8 +4,19 @@ record EntrypointData {
 }
 
 <Entrypoint {name: String, module: String}>
-  <div class="flex flex-col gap-4">
-    <div class="bg-white border border-[#d8d8d8] w-full h-40 rounded">
+  <a
+    href={"/view/" + name}
+    class="group flex flex-col gap-4"
+  >
+    <div class="bg-white border border-[#d8d8d8] w-full h-40 rounded overflow-hidden">
+      <iframe
+        class="w-[400%] h-[400%] scale-[0.25] origin-top-left pointer-events-none grayscale group-hover:grayscale-0 transition-[filter]"
+        scrolling="no"
+        tabindex="-1"
+        sandbox=""
+        src={"/api/render/" + name}
+      >
+      </iframe>
     </div>
     <div class="flex flex-col gap-0.5">
       <h2 class="text-lg text-[#111]">
@@ -15,7 +26,7 @@ record EntrypointData {
         in {module}
       </p>
     </div>
-  </div>
+  </a>
 </Entrypoint>
 
 <Logo {class: String = ""}>
@@ -43,7 +54,10 @@ record EntrypointData {
   </svg>
 </Logo>
 
-entrypoint Index(entrypoints: Array[EntrypointData]) {
+entrypoint Index(entrypoints: Array[EntrypointData] = [
+  EntrypointData(module: "index.hop", name: "Index"),
+  EntrypointData(module: "program.hop", name: "Program"),
+]) {
   <head>
     <link
       rel="stylesheet"
@@ -55,7 +69,9 @@ entrypoint Index(entrypoints: Array[EntrypointData]) {
     style="font-family: Inter, sans-serif;"
   >
     <div class="max-w-6xl px-6 mx-auto my-8 flex flex-col">
-      <Logo class="mt-1 lg:mt-2 mb-16 xl:mb-32"/>
+      <a href="/" class="mt-1 lg:mt-2 mb-16 xl:mb-32">
+        <Logo/>
+      </a>
       <div class="flex flex-col gap-6 xl:gap-8">
         <h1 class="text-3xl md:text-4xl font-light">
           Entrypoints

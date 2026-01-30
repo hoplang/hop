@@ -266,7 +266,7 @@ impl Transpiler for PythonTranspiler {
             result = result
                 .append(BoxDoc::text("("))
                 .append(BoxDoc::intersperse(
-                    entrypoint.parameters.iter().map(|(param_name, param_type)| {
+                    entrypoint.parameters.iter().map(|(param_name, param_type, _)| {
                         BoxDoc::text(param_name.as_str())
                             .append(BoxDoc::text(": "))
                             .append(self.transpile_type(param_type))

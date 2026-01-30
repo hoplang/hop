@@ -407,7 +407,7 @@ impl Pass for VariableRenamingPass {
 
         // Create renamed parameter mappings
         let mut renamed_params = Vec::new();
-        for (param_name, _) in &comp_decl.parameters {
+        for (param_name, _, _) in &comp_decl.parameters {
             let renamed = pass.bind_var(param_name);
             renamed_params.push(renamed);
         }
@@ -418,7 +418,7 @@ impl Pass for VariableRenamingPass {
         pass.pop_scope();
 
         // Create Let bindings for parameters if they were renamed
-        for (renamed, (original, typ)) in
+        for (renamed, (original, typ, _)) in
             renamed_params.into_iter().zip(&comp_decl.parameters).rev()
         {
             if renamed != *original {

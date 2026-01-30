@@ -26,7 +26,7 @@
   </svg>
 </ErrorIcon>
 
-entrypoint Overlay(message: String) {
+entrypoint Overlay(message: String = "") {
   <div class={
     classes!(
       "bg-[rgba(41,_39,_39,_0.98)]",

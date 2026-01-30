@@ -312,7 +312,7 @@ impl Transpiler for TsTranspiler {
 
         if !entrypoint.parameters.is_empty() {
             result = result.append(BoxDoc::intersperse(
-                entrypoint.parameters.iter().map(|(name, ty)| {
+                entrypoint.parameters.iter().map(|(name, ty, _)| {
                     BoxDoc::text(name.as_str())
                         .append(BoxDoc::text(": "))
                         .append(self.transpile_type(ty))
