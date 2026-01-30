@@ -173,20 +173,30 @@ impl Transpiler for RustTranspiler {
             }
         }
 
-        // Prepend escape_html helper function if needed (after transpilation determined it's used)
+        // Prepend write_escaped_html helper function if needed (after transpilation determined it's used)
         if self.needs_escape_html {
             let escape_fn = BoxDoc::nil()
-                .append(BoxDoc::text("fn escape_html(s: &str) -> String {"))
+                .append(BoxDoc::text("fn write_escaped_html(s: &str, output: &mut String) {"))
                 .append(BoxDoc::line())
-                .append(BoxDoc::text("    s.replace('&', \"&amp;\")"))
+                .append(BoxDoc::text("    for c in s.chars() {"))
                 .append(BoxDoc::line())
-                .append(BoxDoc::text("        .replace('<', \"&lt;\")"))
+                .append(BoxDoc::text("        match c {"))
                 .append(BoxDoc::line())
-                .append(BoxDoc::text("        .replace('>', \"&gt;\")"))
+                .append(BoxDoc::text("            '&' => output.push_str(\"&amp;\"),"))
                 .append(BoxDoc::line())
-                .append(BoxDoc::text("        .replace('\"', \"&quot;\")"))
+                .append(BoxDoc::text("            '<' => output.push_str(\"&lt;\"),"))
                 .append(BoxDoc::line())
-                .append(BoxDoc::text("        .replace('\\'', \"&#39;\")"))
+                .append(BoxDoc::text("            '>' => output.push_str(\"&gt;\"),"))
+                .append(BoxDoc::line())
+                .append(BoxDoc::text("            '\"' => output.push_str(\"&quot;\"),"))
+                .append(BoxDoc::line())
+                .append(BoxDoc::text("            '\\'' => output.push_str(\"&#39;\"),"))
+                .append(BoxDoc::line())
+                .append(BoxDoc::text("            _ => output.push(c),"))
+                .append(BoxDoc::line())
+                .append(BoxDoc::text("        }"))
+                .append(BoxDoc::line())
+                .append(BoxDoc::text("    }"))
                 .append(BoxDoc::line())
                 .append(BoxDoc::text("}"))
                 .append(BoxDoc::line())
@@ -281,15 +291,15 @@ impl StatementTranspiler for RustTranspiler {
             self.needs_escape_html = true;
             // HTML escaping needed
             match expr_type {
-                Type::String => BoxDoc::text("output.push_str(&escape_html(&")
+                Type::String => BoxDoc::text("write_escaped_html(&")
                     .append(self.transpile_expr(expr))
-                    .append(BoxDoc::text("));")),
-                Type::Int => BoxDoc::text("output.push_str(&escape_html(&")
+                    .append(BoxDoc::text(", &mut output);")),
+                Type::Int => BoxDoc::text("write_escaped_html(&")
                     .append(self.transpile_expr(expr))
-                    .append(BoxDoc::text(".to_string()));")),
-                _ => BoxDoc::text("output.push_str(&escape_html(&")
+                    .append(BoxDoc::text(".to_string(), &mut output);")),
+                _ => BoxDoc::text("write_escaped_html(&")
                     .append(self.transpile_expr(expr))
-                    .append(BoxDoc::text("));")),
+                    .append(BoxDoc::text(", &mut output);")),
             }
         } else {
             // No escaping needed

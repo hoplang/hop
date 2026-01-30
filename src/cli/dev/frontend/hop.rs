@@ -1,9 +1,14 @@
-fn escape_html(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-        .replace('\'', "&#39;")
+fn write_escaped_html(s: &str, output: &mut String) {
+    for c in s.chars() {
+        match c {
+            '&' => output.push_str("&amp;"),
+            '<' => output.push_str("&lt;"),
+            '>' => output.push_str("&gt;"),
+            '"' => output.push_str("&quot;"),
+            '\'' => output.push_str("&#39;"),
+            _ => output.push(c),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -49,18 +54,18 @@ pub fn index(entrypoints: &[EntrypointData]) -> String {
         let name = ep.name.to_owned();
         let module = ep.module.to_owned();
         output.push_str("<a href=\"");
-        output.push_str(&escape_html(&format!("{}{}", "/view/".to_string(), name)));
+        write_escaped_html(&format!("{}{}", "/view/".to_string(), name), &mut output);
         output.push_str("\" class=\"group flex flex-col gap-4\"><div");
         output.push_str(" class=\"bg-white border border-[#d8d8d8] w-full h-40 rounded overflow-hidden\"");
         output.push_str("><iframe");
         output.push_str(" class=\"w-[400%] h-[400%] scale-[0.25] origin-top-left pointer-events-none grayscale group-hover:grayscale-0 transition-[filter]\"");
         output.push_str(" scrolling=\"no\" tabindex=\"-1\" sandbox=\"\" src=\"");
-        output.push_str(&escape_html(&format!("{}{}", "/api/render/".to_string(), name)));
+        write_escaped_html(&format!("{}{}", "/api/render/".to_string(), name), &mut output);
         output.push_str("\"></iframe></div><div class=\"flex flex-col gap-0.5\"><h2");
         output.push_str(" class=\"text-lg text-[#111]\">");
-        output.push_str(&escape_html(&name));
+        write_escaped_html(&name, &mut output);
         output.push_str("</h2><p class=\"text-sm text-[#666666]\">in ");
-        output.push_str(&escape_html(&module));
+        write_escaped_html(&module, &mut output);
         output.push_str("</p></div></a>");
     }
     output.push_str("</div></div></div></body></html>");
@@ -85,7 +90,7 @@ pub fn overlay(message: &str) -> String {
     output.push_str("\\___/_/  /_/   \\____/_/      \n</pre></div><div class=\"");
     output.push_str("bg-[#201f1f] p-12 py-8 md:rounded-md border-t-[#ff6a6a] border-t-5 text-white grid md:grid-cols-[1fr_32px]");
     output.push_str("\"><pre class=\"overflow-scroll\">");
-    output.push_str(&escape_html(&message));
+    write_escaped_html(&message, &mut output);
     output.push_str("</pre><svg class=\"hidden md:block text-[#ff6a6a]\"");
     output.push_str(" xmlns=\"http://www.w3.org/2000/svg\" width=\"32\" height=\"32\"");
     output.push_str(" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path");
@@ -111,12 +116,12 @@ pub fn program(modules: &[Module]) -> String {
         output.push_str("<div class=\"p-4 bg-black text-white\"><div");
         output.push_str(" class=\"flex items-center justify-between\"><h1");
         output.push_str(" class=\"text-lg\">");
-        output.push_str(&escape_html(&module.name));
+        write_escaped_html(&module.name, &mut output);
         output.push_str("</h1></div><details class=\"text-[14px] p-2 mt-2\"><summary>");
         output.push_str("Components</summary><ul>");
         for c in module.components.iter().cloned() {
             output.push_str("<li>");
-            output.push_str(&escape_html(&c.name));
+            write_escaped_html(&c.name, &mut output);
             output.push_str("</li>");
         }
         output.push_str("</ul></details></div>");

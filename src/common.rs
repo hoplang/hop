@@ -1,16 +1,16 @@
 // Escape HTML special characters to prevent XSS
 // Converts &, <, >, ", and ' to their HTML entity equivalents
-pub fn escape_html(text: &str) -> String {
-    text.chars()
-        .map(|c| match c {
-            '&' => "&amp;".to_string(),
-            '<' => "&lt;".to_string(),
-            '>' => "&gt;".to_string(),
-            '"' => "&quot;".to_string(),
-            '\'' => "&#39;".to_string(),
-            _ => c.to_string(),
-        })
-        .collect()
+pub fn write_escaped_html(text: &str, output: &mut String) {
+    for c in text.chars() {
+        match c {
+            '&' => output.push_str("&amp;"),
+            '<' => output.push_str("&lt;"),
+            '>' => output.push_str("&gt;"),
+            '"' => output.push_str("&quot;"),
+            '\'' => output.push_str("&#39;"),
+            _ => output.push(c),
+        }
+    }
 }
 
 // Return true if the string represents a void element

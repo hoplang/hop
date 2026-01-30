@@ -1,5 +1,5 @@
 use super::Pass;
-use crate::common::escape_html;
+use crate::common::write_escaped_html;
 use crate::ir::IrExpr;
 use crate::ir::ast::{IrEntrypointDeclaration, IrStatement};
 
@@ -21,7 +21,9 @@ impl Pass for WriteExprSimplificationPass {
                 {
                     // Apply HTML escaping if needed
                     let content = if *escape {
-                        escape_html(s)
+                        let mut buf = String::new();
+                        write_escaped_html(s, &mut buf);
+                        buf
                     } else {
                         s.to_string()
                     };

@@ -1,7 +1,7 @@
 use crate::document::CheapString;
 use crate::ir::IrExpr;
 use crate::{
-    common::escape_html,
+    common::write_escaped_html,
     dop::semantics::r#type::{ComparableType, EquatableType, NumericType},
 };
 use anyhow::{Result, anyhow};
@@ -203,7 +203,7 @@ fn eval_statement(node: &IrStatement, env: &mut Env, output: &mut String) -> Res
             let value = evaluate_expr(expr, env)?;
             let s = value.to_output_string();
             if *escape {
-                output.push_str(&escape_html(&s));
+                write_escaped_html(&s, output);
             } else {
                 output.push_str(&s);
             }
