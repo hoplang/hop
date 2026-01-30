@@ -73,24 +73,21 @@ async fn handle_development_mode_js() -> Response<Body> {
         .unwrap()
 }
 
-async fn handle_hmr(
-    axum::extract::Path(entrypoint): axum::extract::Path<String>,
-) -> Response<Body> {
-    let config = serde_json::json!({
-        "entrypoint": entrypoint,
-        "params": {}
-    });
+async fn handle_idiomorph_js() -> Response<Body> {
+    Response::builder()
+        .header("Content-Type", "application/javascript")
+        .header("Cache-Control", "public, max-age=31536000, immutable")
+        .body(Body::from(include_str!("./js/idiomorph.js")))
+        .unwrap()
+}
 
-    let html = format!(
-        r#"<!DOCTYPE html>
-<script type="application/json">{config}</script>
-<script src="/development_mode.js"></script>"#,
-        config = config
-    );
-
+async fn handle_hmr() -> Response<Body> {
     Response::builder()
         .header("Content-Type", "text/html")
-        .body(Body::from(html))
+        .body(Body::from(
+            r#"<!DOCTYPE html>
+<script type="module" src="/development_mode.js"></script>"#,
+        ))
         .unwrap()
 }
 
@@ -258,6 +255,7 @@ pub fn create_router() -> axum::Router<AppState> {
     axum::Router::new()
         .route("/", get(handle_index))
         .route("/development_mode.js", get(handle_development_mode_js))
+        .route("/idiomorph.js", get(handle_idiomorph_js))
         .route("/api/events", get(handle_event_source))
         .route("/api/render/{entrypoint}", get(handle_render))
         .route("/view/{entrypoint}", get(handle_hmr))
