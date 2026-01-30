@@ -52,21 +52,22 @@ function restoreHTMLFromCache() {
 
 /**
  * Shows the error overlay with pre-styled HTML from the server.
- * Uses Shadow DOM to isolate styles from the host page.
+ * Uses an iframe to fully isolate styles and support @property rules.
  *
- * @param {string} html - The pre-styled HTML to display
+ * @param {string} html - The full HTML document to display
  */
 function showErrorOverlay(html) {
-	let overlay = document.getElementById(ERROR_OVERLAY_ID);
+	let overlay = /** @type {HTMLIFrameElement | null} */ (
+		document.getElementById(ERROR_OVERLAY_ID)
+	);
 	if (!overlay) {
-		overlay = document.createElement("div");
+		overlay = document.createElement("iframe");
 		overlay.id = ERROR_OVERLAY_ID;
-		overlay.style.cssText = "position: fixed; inset: 0; z-index: 2147483647;";
+		overlay.style.cssText =
+			"position: fixed; inset: 0; width: 100%; height: 100%; border: none; z-index: 2147483647;";
 		document.documentElement.appendChild(overlay);
 	}
-	const shadowRoot =
-		overlay.shadowRoot ?? overlay.attachShadow({ mode: "open" });
-	shadowRoot.innerHTML = html;
+	overlay.srcdoc = html;
 }
 
 /**

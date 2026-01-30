@@ -131,10 +131,11 @@ async fn handle_render(
         Some(params_str) => match serde_json::from_str(params_str) {
             Ok(p) => p,
             Err(e) => {
+                let error_html = frontend::overlay(&format!("Invalid params JSON: {}", e));
                 return Response::builder()
                     .status(StatusCode::BAD_REQUEST)
                     .header("Content-Type", "text/html")
-                    .body(Body::from(format!("Invalid params JSON: {}", e)))
+                    .body(Body::from(error_html))
                     .unwrap();
             }
         },
@@ -160,10 +161,11 @@ async fn handle_render(
     let module_name = match find_module_for_entrypoint(&program, &entrypoint) {
         Ok(name) => name,
         Err(e) => {
+            let error_html = frontend::overlay(&e);
             return Response::builder()
                 .status(StatusCode::BAD_REQUEST)
                 .header("Content-Type", "text/html")
-                .body(Body::from(e))
+                .body(Body::from(error_html))
                 .unwrap();
         }
     };
@@ -172,10 +174,11 @@ async fn handle_render(
     let entrypoint_name = match ComponentName::new(entrypoint.clone()) {
         Ok(name) => name,
         Err(e) => {
+            let error_html = frontend::overlay(&format!("Invalid entrypoint name: {}", e));
             return Response::builder()
                 .status(StatusCode::BAD_REQUEST)
                 .header("Content-Type", "text/html")
-                .body(Body::from(format!("Invalid entrypoint name: {}", e)))
+                .body(Body::from(error_html))
                 .unwrap();
         }
     };
@@ -226,11 +229,14 @@ async fn handle_render(
             .header("Content-Type", "text/html")
             .body(Body::from(html))
             .unwrap(),
-        Err(e) => Response::builder()
-            .status(StatusCode::BAD_REQUEST)
-            .header("Content-Type", "text/html")
-            .body(Body::from(format!("Error rendering component: {}", e)))
-            .unwrap(),
+        Err(e) => {
+            let error_html = frontend::overlay(&format!("Error rendering component: {}", e));
+            Response::builder()
+                .status(StatusCode::BAD_REQUEST)
+                .header("Content-Type", "text/html")
+                .body(Body::from(error_html))
+                .unwrap()
+        }
     };
 
     log_info!(
@@ -376,8 +382,9 @@ mod tests {
         let response = server.get("/render/NonExistent").await;
 
         response.assert_status_bad_request();
-        expect!["Entrypoint 'NonExistent' not found. Available entrypoints: GreetingComp, SimpleComp"]
-            .assert_eq(&response.text());
+        assert!(response.text().contains(
+            "Entrypoint &#39;NonExistent&#39; not found. Available entrypoints: GreetingComp, SimpleComp"
+        ));
     }
 
     #[tokio::test]
