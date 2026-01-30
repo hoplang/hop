@@ -181,6 +181,9 @@ pub enum IrExpr {
     /// N-ary merge of CSS classes from classes!(a, b, c, ...)
     MergeClasses { args: Vec<IrExpr>, id: ExprId },
 
+    /// Tailwind merge wrapper applied at class attribute boundary
+    TwMerge { value: Box<IrExpr>, id: ExprId },
+
     /// Numeric addition expression for adding numeric values
     NumericAdd {
         left: Box<IrExpr>,
@@ -735,6 +738,7 @@ impl IrExpr {
             | IrExpr::Match { id, .. }
             | IrExpr::StringConcat { id, .. }
             | IrExpr::MergeClasses { id, .. }
+            | IrExpr::TwMerge { id, .. }
             | IrExpr::NumericAdd { id, .. }
             | IrExpr::NumericSubtract { id, .. }
             | IrExpr::NumericMultiply { id, .. }
@@ -771,6 +775,7 @@ impl IrExpr {
 
             IrExpr::StringConcat { .. }
             | IrExpr::MergeClasses { .. }
+            | IrExpr::TwMerge { .. }
             | IrExpr::StringLiteral { .. }
             | IrExpr::IntToString { .. }
             | IrExpr::FloatToString { .. } => Arc::new(Type::String),
@@ -820,6 +825,7 @@ impl IrExpr {
 
             IrExpr::StringConcat { .. }
             | IrExpr::MergeClasses { .. }
+            | IrExpr::TwMerge { .. }
             | IrExpr::StringLiteral { .. }
             | IrExpr::IntToString { .. }
             | IrExpr::FloatToString { .. } => &STRING_TYPE,
@@ -1139,12 +1145,15 @@ impl IrExpr {
                 .append(value.to_doc())
                 .append(BoxDoc::text(" in "))
                 .append(body.to_doc()),
-            IrExpr::MergeClasses { args, .. } => BoxDoc::text("tw_merge(")
+            IrExpr::MergeClasses { args, .. } => BoxDoc::text("merge_classes(")
                 .append(BoxDoc::intersperse(
                     args.iter().map(|arg| arg.to_doc()),
                     BoxDoc::text(", "),
                 ))
                 .append(BoxDoc::text(")")),
+            IrExpr::TwMerge { value, .. } => {
+                BoxDoc::text("tw_merge(").append(value.to_doc()).append(BoxDoc::text(")"))
+            }
             IrExpr::ArrayLength { array, .. } => array.to_doc().append(BoxDoc::text(".len()")),
             IrExpr::IntToString { value, .. } => {
                 value.to_doc().append(BoxDoc::text(".to_string()"))
@@ -1238,6 +1247,9 @@ impl IrExpr {
                 for arg in args {
                     arg.traverse(f);
                 }
+            }
+            IrExpr::TwMerge { value, .. } => {
+                value.traverse(f);
             }
             IrExpr::ArrayLength { array, .. } => {
                 array.traverse(f);
@@ -1338,6 +1350,9 @@ impl IrExpr {
                 for arg in args {
                     arg.traverse_mut(f);
                 }
+            }
+            IrExpr::TwMerge { value, .. } => {
+                value.traverse_mut(f);
             }
             IrExpr::ArrayLength { array, .. } => {
                 array.traverse_mut(f);

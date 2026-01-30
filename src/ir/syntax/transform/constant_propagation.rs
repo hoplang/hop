@@ -128,6 +128,7 @@ impl Pass for ConstantPropagationPass {
 
         let mut initial_constants = Vec::new();
         let mut not_operands = Vec::new();
+        let mut tw_merge_operands: Vec<(ExprId, ExprId)> = Vec::new();
         // Binary operations: (operand_id => (result_id, op))
         let mut binary_left_operands: Vec<(ExprId, (ExprId, BinaryOp))> = Vec::new();
         let mut binary_right_operands: Vec<(ExprId, (ExprId, BinaryOp))> = Vec::new();
@@ -400,6 +401,10 @@ impl Pass for ConstantPropagationPass {
                         IrExpr::IntToFloat { .. } => {
                             // Not yet implemented
                         }
+                        IrExpr::TwMerge { value, .. } => {
+                            // Track TwMerge for constant folding: (inner_id, result_id)
+                            tw_merge_operands.push((value.id(), expr.id()));
+                        }
                         IrExpr::OptionLiteral { value, .. } => {
                             // Track the full Option constant with inner expression id
                             let inner_id = value.as_ref().map(|inner| inner.id());
@@ -427,6 +432,9 @@ impl Pass for ConstantPropagationPass {
 
         // Not operations keyed by operand: (operand_id => expr_id)
         let not_operand = Relation::from_iter(not_operands);
+
+        // TwMerge operations keyed by inner value: (inner_id => expr_id)
+        let tw_merge_operand = Relation::from_iter(tw_merge_operands);
 
         // Binary operations - left operand: (left_operand_id => (result_id, op))
         let binary_left = Relation::from_iter(binary_left_operands);
@@ -518,6 +526,20 @@ impl Pass for ConstantPropagationPass {
                 );
             }
 
+            // Fold IrExpr::TwMerge - apply tw_merge to constant string values
+            {
+                const_value.from_join(
+                    &const_value,
+                    &tw_merge_operand,
+                    |_: &ExprId, const_val: &Const, expr_id: &ExprId| match const_val {
+                        Const::String(s) => {
+                            (*expr_id, Const::String(CheapString::new(tw_merge(s.as_str()))))
+                        }
+                        _ => unreachable!("TwMerge can only have string operands"),
+                    },
+                );
+            }
+
             // Note: NumericNegation constant folding is not implemented since
             // the Const enum doesn't have Int/Float variants.
 
@@ -553,8 +575,9 @@ impl Pass for ConstantPropagationPass {
                             },
                             BinaryOp::MergeClasses => match (left_val, right_val) {
                                 (Const::String(l), Const::String(r)) => {
+                                    // Just concatenate with space - tw_merge is applied at TwMerge boundary
                                     let combined = format!("{} {}", l, r);
-                                    Const::String(CheapString::new(tw_merge(&combined)))
+                                    Const::String(CheapString::new(combined))
                                 }
                                 _ => unreachable!("MergeClasses can only have string operands"),
                             },
@@ -1485,16 +1508,17 @@ mod tests {
     fn should_fold_merge_classes_with_constant_strings() {
         check(
             build_ir_no_params("Test", |t| {
-                t.write_expr_escaped(t.merge_classes(vec![
+                let classes = t.merge_classes(vec![
                     t.str("flex"),
                     t.str("items-center"),
                     t.str("gap-4"),
-                ]));
+                ]);
+                t.write_expr_escaped(t.tw_merge(classes));
             }),
             expect![[r#"
                 -- before --
                 Test() {
-                  write_escaped(tw_merge("flex", "items-center", "gap-4"))
+                  write_escaped(tw_merge(merge_classes("flex", "items-center", "gap-4")))
                 }
 
                 -- after --
@@ -1509,16 +1533,17 @@ mod tests {
     fn should_fold_merge_classes_with_tailwind_conflicts() {
         check(
             build_ir_no_params("Test", |t| {
-                t.write_expr_escaped(t.merge_classes(vec![
+                let classes = t.merge_classes(vec![
                     t.str("px-4"),
                     t.str("py-2"),
                     t.str("p-6"),
-                ]));
+                ]);
+                t.write_expr_escaped(t.tw_merge(classes));
             }),
             expect![[r#"
                 -- before --
                 Test() {
-                  write_escaped(tw_merge("px-4", "py-2", "p-6"))
+                  write_escaped(tw_merge(merge_classes("px-4", "py-2", "p-6")))
                 }
 
                 -- after --
@@ -1535,7 +1560,8 @@ mod tests {
             build_ir_no_params("Test", |t| {
                 t.let_stmt("base", t.str("flex items-center"), |t| {
                     t.let_stmt("extra", t.str("gap-4 text-red-500"), |t| {
-                        t.write_expr_escaped(t.merge_classes(vec![t.var("base"), t.var("extra")]));
+                        let classes = t.merge_classes(vec![t.var("base"), t.var("extra")]);
+                        t.write_expr_escaped(t.tw_merge(classes));
                     });
                 });
             }),
@@ -1544,7 +1570,7 @@ mod tests {
                 Test() {
                   let base = "flex items-center" in {
                     let extra = "gap-4 text-red-500" in {
-                      write_escaped(tw_merge(base, extra))
+                      write_escaped(tw_merge(merge_classes(base, extra)))
                     }
                   }
                 }
@@ -1585,15 +1611,19 @@ mod tests {
     fn should_fold_nested_merge_classes() {
         check(
             build_ir_no_params("Test", |t| {
-                t.write_expr_escaped(t.merge_classes(vec![
+                // Inner merge_classes just concatenates: "px-2 p-3"
+                // Outer merge_classes concatenates: "px-4 px-2 p-3"
+                // tw_merge resolves conflicts: "p-3"
+                let classes = t.merge_classes(vec![
                     t.str("px-4"),
                     t.merge_classes(vec![t.str("px-2"), t.str("p-3")]),
-                ]));
+                ]);
+                t.write_expr_escaped(t.tw_merge(classes));
             }),
             expect![[r#"
                 -- before --
                 Test() {
-                  write_escaped(tw_merge("px-4", tw_merge("px-2", "p-3")))
+                  write_escaped(tw_merge(merge_classes("px-4", merge_classes("px-2", "p-3"))))
                 }
 
                 -- after --
@@ -1609,23 +1639,24 @@ mod tests {
         check(
             build_ir_with_enums_no_params("Test", vec![("Size", vec!["Small", "Large"])], |t| {
                 t.let_stmt("size", t.enum_variant("Size", "Large"), |t| {
-                    t.write_expr_escaped(t.merge_classes(vec![
+                    let classes = t.merge_classes(vec![
                         t.str("px-4"),
                         t.match_expr(
                             t.var("size"),
                             vec![("Small", t.str("text-sm")), ("Large", t.str("text-lg"))],
                         ),
-                    ]));
+                    ]);
+                    t.write_expr_escaped(t.tw_merge(classes));
                 });
             }),
             expect![[r#"
                 -- before --
                 Test() {
                   let size = Size::Large in {
-                    write_escaped(tw_merge("px-4", match size {
+                    write_escaped(tw_merge(merge_classes("px-4", match size {
                       Size::Small => "text-sm",
                       Size::Large => "text-lg",
-                    }))
+                    })))
                   }
                 }
 
@@ -1644,7 +1675,7 @@ mod tests {
         check(
             build_ir_with_enums_no_params("Test", vec![("Size", vec!["Small", "Large"])], |t| {
                 t.let_stmt("size", t.enum_variant("Size", "Large"), |t| {
-                    t.write_expr_escaped(t.merge_classes(vec![
+                    let classes = t.merge_classes(vec![
                         t.str("flex"),
                         t.match_expr(
                             t.var("size"),
@@ -1659,17 +1690,18 @@ mod tests {
                                 ),
                             ],
                         ),
-                    ]));
+                    ]);
+                    t.write_expr_escaped(t.tw_merge(classes));
                 });
             }),
             expect![[r#"
                 -- before --
                 Test() {
                   let size = Size::Large in {
-                    write_escaped(tw_merge("flex", match size {
-                      Size::Small => tw_merge("p-2", "text-sm"),
-                      Size::Large => tw_merge("p-4", "text-lg"),
-                    }))
+                    write_escaped(tw_merge(merge_classes("flex", match size {
+                      Size::Small => merge_classes("p-2", "text-sm"),
+                      Size::Large => merge_classes("p-4", "text-lg"),
+                    })))
                   }
                 }
 

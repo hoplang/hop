@@ -836,6 +836,13 @@ impl IrBuilder {
         }
     }
 
+    pub fn tw_merge(&self, value: IrExpr) -> IrExpr {
+        IrExpr::TwMerge {
+            value: Box::new(value),
+            id: self.next_expr_id(),
+        }
+    }
+
     // Statement methods that auto-collect
     pub fn write(&mut self, s: &str) {
         self.statements.push(IrStatement::Write {

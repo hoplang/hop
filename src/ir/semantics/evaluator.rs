@@ -759,8 +759,16 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value> {
                     _ => return Err(anyhow!("MergeClasses requires string arguments")),
                 }
             }
+            // Just concatenate - tw_merge is applied at TwMerge boundary
             let combined = strings.join(" ");
-            Ok(Value::String(tw_merge(&combined)))
+            Ok(Value::String(combined))
+        }
+        IrExpr::TwMerge { value, .. } => {
+            let val = evaluate_expr(value, env)?;
+            match val {
+                Value::String(s) => Ok(Value::String(tw_merge(&s))),
+                _ => Err(anyhow!("TwMerge requires a string argument")),
+            }
         }
         IrExpr::ArrayLength { array, .. } => {
             let array_val = evaluate_expr(array, env)?;

@@ -295,10 +295,19 @@ impl Compiler {
                         content: format!(" {}=\"", name.as_str()),
                     });
                     let compiled_expr = self.compile_expr(&expr);
+                    // Wrap class attribute values in TwMerge for Tailwind class merging
+                    let final_expr = if name.as_str() == "class" {
+                        IrExpr::TwMerge {
+                            value: Box::new(compiled_expr),
+                            id: self.next_expr_id(),
+                        }
+                    } else {
+                        compiled_expr
+                    };
                     let should_escape = expr.as_type() != &Type::TrustedHTML;
                     output.push(IrStatement::WriteExpr {
                         id: self.next_node_id(),
-                        expr: compiled_expr,
+                        expr: final_expr,
                         escape: should_escape,
                     });
                     output.push(IrStatement::Write {

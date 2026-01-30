@@ -6105,7 +6105,7 @@ mod tests {
                 Test() {
                   write("<div")
                   write(" class=\"")
-                  write_escaped(tw_merge("foo", "bar", "baz"))
+                  write_escaped(tw_merge(merge_classes("foo", "bar", "baz")))
                   write("\"")
                   write(">")
                   write("</div>")
@@ -6306,7 +6306,7 @@ mod tests {
                   let class_1 = "my-class" in {
                     write("<div")
                     write(" class=\"")
-                    write_escaped(class_1)
+                    write_escaped(tw_merge(class_1))
                     write("\"")
                     write(">")
                     write("</div>")
