@@ -1,3 +1,9 @@
+import lucide::ArrowRight
+import lucide::ArrowUpRight
+import lucide::Search
+import lucide::Maximize
+import lucide::Maximize2
+
 record EntrypointData {
   name: String,
   module: String,
@@ -6,17 +12,57 @@ record EntrypointData {
 <Entrypoint {name: String, module: String}>
   <a
     href={"/view/" + name}
-    class="group flex flex-col gap-4"
+    class="group flex flex-col gap-4 outline-none"
   >
-    <div class="bg-white border border-[#d8d8d8] w-full h-40 rounded overflow-hidden">
+    <div class={
+      classes!(
+        "w-full",
+        "h-40",
+        "border",
+        "border-neutral-300",
+        "rounded",
+        "relative",
+        "overflow-hidden",
+        "group-focus:ring-3",
+        "ring-neutral-200",
+      )
+    }>
       <iframe
-        class="w-[400%] h-[400%] scale-[0.25] origin-top-left pointer-events-none grayscale group-hover:grayscale-0 transition-[filter]"
+        class={
+          classes!(
+            "w-[400%]",
+            "h-[400%]",
+            "scale-[0.25]",
+            "origin-top-left",
+            "pointer-events-none",
+            "grayscale",
+            "group-hover:grayscale-0",
+            "group-focus:grayscale-0",
+            "transition-[filter]",
+          )
+        }
         scrolling="no"
         tabindex="-1"
         sandbox=""
         src={"/api/render/" + name}
       >
       </iframe>
+      <div class={
+        classes!(
+          "absolute",
+          "right-0",
+          "bottom-0",
+          "z-index-1000",
+          "opacity-0",
+          "p-2",
+          "bg-white",
+          "rounded-tl",
+          "group-hover:opacity-100",
+          "transition-opacity",
+        )
+      }>
+        <Maximize/>
+      </div>
     </div>
     <div class="flex flex-col gap-0.5">
       <h2 class="text-lg text-[#111]">
@@ -69,14 +115,28 @@ entrypoint Index(entrypoints: Array[EntrypointData] = [
     style="font-family: Inter, sans-serif;"
   >
     <div class="max-w-6xl px-6 mx-auto my-8 flex flex-col">
-      <a href="/" class="mt-1 lg:mt-2 mb-16 xl:mb-32">
+      <a
+        href="/"
+        class="mt-1 lg:mt-2 mb-16 xl:mb-32"
+        tabindex="-1"
+      >
         <Logo/>
       </a>
       <div class="flex flex-col gap-6 xl:gap-8">
         <h1 class="text-3xl md:text-4xl font-light">
           Entrypoints
         </h1>
-        <div class="grid sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-12 sm:gap-8 lg:gap-14">
+        <div class={
+          classes!(
+            "grid",
+            "sm:grid-cols-2",
+            "md:grid-cols-3",
+            "lg:grid-cols-4",
+            "gap-12",
+            "sm:gap-8",
+            "lg:gap-14",
+          )
+        }>
           <for {ep in entrypoints}>
             <Entrypoint name={ep.name} module={ep.module}/>
           </for>
