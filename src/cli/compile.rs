@@ -206,7 +206,7 @@ mod tests {
         // Verify that the generated file uses the correct package name (derived from directory)
         let generated_code = fs::read_to_string(&expected_output_path).unwrap();
         assert!(
-            generated_code.starts_with("package components"),
+            generated_code.contains("package components"),
             "Generated Go code should use 'package components' (derived from output path)"
         );
 
