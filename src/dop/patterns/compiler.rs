@@ -293,7 +293,6 @@ impl<'a> Compiler<'a> {
         subject_name: &str,
         subject_type: Arc<Type>,
         subject_range: &DocumentRange,
-        match_range: &DocumentRange,
     ) -> Result<Decision, TypeError> {
         // Validate subject type is matchable
         if !matches!(
@@ -309,7 +308,7 @@ impl<'a> Compiler<'a> {
         // Check for empty arms
         if patterns.is_empty() {
             return Err(TypeError::MatchNoArms {
-                range: match_range.clone(),
+                range: subject_range.clone(),
             });
         }
 
@@ -352,7 +351,7 @@ impl<'a> Compiler<'a> {
             missing.sort();
             return Err(TypeError::MatchMissingVariants {
                 variants: missing,
-                range: match_range.clone(),
+                range: subject_range.clone(),
             });
         }
 
@@ -363,7 +362,7 @@ impl<'a> Compiler<'a> {
         if let Decision::Success(body) = &tree {
             if body.bindings.is_empty() {
                 return Err(TypeError::MatchUseless {
-                    range: match_range.clone(),
+                    range: subject_range.clone(),
                 });
             }
         }
@@ -987,13 +986,8 @@ mod tests {
         let expr = parser::parse_expr(&mut iter, &mut comments, &mut errors, &range)
             .expect("Failed to parse expression");
 
-        let (subject_name, subject_range, patterns, match_range) = match expr {
-            ParsedExpr::Match {
-                subject,
-                arms,
-                range,
-                ..
-            } => {
+        let (subject_name, subject_range, patterns) = match expr {
+            ParsedExpr::Match { subject, arms, .. } => {
                 let (name, subject_range) = match subject.as_ref() {
                     ParsedExpr::Var { value, range, .. } => {
                         (value.as_str().to_string(), range.clone())
@@ -1004,7 +998,6 @@ mod tests {
                     name,
                     subject_range,
                     arms.into_iter().map(|a| a.pattern).collect::<Vec<_>>(),
-                    range,
                 )
             }
             _ => panic!("Expected match expression"),
@@ -1016,7 +1009,6 @@ mod tests {
             &subject_name,
             Arc::new(subject_type),
             &subject_range,
-            &match_range,
         );
 
         let actual = match result {
@@ -1155,11 +1147,7 @@ mod tests {
             expect![[r#"
                 error: Match expression is missing arms for: false
                 match x {
-                ^^^^^^^^^
-                    true => 0,
-                ^^^^^^^^^^^^^^
-                }
-                ^
+                      ^
             "#]],
         );
     }
@@ -1176,11 +1164,7 @@ mod tests {
             expect![[r#"
                 error: Match expression is missing arms for: true
                 match x {
-                ^^^^^^^^^
-                    false => 0,
-                ^^^^^^^^^^^^^^^
-                }
-                ^
+                      ^
             "#]],
         );
     }
@@ -1216,11 +1200,7 @@ mod tests {
             expect![[r#"
                 error: Useless match expression: does not branch or bind any variables
                 match x {
-                ^^^^^^^^^
-                    _ => 0,
-                ^^^^^^^^^^^
-                }
-                ^
+                      ^
             "#]],
         );
     }
@@ -1275,11 +1255,7 @@ mod tests {
             expect![[r#"
                 error: Match expression is missing arms for: None
                 match x {
-                ^^^^^^^^^
-                    Some(item) => 0,
-                ^^^^^^^^^^^^^^^^^^^^
-                }
-                ^
+                      ^
             "#]],
         );
     }
@@ -1296,11 +1272,7 @@ mod tests {
             expect![[r#"
                 error: Match expression is missing arms for: Some(_)
                 match x {
-                ^^^^^^^^^
-                    None => 0,
-                ^^^^^^^^^^^^^^
-                }
-                ^
+                      ^
             "#]],
         );
     }
@@ -1382,13 +1354,7 @@ mod tests {
             expect![[r#"
                 error: Match expression is missing arms for: Color::Blue
                 match x {
-                ^^^^^^^^^
-                    Color::Red => 0,
-                ^^^^^^^^^^^^^^^^^^^^
-                    Color::Green => 1,
-                ^^^^^^^^^^^^^^^^^^^^^^
-                }
-                ^
+                      ^
             "#]],
         );
     }
@@ -1699,11 +1665,7 @@ mod tests {
             expect![[r#"
                 error: Useless match expression: does not branch or bind any variables
                 match x {
-                ^^^^^^^^^
-                    _ => 0,
-                ^^^^^^^^^^^
-                }
-                ^
+                      ^
             "#]],
         );
     }
@@ -1798,11 +1760,7 @@ mod tests {
             expect![[r#"
                 error: Match expression is missing arms for: Outcome::Failure(message: _)
                 match x {
-                ^^^^^^^^^
-                    Outcome::Success(value: v) => 0,
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                }
-                ^
+                      ^
             "#]],
         );
     }
@@ -1833,11 +1791,7 @@ mod tests {
             expect![[r#"
                 error: Match expression is missing arms for: Status::Active(id: _), Status::Inactive
                 match x {
-                ^^^^^^^^^
-                    Status::Pending(since: _) => 0,
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                }
-                ^
+                      ^
             "#]],
         );
     }
@@ -2153,11 +2107,7 @@ mod tests {
             expect![[r#"
                 error: Match expression is missing arms for: Container::Wrapped(inner: None)
                 match x {
-                ^^^^^^^^^
-                    Container::Wrapped(inner: Some(v)) => 0,
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                }
-                ^
+                      ^
             "#]],
         );
     }
@@ -2208,11 +2158,7 @@ mod tests {
             expect![[r#"
                 error: Match expression is missing arms for: Flag::Active(enabled: false)
                 match x {
-                ^^^^^^^^^
-                    Flag::Active(enabled: true) => 0,
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                }
-                ^
+                      ^
             "#]],
         );
     }
@@ -2447,11 +2393,7 @@ mod tests {
             expect![[r#"
                 error: Useless match expression: does not branch or bind any variables
                 match x {
-                ^^^^^^^^^
-                    _ => 0,
-                ^^^^^^^^^^^
-                }
-                ^
+                      ^
             "#]],
         );
     }
@@ -2527,13 +2469,7 @@ mod tests {
             expect![[r#"
                 error: Match expression is missing arms for: Some(None)
                 match x {
-                ^^^^^^^^^
-                    Some(Some(_)) => 0,
-                ^^^^^^^^^^^^^^^^^^^^^^^
-                    None => 1,
-                ^^^^^^^^^^^^^^
-                }
-                ^
+                      ^
             "#]],
         );
     }
@@ -2552,15 +2488,7 @@ mod tests {
             expect![[r#"
                 error: Match expression is missing arms for: Some(Some(true))
                 match x {
-                ^^^^^^^^^
-                    Some(Some(false)) => 0,
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                    Some(None) => 1,
-                ^^^^^^^^^^^^^^^^^^^^
-                    None => 2,
-                ^^^^^^^^^^^^^^
-                }
-                ^
+                      ^
             "#]],
         );
     }
@@ -2605,13 +2533,7 @@ mod tests {
             expect![[r#"
                 error: Match expression is missing arms for: Some(Some(_))
                 match x {
-                ^^^^^^^^^
-                    Some(None) => 1,
-                ^^^^^^^^^^^^^^^^^^^^
-                    None => 2,
-                ^^^^^^^^^^^^^^
-                }
-                ^
+                      ^
             "#]],
         );
     }
@@ -2713,11 +2635,7 @@ mod tests {
             expect![[r#"
                 error: Match expression is missing arms for: Color::Blue, Color::Green
                 match x {
-                ^^^^^^^^^
-                    Color::Red => 0,
-                ^^^^^^^^^^^^^^^^^^^^
-                }
-                ^
+                      ^
             "#]],
         );
     }
@@ -2743,11 +2661,7 @@ mod tests {
             expect![[r#"
                 error: Useless match expression: does not branch or bind any variables
                 match x {
-                ^^^^^^^^^
-                    User(name: _, age: _) => 0,
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                }
-                ^
+                      ^
             "#]],
         );
     }
@@ -2807,11 +2721,7 @@ mod tests {
             expect![[r#"
                 error: Match expression is missing arms for: User(name: _, email: None)
                 match x {
-                ^^^^^^^^^
-                    User(name: n, email: Some(e)) => 0,
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                }
-                ^
+                      ^
             "#]],
         );
     }
@@ -2837,15 +2747,7 @@ mod tests {
             expect![[r#"
                 error: Match expression is missing arms for: Foo(a: false, b: false)
                 match x {
-                ^^^^^^^^^
-                    Foo(a: true, b: true) => 0,
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                    Foo(a: true, b: false) => 1,
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                    Foo(a: false, b: true) => 2,
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                }
-                ^
+                      ^
             "#]],
         );
     }
@@ -2870,13 +2772,7 @@ mod tests {
             expect![[r#"
                 error: Match expression is missing arms for: Foo(a: false, b: true), Foo(a: true, b: false)
                 match x {
-                ^^^^^^^^^
-                    Foo(a: true, b: true) => 0,
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                    Foo(a: false, b: false) => 1,
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                }
-                ^
+                      ^
             "#]],
         );
     }
@@ -2999,11 +2895,7 @@ mod tests {
             expect![[r#"
                 error: Useless match expression: does not branch or bind any variables
                 match x {
-                ^^^^^^^^^
-                    User(name: _, address: Address(street: _, city: _)) => 0,
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                }
-                ^
+                      ^
             "#]],
         );
     }
@@ -3360,7 +3252,7 @@ mod tests {
             expect![[r#"
                 error: Match expression must have at least one arm
                 match x {}
-                ^^^^^^^^^^
+                      ^
             "#]],
         );
     }

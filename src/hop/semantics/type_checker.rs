@@ -952,9 +952,7 @@ fn typecheck_node(
         }
 
         ParsedNode::Match {
-            subject,
-            cases,
-            range,
+            subject, cases, ..
         } => {
             let typed_subject = errors.ok_or_add(
                 dop::typecheck_expr(subject, var_env, type_env, annotations, None)
@@ -976,7 +974,6 @@ fn typecheck_node(
                 &subject_name,
                 typed_subject.get_type(),
                 subject.range(),
-                range,
             ) {
                 Ok(decision) => decision,
                 Err(err) => {
@@ -3198,16 +3195,10 @@ mod tests {
             "#},
             expect![[r#"
                 error: Match expression is missing arms for: Color::Blue
-                  --> main.hop (line 8, col 11)
+                  --> main.hop (line 8, col 17)
                  7 | <Main {color: Color}>
                  8 |     <div>{match color {
-                   |           ^^^^^^^^^^^^^
-                 9 |         Color::Red => "red",
-                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                10 |         Color::Green => "green",
-                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                11 |     }}</div>
-                   | ^^^^^
+                   |                 ^^^^^
             "#]],
         );
     }
@@ -3985,14 +3976,10 @@ mod tests {
             "#},
             expect![[r#"
                 error: Match expression is missing arms for: Color::Blue, Color::Green
-                  --> main.hop (line 3, col 5)
+                  --> main.hop (line 3, col 13)
                 2 | <Main {c: Color}>
                 3 |     <match {c}>
-                  |     ^^^^^^^^^^^
-                4 |         <case {Color::Red}>red</case>
-                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                5 |     </match>
-                  | ^^^^^^^^^^^^
+                  |             ^
             "#]],
         );
     }
@@ -4010,14 +3997,10 @@ mod tests {
             "#},
             expect![[r#"
                 error: Match expression is missing arms for: None
-                  --> main.hop (line 2, col 5)
+                  --> main.hop (line 2, col 13)
                 1 | <Main {x: Option[String]}>
                 2 |     <match {x}>
-                  |     ^^^^^^^^^^^
-                3 |         <case {Some(y)}>{y}</case>
-                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                4 |     </match>
-                  | ^^^^^^^^^^^^
+                  |             ^
             "#]],
         );
     }
@@ -4035,14 +4018,10 @@ mod tests {
             "#},
             expect![[r#"
                 error: Match expression is missing arms for: false
-                  --> main.hop (line 2, col 5)
+                  --> main.hop (line 2, col 13)
                 1 | <Main {flag: Bool}>
                 2 |     <match {flag}>
-                  |     ^^^^^^^^^^^^^^
-                3 |         <case {true}>yes</case>
-                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                4 |     </match>
-                  | ^^^^^^^^^^^^
+                  |             ^^^^
             "#]],
         );
     }
@@ -4143,14 +4122,10 @@ mod tests {
             "#},
             expect![[r#"
                 error: Useless match expression: does not branch or bind any variables
-                  --> main.hop (line 3, col 5)
+                  --> main.hop (line 3, col 13)
                 2 | <Main {c: Color}>
                 3 |     <match {c}>
-                  |     ^^^^^^^^^^^
-                4 |         <case {_}>any color</case>
-                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                5 |     </match>
-                  | ^^^^^^^^^^^^
+                  |             ^
             "#]],
         );
     }
@@ -4194,14 +4169,10 @@ mod tests {
             "#},
             expect![[r#"
                 error: Useless match expression: does not branch or bind any variables
-                  --> main.hop (line 4, col 5)
+                  --> main.hop (line 4, col 13)
                 3 | <Main {user: User}>
                 4 |     <match {user}>
-                  |     ^^^^^^^^^^^^^^
-                5 |         <case {User(role: Role(title: _, salary: _), created_at: _)}>matched</case>
-                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                6 |     </match>
-                  | ^^^^^^^^^^^^
+                  |             ^^^^
             "#]],
         );
     }

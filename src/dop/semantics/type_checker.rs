@@ -888,11 +888,9 @@ pub fn typecheck_expr(
                 }
             }
         }
-        ParsedExpr::Match {
-            subject,
-            arms,
-            range,
-        } => typecheck_match(subject, arms, range, var_env, type_env, annotations),
+        ParsedExpr::Match { subject, arms, .. } => {
+            typecheck_match(subject, arms, var_env, type_env, annotations)
+        }
         ParsedExpr::MacroInvocation { name, args, range } => match name.as_str() {
             "classes" => expand_classes_macro(args, range, var_env, type_env, annotations),
             _ => unreachable!("Unknown macro '{}' should be caught at parse time", name),
@@ -963,7 +961,6 @@ fn expand_classes_macro(
 fn typecheck_match(
     subject: &ParsedExpr,
     arms: &[ParsedMatchArm],
-    range: &DocumentRange,
     var_env: &mut Environment<Arc<Type>>,
     type_env: &mut Environment<Arc<Type>>,
     annotations: &mut Vec<TypeAnnotation>,
@@ -981,7 +978,6 @@ fn typecheck_match(
         &subject_name,
         typed_subject.get_type(),
         subject.range(),
-        range,
     )?;
 
     let (typed_bodies, result_type) = typecheck_arm_bodies(
@@ -3178,9 +3174,7 @@ mod tests {
             expect![[r#"
                 error: Match expression must have at least one arm
                 match flag {
-                ^^^^^^^^^^^^
-                }
-                ^
+                      ^^^^
             "#]],
         );
     }
@@ -3452,11 +3446,7 @@ mod tests {
             expect![[r#"
                 error: Useless match expression: does not branch or bind any variables
                 match color {
-                ^^^^^^^^^^^^^
-                    _ => "any color",
-                ^^^^^^^^^^^^^^^^^^^^^
-                }
-                ^
+                      ^^^^^
             "#]],
         );
     }
@@ -3531,11 +3521,7 @@ mod tests {
             expect![[r#"
                 error: Useless match expression: does not branch or bind any variables
                 match flag {
-                ^^^^^^^^^^^^
-                    _ => "always",
-                ^^^^^^^^^^^^^^^^^^
-                }
-                ^
+                      ^^^^
             "#]],
         );
     }
@@ -3649,11 +3635,7 @@ mod tests {
             expect![[r#"
                 error: Useless match expression: does not branch or bind any variables
                 match opt {
-                ^^^^^^^^^^^
-                    _ => "always this",
-                ^^^^^^^^^^^^^^^^^^^^^^^
-                }
-                ^
+                      ^^^
             "#]],
         );
     }
@@ -4097,11 +4079,7 @@ mod tests {
             expect![[r#"
                 error: Useless match expression: does not branch or bind any variables
                 match user {
-                ^^^^^^^^^^^^
-                    User(name: _, age: _) => "matched",
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                }
-                ^
+                      ^^^^
             "#]],
         );
     }
@@ -4128,11 +4106,7 @@ mod tests {
             expect![[r#"
                 error: Useless match expression: does not branch or bind any variables
                 match user {
-                ^^^^^^^^^^^^
-                    User(role: Role(title: _, salary: _), created_at: _) => "matched",
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                }
-                ^
+                      ^^^^
             "#]],
         );
     }
