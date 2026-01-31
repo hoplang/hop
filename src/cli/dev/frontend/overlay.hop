@@ -29,7 +29,7 @@ entrypoint Overlay(message: String = "Error! Something went wrong.") {
           "md:grid-cols-[1fr_32px]",
         )
       }>
-        <pre class="overflow-scroll">
+        <pre class="overflow-auto">
           {message}
         </pre>
         <CircleAlert class={
