@@ -3,6 +3,7 @@ import lucide::ArrowUpRight
 import lucide::Search
 import lucide::Maximize
 import lucide::Maximize2
+import components::logo::Logo
 
 record EntrypointData {
   name: String,
@@ -11,7 +12,7 @@ record EntrypointData {
 
 <Entrypoint {name: String, module: String}>
   <a
-    href={"/view/" + name}
+    href={"/preview/" + name}
     class="group flex flex-col gap-4 outline-none"
   >
     <div class={
@@ -74,31 +75,6 @@ record EntrypointData {
     </div>
   </a>
 </Entrypoint>
-
-<Logo {class: String = ""}>
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width="24"
-    height="24"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    stroke-width="2"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-    class={
-      classes!(
-        "lucide",
-        "lucide-circle-icon",
-        "lucide-circle",
-        class,
-      )
-    }
-  >
-    <circle cx="12" cy="12" r="10">
-    </circle>
-  </svg>
-</Logo>
 
 entrypoint Index(entrypoints: Array[EntrypointData] = [
   EntrypointData(module: "index.hop", name: "Index"),

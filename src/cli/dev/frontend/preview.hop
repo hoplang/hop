@@ -1,0 +1,74 @@
+import lucide::Monitor
+import lucide::Smartphone
+import components::logo::Logo
+
+entrypoint Preview(name: String = "Index", iframe_src: String = "") {
+  <head>
+    <link
+      rel="stylesheet"
+      href="https://rsms.me/inter/inter.css"
+    >
+  </head>
+  <body
+    style="font-family: Inter, sans-serif;"
+    class={
+      classes!(
+        "bg-[#f3f3f3]/90",
+        "p-4",
+        "flex",
+        "flex-col",
+        "items-center",
+        "gap-6",
+        "h-dvh",
+      )
+    }
+  >
+    <div class={
+      classes!(
+        "w-full",
+        "flex",
+        "justify-between",
+        "items-end",
+      )
+    }>
+      <div class="flex items-center gap-3">
+        <a href="/" tabindex="-1">
+          <Logo/>
+        </a>
+        <div>
+          <h1 class="text-xl text-[#111]">
+            {name}
+          </h1>
+          <p class="text-sm text-[#666]">
+            in index.hop
+          </p>
+        </div>
+      </div>
+      <div class={
+        classes!(
+          "flex",
+          "gap-2",
+        )
+      }>
+        <Monitor/>
+        <Smartphone class="text-neutral-400"/>
+      </div>
+      <div>
+      </div>
+    </div>
+    <div class={
+      classes!(
+        "bg-white",
+        "h-full",
+        "w-full",
+        "border",
+        "border-neutral-300",
+        "rounded",
+        "overflow-hidden",
+      )
+    }>
+      <iframe src={iframe_src} class="w-full h-full">
+      </iframe>
+    </div>
+  </body>
+}

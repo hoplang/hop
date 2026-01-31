@@ -91,6 +91,17 @@ async fn handle_hmr() -> Response<Body> {
         .unwrap()
 }
 
+async fn handle_preview(
+    axum::extract::Path(entrypoint): axum::extract::Path<String>,
+) -> Response<Body> {
+    let iframe_src = format!("/api/preview/{}", entrypoint);
+    let html = frontend::preview(&entrypoint, &iframe_src);
+    Response::builder()
+        .header("Content-Type", "text/html")
+        .body(Body::from(html))
+        .unwrap()
+}
+
 async fn handle_event_source(
     State(state): State<AppState>,
 ) -> axum::response::sse::Sse<
@@ -264,7 +275,8 @@ pub fn create_router() -> axum::Router<AppState> {
         .route("/idiomorph.js", get(handle_idiomorph_js))
         .route("/api/events", get(handle_event_source))
         .route("/api/render/{entrypoint}", get(handle_render))
-        .route("/view/{entrypoint}", get(handle_hmr))
+        .route("/api/preview/{entrypoint}", get(handle_hmr))
+        .route("/preview/{entrypoint}", get(handle_preview))
         .layer(cors)
 }
 
