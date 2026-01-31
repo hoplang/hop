@@ -102,7 +102,7 @@ record EntrypointData {
 
 entrypoint Index(entrypoints: Array[EntrypointData] = [
   EntrypointData(module: "index.hop", name: "Index"),
-  EntrypointData(module: "program.hop", name: "Program"),
+  EntrypointData(module: "overlay.hop", name: "Overlay"),
 ]) {
   <head>
     <link
