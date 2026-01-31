@@ -2,7 +2,7 @@
   description = "Development environment for hop";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/122034aaa1c4302ce1637d54b2003e593fb0c2da";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.05";
     flake-utils.url = "github:numtide/flake-utils";
   };
 
@@ -16,7 +16,6 @@
           nativeBuildInputs = [
             pkgs.rustup
 			pkgs.zig
-            pkgs.typescript-language-server
 			pkgs.bun
 			pkgs.typescript
 			pkgs.re2c
