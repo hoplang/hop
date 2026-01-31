@@ -1093,6 +1093,29 @@ mod tests {
         );
     }
 
+    #[test]
+    fn should_find_definition_from_component_reference_inside_entrypoint() {
+        check_definition_location(
+            indoc! {r#"
+                -- main.hop --
+                <HelloWorld>
+                  <h1>Hello World</h1>
+                </HelloWorld>
+
+                entrypoint Main() {
+                  <HelloWorld />
+                   ^
+                }
+            "#},
+            expect![[r#"
+                Definition
+                  --> main (line 1, col 2)
+                1 | <HelloWorld>
+                  |  ^^^^^^^^^^
+            "#]],
+        );
+    }
+
     ///////////////////////////////////////////////////////////////////////////
     // RENAME LOCATIONS                                                      //
     ///////////////////////////////////////////////////////////////////////////

@@ -34,6 +34,17 @@ pub fn find_node_at_position(ast: &ParsedAst, position: DocumentPosition) -> Opt
         }
     }
 
+    for n in ast.get_entrypoint_declarations() {
+        if n.range.contains_position(position) {
+            for child in &n.children {
+                if let Some(node) = find_node_at_position_in_node(child, position) {
+                    return Some(node);
+                }
+            }
+            return None;
+        }
+    }
+
     None
 }
 
