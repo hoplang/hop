@@ -778,6 +778,13 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value> {
                 _ => Err(anyhow!("ArrayLength requires an array argument")),
             }
         }
+        IrExpr::ArrayIsEmpty { array, .. } => {
+            let array_val = evaluate_expr(array, env)?;
+            match array_val {
+                Value::Array(arr) => Ok(Value::Bool(arr.is_empty())),
+                _ => Err(anyhow!("ArrayIsEmpty requires an array argument")),
+            }
+        }
         IrExpr::IntToString { value, .. } => {
             let int_val = evaluate_expr(value, env)?;
             match int_val {

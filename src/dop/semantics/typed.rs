@@ -164,6 +164,9 @@ pub enum TypedExpr {
     /// Array length expression, e.g. items.len()
     ArrayLength { array: Box<Self> },
 
+    /// Array is empty expression, e.g. items.is_empty()
+    ArrayIsEmpty { array: Box<Self> },
+
     /// Int to string conversion, e.g. count.to_string()
     IntToString { value: Box<Self> },
 
@@ -218,7 +221,8 @@ impl TypedExpr {
             | TypedExpr::LessThanOrEqual { .. }
             | TypedExpr::GreaterThanOrEqual { .. }
             | TypedExpr::BooleanLogicalAnd { .. }
-            | TypedExpr::BooleanLogicalOr { .. } => Arc::new(Type::Bool),
+            | TypedExpr::BooleanLogicalOr { .. }
+            | TypedExpr::ArrayIsEmpty { .. } => Arc::new(Type::Bool),
 
             TypedExpr::ArrayLength { .. } | TypedExpr::FloatToInt { .. } => Arc::new(Type::Int),
         }
@@ -269,7 +273,8 @@ impl TypedExpr {
             | TypedExpr::LessThanOrEqual { .. }
             | TypedExpr::GreaterThanOrEqual { .. }
             | TypedExpr::BooleanLogicalAnd { .. }
-            | TypedExpr::BooleanLogicalOr { .. } => &BOOL_TYPE,
+            | TypedExpr::BooleanLogicalOr { .. }
+            | TypedExpr::ArrayIsEmpty { .. } => &BOOL_TYPE,
 
             TypedExpr::ArrayLength { .. } | TypedExpr::FloatToInt { .. } => &INT_TYPE,
         }
@@ -577,6 +582,7 @@ impl TypedExpr {
                 }
             }
             TypedExpr::ArrayLength { array } => array.to_doc().append(BoxDoc::text(".len()")),
+            TypedExpr::ArrayIsEmpty { array } => array.to_doc().append(BoxDoc::text(".is_empty()")),
             TypedExpr::IntToString { value } => value.to_doc().append(BoxDoc::text(".to_string()")),
             TypedExpr::FloatToInt { value } => value.to_doc().append(BoxDoc::text(".to_int()")),
             TypedExpr::FloatToString { value } => {

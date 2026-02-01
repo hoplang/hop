@@ -390,6 +390,9 @@ impl Pass for ConstantPropagationPass {
                         IrExpr::ArrayLength { .. } => {
                             // Not yet implemented
                         }
+                        IrExpr::ArrayIsEmpty { .. } => {
+                            // Not yet implemented
+                        }
                         IrExpr::IntToString { .. } => {
                             // Not yet implemented
                         }

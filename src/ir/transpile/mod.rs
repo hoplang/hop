@@ -165,6 +165,7 @@ pub trait ExpressionTranspiler {
     ) -> BoxDoc<'a>;
     fn transpile_merge_classes<'a>(&mut self, args: &'a [IrExpr]) -> BoxDoc<'a>;
     fn transpile_array_length<'a>(&mut self, array: &'a IrExpr) -> BoxDoc<'a>;
+    fn transpile_array_is_empty<'a>(&mut self, array: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_int_to_string<'a>(&mut self, value: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_float_to_int<'a>(&mut self, value: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_float_to_string<'a>(&mut self, value: &'a IrExpr) -> BoxDoc<'a>;
@@ -277,6 +278,7 @@ pub trait ExpressionTranspiler {
             IrExpr::MergeClasses { args, .. } => self.transpile_merge_classes(args),
             IrExpr::TwMerge { value, .. } => self.transpile_expr(value),
             IrExpr::ArrayLength { array, .. } => self.transpile_array_length(array),
+            IrExpr::ArrayIsEmpty { array, .. } => self.transpile_array_is_empty(array),
             IrExpr::IntToString { value, .. } => self.transpile_int_to_string(value),
             IrExpr::FloatToInt { value, .. } => self.transpile_float_to_int(value),
             IrExpr::FloatToString { value, .. } => self.transpile_float_to_string(value),

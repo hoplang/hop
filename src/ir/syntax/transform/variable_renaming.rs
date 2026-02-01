@@ -319,6 +319,9 @@ impl VariableRenamingPass {
             IrExpr::ArrayLength { array, .. } => {
                 self.rename_expr(array);
             }
+            IrExpr::ArrayIsEmpty { array, .. } => {
+                self.rename_expr(array);
+            }
             IrExpr::TwMerge { value, .. } => {
                 self.rename_expr(value);
             }

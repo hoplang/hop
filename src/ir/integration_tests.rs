@@ -3981,6 +3981,234 @@ mod tests {
 
     #[test]
     #[ignore]
+    fn array_is_empty_true() {
+        check(
+            indoc! {r#"
+                entrypoint Test {
+                  <let {items: Array[String] = []}>
+                    <match {items.is_empty()}>
+                      <case {true}>
+                        empty
+                      </case>
+                      <case {false}>
+                        not empty
+                      </case>
+                    </match>
+                  </let>
+                }
+            "#},
+            "empty",
+            expect![[r#"
+                -- ir (unoptimized) --
+                Test() {
+                  let items = [] in {
+                    let v_0 = items.is_empty() in {
+                      match v_0 {
+                        true => {
+                          write("empty")
+                        }
+                        false => {
+                          write("not empty")
+                        }
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                Test() {
+                  let items = [] in {
+                    let v_0 = items.is_empty() in {
+                      match v_0 {
+                        true => {
+                          write("empty")
+                        }
+                        false => {
+                          write("not empty")
+                        }
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                empty
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- go (unoptimized) --
+                OK
+                -- python (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn array_is_empty_false() {
+        check(
+            indoc! {r#"
+                entrypoint Test {
+                  <let {items: Array[String] = ["a", "b"]}>
+                    <match {items.is_empty()}>
+                      <case {true}>
+                        empty
+                      </case>
+                      <case {false}>
+                        not empty
+                      </case>
+                    </match>
+                  </let>
+                }
+            "#},
+            "not empty",
+            expect![[r#"
+                -- ir (unoptimized) --
+                Test() {
+                  let items = ["a", "b"] in {
+                    let v_0 = items.is_empty() in {
+                      match v_0 {
+                        true => {
+                          write("empty")
+                        }
+                        false => {
+                          write("not empty")
+                        }
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                Test() {
+                  let items = ["a", "b"] in {
+                    let v_0 = items.is_empty() in {
+                      match v_0 {
+                        true => {
+                          write("empty")
+                        }
+                        false => {
+                          write("not empty")
+                        }
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                not empty
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- go (unoptimized) --
+                OK
+                -- python (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn array_is_empty_int_array() {
+        check(
+            indoc! {r#"
+                entrypoint Test {
+                  <let {numbers: Array[Int] = [1, 2, 3]}>
+                    <match {numbers.is_empty()}>
+                      <case {true}>
+                        no numbers
+                      </case>
+                      <case {false}>
+                        has numbers
+                      </case>
+                    </match>
+                  </let>
+                }
+            "#},
+            "has numbers",
+            expect![[r#"
+                -- ir (unoptimized) --
+                Test() {
+                  let numbers = [1, 2, 3] in {
+                    let v_0 = numbers.is_empty() in {
+                      match v_0 {
+                        true => {
+                          write("no numbers")
+                        }
+                        false => {
+                          write("has numbers")
+                        }
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                Test() {
+                  let numbers = [1, 2, 3] in {
+                    let v_0 = numbers.is_empty() in {
+                      match v_0 {
+                        true => {
+                          write("no numbers")
+                        }
+                        false => {
+                          write("has numbers")
+                        }
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                has numbers
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- go (unoptimized) --
+                OK
+                -- python (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
     fn int_to_string_simple() {
         check(
             indoc! {r#"

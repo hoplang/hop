@@ -908,6 +908,9 @@ pub fn typecheck_expr(
                 (Type::Array(_), "len") => Ok(TypedExpr::ArrayLength {
                     array: Box::new(typed_receiver),
                 }),
+                (Type::Array(_), "is_empty") => Ok(TypedExpr::ArrayIsEmpty {
+                    array: Box::new(typed_receiver),
+                }),
                 (Type::Int, "to_string") => Ok(TypedExpr::IntToString {
                     value: Box::new(typed_receiver),
                 }),

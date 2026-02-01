@@ -1107,6 +1107,12 @@ impl ExpressionTranspiler for GoTranspiler {
             .append(BoxDoc::text(")"))
     }
 
+    fn transpile_array_is_empty<'a>(&mut self, array: &'a IrExpr) -> BoxDoc<'a> {
+        BoxDoc::text("len(")
+            .append(self.transpile_expr(array))
+            .append(BoxDoc::text(") == 0"))
+    }
+
     fn transpile_int_to_string<'a>(&mut self, value: &'a IrExpr) -> BoxDoc<'a> {
         self.needs_strconv = true;
         BoxDoc::text("strconv.Itoa(")

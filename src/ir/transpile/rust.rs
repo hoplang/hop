@@ -1032,6 +1032,10 @@ impl ExpressionTranspiler for RustTranspiler {
             .append(BoxDoc::text(".len() as i64)"))
     }
 
+    fn transpile_array_is_empty<'a>(&mut self, array: &'a IrExpr) -> BoxDoc<'a> {
+        self.transpile_expr(array).append(BoxDoc::text(".is_empty()"))
+    }
+
     fn transpile_int_to_string<'a>(&mut self, value: &'a IrExpr) -> BoxDoc<'a> {
         self.transpile_expr(value)
             .append(BoxDoc::text(".to_string()"))

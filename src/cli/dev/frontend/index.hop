@@ -102,21 +102,30 @@ entrypoint Index(entrypoints: Array[EntrypointData] = [
         <h1 class="text-3xl md:text-4xl font-light">
           Entrypoints
         </h1>
-        <div class={
-          classes!(
-            "grid",
-            "sm:grid-cols-2",
-            "md:grid-cols-3",
-            "lg:grid-cols-4",
-            "gap-12",
-            "sm:gap-8",
-            "lg:gap-14",
-          )
-        }>
-          <for {ep in entrypoints}>
-            <Entrypoint name={ep.name} module={ep.module}/>
-          </for>
-        </div>
+        <match {entrypoints.is_empty()}>
+          <case {true}>
+            <p class="text-[#666666]">
+              No entrypoints found.
+            </p>
+          </case>
+          <case {false}>
+            <div class={
+              classes!(
+                "grid",
+                "sm:grid-cols-2",
+                "md:grid-cols-3",
+                "lg:grid-cols-4",
+                "gap-12",
+                "sm:gap-8",
+                "lg:gap-14",
+              )
+            }>
+              <for {ep in entrypoints}>
+                <Entrypoint name={ep.name} module={ep.module}/>
+              </for>
+            </div>
+          </case>
+        </match>
       </div>
     </div>
   </body>

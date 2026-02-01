@@ -44,40 +44,46 @@ pub fn index(entrypoints: &[EntrypointData]) -> String {
     output.push_str(" cy=\"12\" r=\"10\"></circle></svg></a><div");
     output.push_str(" class=\"flex flex-col gap-6 xl:gap-8\"><h1");
     output.push_str(" class=\"text-3xl md:text-4xl font-light\">Entrypoints</h1>");
-    output.push_str("<div class=\"");
-    output.push_str("grid sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-12 sm:gap-8 lg:gap-14");
-    output.push_str("\">");
-    for ep in entrypoints.iter().cloned() {
-        let name = ep.name.to_owned();
-        let module = ep.module.to_owned();
-        output.push_str("<a href=\"");
-        write_escaped_html(&format!("{}{}", "/preview/".to_string(), name), &mut output);
-        output.push_str("\" class=\"group flex flex-col gap-4 outline-none\"><div");
-        output.push_str(" class=\"");
-        output.push_str("w-full h-40 border border-neutral-300 rounded relative overflow-hidden group-focus:ring-3 ring-neutral-200");
-        output.push_str("\"><iframe class=\"");
-        output.push_str("w-[400%] h-[400%] scale-[0.25] origin-top-left pointer-events-none grayscale group-hover:grayscale-0 group-focus:grayscale-0 transition-[filter]");
-        output.push_str("\" scrolling=\"no\" tabindex=\"-1\" sandbox=\"\" src=\"");
-        write_escaped_html(&format!("{}{}", "/api/render/".to_string(), name), &mut output);
-        output.push_str("\"></iframe><div class=\"");
-        output.push_str("absolute right-0 bottom-0 z-index-1000 opacity-0 p-2 bg-white rounded-tl group-hover:opacity-100 transition-opacity");
-        output.push_str("\"><svg class=\"\" fill=\"none\" height=\"24\"");
-        output.push_str(" stroke=\"currentColor\" stroke-linecap=\"round\"");
-        output.push_str(" stroke-linejoin=\"round\" stroke-width=\"2\"");
-        output.push_str(" viewBox=\"0 0 24 24\" width=\"24\"");
-        output.push_str(" xmlns=\"http://www.w3.org/2000/svg\"><path");
-        output.push_str(" d=\"M8 3H5a2 2 0 0 0-2 2v3\"></path><path");
-        output.push_str(" d=\"M21 8V5a2 2 0 0 0-2-2h-3\"></path><path");
-        output.push_str(" d=\"M3 16v3a2 2 0 0 0 2 2h3\"></path><path");
-        output.push_str(" d=\"M16 21h3a2 2 0 0 0 2-2v-3\"></path></svg></div></div>");
-        output.push_str("<div class=\"flex flex-col gap-0.5\"><h2");
-        output.push_str(" class=\"text-lg text-[#111]\">");
-        write_escaped_html(&name, &mut output);
-        output.push_str("</h2><p class=\"text-sm text-[#666666]\">in ");
-        write_escaped_html(&module, &mut output);
-        output.push_str("</p></div></a>");
+    let v_0 = entrypoints.is_empty();
+    if v_0 {
+        output.push_str("<p class=\"text-[#666666]\">No entrypoints found.</p>");
+    } else {
+        output.push_str("<div class=\"");
+        output.push_str("grid sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-12 sm:gap-8 lg:gap-14");
+        output.push_str("\">");
+        for ep in entrypoints.iter().cloned() {
+            let name = ep.name.to_owned();
+            let module = ep.module.to_owned();
+            output.push_str("<a href=\"");
+            write_escaped_html(&format!("{}{}", "/preview/".to_string(), name), &mut output);
+            output.push_str("\" class=\"group flex flex-col gap-4 outline-none\"><div");
+            output.push_str(" class=\"");
+            output.push_str("w-full h-40 border border-neutral-300 rounded relative overflow-hidden group-focus:ring-3 ring-neutral-200");
+            output.push_str("\"><iframe class=\"");
+            output.push_str("w-[400%] h-[400%] scale-[0.25] origin-top-left pointer-events-none grayscale group-hover:grayscale-0 group-focus:grayscale-0 transition-[filter]");
+            output.push_str("\" scrolling=\"no\" tabindex=\"-1\" sandbox=\"\" src=\"");
+            write_escaped_html(&format!("{}{}", "/api/render/".to_string(), name), &mut output);
+            output.push_str("\"></iframe><div class=\"");
+            output.push_str("absolute right-0 bottom-0 z-index-1000 opacity-0 p-2 bg-white rounded-tl group-hover:opacity-100 transition-opacity");
+            output.push_str("\"><svg class=\"\" fill=\"none\" height=\"24\"");
+            output.push_str(" stroke=\"currentColor\" stroke-linecap=\"round\"");
+            output.push_str(" stroke-linejoin=\"round\" stroke-width=\"2\"");
+            output.push_str(" viewBox=\"0 0 24 24\" width=\"24\"");
+            output.push_str(" xmlns=\"http://www.w3.org/2000/svg\"><path");
+            output.push_str(" d=\"M8 3H5a2 2 0 0 0-2 2v3\"></path><path");
+            output.push_str(" d=\"M21 8V5a2 2 0 0 0-2-2h-3\"></path><path");
+            output.push_str(" d=\"M3 16v3a2 2 0 0 0 2 2h3\"></path><path");
+            output.push_str(" d=\"M16 21h3a2 2 0 0 0 2-2v-3\"></path></svg></div></div>");
+            output.push_str("<div class=\"flex flex-col gap-0.5\"><h2");
+            output.push_str(" class=\"text-lg text-[#111]\">");
+            write_escaped_html(&name, &mut output);
+            output.push_str("</h2><p class=\"text-sm text-[#666666]\">in ");
+            write_escaped_html(&module, &mut output);
+            output.push_str("</p></div></a>");
+        }
+        output.push_str("</div>");
     }
-    output.push_str("</div></div></div></body></html>");
+    output.push_str("</div></div></body></html>");
     output
 }
 

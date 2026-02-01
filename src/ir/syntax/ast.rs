@@ -268,6 +268,9 @@ pub enum IrExpr {
     /// Array length expression, e.g. items.len()
     ArrayLength { array: Box<IrExpr>, id: ExprId },
 
+    /// Array is empty expression, e.g. items.is_empty()
+    ArrayIsEmpty { array: Box<IrExpr>, id: ExprId },
+
     /// Int to string conversion, e.g. count.to_string()
     IntToString { value: Box<IrExpr>, id: ExprId },
 
@@ -751,6 +754,7 @@ impl IrExpr {
             | IrExpr::LessThanOrEqual { id, .. }
             | IrExpr::Let { id, .. }
             | IrExpr::ArrayLength { id, .. }
+            | IrExpr::ArrayIsEmpty { id, .. }
             | IrExpr::IntToString { id, .. }
             | IrExpr::FloatToInt { id, .. }
             | IrExpr::FloatToString { id, .. }
@@ -797,7 +801,8 @@ impl IrExpr {
             | IrExpr::LessThan { .. }
             | IrExpr::LessThanOrEqual { .. }
             | IrExpr::BooleanLogicalAnd { .. }
-            | IrExpr::BooleanLogicalOr { .. } => Arc::new(Type::Bool),
+            | IrExpr::BooleanLogicalOr { .. }
+            | IrExpr::ArrayIsEmpty { .. } => Arc::new(Type::Bool),
 
             IrExpr::ArrayLength { .. } | IrExpr::FloatToInt { .. } => Arc::new(Type::Int),
         }
@@ -847,7 +852,8 @@ impl IrExpr {
             | IrExpr::LessThan { .. }
             | IrExpr::LessThanOrEqual { .. }
             | IrExpr::BooleanLogicalAnd { .. }
-            | IrExpr::BooleanLogicalOr { .. } => &BOOL_TYPE,
+            | IrExpr::BooleanLogicalOr { .. }
+            | IrExpr::ArrayIsEmpty { .. } => &BOOL_TYPE,
 
             IrExpr::ArrayLength { .. } | IrExpr::FloatToInt { .. } => &INT_TYPE,
         }
@@ -1155,6 +1161,7 @@ impl IrExpr {
                 .append(value.to_doc())
                 .append(BoxDoc::text(")")),
             IrExpr::ArrayLength { array, .. } => array.to_doc().append(BoxDoc::text(".len()")),
+            IrExpr::ArrayIsEmpty { array, .. } => array.to_doc().append(BoxDoc::text(".is_empty()")),
             IrExpr::IntToString { value, .. } => {
                 value.to_doc().append(BoxDoc::text(".to_string()"))
             }
@@ -1252,6 +1259,9 @@ impl IrExpr {
                 value.traverse(f);
             }
             IrExpr::ArrayLength { array, .. } => {
+                array.traverse(f);
+            }
+            IrExpr::ArrayIsEmpty { array, .. } => {
                 array.traverse(f);
             }
             IrExpr::IntToString { value, .. } => {
@@ -1355,6 +1365,9 @@ impl IrExpr {
                 value.traverse_mut(f);
             }
             IrExpr::ArrayLength { array, .. } => {
+                array.traverse_mut(f);
+            }
+            IrExpr::ArrayIsEmpty { array, .. } => {
                 array.traverse_mut(f);
             }
             IrExpr::IntToString { value, .. } => {
