@@ -8,7 +8,7 @@ use crate::dop::VarName;
 use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::type_name::TypeName;
 use crate::hop::symbols::component_name::ComponentName;
-use crate::hop::symbols::module_name::ModuleName;
+use crate::hop::symbols::module_id::ModuleId;
 use pretty::BoxDoc;
 
 use super::parsed_node::ParsedNode;
@@ -111,14 +111,14 @@ impl ParsedDeclaration {
 
 #[derive(Debug, Clone)]
 pub struct ParsedAst {
-    pub name: ModuleName,
+    pub name: ModuleId,
     declarations: Vec<ParsedDeclaration>,
     comments: VecDeque<DocumentRange>,
 }
 
 impl ParsedAst {
     pub fn new(
-        name: ModuleName,
+        name: ModuleId,
         declarations: Vec<ParsedDeclaration>,
         comments: VecDeque<DocumentRange>,
     ) -> Self {
@@ -232,11 +232,11 @@ pub struct ParsedImportDeclaration {
     pub type_name_range: DocumentRange,
     /// The full path range for error reporting (covers module::TypeName)
     pub path: DocumentRange,
-    pub module_name: ModuleName,
+    pub module_name: ModuleId,
 }
 
 impl ParsedImportDeclaration {
-    pub fn imported_module(&self) -> &ModuleName {
+    pub fn imported_module(&self) -> &ModuleId {
         &self.module_name
     }
     pub fn type_name_range(&self) -> &DocumentRange {
@@ -245,7 +245,7 @@ impl ParsedImportDeclaration {
     pub fn imports_type(&self, type_name: &str) -> bool {
         self.type_name.as_str() == type_name
     }
-    pub fn imports_from(&self, module_name: &ModuleName) -> bool {
+    pub fn imports_from(&self, module_name: &ModuleId) -> bool {
         &self.module_name == module_name
     }
 

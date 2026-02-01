@@ -1,9 +1,9 @@
 use std::fmt;
 use thiserror::Error;
 
-/// Error type for invalid module names
+/// Error type for invalid module IDs
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
-pub enum InvalidModuleNameError {
+pub enum InvalidModuleIdError {
     #[error("Module name cannot be empty")]
     Empty,
 
@@ -32,55 +32,55 @@ pub enum InvalidModuleNameError {
     EmptyComponent,
 }
 
-/// A type-safe wrapper for module names in the hop system.
-/// Module names represent the path to a module relative to the project root,
+/// A type-safe wrapper for module IDs in the hop system.
+/// Module IDs represent the path to a module relative to the project root,
 /// without the .hop extension and without the @/ prefix.
 ///
 /// Examples: "components/button", "utils", "hop/ui"
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct ModuleName(Vec<String>);
+pub struct ModuleId(Vec<String>);
 
-impl ModuleName {
-    /// Create a new ModuleName from a string, validating it
+impl ModuleId {
+    /// Create a new ModuleId from a string, validating it
     ///
-    /// Returns an error describing why the module name is invalid.
-    /// Valid module names:
+    /// Returns an error describing why the module ID is invalid.
+    /// Valid module IDs:
     /// - Must not be empty
     /// - Must not start or end with '/'
     /// - Must not contain '//', '..' or '.'
     /// - Must not contain '@'
     /// - Must only contain alphanumeric characters, '-', '_', and '/'
-    pub fn new(name: &str) -> Result<Self, InvalidModuleNameError> {
+    pub fn new(name: &str) -> Result<Self, InvalidModuleIdError> {
         let components = Self::validate(name)?;
-        Ok(ModuleName(components))
+        Ok(ModuleId(components))
     }
 
-    /// Validate a module name string and return the components
-    fn validate(name: &str) -> Result<Vec<String>, InvalidModuleNameError> {
+    /// Validate a module ID string and return the components
+    fn validate(name: &str) -> Result<Vec<String>, InvalidModuleIdError> {
         // Must not be empty
         if name.is_empty() {
-            return Err(InvalidModuleNameError::Empty);
+            return Err(InvalidModuleIdError::Empty);
         }
 
         // Must not start or end with '/'
         if name.starts_with('/') {
-            return Err(InvalidModuleNameError::StartsWithSlash);
+            return Err(InvalidModuleIdError::StartsWithSlash);
         }
         if name.ends_with('/') {
-            return Err(InvalidModuleNameError::EndsWithSlash);
+            return Err(InvalidModuleIdError::EndsWithSlash);
         }
 
         // Must not contain '//', '..', or standalone '.'
         if name.contains("//") {
-            return Err(InvalidModuleNameError::ContainsDoubleSlash);
+            return Err(InvalidModuleIdError::ContainsDoubleSlash);
         }
         if name.contains("..") {
-            return Err(InvalidModuleNameError::ContainsParentDirectory);
+            return Err(InvalidModuleIdError::ContainsParentDirectory);
         }
 
         // Must not contain '@' (this is stripped in import paths)
         if name.contains('@') {
-            return Err(InvalidModuleNameError::ContainsAtSymbol);
+            return Err(InvalidModuleIdError::ContainsAtSymbol);
         }
 
         let mut components = Vec::new();
@@ -88,16 +88,16 @@ impl ModuleName {
         // Check for path components that are just '.'
         for component in name.split('/') {
             if component.is_empty() {
-                return Err(InvalidModuleNameError::EmptyComponent);
+                return Err(InvalidModuleIdError::EmptyComponent);
             }
             if component == "." {
-                return Err(InvalidModuleNameError::ContainsCurrentDirectory);
+                return Err(InvalidModuleIdError::ContainsCurrentDirectory);
             }
 
             // Each component should only contain valid characters
             for c in component.chars() {
                 if !c.is_alphanumeric() && c != '-' && c != '_' {
-                    return Err(InvalidModuleNameError::InvalidCharacter(c));
+                    return Err(InvalidModuleIdError::InvalidCharacter(c));
                 }
             }
 
@@ -107,13 +107,13 @@ impl ModuleName {
         Ok(components)
     }
 
-    /// Get the module name as a path string with '/' separator
+    /// Get the module ID as a path string with '/' separator
     pub fn to_path(&self) -> String {
         self.0.join("/")
     }
 }
 
-impl fmt::Display for ModuleName {
+impl fmt::Display for ModuleId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0.join("::"))
     }
@@ -125,104 +125,104 @@ mod tests {
 
     #[test]
     fn should_accept_simple_module_name() {
-        assert!(ModuleName::new("utils").is_ok());
+        assert!(ModuleId::new("utils").is_ok());
     }
 
     #[test]
     fn should_accept_module_name_with_path() {
-        assert!(ModuleName::new("components/button").is_ok());
-        assert!(ModuleName::new("hop/ui").is_ok());
+        assert!(ModuleId::new("components/button").is_ok());
+        assert!(ModuleId::new("hop/ui").is_ok());
     }
 
     #[test]
     fn should_accept_module_name_with_hyphen() {
-        assert!(ModuleName::new("my-component").is_ok());
+        assert!(ModuleId::new("my-component").is_ok());
     }
 
     #[test]
     fn should_accept_module_name_with_underscore() {
-        assert!(ModuleName::new("my_component").is_ok());
+        assert!(ModuleId::new("my_component").is_ok());
     }
 
     #[test]
     fn should_accept_deeply_nested_module_name() {
-        assert!(ModuleName::new("a/b/c/d").is_ok());
+        assert!(ModuleId::new("a/b/c/d").is_ok());
     }
 
     #[test]
     fn should_reject_empty_module_name() {
-        assert_eq!(ModuleName::new(""), Err(InvalidModuleNameError::Empty));
+        assert_eq!(ModuleId::new(""), Err(InvalidModuleIdError::Empty));
     }
 
     #[test]
     fn should_reject_module_name_starting_with_slash() {
         assert_eq!(
-            ModuleName::new("/utils"),
-            Err(InvalidModuleNameError::StartsWithSlash)
+            ModuleId::new("/utils"),
+            Err(InvalidModuleIdError::StartsWithSlash)
         );
     }
 
     #[test]
     fn should_reject_module_name_ending_with_slash() {
         assert_eq!(
-            ModuleName::new("utils/"),
-            Err(InvalidModuleNameError::EndsWithSlash)
+            ModuleId::new("utils/"),
+            Err(InvalidModuleIdError::EndsWithSlash)
         );
     }
 
     #[test]
     fn should_reject_module_name_with_double_slash() {
         assert_eq!(
-            ModuleName::new("utils//components"),
-            Err(InvalidModuleNameError::ContainsDoubleSlash)
+            ModuleId::new("utils//components"),
+            Err(InvalidModuleIdError::ContainsDoubleSlash)
         );
     }
 
     #[test]
     fn should_reject_module_name_with_parent_directory() {
         assert_eq!(
-            ModuleName::new("../parent"),
-            Err(InvalidModuleNameError::ContainsParentDirectory)
+            ModuleId::new("../parent"),
+            Err(InvalidModuleIdError::ContainsParentDirectory)
         );
     }
 
     #[test]
     fn should_reject_module_name_with_current_directory() {
         assert_eq!(
-            ModuleName::new("./current"),
-            Err(InvalidModuleNameError::ContainsCurrentDirectory)
+            ModuleId::new("./current"),
+            Err(InvalidModuleIdError::ContainsCurrentDirectory)
         );
     }
 
     #[test]
     fn should_reject_module_name_with_at_symbol() {
         assert_eq!(
-            ModuleName::new("@/utils"),
-            Err(InvalidModuleNameError::ContainsAtSymbol)
+            ModuleId::new("@/utils"),
+            Err(InvalidModuleIdError::ContainsAtSymbol)
         );
     }
 
     #[test]
     fn should_reject_module_name_with_current_directory_in_path() {
         assert_eq!(
-            ModuleName::new("utils/./current"),
-            Err(InvalidModuleNameError::ContainsCurrentDirectory)
+            ModuleId::new("utils/./current"),
+            Err(InvalidModuleIdError::ContainsCurrentDirectory)
         );
     }
 
     #[test]
     fn should_reject_module_name_with_space() {
         assert_eq!(
-            ModuleName::new("my component"),
-            Err(InvalidModuleNameError::InvalidCharacter(' '))
+            ModuleId::new("my component"),
+            Err(InvalidModuleIdError::InvalidCharacter(' '))
         );
     }
 
     #[test]
     fn should_reject_module_name_with_exclamation_mark() {
         assert_eq!(
-            ModuleName::new("my!component"),
-            Err(InvalidModuleNameError::InvalidCharacter('!'))
+            ModuleId::new("my!component"),
+            Err(InvalidModuleIdError::InvalidCharacter('!'))
         );
     }
 }

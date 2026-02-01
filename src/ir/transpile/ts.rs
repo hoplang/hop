@@ -1601,10 +1601,10 @@ mod tests {
     #[test]
     fn record_declarations() {
         use crate::dop::symbols::{field_name::FieldName, type_name::TypeName};
-        use crate::hop::symbols::module_name::ModuleName;
+        use crate::hop::symbols::module_id::ModuleId;
 
         let user_type = Type::Record {
-            module: ModuleName::new("test").unwrap(),
+            module: ModuleId::new("test").unwrap(),
             name: TypeName::new("User").unwrap(),
             fields: vec![
                 (FieldName::new("name").unwrap(), Arc::new(Type::String)),
@@ -1741,10 +1741,10 @@ mod tests {
     #[test]
     fn enum_type_declarations() {
         use crate::dop::symbols::type_name::TypeName;
-        use crate::hop::symbols::module_name::ModuleName;
+        use crate::hop::symbols::module_id::ModuleId;
 
         let color_type = Type::Enum {
-            module: ModuleName::new("test").unwrap(),
+            module: ModuleId::new("test").unwrap(),
             name: TypeName::new("Color").unwrap(),
             variants: vec![
                 (TypeName::new("Red").unwrap(), vec![]),
@@ -1805,10 +1805,10 @@ mod tests {
     #[test]
     fn match_expression() {
         use crate::dop::symbols::type_name::TypeName;
-        use crate::hop::symbols::module_name::ModuleName;
+        use crate::hop::symbols::module_id::ModuleId;
 
         let color_type = Type::Enum {
-            module: ModuleName::new("test").unwrap(),
+            module: ModuleId::new("test").unwrap(),
             name: TypeName::new("Color").unwrap(),
             variants: vec![
                 (TypeName::new("Red").unwrap(), vec![]),
@@ -2344,10 +2344,10 @@ mod tests {
     fn enum_with_fields() {
         use crate::dop::symbols::field_name::FieldName;
         use crate::dop::symbols::type_name::TypeName;
-        use crate::hop::symbols::module_name::ModuleName;
+        use crate::hop::symbols::module_id::ModuleId;
 
         let result_type = Type::Enum {
-            module: ModuleName::new("test").unwrap(),
+            module: ModuleId::new("test").unwrap(),
             name: TypeName::new("Result").unwrap(),
             variants: vec![
                 (
@@ -2421,11 +2421,11 @@ mod tests {
     fn enum_match_with_field_bindings() {
         use crate::dop::symbols::field_name::FieldName;
         use crate::dop::symbols::type_name::TypeName;
-        use crate::hop::symbols::module_name::ModuleName;
+        use crate::hop::symbols::module_id::ModuleId;
         use crate::ir::syntax::builder::IrBuilder;
 
         let result_type = Type::Enum {
-            module: ModuleName::new("test").unwrap(),
+            module: ModuleId::new("test").unwrap(),
             name: TypeName::new("Result").unwrap(),
             variants: vec![
                 (

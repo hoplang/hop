@@ -6,7 +6,7 @@ use pretty::BoxDoc;
 use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::type_name::TypeName;
 use crate::dop::symbols::var_name::VarName;
-use crate::hop::symbols::module_name::ModuleName;
+use crate::hop::symbols::module_id::ModuleId;
 
 /// An EquatableType is a type where its values can be compared
 /// using `==` and `!=`.
@@ -16,7 +16,7 @@ pub enum EquatableType {
     Bool,
     Int,
     Float,
-    Enum { module: ModuleName, name: TypeName },
+    Enum { module: ModuleId, name: TypeName },
     Option(Box<EquatableType>),
 }
 
@@ -46,19 +46,19 @@ pub enum Type {
     Array(Arc<Type>),
     Option(Arc<Type>),
     Record {
-        module: ModuleName,
+        module: ModuleId,
         name: TypeName,
         fields: Vec<(FieldName, Arc<Type>)>,
     },
     Enum {
-        module: ModuleName,
+        module: ModuleId,
         name: TypeName,
         /// Variants with their optional fields: (variant_name, fields)
         /// Empty fields Vec for unit variants
         variants: Vec<(TypeName, Vec<(FieldName, Arc<Type>)>)>,
     },
     Component {
-        module: ModuleName,
+        module: ModuleId,
         name: TypeName,
         /// Parameters: (name, type, has_default)
         parameters: Vec<(VarName, Arc<Type>, bool)>,

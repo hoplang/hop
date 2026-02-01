@@ -6,7 +6,7 @@ use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::type_name::TypeName;
 use crate::dop::symbols::var_name::VarName;
 use crate::error_collector::ErrorCollector;
-use crate::hop::symbols::module_name::ModuleName;
+use crate::hop::symbols::module_id::ModuleId;
 
 use crate::parse_error::ParseError;
 use super::parsed::{
@@ -1160,7 +1160,7 @@ pub fn parse_import_declaration(
         .map(|s| s.as_str())
         .collect::<Vec<_>>()
         .join("/");
-    let module_name = match ModuleName::new(&module_path_str) {
+    let module_name = match ModuleId::new(&module_path_str) {
         Ok(name) => name,
         Err(e) => {
             errors.push(ParseError::InvalidModuleName {

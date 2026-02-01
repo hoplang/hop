@@ -1,6 +1,6 @@
 use crate::hop::semantics::typed_ast::TypedAst;
 use crate::hop::symbols::component_name::ComponentName;
-use crate::hop::symbols::module_name::ModuleName;
+use crate::hop::symbols::module_id::ModuleId;
 use crate::inlined::{
     DoctypeInjector, HtmlStructureInjector, Inliner, MetaInjector, TailwindInjector,
 };
@@ -13,11 +13,11 @@ pub struct OrchestrateOptions {
     pub skip_html_structure: bool,
     pub skip_optimization: bool,
     /// When set, only compile the specified entrypoint instead of all entrypoints.
-    pub entrypoint_filter: Option<(ModuleName, ComponentName)>,
+    pub entrypoint_filter: Option<(ModuleId, ComponentName)>,
 }
 
 pub fn orchestrate(
-    typed_asts: &HashMap<ModuleName, TypedAst>,
+    typed_asts: &HashMap<ModuleId, TypedAst>,
     generated_tailwind_css: Option<&str>,
     options: OrchestrateOptions,
 ) -> IrModule {

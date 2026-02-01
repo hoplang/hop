@@ -14,7 +14,7 @@ use crate::dop;
 use crate::dop::VarName;
 use crate::error_collector::ErrorCollector;
 use crate::hop::symbols::component_name::ComponentName;
-use crate::hop::symbols::module_name::ModuleName;
+use crate::hop::symbols::module_id::ModuleId;
 
 use crate::parse_error::ParseError;
 use super::tokenizer::{self, Token};
@@ -67,7 +67,7 @@ fn disallow_attributes<'a>(
 
 /// Parse a hop document into a ParsedAst.
 pub fn parse(
-    module_name: ModuleName,
+    module_name: ModuleId,
     document: Document,
     errors: &mut ErrorCollector<ParseError>,
 ) -> ParsedAst {
@@ -285,9 +285,9 @@ fn parse_component_declaration(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut ErrorCollector<ParseError>,
-    module_name: &ModuleName,
+    module_name: &ModuleId,
     defined_components: &HashSet<String>,
-    imported_components: &HashMap<String, ModuleName>,
+    imported_components: &HashMap<String, ModuleId>,
 ) -> Option<ParsedComponentDeclaration> {
     let mut tokenizer = Tokenizer::new();
     let tree = parse_tree(&mut tokenizer, iter, errors)?;
@@ -374,9 +374,9 @@ fn parse_entrypoint_declaration(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut ErrorCollector<ParseError>,
-    module_name: &ModuleName,
+    module_name: &ModuleId,
     defined_components: &HashSet<String>,
-    imported_components: &HashMap<String, ModuleName>,
+    imported_components: &HashMap<String, ModuleId>,
 ) -> Option<ParsedEntrypointDeclaration> {
     // Consume the 'entrypoint' keyword
     let Some((dop::Token::Entrypoint, keyword_range)) =
@@ -580,9 +580,9 @@ fn construct_node(
     tree: TokenTree,
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut ErrorCollector<ParseError>,
-    module_name: &ModuleName,
+    module_name: &ModuleId,
     defined_components: &HashSet<String>,
-    imported_components: &HashMap<String, ModuleName>,
+    imported_components: &HashMap<String, ModuleId>,
 ) -> Option<ParsedNode> {
     match tree.token {
         Token::Comment { .. } => {
@@ -938,7 +938,7 @@ mod tests {
     fn check(input: &str, expected: Expect) {
         let mut errors = ErrorCollector::new();
         let module = parse(
-            ModuleName::new("test").unwrap(),
+            ModuleId::new("test").unwrap(),
             Document::new(input.to_string()),
             &mut errors,
         );

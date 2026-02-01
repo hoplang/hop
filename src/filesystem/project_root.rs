@@ -7,7 +7,7 @@ use tokio::fs as async_fs;
 
 use super::config::HopConfig;
 use crate::document::Document;
-use crate::hop::symbols::module_name::ModuleName;
+use crate::hop::symbols::module_id::ModuleId;
 
 /// Check if a directory should be skipped during .hop file search
 fn should_skip_directory(dir_name: &str) -> bool {
@@ -95,7 +95,7 @@ impl ProjectRoot {
 
     /// Convert a file path to a module name using this project root as reference
     /// Returns a module name with '/' separators (e.g., "src/components/header")
-    pub fn path_to_module_name(&self, file_path: &Path) -> anyhow::Result<ModuleName> {
+    pub fn path_to_module_name(&self, file_path: &Path) -> anyhow::Result<ModuleId> {
         let relative_path = file_path
             .strip_prefix(&self.directory)
             .with_context(|| format!("Failed to strip prefix from path {:?}", file_path))?;
@@ -105,13 +105,13 @@ impl ProjectRoot {
             .to_string_lossy()
             .replace(std::path::MAIN_SEPARATOR, "/");
 
-        ModuleName::new(&module_str)
+        ModuleId::new(&module_str)
             .map_err(|e| anyhow::anyhow!("Invalid module name for path {:?}: {}", file_path, e))
     }
 
     /// Convert a module name with '/' separators back to a file path
     /// (e.g., "src/components/header" -> "src/components/header.hop")
-    pub fn module_name_to_path(&self, module_name: &ModuleName) -> PathBuf {
+    pub fn module_name_to_path(&self, module_name: &ModuleId) -> PathBuf {
         let module_path = module_name
             .to_path()
             .replace('/', std::path::MAIN_SEPARATOR_STR);
@@ -119,7 +119,7 @@ impl ProjectRoot {
     }
 
     /// Load all hop modules from this project root, returning a HashMap of module_name -> content
-    pub fn load_all_hop_modules(&self) -> anyhow::Result<HashMap<ModuleName, Document>> {
+    pub fn load_all_hop_modules(&self) -> anyhow::Result<HashMap<ModuleId, Document>> {
         let all_hop_files = self.find_hop_files()?;
         let mut modules = HashMap::new();
 
@@ -134,7 +134,7 @@ impl ProjectRoot {
     }
 
     /// Load a single hop module from a file path, returning module_name -> document
-    pub fn load_hop_module(&self, file_path: &Path) -> anyhow::Result<(ModuleName, Document)> {
+    pub fn load_hop_module(&self, file_path: &Path) -> anyhow::Result<(ModuleId, Document)> {
         let canonical_path = file_path
             .canonicalize()
             .with_context(|| format!("Failed to canonicalize path {:?}", file_path))?;
@@ -314,7 +314,7 @@ mod tests {
         let root = ProjectRoot::from(&temp_dir).unwrap();
 
         // Test converting module names back to paths
-        let module = ModuleName::new("src/components/button").unwrap();
+        let module = ModuleId::new("src/components/button").unwrap();
         let path = root.module_name_to_path(&module);
         assert_eq!(
             path.strip_prefix(&temp_dir)
@@ -354,13 +354,13 @@ mod tests {
         assert_eq!(modules.len(), 3);
 
         // Check that specific modules are loaded with correct content
-        assert!(modules.contains_key(&ModuleName::new("src/main").unwrap()));
-        assert!(modules.contains_key(&ModuleName::new("src/components/button").unwrap()));
-        assert!(modules.contains_key(&ModuleName::new("src/components/header").unwrap()));
+        assert!(modules.contains_key(&ModuleId::new("src/main").unwrap()));
+        assert!(modules.contains_key(&ModuleId::new("src/components/button").unwrap()));
+        assert!(modules.contains_key(&ModuleId::new("src/components/header").unwrap()));
 
         // Verify content of one module
         let button_content = modules
-            .get(&ModuleName::new("src/components/button").unwrap())
+            .get(&ModuleId::new("src/components/button").unwrap())
             .unwrap();
         assert!(
             button_content
@@ -450,7 +450,7 @@ mod tests {
         assert_eq!(modules.len(), 1);
 
         // Check which modules were loaded
-        assert!(modules.contains_key(&ModuleName::new("src/main").unwrap()));
+        assert!(modules.contains_key(&ModuleId::new("src/main").unwrap()));
 
         // Should NOT contain modules from skipped directories
         let module_names: Vec<String> = modules.keys().map(|m| m.to_string()).collect();

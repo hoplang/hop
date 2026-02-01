@@ -84,7 +84,7 @@ mod tests {
     use crate::document::extract_position::extract_position;
     use crate::document::{Document, Ranged};
     use crate::error_collector::ErrorCollector;
-    use crate::hop::symbols::module_name::ModuleName;
+    use crate::hop::symbols::module_id::ModuleId;
     use crate::hop::syntax::parser::parse;
     use expect_test::{Expect, expect};
     use indoc::indoc;
@@ -93,7 +93,7 @@ mod tests {
         let (source, position) = extract_position(input).expect("Position marker not found");
         let mut errors = ErrorCollector::new();
         let ast = parse(
-            ModuleName::new("test").unwrap(),
+            ModuleId::new("test").unwrap(),
             Document::new(source),
             &mut errors,
         );

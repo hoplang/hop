@@ -1,7 +1,7 @@
 use crate::document::{Document, DocumentAnnotator};
 use crate::error_collector::ErrorCollector;
 use crate::filesystem::project_root::ProjectRoot;
-use crate::hop::symbols::module_name::ModuleName;
+use crate::hop::symbols::module_id::ModuleId;
 use crate::hop::syntax::format;
 use crate::hop::syntax::parser;
 use crate::parse_error::ParseError;
@@ -16,7 +16,7 @@ pub struct FmtResult {
 }
 
 struct FormattedModule {
-    module_name: ModuleName,
+    module_name: ModuleId,
     original: Document,
     formatted: String,
     errors: Vec<ParseError>,

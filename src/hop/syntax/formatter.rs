@@ -1110,14 +1110,14 @@ mod tests {
 
     use crate::document::Document;
     use crate::error_collector::ErrorCollector;
-    use crate::hop::symbols::module_name::ModuleName;
+    use crate::hop::symbols::module_id::ModuleId;
     use crate::parse_error::ParseError;
     use crate::hop::syntax::parser;
 
     fn check(source: &str, expected: Expect) {
         let mut errors = ErrorCollector::<ParseError>::new();
         let ast = parser::parse(
-            ModuleName::new("test").unwrap(),
+            ModuleId::new("test").unwrap(),
             Document::new(source.to_string()),
             &mut errors,
         );
@@ -1129,7 +1129,7 @@ mod tests {
 
         // Check idempotency: formatting the output should give the same result
         let formatted_twice = super::format(parser::parse(
-            ModuleName::new("test").unwrap(),
+            ModuleId::new("test").unwrap(),
             Document::new(formatted.clone()),
             &mut errors,
         ));

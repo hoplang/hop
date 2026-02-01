@@ -1,7 +1,7 @@
 use super::frontend;
 use crate::hop::program::Program;
 use crate::hop::symbols::component_name::ComponentName;
-use crate::hop::symbols::module_name::ModuleName;
+use crate::hop::symbols::module_id::ModuleId;
 use crate::log_info;
 use crate::document::DocumentAnnotator;
 use axum::body::Body;
@@ -12,7 +12,7 @@ use std::sync::{Arc, RwLock};
 
 /// Find which module contains a given entrypoint.
 /// Returns the module name if found, or an error message listing all available entrypoints.
-fn find_module_for_entrypoint(program: &Program, entrypoint: &str) -> Result<ModuleName, String> {
+fn find_module_for_entrypoint(program: &Program, entrypoint: &str) -> Result<ModuleId, String> {
     let mut all_entrypoints = Vec::new();
 
     for (module_name, ast) in program.get_typed_modules() {
@@ -286,7 +286,7 @@ mod tests {
 
     use super::*;
     use axum::routing::get;
-    use crate::{document::Document, hop::symbols::module_name::ModuleName};
+    use crate::{document::Document, hop::symbols::module_id::ModuleId};
     use axum_test::TestServer;
     use expect_test::expect;
     use simple_txtar::Archive;
@@ -295,7 +295,7 @@ mod tests {
         let archive = Archive::from(input);
         let mut modules = HashMap::new();
         for file in archive.iter() {
-            let module_name = ModuleName::new(&file.name.replace(".hop", "")).unwrap();
+            let module_name = ModuleId::new(&file.name.replace(".hop", "")).unwrap();
             modules.insert(module_name, Document::new(file.content.clone()));
         }
         let program = Program::new(modules);

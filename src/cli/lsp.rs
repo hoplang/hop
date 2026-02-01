@@ -2,7 +2,7 @@ use crate::document::DocumentPosition;
 use crate::document::{Document, DocumentRange};
 use crate::filesystem::project_root::ProjectRoot;
 use crate::hop::program::{DefinitionLocation, Program, RenameLocation};
-use crate::hop::symbols::module_name::ModuleName;
+use crate::hop::symbols::module_id::ModuleId;
 use crate::hop::syntax::format;
 use std::collections::HashMap;
 use tokio::sync::{OnceCell, RwLock};
@@ -53,7 +53,7 @@ impl HopLanguageServer {
         }
     }
 
-    fn uri_to_module_name(uri: &Uri, root: &ProjectRoot) -> ModuleName {
+    fn uri_to_module_name(uri: &Uri, root: &ProjectRoot) -> ModuleId {
         match uri.to_file_path() {
             Some(path) => match root.path_to_module_name(&path) {
                 Ok(s) => s,
@@ -63,7 +63,7 @@ impl HopLanguageServer {
         }
     }
 
-    fn module_name_to_uri(name: &ModuleName, root: &ProjectRoot) -> Uri {
+    fn module_name_to_uri(name: &ModuleId, root: &ProjectRoot) -> Uri {
         let p = root.module_name_to_path(name);
         Uri::from_file_path(&p).expect("Failed to create URI from file path")
     }
@@ -129,7 +129,7 @@ impl LanguageServer for HopLanguageServer {
     async fn initialized(&self, _: InitializedParams) {
         if let Some(root) = self.root.get() {
             if let Ok(all_modules) = root.load_all_hop_modules() {
-                let names: Vec<ModuleName> = all_modules.keys().cloned().collect();
+                let names: Vec<ModuleId> = all_modules.keys().cloned().collect();
                 {
                     let mut server = self.program.write().await;
                     for (module_name, document) in all_modules {
@@ -155,7 +155,7 @@ impl LanguageServer for HopLanguageServer {
         if let Some(root) = self.root.get() {
             let module_name = Self::uri_to_module_name(&uri, root);
             if let Some(change) = params.content_changes.into_iter().next() {
-                let changed_modules: Vec<ModuleName>;
+                let changed_modules: Vec<ModuleId>;
                 {
                     let mut server = self.program.write().await;
                     changed_modules = server.update_module(module_name, Document::new(change.text));

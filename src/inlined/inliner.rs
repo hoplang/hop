@@ -5,7 +5,7 @@ use crate::hop::semantics::typed_ast::{
     TypedAst, TypedComponentDeclaration, TypedEntrypointDeclaration,
 };
 use crate::hop::semantics::typed_node::{TypedAttribute, TypedAttributeValue, TypedNode};
-use crate::hop::symbols::module_name::ModuleName;
+use crate::hop::symbols::module_id::ModuleId;
 use crate::inlined::inlined_ast::{
     InlinedAttribute, InlinedAttributeValue, InlinedEntrypointDeclaration, InlinedNode,
     InlinedParameter,
@@ -21,7 +21,7 @@ pub struct Inliner;
 impl Inliner {
     /// Inline all entrypoint declarations found in the ASTs.
     pub fn inline_ast_entrypoints(
-        asts: &HashMap<ModuleName, TypedAst>,
+        asts: &HashMap<ModuleId, TypedAst>,
     ) -> Vec<InlinedEntrypointDeclaration> {
         let mut module_names: Vec<_> = asts.keys().collect();
         module_names.sort();
@@ -40,9 +40,9 @@ impl Inliner {
 
     /// Inline a single entrypoint declaration.
     pub fn inline_single_entrypoint(
-        module_name: &ModuleName,
+        module_name: &ModuleId,
         entrypoint: &TypedEntrypointDeclaration,
-        asts: &HashMap<ModuleName, TypedAst>,
+        asts: &HashMap<ModuleId, TypedAst>,
     ) -> InlinedEntrypointDeclaration {
         let mut children = Vec::new();
         let mut children_vars = Vec::new();
@@ -94,13 +94,13 @@ impl Inliner {
 
     /// Inline a component reference, pushing results to output
     fn inline_component_reference(
-        module_name: &ModuleName,
+        module_name: &ModuleId,
         component: &TypedComponentDeclaration,
         args: &[(VarName, TypedExpr)],
         slot_children: &[TypedNode],
         parent_slot_content: Option<&[Arc<InlinedNode>]>,
         parent_children_vars: &mut Vec<String>,
-        asts: &HashMap<ModuleName, TypedAst>,
+        asts: &HashMap<ModuleId, TypedAst>,
         output: &mut Vec<Arc<InlinedNode>>,
     ) {
         // Inline slot_children in parent context
@@ -177,7 +177,7 @@ impl Inliner {
     /// Inline nodes, pushing results to output
     fn inline_nodes(
         nodes: &[TypedNode],
-        asts: &HashMap<ModuleName, TypedAst>,
+        asts: &HashMap<ModuleId, TypedAst>,
         slot_content: Option<&[Arc<InlinedNode>]>,
         children_vars: &mut Vec<String>,
         output: &mut Vec<Arc<InlinedNode>>,
@@ -190,7 +190,7 @@ impl Inliner {
     /// Inline a single node, pushing results to output
     fn inline_node(
         node: &TypedNode,
-        asts: &HashMap<ModuleName, TypedAst>,
+        asts: &HashMap<ModuleId, TypedAst>,
         slot_content: Option<&[Arc<InlinedNode>]>,
         children_vars: &mut Vec<String>,
         output: &mut Vec<Arc<InlinedNode>>,
@@ -407,16 +407,16 @@ mod tests {
     use crate::document::Document;
     use crate::error_collector::ErrorCollector;
     use crate::hop::semantics::type_checker::TypeChecker;
-    use crate::hop::symbols::module_name::ModuleName;
+    use crate::hop::symbols::module_id::ModuleId;
     use crate::hop::syntax::parser::parse;
     use expect_test::{Expect, expect};
 
-    fn create_typed_asts_from_sources(sources: Vec<(&str, &str)>) -> HashMap<ModuleName, TypedAst> {
+    fn create_typed_asts_from_sources(sources: Vec<(&str, &str)>) -> HashMap<ModuleId, TypedAst> {
         let mut errors = ErrorCollector::new();
 
         let mut untyped_asts = HashMap::new();
         for (module_name_str, source) in sources {
-            let module_name = ModuleName::new(module_name_str).unwrap();
+            let module_name = ModuleId::new(module_name_str).unwrap();
             let ast = parse(
                 module_name.clone(),
                 Document::new(source.to_string()),

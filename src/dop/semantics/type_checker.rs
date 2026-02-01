@@ -1345,7 +1345,7 @@ mod tests {
     use crate::dop::symbols::type_name::TypeName;
     use crate::dop::syntax::tokenizer;
     use crate::error_collector::ErrorCollector;
-    use crate::hop::symbols::module_name::ModuleName;
+    use crate::hop::symbols::module_id::ModuleId;
     use expect_test::{Expect, expect};
     use indoc::indoc;
     use std::collections::VecDeque;
@@ -1353,7 +1353,7 @@ mod tests {
     fn check(declarations_str: &str, env_vars: &[(&str, &str)], expr_str: &str, expected: Expect) {
         let mut env: Environment<Arc<Type>> = Environment::new();
         let mut type_env: Environment<Arc<Type>> = Environment::new();
-        let test_module = ModuleName::new("test").unwrap();
+        let test_module = ModuleId::new("test").unwrap();
 
         // Parse and process declarations
         let cursor = DocumentCursor::new(declarations_str.to_string());

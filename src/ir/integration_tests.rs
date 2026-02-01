@@ -2,7 +2,7 @@ use super::semantics::evaluator::evaluate_entrypoint;
 use super::transpile::{GoTranspiler, PythonTranspiler, RustTranspiler, Transpiler, TsTranspiler};
 use crate::document::Document;
 use crate::hop::program::Program;
-use crate::hop::symbols::module_name::ModuleName;
+use crate::hop::symbols::module_id::ModuleId;
 use crate::hop::syntax::format;
 use crate::orchestrator::{OrchestrateOptions, orchestrate};
 use expect_test::Expect;
@@ -301,7 +301,7 @@ fn execute_evaluator(module: &super::IrModule) -> Result<String, String> {
 
 fn check(hop_source: &str, expected_output: &str, expected: Expect) {
     // Parse hop source code
-    let module_name = ModuleName::new("test").unwrap();
+    let module_name = ModuleId::new("test").unwrap();
     let mut modules = HashMap::new();
     modules.insert(module_name.clone(), Document::new(hop_source.to_string()));
 

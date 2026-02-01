@@ -972,7 +972,7 @@ mod tests {
     use crate::dop::symbols::type_name::TypeName;
     use crate::dop::syntax::parsed::ParsedExpr;
     use crate::error_collector::ErrorCollector;
-    use crate::hop::symbols::module_name::ModuleName;
+    use crate::hop::symbols::module_id::ModuleId;
     use expect_test::{Expect, expect};
     use indoc::indoc;
     use std::collections::VecDeque;
@@ -1307,7 +1307,7 @@ mod tests {
     fn enum_exhaustive() {
         check(
             Type::Enum {
-                module: ModuleName::new("test").unwrap(),
+                module: ModuleId::new("test").unwrap(),
                 name: TypeName::new("Color").unwrap(),
                 variants: vec![
                     (TypeName::new("Red").unwrap(), vec![]),
@@ -1337,7 +1337,7 @@ mod tests {
     fn enum_missing_variant() {
         check(
             Type::Enum {
-                module: ModuleName::new("test").unwrap(),
+                module: ModuleId::new("test").unwrap(),
                 name: TypeName::new("Color").unwrap(),
                 variants: vec![
                     (TypeName::new("Red").unwrap(), vec![]),
@@ -1363,7 +1363,7 @@ mod tests {
     fn enum_wildcard_covers_remaining() {
         check(
             Type::Enum {
-                module: ModuleName::new("test").unwrap(),
+                module: ModuleId::new("test").unwrap(),
                 name: TypeName::new("Color").unwrap(),
                 variants: vec![
                     (TypeName::new("Red").unwrap(), vec![]),
@@ -1392,7 +1392,7 @@ mod tests {
     fn enum_unreachable_after_wildcard() {
         check(
             Type::Enum {
-                module: ModuleName::new("test").unwrap(),
+                module: ModuleId::new("test").unwrap(),
                 name: TypeName::new("Color").unwrap(),
                 variants: vec![
                     (TypeName::new("Red").unwrap(), vec![]),
@@ -1420,7 +1420,7 @@ mod tests {
     fn enum_variant_with_fields_exhaustive() {
         check(
             Type::Enum {
-                module: ModuleName::new("test").unwrap(),
+                module: ModuleId::new("test").unwrap(),
                 name: TypeName::new("Outcome").unwrap(),
                 variants: vec![
                     (
@@ -1454,7 +1454,7 @@ mod tests {
     fn enum_variant_mixed_fields_and_unit() {
         check(
             Type::Enum {
-                module: ModuleName::new("test").unwrap(),
+                module: ModuleId::new("test").unwrap(),
                 name: TypeName::new("Maybe").unwrap(),
                 variants: vec![
                     (
@@ -1484,7 +1484,7 @@ mod tests {
     fn enum_variant_with_wildcard_field() {
         check(
             Type::Enum {
-                module: ModuleName::new("test").unwrap(),
+                module: ModuleId::new("test").unwrap(),
                 name: TypeName::new("Outcome").unwrap(),
                 variants: vec![
                     (
@@ -1516,7 +1516,7 @@ mod tests {
     fn enum_three_variants_with_fields() {
         check(
             Type::Enum {
-                module: ModuleName::new("test").unwrap(),
+                module: ModuleId::new("test").unwrap(),
                 name: TypeName::new("Status").unwrap(),
                 variants: vec![
                     (
@@ -1558,7 +1558,7 @@ mod tests {
     fn enum_variant_with_three_fields() {
         check(
             Type::Enum {
-                module: ModuleName::new("test").unwrap(),
+                module: ModuleId::new("test").unwrap(),
                 name: TypeName::new("Point3D").unwrap(),
                 variants: vec![(
                     TypeName::new("Coords").unwrap(),
@@ -1588,7 +1588,7 @@ mod tests {
     fn enum_variant_all_fields_wildcard() {
         check(
             Type::Enum {
-                module: ModuleName::new("test").unwrap(),
+                module: ModuleId::new("test").unwrap(),
                 name: TypeName::new("Point3D").unwrap(),
                 variants: vec![(
                     TypeName::new("Coords").unwrap(),
@@ -1615,7 +1615,7 @@ mod tests {
     fn enum_variant_mixed_bindings_and_wildcards() {
         check(
             Type::Enum {
-                module: ModuleName::new("test").unwrap(),
+                module: ModuleId::new("test").unwrap(),
                 name: TypeName::new("Point3D").unwrap(),
                 variants: vec![(
                     TypeName::new("Coords").unwrap(),
@@ -1644,7 +1644,7 @@ mod tests {
     fn enum_variant_wildcard_covers_all_variants() {
         check(
             Type::Enum {
-                module: ModuleName::new("test").unwrap(),
+                module: ModuleId::new("test").unwrap(),
                 name: TypeName::new("Result").unwrap(),
                 variants: vec![
                     (
@@ -1674,7 +1674,7 @@ mod tests {
     fn enum_variant_binding_covers_all_variants() {
         check(
             Type::Enum {
-                module: ModuleName::new("test").unwrap(),
+                module: ModuleId::new("test").unwrap(),
                 name: TypeName::new("Result").unwrap(),
                 variants: vec![
                     (
@@ -1703,7 +1703,7 @@ mod tests {
     fn enum_variant_partial_coverage_with_wildcard() {
         check(
             Type::Enum {
-                module: ModuleName::new("test").unwrap(),
+                module: ModuleId::new("test").unwrap(),
                 name: TypeName::new("Status").unwrap(),
                 variants: vec![
                     (
@@ -1739,7 +1739,7 @@ mod tests {
     fn enum_variant_missing_variant_error() {
         check(
             Type::Enum {
-                module: ModuleName::new("test").unwrap(),
+                module: ModuleId::new("test").unwrap(),
                 name: TypeName::new("Outcome").unwrap(),
                 variants: vec![
                     (
@@ -1769,7 +1769,7 @@ mod tests {
     fn enum_variant_missing_multiple_variants_error() {
         check(
             Type::Enum {
-                module: ModuleName::new("test").unwrap(),
+                module: ModuleId::new("test").unwrap(),
                 name: TypeName::new("Status").unwrap(),
                 variants: vec![
                     (
@@ -1800,7 +1800,7 @@ mod tests {
     fn enum_variant_duplicate_pattern_error() {
         check(
             Type::Enum {
-                module: ModuleName::new("test").unwrap(),
+                module: ModuleId::new("test").unwrap(),
                 name: TypeName::new("Outcome").unwrap(),
                 variants: vec![
                     (
@@ -1832,7 +1832,7 @@ mod tests {
     fn enum_variant_unreachable_after_wildcard_error() {
         check(
             Type::Enum {
-                module: ModuleName::new("test").unwrap(),
+                module: ModuleId::new("test").unwrap(),
                 name: TypeName::new("Outcome").unwrap(),
                 variants: vec![
                     (
@@ -1863,7 +1863,7 @@ mod tests {
     fn enum_variant_unknown_field_error() {
         check(
             Type::Enum {
-                module: ModuleName::new("test").unwrap(),
+                module: ModuleId::new("test").unwrap(),
                 name: TypeName::new("Outcome").unwrap(),
                 variants: vec![
                     (
@@ -1894,7 +1894,7 @@ mod tests {
     fn enum_variant_unknown_field_after_valid_field_error() {
         check(
             Type::Enum {
-                module: ModuleName::new("test").unwrap(),
+                module: ModuleId::new("test").unwrap(),
                 name: TypeName::new("Point").unwrap(),
                 variants: vec![(
                     TypeName::new("XY").unwrap(),
@@ -1921,7 +1921,7 @@ mod tests {
     fn enum_variant_two_unknown_fields_error() {
         check(
             Type::Enum {
-                module: ModuleName::new("test").unwrap(),
+                module: ModuleId::new("test").unwrap(),
                 name: TypeName::new("Point").unwrap(),
                 variants: vec![(
                     TypeName::new("XY").unwrap(),
@@ -1948,7 +1948,7 @@ mod tests {
     fn enum_variant_missing_field_in_pattern_error() {
         check(
             Type::Enum {
-                module: ModuleName::new("test").unwrap(),
+                module: ModuleId::new("test").unwrap(),
                 name: TypeName::new("Point").unwrap(),
                 variants: vec![(
                     TypeName::new("XY").unwrap(),
@@ -1975,7 +1975,7 @@ mod tests {
     fn enum_variant_missing_two_fields_in_pattern_error() {
         check(
             Type::Enum {
-                module: ModuleName::new("test").unwrap(),
+                module: ModuleId::new("test").unwrap(),
                 name: TypeName::new("Point").unwrap(),
                 variants: vec![(
                     TypeName::new("XYZ").unwrap(),
@@ -2003,7 +2003,7 @@ mod tests {
     fn enum_variant_no_parens_when_fields_expected_error() {
         check(
             Type::Enum {
-                module: ModuleName::new("test").unwrap(),
+                module: ModuleId::new("test").unwrap(),
                 name: TypeName::new("Point").unwrap(),
                 variants: vec![(
                     TypeName::new("XY").unwrap(),
@@ -2030,7 +2030,7 @@ mod tests {
     fn enum_variant_fields_provided_to_unit_variant_error() {
         check(
             Type::Enum {
-                module: ModuleName::new("test").unwrap(),
+                module: ModuleId::new("test").unwrap(),
                 name: TypeName::new("Maybe").unwrap(),
                 variants: vec![
                     (
@@ -2058,7 +2058,7 @@ mod tests {
     fn enum_variant_nested_option_field() {
         check(
             Type::Enum {
-                module: ModuleName::new("test").unwrap(),
+                module: ModuleId::new("test").unwrap(),
                 name: TypeName::new("Container").unwrap(),
                 variants: vec![(
                     TypeName::new("Wrapped").unwrap(),
@@ -2089,7 +2089,7 @@ mod tests {
     fn enum_variant_nested_option_field_missing_none() {
         check(
             Type::Enum {
-                module: ModuleName::new("test").unwrap(),
+                module: ModuleId::new("test").unwrap(),
                 name: TypeName::new("Container").unwrap(),
                 variants: vec![(
                     TypeName::new("Wrapped").unwrap(),
@@ -2116,7 +2116,7 @@ mod tests {
     fn enum_variant_nested_bool_field() {
         check(
             Type::Enum {
-                module: ModuleName::new("test").unwrap(),
+                module: ModuleId::new("test").unwrap(),
                 name: TypeName::new("Flag").unwrap(),
                 variants: vec![(
                     TypeName::new("Active").unwrap(),
@@ -2143,7 +2143,7 @@ mod tests {
     fn enum_variant_nested_bool_field_missing_case() {
         check(
             Type::Enum {
-                module: ModuleName::new("test").unwrap(),
+                module: ModuleId::new("test").unwrap(),
                 name: TypeName::new("Flag").unwrap(),
                 variants: vec![(
                     TypeName::new("Active").unwrap(),
@@ -2167,7 +2167,7 @@ mod tests {
     fn enum_variant_four_fields() {
         check(
             Type::Enum {
-                module: ModuleName::new("test").unwrap(),
+                module: ModuleId::new("test").unwrap(),
                 name: TypeName::new("Rectangle").unwrap(),
                 variants: vec![(
                     TypeName::new("Bounds").unwrap(),
@@ -2199,7 +2199,7 @@ mod tests {
     fn enum_variant_four_variants_mixed() {
         check(
             Type::Enum {
-                module: ModuleName::new("test").unwrap(),
+                module: ModuleId::new("test").unwrap(),
                 name: TypeName::new("Event").unwrap(),
                 variants: vec![
                     (
@@ -2247,7 +2247,7 @@ mod tests {
     fn record_match() {
         check(
             Type::Record {
-                module: ModuleName::new("test").unwrap(),
+                module: ModuleId::new("test").unwrap(),
                 name: TypeName::new("User").unwrap(),
                 fields: vec![
                     (FieldName::new("name").unwrap(), Arc::new(Type::String)),
@@ -2272,7 +2272,7 @@ mod tests {
     fn record_with_bool_fields_exhaustive() {
         check(
             Type::Record {
-                module: ModuleName::new("test").unwrap(),
+                module: ModuleId::new("test").unwrap(),
                 name: TypeName::new("Foo").unwrap(),
                 fields: vec![
                     (FieldName::new("a").unwrap(), Arc::new(Type::Bool)),
@@ -2544,7 +2544,7 @@ mod tests {
     fn enum_binding_covers_all() {
         check(
             Type::Enum {
-                module: ModuleName::new("test").unwrap(),
+                module: ModuleId::new("test").unwrap(),
                 name: TypeName::new("Color").unwrap(),
                 variants: vec![
                     (TypeName::new("Red").unwrap(), vec![]),
@@ -2568,7 +2568,7 @@ mod tests {
     fn enum_duplicate_variant() {
         check(
             Type::Enum {
-                module: ModuleName::new("test").unwrap(),
+                module: ModuleId::new("test").unwrap(),
                 name: TypeName::new("Color").unwrap(),
                 variants: vec![
                     (TypeName::new("Red").unwrap(), vec![]),
@@ -2594,7 +2594,7 @@ mod tests {
     fn enum_multiple_wildcards() {
         check(
             Type::Enum {
-                module: ModuleName::new("test").unwrap(),
+                module: ModuleId::new("test").unwrap(),
                 name: TypeName::new("Color").unwrap(),
                 variants: vec![
                     (TypeName::new("Red").unwrap(), vec![]),
@@ -2619,7 +2619,7 @@ mod tests {
     fn enum_missing_multiple_variants() {
         check(
             Type::Enum {
-                module: ModuleName::new("test").unwrap(),
+                module: ModuleId::new("test").unwrap(),
                 name: TypeName::new("Color").unwrap(),
                 variants: vec![
                     (TypeName::new("Red").unwrap(), vec![]),
@@ -2646,7 +2646,7 @@ mod tests {
     fn record_with_wildcard_fields() {
         check(
             Type::Record {
-                module: ModuleName::new("test").unwrap(),
+                module: ModuleId::new("test").unwrap(),
                 name: TypeName::new("User").unwrap(),
                 fields: vec![
                     (FieldName::new("name").unwrap(), Arc::new(Type::String)),
@@ -2670,7 +2670,7 @@ mod tests {
     fn record_with_nested_option() {
         check(
             Type::Record {
-                module: ModuleName::new("test").unwrap(),
+                module: ModuleId::new("test").unwrap(),
                 name: TypeName::new("User").unwrap(),
                 fields: vec![
                     (FieldName::new("name").unwrap(), Arc::new(Type::String)),
@@ -2703,7 +2703,7 @@ mod tests {
     fn record_with_option_field_missing_none() {
         check(
             Type::Record {
-                module: ModuleName::new("test").unwrap(),
+                module: ModuleId::new("test").unwrap(),
                 name: TypeName::new("User").unwrap(),
                 fields: vec![
                     (FieldName::new("name").unwrap(), Arc::new(Type::String)),
@@ -2730,7 +2730,7 @@ mod tests {
     fn record_with_bool_fields_missing() {
         check(
             Type::Record {
-                module: ModuleName::new("test").unwrap(),
+                module: ModuleId::new("test").unwrap(),
                 name: TypeName::new("Foo").unwrap(),
                 fields: vec![
                     (FieldName::new("a").unwrap(), Arc::new(Type::Bool)),
@@ -2756,7 +2756,7 @@ mod tests {
     fn record_with_bool_fields_missing_multiple() {
         check(
             Type::Record {
-                module: ModuleName::new("test").unwrap(),
+                module: ModuleId::new("test").unwrap(),
                 name: TypeName::new("Foo").unwrap(),
                 fields: vec![
                     (FieldName::new("a").unwrap(), Arc::new(Type::Bool)),
@@ -2781,7 +2781,7 @@ mod tests {
     fn option_of_record_exhaustive() {
         check(
             Type::Option(Arc::new(Type::Record {
-                module: ModuleName::new("test").unwrap(),
+                module: ModuleId::new("test").unwrap(),
                 name: TypeName::new("User").unwrap(),
                 fields: vec![
                     (FieldName::new("name").unwrap(), Arc::new(Type::String)),
@@ -2810,7 +2810,7 @@ mod tests {
     fn option_of_record_with_wildcard_fields() {
         check(
             Type::Option(Arc::new(Type::Record {
-                module: ModuleName::new("test").unwrap(),
+                module: ModuleId::new("test").unwrap(),
                 name: TypeName::new("User").unwrap(),
                 fields: vec![
                     (FieldName::new("name").unwrap(), Arc::new(Type::String)),
@@ -2836,7 +2836,7 @@ mod tests {
     fn option_of_nested_records_with_wildcard_fields() {
         // Role is a nested record inside User
         let role_type = Arc::new(Type::Record {
-            module: ModuleName::new("test").unwrap(),
+            module: ModuleId::new("test").unwrap(),
             name: TypeName::new("Role").unwrap(),
             fields: vec![
                 (FieldName::new("title").unwrap(), Arc::new(Type::String)),
@@ -2845,7 +2845,7 @@ mod tests {
         });
         check(
             Type::Option(Arc::new(Type::Record {
-                module: ModuleName::new("test").unwrap(),
+                module: ModuleId::new("test").unwrap(),
                 name: TypeName::new("User").unwrap(),
                 fields: vec![
                     (FieldName::new("role").unwrap(), role_type),
@@ -2871,7 +2871,7 @@ mod tests {
     fn record_with_all_effectively_wildcard_fields() {
         // All fields are effectively wildcards (one literal, one nested record)
         let address_type = Arc::new(Type::Record {
-            module: ModuleName::new("test").unwrap(),
+            module: ModuleId::new("test").unwrap(),
             name: TypeName::new("Address").unwrap(),
             fields: vec![
                 (FieldName::new("street").unwrap(), Arc::new(Type::String)),
@@ -2880,7 +2880,7 @@ mod tests {
         });
         check(
             Type::Record {
-                module: ModuleName::new("test").unwrap(),
+                module: ModuleId::new("test").unwrap(),
                 name: TypeName::new("User").unwrap(),
                 fields: vec![
                     (FieldName::new("name").unwrap(), Arc::new(Type::String)),
@@ -2904,7 +2904,7 @@ mod tests {
     fn record_with_nested_wildcard_fields_followed_by_wildcard() {
         // First arm has all wildcard fields (effectively a wildcard), second arm is unreachable
         let role_type = Arc::new(Type::Record {
-            module: ModuleName::new("test").unwrap(),
+            module: ModuleId::new("test").unwrap(),
             name: TypeName::new("Role").unwrap(),
             fields: vec![
                 (FieldName::new("title").unwrap(), Arc::new(Type::String)),
@@ -2913,7 +2913,7 @@ mod tests {
         });
         check(
             Type::Record {
-                module: ModuleName::new("test").unwrap(),
+                module: ModuleId::new("test").unwrap(),
                 name: TypeName::new("User").unwrap(),
                 fields: vec![
                     (FieldName::new("role").unwrap(), role_type),
@@ -2938,7 +2938,7 @@ mod tests {
     fn record_with_binding_and_nested_wildcard_record() {
         // User has a binding for `name` but `address` is an effectively-wildcard record
         let address_type = Arc::new(Type::Record {
-            module: ModuleName::new("test").unwrap(),
+            module: ModuleId::new("test").unwrap(),
             name: TypeName::new("Address").unwrap(),
             fields: vec![
                 (FieldName::new("street").unwrap(), Arc::new(Type::String)),
@@ -2947,7 +2947,7 @@ mod tests {
         });
         check(
             Type::Record {
-                module: ModuleName::new("test").unwrap(),
+                module: ModuleId::new("test").unwrap(),
                 name: TypeName::new("User").unwrap(),
                 fields: vec![
                     (FieldName::new("name").unwrap(), Arc::new(Type::String)),
@@ -2971,7 +2971,7 @@ mod tests {
     fn enum_variant_with_binding_and_nested_wildcard_record() {
         // Outcome::Success has a binding for `value` but `metadata` is an effectively-wildcard record
         let metadata_type = Arc::new(Type::Record {
-            module: ModuleName::new("test").unwrap(),
+            module: ModuleId::new("test").unwrap(),
             name: TypeName::new("Metadata").unwrap(),
             fields: vec![
                 (FieldName::new("created").unwrap(), Arc::new(Type::Int)),
@@ -2980,7 +2980,7 @@ mod tests {
         });
         check(
             Type::Enum {
-                module: ModuleName::new("test").unwrap(),
+                module: ModuleId::new("test").unwrap(),
                 name: TypeName::new("Outcome").unwrap(),
                 variants: vec![
                     (
@@ -3016,7 +3016,7 @@ mod tests {
     fn three_level_nested_records_with_middle_binding() {
         // Outer -> Middle (has binding) -> Inner (all wildcards)
         let inner_type = Type::Record {
-            module: ModuleName::new("test").unwrap(),
+            module: ModuleId::new("test").unwrap(),
             name: TypeName::new("Inner").unwrap(),
             fields: vec![
                 (FieldName::new("x").unwrap(), Arc::new(Type::Int)),
@@ -3024,7 +3024,7 @@ mod tests {
             ],
         };
         let middle_type = Type::Record {
-            module: ModuleName::new("test").unwrap(),
+            module: ModuleId::new("test").unwrap(),
             name: TypeName::new("Middle").unwrap(),
             fields: vec![
                 (FieldName::new("name").unwrap(), Arc::new(Type::String)),
@@ -3033,7 +3033,7 @@ mod tests {
         };
         check(
             Type::Record {
-                module: ModuleName::new("test").unwrap(),
+                module: ModuleId::new("test").unwrap(),
                 name: TypeName::new("Outer").unwrap(),
                 fields: vec![(FieldName::new("middle").unwrap(), Arc::new(middle_type))],
             },
@@ -3057,7 +3057,7 @@ mod tests {
     fn validation_undefined_enum_variant() {
         check(
             Type::Enum {
-                module: ModuleName::new("test").unwrap(),
+                module: ModuleId::new("test").unwrap(),
                 name: TypeName::new("Color").unwrap(),
                 variants: vec![
                     (TypeName::new("Red").unwrap(), vec![]),
@@ -3082,7 +3082,7 @@ mod tests {
     fn validation_record_missing_fields() {
         check(
             Type::Record {
-                module: ModuleName::new("test").unwrap(),
+                module: ModuleId::new("test").unwrap(),
                 name: TypeName::new("User").unwrap(),
                 fields: vec![
                     (FieldName::new("name").unwrap(), Arc::new(Type::String)),
@@ -3106,7 +3106,7 @@ mod tests {
     fn validation_record_unknown_field() {
         check(
             Type::Record {
-                module: ModuleName::new("test").unwrap(),
+                module: ModuleId::new("test").unwrap(),
                 name: TypeName::new("User").unwrap(),
                 fields: vec![(FieldName::new("name").unwrap(), Arc::new(Type::String))],
             },
@@ -3127,7 +3127,7 @@ mod tests {
     fn validation_boolean_pattern_on_enum() {
         check(
             Type::Enum {
-                module: ModuleName::new("test").unwrap(),
+                module: ModuleId::new("test").unwrap(),
                 name: TypeName::new("Color").unwrap(),
                 variants: vec![
                     (TypeName::new("Red").unwrap(), vec![]),
@@ -3152,7 +3152,7 @@ mod tests {
     fn validation_option_pattern_on_enum() {
         check(
             Type::Enum {
-                module: ModuleName::new("test").unwrap(),
+                module: ModuleId::new("test").unwrap(),
                 name: TypeName::new("Color").unwrap(),
                 variants: vec![
                     (TypeName::new("Red").unwrap(), vec![]),

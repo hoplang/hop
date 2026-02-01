@@ -5,7 +5,7 @@ use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::type_name::TypeName;
 use crate::dop::{Type, VarName};
 use crate::hop::symbols::component_name::ComponentName;
-use crate::hop::symbols::module_name::ModuleName;
+use crate::hop::symbols::module_id::ModuleId;
 use crate::ir::ast::{ExprId, IrExpr, IrForSource, IrStatement, StatementId};
 use crate::ir::ast::{IrEntrypointDeclaration, IrEnumDeclaration, IrModule, IrRecordDeclaration};
 use std::cell::RefCell;
@@ -470,7 +470,7 @@ impl IrBuilder {
             }
         }
 
-        let test_module = ModuleName::new("test").unwrap();
+        let test_module = ModuleId::new("test").unwrap();
         IrExpr::RecordLiteral {
             record_name: record_name.to_string(),
             fields: fields
@@ -514,7 +514,7 @@ impl IrBuilder {
             );
         }
 
-        let test_module = ModuleName::new("test").unwrap();
+        let test_module = ModuleId::new("test").unwrap();
         IrExpr::EnumLiteral {
             enum_name: CheapString::new(enum_name.to_string()),
             variant_name: CheapString::new(variant_name.to_string()),

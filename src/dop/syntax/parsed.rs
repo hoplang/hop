@@ -4,7 +4,7 @@ use crate::document::{CheapString, DocumentRange, Ranged};
 use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::type_name::TypeName;
 use crate::dop::symbols::var_name::VarName;
-use crate::hop::symbols::module_name::ModuleName;
+use crate::hop::symbols::module_id::ModuleId;
 use pretty::BoxDoc;
 
 #[derive(Debug, Clone)]
@@ -610,7 +610,7 @@ pub enum ParsedDeclaration {
         /// The full path range (module::path::Name) for error reporting.
         path: DocumentRange,
         /// The parsed module name.
-        module_name: ModuleName,
+        module_name: ModuleId,
         /// The full range of the declaration.
         range: DocumentRange,
     },

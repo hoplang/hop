@@ -9,7 +9,7 @@ use crate::dop::VarName;
 use crate::dop::syntax::parsed::{ParsedLoopSource, ParsedMatchPattern, ParsedType};
 
 use crate::hop::symbols::component_name::ComponentName;
-use crate::hop::symbols::module_name::ModuleName;
+use crate::hop::symbols::module_id::ModuleId;
 
 use super::parsed_ast::ParsedAttribute;
 
@@ -83,7 +83,7 @@ pub enum ParsedNode {
         component_name: ComponentName,
         component_name_opening_range: DocumentRange,
         component_name_closing_range: Option<DocumentRange>,
-        declaring_module: Option<ModuleName>,
+        declaring_module: Option<ModuleId>,
         args: Vec<ParsedAttribute>,
         children: Vec<ParsedNode>,
         range: DocumentRange,

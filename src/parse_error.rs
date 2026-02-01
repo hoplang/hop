@@ -4,7 +4,7 @@ use crate::dop::symbols::type_name::InvalidTypeNameError;
 use crate::dop::symbols::var_name::InvalidVarNameError;
 use crate::dop::syntax::token::Token;
 use crate::hop::symbols::component_name::InvalidComponentNameError;
-use crate::hop::symbols::module_name::InvalidModuleNameError;
+use crate::hop::symbols::module_id::InvalidModuleIdError;
 use thiserror::Error;
 
 #[derive(Debug, Clone, Error)]
@@ -212,7 +212,7 @@ pub enum ParseError {
 
     #[error("{error}")]
     InvalidModuleName {
-        error: InvalidModuleNameError,
+        error: InvalidModuleIdError,
         range: DocumentRange,
     },
 

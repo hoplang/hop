@@ -24,21 +24,21 @@ use crate::hop::semantics::typed_ast::{
 use crate::hop::semantics::typed_node::{
     TypedAttribute, TypedAttributeValue, TypedLoopSource, TypedNode,
 };
-use crate::hop::symbols::module_name::ModuleName;
+use crate::hop::symbols::module_id::ModuleId;
 use crate::hop::syntax::parsed_ast::{ParsedAst, ParsedAttributeValue};
 use crate::hop::syntax::parsed_node::{ParsedLetBinding, ParsedNode};
 
 #[derive(Default, Debug)]
 pub struct TypeChecker {
-    state: HashMap<ModuleName, HashMap<String, Arc<Type>>>,
-    pub type_errors: HashMap<ModuleName, ErrorCollector<TypeError>>,
-    pub type_annotations: HashMap<ModuleName, Vec<TypeAnnotation>>,
-    pub typed_asts: HashMap<ModuleName, TypedAst>,
+    state: HashMap<ModuleId, HashMap<String, Arc<Type>>>,
+    pub type_errors: HashMap<ModuleId, ErrorCollector<TypeError>>,
+    pub type_annotations: HashMap<ModuleId, Vec<TypeAnnotation>>,
+    pub typed_asts: HashMap<ModuleId, TypedAst>,
 }
 
 impl TypeChecker {
     /// Remove all data associated with a module.
-    pub fn remove_module(&mut self, module_name: &ModuleName) {
+    pub fn remove_module(&mut self, module_name: &ModuleId) {
         self.state.remove(module_name);
         self.type_errors.remove(module_name);
         self.type_annotations.remove(module_name);
@@ -81,7 +81,7 @@ impl TypeChecker {
 
 fn typecheck_module(
     parsed_ast: &ParsedAst,
-    state: &mut HashMap<ModuleName, HashMap<String, Arc<Type>>>,
+    state: &mut HashMap<ModuleId, HashMap<String, Arc<Type>>>,
     errors: &mut ErrorCollector<TypeError>,
     annotations: &mut Vec<TypeAnnotation>,
 ) -> TypedAst {
@@ -1276,7 +1276,7 @@ fn decision_to_typed_nodes(decision: &Decision, typed_bodies: &[Vec<TypedNode>])
 mod tests {
     use super::*;
     use crate::document::{Document, DocumentAnnotator};
-    use crate::hop::symbols::module_name::ModuleName;
+    use crate::hop::symbols::module_id::ModuleId;
     use crate::hop::syntax::parser::parse;
     use expect_test::{Expect, expect};
     use indoc::indoc;
@@ -1301,7 +1301,7 @@ mod tests {
             }
             let source_code = file.content.trim();
             let mut parse_errors = ErrorCollector::new();
-            let module_name = ModuleName::new(file.name.trim_end_matches(".hop")).unwrap();
+            let module_name = ModuleId::new(file.name.trim_end_matches(".hop")).unwrap();
             module_names.push(module_name.clone());
             let ast = parse(
                 module_name,

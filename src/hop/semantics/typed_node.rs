@@ -2,7 +2,7 @@ use crate::document::CheapString;
 use crate::dop::patterns::{EnumPattern, Match};
 use crate::dop::{TypedExpr, VarName};
 use crate::hop::symbols::component_name::ComponentName;
-use crate::hop::symbols::module_name::ModuleName;
+use crate::hop::symbols::module_id::ModuleId;
 use pretty::BoxDoc;
 
 /// The source of iteration in a for loop - either an array or an inclusive range.
@@ -59,7 +59,7 @@ pub enum TypedNode {
 
     ComponentReference {
         component_name: ComponentName,
-        declaring_module: Option<ModuleName>,
+        declaring_module: Option<ModuleId>,
         args: Vec<(VarName, TypedExpr)>,
         children: Vec<TypedNode>,
     },

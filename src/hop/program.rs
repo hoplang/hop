@@ -14,7 +14,7 @@ use std::collections::{HashMap, HashSet};
 use super::semantics::type_checker::TypeChecker;
 use super::semantics::typed_ast::TypedAst;
 use super::symbols::component_name::ComponentName;
-use super::symbols::module_name::ModuleName;
+use super::symbols::module_id::ModuleId;
 use super::syntax::find_node::find_node_at_position;
 use super::syntax::parsed_ast::ParsedAst;
 use super::syntax::parsed_node::ParsedNode;
@@ -29,7 +29,7 @@ pub struct HoverInfo {
 /// A DefinitionLocation is the definition of a certain symbol in the source
 /// code. This is the response for a go to definition-query.
 pub struct DefinitionLocation {
-    pub module: ModuleName,
+    pub module: ModuleId,
     pub range: DocumentRange,
 }
 
@@ -41,7 +41,7 @@ pub struct Diagnostic {
 }
 
 pub struct RenameLocation {
-    pub module: ModuleName,
+    pub module: ModuleId,
     pub range: DocumentRange,
 }
 
@@ -53,14 +53,14 @@ pub struct RenameableSymbol {
 
 #[derive(Debug, Default)]
 pub struct Program {
-    topo_sorter: TopoSorter<ModuleName>,
-    parse_errors: HashMap<ModuleName, ErrorCollector<ParseError>>,
-    parsed_asts: HashMap<ModuleName, ParsedAst>,
+    topo_sorter: TopoSorter<ModuleId>,
+    parse_errors: HashMap<ModuleId, ErrorCollector<ParseError>>,
+    parsed_asts: HashMap<ModuleId, ParsedAst>,
     type_checker: TypeChecker,
 }
 
 impl Program {
-    pub fn new(modules: HashMap<ModuleName, Document>) -> Self {
+    pub fn new(modules: HashMap<ModuleId, Document>) -> Self {
         let mut program = Self::default();
         for (module_name, document) in modules {
             program.update_module(module_name, document);
@@ -72,7 +72,7 @@ impl Program {
     ///
     /// This cleans up all state associated with the module and re-typechecks
     /// any modules that depended on it (since their imports are now broken).
-    pub fn remove_module(&mut self, module_name: &ModuleName) {
+    pub fn remove_module(&mut self, module_name: &ModuleId) {
         // Remove from parse errors and parsed ASTs
         self.parse_errors.remove(module_name);
         self.parsed_asts.remove(module_name);
@@ -93,9 +93,9 @@ impl Program {
 
     pub fn update_module(
         &mut self,
-        module_name: ModuleName,
+        module_name: ModuleId,
         document: Document,
-    ) -> Vec<ModuleName> {
+    ) -> Vec<ModuleId> {
         // Parse the module
         let parse_errors = self.parse_errors.entry(module_name.clone()).or_default();
         parse_errors.clear();
@@ -105,7 +105,7 @@ impl Program {
         let module_dependencies = parsed_ast
             .get_import_declarations()
             .map(|import_node| import_node.imported_module().clone())
-            .collect::<HashSet<ModuleName>>();
+            .collect::<HashSet<ModuleId>>();
 
         // Store the AST
         self.parsed_asts.insert(module_name.clone(), parsed_ast);
@@ -127,21 +127,21 @@ impl Program {
         grouped_modules.into_iter().flatten().collect()
     }
 
-    pub fn get_parse_errors(&self) -> &HashMap<ModuleName, ErrorCollector<ParseError>> {
+    pub fn get_parse_errors(&self) -> &HashMap<ModuleId, ErrorCollector<ParseError>> {
         &self.parse_errors
     }
 
-    pub fn get_type_errors(&self) -> &HashMap<ModuleName, ErrorCollector<TypeError>> {
+    pub fn get_type_errors(&self) -> &HashMap<ModuleId, ErrorCollector<TypeError>> {
         &self.type_checker.type_errors
     }
 
-    pub fn get_parsed_ast(&self, module_name: &ModuleName) -> Option<&ParsedAst> {
+    pub fn get_parsed_ast(&self, module_name: &ModuleId) -> Option<&ParsedAst> {
         self.parsed_asts.get(module_name)
     }
 
     pub fn get_hover_info(
         &self,
-        module_name: &ModuleName,
+        module_name: &ModuleId,
         position: DocumentPosition,
     ) -> Option<HoverInfo> {
         self.type_checker
@@ -157,7 +157,7 @@ impl Program {
 
     pub fn get_definition_location(
         &self,
-        module_name: &ModuleName,
+        module_name: &ModuleId,
         position: DocumentPosition,
     ) -> Option<DefinitionLocation> {
         let ast = self.parsed_asts.get(module_name)?;
@@ -239,7 +239,7 @@ impl Program {
 
     pub fn get_rename_locations(
         &self,
-        module_name: &ModuleName,
+        module_name: &ModuleId,
         position: DocumentPosition,
     ) -> Option<Vec<RenameLocation>> {
         let ast = self.parsed_asts.get(module_name)?;
@@ -296,7 +296,7 @@ impl Program {
     /// and returns the symbol's current name and range if found.
     pub fn get_renameable_symbol(
         &self,
-        module_name: &ModuleName,
+        module_name: &ModuleId,
         position: DocumentPosition,
     ) -> Option<RenameableSymbol> {
         let ast = self.parsed_asts.get(module_name)?;
@@ -340,7 +340,7 @@ impl Program {
     fn collect_component_rename_locations(
         &self,
         component_name: &ComponentName,
-        definition_module: &ModuleName,
+        definition_module: &ModuleId,
     ) -> Vec<RenameLocation> {
         let mut locations = Vec::new();
 
@@ -410,7 +410,7 @@ impl Program {
     fn collect_record_rename_locations(
         &self,
         record_name: &str,
-        definition_module: &ModuleName,
+        definition_module: &ModuleId,
     ) -> Vec<RenameLocation> {
         let mut locations = Vec::new();
 
@@ -460,8 +460,8 @@ impl Program {
         &self,
         parsed_type: &ParsedType,
         record_name: &str,
-        definition_module: &ModuleName,
-        current_module: &ModuleName,
+        definition_module: &ModuleId,
+        current_module: &ModuleId,
     ) -> Vec<RenameLocation> {
         let mut locations = Vec::new();
 
@@ -506,7 +506,7 @@ impl Program {
         locations
     }
 
-    pub fn get_error_diagnostics(&self, module_name: ModuleName) -> Vec<Diagnostic> {
+    pub fn get_error_diagnostics(&self, module_name: ModuleId) -> Vec<Diagnostic> {
         let mut diagnostics = Vec::new();
 
         let mut found_parse_errors = false;
@@ -547,7 +547,7 @@ impl Program {
     /// Evaluate an entrypoint given module and entrypoint name.
     pub fn evaluate_entrypoint(
         &self,
-        module_name: &ModuleName,
+        module_name: &ModuleId,
         entrypoint_name: &ComponentName,
         args: HashMap<String, serde_json::Value>,
         generated_tailwind_css: Option<&str>,
@@ -648,7 +648,7 @@ impl Program {
     }
 
     /// Get all typed modules for compilation
-    pub fn get_typed_modules(&self) -> &HashMap<ModuleName, TypedAst> {
+    pub fn get_typed_modules(&self) -> &HashMap<ModuleId, TypedAst> {
         &self.type_checker.typed_asts
     }
 }
@@ -666,7 +666,7 @@ mod tests {
         let archive = Archive::from(input);
         let mut map = HashMap::new();
         for file in archive.iter() {
-            let module_name = ModuleName::new(&file.name.replace(".hop", "")).unwrap();
+            let module_name = ModuleId::new(&file.name.replace(".hop", "")).unwrap();
             map.insert(module_name, Document::new(file.content.clone()));
         }
         Program::new(map)
@@ -675,7 +675,7 @@ mod tests {
     fn program_from_archive(archive: &Archive) -> Program {
         let mut map = HashMap::new();
         for file in archive.iter() {
-            let module_name = ModuleName::new(&file.name.replace(".hop", "")).unwrap();
+            let module_name = ModuleId::new(&file.name.replace(".hop", "")).unwrap();
             map.insert(module_name, Document::new(file.content.clone()));
         }
         Program::new(map)
@@ -691,7 +691,7 @@ mod tests {
         }
 
         let marker = &markers[0];
-        let module = ModuleName::new(&marker.filename.replace(".hop", "")).unwrap();
+        let module = ModuleId::new(&marker.filename.replace(".hop", "")).unwrap();
 
         let locs = program_from_archive(&archive)
             .get_rename_locations(&module, marker.position)
@@ -701,7 +701,7 @@ mod tests {
         let annotator = DocumentAnnotator::new().with_location();
 
         for file in archive.iter() {
-            let module_name = ModuleName::new(&file.name.replace(".hop", "")).unwrap();
+            let module_name = ModuleId::new(&file.name.replace(".hop", "")).unwrap();
 
             let mut annotations: Vec<SimpleAnnotation> = locs
                 .iter()
@@ -733,7 +733,7 @@ mod tests {
         }
 
         let marker = &markers[0];
-        let module = ModuleName::new(&marker.filename.replace(".hop", "")).unwrap();
+        let module = ModuleId::new(&marker.filename.replace(".hop", "")).unwrap();
 
         let program = program_from_archive(&archive);
 
@@ -755,7 +755,7 @@ mod tests {
     fn check_error_diagnostics(input: &str, module: &str, expected: Expect) {
         let program = program_from_txtar(input);
 
-        let diagnostics = program.get_error_diagnostics(ModuleName::new(module).unwrap());
+        let diagnostics = program.get_error_diagnostics(ModuleId::new(module).unwrap());
 
         if diagnostics.is_empty() {
             panic!("Expected diagnostics to be non-empty");
@@ -805,7 +805,7 @@ mod tests {
         }
 
         let marker = &markers[0];
-        let module = ModuleName::new(&marker.filename.replace(".hop", "")).unwrap();
+        let module = ModuleId::new(&marker.filename.replace(".hop", "")).unwrap();
 
         let symbol = program_from_archive(&archive)
             .get_renameable_symbol(&module, marker.position)
@@ -834,7 +834,7 @@ mod tests {
         }
 
         let marker = &markers[0];
-        let module = ModuleName::new(&marker.filename.replace(".hop", "")).unwrap();
+        let module = ModuleId::new(&marker.filename.replace(".hop", "")).unwrap();
 
         let hover_info = program_from_archive(&archive)
             .get_hover_info(&module, marker.position)
@@ -842,7 +842,7 @@ mod tests {
 
         let file = archive
             .iter()
-            .find(|f| ModuleName::new(&f.name.replace(".hop", "")).unwrap() == module)
+            .find(|f| ModuleId::new(&f.name.replace(".hop", "")).unwrap() == module)
             .expect("Could not find file in archive");
 
         let output = DocumentAnnotator::new().with_location().annotate(
@@ -1722,7 +1722,7 @@ mod tests {
         );
         // Resolve cycle
         program.update_module(
-            ModuleName::new("a").unwrap(),
+            ModuleId::new("a").unwrap(),
             Document::new(
                 indoc! {r#"
                     <AComp>
@@ -1788,7 +1788,7 @@ mod tests {
         );
         // Resolve cycle
         program.update_module(
-            ModuleName::new("c").unwrap(),
+            ModuleId::new("c").unwrap(),
             Document::new(
                 indoc! {r#"
                     <CComp>
@@ -1801,7 +1801,7 @@ mod tests {
         check_type_errors(&program, expect![""]);
         // Introduce new cycle a → b → a
         program.update_module(
-            ModuleName::new("b").unwrap(),
+            ModuleId::new("b").unwrap(),
             Document::new(
                 indoc! {r#"
                     import a::AComp
@@ -1828,7 +1828,7 @@ mod tests {
         );
         // Resolve cycle
         program.update_module(
-            ModuleName::new("b").unwrap(),
+            ModuleId::new("b").unwrap(),
             Document::new(
                 indoc! {r#"
                     <BComp>
@@ -1862,7 +1862,7 @@ mod tests {
         let mut args = HashMap::new();
         args.insert("name".to_string(), serde_json::json!("Alice"));
 
-        let main_module = ModuleName::new("main").unwrap();
+        let main_module = ModuleId::new("main").unwrap();
         let hello_world = ComponentName::new("HelloWorld".to_string()).unwrap();
         let result = program
             .evaluate_entrypoint(&main_module, &hello_world, args, None, false)
