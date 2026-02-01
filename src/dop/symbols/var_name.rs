@@ -103,25 +103,6 @@ impl VarName {
     pub fn as_cheap_string(&self) -> &CheapString {
         &self.value
     }
-
-    /// Convert the variable name to PascalCase
-    pub fn to_pascal_case(&self) -> String {
-        self.value
-            .as_str()
-            .split('_')
-            .map(|segment| {
-                let mut chars = segment.chars();
-                match chars.next() {
-                    Some(first) => {
-                        let mut result = first.to_uppercase().to_string();
-                        result.push_str(chars.as_str());
-                        result
-                    }
-                    None => String::new(),
-                }
-            })
-            .collect()
-    }
 }
 
 impl Display for VarName {

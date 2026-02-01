@@ -13,9 +13,11 @@ use std::collections::BTreeMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
+type IrEnumVariant = (String, Vec<(String, Arc<Type>)>);
+
 pub struct IrModuleBuilder {
     /// Enums with their variants. Each variant has a name and optional fields.
-    enums: BTreeMap<String, Vec<(String, Vec<(String, Arc<Type>)>)>>,
+    enums: BTreeMap<String, Vec<IrEnumVariant>>,
     records: BTreeMap<String, Vec<(String, Arc<Type>)>>,
     entrypoints: Vec<IrEntrypointDeclaration>,
 }
@@ -35,7 +37,7 @@ impl IrModuleBuilder {
         I: IntoIterator<Item = S>,
         S: AsRef<str>,
     {
-        let variants: Vec<(String, Vec<(String, Arc<Type>)>)> = variants
+        let variants: Vec<IrEnumVariant> = variants
             .into_iter()
             .map(|s| (s.as_ref().to_string(), vec![]))
             .collect();
@@ -173,7 +175,7 @@ impl RecordBuilder {
 
 /// Builder for defining enum variants with optional fields
 pub struct EnumBuilder {
-    variants: Vec<(String, Vec<(String, Arc<Type>)>)>,
+    variants: Vec<IrEnumVariant>,
 }
 
 impl EnumBuilder {
@@ -242,7 +244,7 @@ where
     F: FnOnce(&mut IrBuilder),
 {
     // Convert unit variants to the new format (variant_name, empty fields)
-    let enums_map: BTreeMap<String, Vec<(String, Vec<(String, Arc<Type>)>)>> = enums
+    let enums_map: BTreeMap<String, Vec<IrEnumVariant>> = enums
         .into_iter()
         .map(|(name, variants)| {
             (
@@ -267,7 +269,7 @@ pub struct IrBuilder {
     params: Vec<(VarName, Arc<Type>, Option<IrExpr>)>,
     records: BTreeMap<String, BTreeMap<String, Arc<Type>>>,
     /// Enums with their variants. Each variant has a name and optional fields.
-    enums: BTreeMap<String, Vec<(String, Vec<(String, Arc<Type>)>)>>,
+    enums: BTreeMap<String, Vec<IrEnumVariant>>,
     statements: Vec<IrStatement>,
 }
 
@@ -275,7 +277,7 @@ impl IrBuilder {
     fn new(
         params: Vec<(String, Arc<Type>)>,
         records: BTreeMap<String, BTreeMap<String, Arc<Type>>>,
-        enums: BTreeMap<String, Vec<(String, Vec<(String, Arc<Type>)>)>>,
+        enums: BTreeMap<String, Vec<IrEnumVariant>>,
     ) -> Self {
         let initial_vars = params.clone();
 
@@ -1042,7 +1044,7 @@ impl IrBuilder {
         let some_arm_binding = binding_var.map(|var| {
             self.var_stack
                 .borrow_mut()
-                .push((var.to_string(), inner_type.into()));
+                .push((var.to_string(), inner_type));
             VarName::try_from(var.to_string()).unwrap()
         });
 

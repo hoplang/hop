@@ -16,8 +16,8 @@ use crate::error_collector::ErrorCollector;
 use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_id::ModuleId;
 
-use crate::parse_error::ParseError;
 use super::tokenizer::{self, Token};
+use crate::parse_error::ParseError;
 
 fn parse_attribute(
     attr: &tokenizer::TokenizedAttribute,
@@ -484,13 +484,12 @@ fn parse_entrypoint_declaration(
             }
 
             // Parse type
-            let param_type =
-                match dop::parser::parse_type(iter, comments, errors, &params_start) {
-                    Some(t) => t,
-                    None => {
-                        break;
-                    }
-                };
+            let param_type = match dop::parser::parse_type(iter, comments, errors, &params_start) {
+                Some(t) => t,
+                None => {
+                    break;
+                }
+            };
 
             // Check for default value - use parse_primary which doesn't consume past the literal
             let default_value = if let Some((dop::Token::Assign, _)) = dop::tokenizer::peek(iter) {
@@ -601,10 +600,8 @@ fn construct_node(
         Token::Newline { range } => Some(ParsedNode::Newline { range }),
         Token::TextExpression { content, range } => {
             let mut iter = content.cursor().peekable();
-            match dop::parser::parse_expr(&mut iter, comments, errors, &content) {
-                Some(expression) => Some(ParsedNode::TextExpression { expression, range }),
-                None => None,
-            }
+            dop::parser::parse_expr(&mut iter, comments, errors, &content)
+                .map(|expression| ParsedNode::TextExpression { expression, range })
         }
         Token::RawTextTag {
             tag_name,
@@ -781,9 +778,7 @@ fn construct_node(
                         });
                         None
                     };
-                    let Some((var_name, var_name_range, source)) = parse_result else {
-                        return None;
-                    };
+                    let (var_name, var_name_range, source) = parse_result?;
                     Some(ParsedNode::For {
                         var_name,
                         var_name_range,
@@ -811,9 +806,7 @@ fn construct_node(
                             &bindings_range,
                         )
                     };
-                    let Some(parsed_bindings) = parse_result else {
-                        return None;
-                    };
+                    let parsed_bindings = parse_result?;
                     let bindings = parsed_bindings
                         .into_iter()
                         .map(

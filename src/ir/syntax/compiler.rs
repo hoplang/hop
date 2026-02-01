@@ -2,9 +2,9 @@ use std::sync::Arc;
 
 use crate::common::is_void_element;
 use crate::document::CheapString;
+use crate::dop::Type;
 use crate::dop::TypedExpr;
 use crate::dop::patterns::{EnumMatchArm, Match};
-use crate::dop::Type;
 use crate::hop::semantics::typed_node::TypedLoopSource;
 use crate::inlined::{
     InlinedAttribute, InlinedAttributeValue, InlinedEntrypointDeclaration, InlinedNode,
@@ -31,9 +31,7 @@ impl Compiler {
             .params
             .into_iter()
             .map(|param| {
-                let default = param
-                    .default_value
-                    .map(|expr| compiler.compile_expr(&expr));
+                let default = param.default_value.map(|expr| compiler.compile_expr(&expr));
                 (param.var_name, param.var_type, default)
             })
             .collect::<Vec<_>>();
@@ -77,7 +75,7 @@ impl Compiler {
             }
 
             InlinedNode::TextExpression { expression } => {
-                let compiled_expr = self.compile_expr(&expression);
+                let compiled_expr = self.compile_expr(expression);
                 let should_escape = expression.as_type() != &Type::TrustedHTML;
                 output.push(IrStatement::WriteExpr {
                     id: self.next_node_id(),
@@ -278,7 +276,7 @@ impl Compiler {
             InlinedAttributeValue::Expression(expr) => {
                 // Boolean attributes: output attribute name if true, nothing if false
                 if expr.as_type() == &Type::Bool {
-                    let compiled_expr = self.compile_expr(&expr);
+                    let compiled_expr = self.compile_expr(expr);
                     output.push(IrStatement::If {
                         id: self.next_node_id(),
                         condition: compiled_expr,
@@ -294,7 +292,7 @@ impl Compiler {
                         id: self.next_node_id(),
                         content: format!(" {}=\"", name.as_str()),
                     });
-                    let compiled_expr = self.compile_expr(&expr);
+                    let compiled_expr = self.compile_expr(expr);
                     // Wrap class attribute values in TwMerge for Tailwind class merging
                     let final_expr = if name.as_str() == "class" {
                         IrExpr::TwMerge {

@@ -1,5 +1,4 @@
 use super::type_annotation::TypeAnnotation;
-use crate::type_error::TypeError;
 use crate::document::CheapString;
 use crate::dop::patterns::compiler::Compiler as PatMatchCompiler;
 use crate::dop::symbols::type_name::TypeName;
@@ -11,6 +10,7 @@ use crate::hop::syntax::parsed_ast::{
     ParsedAttribute, ParsedComponentDeclaration, ParsedEntrypointDeclaration,
     ParsedEnumDeclaration, ParsedImportDeclaration, ParsedRecordDeclaration,
 };
+use crate::type_error::TypeError;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -42,12 +42,8 @@ pub fn typecheck(
         module_type_errors.clear();
         module_type_annotations.clear();
 
-        let typed_ast = typecheck_module(
-            module,
-            state,
-            module_type_errors,
-            module_type_annotations,
-        );
+        let typed_ast =
+            typecheck_module(module, state, module_type_errors, module_type_annotations);
         typed_asts.insert(module.name.clone(), typed_ast);
 
         if modules.len() > 1 {
@@ -123,9 +119,9 @@ fn typecheck_module(
                 let mut typed_params = Vec::new();
                 if let Some((params, _)) = params {
                     for param in params {
-                        let Some(param_type) = errors.ok_or_add(
-                            resolve_type(&param.var_type, &mut type_env).map_err(|e| e.into()),
-                        ) else {
+                        let Some(param_type) =
+                            errors.ok_or_add(resolve_type(&param.var_type, &mut type_env))
+                        else {
                             continue;
                         };
 
@@ -143,16 +139,13 @@ fn typecheck_module(
                         // Typecheck default value
                         let typed_default_value = {
                             if let Some(default_expr) = &param.default_value {
-                                if let Some(typed_default) = errors.ok_or_add(
-                                    dop::typecheck_expr(
-                                        default_expr,
-                                        &mut var_env,
-                                        &mut type_env,
-                                        annotations,
-                                        Some(&param_type),
-                                    )
-                                    .map_err(|e| e.into()),
-                                ) {
+                                if let Some(typed_default) = errors.ok_or_add(dop::typecheck_expr(
+                                    default_expr,
+                                    &mut var_env,
+                                    &mut type_env,
+                                    annotations,
+                                    Some(&param_type),
+                                )) {
                                     let default_type = typed_default.get_type();
                                     if *default_type != *param_type {
                                         errors.push(TypeError::DefaultValueTypeMismatch {
@@ -253,7 +246,7 @@ fn typecheck_module(
                             typed_fields.push((field.name.clone(), resolved_type));
                         }
                         Err(e) => {
-                            errors.push(e.into());
+                            errors.push(e);
                             has_errors = true;
                         }
                     }
@@ -292,7 +285,7 @@ fn typecheck_module(
                                 typed_fields.push((field_name.clone(), resolved_type));
                             }
                             Err(e) => {
-                                errors.push(e.into());
+                                errors.push(e);
                                 has_errors = true;
                             }
                         }
@@ -329,25 +322,22 @@ fn typecheck_module(
                 let mut typed_params = Vec::new();
 
                 for param in params {
-                    let Some(param_type) = errors.ok_or_add(
-                        resolve_type(&param.var_type, &mut type_env).map_err(|e| e.into()),
-                    ) else {
+                    let Some(param_type) =
+                        errors.ok_or_add(resolve_type(&param.var_type, &mut type_env))
+                    else {
                         continue;
                     };
 
                     // Typecheck default value
                     let typed_default_value = {
                         if let Some(default_expr) = &param.default_value {
-                            if let Some(typed_default) = errors.ok_or_add(
-                                dop::typecheck_expr(
-                                    default_expr,
-                                    &mut var_env,
-                                    &mut type_env,
-                                    annotations,
-                                    Some(&param_type),
-                                )
-                                .map_err(|e| e.into()),
-                            ) {
+                            if let Some(typed_default) = errors.ok_or_add(dop::typecheck_expr(
+                                default_expr,
+                                &mut var_env,
+                                &mut type_env,
+                                annotations,
+                                Some(&param_type),
+                            )) {
                                 let default_type = typed_default.get_type();
                                 if *default_type != *param_type {
                                     errors.push(TypeError::DefaultValueTypeMismatch {
@@ -455,10 +445,13 @@ fn typecheck_node(
                 .filter_map(|child| typecheck_node(child, var_env, annotations, errors, type_env))
                 .collect();
 
-            let typed_condition = errors.ok_or_add(
-                dop::typecheck_expr(condition, var_env, type_env, annotations, None)
-                    .map_err(Into::into),
-            )?;
+            let typed_condition = errors.ok_or_add(dop::typecheck_expr(
+                condition,
+                var_env,
+                type_env,
+                annotations,
+                None,
+            ))?;
 
             let condition_type = typed_condition.get_type();
             if *condition_type != Type::Bool {
@@ -484,10 +477,13 @@ fn typecheck_node(
             // Type check the loop source and determine element type
             let (typed_source, element_type) = match source {
                 ParsedLoopSource::Array(array_expr) => {
-                    let typed_array = errors.ok_or_add(
-                        dop::typecheck_expr(array_expr, var_env, type_env, annotations, None)
-                            .map_err(Into::into),
-                    )?;
+                    let typed_array = errors.ok_or_add(dop::typecheck_expr(
+                        array_expr,
+                        var_env,
+                        type_env,
+                        annotations,
+                        None,
+                    ))?;
                     let array_type = typed_array.get_type();
                     let element_type = match array_type.as_ref() {
                         Type::Array(inner) => inner.clone(),
@@ -502,14 +498,20 @@ fn typecheck_node(
                     (TypedLoopSource::Array(typed_array), element_type)
                 }
                 ParsedLoopSource::RangeInclusive { start, end } => {
-                    let typed_start = errors.ok_or_add(
-                        dop::typecheck_expr(start, var_env, type_env, annotations, None)
-                            .map_err(Into::into),
-                    )?;
-                    let typed_end = errors.ok_or_add(
-                        dop::typecheck_expr(end, var_env, type_env, annotations, None)
-                            .map_err(Into::into),
-                    )?;
+                    let typed_start = errors.ok_or_add(dop::typecheck_expr(
+                        start,
+                        var_env,
+                        type_env,
+                        annotations,
+                        None,
+                    ))?;
+                    let typed_end = errors.ok_or_add(dop::typecheck_expr(
+                        end,
+                        var_env,
+                        type_env,
+                        annotations,
+                        None,
+                    ))?;
 
                     // Both bounds must be Int
                     let start_type = typed_start.get_type();
@@ -598,7 +600,7 @@ fn typecheck_node(
                 let resolved_type = match resolve_type(&binding.var_type, type_env) {
                     Ok(t) => t,
                     Err(err) => {
-                        errors.push(err.into());
+                        errors.push(err);
                         continue;
                     }
                 };
@@ -629,16 +631,13 @@ fn typecheck_node(
                 }
 
                 // Type-check the value expression with the expected type
-                let Some(typed_value) = errors.ok_or_add(
-                    dop::typecheck_expr(
-                        &binding.value_expr,
-                        var_env,
-                        type_env,
-                        annotations,
-                        Some(&resolved_type),
-                    )
-                    .map_err(Into::into),
-                ) else {
+                let Some(typed_value) = errors.ok_or_add(dop::typecheck_expr(
+                    &binding.value_expr,
+                    var_env,
+                    type_env,
+                    annotations,
+                    Some(&resolved_type),
+                )) else {
                     continue;
                 };
 
@@ -862,7 +861,7 @@ fn typecheck_node(
                         ) {
                             Ok(t) => t,
                             Err(err) => {
-                                errors.push(err.into());
+                                errors.push(err);
                                 continue;
                             }
                         };
@@ -921,10 +920,13 @@ fn typecheck_node(
             expression,
             range: _,
         } => {
-            if let Some(typed_expr) = errors.ok_or_add(
-                dop::typecheck_expr(expression, var_env, type_env, annotations, None)
-                    .map_err(Into::into),
-            ) {
+            if let Some(typed_expr) = errors.ok_or_add(dop::typecheck_expr(
+                expression,
+                var_env,
+                type_env,
+                annotations,
+                None,
+            )) {
                 let expr_type = typed_expr.get_type();
                 if *expr_type != Type::String && *expr_type != Type::TrustedHTML {
                     errors.push(TypeError::ExpectedStringForTextExpression {
@@ -940,13 +942,14 @@ fn typecheck_node(
             }
         }
 
-        ParsedNode::Match {
-            subject, cases, ..
-        } => {
-            let typed_subject = errors.ok_or_add(
-                dop::typecheck_expr(subject, var_env, type_env, annotations, None)
-                    .map_err(Into::into),
-            )?;
+        ParsedNode::Match { subject, cases, .. } => {
+            let typed_subject = errors.ok_or_add(dop::typecheck_expr(
+                subject,
+                var_env,
+                type_env,
+                annotations,
+                None,
+            ))?;
             let patterns = cases
                 .iter()
                 .map(|case| case.pattern.clone())
@@ -966,7 +969,7 @@ fn typecheck_node(
             ) {
                 Ok(decision) => decision,
                 Err(err) => {
-                    errors.push(err.into());
+                    errors.push(err);
                     return None;
                 }
             };
@@ -975,10 +978,8 @@ fn typecheck_node(
                 .iter()
                 .map(|case| {
                     // Extract bindings from pattern
-                    let bindings = dop::extract_bindings_from_pattern(
-                        &case.pattern,
-                        typed_subject.get_type(),
-                    );
+                    let bindings =
+                        dop::extract_bindings_from_pattern(&case.pattern, typed_subject.get_type());
 
                     // Push bindings into scope
                     let mut pushed_count = 0;
@@ -1078,10 +1079,13 @@ fn typecheck_attributes(
     for attr in attributes {
         let typed_value = match &attr.value {
             Some(ParsedAttributeValue::Expression(expr)) => {
-                if let Some(typed_expr) = errors.ok_or_add(
-                    dop::typecheck_expr(expr, var_env, type_env, annotations, None)
-                        .map_err(Into::into),
-                ) {
+                if let Some(typed_expr) = errors.ok_or_add(dop::typecheck_expr(
+                    expr,
+                    var_env,
+                    type_env,
+                    annotations,
+                    None,
+                )) {
                     // Check that attributes evaluate to strings or booleans
                     let expr_type = typed_expr.get_type();
                     if *expr_type != Type::String && *expr_type != Type::Bool {
@@ -1316,10 +1320,9 @@ mod tests {
             let module_type_errors = type_errors.get(&ast.name);
 
             if module_type_errors.is_some_and(|err| !err.is_empty()) {
-                error_output.push(error_annotator.annotate(
-                    Some(&file.name),
-                    type_errors.get(&ast.name).unwrap(),
-                ));
+                error_output.push(
+                    error_annotator.annotate(Some(&file.name), type_errors.get(&ast.name).unwrap()),
+                );
             }
         }
 
