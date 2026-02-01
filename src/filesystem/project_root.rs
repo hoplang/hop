@@ -209,7 +209,7 @@ impl ProjectRoot {
 
     pub async fn get_output_path(&self) -> anyhow::Result<PathBuf> {
         let config = self.load_config().await?;
-        let resolved = config.get_resolved_config();
+        let resolved = config.get_resolved_config()?;
         Ok(self.directory.join(&resolved.output_path))
     }
 
@@ -520,10 +520,64 @@ mod tests {
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
         let root = ProjectRoot::from(&temp_dir).unwrap();
 
+        // Empty config should now parse successfully (compile section is optional)
         let result = root.load_config().await;
-        assert!(result.is_err());
-        let error_msg = result.unwrap_err().to_string();
-        assert!(error_msg.contains("Failed to parse hop.toml"));
+        assert!(result.is_ok(), "Empty config should parse: {:?}", result.err());
+
+        std::fs::remove_dir_all(&temp_dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn load_config_without_compile_section() {
+        let archive = Archive::from(indoc! {r#"
+            -- hop.toml --
+            [css]
+            mode = "tailwind4"
+        "#});
+        let temp_dir = temp_dir_from_archive(&archive).unwrap();
+        let root = ProjectRoot::from(&temp_dir).unwrap();
+
+        let result = root.load_config().await;
+        assert!(result.is_ok(), "Config without compile section should succeed: {:?}", result.err());
+
+        let config = result.unwrap();
+        assert_eq!(config.css.mode, Some("tailwind4".to_string()));
+
+        std::fs::remove_dir_all(&temp_dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn get_tailwind_input_path_without_compile_section() {
+        let archive = Archive::from(indoc! {r#"
+            -- hop.toml --
+            [css.tailwind]
+            input = "styles/input.css"
+        "#});
+        let temp_dir = temp_dir_from_archive(&archive).unwrap();
+        let root = ProjectRoot::from(&temp_dir).unwrap();
+
+        let result = root.get_tailwind_input_path().await;
+        assert!(result.is_ok(), "get_tailwind_input_path should succeed without compile section: {:?}", result.err());
+
+        let path = result.unwrap();
+        assert!(path.is_some());
+        assert!(path.unwrap().ends_with("styles/input.css"));
+
+        std::fs::remove_dir_all(&temp_dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn get_output_path_errors_without_compile_config() {
+        let archive = Archive::from(indoc! {r#"
+            -- hop.toml --
+            [css]
+            mode = "tailwind4"
+        "#});
+        let temp_dir = temp_dir_from_archive(&archive).unwrap();
+        let root = ProjectRoot::from(&temp_dir).unwrap();
+
+        let result = root.get_output_path().await;
+        assert!(result.is_err(), "get_output_path should fail without compile config");
 
         std::fs::remove_dir_all(&temp_dir).unwrap();
     }

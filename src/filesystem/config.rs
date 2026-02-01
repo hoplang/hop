@@ -20,7 +20,8 @@ pub struct HopConfig {
     #[serde(default)]
     pub css: CssConfig,
 
-    /// Compile configuration
+    /// Compile configuration (optional - only needed for `hop compile`)
+    #[serde(default)]
     pub compile: CompileConfig,
 
     /// Dev server configuration
@@ -70,9 +71,9 @@ pub struct ResolvedConfig {
 
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
-    #[error("Missing required field 'compile.target'. Expected one of: \"ts\", \"go\", \"python\", \"rust\"")]
+    #[error("Missing 'compile.target' in hop.toml. Expected one of: \"ts\", \"go\", \"python\", \"rust\"")]
     MissingTarget,
-    #[error("Missing required field 'compile.output_path'")]
+    #[error("Missing 'compile.output_path' in hop.toml")]
     MissingOutputPath,
 }
 
@@ -90,32 +91,21 @@ fn derive_go_package(output_path: &str) -> String {
 }
 
 impl HopConfig {
-    /// Parse HopConfig from a TOML string and validate required fields
+    /// Parse HopConfig from a TOML string
     pub fn from_toml_str(toml_str: &str) -> anyhow::Result<Self> {
         let config: HopConfig = toml::from_str(toml_str)?;
-
-        // Validate required fields
-        if config.compile.target.is_none() {
-            return Err(ConfigError::MissingTarget.into());
-        }
-        if config.compile.output_path.is_none() {
-            return Err(ConfigError::MissingOutputPath.into());
-        }
-
         Ok(config)
     }
 
-    /// Get the resolved config with all required fields validated
-    pub fn get_resolved_config(&self) -> ResolvedConfig {
-        let target = self
-            .compile
-            .target
-            .expect("target should be validated by from_toml_str");
+    /// Get the resolved config with all required compile fields validated.
+    /// Returns an error if `compile.target` or `compile.output_path` are missing.
+    pub fn get_resolved_config(&self) -> Result<ResolvedConfig, ConfigError> {
+        let target = self.compile.target.ok_or(ConfigError::MissingTarget)?;
         let output_path = self
             .compile
             .output_path
             .clone()
-            .expect("output_path should be validated by from_toml_str");
+            .ok_or(ConfigError::MissingOutputPath)?;
 
         let go_package = if target == TargetLanguage::Go {
             Some(derive_go_package(&output_path))
@@ -123,11 +113,11 @@ impl HopConfig {
             None
         };
 
-        ResolvedConfig {
+        Ok(ResolvedConfig {
             target,
             output_path,
             go_package,
-        }
+        })
     }
 }
 
@@ -135,43 +125,6 @@ impl HopConfig {
 mod tests {
     use super::*;
     use indoc::indoc;
-
-    #[test]
-    fn should_reject_config_missing_target() {
-        let toml_str = indoc! {r#"
-            [css]
-            mode = "tailwind4"
-
-            [compile]
-            output_path = "app.ts"
-        "#};
-        let result = HopConfig::from_toml_str(toml_str);
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("compile.target"));
-    }
-
-    #[test]
-    fn should_reject_config_missing_output_path() {
-        let toml_str = indoc! {r#"
-            [compile]
-            target = "ts"
-        "#};
-        let result = HopConfig::from_toml_str(toml_str);
-        assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("compile.output_path")
-        );
-    }
-
-    #[test]
-    fn should_reject_empty_config() {
-        let toml_str = "";
-        let result = HopConfig::from_toml_str(toml_str);
-        assert!(result.is_err());
-    }
 
     #[test]
     fn should_accept_config_with_typescript_target() {
@@ -197,7 +150,7 @@ mod tests {
             output_path = "app.ts"
         "#};
         let config = HopConfig::from_toml_str(toml_str).unwrap();
-        let resolved = config.get_resolved_config();
+        let resolved = config.get_resolved_config().unwrap();
         assert_eq!(resolved.target, TargetLanguage::Typescript);
         assert_eq!(resolved.output_path, "app.ts");
         assert!(resolved.go_package.is_none());
@@ -240,7 +193,7 @@ mod tests {
             output_path = "frontend/frontend.go"
         "#};
         let config = HopConfig::from_toml_str(toml_str).unwrap();
-        let resolved = config.get_resolved_config();
+        let resolved = config.get_resolved_config().unwrap();
 
         assert_eq!(resolved.target, TargetLanguage::Go);
         assert_eq!(resolved.output_path, "frontend/frontend.go");
@@ -256,7 +209,7 @@ mod tests {
             output_path = "main.go"
         "#};
         let config = HopConfig::from_toml_str(toml_str).unwrap();
-        let resolved = config.get_resolved_config();
+        let resolved = config.get_resolved_config().unwrap();
 
         // When output is in root, package should default to "main"
         assert_eq!(resolved.go_package, Some("main".to_string()));
@@ -339,5 +292,61 @@ mod tests {
         assert_eq!(derive_go_package("main.go"), "main");
         assert_eq!(derive_go_package("src/components/views.go"), "components");
         assert_eq!(derive_go_package("./output.go"), "main");
+    }
+
+    #[test]
+    fn should_parse_config_without_compile_section() {
+        let toml_str = indoc! {r#"
+            [css]
+            mode = "tailwind4"
+        "#};
+        let result = HopConfig::from_toml_str(toml_str);
+        assert!(result.is_ok(), "Config without compile section should parse: {:?}", result.err());
+    }
+
+    #[test]
+    fn should_parse_empty_config() {
+        let toml_str = "";
+        let result = HopConfig::from_toml_str(toml_str);
+        assert!(result.is_ok(), "Empty config should parse: {:?}", result.err());
+    }
+
+    #[test]
+    fn get_resolved_config_should_error_on_missing_target() {
+        let toml_str = indoc! {r#"
+            [compile]
+            output_path = "app.ts"
+        "#};
+        let config = HopConfig::from_toml_str(toml_str).unwrap();
+        let result = config.get_resolved_config();
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("compile.target"));
+        assert!(err_msg.contains("hop.toml"));
+    }
+
+    #[test]
+    fn get_resolved_config_should_error_on_missing_output_path() {
+        let toml_str = indoc! {r#"
+            [compile]
+            target = "ts"
+        "#};
+        let config = HopConfig::from_toml_str(toml_str).unwrap();
+        let result = config.get_resolved_config();
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("compile.output_path"));
+        assert!(err_msg.contains("hop.toml"));
+    }
+
+    #[test]
+    fn get_resolved_config_should_error_when_no_compile_section() {
+        let toml_str = indoc! {r#"
+            [css]
+            mode = "tailwind4"
+        "#};
+        let config = HopConfig::from_toml_str(toml_str).unwrap();
+        let result = config.get_resolved_config();
+        assert!(result.is_err());
     }
 }

@@ -52,7 +52,7 @@ pub async fn execute(project_root: &ProjectRoot, skip_optimization: bool) -> Res
 
     // Load configuration
     let config = project_root.load_config().await?;
-    let resolved = config.get_resolved_config();
+    let resolved = config.get_resolved_config()?;
 
     // Truncate output file before running Tailwind to prevent scanning old content
     project_root.write_output("").await?;
