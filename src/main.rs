@@ -45,10 +45,10 @@ enum Commands {
         #[arg(long)]
         project: Option<String>,
         /// Port to serve on
-        #[arg(short, long, default_value = "33861")]
+        #[arg(short, long, default_value = "3000")]
         port: u16,
         /// Host to bind to
-        #[arg(long, default_value = "127.0.0.1")]
+        #[arg(long, default_value = "localhost")]
         host: String,
     },
     /// Format all .hop files in a project
@@ -142,17 +142,28 @@ async fn main() -> anyhow::Result<()> {
                     sigint_tx.send(()).ok();
                 });
 
-                let addr = format!("{}:{}", host, port);
-                let listener = tokio::net::TcpListener::bind(&addr)
-                    .await
-                    .map_err(|e| anyhow::anyhow!("failed to bind to {}: {}", addr, e))?;
+                // Try binding to the specified port, then up to 5 additional ports
+                let mut listener = None;
+                let mut bound_port = port;
+                for attempt in 0..=5 {
+                    let try_port = port + attempt;
+                    let addr = format!("{}:{}", host, try_port);
+                    if let Ok(l) = tokio::net::TcpListener::bind(&addr).await {
+                        listener = Some(l);
+                        bound_port = try_port;
+                        break;
+                    }
+                }
+                let listener = listener.ok_or_else(|| {
+                    anyhow::anyhow!("failed to bind to ports {}-{} on {}", port, port + 5, host)
+                })?;
 
                 // Start the dev server
                 let mut res = cli::dev::execute(root).await?;
                 let dev_server = axum::serve(listener, res.router);
 
                 println!();
-                println!("  {} | served at http://{}:{}", "hop".bold(), host, port);
+                println!("  {} | served at http://{}:{}", "hop".bold(), host, bound_port);
                 println!();
 
                 // Block until Ctrl-C or server exit
