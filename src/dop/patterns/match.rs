@@ -5,6 +5,7 @@ use std::sync::Arc;
 use crate::document::CheapString;
 use crate::dop::semantics::r#type::Type;
 use crate::dop::symbols::field_name::FieldName;
+use crate::dop::symbols::type_name::TypeName;
 use crate::dop::symbols::var_name::VarName;
 
 /// An enum variant pattern, e.g. `Color::Red`
@@ -12,7 +13,7 @@ use crate::dop::symbols::var_name::VarName;
 pub enum EnumPattern {
     Variant {
         enum_name: CheapString,
-        variant_name: CheapString,
+        variant_name: TypeName,
     },
 }
 

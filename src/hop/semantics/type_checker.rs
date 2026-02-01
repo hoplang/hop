@@ -97,8 +97,8 @@ fn typecheck_module(
 
                 let Some(typ) = imported_module_type_info.get(imported_name.as_str()) else {
                     errors.push(TypeError::UndeclaredType {
-                        module: imported_module.to_string(),
-                        typ: imported_name.to_string(),
+                        module: imported_module.clone(),
+                        type_name: imported_name.clone(),
                         range: imported_name_range.clone(),
                     });
                     continue;

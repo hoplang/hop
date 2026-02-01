@@ -49,7 +49,8 @@ impl RustTranspiler {
             IrExpr::FieldAccess { kind, .. } | IrExpr::Var { kind, .. }
                 if self.needs_to_owned(kind) =>
             {
-                self.transpile_expr(expr).append(BoxDoc::text(".to_owned()"))
+                self.transpile_expr(expr)
+                    .append(BoxDoc::text(".to_owned()"))
             }
             _ => self.transpile_expr(expr),
         }
@@ -176,21 +177,33 @@ impl Transpiler for RustTranspiler {
         // Prepend write_escaped_html helper function if needed (after transpilation determined it's used)
         if self.needs_escape_html {
             let escape_fn = BoxDoc::nil()
-                .append(BoxDoc::text("fn write_escaped_html(s: &str, output: &mut String) {"))
+                .append(BoxDoc::text(
+                    "fn write_escaped_html(s: &str, output: &mut String) {",
+                ))
                 .append(BoxDoc::line())
                 .append(BoxDoc::text("    for c in s.chars() {"))
                 .append(BoxDoc::line())
                 .append(BoxDoc::text("        match c {"))
                 .append(BoxDoc::line())
-                .append(BoxDoc::text("            '&' => output.push_str(\"&amp;\"),"))
+                .append(BoxDoc::text(
+                    "            '&' => output.push_str(\"&amp;\"),",
+                ))
                 .append(BoxDoc::line())
-                .append(BoxDoc::text("            '<' => output.push_str(\"&lt;\"),"))
+                .append(BoxDoc::text(
+                    "            '<' => output.push_str(\"&lt;\"),",
+                ))
                 .append(BoxDoc::line())
-                .append(BoxDoc::text("            '>' => output.push_str(\"&gt;\"),"))
+                .append(BoxDoc::text(
+                    "            '>' => output.push_str(\"&gt;\"),",
+                ))
                 .append(BoxDoc::line())
-                .append(BoxDoc::text("            '\"' => output.push_str(\"&quot;\"),"))
+                .append(BoxDoc::text(
+                    "            '\"' => output.push_str(\"&quot;\"),",
+                ))
                 .append(BoxDoc::line())
-                .append(BoxDoc::text("            '\\'' => output.push_str(\"&#39;\"),"))
+                .append(BoxDoc::text(
+                    "            '\\'' => output.push_str(\"&#39;\"),",
+                ))
                 .append(BoxDoc::line())
                 .append(BoxDoc::text("            _ => output.push(c),"))
                 .append(BoxDoc::line())
@@ -249,11 +262,14 @@ impl Transpiler for RustTranspiler {
             result = result
                 .append(BoxDoc::text("("))
                 .append(BoxDoc::intersperse(
-                    entrypoint.parameters.iter().map(|(param_name, param_type, _)| {
-                        BoxDoc::text(param_name.as_str())
-                            .append(BoxDoc::text(": "))
-                            .append(self.transpile_param_type(param_type))
-                    }),
+                    entrypoint
+                        .parameters
+                        .iter()
+                        .map(|(param_name, param_type, _)| {
+                            BoxDoc::text(param_name.as_str())
+                                .append(BoxDoc::text(": "))
+                                .append(self.transpile_param_type(param_type))
+                        }),
                     BoxDoc::text(", "),
                 ))
                 .append(BoxDoc::text(") -> String {"));
@@ -493,7 +509,7 @@ impl StatementTranspiler for RustTranspiler {
                                     // Check if this variant has fields by looking at the type
                                     let has_fields = variants
                                         .iter()
-                                        .find(|(name, _)| name.as_str() == variant_name)
+                                        .find(|(name, _)| name == variant_name)
                                         .map(|(_, fields)| !fields.is_empty())
                                         .unwrap_or(false);
 
@@ -598,7 +614,11 @@ impl ExpressionTranspiler for RustTranspiler {
         BoxDoc::text(name)
     }
 
-    fn transpile_field_access<'a>(&mut self, object: &'a IrExpr, field: &'a FieldName) -> BoxDoc<'a> {
+    fn transpile_field_access<'a>(
+        &mut self,
+        object: &'a IrExpr,
+        field: &'a FieldName,
+    ) -> BoxDoc<'a> {
         self.transpile_expr(object)
             .append(BoxDoc::text("."))
             .append(BoxDoc::text(field.as_str()))
@@ -732,8 +752,7 @@ impl ExpressionTranspiler for RustTranspiler {
     }
 
     fn transpile_not<'a>(&mut self, operand: &'a IrExpr) -> BoxDoc<'a> {
-        BoxDoc::text("!")
-            .append(self.transpile_expr(operand))
+        BoxDoc::text("!").append(self.transpile_expr(operand))
     }
 
     fn transpile_numeric_negation<'a>(&mut self, operand: &'a IrExpr) -> BoxDoc<'a> {
@@ -932,7 +951,7 @@ impl ExpressionTranspiler for RustTranspiler {
                                 // Check if this variant has fields by looking at the type
                                 let has_fields = variants
                                     .iter()
-                                    .find(|(name, _)| name.as_str() == variant_name)
+                                    .find(|(name, _)| name == variant_name)
                                     .map(|(_, fields)| !fields.is_empty())
                                     .unwrap_or(false);
 
@@ -1014,7 +1033,8 @@ impl ExpressionTranspiler for RustTranspiler {
     }
 
     fn transpile_int_to_string<'a>(&mut self, value: &'a IrExpr) -> BoxDoc<'a> {
-        self.transpile_expr(value).append(BoxDoc::text(".to_string()"))
+        self.transpile_expr(value)
+            .append(BoxDoc::text(".to_string()"))
     }
 
     fn transpile_float_to_int<'a>(&mut self, value: &'a IrExpr) -> BoxDoc<'a> {
@@ -1024,7 +1044,8 @@ impl ExpressionTranspiler for RustTranspiler {
     }
 
     fn transpile_float_to_string<'a>(&mut self, value: &'a IrExpr) -> BoxDoc<'a> {
-        self.transpile_expr(value).append(BoxDoc::text(".to_string()"))
+        self.transpile_expr(value)
+            .append(BoxDoc::text(".to_string()"))
     }
 
     fn transpile_int_to_float<'a>(&mut self, value: &'a IrExpr) -> BoxDoc<'a> {
@@ -1185,19 +1206,23 @@ mod tests {
     fn option_match_statement() {
         check(
             IrModuleBuilder::new()
-                .component("Test", [("opt", Type::Option(Arc::new(Type::String)))], |t| {
-                    t.option_match_stmt(
-                        t.var("opt"),
-                        Some("value"),
-                        |t| {
-                            t.write("some: ");
-                            t.write_expr(t.var("value"), false);
-                        },
-                        |t| {
-                            t.write("none");
-                        },
-                    );
-                })
+                .component(
+                    "Test",
+                    [("opt", Type::Option(Arc::new(Type::String)))],
+                    |t| {
+                        t.option_match_stmt(
+                            t.var("opt"),
+                            Some("value"),
+                            |t| {
+                                t.write("some: ");
+                                t.write_expr(t.var("value"), false);
+                            },
+                            |t| {
+                                t.write("none");
+                            },
+                        );
+                    },
+                )
                 .build(),
             expect![[r#"
                 -- before --

@@ -4,6 +4,7 @@ use std::sync::Arc;
 use crate::document::CheapString;
 use crate::dop::patterns::{EnumPattern, Match};
 use crate::dop::symbols::field_name::FieldName;
+use crate::dop::symbols::type_name::TypeName;
 use crate::dop::symbols::var_name::VarName;
 use pretty::BoxDoc;
 
@@ -34,7 +35,10 @@ pub enum TypedExpr {
     IntLiteral { value: i64 },
 
     /// An array literal expression, e.g. [1, 2, 3]
-    ArrayLiteral { elements: Vec<Self>, kind: Arc<Type> },
+    ArrayLiteral {
+        elements: Vec<Self>,
+        kind: Arc<Type>,
+    },
 
     /// A record literal expression, e.g. User(name: "John", age: 30)
     RecordLiteral {
@@ -46,7 +50,7 @@ pub enum TypedExpr {
     /// An enum literal expression, e.g. Color::Red or Result::Ok(value: 42)
     EnumLiteral {
         enum_name: CheapString,
-        variant_name: CheapString,
+        variant_name: TypeName,
         /// Field values for variants with fields (empty for unit variants)
         fields: Vec<(FieldName, Self)>,
         kind: Arc<Type>,
@@ -60,7 +64,10 @@ pub enum TypedExpr {
     },
 
     /// A match expression (enum, bool, or option)
-    Match { match_: Match<Self>, kind: Arc<Type> },
+    Match {
+        match_: Match<Self>,
+        kind: Arc<Type>,
+    },
 
     /// String concatenation expression for joining two string expressions
     StringConcat { left: Box<Self>, right: Box<Self> },

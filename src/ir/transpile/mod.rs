@@ -98,8 +98,11 @@ pub trait TypeTranspiler {
 /// Expression transpilation trait using pretty-printing
 pub trait ExpressionTranspiler {
     fn transpile_var<'a>(&mut self, name: &'a str) -> BoxDoc<'a>;
-    fn transpile_field_access<'a>(&mut self, object: &'a IrExpr, field: &'a FieldName)
-        -> BoxDoc<'a>;
+    fn transpile_field_access<'a>(
+        &mut self,
+        object: &'a IrExpr,
+        field: &'a FieldName,
+    ) -> BoxDoc<'a>;
     fn transpile_string_literal<'a>(&mut self, value: &'a str) -> BoxDoc<'a>;
     fn transpile_boolean_literal<'a>(&mut self, value: bool) -> BoxDoc<'a>;
     fn transpile_float_literal<'a>(&mut self, value: f64) -> BoxDoc<'a>;
@@ -259,7 +262,7 @@ pub trait ExpressionTranspiler {
                 variant_name,
                 fields,
                 ..
-            } => self.transpile_enum_literal(enum_name, variant_name, fields),
+            } => self.transpile_enum_literal(enum_name, variant_name.as_str(), fields),
             IrExpr::OptionLiteral { value, kind, .. } => {
                 let inner_type = match kind.as_ref() {
                     Type::Option(inner) => inner.as_ref(),

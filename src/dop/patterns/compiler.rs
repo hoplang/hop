@@ -13,13 +13,13 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use crate::document::{CheapString, DocumentRange, Ranged};
+use crate::document::{DocumentRange, Ranged};
 use crate::dop::syntax::parsed::{Constructor, ParsedMatchPattern};
 
 use crate::dop::semantics::r#type::Type;
-use crate::type_error::TypeError;
 use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::type_name::TypeName;
+use crate::type_error::TypeError;
 
 /// A binding introduced by a pattern match (i.e. `name = source_name`).
 #[derive(Clone, Debug)]
@@ -152,7 +152,7 @@ pub struct FieldBinding {
 #[derive(Debug)]
 pub struct EnumCase {
     pub enum_name: TypeName,
-    pub variant_name: CheapString,
+    pub variant_name: TypeName,
     /// Bindings for each field in the variant.
     pub bindings: Vec<FieldBinding>,
     pub body: Decision,
@@ -275,7 +275,7 @@ impl<'a> Compiler<'a> {
                 if let Type::Enum { variants, .. } = typ {
                     variants
                         .iter()
-                        .position(|(v, _)| v.as_str() == variant_name)
+                        .position(|(v, _)| v == variant_name)
                         .expect("unknown variant")
                 } else {
                     panic!("type is not an enum")
@@ -434,7 +434,7 @@ impl<'a> Compiler<'a> {
                     (
                         Constructor::EnumVariant {
                             enum_name: name.clone(),
-                            variant_name: variant_name.to_cheap_string(),
+                            variant_name: variant_name.clone(),
                         },
                         field_vars,
                         Vec::new(),
@@ -517,7 +517,7 @@ impl<'a> Compiler<'a> {
                             if let Constructor::EnumVariant { variant_name, .. } = &cons {
                                 let variant_fields = variants
                                     .iter()
-                                    .find(|(v, _)| v.as_str() == variant_name)
+                                    .find(|(v, _)| v == variant_name)
                                     .map(|(_, f)| f)
                                     .expect("variant not found in enum type");
                                 for (field_name, _, field_pattern) in fields {
@@ -571,7 +571,7 @@ impl<'a> Compiler<'a> {
                 if let Type::Enum { variants, .. } = branch_var.typ.as_ref() {
                     let variant_fields = variants
                         .iter()
-                        .find(|(v, _)| v.as_str() == variant_name)
+                        .find(|(v, _)| v == variant_name)
                         .map(|(_, f)| f);
                     if let Some(fields) = variant_fields {
                         vars.iter()
@@ -827,7 +827,7 @@ impl<'a> Compiler<'a> {
 
                     let variant_fields = variants
                         .iter()
-                        .find(|(v, _)| pattern_variant_name == v.as_str())
+                        .find(|(v, _)| pattern_variant_name == v)
                         .map(|(_, f)| f);
 
                     let variant_fields = match variant_fields {
@@ -911,7 +911,7 @@ impl<'a> Compiler<'a> {
                             Some(typ) => Self::validate_pattern(field_pattern, typ.clone())?,
                             None => {
                                 return Err(TypeError::RecordUnknownField {
-                                    field_name: field_name.to_string(),
+                                    field_name: field_name.clone(),
                                     record_name: pattern_type_name.to_string(),
                                     range: field_name_range.clone(),
                                 });

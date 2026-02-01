@@ -6,6 +6,7 @@ use crate::document::CheapString;
 use crate::dop::patterns::{EnumPattern, Match};
 use crate::dop::semantics::r#type::Type;
 use crate::dop::symbols::field_name::FieldName;
+use crate::dop::symbols::type_name::TypeName;
 use crate::ir::{
     IrExpr,
     ast::ExprId,
@@ -31,7 +32,7 @@ enum Const {
     String(CheapString),
     Enum {
         enum_name: CheapString,
-        variant_name: CheapString,
+        variant_name: TypeName,
         /// Field expression IDs for reconstructing the enum literal.
         /// Empty for unit variants.
         fields: Vec<(FieldName, ExprId)>,
@@ -65,7 +66,7 @@ impl Const {
                 };
                 let variant_fields = variants
                     .iter()
-                    .find(|(v, _)| v.as_str() == variant_name)
+                    .find(|(v, _)| v == variant_name)
                     .map(|(_, f)| f)?;
 
                 let reconstructed_fields: Option<Vec<_>> = fields
@@ -458,7 +459,7 @@ impl Pass for ConstantPropagationPass {
 
         // Enum matches with known subjects: ((match_id, enum_name, variant_name) => match_id)
         let match_with_const_enum =
-            iteration.variable::<((ExprId, CheapString, CheapString), ExprId)>("match_with_enum");
+            iteration.variable::<((ExprId, CheapString, TypeName), ExprId)>("match_with_enum");
 
         // Selected arm bodies for all match types: (arm_body_id => match_id)
         let selected_arm = iteration.variable::<(ExprId, ExprId)>("selected_arm");
@@ -532,9 +533,10 @@ impl Pass for ConstantPropagationPass {
                     &const_value,
                     &tw_merge_operand,
                     |_: &ExprId, const_val: &Const, expr_id: &ExprId| match const_val {
-                        Const::String(s) => {
-                            (*expr_id, Const::String(CheapString::new(tw_merge(s.as_str()))))
-                        }
+                        Const::String(s) => (
+                            *expr_id,
+                            Const::String(CheapString::new(tw_merge(s.as_str()))),
+                        ),
                         _ => unreachable!("TwMerge can only have string operands"),
                     },
                 );
@@ -681,7 +683,7 @@ impl Pass for ConstantPropagationPass {
                 selected_arm.from_join(
                     &match_with_const_enum,
                     &enum_match_arms,
-                    |_key: &(ExprId, CheapString, CheapString),
+                    |_key: &(ExprId, CheapString, TypeName),
                      match_id: &ExprId,
                      arm_body: &ExprId| { (*arm_body, *match_id) },
                 );
@@ -1508,11 +1510,8 @@ mod tests {
     fn should_fold_merge_classes_with_constant_strings() {
         check(
             build_ir_no_params("Test", |t| {
-                let classes = t.merge_classes(vec![
-                    t.str("flex"),
-                    t.str("items-center"),
-                    t.str("gap-4"),
-                ]);
+                let classes =
+                    t.merge_classes(vec![t.str("flex"), t.str("items-center"), t.str("gap-4")]);
                 t.write_expr_escaped(t.tw_merge(classes));
             }),
             expect![[r#"
@@ -1533,11 +1532,7 @@ mod tests {
     fn should_fold_merge_classes_with_tailwind_conflicts() {
         check(
             build_ir_no_params("Test", |t| {
-                let classes = t.merge_classes(vec![
-                    t.str("px-4"),
-                    t.str("py-2"),
-                    t.str("p-6"),
-                ]);
+                let classes = t.merge_classes(vec![t.str("px-4"), t.str("py-2"), t.str("p-6")]);
                 t.write_expr_escaped(t.tw_merge(classes));
             }),
             expect![[r#"

@@ -18,7 +18,7 @@ pub enum InvalidTypeNameError {
 
 /// A TypeName represents a validated type name in dop.
 /// Type names must be PascalCase (start with uppercase letter).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct TypeName {
     value: CheapString,
 }
@@ -77,14 +77,6 @@ impl Display for TypeName {
         f.write_str(self.value.as_str())
     }
 }
-
-impl PartialEq for TypeName {
-    fn eq(&self, other: &Self) -> bool {
-        self.as_str() == other.as_str()
-    }
-}
-
-impl Eq for TypeName {}
 
 impl PartialOrd for TypeName {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {

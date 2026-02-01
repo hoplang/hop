@@ -150,7 +150,7 @@ pub enum IrExpr {
     /// An enum literal expression, e.g. Color::Red or Result::Ok(value: 42)
     EnumLiteral {
         enum_name: CheapString,
-        variant_name: CheapString,
+        variant_name: TypeName,
         /// Field values for variants with fields (empty for unit variants)
         fields: Vec<(FieldName, IrExpr)>,
         kind: Arc<Type>,
@@ -1151,9 +1151,9 @@ impl IrExpr {
                     BoxDoc::text(", "),
                 ))
                 .append(BoxDoc::text(")")),
-            IrExpr::TwMerge { value, .. } => {
-                BoxDoc::text("tw_merge(").append(value.to_doc()).append(BoxDoc::text(")"))
-            }
+            IrExpr::TwMerge { value, .. } => BoxDoc::text("tw_merge(")
+                .append(value.to_doc())
+                .append(BoxDoc::text(")")),
             IrExpr::ArrayLength { array, .. } => array.to_doc().append(BoxDoc::text(".len()")),
             IrExpr::IntToString { value, .. } => {
                 value.to_doc().append(BoxDoc::text(".to_string()"))
@@ -1387,9 +1387,9 @@ impl<'a> IrEntrypointDeclaration {
                                 .append(BoxDoc::text(": "))
                                 .append(typ.to_doc());
                             match default {
-                                Some(expr) => base
-                                    .append(BoxDoc::text(" = "))
-                                    .append(expr.to_doc()),
+                                Some(expr) => {
+                                    base.append(BoxDoc::text(" = ")).append(expr.to_doc())
+                                }
                                 None => base,
                             }
                         }),

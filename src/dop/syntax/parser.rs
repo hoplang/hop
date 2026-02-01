@@ -8,13 +8,13 @@ use crate::dop::symbols::var_name::VarName;
 use crate::error_collector::ErrorCollector;
 use crate::hop::symbols::module_id::ModuleId;
 
-use crate::parse_error::ParseError;
 use super::parsed::{
     Constructor, ParsedBinaryOp, ParsedDeclaration, ParsedExpr, ParsedLoopSource, ParsedMatchArm,
     ParsedMatchPattern, ParsedType,
 };
 use super::token::Token;
 use super::tokenizer;
+use crate::parse_error::ParseError;
 
 fn next(
     iter: &mut Peekable<DocumentCursor>,
@@ -919,7 +919,7 @@ fn parse_enum_literal(
         };
     Some(ParsedExpr::EnumLiteral {
         enum_name,
-        variant_name: CheapString::new(variant_name.to_string()),
+        variant_name,
         fields,
         constructor_range,
         range: enum_name_range.to(end_range),
@@ -1022,7 +1022,7 @@ pub fn parse_match_pattern(
             return Some(ParsedMatchPattern::Constructor {
                 constructor: Constructor::EnumVariant {
                     enum_name: type_name,
-                    variant_name: CheapString::new(variant_name.to_string()),
+                    variant_name: variant_name.clone(),
                 },
                 args: Vec::new(),
                 fields,

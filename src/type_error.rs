@@ -1,9 +1,11 @@
 use std::sync::Arc;
 
-use crate::document::{DocumentRange, Ranged};
+use crate::document::{CheapString, DocumentRange, Ranged};
 use crate::dop::VarName;
 use crate::dop::semantics::r#type::Type;
+use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::type_name::TypeName;
+use crate::hop::symbols::module_id::ModuleId;
 use thiserror::Error;
 
 #[derive(Debug, Clone, Error)]
@@ -11,10 +13,10 @@ pub enum TypeError {
     #[error("Component {tag_name} is not defined")]
     UndefinedComponent { tag_name: DocumentRange },
 
-    #[error("Module {module} does not declare a type {typ}")]
+    #[error("Module {module} does not declare a type {type_name}")]
     UndeclaredType {
-        module: String,
-        typ: String,
+        module: ModuleId,
+        type_name: TypeName,
         range: DocumentRange,
     },
 
@@ -198,7 +200,7 @@ pub enum TypeError {
 
     #[error("Type '{type_name}' is not defined")]
     UndefinedType {
-        type_name: String,
+        type_name: CheapString,
         range: DocumentRange,
     },
 
@@ -217,14 +219,14 @@ pub enum TypeError {
 
     #[error("Unknown field '{field_name}' in record '{record_name}'")]
     RecordUnknownField {
-        field_name: String,
+        field_name: FieldName,
         record_name: String,
         range: DocumentRange,
     },
 
     #[error("Field '{field_name}' expects type {expected}, but got {found}")]
     RecordLiteralFieldTypeMismatch {
-        field_name: String,
+        field_name: FieldName,
         expected: Arc<Type>,
         found: Arc<Type>,
         range: DocumentRange,

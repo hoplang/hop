@@ -94,7 +94,7 @@ pub enum Constructor {
     /// An enum variant pattern, e.g. `Color::Red`
     EnumVariant {
         enum_name: TypeName,
-        variant_name: CheapString,
+        variant_name: TypeName,
     },
     /// A record pattern, e.g. `User(name: x, age: y)`
     Record { type_name: TypeName },
@@ -291,7 +291,7 @@ pub enum ParsedExpr {
     /// An enum literal expression, e.g. Color::Red
     EnumLiteral {
         enum_name: CheapString,
-        variant_name: CheapString,
+        variant_name: TypeName,
         /// Field values for variants with fields (empty for unit variants)
         /// The tuple is (field_name, field_name_range, field_expr)
         fields: Vec<(FieldName, DocumentRange, Self)>,

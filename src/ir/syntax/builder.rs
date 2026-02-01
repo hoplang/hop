@@ -519,7 +519,7 @@ impl IrBuilder {
         let test_module = ModuleId::new("test").unwrap();
         IrExpr::EnumLiteral {
             enum_name: CheapString::new(enum_name.to_string()),
-            variant_name: CheapString::new(variant_name.to_string()),
+            variant_name: TypeName::new(variant_name).unwrap(),
             fields: field_values
                 .into_iter()
                 .map(|(k, v)| (FieldName::new(k).unwrap(), v))
@@ -584,7 +584,7 @@ impl IrBuilder {
             .map(|(variant_name, body)| EnumMatchArm {
                 pattern: EnumPattern::Variant {
                     enum_name: enum_name.clone(),
-                    variant_name: CheapString::new(variant_name.to_string()),
+                    variant_name: TypeName::new(variant_name).unwrap(),
                 },
                 bindings: vec![],
                 body,
@@ -741,7 +741,7 @@ impl IrBuilder {
                 EnumMatchArm {
                     pattern: EnumPattern::Variant {
                         enum_name: enum_name.clone(),
-                        variant_name: CheapString::new(variant_name.to_string()),
+                        variant_name: TypeName::new(variant_name).unwrap(),
                     },
                     bindings,
                     body,
@@ -1092,7 +1092,7 @@ impl IrBuilder {
                 EnumMatchArm {
                     pattern: EnumPattern::Variant {
                         enum_name: enum_name.clone(),
-                        variant_name: CheapString::new(variant_name.to_string()),
+                        variant_name: TypeName::new(variant_name).unwrap(),
                     },
                     bindings: vec![],
                     body: arm_builder.statements,
@@ -1165,7 +1165,7 @@ impl IrBuilder {
                 EnumMatchArm {
                     pattern: EnumPattern::Variant {
                         enum_name: enum_name.clone(),
-                        variant_name: CheapString::new(variant_name.to_string()),
+                        variant_name: TypeName::new(variant_name).unwrap(),
                     },
                     bindings,
                     body: arm_builder.statements,

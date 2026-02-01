@@ -649,7 +649,11 @@ impl ExpressionTranspiler for TsTranspiler {
         BoxDoc::text(name)
     }
 
-    fn transpile_field_access<'a>(&mut self, object: &'a IrExpr, field: &'a FieldName) -> BoxDoc<'a> {
+    fn transpile_field_access<'a>(
+        &mut self,
+        object: &'a IrExpr,
+        field: &'a FieldName,
+    ) -> BoxDoc<'a> {
         BoxDoc::nil()
             .append(self.transpile_expr(object))
             .append(BoxDoc::text("."))

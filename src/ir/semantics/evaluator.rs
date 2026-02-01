@@ -1,4 +1,6 @@
 use crate::document::CheapString;
+use crate::dop::symbols::field_name::FieldName;
+use crate::dop::symbols::type_name::TypeName;
 use crate::ir::IrExpr;
 use crate::{
     common::write_escaped_html,
@@ -55,8 +57,8 @@ pub enum Value {
     None,
     /// Enum variant with name and optional fields
     Enum {
-        variant_name: CheapString,
-        fields: HashMap<String, Value>,
+        variant_name: TypeName,
+        fields: HashMap<FieldName, Value>,
     },
 }
 
@@ -147,7 +149,6 @@ impl Value {
             Value::Enum { variant_name, .. } => variant_name.to_string(),
         }
     }
-
 }
 
 /// Evaluate an IR entrypoint with the given arguments
@@ -334,7 +335,7 @@ fn eval_statement(node: &IrStatement, env: &mut Env, output: &mut String) -> Res
                     Value::Enum {
                         variant_name,
                         fields,
-                    } => (variant_name.as_str(), fields),
+                    } => (variant_name, fields),
                     _ => return Err(anyhow!("Expected Enum value in match")),
                 };
 
@@ -347,7 +348,7 @@ fn eval_statement(node: &IrStatement, env: &mut Env, output: &mut String) -> Res
                         // Bind fields to variables
                         let bindings_count = arm.bindings.len();
                         for (field_name, var_name) in &arm.bindings {
-                            if let Some(field_val) = fields.get(field_name.as_str()) {
+                            if let Some(field_val) = fields.get(field_name) {
                                 env.push(var_name.as_cheap_string().clone(), field_val.clone());
                             }
                         }
@@ -643,7 +644,7 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value> {
             let mut field_values = HashMap::new();
             for (field_name, field_expr) in fields {
                 let field_val = evaluate_expr(field_expr, env)?;
-                field_values.insert(field_name.as_str().to_string(), field_val);
+                field_values.insert(field_name.clone(), field_val);
             }
             Ok(Value::Enum {
                 variant_name: variant_name.clone(),
@@ -665,7 +666,7 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value> {
                     Value::Enum {
                         variant_name,
                         fields,
-                    } => (variant_name.as_str(), fields),
+                    } => (variant_name, fields),
                     _ => return Err(anyhow!("Expected Enum value in match expression")),
                 };
 
@@ -678,7 +679,7 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value> {
                         // Bind fields to variables
                         let bindings_count = arm.bindings.len();
                         for (field_name, var_name) in &arm.bindings {
-                            if let Some(field_val) = fields.get(field_name.as_str()) {
+                            if let Some(field_val) = fields.get(field_name) {
                                 env.push(var_name.as_cheap_string().clone(), field_val.clone());
                             }
                         }
@@ -1081,8 +1082,8 @@ mod tests {
         };
 
         // Call without providing the argument
-        let result = evaluate_entrypoint(&entrypoint, HashMap::new())
-            .expect("Should use default parameter");
+        let result =
+            evaluate_entrypoint(&entrypoint, HashMap::new()).expect("Should use default parameter");
         assert_eq!(result, "Hello, World!");
     }
 
@@ -1117,10 +1118,12 @@ mod tests {
 
         // Call with the argument - should override the default
         let mut args = HashMap::new();
-        args.insert("greeting".to_string(), Value::String("Custom greeting".to_string()));
+        args.insert(
+            "greeting".to_string(),
+            Value::String("Custom greeting".to_string()),
+        );
 
-        let result = evaluate_entrypoint(&entrypoint, args)
-            .expect("Should use provided argument");
+        let result = evaluate_entrypoint(&entrypoint, args).expect("Should use provided argument");
         assert_eq!(result, "Custom greeting");
     }
 

@@ -1,7 +1,7 @@
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use super::r#type::{NumericType, Type};
-use crate::type_error::TypeError;
 use crate::document::DocumentRange;
 use crate::dop::TypedExpr;
 use crate::dop::patterns::compiler::{Compiler, Decision};
@@ -12,6 +12,7 @@ use crate::dop::syntax::parsed::{
 };
 use crate::environment::Environment;
 use crate::hop::semantics::type_annotation::TypeAnnotation;
+use crate::type_error::TypeError;
 
 /// Resolve a parsed Type to a semantic Type.
 pub fn resolve_type(
@@ -37,7 +38,7 @@ pub fn resolve_type(
                 type_env
                     .lookup(name.as_str())
                     .ok_or_else(|| TypeError::UndefinedType {
-                        type_name: name.to_string(),
+                        type_name: name.clone(),
                         range: range.clone(),
                     })?;
             Ok(record_type.clone())
@@ -666,15 +667,14 @@ pub fn typecheck_expr(
             };
 
             // Build a map of expected fields from the record type
-            let expected_fields: std::collections::HashMap<&str, Arc<Type>> = record_fields
+            let expected_fields: HashMap<&str, Arc<Type>> = record_fields
                 .iter()
                 .map(|(name, typ)| (name.as_str(), typ.clone()))
                 .collect();
 
             // Check for unknown fields and type mismatches
             let mut typed_fields = Vec::new();
-            let mut provided_fields: std::collections::HashSet<&str> =
-                std::collections::HashSet::new();
+            let mut provided_fields: HashSet<&str> = HashSet::new();
 
             for (field_name, field_value) in fields {
                 let field_name_str = field_name.as_str();
@@ -682,7 +682,7 @@ pub fn typecheck_expr(
                 // Check if this field exists in the record
                 let expected_type = expected_fields.get(field_name_str).ok_or_else(|| {
                     TypeError::RecordUnknownField {
-                        field_name: field_name_str.to_string(),
+                        field_name: field_name.clone(),
                         record_name: record_name.to_string(),
                         range: field_value.range().clone(),
                     }
@@ -701,7 +701,7 @@ pub fn typecheck_expr(
                 // Check that the types match
                 if *actual_type != **expected_type {
                     return Err(TypeError::RecordLiteralFieldTypeMismatch {
-                        field_name: field_name_str.to_string(),
+                        field_name: field_name.clone(),
                         expected: expected_type.clone(),
                         found: actual_type,
                         range: field_value.range().clone(),
@@ -751,7 +751,9 @@ pub fn typecheck_expr(
             // Verify it's actually an enum type and get the variant's fields
             let variant_fields = match enum_type.as_ref() {
                 Type::Enum { variants, .. } => {
-                    let variant = variants.iter().find(|(v, _)| v.as_str() == variant_name);
+                    let variant = variants
+                        .iter()
+                        .find(|(v, _)| v.as_str() == variant_name.as_str());
                     match variant {
                         Some((_, fields)) => fields.clone(),
                         None => {
@@ -774,8 +776,7 @@ pub fn typecheck_expr(
             // Validate fields
             let typed_fields = {
                 let mut typed_fields = Vec::new();
-                let mut provided_field_names: std::collections::HashSet<String> =
-                    std::collections::HashSet::new();
+                let mut provided_field_names: HashSet<String> = HashSet::new();
 
                 // Type check each provided field
                 for (field_name, field_name_range, field_expr) in fields {
@@ -1056,7 +1057,7 @@ pub fn extract_bindings_from_pattern(
 
                 let variant_fields = variants
                     .iter()
-                    .find(|(name, _)| name.as_str() == variant_name)
+                    .find(|(name, _)| name == variant_name)
                     .map(|(_, fields)| fields)
                     .expect("variant not found in enum type");
 

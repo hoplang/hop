@@ -272,11 +272,14 @@ impl Transpiler for PythonTranspiler {
             result = result
                 .append(BoxDoc::text("("))
                 .append(BoxDoc::intersperse(
-                    entrypoint.parameters.iter().map(|(param_name, param_type, _)| {
-                        BoxDoc::text(param_name.as_str())
-                            .append(BoxDoc::text(": "))
-                            .append(self.transpile_type(param_type))
-                    }),
+                    entrypoint
+                        .parameters
+                        .iter()
+                        .map(|(param_name, param_type, _)| {
+                            BoxDoc::text(param_name.as_str())
+                                .append(BoxDoc::text(": "))
+                                .append(self.transpile_type(param_type))
+                        }),
                     BoxDoc::text(", "),
                 ))
                 .append(BoxDoc::text(") -> str:"));
@@ -558,7 +561,11 @@ impl ExpressionTranspiler for PythonTranspiler {
         BoxDoc::text(name)
     }
 
-    fn transpile_field_access<'a>(&mut self, object: &'a IrExpr, field: &'a FieldName) -> BoxDoc<'a> {
+    fn transpile_field_access<'a>(
+        &mut self,
+        object: &'a IrExpr,
+        field: &'a FieldName,
+    ) -> BoxDoc<'a> {
         // Python uses dot notation for dataclass attributes
         self.transpile_expr(object)
             .append(BoxDoc::text("."))
