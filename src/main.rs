@@ -34,7 +34,7 @@ enum Commands {
     Compile {
         /// Path to project root
         #[arg(long)]
-        projectdir: Option<String>,
+        project: Option<String>,
         /// Skip optimization passes
         #[arg(long)]
         no_optimize: bool,
@@ -43,7 +43,7 @@ enum Commands {
     Dev {
         /// Path to project root
         #[arg(long)]
-        projectdir: Option<String>,
+        project: Option<String>,
         /// Port to serve on
         #[arg(short, long, default_value = "33861")]
         port: u16,
@@ -55,7 +55,7 @@ enum Commands {
     Fmt {
         /// Path to project root
         #[arg(long)]
-        projectdir: Option<String>,
+        project: Option<String>,
         /// Specific .hop file to format (formats all files if not specified)
         file: Option<String>,
     },
@@ -71,11 +71,11 @@ async fn main() -> anyhow::Result<()> {
         Some(Commands::Lsp) => {
             cli::lsp::execute().await;
         }
-        Some(Commands::Fmt { projectdir, file }) => {
+        Some(Commands::Fmt { project, file }) => {
             use std::time::Instant;
             let start_time = Instant::now();
 
-            let root = match projectdir {
+            let root = match project {
                 Some(d) => ProjectRoot::from(Path::new(d))?,
                 None => ProjectRoot::find_upwards(Path::new("."))?,
             };
@@ -91,13 +91,13 @@ async fn main() -> anyhow::Result<()> {
             println!();
         }
         Some(Commands::Compile {
-            projectdir,
+            project,
             no_optimize,
         }) => {
             use std::time::Instant;
             let start_time = Instant::now();
 
-            let root = match projectdir {
+            let root = match project {
                 Some(d) => ProjectRoot::from(Path::new(d))?,
                 None => ProjectRoot::find_upwards(Path::new("."))?,
             };
@@ -119,11 +119,11 @@ async fn main() -> anyhow::Result<()> {
             println!();
         }
         Some(Commands::Dev {
-            projectdir,
+            project,
             port,
             host,
         }) => {
-            let root = match projectdir {
+            let root = match project {
                 Some(d) => ProjectRoot::from(Path::new(d))?,
                 None => ProjectRoot::find_upwards(Path::new("."))?,
             };
