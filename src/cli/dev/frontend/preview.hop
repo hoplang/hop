@@ -1,8 +1,14 @@
+import lucide::Maximize
 import lucide::Monitor
 import lucide::Smartphone
 import components::logo::Logo
 
-entrypoint Preview(name: String = "Index", iframe_src: String = "") {
+enum Device {
+  Desktop,
+  Mobile,
+}
+
+entrypoint Preview(name: String = "Index", iframe_src: String = "", device: Device = Device::Desktop) {
   <head>
     <link
       rel="stylesheet"
@@ -50,8 +56,25 @@ entrypoint Preview(name: String = "Index", iframe_src: String = "") {
           "gap-2",
         )
       }>
-        <Monitor/>
-        <Smartphone class="text-neutral-400"/>
+        <a href="?device=mobile">
+          <Smartphone class={
+            match device {
+              Device::Mobile => "",
+              _ => "text-neutral-400",
+            }
+          }/>
+        </a>
+        <a href="?device=desktop">
+          <Monitor class={
+            match device {
+              Device::Desktop => "",
+              _ => "text-neutral-400",
+            }
+          }/>
+        </a>
+        <a href={iframe_src}>
+          <Maximize class="text-neutral-400"/>
+        </a>
       </div>
       <div>
       </div>
@@ -60,11 +83,14 @@ entrypoint Preview(name: String = "Index", iframe_src: String = "") {
       classes!(
         "bg-white",
         "h-full",
-        "w-full",
         "border",
         "border-neutral-300",
         "rounded",
         "overflow-hidden",
+        match device {
+          Device::Mobile => "w-md",
+          _ => "w-full",
+        },
       )
     }>
       <iframe src={iframe_src} class="w-full h-full">

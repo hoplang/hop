@@ -91,11 +91,32 @@ async fn handle_hmr() -> Response<Body> {
         .unwrap()
 }
 
+#[derive(serde::Deserialize)]
+struct PreviewQuery {
+    #[serde(default)]
+    device: Option<String>,
+}
+
 async fn handle_preview(
     axum::extract::Path(entrypoint): axum::extract::Path<String>,
+    axum::extract::Query(query): axum::extract::Query<PreviewQuery>,
 ) -> Response<Body> {
+    let device = match query.device.as_deref() {
+        Some("mobile") => frontend::Device::Mobile,
+        Some("desktop") | None => frontend::Device::Desktop,
+        Some(invalid) => {
+            return Response::builder()
+                .status(StatusCode::BAD_REQUEST)
+                .header("Content-Type", "text/html")
+                .body(Body::from(frontend::overlay(&format!(
+                    "Invalid device: {}",
+                    invalid
+                ))))
+                .unwrap();
+        }
+    };
     let iframe_src = format!("/api/preview/{}", entrypoint);
-    let html = frontend::preview(&entrypoint, &iframe_src);
+    let html = frontend::preview(&entrypoint, &iframe_src, &device);
     Response::builder()
         .header("Content-Type", "text/html")
         .body(Body::from(html))
