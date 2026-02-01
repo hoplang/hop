@@ -14,16 +14,22 @@ pub struct CompileResult {
     pub output_path: PathBuf,
 }
 
-async fn compile_tailwind(input_path: &Path, working_dir: &Path) -> Result<String> {
+async fn compile_tailwind(input_path: &Path, hop_sources: &str) -> Result<String> {
     let cache_dir = PathBuf::from("/tmp/.hop-cache");
     tokio::fs::create_dir_all(&cache_dir).await?;
+
+    // Create a temp working directory with hop sources for Tailwind to scan.
+    // This isolates Tailwind from the project's output file, preventing it from
+    // scanning old generated content.
+    let tailwind_scan_dir = tempfile::tempdir()?;
+    tokio::fs::write(tailwind_scan_dir.path().join("sources.hop"), hop_sources).await?;
 
     let runner = TailwindRunner::new(cache_dir.clone()).await?;
 
     let tailwind_config = TailwindConfig {
         input: input_path.to_path_buf(),
-        output: cache_dir.join("compiled-tailwind.css"),
-        working_dir: working_dir.to_path_buf(),
+        output: tailwind_scan_dir.path().join("compiled.css"),
+        working_dir: tailwind_scan_dir.path().to_path_buf(),
     };
 
     // Run Tailwind compilation
@@ -54,27 +60,31 @@ pub async fn execute(project_root: &ProjectRoot, skip_optimization: bool) -> Res
     let config = project_root.load_config().await?;
     let resolved = config.get_resolved_config()?;
 
-    // Truncate output file before running Tailwind to prevent scanning old content
-    project_root.write_output("").await?;
-
-    // Compile Tailwind CSS if configured
-    timer.start_phase("tailwind");
-    let tailwind_css = if let Some(p) = project_root.get_tailwind_input_path().await? {
-        // Use user-specified Tailwind input
-        Some(compile_tailwind(&p, project_root.get_path()).await?)
-    } else {
-        // Use default Tailwind configuration
-        let default_input = create_default_tailwind_input().await?;
-        Some(compile_tailwind(&default_input, project_root.get_path()).await?)
-    };
-
-    // Load all .hop files
+    // Load all .hop files first - we need them for Tailwind scanning
     timer.start_phase("load modules");
     let hop_modules = project_root.load_all_hop_modules()?;
 
     if hop_modules.is_empty() {
         anyhow::bail!("No .hop files found in project");
     }
+
+    // Concatenate all hop sources for Tailwind to scan
+    let hop_sources: String = hop_modules
+        .values()
+        .map(|doc| doc.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    // Compile Tailwind CSS if configured
+    timer.start_phase("tailwind");
+    let tailwind_css = if let Some(p) = project_root.get_tailwind_input_path().await? {
+        // Use user-specified Tailwind input
+        Some(compile_tailwind(&p, &hop_sources).await?)
+    } else {
+        // Use default Tailwind configuration
+        let default_input = create_default_tailwind_input().await?;
+        Some(compile_tailwind(&default_input, &hop_sources).await?)
+    };
 
     timer.start_phase("compiling");
     // Create Program and compile all modules

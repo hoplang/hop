@@ -55,6 +55,7 @@ pub struct RenameableSymbol {
 
 #[derive(Debug, Default)]
 pub struct Program {
+    documents: HashMap<ModuleId, Document>,
     topo_sorter: TopoSorter<ModuleId>,
     parse_errors: HashMap<ModuleId, ErrorCollector<ParseError>>,
     parsed_asts: HashMap<ModuleId, ParsedAst>,
@@ -78,7 +79,8 @@ impl Program {
     /// This cleans up all state associated with the module and re-typechecks
     /// any modules that depended on it (since their imports are now broken).
     pub fn remove_module(&mut self, module_name: &ModuleId) {
-        // Remove from parse errors and parsed ASTs
+        // Remove document and parsed state
+        self.documents.remove(module_name);
         self.parse_errors.remove(module_name);
         self.parsed_asts.remove(module_name);
 
@@ -105,6 +107,9 @@ impl Program {
     }
 
     pub fn update_module(&mut self, module_name: ModuleId, document: Document) -> Vec<ModuleId> {
+        // Store the document
+        self.documents.insert(module_name.clone(), document.clone());
+
         // Parse the module
         let parse_errors = self.parse_errors.entry(module_name.clone()).or_default();
         parse_errors.clear();
@@ -152,6 +157,15 @@ impl Program {
 
     pub fn get_parsed_ast(&self, module_name: &ModuleId) -> Option<&ParsedAst> {
         self.parsed_asts.get(module_name)
+    }
+
+    /// Returns all module sources concatenated into a single string.
+    pub fn get_all_sources(&self) -> String {
+        self.documents
+            .values()
+            .map(|doc| doc.as_str())
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 
     pub fn get_hover_info(
