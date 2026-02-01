@@ -28,52 +28,41 @@ use crate::hop::symbols::module_id::ModuleId;
 use crate::hop::syntax::parsed_ast::{ParsedAst, ParsedAttributeValue};
 use crate::hop::syntax::parsed_node::{ParsedLetBinding, ParsedNode};
 
-#[derive(Default, Debug)]
-pub struct TypeChecker {
-    state: HashMap<ModuleId, HashMap<String, Arc<Type>>>,
-    pub type_errors: HashMap<ModuleId, ErrorCollector<TypeError>>,
-    pub type_annotations: HashMap<ModuleId, Vec<TypeAnnotation>>,
-    pub typed_asts: HashMap<ModuleId, TypedAst>,
-}
+pub fn typecheck(
+    modules: &[&ParsedAst],
+    state: &mut HashMap<ModuleId, HashMap<String, Arc<Type>>>,
+    type_errors: &mut HashMap<ModuleId, ErrorCollector<TypeError>>,
+    type_annotations: &mut HashMap<ModuleId, Vec<TypeAnnotation>>,
+    typed_asts: &mut HashMap<ModuleId, TypedAst>,
+) {
+    for module in modules {
+        let module_type_errors = type_errors.entry(module.name.clone()).or_default();
+        let module_type_annotations = type_annotations.entry(module.name.clone()).or_default();
 
-impl TypeChecker {
-    /// Remove all data associated with a module.
-    pub fn remove_module(&mut self, module_name: &ModuleId) {
-        self.state.remove(module_name);
-        self.type_errors.remove(module_name);
-        self.type_annotations.remove(module_name);
-        self.typed_asts.remove(module_name);
-    }
+        module_type_errors.clear();
+        module_type_annotations.clear();
 
-    pub fn typecheck(&mut self, modules: &[&ParsedAst]) {
-        for module in modules {
-            let type_errors = self.type_errors.entry(module.name.clone()).or_default();
-            let type_annotations = self
-                .type_annotations
-                .entry(module.name.clone())
-                .or_default();
+        let typed_ast = typecheck_module(
+            module,
+            state,
+            module_type_errors,
+            module_type_annotations,
+        );
+        typed_asts.insert(module.name.clone(), typed_ast);
 
-            type_errors.clear();
-            type_annotations.clear();
-
-            let typed_ast =
-                typecheck_module(module, &mut self.state, type_errors, type_annotations);
-            self.typed_asts.insert(module.name.clone(), typed_ast);
-
-            if modules.len() > 1 {
-                type_errors.clear();
-                for import_node in module.get_import_declarations() {
-                    let imported_module = import_node.imported_module();
-                    type_errors.push(TypeError::import_cycle(
-                        &module.name.to_string(),
-                        &imported_module.to_string(),
-                        &modules
-                            .iter()
-                            .map(|m| m.name.to_string())
-                            .collect::<Vec<_>>(),
-                        import_node.path.clone(),
-                    ));
-                }
+        if modules.len() > 1 {
+            module_type_errors.clear();
+            for import_node in module.get_import_declarations() {
+                let imported_module = import_node.imported_module();
+                module_type_errors.push(TypeError::import_cycle(
+                    &module.name.to_string(),
+                    &imported_module.to_string(),
+                    &modules
+                        .iter()
+                        .map(|m| m.name.to_string())
+                        .collect::<Vec<_>>(),
+                    import_node.path.clone(),
+                ));
             }
         }
     }
@@ -1291,7 +1280,10 @@ mod tests {
             .with_lines_before(1)
             .with_location();
 
-        let mut typechecker = TypeChecker::default();
+        let mut state = HashMap::new();
+        let mut type_errors = HashMap::new();
+        let mut type_annotations = HashMap::new();
+        let mut typed_asts = HashMap::new();
         let mut module_names = Vec::new();
 
         // Process all .hop files in the archive
@@ -1313,14 +1305,20 @@ mod tests {
                 panic!("Got parse errors: {:#?}", parse_errors);
             }
 
-            typechecker.typecheck(&[&ast]);
+            typecheck(
+                &[&ast],
+                &mut state,
+                &mut type_errors,
+                &mut type_annotations,
+                &mut typed_asts,
+            );
 
-            let type_errors = typechecker.type_errors.get(&ast.name);
+            let module_type_errors = type_errors.get(&ast.name);
 
-            if type_errors.is_some_and(|err| !err.is_empty()) {
+            if module_type_errors.is_some_and(|err| !err.is_empty()) {
                 error_output.push(error_annotator.annotate(
                     Some(&file.name),
-                    typechecker.type_errors.get(&ast.name).unwrap(),
+                    type_errors.get(&ast.name).unwrap(),
                 ));
             }
         }
@@ -1329,7 +1327,7 @@ mod tests {
             expected.assert_eq(error_output.join("\n").as_str());
         } else {
             for module_name in &module_names {
-                if let Some(typed_ast) = typechecker.typed_asts.get(module_name) {
+                if let Some(typed_ast) = typed_asts.get(module_name) {
                     ast_output.push(format!("-- {}.hop --\n{}", module_name, typed_ast));
                 }
             }

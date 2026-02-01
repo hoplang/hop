@@ -406,7 +406,7 @@ mod tests {
     use super::*;
     use crate::document::Document;
     use crate::error_collector::ErrorCollector;
-    use crate::hop::semantics::type_checker::TypeChecker;
+    use crate::hop::semantics::type_checker::typecheck;
     use crate::hop::symbols::module_id::ModuleId;
     use crate::hop::syntax::parser::parse;
     use expect_test::{Expect, expect};
@@ -427,20 +427,30 @@ mod tests {
 
         assert!(errors.is_empty(), "Parse errors: {:?}", errors);
 
-        let mut typechecker = TypeChecker::default();
+        let mut state = HashMap::new();
+        let mut type_errors = HashMap::new();
+        let mut type_annotations = HashMap::new();
+        let mut typed_asts = HashMap::new();
+
         let untyped_asts_refs: Vec<_> = untyped_asts.values().collect();
-        typechecker.typecheck(&untyped_asts_refs);
+        typecheck(
+            &untyped_asts_refs,
+            &mut state,
+            &mut type_errors,
+            &mut type_annotations,
+            &mut typed_asts,
+        );
 
         for module_name in untyped_asts.keys() {
             assert!(
-                typechecker.type_errors.get(module_name).unwrap().is_empty(),
+                type_errors.get(module_name).unwrap().is_empty(),
                 "Type errors in {}: {:?}",
                 module_name,
-                typechecker.type_errors.get(module_name).unwrap()
+                type_errors.get(module_name).unwrap()
             );
         }
 
-        typechecker.typed_asts
+        typed_asts
     }
 
     fn check_entrypoint_inlining(sources: Vec<(&str, &str)>, expected: Expect) {

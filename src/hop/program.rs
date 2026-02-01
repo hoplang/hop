@@ -1,17 +1,19 @@
 use crate::document::DocumentPosition;
 use crate::document::{CheapString, Document, DocumentRange, Ranged};
-use crate::dop::ParsedType;
+use crate::dop::{ParsedType, Type};
 use crate::error_collector::ErrorCollector;
-use crate::type_error::TypeError;
-use crate::parse_error::ParseError;
 use crate::hop::syntax::parser::parse;
 use crate::ir;
 use crate::orchestrator::{OrchestrateOptions, orchestrate};
+use crate::parse_error::ParseError;
 use crate::toposorter::TopoSorter;
+use crate::type_error::TypeError;
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
-use super::semantics::type_checker::TypeChecker;
+use super::semantics::type_annotation::TypeAnnotation;
+use super::semantics::type_checker::typecheck;
 use super::semantics::typed_ast::TypedAst;
 use super::symbols::component_name::ComponentName;
 use super::symbols::module_id::ModuleId;
@@ -56,7 +58,10 @@ pub struct Program {
     topo_sorter: TopoSorter<ModuleId>,
     parse_errors: HashMap<ModuleId, ErrorCollector<ParseError>>,
     parsed_asts: HashMap<ModuleId, ParsedAst>,
-    type_checker: TypeChecker,
+    typechecker_state: HashMap<ModuleId, HashMap<String, Arc<Type>>>,
+    type_errors: HashMap<ModuleId, ErrorCollector<TypeError>>,
+    type_annotations: HashMap<ModuleId, Vec<TypeAnnotation>>,
+    typed_asts: HashMap<ModuleId, TypedAst>,
 }
 
 impl Program {
@@ -80,22 +85,26 @@ impl Program {
         // Remove from topo sorter and get modules that depended on this one
         let dependents = self.topo_sorter.remove_node(module_name);
 
-        // Remove from type checker
-        self.type_checker.remove_module(module_name);
+        self.typechecker_state.remove(module_name);
+        self.type_errors.remove(module_name);
+        self.type_annotations.remove(module_name);
+        self.typed_asts.remove(module_name);
 
         // Re-typecheck dependent modules (they now have broken imports)
         for dependent in dependents {
             if let Some(ast) = self.parsed_asts.get(&dependent) {
-                self.type_checker.typecheck(&[ast]);
+                typecheck(
+                    &[ast],
+                    &mut self.typechecker_state,
+                    &mut self.type_errors,
+                    &mut self.type_annotations,
+                    &mut self.typed_asts,
+                );
             }
         }
     }
 
-    pub fn update_module(
-        &mut self,
-        module_name: ModuleId,
-        document: Document,
-    ) -> Vec<ModuleId> {
+    pub fn update_module(&mut self, module_name: ModuleId, document: Document) -> Vec<ModuleId> {
         // Parse the module
         let parse_errors = self.parse_errors.entry(module_name.clone()).or_default();
         parse_errors.clear();
@@ -120,7 +129,13 @@ impl Program {
                 .iter()
                 .filter_map(|name| self.parsed_asts.get(name))
                 .collect::<Vec<_>>();
-            self.type_checker.typecheck(&modules);
+            typecheck(
+                &modules,
+                &mut self.typechecker_state,
+                &mut self.type_errors,
+                &mut self.type_annotations,
+                &mut self.typed_asts,
+            );
         }
 
         // Return all modules that have been re-typechecked
@@ -132,7 +147,7 @@ impl Program {
     }
 
     pub fn get_type_errors(&self) -> &HashMap<ModuleId, ErrorCollector<TypeError>> {
-        &self.type_checker.type_errors
+        &self.type_errors
     }
 
     pub fn get_parsed_ast(&self, module_name: &ModuleId) -> Option<&ParsedAst> {
@@ -144,8 +159,7 @@ impl Program {
         module_name: &ModuleId,
         position: DocumentPosition,
     ) -> Option<HoverInfo> {
-        self.type_checker
-            .type_annotations
+        self.type_annotations
             .get(module_name)?
             .iter()
             .find(|a| a.range.contains_position(position))
@@ -527,13 +541,7 @@ impl Program {
         // If there's parse errors for the file we do not emit the type errors since they may be
         // non-sensical if parsing fails.
         if !found_parse_errors {
-            for error in self
-                .type_checker
-                .type_errors
-                .get(&module_name)
-                .into_iter()
-                .flatten()
-            {
+            for error in self.type_errors.get(&module_name).into_iter().flatten() {
                 diagnostics.push(Diagnostic {
                     message: error.to_string(),
                     range: error.range().clone(),
@@ -614,16 +622,13 @@ impl Program {
         );
 
         // The filtered module should contain exactly the requested entrypoint
-        let entrypoint = ir_module
-            .entrypoints
-            .first()
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Entrypoint '{}/{}' not found after compilation",
-                    module_name,
-                    entrypoint_name
-                )
-            })?;
+        let entrypoint = ir_module.entrypoints.first().ok_or_else(|| {
+            anyhow::anyhow!(
+                "Entrypoint '{}/{}' not found after compilation",
+                module_name,
+                entrypoint_name
+            )
+        })?;
 
         // Convert serde_json::Value args to evaluator::Value
         let converted_args: HashMap<String, ir::semantics::evaluator::Value> = args
@@ -649,7 +654,7 @@ impl Program {
 
     /// Get all typed modules for compilation
     pub fn get_typed_modules(&self) -> &HashMap<ModuleId, TypedAst> {
-        &self.type_checker.typed_asts
+        &self.typed_asts
     }
 }
 
@@ -1880,7 +1885,8 @@ mod tests {
 
         // Test error when entrypoint doesn't exist
         let non_existent = ComponentName::new("NonExistent".to_string()).unwrap();
-        let result = program.evaluate_entrypoint(&main_module, &non_existent, HashMap::new(), None, false);
+        let result =
+            program.evaluate_entrypoint(&main_module, &non_existent, HashMap::new(), None, false);
         assert!(result.is_err());
         assert!(
             result
