@@ -60,6 +60,7 @@ enum Commands {
         file: Option<String>,
     },
     /// Run the LSP server
+    #[command(hide = true)]
     Lsp,
 }
 
