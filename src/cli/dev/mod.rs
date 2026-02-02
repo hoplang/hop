@@ -143,41 +143,18 @@ async fn create_file_watcher(
 /// Also sets up a watcher that watches all source files used to construct the output files.
 /// The watcher emits SSE-events on the `/event_source` route.
 pub async fn execute(root: &ProjectRoot) -> anyhow::Result<DevServer> {
-    let total_start = std::time::Instant::now();
-
-    let load_start = std::time::Instant::now();
     let modules = root.load_all_hop_modules()?;
-    let module_count = modules.len();
-    log_info!(
-        "dev",
-        step = "load_modules",
-        modules = module_count,
-        duration = format!("{:?}", load_start.elapsed()),
-    );
-
-    let program_start = std::time::Instant::now();
     let program = Program::new(modules);
-    log_info!(
-        "dev",
-        step = "create_program",
-        duration = format!("{:?}", program_start.elapsed()),
-    );
 
     // Get tailwind input path if it exists
     let input_css_path = root.get_tailwind_input_path().await?;
 
     // Create the Tailwind runner and start the watcher
-    let tailwind_start = std::time::Instant::now();
     let cache_dir = PathBuf::from("/tmp/.hop-cache");
     let runner = TailwindRunner::new(cache_dir).await?;
     let tailwind_handle = runner
         .start_watcher(input_css_path, program.get_all_sources())
         .await?;
-    log_info!(
-        "dev",
-        step = "tailwind",
-        duration = format!("{:?}", tailwind_start.elapsed()),
-    );
 
     let (reload_channel, _) = tokio::sync::broadcast::channel::<()>(100);
     let app_state = AppState {
@@ -200,23 +177,11 @@ pub async fn execute(root: &ProjectRoot) -> anyhow::Result<DevServer> {
         }
     });
 
-    let watcher_start = std::time::Instant::now();
     let tailwind_watcher = tailwind_handle.watcher;
     let adaptive_watcher =
         create_file_watcher(root, tailwind_watcher.clone(), app_state.clone()).await?;
-    log_info!(
-        "dev",
-        step = "setup_watchers",
-        duration = format!("{:?}", watcher_start.elapsed()),
-    );
 
     let router = create_router().with_state(app_state);
-
-    log_info!(
-        "dev",
-        step = "ready",
-        total = format!("{:?}", total_start.elapsed()),
-    );
 
     Ok(DevServer {
         router,
