@@ -69,6 +69,10 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     match &cli.command {
+        None => {
+            let mut cmd = Cli::command();
+            cmd.print_help().unwrap();
+        }
         Some(Commands::Lsp) => {
             cli::lsp::execute().await;
         }
@@ -124,66 +128,45 @@ async fn main() -> anyhow::Result<()> {
             port,
             host,
         }) => {
+            use colored::*;
+
             let root = match project {
                 Some(d) => ProjectRoot::from(Path::new(d))?,
                 None => ProjectRoot::find_upwards(Path::new("."))?,
             };
 
-            async fn run_dev_server(
-                root: &ProjectRoot,
-                host: &str,
-                port: u16,
-            ) -> anyhow::Result<()> {
-                use colored::*;
-
-                // Set up Ctrl-C handler
-                let (sigint_tx, mut sigint_rx) = tokio::sync::oneshot::channel();
-                tokio::spawn(async move {
-                    tokio::signal::ctrl_c().await.ok();
-                    sigint_tx.send(()).ok();
-                });
-
-                // Try binding to the specified port, then up to 5 additional ports
-                let mut listener = None;
-                let mut bound_port = port;
-                for attempt in 0..=5 {
-                    let try_port = port + attempt;
-                    let addr = format!("{}:{}", host, try_port);
-                    if let Ok(l) = tokio::net::TcpListener::bind(&addr).await {
-                        listener = Some(l);
-                        bound_port = try_port;
-                        break;
-                    }
-                }
-                let listener = listener.ok_or_else(|| {
-                    anyhow::anyhow!("failed to bind to ports {}-{} on {}", port, port + 5, host)
-                })?;
-
-                // Start the dev server
-                let res = cli::dev::execute(root).await?;
-                let dev_server = axum::serve(listener, res.router);
-
-                println!();
-                println!("  {} | served at http://{}:{}", "hop".bold(), host, bound_port);
-                println!();
-
-                // Block until Ctrl-C or server exit
-                tokio::select! {
-                    _ = &mut sigint_rx => {
-                        Ok(())
-                    }
-                    result = dev_server => {
-                        result.map_err(|e| anyhow::anyhow!("Dev server error: {}", e))
-                    }
+            // Try binding to the specified port, then up to 5 additional ports
+            let mut listener = None;
+            let mut bound_port = *port;
+            for attempt in 0..=5 {
+                let try_port = port + attempt;
+                let addr = format!("{}:{}", host, try_port);
+                if let Ok(l) = tokio::net::TcpListener::bind(&addr).await {
+                    listener = Some(l);
+                    bound_port = try_port;
+                    break;
                 }
             }
+            let listener = listener.ok_or_else(|| {
+                anyhow::anyhow!("failed to bind to ports {}-{} on {}", port, port + 5, host)
+            })?;
 
-            // Run the dev server and ensure cleanup always happens
-            run_dev_server(&root, host, *port).await?
-        }
-        None => {
-            let mut cmd = Cli::command();
-            cmd.print_help().unwrap();
+            // Start the dev server
+            let res = cli::dev::execute(&root).await?;
+            let dev_server = axum::serve(listener, res.router);
+
+            println!();
+            println!(
+                "  {} | served at http://{}:{}",
+                "hop".bold(),
+                host,
+                bound_port
+            );
+            println!();
+
+            dev_server
+                .await
+                .map_err(|e| anyhow::anyhow!("Dev server error: {}", e))?;
         }
     }
 

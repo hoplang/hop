@@ -1,11 +1,11 @@
 use std::fmt::{self, Display};
 use std::iter::Peekable;
 
-use crate::parse_error::ParseError;
 use super::tokenizer::{Token, Tokenizer};
 use crate::common::is_void_element;
 use crate::document::{DocumentCursor, DocumentRange, Ranged as _};
 use crate::error_collector::ErrorCollector;
+use crate::parse_error::ParseError;
 
 /// A TokenTree represents a tree of tokens.
 ///

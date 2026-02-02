@@ -522,7 +522,11 @@ mod tests {
 
         // Empty config should now parse successfully (compile section is optional)
         let result = root.load_config().await;
-        assert!(result.is_ok(), "Empty config should parse: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Empty config should parse: {:?}",
+            result.err()
+        );
 
         std::fs::remove_dir_all(&temp_dir).unwrap();
     }
@@ -538,7 +542,11 @@ mod tests {
         let root = ProjectRoot::from(&temp_dir).unwrap();
 
         let result = root.load_config().await;
-        assert!(result.is_ok(), "Config without compile section should succeed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Config without compile section should succeed: {:?}",
+            result.err()
+        );
 
         let config = result.unwrap();
         assert_eq!(config.css.mode, Some("tailwind4".to_string()));
@@ -557,7 +565,11 @@ mod tests {
         let root = ProjectRoot::from(&temp_dir).unwrap();
 
         let result = root.get_tailwind_input_path().await;
-        assert!(result.is_ok(), "get_tailwind_input_path should succeed without compile section: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "get_tailwind_input_path should succeed without compile section: {:?}",
+            result.err()
+        );
 
         let path = result.unwrap();
         assert!(path.is_some());
@@ -577,7 +589,10 @@ mod tests {
         let root = ProjectRoot::from(&temp_dir).unwrap();
 
         let result = root.get_output_path().await;
-        assert!(result.is_err(), "get_output_path should fail without compile config");
+        assert!(
+            result.is_err(),
+            "get_output_path should fail without compile config"
+        );
 
         std::fs::remove_dir_all(&temp_dir).unwrap();
     }

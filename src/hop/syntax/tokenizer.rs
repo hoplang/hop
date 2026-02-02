@@ -3,11 +3,11 @@ use std::iter::Peekable;
 
 use itertools::Itertools as _;
 
-use crate::parse_error::ParseError;
 use crate::common::is_void_element;
 use crate::document::{DocumentCursor, DocumentRange, Ranged};
 use crate::dop;
 use crate::error_collector::ErrorCollector;
+use crate::parse_error::ParseError;
 
 #[derive(Debug, Clone)]
 pub enum TokenizedAttributeValue {

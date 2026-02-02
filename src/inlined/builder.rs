@@ -22,10 +22,7 @@ fn extract_var_subject(expr: &TypedExpr) -> (VarName, Arc<Type>) {
     }
 }
 
-pub fn build_inlined_no_params<F>(
-    tag_name: &str,
-    children_fn: F,
-) -> InlinedEntrypointDeclaration
+pub fn build_inlined_no_params<F>(tag_name: &str, children_fn: F) -> InlinedEntrypointDeclaration
 where
     F: FnOnce(&mut InlinedBuilder),
 {
@@ -227,7 +224,9 @@ impl InlinedBuilder {
     pub fn attr_str(&self, value: &str) -> InlinedAttribute {
         InlinedAttribute {
             name: CheapString::new(String::new()),
-            value: Some(InlinedAttributeValue::String(CheapString::new(value.to_string()))),
+            value: Some(InlinedAttributeValue::String(CheapString::new(
+                value.to_string(),
+            ))),
         }
     }
 

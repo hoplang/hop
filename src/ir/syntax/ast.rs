@@ -1161,7 +1161,9 @@ impl IrExpr {
                 .append(value.to_doc())
                 .append(BoxDoc::text(")")),
             IrExpr::ArrayLength { array, .. } => array.to_doc().append(BoxDoc::text(".len()")),
-            IrExpr::ArrayIsEmpty { array, .. } => array.to_doc().append(BoxDoc::text(".is_empty()")),
+            IrExpr::ArrayIsEmpty { array, .. } => {
+                array.to_doc().append(BoxDoc::text(".is_empty()"))
+            }
             IrExpr::IntToString { value, .. } => {
                 value.to_doc().append(BoxDoc::text(".to_string()"))
             }

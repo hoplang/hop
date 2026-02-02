@@ -7,8 +7,8 @@ use itertools::Itertools as _;
 use crate::document::{CheapString, DocumentCursor, DocumentRange};
 use crate::error_collector::ErrorCollector;
 
-use crate::parse_error::ParseError;
 use super::token::Token;
+use crate::parse_error::ParseError;
 
 pub fn next(
     iter: &mut Peekable<DocumentCursor>,
@@ -189,9 +189,10 @@ pub fn next(
             }
         }
         'A'..='Z' | 'a'..='z' | '_' => {
-            let identifier = start.extend(iter.peeking_take_while(
-                |s| matches!(s.ch(), 'A'..='Z' | 'a'..='z' | '0'..='9' | '_'),
-            ));
+            let identifier =
+                start.extend(iter.peeking_take_while(
+                    |s| matches!(s.ch(), 'A'..='Z' | 'a'..='z' | '0'..='9' | '_'),
+                ));
             let t = match identifier.as_str() {
                 // Wildcard
                 "_" => Token::Underscore,
@@ -254,8 +255,8 @@ pub fn next(
                 if lookahead.peek().is_some_and(|s| s.ch().is_ascii_digit()) {
                     let dot = iter.next().unwrap();
                     number_string = number_string.to(dot);
-                    number_string = number_string
-                        .extend(iter.peeking_take_while(|s| s.ch().is_ascii_digit()));
+                    number_string =
+                        number_string.extend(iter.peeking_take_while(|s| s.ch().is_ascii_digit()));
                     true
                 } else {
                     false

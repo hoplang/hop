@@ -295,8 +295,7 @@ fn execute_evaluator(module: &super::IrModule) -> Result<String, String> {
         .find(|c| c.name.as_str() == "Test")
         .ok_or_else(|| "Test entrypoint not found".to_string())?;
 
-    evaluate_entrypoint(entrypoint, HashMap::new())
-        .map_err(|e| format!("Evaluator failed: {}", e))
+    evaluate_entrypoint(entrypoint, HashMap::new()).map_err(|e| format!("Evaluator failed: {}", e))
 }
 
 fn check(hop_source: &str, expected_output: &str, expected: Expect) {

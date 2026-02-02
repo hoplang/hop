@@ -1111,8 +1111,8 @@ mod tests {
     use crate::document::Document;
     use crate::error_collector::ErrorCollector;
     use crate::hop::symbols::module_id::ModuleId;
-    use crate::parse_error::ParseError;
     use crate::hop::syntax::parser;
+    use crate::parse_error::ParseError;
 
     fn check(source: &str, expected: Expect) {
         let mut errors = ErrorCollector::<ParseError>::new();

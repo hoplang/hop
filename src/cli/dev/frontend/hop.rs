@@ -49,7 +49,9 @@ pub fn index(entrypoints: &[EntrypointData]) -> String {
         output.push_str("<p class=\"text-[#666666]\">No entrypoints found.</p>");
     } else {
         output.push_str("<div class=\"");
-        output.push_str("grid sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-12 sm:gap-8 lg:gap-14");
+        output.push_str(
+            "grid sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-12 sm:gap-8 lg:gap-14",
+        );
         output.push_str("\">");
         for ep in entrypoints.iter().cloned() {
             let name = ep.name.to_owned();
@@ -62,7 +64,10 @@ pub fn index(entrypoints: &[EntrypointData]) -> String {
             output.push_str("\"><iframe class=\"");
             output.push_str("w-[400%] h-[400%] scale-[0.25] origin-top-left pointer-events-none grayscale group-hover:grayscale-0 group-focus:grayscale-0 transition-[filter]");
             output.push_str("\" scrolling=\"no\" tabindex=\"-1\" sandbox=\"\" src=\"");
-            write_escaped_html(&format!("{}{}", "/api/render/".to_string(), name), &mut output);
+            write_escaped_html(
+                &format!("{}{}", "/api/render/".to_string(), name),
+                &mut output,
+            );
             output.push_str("\"></iframe><div class=\"");
             output.push_str("absolute right-0 bottom-0 z-index-1000 opacity-0 p-2 bg-white rounded-tl group-hover:opacity-100 transition-opacity");
             output.push_str("\"><svg class=\"\" fill=\"none\" height=\"24\"");
@@ -134,7 +139,10 @@ pub fn preview(name: &str, iframe_src: &str, device: &Device) -> String {
     write_escaped_html(&name, &mut output);
     output.push_str("</h1><p class=\"text-sm text-[#666]\">in index.hop</p></div>");
     output.push_str("</div><div class=\"flex gap-2\"><a href=\"?device=mobile\">");
-    let class_2 = match device { Device::Desktop => "text-neutral-400".to_string(), Device::Mobile => "".to_string() };
+    let class_2 = match device {
+        Device::Desktop => "text-neutral-400".to_string(),
+        Device::Mobile => "".to_string(),
+    };
     output.push_str("<svg class=\"");
     write_escaped_html(&class_2, &mut output);
     output.push_str("\" fill=\"none\" height=\"24\" stroke=\"currentColor\"");
@@ -144,7 +152,10 @@ pub fn preview(name: &str, iframe_src: &str, device: &Device) -> String {
     output.push_str(" height=\"20\" x=\"5\" y=\"2\" rx=\"2\" ry=\"2\"></rect><path");
     output.push_str(" d=\"M12 18h.01\"></path></svg>");
     output.push_str("</a><a href=\"?device=desktop\">");
-    let class_3 = match device { Device::Desktop => "".to_string(), Device::Mobile => "text-neutral-400".to_string() };
+    let class_3 = match device {
+        Device::Desktop => "".to_string(),
+        Device::Mobile => "text-neutral-400".to_string(),
+    };
     output.push_str("<svg class=\"");
     write_escaped_html(&class_3, &mut output);
     output.push_str("\" fill=\"none\" height=\"24\" stroke=\"currentColor\"");
@@ -166,7 +177,28 @@ pub fn preview(name: &str, iframe_src: &str, device: &Device) -> String {
     output.push_str(" d=\"M3 16v3a2 2 0 0 0 2 2h3\"></path><path");
     output.push_str(" d=\"M16 21h3a2 2 0 0 0 2-2v-3\"></path></svg></a></div><div>");
     output.push_str("</div></div><div class=\"");
-    write_escaped_html(&[&"bg-white".to_string()[..], " ", &"h-full".to_string()[..], " ", &"border".to_string()[..], " ", &"border-neutral-300".to_string()[..], " ", &"rounded".to_string()[..], " ", &"overflow-hidden".to_string()[..], " ", &match device { Device::Desktop => "w-full".to_string(), Device::Mobile => "w-md".to_string() }[..]].concat(), &mut output);
+    write_escaped_html(
+        &[
+            &"bg-white".to_string()[..],
+            " ",
+            &"h-full".to_string()[..],
+            " ",
+            &"border".to_string()[..],
+            " ",
+            &"border-neutral-300".to_string()[..],
+            " ",
+            &"rounded".to_string()[..],
+            " ",
+            &"overflow-hidden".to_string()[..],
+            " ",
+            &match device {
+                Device::Desktop => "w-full".to_string(),
+                Device::Mobile => "w-md".to_string(),
+            }[..],
+        ]
+        .concat(),
+        &mut output,
+    );
     output.push_str("\"><iframe src=\"");
     write_escaped_html(&iframe_src, &mut output);
     output.push_str("\" class=\"w-full h-full\"></iframe></div></body></html>");

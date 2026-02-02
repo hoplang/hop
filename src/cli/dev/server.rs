@@ -1,9 +1,9 @@
 use super::frontend;
+use crate::document::DocumentAnnotator;
 use crate::hop::program::Program;
 use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_id::ModuleId;
 use crate::log_info;
-use crate::document::DocumentAnnotator;
 use axum::body::Body;
 use axum::extract::State;
 use axum::http::StatusCode;
@@ -175,11 +175,7 @@ async fn handle_render(
     };
 
     let render_start = std::time::Instant::now();
-    log_info!(
-        "render",
-        step = "enter",
-        entrypoint = entrypoint.clone(),
-    );
+    log_info!("render", step = "enter", entrypoint = entrypoint.clone(),);
 
     let program = state.program.read().unwrap();
 
@@ -306,8 +302,8 @@ mod tests {
     use std::collections::HashMap;
 
     use super::*;
-    use axum::routing::get;
     use crate::{document::Document, hop::symbols::module_id::ModuleId};
+    use axum::routing::get;
     use axum_test::TestServer;
     use expect_test::expect;
     use simple_txtar::Archive;
@@ -429,9 +425,7 @@ mod tests {
             }
         "#});
 
-        let response = server
-            .get("/render/SimpleComp?params=invalid-json")
-            .await;
+        let response = server.get("/render/SimpleComp?params=invalid-json").await;
 
         response.assert_status_bad_request();
     }

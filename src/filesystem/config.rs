@@ -71,7 +71,9 @@ pub struct ResolvedConfig {
 
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
-    #[error("Missing 'compile.target' in hop.toml. Expected one of: \"ts\", \"go\", \"python\", \"rust\"")]
+    #[error(
+        "Missing 'compile.target' in hop.toml. Expected one of: \"ts\", \"go\", \"python\", \"rust\""
+    )]
     MissingTarget,
     #[error("Missing 'compile.output_path' in hop.toml")]
     MissingOutputPath,
@@ -301,14 +303,22 @@ mod tests {
             mode = "tailwind4"
         "#};
         let result = HopConfig::from_toml_str(toml_str);
-        assert!(result.is_ok(), "Config without compile section should parse: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Config without compile section should parse: {:?}",
+            result.err()
+        );
     }
 
     #[test]
     fn should_parse_empty_config() {
         let toml_str = "";
         let result = HopConfig::from_toml_str(toml_str);
-        assert!(result.is_ok(), "Empty config should parse: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Empty config should parse: {:?}",
+            result.err()
+        );
     }
 
     #[test]

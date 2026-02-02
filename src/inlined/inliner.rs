@@ -46,7 +46,13 @@ impl Inliner {
     ) -> InlinedEntrypointDeclaration {
         let mut children = Vec::new();
         let mut children_vars = Vec::new();
-        Self::inline_nodes(&entrypoint.children, asts, None, &mut children_vars, &mut children);
+        Self::inline_nodes(
+            &entrypoint.children,
+            asts,
+            None,
+            &mut children_vars,
+            &mut children,
+        );
 
         InlinedEntrypointDeclaration {
             module_name: module_name.clone(),
@@ -228,7 +234,13 @@ impl Inliner {
                 children,
             } => {
                 let mut child_output = Vec::new();
-                Self::inline_nodes(children, asts, slot_content, children_vars, &mut child_output);
+                Self::inline_nodes(
+                    children,
+                    asts,
+                    slot_content,
+                    children_vars,
+                    &mut child_output,
+                );
                 output.push(Arc::new(InlinedNode::Html {
                     tag_name: tag_name.clone(),
                     attributes: Self::convert_attributes(attributes),
@@ -241,7 +253,13 @@ impl Inliner {
                 children,
             } => {
                 let mut child_output = Vec::new();
-                Self::inline_nodes(children, asts, slot_content, children_vars, &mut child_output);
+                Self::inline_nodes(
+                    children,
+                    asts,
+                    slot_content,
+                    children_vars,
+                    &mut child_output,
+                );
                 output.push(Arc::new(InlinedNode::If {
                     condition: condition.clone(),
                     children: child_output,
@@ -254,7 +272,13 @@ impl Inliner {
                 children,
             } => {
                 let mut child_output = Vec::new();
-                Self::inline_nodes(children, asts, slot_content, children_vars, &mut child_output);
+                Self::inline_nodes(
+                    children,
+                    asts,
+                    slot_content,
+                    children_vars,
+                    &mut child_output,
+                );
                 output.push(Arc::new(InlinedNode::For {
                     var_name: var_name.clone(),
                     source: source.clone(),
@@ -301,9 +325,21 @@ impl Inliner {
                         false_body,
                     } => {
                         let mut true_output = Vec::new();
-                        Self::inline_nodes(true_body, asts, slot_content, children_vars, &mut true_output);
+                        Self::inline_nodes(
+                            true_body,
+                            asts,
+                            slot_content,
+                            children_vars,
+                            &mut true_output,
+                        );
                         let mut false_output = Vec::new();
-                        Self::inline_nodes(false_body, asts, slot_content, children_vars, &mut false_output);
+                        Self::inline_nodes(
+                            false_body,
+                            asts,
+                            slot_content,
+                            children_vars,
+                            &mut false_output,
+                        );
                         Match::Bool {
                             subject: subject.clone(),
                             true_body: Box::new(true_output),
@@ -325,23 +361,53 @@ impl Inliner {
                             if slot_content.is_some() {
                                 if let Some(binding) = some_arm_binding {
                                     children_vars.push(binding.as_str().to_string());
-                                    Self::inline_nodes(some_arm_body, asts, slot_content, children_vars, output);
+                                    Self::inline_nodes(
+                                        some_arm_body,
+                                        asts,
+                                        slot_content,
+                                        children_vars,
+                                        output,
+                                    );
                                     children_vars.pop();
                                 } else {
-                                    Self::inline_nodes(some_arm_body, asts, slot_content, children_vars, output);
+                                    Self::inline_nodes(
+                                        some_arm_body,
+                                        asts,
+                                        slot_content,
+                                        children_vars,
+                                        output,
+                                    );
                                 }
                             } else {
                                 let mut fresh_vars = Vec::new();
-                                Self::inline_nodes(none_arm_body, asts, None, &mut fresh_vars, output);
+                                Self::inline_nodes(
+                                    none_arm_body,
+                                    asts,
+                                    None,
+                                    &mut fresh_vars,
+                                    output,
+                                );
                             }
                             return;
                         }
 
                         // Regular Option match
                         let mut some_output = Vec::new();
-                        Self::inline_nodes(some_arm_body, asts, slot_content, children_vars, &mut some_output);
+                        Self::inline_nodes(
+                            some_arm_body,
+                            asts,
+                            slot_content,
+                            children_vars,
+                            &mut some_output,
+                        );
                         let mut none_output = Vec::new();
-                        Self::inline_nodes(none_arm_body, asts, slot_content, children_vars, &mut none_output);
+                        Self::inline_nodes(
+                            none_arm_body,
+                            asts,
+                            slot_content,
+                            children_vars,
+                            &mut none_output,
+                        );
                         Match::Option {
                             subject: subject.clone(),
                             some_arm_binding: some_arm_binding.clone(),
@@ -349,23 +415,27 @@ impl Inliner {
                             none_arm_body: Box::new(none_output),
                         }
                     }
-                    Match::Enum { subject, arms } => {
-                        Match::Enum {
-                            subject: subject.clone(),
-                            arms: arms
-                                .iter()
-                                .map(|arm| {
-                                    let mut arm_output = Vec::new();
-                                    Self::inline_nodes(&arm.body, asts, slot_content, children_vars, &mut arm_output);
-                                    EnumMatchArm {
-                                        pattern: arm.pattern.clone(),
-                                        bindings: arm.bindings.clone(),
-                                        body: arm_output,
-                                    }
-                                })
-                                .collect(),
-                        }
-                    }
+                    Match::Enum { subject, arms } => Match::Enum {
+                        subject: subject.clone(),
+                        arms: arms
+                            .iter()
+                            .map(|arm| {
+                                let mut arm_output = Vec::new();
+                                Self::inline_nodes(
+                                    &arm.body,
+                                    asts,
+                                    slot_content,
+                                    children_vars,
+                                    &mut arm_output,
+                                );
+                                EnumMatchArm {
+                                    pattern: arm.pattern.clone(),
+                                    bindings: arm.bindings.clone(),
+                                    body: arm_output,
+                                }
+                            })
+                            .collect(),
+                    },
                 };
                 output.push(Arc::new(InlinedNode::Match {
                     match_: inlined_match,
@@ -391,7 +461,13 @@ impl Inliner {
                 }
 
                 let mut child_output = Vec::new();
-                Self::inline_nodes(children, asts, slot_content, children_vars, &mut child_output);
+                Self::inline_nodes(
+                    children,
+                    asts,
+                    slot_content,
+                    children_vars,
+                    &mut child_output,
+                );
                 output.push(Arc::new(InlinedNode::Let {
                     bindings: vec![(var.clone(), value.clone())],
                     children: child_output,
