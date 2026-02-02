@@ -557,27 +557,26 @@ impl Program {
 
         let mut found_parse_errors = false;
 
-        for error in self
-            .parse_errors
-            .get(&module_id)
-            .into_iter()
-            .flat_map(|c| c.iter())
-        {
-            diagnostics.push(Diagnostic {
-                message: error.to_string(),
-                range: error.range().clone(),
-            });
-            found_parse_errors = true;
+        if let Some(errors) = self.parse_errors.get(&module_id) {
+            for error in errors {
+                diagnostics.push(Diagnostic {
+                    message: error.to_string(),
+                    range: error.range().clone(),
+                });
+                found_parse_errors = true;
+            }
         }
 
         // If there's parse errors for the file we do not emit the type errors since they may be
         // non-sensical if parsing fails.
         if !found_parse_errors {
-            for error in self.type_errors.get(&module_id).into_iter().flatten() {
-                diagnostics.push(Diagnostic {
-                    message: error.to_string(),
-                    range: error.range().clone(),
-                });
+            if let Some(errors) = self.type_errors.get(&module_id) {
+                for error in errors {
+                    diagnostics.push(Diagnostic {
+                        message: error.to_string(),
+                        range: error.range().clone(),
+                    });
+                }
             }
         }
 

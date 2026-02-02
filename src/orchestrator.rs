@@ -56,9 +56,7 @@ pub fn orchestrate(
                 .find(|ep| ep.name.as_str() == component_name.as_str())
                 .expect("Filtered entrypoint should exist");
             vec![Inliner::inline_single_entrypoint(
-                module_id,
-                entrypoint,
-                typed_asts,
+                module_id, entrypoint, typed_asts,
             )]
         } else {
             // Inline all entrypoints from all modules

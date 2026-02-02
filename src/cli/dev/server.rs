@@ -84,8 +84,11 @@ async fn handle_idiomorph_js() -> ImmutableJs {
 }
 
 async fn handle_hmr() -> Html {
-    Html(r#"<!DOCTYPE html>
-<script type="module" src="/development_mode.js"></script>"#.to_string())
+    Html(
+        r#"<!DOCTYPE html>
+<script type="module" src="/development_mode.js"></script>"#
+            .to_string(),
+    )
 }
 
 #[derive(serde::Deserialize)]
@@ -161,7 +164,9 @@ async fn handle_render(
     let css_content = css.as_deref();
 
     // Find which module contains this entrypoint
-    let module_id = program.find_module_for_entrypoint(&entrypoint).map_err(ErrorOverlay)?;
+    let module_id = program
+        .find_module_for_entrypoint(&entrypoint)
+        .map_err(ErrorOverlay)?;
 
     // Parse entrypoint name
     let entrypoint_name = ComponentName::new(entrypoint.clone())

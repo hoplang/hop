@@ -26,7 +26,10 @@ struct FormattedModule {
 
 enum ModuleResult {
     Success(FormattedModule),
-    LoadError { module_id: ModuleId, error: anyhow::Error },
+    LoadError {
+        module_id: ModuleId,
+        error: anyhow::Error,
+    },
 }
 
 pub fn execute(project: &Project, file: Option<&str>) -> Result<FmtResult> {
@@ -48,7 +51,12 @@ pub fn execute(project: &Project, file: Option<&str>) -> Result<FmtResult> {
         .map(|module_id| {
             let document = match project.load_module(&module_id) {
                 Ok(doc) => doc,
-                Err(e) => return ModuleResult::LoadError { module_id, error: e },
+                Err(e) => {
+                    return ModuleResult::LoadError {
+                        module_id,
+                        error: e,
+                    };
+                }
             };
             let mut errors = ErrorCollector::new();
             let ast = parser::parse(module_id.clone(), document.clone(), &mut errors);

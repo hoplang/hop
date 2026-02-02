@@ -37,7 +37,9 @@ pub fn typecheck(
 ) {
     for module in modules {
         let module_type_errors = type_errors.entry(module.module_id.clone()).or_default();
-        let module_type_annotations = type_annotations.entry(module.module_id.clone()).or_default();
+        let module_type_annotations = type_annotations
+            .entry(module.module_id.clone())
+            .or_default();
 
         module_type_errors.clear();
         module_type_annotations.clear();
@@ -1322,7 +1324,8 @@ mod tests {
 
             if module_type_errors.is_some_and(|err| !err.is_empty()) {
                 error_output.push(
-                    error_annotator.annotate(Some(&file.name), type_errors.get(&ast.module_id).unwrap()),
+                    error_annotator
+                        .annotate(Some(&file.name), type_errors.get(&ast.module_id).unwrap()),
                 );
             }
         }
