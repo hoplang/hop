@@ -304,11 +304,21 @@ fn format_entrypoint_declaration<'a>(
         let mut params_inner = arena.nil();
         for (i, param) in entrypoint.params.iter().enumerate() {
             if i > 0 {
-                params_inner = params_inner.append(arena.text(", "));
+                params_inner = params_inner.append(arena.text(",")).append(arena.line());
             }
             params_inner = params_inner.append(format_parameter(arena, param, comments));
         }
-        arena.text("(").append(params_inner).append(arena.text(")"))
+        let body = arena
+            .line_()
+            .append(params_inner)
+            .append(arena.text(",").flat_alt(arena.nil()))
+            .nest(2)
+            .append(arena.line_());
+        arena
+            .text("(")
+            .append(body)
+            .append(arena.text(")"))
+            .group()
     };
 
     leading_comments
@@ -3387,6 +3397,62 @@ mod tests {
                   <body>
                     hello world
                   </body>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn entrypoint_with_parameters_to_doc() {
+        check(
+            indoc! {r#"
+                record LoginLogo { url: String, name: String }
+
+                entrypoint LoginFormEntry(x: String = "foo bar, lorem ipsum dolor sit amet", logo: LoginLogo = LoginLogo(
+                  url: "/home",
+                  name: "Acme Inc.",
+                )) {
+                  <div>
+                    <div class="flex w-full max-w-sm flex-col gap-6">
+                      <a
+                        href={logo.url}
+                        class="flex items-center gap-2 self-center font-medium"
+                      >
+                        {logo.name}
+                      </a>
+                    </div>
+                    <div>
+                      {x}
+                    </div>
+                  </div>
+                }
+            "#},
+            expect![[r#"
+                record LoginLogo {
+                  url: String,
+                  name: String,
+                }
+
+                entrypoint LoginFormEntry(
+                  x: String = "foo bar, lorem ipsum dolor sit amet",
+                  logo: LoginLogo = LoginLogo(
+                    url: "/home",
+                    name: "Acme Inc.",
+                  ),
+                ) {
+                  <div>
+                    <div class="flex w-full max-w-sm flex-col gap-6">
+                      <a
+                        href={logo.url}
+                        class="flex items-center gap-2 self-center font-medium"
+                      >
+                        {logo.name}
+                      </a>
+                    </div>
+                    <div>
+                      {x}
+                    </div>
+                  </div>
                 }
             "#]],
         );
