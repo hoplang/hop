@@ -494,7 +494,7 @@ mod tests {
             let module_id = ModuleId::new(module_id_str).unwrap();
             let ast = parse(
                 module_id.clone(),
-                Document::new(source.to_string()),
+                Document::new(module_id.clone(), source.to_string()),
                 &mut errors,
             );
             untyped_asts.insert(module_id, ast);

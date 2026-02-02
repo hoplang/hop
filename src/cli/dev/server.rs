@@ -259,7 +259,7 @@ mod tests {
         for file in archive.iter() {
             let module_id =
                 ModuleId::new(&file.name.replace(".hop", "").replace('/', "::")).unwrap();
-            modules.insert(module_id, Document::new(file.content.clone()));
+            modules.insert(module_id.clone(), Document::new(module_id, file.content.clone()));
         }
         let program = Program::new(modules);
         let (reload_channel, _) = tokio::sync::broadcast::channel::<()>(100);

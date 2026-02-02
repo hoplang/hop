@@ -1,5 +1,7 @@
 use std::collections::HashSet;
 
+use crate::hop::symbols::module_id::ModuleId;
+
 use super::{DocumentCursor, DocumentPosition};
 
 /// Extracts a single position marked with `^` from the source.
@@ -12,7 +14,7 @@ use super::{DocumentCursor, DocumentPosition};
 /// Panics if multiple position markers are found or if marker does not point to a valid character
 /// on the above line.
 pub fn extract_position(input: &str) -> Option<(String, DocumentPosition)> {
-    let markers = DocumentCursor::new(input.to_string())
+    let markers = DocumentCursor::new(ModuleId::test(), input.to_string())
         .filter(|range| range.ch() == '^')
         .map(|range| {
             // Check if marker is on the first line (line 0)
@@ -31,7 +33,7 @@ pub fn extract_position(input: &str) -> Option<(String, DocumentPosition)> {
         "Multiple position markers (^) found in source"
     );
     markers.first().map(|marker| {
-        let char_starts = DocumentCursor::new(input.to_string())
+        let char_starts = DocumentCursor::new(ModuleId::test(), input.to_string())
             .map(|range| range.start_utf32())
             .collect::<HashSet<_>>();
         assert!(

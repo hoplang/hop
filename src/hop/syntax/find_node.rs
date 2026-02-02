@@ -92,9 +92,10 @@ mod tests {
     fn check_find_node_at_position(input: &str, expected: Expect) {
         let (source, position) = extract_position(input).expect("Position marker not found");
         let mut errors = ErrorCollector::new();
+        let module_id = ModuleId::new("test").unwrap();
         let ast = parse(
-            ModuleId::new("test").unwrap(),
-            Document::new(source),
+            module_id.clone(),
+            Document::new(module_id, source),
             &mut errors,
         );
 

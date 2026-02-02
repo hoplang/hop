@@ -93,7 +93,7 @@ impl Project {
         let path = self.module_id_to_path(module_id);
         let content = std::fs::read_to_string(&path)
             .with_context(|| format!("Failed to read module {:?} at {:?}", module_id, path))?;
-        Ok(Document::new(content))
+        Ok(Document::new(module_id.clone(), content))
     }
 
     /// Find all module IDs in this project root

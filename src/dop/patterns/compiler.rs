@@ -979,7 +979,7 @@ mod tests {
     use std::collections::VecDeque;
 
     fn check(subject_type: Type, expr_str: &str, expected: Expect) {
-        let cursor = DocumentCursor::new(expr_str.to_string());
+        let cursor = DocumentCursor::new(ModuleId::test(), expr_str.to_string());
         let range = cursor.range();
         let mut iter = cursor.peekable();
         let mut comments = VecDeque::new();

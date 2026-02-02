@@ -1017,13 +1017,14 @@ fn is_tag_name_with_raw_content(name: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use crate::document::{DocumentAnnotator, SimpleAnnotation};
+    use crate::hop::symbols::module_id::ModuleId;
 
     use super::*;
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
     fn check(input: &str, expected: Expect) {
-        let mut iter = DocumentCursor::new(input.to_string()).peekable();
+        let mut iter = DocumentCursor::new(ModuleId::test(), input.to_string()).peekable();
         let mut token_annotations = Vec::new();
         let mut error_annotations = Vec::new();
         let mut errors = ErrorCollector::new();

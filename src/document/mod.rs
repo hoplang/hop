@@ -22,17 +22,20 @@ use std::{
     sync::Arc,
 };
 
+use crate::hop::symbols::module_id::ModuleId;
 use document_info::DocumentInfo;
 
 /// A Document is a shared reference to a source string.
 #[derive(Clone, Debug)]
 pub struct Document {
+    module_id: ModuleId,
     source: Arc<DocumentInfo>,
 }
 
 impl Document {
-    pub fn new(text: String) -> Self {
+    pub fn new(module_id: ModuleId, text: String) -> Self {
         Self {
+            module_id,
             source: Arc::new(DocumentInfo::new(text)),
         }
     }
@@ -44,6 +47,7 @@ impl Document {
     pub fn cursor(&self) -> DocumentCursor {
         let end = self.source.text.len();
         DocumentCursor {
+            module_id: self.module_id.clone(),
             source: self.source.clone(),
             offset: 0,
             end,
@@ -53,6 +57,8 @@ impl Document {
 
 #[derive(Clone)]
 pub struct DocumentCursor {
+    /// The module this cursor belongs to.
+    module_id: ModuleId,
     /// The source info containing text and line starts.
     source: Arc<DocumentInfo>,
     /// The current byte offset in the source string.
@@ -62,9 +68,10 @@ pub struct DocumentCursor {
 }
 
 impl DocumentCursor {
-    pub fn new(source: String) -> Self {
+    pub fn new(module_id: ModuleId, source: String) -> Self {
         let end = source.len();
         Self {
+            module_id,
             offset: 0,
             end,
             source: Arc::new(DocumentInfo::new(source)),
@@ -72,6 +79,7 @@ impl DocumentCursor {
     }
     pub fn range(&self) -> DocumentRange {
         DocumentRange {
+            module_id: self.module_id.clone(),
             source: self.source.clone(),
             start: self.offset,
             end: self.end,
@@ -92,6 +100,7 @@ impl Iterator for DocumentCursor {
             .map(|ch| {
                 self.offset += ch.len_utf8();
                 DocumentRange {
+                    module_id: self.module_id.clone(),
                     source: self.source.clone(),
                     start: start_offset,
                     end: self.offset,
@@ -105,6 +114,8 @@ impl Iterator for DocumentCursor {
 /// The invariant is start <= end, meaning empty ranges are allowed.
 #[derive(Clone, Debug)]
 pub struct DocumentRange {
+    /// The module this range belongs to.
+    module_id: ModuleId,
     /// The source info containing the document text and line starts.
     source: Arc<DocumentInfo>,
     /// the start byte offset for this range in the document (inclusive).
@@ -125,6 +136,7 @@ impl DocumentRange {
         debug_assert!(other.start >= self.start);
         debug_assert!(other.end >= self.end);
         DocumentRange {
+            module_id: self.module_id,
             source: self.source,
             start: self.start,
             end: other.end,
@@ -156,6 +168,7 @@ impl DocumentRange {
     /// Get a string cursor for this document range.
     pub fn cursor(&self) -> DocumentCursor {
         DocumentCursor {
+            module_id: self.module_id.clone(),
             source: self.source.clone(),
             offset: self.start,
             end: self.end,
@@ -168,6 +181,10 @@ impl DocumentRange {
 
     pub fn end(&self) -> usize {
         self.end
+    }
+
+    pub fn module_id(&self) -> &ModuleId {
+        &self.module_id
     }
 
     pub fn start_utf16(&self) -> DocumentPosition {
@@ -212,6 +229,7 @@ impl DocumentRange {
 
         if start < end {
             Some(DocumentRange {
+                module_id: self.module_id.clone(),
                 source: self.source.clone(),
                 start,
                 end,
@@ -241,6 +259,7 @@ impl DocumentRange {
         let trimmed = s.trim_start();
         let leading = trimmed.as_ptr() as usize - s.as_ptr() as usize;
         DocumentRange {
+            module_id: self.module_id.clone(),
             source: self.source.clone(),
             start: self.start + leading,
             end: self.end,
@@ -252,6 +271,7 @@ impl DocumentRange {
         let s = self.as_str();
         let trimmed = s.trim_end();
         DocumentRange {
+            module_id: self.module_id.clone(),
             source: self.source.clone(),
             start: self.start,
             end: self.start + trimmed.len(),
@@ -393,17 +413,18 @@ impl Borrow<str> for CheapString {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::hop::symbols::module_id::ModuleId;
 
     #[test]
     fn string_cursor_new() {
-        let cursor = DocumentCursor::new("hello".to_string());
+        let cursor = DocumentCursor::new(ModuleId::test(), "hello".to_string());
         assert_eq!(cursor.offset, 0);
         assert_eq!(cursor.end, 5);
     }
 
     #[test]
     fn string_cursor_single_line() {
-        let mut cursor = DocumentCursor::new("abc".to_string());
+        let mut cursor = DocumentCursor::new(ModuleId::test(), "abc".to_string());
 
         let range1 = cursor.next().unwrap();
         assert_eq!(range1.ch(), 'a');
@@ -443,7 +464,7 @@ mod tests {
 
     #[test]
     fn string_cursor_multiline() {
-        let mut cursor = DocumentCursor::new("a\nb\nc".to_string());
+        let mut cursor = DocumentCursor::new(ModuleId::test(), "a\nb\nc".to_string());
 
         let range1 = cursor.next().unwrap();
         assert_eq!(range1.ch(), 'a');
@@ -505,7 +526,7 @@ mod tests {
 
     #[test]
     fn string_range_extend() {
-        let mut cursor = DocumentCursor::new("abc".to_string());
+        let mut cursor = DocumentCursor::new(ModuleId::test(), "abc".to_string());
         let range1 = cursor.next().unwrap();
         let _range2 = cursor.next().unwrap();
         let range3 = cursor.next().unwrap();
@@ -525,7 +546,7 @@ mod tests {
 
     #[test]
     fn string_range_to_string() {
-        let mut cursor = DocumentCursor::new("hello world".to_string());
+        let mut cursor = DocumentCursor::new(ModuleId::test(), "hello world".to_string());
         let ranges: Vec<_> = cursor.by_ref().take(5).collect();
 
         assert_eq!(ranges[0].to_string(), "h");
@@ -540,13 +561,13 @@ mod tests {
 
     #[test]
     fn empty_string_cursor() {
-        let mut cursor = DocumentCursor::new("".to_string());
+        let mut cursor = DocumentCursor::new(ModuleId::test(), "".to_string());
         assert!(cursor.next().is_none());
     }
 
     #[test]
     fn string_cursor_clone() {
-        let cursor1 = DocumentCursor::new("test".to_string());
+        let cursor1 = DocumentCursor::new(ModuleId::test(), "test".to_string());
         let mut cursor2 = cursor1.clone();
 
         let range = cursor2.next().unwrap();
@@ -555,7 +576,7 @@ mod tests {
 
     #[test]
     fn collect_string_ranges() {
-        let result: Option<DocumentRange> = DocumentCursor::new("   hello".to_string())
+        let result: Option<DocumentRange> = DocumentCursor::new(ModuleId::test(), "   hello".to_string())
             .take_while(|s| s.ch() == ' ')
             .collect();
 
@@ -573,7 +594,7 @@ mod tests {
 
     #[test]
     fn collect_empty_ranges() {
-        let result: Option<DocumentRange> = DocumentCursor::new("hello".to_string())
+        let result: Option<DocumentRange> = DocumentCursor::new(ModuleId::test(), "hello".to_string())
             .take_while(|s| s.ch() == ' ')
             .collect();
 
@@ -582,7 +603,7 @@ mod tests {
 
     #[test]
     fn collect_multiline_ranges() {
-        let result: Option<DocumentRange> = DocumentCursor::new("aaa\nbbb".to_string())
+        let result: Option<DocumentRange> = DocumentCursor::new(ModuleId::test(), "aaa\nbbb".to_string())
             .take_while(|s| s.ch() == 'a')
             .collect();
 
@@ -600,7 +621,7 @@ mod tests {
 
     #[test]
     fn collect_with_skip() {
-        let result: Option<DocumentRange> = DocumentCursor::new("   hello   ".to_string())
+        let result: Option<DocumentRange> = DocumentCursor::new(ModuleId::test(), "   hello   ".to_string())
             .skip(3)
             .take_while(|s| s.ch().is_alphabetic())
             .collect();
@@ -622,7 +643,7 @@ mod tests {
         // "a\u{20AC}b" - \u{20AC} is € (Euro sign)
         // UTF-8 bytes:  a(1) €(3) b(1) = positions 0,1,4,5
         // UTF-16 units: a(1) €(1) b(1) = positions 0,1,2,3
-        let mut cursor = DocumentCursor::new("a\u{20AC}b".to_string());
+        let mut cursor = DocumentCursor::new(ModuleId::test(), "a\u{20AC}b".to_string());
 
         let range1 = cursor.next().unwrap();
         assert_eq!(range1.ch(), 'a');
@@ -666,7 +687,7 @@ mod tests {
         // Line 0: €(1) \n(1)
         // Line 1: 🎨(2) \n(1)
         // Line 2: c(1)
-        let mut cursor = DocumentCursor::new("\u{20AC}\n\u{1F3A8}\nc".to_string());
+        let mut cursor = DocumentCursor::new(ModuleId::test(), "\u{20AC}\n\u{1F3A8}\nc".to_string());
 
         let range1 = cursor.next().unwrap();
         assert_eq!(range1.ch(), '\u{20AC}');
@@ -727,7 +748,7 @@ mod tests {
     #[test]
     fn contains_position_utf16() {
         // "hello\nworld" - ASCII text for simple position testing
-        let cursor = DocumentCursor::new("hello\nworld".to_string());
+        let cursor = DocumentCursor::new(ModuleId::test(), "hello\nworld".to_string());
         let ranges: Vec<_> = cursor.collect();
 
         // "hello" ranges
@@ -747,7 +768,7 @@ mod tests {
         // UTF-8:  a(1) €(3) b(1) 🎨(4) c(1) = byte positions
         // UTF-16: a(1) €(1) b(1) 🎨(2) c(1) = code unit positions
         // UTF-32: a(1) €(1) b(1) 🎨(1) c(1) = character positions 0,1,2,3,4,5
-        let mut cursor = DocumentCursor::new("a\u{20AC}b\u{1F3A8}c".to_string());
+        let mut cursor = DocumentCursor::new(ModuleId::test(), "a\u{20AC}b\u{1F3A8}c".to_string());
 
         let range1 = cursor.next().unwrap();
         assert_eq!(range1.ch(), 'a');
@@ -810,7 +831,7 @@ mod tests {
         // "\u{1F3A8}\n\u{20AC}x" - Testing UTF-32 with newlines
         // Line 0: 🎨(1 char) \n(1 char)
         // Line 1: €(1 char) x(1 char)
-        let mut cursor = DocumentCursor::new("\u{1F3A8}\n\u{20AC}x".to_string());
+        let mut cursor = DocumentCursor::new(ModuleId::test(), "\u{1F3A8}\n\u{20AC}x".to_string());
 
         let range1 = cursor.next().unwrap();
         assert_eq!(range1.ch(), '\u{1F3A8}');
@@ -860,7 +881,7 @@ mod tests {
     #[test]
     fn contains_position_utf32() {
         // "\u{1F3A8}hello" - Emoji followed by ASCII
-        let cursor = DocumentCursor::new("\u{1F3A8}hello".to_string());
+        let cursor = DocumentCursor::new(ModuleId::test(), "\u{1F3A8}hello".to_string());
         let ranges: Vec<_> = cursor.collect();
 
         // Create range for "hello" (skipping the emoji)
@@ -877,7 +898,7 @@ mod tests {
     fn compare_utf_encodings() {
         // "\u{1F3A8}ab" - Compare UTF-16 and UTF-32 encodings
         // 🎨 = U+1F3A8: 2 code units UTF-16, 1 char UTF-32
-        let mut cursor = DocumentCursor::new("\u{1F3A8}ab".to_string());
+        let mut cursor = DocumentCursor::new(ModuleId::test(), "\u{1F3A8}ab".to_string());
 
         let emoji = cursor.next().unwrap();
         let a = cursor.next().unwrap();

@@ -930,9 +930,10 @@ mod tests {
 
     fn check(input: &str, expected: Expect) {
         let mut errors = ErrorCollector::new();
+        let module_id = ModuleId::new("test").unwrap();
         let module = parse(
-            ModuleId::new("test").unwrap(),
-            Document::new(input.to_string()),
+            module_id.clone(),
+            Document::new(module_id, input.to_string()),
             &mut errors,
         );
 

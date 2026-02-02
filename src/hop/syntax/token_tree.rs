@@ -258,12 +258,13 @@ impl Display for TokenTree {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::hop::symbols::module_id::ModuleId;
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
     fn check(input: &str, expected: Expect) {
         let mut errors = ErrorCollector::new();
-        let mut iter = DocumentCursor::new(input.to_string()).peekable();
+        let mut iter = DocumentCursor::new(ModuleId::test(), input.to_string()).peekable();
         let mut tokenizer = Tokenizer::new();
 
         let mut trees = Vec::new();

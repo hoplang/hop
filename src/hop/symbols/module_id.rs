@@ -1,4 +1,5 @@
 use std::fmt;
+use std::sync::Arc;
 use thiserror::Error;
 
 /// Error type for invalid module IDs
@@ -26,7 +27,7 @@ pub enum InvalidModuleIdError {
 ///
 /// Examples: "components::button", "utils", "hop::ui"
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct ModuleId(String);
+pub struct ModuleId(Arc<String>);
 
 impl ModuleId {
     /// Create a new ModuleId from a string using '::' separators, validating it
@@ -38,7 +39,13 @@ impl ModuleId {
     /// - Components must only contain alphanumeric characters, '-', and '_'
     pub fn new(name: &str) -> Result<Self, InvalidModuleIdError> {
         Self::validate(name)?;
-        Ok(ModuleId(name.to_string()))
+        Ok(ModuleId(Arc::new(name.to_string())))
+    }
+
+    /// Create a test ModuleId without validation (for use in tests only).
+    #[cfg(test)]
+    pub fn test() -> Self {
+        ModuleId(Arc::new("test".to_string()))
     }
 
     /// Validate a module ID string

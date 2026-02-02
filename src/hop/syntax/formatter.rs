@@ -1116,9 +1116,10 @@ mod tests {
 
     fn check(source: &str, expected: Expect) {
         let mut errors = ErrorCollector::<ParseError>::new();
+        let module_id = ModuleId::new("test").unwrap();
         let ast = parser::parse(
-            ModuleId::new("test").unwrap(),
-            Document::new(source.to_string()),
+            module_id.clone(),
+            Document::new(module_id, source.to_string()),
             &mut errors,
         );
         if !errors.is_empty() {
@@ -1128,9 +1129,10 @@ mod tests {
         expected.assert_eq(&formatted);
 
         // Check idempotency: formatting the output should give the same result
+        let module_id = ModuleId::new("test").unwrap();
         let formatted_twice = super::format(parser::parse(
-            ModuleId::new("test").unwrap(),
-            Document::new(formatted.clone()),
+            module_id.clone(),
+            Document::new(module_id, formatted.clone()),
             &mut errors,
         ));
         assert_eq!(formatted, formatted_twice, "Formatter is not idempotent");

@@ -301,7 +301,7 @@ fn check(hop_source: &str, expected_output: &str, expected: Expect) {
     // Parse hop source code
     let module_id = ModuleId::new("test").unwrap();
     let mut modules = HashMap::new();
-    modules.insert(module_id.clone(), Document::new(hop_source.to_string()));
+    modules.insert(module_id.clone(), Document::new(module_id.clone(), hop_source.to_string()));
 
     let program = Program::new(modules);
 

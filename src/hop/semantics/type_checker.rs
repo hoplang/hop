@@ -1303,8 +1303,8 @@ mod tests {
                 ModuleId::new(&file.name.trim_end_matches(".hop").replace('/', "::")).unwrap();
             module_ids.push(module_id.clone());
             let ast = parse(
-                module_id,
-                Document::new(source_code.to_string()),
+                module_id.clone(),
+                Document::new(module_id, source_code.to_string()),
                 &mut parse_errors,
             );
 

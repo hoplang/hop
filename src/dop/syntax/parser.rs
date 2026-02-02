@@ -1332,6 +1332,7 @@ pub fn parse_declaration(
 mod tests {
     use super::*;
     use crate::document::{DocumentAnnotator, Ranged as _, SimpleAnnotation};
+    use crate::hop::symbols::module_id::ModuleId;
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
@@ -1350,7 +1351,7 @@ mod tests {
     }
 
     fn check_parse_expr(input: &str, expected: Expect) {
-        let cursor = DocumentCursor::new(input.to_string());
+        let cursor = DocumentCursor::new(ModuleId::test(), input.to_string());
         let range = cursor.range();
         let mut iter = cursor.peekable();
         let mut comments = VecDeque::new();
@@ -1366,7 +1367,7 @@ mod tests {
     }
 
     fn check_parse_parameters(input: &str, expected: Expect) {
-        let cursor = DocumentCursor::new(input.to_string());
+        let cursor = DocumentCursor::new(ModuleId::test(), input.to_string());
         let range = cursor.range();
         let mut iter = cursor.peekable();
         let mut comments = VecDeque::new();
@@ -1395,7 +1396,7 @@ mod tests {
     }
 
     fn check_parse_declarations(input: &str, expected: Expect) {
-        let cursor = DocumentCursor::new(input.to_string());
+        let cursor = DocumentCursor::new(ModuleId::test(), input.to_string());
         let range = cursor.range();
         let mut iter = cursor.peekable();
         let mut comments = VecDeque::new();
@@ -3636,7 +3637,7 @@ mod tests {
     ///////////////////////////////////////////////////////////////////////////
 
     fn check_parse_let_bindings(input: &str, expected: Expect) {
-        let cursor = DocumentCursor::new(input.to_string());
+        let cursor = DocumentCursor::new(ModuleId::test(), input.to_string());
         let range = cursor.range();
         let mut iter = cursor.peekable();
         let mut comments = VecDeque::new();
@@ -3770,7 +3771,7 @@ mod tests {
     ///////////////////////////////////////////////////////////////////////////
 
     fn check_parse_loop_header(input: &str, expected: Expect) {
-        let cursor = DocumentCursor::new(input.to_string());
+        let cursor = DocumentCursor::new(ModuleId::test(), input.to_string());
         let range = cursor.range();
         let mut iter = cursor.peekable();
         let mut comments = VecDeque::new();

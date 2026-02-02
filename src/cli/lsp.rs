@@ -158,7 +158,7 @@ impl LanguageServer for HopLanguageServer {
                 let changed_modules: Vec<ModuleId>;
                 {
                     let mut server = self.program.write().await;
-                    changed_modules = server.update_module(&module_id, Document::new(change.text));
+                    changed_modules = server.update_module(&module_id, Document::new(module_id.clone(), change.text));
                 }
                 for c in changed_modules {
                     let uri = Self::module_id_to_uri(&c, project);
@@ -199,9 +199,9 @@ impl LanguageServer for HopLanguageServer {
 
             Ok(program
                 .get_definition_location(&module_id, position.into())
-                .map(|DefinitionLocation { module, range }| {
+                .map(|DefinitionLocation { range }| {
                     GotoDefinitionResponse::Scalar(Location {
-                        uri: Self::module_id_to_uri(&module, project),
+                        uri: Self::module_id_to_uri(range.module_id(), project),
                         range: range.into(),
                     })
                 }))
@@ -226,7 +226,7 @@ impl LanguageServer for HopLanguageServer {
             {
                 Ok(Some(PrepareRenameResponse::RangeWithPlaceholder {
                     range: renameable_symbol.range.clone().into(),
-                    placeholder: renameable_symbol.current_name.to_string(),
+                    placeholder: renameable_symbol.current_name().to_string(),
                 }))
             } else {
                 Ok(None)
@@ -250,8 +250,8 @@ impl LanguageServer for HopLanguageServer {
                 #[allow(clippy::mutable_key_type)]
                 let mut changes: HashMap<Uri, Vec<TextEdit>> = HashMap::new();
 
-                for RenameLocation { module, range } in rename_locations {
-                    let file_uri = Self::module_id_to_uri(&module, project);
+                for RenameLocation { range } in rename_locations {
+                    let file_uri = Self::module_id_to_uri(range.module_id(), project);
                     let edit = TextEdit {
                         range: range.into(),
                         new_text: new_name.clone(),

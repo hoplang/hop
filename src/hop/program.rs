@@ -1,5 +1,5 @@
 use crate::document::DocumentPosition;
-use crate::document::{CheapString, Document, DocumentRange, Ranged};
+use crate::document::{Document, DocumentRange, Ranged};
 use crate::dop::{ParsedType, Type};
 use crate::error_collector::ErrorCollector;
 use crate::hop::syntax::format;
@@ -32,7 +32,6 @@ pub struct HoverInfo {
 /// A DefinitionLocation is the definition of a certain symbol in the source
 /// code. This is the response for a go to definition-query.
 pub struct DefinitionLocation {
-    pub module: ModuleId,
     pub range: DocumentRange,
 }
 
@@ -44,14 +43,18 @@ pub struct Diagnostic {
 }
 
 pub struct RenameLocation {
-    pub module: ModuleId,
     pub range: DocumentRange,
 }
 
 /// A RenameableSymbol is a range in the document that is renameable.
 pub struct RenameableSymbol {
-    pub current_name: CheapString,
     pub range: DocumentRange,
+}
+
+impl RenameableSymbol {
+    pub fn current_name(&self) -> &str {
+        self.range.as_str()
+    }
 }
 
 #[derive(Debug, Default)]
@@ -234,7 +237,6 @@ impl Program {
                 // Check if it's a component declaration
                 if let Some(component_def) = target_ast.get_component_declaration(imported_name) {
                     return Some(DefinitionLocation {
-                        module: target_module.clone(),
                         range: component_def.tag_name.clone(),
                     });
                 }
@@ -242,7 +244,6 @@ impl Program {
                 // Check if it's a record declaration
                 if let Some(record) = target_ast.get_record_declaration(imported_name) {
                     return Some(DefinitionLocation {
-                        module: target_module.clone(),
                         range: record.name_range.clone(),
                     });
                 }
@@ -257,7 +258,6 @@ impl Program {
             {
                 // Navigate to the opening tag of this component definition
                 return Some(DefinitionLocation {
-                    module: module_id.clone(),
                     range: component_def.tag_name.clone(),
                 });
             }
@@ -283,14 +283,12 @@ impl Program {
                     .get(module_id)?
                     .get_component_declaration(component_name.as_str())?;
                 Some(DefinitionLocation {
-                    module: module_id.clone(),
                     range: component_def.tag_name.clone(),
                 })
             }
             ParsedNode::Html { tag_name, .. } => {
                 // Navigate to the opening tag of this HTML element
                 Some(DefinitionLocation {
-                    module: module_id.clone(),
                     range: tag_name.clone(),
                 })
             }
@@ -342,7 +340,6 @@ impl Program {
             n @ ParsedNode::Html { .. } => Some(
                 n.tag_names()
                     .map(|range| RenameLocation {
-                        module: module_id.clone(),
                         range: range.clone(),
                     })
                     .collect(),
@@ -366,7 +363,6 @@ impl Program {
         for record in ast.get_record_declarations() {
             if record.name_range.contains_position(position) {
                 return Some(RenameableSymbol {
-                    current_name: record.name_range.to_cheap_string(),
                     range: record.name_range.clone(),
                 });
             }
@@ -378,7 +374,6 @@ impl Program {
                 .find(|r| r.contains_position(position))
             {
                 return Some(RenameableSymbol {
-                    current_name: range.to_cheap_string(),
                     range: range.clone(),
                 });
             }
@@ -389,7 +384,6 @@ impl Program {
         node.tag_names()
             .find(|r| r.contains_position(position))
             .map(|range| RenameableSymbol {
-                current_name: range.to_cheap_string(),
                 range: range.clone(),
             })
     }
@@ -410,21 +404,19 @@ impl Program {
             {
                 // Add the definition's opening tag name
                 locations.push(RenameLocation {
-                    module: definition_module.clone(),
                     range: component_node.tag_name.clone(),
                 });
 
                 // Add the definition's closing tag name if it exists
                 if let Some(range) = component_node.closing_tag_name.as_ref() {
                     locations.push(RenameLocation {
-                        module: definition_module.clone(),
                         range: range.clone(),
                     });
                 }
             }
         }
 
-        for (module_id, ast) in &self.parsed_asts {
+        for ast in self.parsed_asts.values() {
             // Find all import statements that import this component
             locations.extend(
                 ast.get_import_declarations()
@@ -432,7 +424,6 @@ impl Program {
                         n.imports_type(component_name.as_str()) && n.imports_from(definition_module)
                     })
                     .map(|n| RenameLocation {
-                        module: module_id.clone(),
                         range: n.type_name_range().clone(),
                     }),
             );
@@ -455,7 +446,6 @@ impl Program {
                     })
                     .flat_map(|node| node.tag_names())
                     .map(|range| RenameLocation {
-                        module: module_id.clone(),
                         range: range.clone(),
                     }),
             );
@@ -479,7 +469,6 @@ impl Program {
         if let Some(module) = self.parsed_asts.get(definition_module) {
             if let Some(record) = module.get_record_declaration(record_name) {
                 locations.push(RenameLocation {
-                    module: definition_module.clone(),
                     range: record.name_range.clone(),
                 });
             }
@@ -492,7 +481,6 @@ impl Program {
                 ast.get_import_declarations()
                     .filter(|n| n.imports_type(record_name) && n.imports_from(definition_module))
                     .map(|n| RenameLocation {
-                        module: module_id.clone(),
                         range: n.type_name_range().clone(),
                     }),
             );
@@ -542,7 +530,6 @@ impl Program {
 
                 if is_local || is_imported {
                     locations.push(RenameLocation {
-                        module: current_module.clone(),
                         range: range.clone(),
                     });
                 }
@@ -740,7 +727,10 @@ mod tests {
         for file in archive.iter() {
             let module_id =
                 ModuleId::new(&file.name.replace(".hop", "").replace('/', "::")).unwrap();
-            map.insert(module_id, Document::new(file.content.clone()));
+            map.insert(
+                module_id.clone(),
+                Document::new(module_id, file.content.clone()),
+            );
         }
         Program::new(map)
     }
@@ -750,7 +740,10 @@ mod tests {
         for file in archive.iter() {
             let module_id =
                 ModuleId::new(&file.name.replace(".hop", "").replace('/', "::")).unwrap();
-            map.insert(module_id, Document::new(file.content.clone()));
+            map.insert(
+                module_id.clone(),
+                Document::new(module_id, file.content.clone()),
+            );
         }
         Program::new(map)
     }
@@ -781,7 +774,7 @@ mod tests {
 
             let mut annotations: Vec<SimpleAnnotation> = locs
                 .iter()
-                .filter(|l| l.module == module_id)
+                .filter(|l| l.range.module_id() == &module_id)
                 .map(|l| SimpleAnnotation {
                     message: "Rename".to_string(),
                     range: l.range.clone(),
@@ -819,7 +812,7 @@ mod tests {
             .expect("Expected definition location to be defined");
 
         let output = DocumentAnnotator::new().with_location().annotate(
-            Some(&loc.module.to_string()),
+            Some(&loc.range.module_id().to_string()),
             [SimpleAnnotation {
                 message: "Definition".to_string(),
                 range: loc.range,
@@ -1803,6 +1796,7 @@ mod tests {
         program.update_module(
             &ModuleId::new("a").unwrap(),
             Document::new(
+                ModuleId::new("a").unwrap(),
                 indoc! {r#"
                     <AComp>
                     </AComp>
@@ -1869,6 +1863,7 @@ mod tests {
         program.update_module(
             &ModuleId::new("c").unwrap(),
             Document::new(
+                ModuleId::new("c").unwrap(),
                 indoc! {r#"
                     <CComp>
                     </CComp>
@@ -1882,6 +1877,7 @@ mod tests {
         program.update_module(
             &ModuleId::new("b").unwrap(),
             Document::new(
+                ModuleId::new("b").unwrap(),
                 indoc! {r#"
                     import a::AComp
                     <BComp>
@@ -1909,6 +1905,7 @@ mod tests {
         program.update_module(
             &ModuleId::new("b").unwrap(),
             Document::new(
+                ModuleId::new("b").unwrap(),
                 indoc! {r#"
                     <BComp>
                     </BComp>
@@ -1966,6 +1963,7 @@ mod tests {
         program.update_module(
             &ModuleId::new("components").unwrap(),
             Document::new(
+                ModuleId::new("components").unwrap(),
                 indoc! {r#"
                     <HelloWorld>
                       <h1>Hello World</h1>

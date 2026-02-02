@@ -75,9 +75,9 @@ impl DocumentAnnotator {
     {
         let annotations: Vec<A> = annotations.into_iter().collect();
 
-        // Extract source from the first annotation's range
-        let source = match annotations.first() {
-            Some(first) => first.range().full_source(),
+        // Extract source and module_id from the first annotation's range
+        let (source, module_id) = match annotations.first() {
+            Some(first) => (first.range().full_source(), first.range().module_id().clone()),
             None => return String::new(),
         };
 
@@ -90,7 +90,7 @@ impl DocumentAnnotator {
         }
 
         let mut output = String::new();
-        let lines: Vec<Option<DocumentRange>> = DocumentCursor::new(source.to_string())
+        let lines: Vec<Option<DocumentRange>> = DocumentCursor::new(module_id, source.to_string())
             .chunk_by(|range| range.start_utf32().line())
             .into_iter()
             .map(|(_, group)| group.filter(|s| s.ch() != '\n').collect())
@@ -204,13 +204,14 @@ impl Default for DocumentAnnotator {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::hop::symbols::module_id::ModuleId;
     use expect_test::expect;
 
     fn create_annotations_from_chunks(
         source: &str,
         predicate: impl Fn(char) -> bool,
     ) -> Vec<DocumentRange> {
-        DocumentCursor::new(source.to_string())
+        DocumentCursor::new(ModuleId::test(), source.to_string())
             .chunk_by(|range| predicate(range.ch()))
             .into_iter()
             .filter_map(

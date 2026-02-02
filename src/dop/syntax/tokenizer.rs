@@ -334,11 +334,12 @@ pub fn peek_past_comments(iter: &Peekable<DocumentCursor>) -> Option<(Token, Doc
 mod tests {
     use super::*;
     use crate::document::{DocumentAnnotator, Ranged as _, SimpleAnnotation};
+    use crate::hop::symbols::module_id::ModuleId;
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
     fn check(input: &str, expected: Expect) {
-        let mut cursor = DocumentCursor::new(input.to_string()).peekable();
+        let mut cursor = DocumentCursor::new(ModuleId::test(), input.to_string()).peekable();
         let mut errors = ErrorCollector::new();
         let mut annotations = Vec::new();
         while let Some((tok, range)) = next(&mut cursor, &mut errors) {

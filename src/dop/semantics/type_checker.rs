@@ -1360,7 +1360,7 @@ mod tests {
         let test_module = ModuleId::new("test").unwrap();
 
         // Parse and process declarations
-        let cursor = DocumentCursor::new(declarations_str.to_string());
+        let cursor = DocumentCursor::new(ModuleId::test(), declarations_str.to_string());
         let range = cursor.range();
         let mut iter = cursor.peekable();
         let mut comments = VecDeque::new();
@@ -1420,7 +1420,7 @@ mod tests {
         }
 
         for (var_name, type_str) in env_vars {
-            let cursor = DocumentCursor::new(type_str.to_string());
+            let cursor = DocumentCursor::new(ModuleId::test(), type_str.to_string());
             let range = cursor.range();
             let mut iter = cursor.peekable();
             let mut comments = VecDeque::new();
@@ -1432,7 +1432,7 @@ mod tests {
             let _ = env.push(var_name.to_string(), typ);
         }
 
-        let cursor = DocumentCursor::new(expr_str.to_string());
+        let cursor = DocumentCursor::new(ModuleId::test(), expr_str.to_string());
         let range = cursor.range();
         let mut iter = cursor.peekable();
         let mut comments = VecDeque::new();
