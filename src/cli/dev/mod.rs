@@ -91,7 +91,7 @@ pub async fn execute(project: &Project) -> anyhow::Result<DevServer> {
                 }
                 for module_id in &batch.modified {
                     if let Ok(document) = project_copy.load_module(module_id) {
-                        program.update_module(module_id.clone(), document);
+                        program.update_module(module_id, document);
                     }
                 }
             }

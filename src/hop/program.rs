@@ -56,8 +56,8 @@ pub struct RenameableSymbol {
 
 #[derive(Debug, Default)]
 pub struct Program {
-    documents: HashMap<ModuleId, Document>,
     topo_sorter: TopoSorter<ModuleId>,
+    documents: HashMap<ModuleId, Document>,
     parse_errors: HashMap<ModuleId, ErrorCollector<ParseError>>,
     parsed_asts: HashMap<ModuleId, ParsedAst>,
     typechecker_state: HashMap<ModuleId, HashMap<String, Arc<Type>>>,
@@ -70,7 +70,7 @@ impl Program {
     pub fn new(modules: HashMap<ModuleId, Document>) -> Self {
         let mut program = Self::default();
         for (module_id, document) in modules {
-            program.update_module(module_id, document);
+            program.update_module(&module_id, document);
         }
         program
     }
@@ -84,20 +84,27 @@ impl Program {
         self.documents.remove(module_id);
         self.parse_errors.remove(module_id);
         self.parsed_asts.remove(module_id);
-
-        // Remove from topo sorter and get modules that depended on this one
-        let dependents = self.topo_sorter.remove_node(module_id);
-
         self.typechecker_state.remove(module_id);
         self.type_errors.remove(module_id);
         self.type_annotations.remove(module_id);
         self.typed_asts.remove(module_id);
 
+        // Clear the module's dependencies in the topo sorter (but keep the node
+        // so that reverse dependencies are preserved). This returns all modules
+        // that need to be re-typechecked.
+        let grouped_modules = self
+            .topo_sorter
+            .update_node(module_id.clone(), HashSet::new());
+
         // Re-typecheck dependent modules (they now have broken imports)
-        for dependent in dependents {
-            if let Some(ast) = self.parsed_asts.get(&dependent) {
+        for names in grouped_modules {
+            let modules = names
+                .iter()
+                .filter_map(|name| self.parsed_asts.get(name))
+                .collect::<Vec<_>>();
+            if !modules.is_empty() {
                 typecheck(
-                    &[ast],
+                    &modules,
                     &mut self.typechecker_state,
                     &mut self.type_errors,
                     &mut self.type_annotations,
@@ -107,7 +114,13 @@ impl Program {
         }
     }
 
-    pub fn update_module(&mut self, module_id: ModuleId, document: Document) -> Vec<ModuleId> {
+    /// Update or add a module to the program.
+    ///
+    /// This parses the document, updates the dependency graph, and re-typechecks
+    /// the module along with any modules that depend on it (directly or transitively).
+    ///
+    /// Returns the list of all module IDs that were re-typechecked.
+    pub fn update_module(&mut self, module_id: &ModuleId, document: Document) -> Vec<ModuleId> {
         // Store the document
         self.documents.insert(module_id.clone(), document.clone());
 
@@ -127,7 +140,9 @@ impl Program {
 
         // Typecheck the module along with all dependent modules (grouped
         // into strongly connected components).
-        let grouped_modules = self.topo_sorter.update_node(module_id, module_dependencies);
+        let grouped_modules = self
+            .topo_sorter
+            .update_node(module_id.clone(), module_dependencies);
         for names in &grouped_modules {
             let modules = names
                 .iter()
@@ -1786,7 +1801,7 @@ mod tests {
         );
         // Resolve cycle
         program.update_module(
-            ModuleId::new("a").unwrap(),
+            &ModuleId::new("a").unwrap(),
             Document::new(
                 indoc! {r#"
                     <AComp>
@@ -1852,7 +1867,7 @@ mod tests {
         );
         // Resolve cycle
         program.update_module(
-            ModuleId::new("c").unwrap(),
+            &ModuleId::new("c").unwrap(),
             Document::new(
                 indoc! {r#"
                     <CComp>
@@ -1865,7 +1880,7 @@ mod tests {
         check_type_errors(&program, expect![""]);
         // Introduce new cycle a → b → a
         program.update_module(
-            ModuleId::new("b").unwrap(),
+            &ModuleId::new("b").unwrap(),
             Document::new(
                 indoc! {r#"
                     import a::AComp
@@ -1892,7 +1907,7 @@ mod tests {
         );
         // Resolve cycle
         program.update_module(
-            ModuleId::new("b").unwrap(),
+            &ModuleId::new("b").unwrap(),
             Document::new(
                 indoc! {r#"
                     <BComp>
@@ -1908,6 +1923,61 @@ mod tests {
     ///////////////////////////////////////////////////////////////////////////
     // IR EVALUATION                                                         //
     ///////////////////////////////////////////////////////////////////////////
+
+    #[test]
+    fn should_report_type_error_when_imported_module_is_removed() {
+        let mut program = program_from_txtar(indoc! {r#"
+            -- components.hop --
+            <HelloWorld>
+              <h1>Hello World</h1>
+            </HelloWorld>
+
+            -- main.hop --
+            import components::HelloWorld
+
+            <Main>
+              <HelloWorld />
+            </Main>
+        "#});
+
+        // No type errors initially
+        check_type_errors(&program, expect![""]);
+
+        // Remove the components module
+        program.remove_module(&ModuleId::new("components").unwrap());
+
+        // Now main should have a type error about the missing import
+        check_type_errors(
+            &program,
+            expect![[r#"
+                Module components was not found
+                  --> main (line 1, col 8)
+                1 | import components::HelloWorld
+                  |        ^^^^^^^^^^^^^^^^^^^^^^
+
+                Component HelloWorld is not defined
+                  --> main (line 4, col 4)
+                4 |   <HelloWorld />
+                  |    ^^^^^^^^^^
+            "#]],
+        );
+
+        // Add the module back
+        program.update_module(
+            &ModuleId::new("components").unwrap(),
+            Document::new(
+                indoc! {r#"
+                    <HelloWorld>
+                      <h1>Hello World</h1>
+                    </HelloWorld>
+                "#}
+                .to_string(),
+            ),
+        );
+
+        // Type errors should now be resolved
+        check_type_errors(&program, expect![""]);
+    }
 
     #[test]
     fn should_evaluate_ir_entrypoint_with_parameters() {

@@ -132,7 +132,7 @@ impl LanguageServer for HopLanguageServer {
                     let mut server = self.program.write().await;
                     for module_id in &module_ids {
                         if let Ok(document) = project.load_module(module_id) {
-                            server.update_module(module_id.clone(), document);
+                            server.update_module(module_id, document);
                         }
                     }
                 }
@@ -158,7 +158,7 @@ impl LanguageServer for HopLanguageServer {
                 let changed_modules: Vec<ModuleId>;
                 {
                     let mut server = self.program.write().await;
-                    changed_modules = server.update_module(module_id, Document::new(change.text));
+                    changed_modules = server.update_module(&module_id, Document::new(change.text));
                 }
                 for c in changed_modules {
                     let uri = Self::module_id_to_uri(&c, project);
