@@ -30,7 +30,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Build a hop project to native code
+    /// Build a hop project
     Build {
         /// Path to project root
         #[arg(long)]
@@ -42,7 +42,7 @@ enum Commands {
         #[arg(long, hide = true)]
         timing: bool,
     },
-    /// Start development server for serving a hop project
+    /// Start development server
     Dev {
         /// Path to project root
         #[arg(long)]
@@ -57,7 +57,7 @@ enum Commands {
         #[arg(long, hide = true)]
         timing: bool,
     },
-    /// Format all .hop files in a project
+    /// Format source code
     Fmt {
         /// Path to project root
         #[arg(long)]
