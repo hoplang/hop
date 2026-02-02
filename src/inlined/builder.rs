@@ -11,7 +11,6 @@ use crate::dop::TypedExpr;
 use crate::dop::VarName;
 use crate::hop::semantics::typed_node::TypedLoopSource;
 use crate::hop::symbols::component_name::ComponentName;
-use crate::hop::symbols::module_id::ModuleId;
 
 /// Helper function to extract (VarName, Arc<Type>) from a TypedExpr.
 /// Panics if the expression is not a variable reference.
@@ -84,7 +83,6 @@ impl InlinedBuilder {
 
     fn build(self, component_name: &str) -> InlinedEntrypointDeclaration {
         InlinedEntrypointDeclaration {
-            module_id: ModuleId::new("test").unwrap(),
             component_name: ComponentName::new(component_name.to_string()).unwrap(),
             params: self.params,
             children: self.children,

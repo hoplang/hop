@@ -40,7 +40,7 @@ impl Inliner {
 
     /// Inline a single entrypoint declaration.
     pub fn inline_single_entrypoint(
-        module_id: &ModuleId,
+        _module_id: &ModuleId,
         entrypoint: &TypedEntrypointDeclaration,
         asts: &HashMap<ModuleId, TypedAst>,
     ) -> InlinedEntrypointDeclaration {
@@ -55,7 +55,6 @@ impl Inliner {
         );
 
         InlinedEntrypointDeclaration {
-            module_id: module_id.clone(),
             component_name: entrypoint.name.clone(),
             children,
             params: entrypoint

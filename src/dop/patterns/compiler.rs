@@ -161,7 +161,8 @@ pub struct EnumCase {
 /// A case for record destructuring - has bindings for each field.
 #[derive(Debug)]
 pub struct RecordCase {
-    pub type_name: TypeName,
+    /// Used for debug formatting in tests
+    pub _type_name: TypeName,
     /// Bindings for each field in the record.
     pub bindings: Vec<FieldBinding>,
     pub body: Decision,
@@ -719,7 +720,7 @@ impl<'a> Compiler<'a> {
                 Some(Decision::SwitchRecord {
                     variable: branch_var,
                     case: Box::new(RecordCase {
-                        type_name: name.clone(),
+                        _type_name: name.clone(),
                         bindings,
                         body: body.unwrap(),
                     }),
@@ -1106,7 +1107,7 @@ mod tests {
                 };
                 out.push_str(&format!(
                     "{}{} is {}{}\n",
-                    pad, variable.name, case.type_name, args
+                    pad, variable.name, case._type_name, args
                 ));
                 out.push_str(&format_decision(&case.body, indent + 1));
                 out

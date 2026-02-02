@@ -8,7 +8,6 @@ use crate::dop::VarName;
 use crate::dop::patterns::{EnumPattern, Match};
 use crate::hop::semantics::typed_node::TypedLoopSource;
 use crate::hop::symbols::component_name::ComponentName;
-use crate::hop::symbols::module_id::ModuleId;
 use pretty::BoxDoc;
 
 #[derive(Debug, Clone)]
@@ -32,7 +31,6 @@ pub struct InlinedAttribute {
 
 #[derive(Debug, Clone)]
 pub struct InlinedEntrypointDeclaration {
-    pub module_id: ModuleId,
     pub component_name: ComponentName,
     pub params: Vec<InlinedParameter>,
     pub children: Vec<Arc<InlinedNode>>,

@@ -431,21 +431,14 @@ impl IrBuilder {
     }
 
     pub fn array(&self, elements: Vec<IrExpr>) -> IrExpr {
-        let element_type = elements.first().map(|first| first.get_type()).expect(
-            "Cannot create empty array literal in test builder - use typed_array for empty arrays",
-        );
+        let element_type = elements
+            .first()
+            .map(|first| first.get_type())
+            .expect("Cannot create empty array literal in test builder");
 
         IrExpr::ArrayLiteral {
             elements,
             kind: Arc::new(Type::Array(element_type)),
-            id: self.next_expr_id(),
-        }
-    }
-
-    pub fn typed_array(&self, element_type: Type, elements: Vec<IrExpr>) -> IrExpr {
-        IrExpr::ArrayLiteral {
-            elements,
-            kind: Arc::new(Type::Array(element_type.into())),
             id: self.next_expr_id(),
         }
     }

@@ -230,11 +230,6 @@ impl TypedAst {
             .find(|&n| n.component_name.as_str() == name)
     }
 
-    /// Returns an iterator over all component declarations in the AST.
-    pub fn get_component_declarations(&self) -> impl Iterator<Item = &TypedComponentDeclaration> {
-        self.component_declarations.iter()
-    }
-
     /// Returns a reference to all record declarations in the AST.
     pub fn get_records(&self) -> &[TypedRecordDeclaration] {
         &self.record_declarations
