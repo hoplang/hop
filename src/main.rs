@@ -146,6 +146,10 @@ async fn main() -> anyhow::Result<()> {
             host,
             timing,
         }) => {
+            use colored::*;
+            use std::time::Instant;
+            let start_time = Instant::now();
+
             let root = match project {
                 Some(d) => ProjectRoot::from(Path::new(d))?,
                 None => ProjectRoot::find_upwards(Path::new("."))?,
@@ -168,14 +172,16 @@ async fn main() -> anyhow::Result<()> {
             })?;
 
             let mut res = cli::dev::execute(&root).await?;
+            let elapsed = start_time.elapsed();
             let dev_server = axum::serve(listener, res.router);
 
-            tui::print_header(&format!("served at http://{}:{}", host, bound_port));
+            tui::print_header(&format!("started in {} ms", elapsed.as_millis()));
+            println!("    {} http://{}:{}", "⟶".green().bold(), host, bound_port);
 
             if *timing {
                 res.timer.print();
-                println!();
             }
+            println!();
 
             dev_server
                 .await
