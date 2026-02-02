@@ -72,6 +72,8 @@ async fn handle_index(State(state): State<AppState>) -> Html {
         }
     }
 
+    entrypoints.sort_by(|a, b| a.name.cmp(&b.name));
+
     Html(frontend::index(&entrypoints))
 }
 
@@ -425,5 +427,70 @@ mod tests {
         let body = response.text();
         assert!(body.contains("error: Undefined variable: undefined_variable"));
         assert!(body.contains("test.hop (line 6, col 14)"));
+    }
+
+    fn create_index_test_server(input: &str) -> TestServer {
+        let archive = Archive::from(input);
+        let mut modules = HashMap::new();
+        for file in archive.iter() {
+            let module_id =
+                ModuleId::new(&file.name.replace(".hop", "").replace('/', "::")).unwrap();
+            modules.insert(
+                module_id.clone(),
+                Document::new(module_id, file.content.clone()),
+            );
+        }
+        let program = Program::new(modules);
+        let (reload_channel, _) = tokio::sync::broadcast::channel::<()>(100);
+
+        let app_state = AppState {
+            program: Arc::new(RwLock::new(program)),
+            reload_channel,
+            tailwind_css: Arc::new(RwLock::new(None)),
+        };
+
+        let router = axum::Router::new()
+            .route("/", get(handle_index))
+            .with_state(app_state);
+
+        TestServer::new(router).unwrap()
+    }
+
+    #[tokio::test]
+    async fn should_return_entrypoints_in_alphabetical_order() {
+        // Define entrypoints in non-alphabetical order: Zebra, Apple, Mango
+        let server = create_index_test_server(indoc::indoc! {r#"
+            -- test.hop --
+            entrypoint Zebra() {
+              <div>Zebra</div>
+            }
+
+            entrypoint Apple() {
+              <div>Apple</div>
+            }
+
+            entrypoint Mango() {
+              <div>Mango</div>
+            }
+        "#});
+
+        let response = server.get("/").await;
+
+        response.assert_status_ok();
+        let body = response.text();
+
+        // Find positions of each entrypoint name in the response
+        let apple_pos = body.find(">Apple</h2>").expect("Apple not found");
+        let mango_pos = body.find(">Mango</h2>").expect("Mango not found");
+        let zebra_pos = body.find(">Zebra</h2>").expect("Zebra not found");
+
+        // Verify alphabetical order: Apple < Mango < Zebra
+        assert!(
+            apple_pos < mango_pos && mango_pos < zebra_pos,
+            "Entrypoints should be in alphabetical order. Positions: Apple={}, Mango={}, Zebra={}",
+            apple_pos,
+            mango_pos,
+            zebra_pos
+        );
     }
 }
