@@ -1,5 +1,6 @@
+use super::definition_link::DefinitionLink;
 use super::type_annotation::TypeAnnotation;
-use crate::document::CheapString;
+use crate::document::{CheapString, DocumentRange};
 use crate::dop::patterns::compiler::Compiler as PatMatchCompiler;
 use crate::dop::symbols::type_name::TypeName;
 use crate::dop::{self, Type, TypedExpr, VarName, resolve_type};
@@ -33,6 +34,7 @@ pub fn typecheck(
     state: &mut HashMap<ModuleId, HashMap<String, Arc<Type>>>,
     type_errors: &mut HashMap<ModuleId, ErrorCollector<TypeError>>,
     type_annotations: &mut HashMap<ModuleId, Vec<TypeAnnotation>>,
+    definition_links: &mut HashMap<ModuleId, Vec<DefinitionLink>>,
     typed_asts: &mut HashMap<ModuleId, TypedAst>,
 ) {
     for module in modules {
@@ -40,12 +42,21 @@ pub fn typecheck(
         let module_type_annotations = type_annotations
             .entry(module.module_id.clone())
             .or_default();
+        let module_definition_links = definition_links
+            .entry(module.module_id.clone())
+            .or_default();
 
         module_type_errors.clear();
         module_type_annotations.clear();
+        module_definition_links.clear();
 
-        let typed_ast =
-            typecheck_module(module, state, module_type_errors, module_type_annotations);
+        let typed_ast = typecheck_module(
+            module,
+            state,
+            module_type_errors,
+            module_type_annotations,
+            module_definition_links,
+        );
         typed_asts.insert(module.module_id.clone(), typed_ast);
 
         if modules.len() > 1 {
@@ -71,9 +82,10 @@ fn typecheck_module(
     state: &mut HashMap<ModuleId, HashMap<String, Arc<Type>>>,
     errors: &mut ErrorCollector<TypeError>,
     annotations: &mut Vec<TypeAnnotation>,
+    definition_links: &mut Vec<DefinitionLink>,
 ) -> TypedAst {
     let mut type_env: Environment<Arc<Type>> = Environment::new();
-    let mut var_env: Environment<Arc<Type>> = Environment::new();
+    let mut var_env: Environment<(Arc<Type>, DocumentRange)> = Environment::new();
 
     let mut typed_records = Vec::new();
     let mut typed_enums = Vec::new();
@@ -146,6 +158,7 @@ fn typecheck_module(
                                     &mut var_env,
                                     &mut type_env,
                                     annotations,
+                                    definition_links,
                                     Some(&param_type),
                                 )) {
                                     let default_type = typed_default.get_type();
@@ -173,7 +186,10 @@ fn typecheck_module(
                             typ: param_type.clone(),
                             name: param.var_name.to_string(),
                         });
-                        let _ = var_env.push(param.var_name.to_string(), param_type.clone());
+                        let _ = var_env.push(
+                            param.var_name.to_string(),
+                            (param_type.clone(), param.var_name_range.clone()),
+                        );
                         pushed_params.push(param);
                         resolved_param_types.push((
                             param.var_name.clone(),
@@ -191,7 +207,14 @@ fn typecheck_module(
                 let typed_children = children
                     .iter()
                     .filter_map(|child| {
-                        typecheck_node(child, &mut var_env, annotations, errors, &mut type_env)
+                        typecheck_node(
+                            child,
+                            &mut var_env,
+                            annotations,
+                            definition_links,
+                            errors,
+                            &mut type_env,
+                        )
                     })
                     .collect::<Vec<_>>();
 
@@ -338,6 +361,7 @@ fn typecheck_module(
                                 &mut var_env,
                                 &mut type_env,
                                 annotations,
+                                definition_links,
                                 Some(&param_type),
                             )) {
                                 let default_type = typed_default.get_type();
@@ -365,7 +389,10 @@ fn typecheck_module(
                         typ: param_type.clone(),
                         name: param.var_name.to_string(),
                     });
-                    let _ = var_env.push(param.var_name.to_string(), param_type.clone());
+                    let _ = var_env.push(
+                        param.var_name.to_string(),
+                        (param_type.clone(), param.var_name_range.clone()),
+                    );
                     pushed_params.push(param);
                     typed_params.push((param.var_name.clone(), param_type, typed_default_value));
                 }
@@ -373,7 +400,14 @@ fn typecheck_module(
                 let typed_children = children
                     .iter()
                     .filter_map(|child| {
-                        typecheck_node(child, &mut var_env, annotations, errors, &mut type_env)
+                        typecheck_node(
+                            child,
+                            &mut var_env,
+                            annotations,
+                            definition_links,
+                            errors,
+                            &mut type_env,
+                        )
                     })
                     .collect::<Vec<_>>();
 
@@ -431,8 +465,9 @@ fn typecheck_module(
 
 fn typecheck_node(
     node: &ParsedNode,
-    var_env: &mut Environment<Arc<Type>>,
+    var_env: &mut Environment<(Arc<Type>, DocumentRange)>,
     annotations: &mut Vec<TypeAnnotation>,
+    definition_links: &mut Vec<DefinitionLink>,
     errors: &mut ErrorCollector<TypeError>,
     type_env: &mut Environment<Arc<Type>>,
 ) -> Option<TypedNode> {
@@ -444,7 +479,16 @@ fn typecheck_node(
         } => {
             let typed_children = children
                 .iter()
-                .filter_map(|child| typecheck_node(child, var_env, annotations, errors, type_env))
+                .filter_map(|child| {
+                    typecheck_node(
+                        child,
+                        var_env,
+                        annotations,
+                        definition_links,
+                        errors,
+                        type_env,
+                    )
+                })
                 .collect();
 
             let typed_condition = errors.ok_or_add(dop::typecheck_expr(
@@ -452,6 +496,7 @@ fn typecheck_node(
                 var_env,
                 type_env,
                 annotations,
+                definition_links,
                 None,
             ))?;
 
@@ -484,6 +529,7 @@ fn typecheck_node(
                         var_env,
                         type_env,
                         annotations,
+                        definition_links,
                         None,
                     ))?;
                     let array_type = typed_array.get_type();
@@ -505,6 +551,7 @@ fn typecheck_node(
                         var_env,
                         type_env,
                         annotations,
+                        definition_links,
                         None,
                     ))?;
                     let typed_end = errors.ok_or_add(dop::typecheck_expr(
@@ -512,6 +559,7 @@ fn typecheck_node(
                         var_env,
                         type_env,
                         annotations,
+                        definition_links,
                         None,
                     ))?;
 
@@ -544,7 +592,10 @@ fn typecheck_node(
             // Push the loop variable into scope (only if not discarded with _)
             let pushed = if let (Some(var_name), Some(var_name_range)) = (var_name, var_name_range)
             {
-                match var_env.push(var_name.to_string(), element_type.clone()) {
+                match var_env.push(
+                    var_name.to_string(),
+                    (element_type.clone(), var_name_range.clone()),
+                ) {
                     Ok(_) => {
                         annotations.push(TypeAnnotation {
                             range: var_name_range.clone(),
@@ -568,7 +619,16 @@ fn typecheck_node(
 
             let typed_children = children
                 .iter()
-                .filter_map(|child| typecheck_node(child, var_env, annotations, errors, type_env))
+                .filter_map(|child| {
+                    typecheck_node(
+                        child,
+                        var_env,
+                        annotations,
+                        definition_links,
+                        errors,
+                        type_env,
+                    )
+                })
                 .collect();
 
             if pushed {
@@ -609,8 +669,10 @@ fn typecheck_node(
 
                 // Push the variable into scope first, so later bindings can reference it
                 // even if the value expression fails to typecheck
-                let pushed = match var_env.push(binding.var_name.to_string(), resolved_type.clone())
-                {
+                let pushed = match var_env.push(
+                    binding.var_name.to_string(),
+                    (resolved_type.clone(), binding.var_name_range.clone()),
+                ) {
                     Ok(_) => {
                         annotations.push(TypeAnnotation {
                             range: binding.var_name_range.clone(),
@@ -638,6 +700,7 @@ fn typecheck_node(
                     var_env,
                     type_env,
                     annotations,
+                    definition_links,
                     Some(&resolved_type),
                 )) else {
                     continue;
@@ -659,7 +722,16 @@ fn typecheck_node(
             // Type-check children with all variables in scope
             let typed_children: Vec<TypedNode> = children
                 .iter()
-                .filter_map(|child| typecheck_node(child, var_env, annotations, errors, type_env))
+                .filter_map(|child| {
+                    typecheck_node(
+                        child,
+                        var_env,
+                        annotations,
+                        definition_links,
+                        errors,
+                        type_env,
+                    )
+                })
                 .collect();
 
             // Pop variables in reverse order and check for unused
@@ -697,7 +769,16 @@ fn typecheck_node(
         } => {
             let typed_children = children
                 .iter()
-                .filter_map(|child| typecheck_node(child, var_env, annotations, errors, type_env))
+                .filter_map(|child| {
+                    typecheck_node(
+                        child,
+                        var_env,
+                        annotations,
+                        definition_links,
+                        errors,
+                        type_env,
+                    )
+                })
                 .collect();
 
             // Look up the component type from type_env
@@ -859,6 +940,7 @@ fn typecheck_node(
                             var_env,
                             type_env,
                             annotations,
+                            definition_links,
                             Some(param_type),
                         ) {
                             Ok(t) => t,
@@ -903,12 +985,27 @@ fn typecheck_node(
             children,
             range: _,
         } => {
-            let typed_attributes =
-                typecheck_attributes(attributes, var_env, annotations, errors, type_env);
+            let typed_attributes = typecheck_attributes(
+                attributes,
+                var_env,
+                annotations,
+                definition_links,
+                errors,
+                type_env,
+            );
 
             let typed_children = children
                 .iter()
-                .filter_map(|child| typecheck_node(child, var_env, annotations, errors, type_env))
+                .filter_map(|child| {
+                    typecheck_node(
+                        child,
+                        var_env,
+                        annotations,
+                        definition_links,
+                        errors,
+                        type_env,
+                    )
+                })
                 .collect();
 
             Some(TypedNode::Html {
@@ -927,6 +1024,7 @@ fn typecheck_node(
                 var_env,
                 type_env,
                 annotations,
+                definition_links,
                 None,
             )) {
                 let expr_type = typed_expr.get_type();
@@ -950,6 +1048,7 @@ fn typecheck_node(
                 var_env,
                 type_env,
                 annotations,
+                definition_links,
                 None,
             ))?;
             let patterns = cases
@@ -986,7 +1085,7 @@ fn typecheck_node(
                     // Push bindings into scope
                     let mut pushed_count = 0;
                     for (name, typ, bind_range) in &bindings {
-                        match var_env.push(name.clone(), typ.clone()) {
+                        match var_env.push(name.clone(), (typ.clone(), bind_range.clone())) {
                             Ok(_) => {
                                 annotations.push(TypeAnnotation {
                                     range: bind_range.clone(),
@@ -1009,7 +1108,14 @@ fn typecheck_node(
                         .children
                         .iter()
                         .filter_map(|child| {
-                            typecheck_node(child, var_env, annotations, errors, type_env)
+                            typecheck_node(
+                                child,
+                                var_env,
+                                annotations,
+                                definition_links,
+                                errors,
+                                type_env,
+                            )
                         })
                         .collect::<Vec<_>>();
 
@@ -1071,8 +1177,9 @@ fn typecheck_node(
 
 fn typecheck_attributes(
     attributes: &[ParsedAttribute],
-    var_env: &mut Environment<Arc<Type>>,
+    var_env: &mut Environment<(Arc<Type>, DocumentRange)>,
     annotations: &mut Vec<TypeAnnotation>,
+    definition_links: &mut Vec<DefinitionLink>,
     errors: &mut ErrorCollector<TypeError>,
     type_env: &mut Environment<Arc<Type>>,
 ) -> Vec<TypedAttribute> {
@@ -1086,6 +1193,7 @@ fn typecheck_attributes(
                     var_env,
                     type_env,
                     annotations,
+                    definition_links,
                     None,
                 )) {
                     // Check that attributes evaluate to strings or booleans
@@ -1289,6 +1397,7 @@ mod tests {
         let mut state = HashMap::new();
         let mut type_errors = HashMap::new();
         let mut type_annotations = HashMap::new();
+        let mut definition_links = HashMap::new();
         let mut typed_asts = HashMap::new();
         let mut module_ids = Vec::new();
 
@@ -1317,6 +1426,7 @@ mod tests {
                 &mut state,
                 &mut type_errors,
                 &mut type_annotations,
+                &mut definition_links,
                 &mut typed_asts,
             );
 

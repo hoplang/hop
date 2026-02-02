@@ -1,10 +1,10 @@
 mod frontend;
 mod server;
 
-use crate::project::Project;
-use crate::project::project_watcher::ProjectWatcher;
 use crate::hop::program::Program;
 use crate::log_info;
+use crate::project::Project;
+use crate::project::project_watcher::ProjectWatcher;
 use crate::tui::timing;
 use server::{AppState, create_router};
 use std::collections::HashMap;

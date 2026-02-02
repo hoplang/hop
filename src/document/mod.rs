@@ -576,9 +576,10 @@ mod tests {
 
     #[test]
     fn collect_string_ranges() {
-        let result: Option<DocumentRange> = DocumentCursor::new(ModuleId::test(), "   hello".to_string())
-            .take_while(|s| s.ch() == ' ')
-            .collect();
+        let result: Option<DocumentRange> =
+            DocumentCursor::new(ModuleId::test(), "   hello".to_string())
+                .take_while(|s| s.ch() == ' ')
+                .collect();
 
         let range = result.unwrap();
         assert_eq!(range.as_str(), "   ");
@@ -594,18 +595,20 @@ mod tests {
 
     #[test]
     fn collect_empty_ranges() {
-        let result: Option<DocumentRange> = DocumentCursor::new(ModuleId::test(), "hello".to_string())
-            .take_while(|s| s.ch() == ' ')
-            .collect();
+        let result: Option<DocumentRange> =
+            DocumentCursor::new(ModuleId::test(), "hello".to_string())
+                .take_while(|s| s.ch() == ' ')
+                .collect();
 
         assert!(result.is_none());
     }
 
     #[test]
     fn collect_multiline_ranges() {
-        let result: Option<DocumentRange> = DocumentCursor::new(ModuleId::test(), "aaa\nbbb".to_string())
-            .take_while(|s| s.ch() == 'a')
-            .collect();
+        let result: Option<DocumentRange> =
+            DocumentCursor::new(ModuleId::test(), "aaa\nbbb".to_string())
+                .take_while(|s| s.ch() == 'a')
+                .collect();
 
         let range = result.unwrap();
         assert_eq!(range.as_str(), "aaa");
@@ -621,10 +624,11 @@ mod tests {
 
     #[test]
     fn collect_with_skip() {
-        let result: Option<DocumentRange> = DocumentCursor::new(ModuleId::test(), "   hello   ".to_string())
-            .skip(3)
-            .take_while(|s| s.ch().is_alphabetic())
-            .collect();
+        let result: Option<DocumentRange> =
+            DocumentCursor::new(ModuleId::test(), "   hello   ".to_string())
+                .skip(3)
+                .take_while(|s| s.ch().is_alphabetic())
+                .collect();
 
         let range = result.unwrap();
         assert_eq!(range.as_str(), "hello");
@@ -687,7 +691,8 @@ mod tests {
         // Line 0: €(1) \n(1)
         // Line 1: 🎨(2) \n(1)
         // Line 2: c(1)
-        let mut cursor = DocumentCursor::new(ModuleId::test(), "\u{20AC}\n\u{1F3A8}\nc".to_string());
+        let mut cursor =
+            DocumentCursor::new(ModuleId::test(), "\u{20AC}\n\u{1F3A8}\nc".to_string());
 
         let range1 = cursor.next().unwrap();
         assert_eq!(range1.ch(), '\u{20AC}');

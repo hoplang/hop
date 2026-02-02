@@ -241,9 +241,9 @@ fn is_free_from_bindings(pattern: &ParsedMatchPattern, typ: &Type) -> bool {
 }
 
 /// The `match` compiler itself.
-pub struct Compiler<'a> {
+pub struct Compiler<'a, T> {
     /// Environment for generating fresh variable names.
-    env: &'a mut crate::environment::Environment<Arc<Type>>,
+    env: &'a mut crate::environment::Environment<T>,
     /// The arm indices that are reachable.
     reachable: Vec<usize>,
     /// Missing pattern strings collected during compilation.
@@ -254,8 +254,8 @@ pub struct Compiler<'a> {
     var_info: HashMap<String, VarInfo>,
 }
 
-impl<'a> Compiler<'a> {
-    pub fn new(env: &'a mut crate::environment::Environment<Arc<Type>>) -> Self {
+impl<'a, T> Compiler<'a, T> {
+    pub fn new(env: &'a mut crate::environment::Environment<T>) -> Self {
         Self {
             env,
             reachable: Vec::new(),

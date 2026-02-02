@@ -1,8 +1,8 @@
 use crate::document::DocumentPosition;
 use crate::document::{Document, DocumentRange};
-use crate::project::Project;
 use crate::hop::program::{DefinitionLocation, Program, RenameLocation};
 use crate::hop::symbols::module_id::ModuleId;
+use crate::project::Project;
 use std::collections::HashMap;
 use tokio::sync::{OnceCell, RwLock};
 use tower_lsp_server::jsonrpc::Result;
@@ -158,7 +158,8 @@ impl LanguageServer for HopLanguageServer {
                 let changed_modules: Vec<ModuleId>;
                 {
                     let mut server = self.program.write().await;
-                    changed_modules = server.update_module(&module_id, Document::new(module_id.clone(), change.text));
+                    changed_modules = server
+                        .update_module(&module_id, Document::new(module_id.clone(), change.text));
                 }
                 for c in changed_modules {
                     let uri = Self::module_id_to_uri(&c, project);

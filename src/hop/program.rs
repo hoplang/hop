@@ -13,6 +13,7 @@ use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+use super::semantics::definition_link::DefinitionLink;
 use super::semantics::type_annotation::TypeAnnotation;
 use super::semantics::type_checker::typecheck;
 use super::semantics::typed_ast::TypedAst;
@@ -66,6 +67,7 @@ pub struct Program {
     typechecker_state: HashMap<ModuleId, HashMap<String, Arc<Type>>>,
     type_errors: HashMap<ModuleId, ErrorCollector<TypeError>>,
     type_annotations: HashMap<ModuleId, Vec<TypeAnnotation>>,
+    definition_links: HashMap<ModuleId, Vec<DefinitionLink>>,
     typed_asts: HashMap<ModuleId, TypedAst>,
 }
 
@@ -111,6 +113,7 @@ impl Program {
                     &mut self.typechecker_state,
                     &mut self.type_errors,
                     &mut self.type_annotations,
+                    &mut self.definition_links,
                     &mut self.typed_asts,
                 );
             }
@@ -156,6 +159,7 @@ impl Program {
                 &mut self.typechecker_state,
                 &mut self.type_errors,
                 &mut self.type_annotations,
+                &mut self.definition_links,
                 &mut self.typed_asts,
             );
         }
@@ -224,6 +228,17 @@ impl Program {
         module_id: &ModuleId,
         position: DocumentPosition,
     ) -> Option<DefinitionLocation> {
+        // Check if we have a definition link for this position (e.g., variable reference)
+        if let Some(links) = self.definition_links.get(module_id) {
+            for link in links {
+                if link.use_range.contains_position(position) {
+                    return Some(DefinitionLocation {
+                        range: link.definition_range.clone(),
+                    });
+                }
+            }
+        }
+
         let ast = self.parsed_asts.get(module_id)?;
 
         // First check if we're on an import node's path (module::path::Component)
@@ -1184,6 +1199,69 @@ mod tests {
                   --> main (line 1, col 2)
                 1 | <HelloWorld>
                   |  ^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_find_definition_from_variable_reference() {
+        check_definition_location(
+            indoc! {r#"
+                -- main.hop --
+                <Main {name: String}>
+                  <span>{name}</span>
+                         ^
+                </Main>
+            "#},
+            expect![[r#"
+                Definition
+                  --> main (line 1, col 8)
+                1 | <Main {name: String}>
+                  |        ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_find_definition_from_for_loop_variable() {
+        check_definition_location(
+            indoc! {r#"
+                -- main.hop --
+                <Main {items: Array[String]}>
+                  <ul>
+                    <for {item in items}>
+                      <li>{item}</li>
+                            ^
+                    </for>
+                  </ul>
+                </Main>
+            "#},
+            expect![[r#"
+                Definition
+                  --> main (line 3, col 11)
+                3 |     <for {item in items}>
+                  |           ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_find_definition_from_let_binding_reference() {
+        check_definition_location(
+            indoc! {r#"
+                -- main.hop --
+                <Main>
+                  <let {greeting: String = "Hello"}>
+                    <span>{greeting}</span>
+                            ^
+                  </let>
+                </Main>
+            "#},
+            expect![[r#"
+                Definition
+                  --> main (line 2, col 9)
+                2 |   <let {greeting: String = "Hello"}>
+                  |         ^^^^^^^^
             "#]],
         );
     }

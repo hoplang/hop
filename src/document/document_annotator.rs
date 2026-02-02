@@ -77,7 +77,10 @@ impl DocumentAnnotator {
 
         // Extract source and module_id from the first annotation's range
         let (source, module_id) = match annotations.first() {
-            Some(first) => (first.range().full_source(), first.range().module_id().clone()),
+            Some(first) => (
+                first.range().full_source(),
+                first.range().module_id().clone(),
+            ),
             None => return String::new(),
         };
 

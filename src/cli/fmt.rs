@@ -1,10 +1,10 @@
 use crate::document::{Document, DocumentAnnotator};
 use crate::error_collector::ErrorCollector;
-use crate::project::Project;
 use crate::hop::symbols::module_id::ModuleId;
 use crate::hop::syntax::format;
 use crate::hop::syntax::parser;
 use crate::parse_error::ParseError;
+use crate::project::Project;
 use crate::tui::timing;
 use anyhow::Result;
 use rayon::prelude::*;

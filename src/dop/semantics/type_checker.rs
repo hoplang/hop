@@ -11,6 +11,7 @@ use crate::dop::syntax::parsed::{
     Constructor, ParsedBinaryOp, ParsedExpr, ParsedMatchArm, ParsedMatchPattern, ParsedType,
 };
 use crate::environment::Environment;
+use crate::hop::semantics::definition_link::DefinitionLink;
 use crate::hop::semantics::type_annotation::TypeAnnotation;
 use crate::type_error::TypeError;
 
@@ -52,18 +53,23 @@ pub fn resolve_type(
 /// empty array literals to infer their element type from context.
 pub fn typecheck_expr(
     parsed_expr: &ParsedExpr,
-    var_env: &mut Environment<Arc<Type>>,
+    var_env: &mut Environment<(Arc<Type>, DocumentRange)>,
     type_env: &mut Environment<Arc<Type>>,
     annotations: &mut Vec<TypeAnnotation>,
+    definition_links: &mut Vec<DefinitionLink>,
     expected_type: Option<&Arc<Type>>,
 ) -> Result<TypedExpr, TypeError> {
     match parsed_expr {
         ParsedExpr::Var { value: name, .. } => {
-            if let Some(var_type) = var_env.lookup(name.as_str()) {
+            if let Some((var_type, def_range)) = var_env.lookup(name.as_str()) {
                 annotations.push(TypeAnnotation {
                     range: parsed_expr.range().clone(),
                     typ: var_type.clone(),
                     name: name.to_string(),
+                });
+                definition_links.push(DefinitionLink {
+                    use_range: parsed_expr.range().clone(),
+                    definition_range: def_range.clone(),
                 });
                 Ok(TypedExpr::Var {
                     value: name.clone(),
@@ -88,7 +94,14 @@ pub fn typecheck_expr(
             range,
             ..
         } => {
-            let typed_base = typecheck_expr(record, var_env, type_env, annotations, None)?;
+            let typed_base = typecheck_expr(
+                record,
+                var_env,
+                type_env,
+                annotations,
+                definition_links,
+                None,
+            )?;
             let base_type = typed_base.as_type();
 
             match &base_type {
@@ -128,23 +141,33 @@ pub fn typecheck_expr(
             // Try left first; if it fails (e.g., None without context), try right first
             // to infer left's type from right
             let typed_left =
-                typecheck_expr(left, var_env, type_env, annotations, None).or_else(|left_err| {
-                    let typed_right = typecheck_expr(right, var_env, type_env, annotations, None)?;
-                    typecheck_expr(
-                        left,
-                        var_env,
-                        type_env,
-                        annotations,
-                        Some(&typed_right.get_type()),
-                    )
-                    .map_err(|_| left_err)
-                })?;
+                typecheck_expr(left, var_env, type_env, annotations, definition_links, None)
+                    .or_else(|left_err| {
+                        let typed_right = typecheck_expr(
+                            right,
+                            var_env,
+                            type_env,
+                            annotations,
+                            definition_links,
+                            None,
+                        )?;
+                        typecheck_expr(
+                            left,
+                            var_env,
+                            type_env,
+                            annotations,
+                            definition_links,
+                            Some(&typed_right.get_type()),
+                        )
+                        .map_err(|_| left_err)
+                    })?;
             // Use left's type as context for right (allows Some(1) == None)
             let typed_right = typecheck_expr(
                 right,
                 var_env,
                 type_env,
                 annotations,
+                definition_links,
                 Some(&typed_left.get_type()),
             )?;
 
@@ -185,8 +208,16 @@ pub fn typecheck_expr(
             right,
             ..
         } => {
-            let typed_left = typecheck_expr(left, var_env, type_env, annotations, None)?;
-            let typed_right = typecheck_expr(right, var_env, type_env, annotations, None)?;
+            let typed_left =
+                typecheck_expr(left, var_env, type_env, annotations, definition_links, None)?;
+            let typed_right = typecheck_expr(
+                right,
+                var_env,
+                type_env,
+                annotations,
+                definition_links,
+                None,
+            )?;
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
@@ -224,8 +255,16 @@ pub fn typecheck_expr(
             right,
             ..
         } => {
-            let typed_left = typecheck_expr(left, var_env, type_env, annotations, None)?;
-            let typed_right = typecheck_expr(right, var_env, type_env, annotations, None)?;
+            let typed_left =
+                typecheck_expr(left, var_env, type_env, annotations, definition_links, None)?;
+            let typed_right = typecheck_expr(
+                right,
+                var_env,
+                type_env,
+                annotations,
+                definition_links,
+                None,
+            )?;
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
@@ -267,8 +306,16 @@ pub fn typecheck_expr(
             right,
             ..
         } => {
-            let typed_left = typecheck_expr(left, var_env, type_env, annotations, None)?;
-            let typed_right = typecheck_expr(right, var_env, type_env, annotations, None)?;
+            let typed_left =
+                typecheck_expr(left, var_env, type_env, annotations, definition_links, None)?;
+            let typed_right = typecheck_expr(
+                right,
+                var_env,
+                type_env,
+                annotations,
+                definition_links,
+                None,
+            )?;
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
@@ -310,8 +357,16 @@ pub fn typecheck_expr(
             right,
             ..
         } => {
-            let typed_left = typecheck_expr(left, var_env, type_env, annotations, None)?;
-            let typed_right = typecheck_expr(right, var_env, type_env, annotations, None)?;
+            let typed_left =
+                typecheck_expr(left, var_env, type_env, annotations, definition_links, None)?;
+            let typed_right = typecheck_expr(
+                right,
+                var_env,
+                type_env,
+                annotations,
+                definition_links,
+                None,
+            )?;
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
@@ -352,8 +407,16 @@ pub fn typecheck_expr(
             right,
             ..
         } => {
-            let typed_left = typecheck_expr(left, var_env, type_env, annotations, None)?;
-            let typed_right = typecheck_expr(right, var_env, type_env, annotations, None)?;
+            let typed_left =
+                typecheck_expr(left, var_env, type_env, annotations, definition_links, None)?;
+            let typed_right = typecheck_expr(
+                right,
+                var_env,
+                type_env,
+                annotations,
+                definition_links,
+                None,
+            )?;
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
@@ -394,8 +457,16 @@ pub fn typecheck_expr(
             right,
             ..
         } => {
-            let typed_left = typecheck_expr(left, var_env, type_env, annotations, None)?;
-            let typed_right = typecheck_expr(right, var_env, type_env, annotations, None)?;
+            let typed_left =
+                typecheck_expr(left, var_env, type_env, annotations, definition_links, None)?;
+            let typed_right = typecheck_expr(
+                right,
+                var_env,
+                type_env,
+                annotations,
+                definition_links,
+                None,
+            )?;
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
@@ -423,8 +494,16 @@ pub fn typecheck_expr(
             right,
             ..
         } => {
-            let typed_left = typecheck_expr(left, var_env, type_env, annotations, None)?;
-            let typed_right = typecheck_expr(right, var_env, type_env, annotations, None)?;
+            let typed_left =
+                typecheck_expr(left, var_env, type_env, annotations, definition_links, None)?;
+            let typed_right = typecheck_expr(
+                right,
+                var_env,
+                type_env,
+                annotations,
+                definition_links,
+                None,
+            )?;
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
@@ -451,8 +530,16 @@ pub fn typecheck_expr(
             right,
             ..
         } => {
-            let typed_left = typecheck_expr(left, var_env, type_env, annotations, None)?;
-            let typed_right = typecheck_expr(right, var_env, type_env, annotations, None)?;
+            let typed_left =
+                typecheck_expr(left, var_env, type_env, annotations, definition_links, None)?;
+            let typed_right = typecheck_expr(
+                right,
+                var_env,
+                type_env,
+                annotations,
+                definition_links,
+                None,
+            )?;
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
@@ -487,8 +574,16 @@ pub fn typecheck_expr(
             right,
             ..
         } => {
-            let typed_left = typecheck_expr(left, var_env, type_env, annotations, None)?;
-            let typed_right = typecheck_expr(right, var_env, type_env, annotations, None)?;
+            let typed_left =
+                typecheck_expr(left, var_env, type_env, annotations, definition_links, None)?;
+            let typed_right = typecheck_expr(
+                right,
+                var_env,
+                type_env,
+                annotations,
+                definition_links,
+                None,
+            )?;
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
@@ -519,8 +614,16 @@ pub fn typecheck_expr(
             right,
             ..
         } => {
-            let typed_left = typecheck_expr(left, var_env, type_env, annotations, None)?;
-            let typed_right = typecheck_expr(right, var_env, type_env, annotations, None)?;
+            let typed_left =
+                typecheck_expr(left, var_env, type_env, annotations, definition_links, None)?;
+            let typed_right = typecheck_expr(
+                right,
+                var_env,
+                type_env,
+                annotations,
+                definition_links,
+                None,
+            )?;
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
@@ -546,7 +649,14 @@ pub fn typecheck_expr(
             }
         }
         ParsedExpr::Negation { operand, .. } => {
-            let typed_operand = typecheck_expr(operand, var_env, type_env, annotations, None)?;
+            let typed_operand = typecheck_expr(
+                operand,
+                var_env,
+                type_env,
+                annotations,
+                definition_links,
+                None,
+            )?;
             let operand_type = typed_operand.as_type();
 
             if *operand_type != Type::Bool {
@@ -560,7 +670,14 @@ pub fn typecheck_expr(
             })
         }
         ParsedExpr::NumericNegation { operand, .. } => {
-            let typed_operand = typecheck_expr(operand, var_env, type_env, annotations, None)?;
+            let typed_operand = typecheck_expr(
+                operand,
+                var_env,
+                type_env,
+                annotations,
+                definition_links,
+                None,
+            )?;
             let operand_type = typed_operand.as_type();
 
             match operand_type {
@@ -608,6 +725,7 @@ pub fn typecheck_expr(
                     var_env,
                     type_env,
                     annotations,
+                    definition_links,
                     expected_elem_type.as_ref(),
                 )?;
                 let first_type = first_typed.get_type();
@@ -622,6 +740,7 @@ pub fn typecheck_expr(
                         var_env,
                         type_env,
                         annotations,
+                        definition_links,
                         Some(elem_context),
                     )?;
                     let element_type = typed_element.get_type();
@@ -694,6 +813,7 @@ pub fn typecheck_expr(
                     var_env,
                     type_env,
                     annotations,
+                    definition_links,
                     Some(expected_type),
                 )?;
                 let actual_type = typed_value.get_type();
@@ -793,6 +913,7 @@ pub fn typecheck_expr(
                                 var_env,
                                 type_env,
                                 annotations,
+                                definition_links,
                                 Some(expected_type),
                             )?;
 
@@ -864,6 +985,7 @@ pub fn typecheck_expr(
                         var_env,
                         type_env,
                         annotations,
+                        definition_links,
                         expected_inner_type.as_ref(),
                     )?;
                     let inner_type = typed_inner.get_type();
@@ -889,11 +1011,23 @@ pub fn typecheck_expr(
                 }
             }
         }
-        ParsedExpr::Match { subject, arms, .. } => {
-            typecheck_match(subject, arms, var_env, type_env, annotations)
-        }
+        ParsedExpr::Match { subject, arms, .. } => typecheck_match(
+            subject,
+            arms,
+            var_env,
+            type_env,
+            annotations,
+            definition_links,
+        ),
         ParsedExpr::MacroInvocation { name, args, range } => match name.as_str() {
-            "classes" => expand_classes_macro(args, range, var_env, type_env, annotations),
+            "classes" => expand_classes_macro(
+                args,
+                range,
+                var_env,
+                type_env,
+                annotations,
+                definition_links,
+            ),
             _ => unreachable!("Unknown macro '{}' should be caught at parse time", name),
         },
         ParsedExpr::MethodCall {
@@ -901,7 +1035,14 @@ pub fn typecheck_expr(
             method,
             range,
         } => {
-            let typed_receiver = typecheck_expr(receiver, var_env, type_env, annotations, None)?;
+            let typed_receiver = typecheck_expr(
+                receiver,
+                var_env,
+                type_env,
+                annotations,
+                definition_links,
+                None,
+            )?;
             let receiver_type = typed_receiver.get_type();
 
             match (receiver_type.as_ref(), method.as_str()) {
@@ -937,15 +1078,23 @@ pub fn typecheck_expr(
 fn expand_classes_macro(
     args: &[ParsedExpr],
     _range: &DocumentRange,
-    var_env: &mut Environment<Arc<Type>>,
+    var_env: &mut Environment<(Arc<Type>, DocumentRange)>,
     type_env: &mut Environment<Arc<Type>>,
     annotations: &mut Vec<TypeAnnotation>,
+    definition_links: &mut Vec<DefinitionLink>,
 ) -> Result<TypedExpr, TypeError> {
     // Type-check all arguments, expecting String
     let mut typed_args = Vec::new();
     let string_type = Arc::new(Type::String);
     for arg in args {
-        let typed = typecheck_expr(arg, var_env, type_env, annotations, Some(&string_type))?;
+        let typed = typecheck_expr(
+            arg,
+            var_env,
+            type_env,
+            annotations,
+            definition_links,
+            Some(&string_type),
+        )?;
         // Verify it's actually a String
         if typed.as_type() != &Type::String {
             return Err(TypeError::MacroArgumentTypeMismatch {
@@ -965,11 +1114,19 @@ fn expand_classes_macro(
 fn typecheck_match(
     subject: &ParsedExpr,
     arms: &[ParsedMatchArm],
-    var_env: &mut Environment<Arc<Type>>,
+    var_env: &mut Environment<(Arc<Type>, DocumentRange)>,
     type_env: &mut Environment<Arc<Type>>,
     annotations: &mut Vec<TypeAnnotation>,
+    definition_links: &mut Vec<DefinitionLink>,
 ) -> Result<TypedExpr, TypeError> {
-    let typed_subject = typecheck_expr(subject, var_env, type_env, annotations, None)?;
+    let typed_subject = typecheck_expr(
+        subject,
+        var_env,
+        type_env,
+        annotations,
+        definition_links,
+        None,
+    )?;
     // If subject is already a variable, use it directly; otherwise wrap in a let
     let (subject_name, needs_wrapper) = match &typed_subject {
         TypedExpr::Var { value, .. } => (value.as_str().to_string(), false),
@@ -990,6 +1147,7 @@ fn typecheck_match(
         var_env,
         type_env,
         annotations,
+        definition_links,
     )?;
 
     let mut result = decision_to_typed_expr(&tree, &typed_bodies, result_type.clone());
@@ -1087,9 +1245,10 @@ pub fn extract_bindings_from_pattern(
 fn typecheck_arm_bodies(
     arms: &[ParsedMatchArm],
     subject_type: Arc<Type>,
-    env: &mut Environment<Arc<Type>>,
+    env: &mut Environment<(Arc<Type>, DocumentRange)>,
     type_env: &mut Environment<Arc<Type>>,
     annotations: &mut Vec<TypeAnnotation>,
+    definition_links: &mut Vec<DefinitionLink>,
 ) -> Result<(Vec<TypedExpr>, Arc<Type>), TypeError> {
     let mut typed_bodies = Vec::new();
     let mut result_type: Option<Arc<Type>> = None;
@@ -1099,7 +1258,7 @@ fn typecheck_arm_bodies(
         let bindings = extract_bindings_from_pattern(&arm.pattern, subject_type.clone());
         let mut pushed_count = 0;
         for (name, typ, range) in &bindings {
-            match env.push(name.clone(), typ.clone()) {
+            match env.push(name.clone(), (typ.clone(), range.clone())) {
                 Ok(_) => {
                     pushed_count += 1;
                 }
@@ -1113,8 +1272,14 @@ fn typecheck_arm_bodies(
         }
 
         // Use the first arm's type as context for subsequent arms
-        let typed_body =
-            typecheck_expr(&arm.body, env, type_env, annotations, result_type.as_ref())?;
+        let typed_body = typecheck_expr(
+            &arm.body,
+            env,
+            type_env,
+            annotations,
+            definition_links,
+            result_type.as_ref(),
+        )?;
         let body_type = typed_body.get_type();
 
         // Remove bindings from environment and check for unused bindings
@@ -1355,7 +1520,7 @@ mod tests {
     use std::collections::VecDeque;
 
     fn check(declarations_str: &str, env_vars: &[(&str, &str)], expr_str: &str, expected: Expect) {
-        let mut env: Environment<Arc<Type>> = Environment::new();
+        let mut env: Environment<(Arc<Type>, DocumentRange)> = Environment::new();
         let mut type_env: Environment<Arc<Type>> = Environment::new();
         let test_module = ModuleId::new("test").unwrap();
 
@@ -1429,7 +1594,7 @@ mod tests {
                 .expect("Failed to parse type");
             let typ = resolve_type(&parsed_type, &mut type_env)
                 .expect("Test parameter type should be valid");
-            let _ = env.push(var_name.to_string(), typ);
+            let _ = env.push(var_name.to_string(), (typ, range.clone()));
         }
 
         let cursor = DocumentCursor::new(ModuleId::test(), expr_str.to_string());
@@ -1441,8 +1606,16 @@ mod tests {
             .expect("Failed to parse expression");
 
         let mut annotations = Vec::new();
+        let mut definition_links = Vec::new();
 
-        let actual = match typecheck_expr(&expr, &mut env, &mut type_env, &mut annotations, None) {
+        let actual = match typecheck_expr(
+            &expr,
+            &mut env,
+            &mut type_env,
+            &mut annotations,
+            &mut definition_links,
+            None,
+        ) {
             Ok(typed_expr) => typed_expr.as_type().to_string(),
             Err(e) => DocumentAnnotator::new()
                 .with_label("error")

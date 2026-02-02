@@ -1,9 +1,9 @@
 use crate::config::TargetLanguage;
 use crate::document::DocumentAnnotator;
-use crate::project::Project;
 use crate::hop::program::Program;
 use crate::ir::{GoTranspiler, PythonTranspiler, RustTranspiler, Transpiler, TsTranspiler};
 use crate::orchestrator::{OrchestrateOptions, orchestrate};
+use crate::project::Project;
 use crate::tui::timing::TimingCollector;
 use anyhow::Result;
 use std::collections::HashMap;

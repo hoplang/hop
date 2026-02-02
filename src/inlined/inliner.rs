@@ -505,6 +505,7 @@ mod tests {
         let mut state = HashMap::new();
         let mut type_errors = HashMap::new();
         let mut type_annotations = HashMap::new();
+        let mut definition_links = HashMap::new();
         let mut typed_asts = HashMap::new();
 
         let untyped_asts_refs: Vec<_> = untyped_asts.values().collect();
@@ -513,6 +514,7 @@ mod tests {
             &mut state,
             &mut type_errors,
             &mut type_annotations,
+            &mut definition_links,
             &mut typed_asts,
         );
 
