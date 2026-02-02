@@ -1,5 +1,6 @@
 mod cli;
 mod common;
+mod config;
 mod document;
 mod dop;
 mod environment;

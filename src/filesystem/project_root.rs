@@ -5,7 +5,7 @@ use std::{
 };
 use tokio::fs as async_fs;
 
-use super::config::HopConfig;
+use crate::config::HopConfig;
 use crate::document::Document;
 use crate::hop::symbols::module_id::ModuleId;
 

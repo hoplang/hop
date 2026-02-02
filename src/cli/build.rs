@@ -1,5 +1,5 @@
 use crate::document::DocumentAnnotator;
-use crate::filesystem::config::TargetLanguage;
+use crate::config::TargetLanguage;
 use crate::filesystem::project_root::ProjectRoot;
 use crate::hop::program::Program;
 use crate::ir::{GoTranspiler, PythonTranspiler, RustTranspiler, Transpiler, TsTranspiler};
