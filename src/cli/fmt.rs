@@ -33,7 +33,7 @@ pub fn execute(project_root: &ProjectRoot, file: Option<&str>) -> Result<FmtResu
     let mut timer = timing::TimingCollector::new();
 
     timer.start_phase("find files");
-    let module_paths: Vec<PathBuf> = match file {
+    let module_paths = match file {
         Some(file_path) => vec![PathBuf::from(file_path)],
         None => {
             let paths = project_root.find_hop_files()?;
@@ -45,7 +45,7 @@ pub fn execute(project_root: &ProjectRoot, file: Option<&str>) -> Result<FmtResu
     };
 
     timer.start_phase("parse and format");
-    let results: Vec<ModuleResult> = module_paths
+    let results = module_paths
         .into_par_iter()
         .map(|path| {
             let (module_id, document) = match project_root.load_hop_module(&path) {
@@ -62,7 +62,7 @@ pub fn execute(project_root: &ProjectRoot, file: Option<&str>) -> Result<FmtResu
                 errors: errors.to_vec(),
             })
         })
-        .collect();
+        .collect::<Vec<_>>();
 
     // Check for errors
     let mut error_output_parts = Vec::new();

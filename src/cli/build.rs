@@ -1,66 +1,25 @@
-use crate::document::DocumentAnnotator;
 use crate::config::TargetLanguage;
+use crate::document::DocumentAnnotator;
 use crate::filesystem::project_root::ProjectRoot;
 use crate::hop::program::Program;
 use crate::ir::{GoTranspiler, PythonTranspiler, RustTranspiler, Transpiler, TsTranspiler};
 use crate::orchestrator::{OrchestrateOptions, orchestrate};
-use crate::tui::timing;
+use crate::tui::timing::{self, TimingCollector};
 use anyhow::Result;
-use std::path::{Path, PathBuf};
-use tailwind_runner::{TailwindConfig, TailwindRunner};
+use std::path::PathBuf;
+use tailwind_runner::TailwindRunner;
 
 pub struct CompileResult {
-    pub timer: crate::tui::timing::TimingCollector,
+    pub timer: TimingCollector,
     pub output_path: PathBuf,
-}
-
-async fn compile_tailwind(input_path: &Path, hop_sources: &str) -> Result<String> {
-    let cache_dir = PathBuf::from("/tmp/.hop-cache");
-    tokio::fs::create_dir_all(&cache_dir).await?;
-
-    // Create a temp working directory with hop sources for Tailwind to scan.
-    // This isolates Tailwind from the project's output file, preventing it from
-    // scanning old generated content.
-    let tailwind_scan_dir = tempfile::tempdir()?;
-    tokio::fs::write(tailwind_scan_dir.path().join("sources.hop"), hop_sources).await?;
-
-    let runner = TailwindRunner::new(cache_dir.clone()).await?;
-
-    let tailwind_config = TailwindConfig {
-        input: input_path.to_path_buf(),
-        output: tailwind_scan_dir.path().join("compiled.css"),
-        working_dir: tailwind_scan_dir.path().to_path_buf(),
-    };
-
-    // Run Tailwind compilation
-    runner.run_once(&tailwind_config).await?;
-
-    // Read and return the compiled CSS
-    let css = tokio::fs::read_to_string(&tailwind_config.output).await?;
-    Ok(css)
-}
-
-// Tailwind needs a file that contains at least the string `@import "tailwindcss";`
-// to properly execute. This function creates such a file.
-async fn create_default_tailwind_input() -> Result<PathBuf> {
-    let cache_dir = PathBuf::from("/tmp/.hop-cache");
-    tokio::fs::create_dir_all(&cache_dir).await?;
-
-    let temp_input = cache_dir.join("default-input.css");
-    let default_content = r#"@import "tailwindcss";"#;
-
-    tokio::fs::write(&temp_input, default_content).await?;
-    Ok(temp_input)
 }
 
 pub async fn execute(project_root: &ProjectRoot, skip_optimization: bool) -> Result<CompileResult> {
     let mut timer = timing::TimingCollector::new();
 
-    // Load configuration
     let config = project_root.load_config().await?;
     let resolved = config.get_resolved_config()?;
 
-    // Load all .hop files first - we need them for Tailwind scanning
     timer.start_phase("load modules");
     let hop_modules = project_root.load_all_hop_modules()?;
 
@@ -68,73 +27,60 @@ pub async fn execute(project_root: &ProjectRoot, skip_optimization: bool) -> Res
         anyhow::bail!("No .hop files found in project");
     }
 
-    // Concatenate all hop sources for Tailwind to scan
-    let hop_sources: String = hop_modules
+    let hop_sources = hop_modules
         .values()
         .map(|doc| doc.as_str())
         .collect::<Vec<_>>()
         .join("\n");
 
-    // Compile Tailwind CSS if configured
     timer.start_phase("tailwind");
-    let tailwind_css = if let Some(p) = project_root.get_tailwind_input_path().await? {
-        // Use user-specified Tailwind input
-        Some(compile_tailwind(&p, &hop_sources).await?)
-    } else {
-        // Use default Tailwind configuration
-        let default_input = create_default_tailwind_input().await?;
-        Some(compile_tailwind(&default_input, &hop_sources).await?)
-    };
+    let runner = TailwindRunner::new().await?;
+    let tailwind_input = project_root.get_tailwind_input_path().await?;
+    let tailwind_css = runner.compile_once(tailwind_input, &hop_sources).await?;
 
     timer.start_phase("compiling");
-    // Create Program and compile all modules
     let program = Program::new(hop_modules);
 
-    // Check for compilation errors
-    let mut error_output_parts = Vec::new();
+    let mut error_output = Vec::new();
     let annotator = DocumentAnnotator::new()
         .with_label("error")
         .with_lines_before(1)
         .with_location();
 
-    // Check for parse errors
     for (module_id, errors) in program.get_parse_errors() {
         if !errors.is_empty() {
             let filename = format!("{}.hop", module_id);
-            error_output_parts.push(annotator.annotate(Some(&filename), errors.iter()));
+            error_output.push(annotator.annotate(Some(&filename), errors.iter()));
         }
     }
 
-    // Check for type errors if there's no parse errors
-    if error_output_parts.is_empty() {
+    if error_output.is_empty() {
         for (module_id, errors) in program.get_type_errors() {
             if !errors.is_empty() {
                 let filename = format!("{}.hop", module_id);
-                error_output_parts.push(annotator.annotate(Some(&filename), errors));
+                error_output.push(annotator.annotate(Some(&filename), errors));
             }
         }
     }
 
-    if !error_output_parts.is_empty() {
+    if !error_output.is_empty() {
         return Err(anyhow::anyhow!(
             "Compilation failed:\n{}",
-            error_output_parts.join("\n")
+            error_output.join("\n")
         ));
     }
 
     timer.start_phase("compiling to IR");
 
-    // Use orchestrate to handle inlining, compilation, and optimization
     let ir_module = orchestrate(
         program.get_typed_modules(),
-        tailwind_css.as_deref(),
+        Some(&tailwind_css),
         OrchestrateOptions {
             skip_optimization,
             ..Default::default()
         },
     );
 
-    // Generate code based on target language
     let generated_code = match resolved.target {
         TargetLanguage::Typescript => {
             timer.start_phase("transpiling to ts");

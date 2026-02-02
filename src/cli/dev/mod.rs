@@ -154,25 +154,26 @@ pub async fn execute(root: &ProjectRoot) -> anyhow::Result<DevServer> {
     // Get tailwind input path if it exists
     let input_css_path = root.get_tailwind_input_path().await?;
 
-    // Create the Tailwind runner and start the watcher
+    // Create the Tailwind runner, compile initial CSS, and start the watcher
     timer.start_phase("tailwind");
-    let cache_dir = PathBuf::from("/tmp/.hop-cache");
-    let runner = TailwindRunner::new(cache_dir).await?;
-    let tailwind_handle = runner
-        .start_watcher(input_css_path, program.get_all_sources())
+    let runner = TailwindRunner::new().await?;
+    let sources = program.get_all_sources();
+    let initial_css = runner
+        .compile_once(input_css_path.clone(), &sources)
         .await?;
+    let tailwind_watcher = runner.start_watcher(input_css_path, sources).await?;
 
     timer.start_phase("setup watchers");
     let (reload_channel, _) = tokio::sync::broadcast::channel::<()>(100);
     let app_state = AppState {
         program: Arc::new(RwLock::new(program)),
         reload_channel,
-        tailwind_css: Arc::new(RwLock::new(Some(tailwind_handle.initial_css))),
+        tailwind_css: Arc::new(RwLock::new(Some(initial_css))),
     };
 
     // Spawn a task that listens for CSS updates from the Tailwind watcher
     let state_for_css = app_state.clone();
-    let mut css_rx = tailwind_handle.watcher.subscribe();
+    let mut css_rx = tailwind_watcher.subscribe();
     tokio::spawn(async move {
         while css_rx.changed().await.is_ok() {
             let new_css = css_rx.borrow().clone();
@@ -183,8 +184,6 @@ pub async fn execute(root: &ProjectRoot) -> anyhow::Result<DevServer> {
             let _ = state_for_css.reload_channel.send(());
         }
     });
-
-    let tailwind_watcher = tailwind_handle.watcher;
     let adaptive_watcher =
         create_file_watcher(root, tailwind_watcher.clone(), app_state.clone()).await?;
 
