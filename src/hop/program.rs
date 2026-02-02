@@ -668,6 +668,27 @@ impl Program {
     pub fn get_typed_modules(&self) -> &HashMap<ModuleId, TypedAst> {
         &self.typed_asts
     }
+
+    /// Find which module contains a given entrypoint.
+    pub fn find_module_for_entrypoint(&self, entrypoint: &str) -> Result<ModuleId, String> {
+        let mut all_entrypoints = Vec::new();
+
+        for (module_id, ast) in &self.typed_asts {
+            for ep in ast.get_entrypoint_declarations() {
+                if ep.name.as_str() == entrypoint {
+                    return Ok(module_id.clone());
+                }
+                all_entrypoints.push(ep.name.to_string());
+            }
+        }
+
+        all_entrypoints.sort();
+        Err(format!(
+            "Entrypoint '{}' not found. Available entrypoints: {}",
+            entrypoint,
+            all_entrypoints.join(", ")
+        ))
+    }
 }
 
 #[cfg(test)]

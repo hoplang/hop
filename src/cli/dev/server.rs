@@ -2,34 +2,48 @@ use super::frontend;
 use crate::document::DocumentAnnotator;
 use crate::hop::program::Program;
 use crate::hop::symbols::component_name::ComponentName;
-use crate::hop::symbols::module_id::ModuleId;
 use crate::log_info;
-use axum::body::Body;
 use axum::extract::State;
 use axum::http::StatusCode;
-use axum::response::Response;
+use axum::response::{IntoResponse, Response};
 use std::sync::{Arc, RwLock};
 
-/// Find which module contains a given entrypoint.
-/// Returns the module name if found, or an error message listing all available entrypoints.
-fn find_module_for_entrypoint(program: &Program, entrypoint: &str) -> Result<ModuleId, String> {
-    let mut all_entrypoints = Vec::new();
+/// HTML response with 200 OK status.
+struct Html(String);
 
-    for (module_id, ast) in program.get_typed_modules() {
-        for ep in ast.get_entrypoint_declarations() {
-            if ep.name.as_str() == entrypoint {
-                return Ok(module_id.clone());
-            }
-            all_entrypoints.push(ep.name.to_string());
-        }
+impl IntoResponse for Html {
+    fn into_response(self) -> Response {
+        Response::builder()
+            .header("content-type", "text/html")
+            .body(self.0.into())
+            .unwrap()
     }
+}
 
-    all_entrypoints.sort();
-    Err(format!(
-        "Entrypoint '{}' not found. Available entrypoints: {}",
-        entrypoint,
-        all_entrypoints.join(", ")
-    ))
+/// Error overlay response with 400 Bad Request status.
+struct ErrorOverlay(String);
+
+impl IntoResponse for ErrorOverlay {
+    fn into_response(self) -> Response {
+        Response::builder()
+            .status(StatusCode::BAD_REQUEST)
+            .header("content-type", "text/html")
+            .body(frontend::overlay(&self.0).into())
+            .unwrap()
+    }
+}
+
+/// JavaScript response with immutable cache headers.
+struct ImmutableJs(&'static str);
+
+impl IntoResponse for ImmutableJs {
+    fn into_response(self) -> Response {
+        Response::builder()
+            .header("content-type", "application/javascript")
+            .header("cache-control", "public, max-age=31536000, immutable")
+            .body(self.0.into())
+            .unwrap()
+    }
 }
 
 #[derive(Clone)]
@@ -45,7 +59,7 @@ pub struct AppState {
     pub tailwind_css: Arc<RwLock<Option<String>>>,
 }
 
-async fn handle_index(State(state): State<AppState>) -> Response<Body> {
+async fn handle_index(State(state): State<AppState>) -> Html {
     let program = state.program.read().unwrap();
 
     let mut entrypoints = Vec::new();
@@ -58,37 +72,20 @@ async fn handle_index(State(state): State<AppState>) -> Response<Body> {
         }
     }
 
-    let html = frontend::index(&entrypoints);
-    Response::builder()
-        .header("Content-Type", "text/html")
-        .body(Body::from(html))
-        .unwrap()
+    Html(frontend::index(&entrypoints))
 }
 
-async fn handle_development_mode_js() -> Response<Body> {
-    Response::builder()
-        .header("Content-Type", "application/javascript")
-        .header("Cache-Control", "public, max-age=31536000, immutable")
-        .body(Body::from(include_str!("./js/development_mode.js")))
-        .unwrap()
+async fn handle_development_mode_js() -> ImmutableJs {
+    ImmutableJs(include_str!("./js/development_mode.js"))
 }
 
-async fn handle_idiomorph_js() -> Response<Body> {
-    Response::builder()
-        .header("Content-Type", "application/javascript")
-        .header("Cache-Control", "public, max-age=31536000, immutable")
-        .body(Body::from(include_str!("./js/idiomorph.js")))
-        .unwrap()
+async fn handle_idiomorph_js() -> ImmutableJs {
+    ImmutableJs(include_str!("./js/idiomorph.js"))
 }
 
-async fn handle_hmr() -> Response<Body> {
-    Response::builder()
-        .header("Content-Type", "text/html")
-        .body(Body::from(
-            r#"<!DOCTYPE html>
-<script type="module" src="/development_mode.js"></script>"#,
-        ))
-        .unwrap()
+async fn handle_hmr() -> Html {
+    Html(r#"<!DOCTYPE html>
+<script type="module" src="/development_mode.js"></script>"#.to_string())
 }
 
 #[derive(serde::Deserialize)]
@@ -100,27 +97,16 @@ struct PreviewQuery {
 async fn handle_preview(
     axum::extract::Path(entrypoint): axum::extract::Path<String>,
     axum::extract::Query(query): axum::extract::Query<PreviewQuery>,
-) -> Response<Body> {
+) -> Result<Html, ErrorOverlay> {
     let device = match query.device.as_deref() {
         Some("mobile") => frontend::Device::Mobile,
         Some("desktop") | None => frontend::Device::Desktop,
         Some(invalid) => {
-            return Response::builder()
-                .status(StatusCode::BAD_REQUEST)
-                .header("Content-Type", "text/html")
-                .body(Body::from(frontend::overlay(&format!(
-                    "Invalid device: {}",
-                    invalid
-                ))))
-                .unwrap();
+            return Err(ErrorOverlay(format!("Invalid device: {}", invalid)));
         }
     };
     let iframe_src = format!("/api/preview/{}", entrypoint);
-    let html = frontend::preview(&entrypoint, &iframe_src, &device);
-    Response::builder()
-        .header("Content-Type", "text/html")
-        .body(Body::from(html))
-        .unwrap()
+    Ok(Html(frontend::preview(&entrypoint, &iframe_src, &device)))
 }
 
 async fn handle_event_source(
@@ -157,20 +143,11 @@ async fn handle_render(
     State(state): State<AppState>,
     axum::extract::Path(entrypoint): axum::extract::Path<String>,
     axum::extract::Query(query): axum::extract::Query<RenderQuery>,
-) -> Response<Body> {
+) -> Result<Html, ErrorOverlay> {
     // Parse params from query string (JSON-encoded)
     let params: std::collections::HashMap<String, serde_json::Value> = match &query.params {
-        Some(params_str) => match serde_json::from_str(params_str) {
-            Ok(p) => p,
-            Err(e) => {
-                let error_html = frontend::overlay(&format!("Invalid params JSON: {}", e));
-                return Response::builder()
-                    .status(StatusCode::BAD_REQUEST)
-                    .header("Content-Type", "text/html")
-                    .body(Body::from(error_html))
-                    .unwrap();
-            }
-        },
+        Some(params_str) => serde_json::from_str(params_str)
+            .map_err(|e| ErrorOverlay(format!("Invalid params JSON: {}", e)))?,
         None => std::collections::HashMap::new(),
     };
 
@@ -183,33 +160,12 @@ async fn handle_render(
     let css = state.tailwind_css.read().unwrap();
     let css_content = css.as_deref();
 
-    let entrypoint_name_for_log = entrypoint.clone();
-
     // Find which module contains this entrypoint
-    let module_id = match find_module_for_entrypoint(&program, &entrypoint) {
-        Ok(name) => name,
-        Err(e) => {
-            let error_html = frontend::overlay(&e);
-            return Response::builder()
-                .status(StatusCode::BAD_REQUEST)
-                .header("Content-Type", "text/html")
-                .body(Body::from(error_html))
-                .unwrap();
-        }
-    };
+    let module_id = program.find_module_for_entrypoint(&entrypoint).map_err(ErrorOverlay)?;
 
     // Parse entrypoint name
-    let entrypoint_name = match ComponentName::new(entrypoint.clone()) {
-        Ok(name) => name,
-        Err(e) => {
-            let error_html = frontend::overlay(&format!("Invalid entrypoint name: {}", e));
-            return Response::builder()
-                .status(StatusCode::BAD_REQUEST)
-                .header("Content-Type", "text/html")
-                .body(Body::from(error_html))
-                .unwrap();
-        }
-    };
+    let entrypoint_name = ComponentName::new(entrypoint.clone())
+        .map_err(|e| ErrorOverlay(format!("Invalid entrypoint name: {}", e)))?;
 
     // Check for compilation errors
     let mut error_output_parts = Vec::new();
@@ -237,40 +193,24 @@ async fn handle_render(
     }
 
     if !error_output_parts.is_empty() {
-        let error_html = frontend::overlay(&error_output_parts.join("\n"));
-        return Response::builder()
-            .status(StatusCode::BAD_REQUEST)
-            .header("Content-Type", "text/html")
-            .body(Body::from(error_html))
-            .unwrap();
+        return Err(ErrorOverlay(error_output_parts.join("\n")));
     }
 
-    let result = match program.evaluate_entrypoint(
-        &module_id,
-        &entrypoint_name,
-        params,
-        css_content,
-        true, // skip_optimization for faster hot-reload
-    ) {
-        Ok(html) => Response::builder()
-            .status(StatusCode::OK)
-            .header("Content-Type", "text/html")
-            .body(Body::from(html))
-            .unwrap(),
-        Err(e) => {
-            let error_html = frontend::overlay(&format!("Error rendering component: {}", e));
-            Response::builder()
-                .status(StatusCode::BAD_REQUEST)
-                .header("Content-Type", "text/html")
-                .body(Body::from(error_html))
-                .unwrap()
-        }
-    };
+    let result = program
+        .evaluate_entrypoint(
+            &module_id,
+            &entrypoint_name,
+            params,
+            css_content,
+            true, // skip_optimization for faster hot-reload
+        )
+        .map(Html)
+        .map_err(|e| ErrorOverlay(format!("Error rendering component: {}", e)));
 
     log_info!(
         "render",
         step = "exit",
-        entrypoint = entrypoint_name_for_log,
+        entrypoint = entrypoint,
         duration = format!("{:?}", render_start.elapsed()),
     );
 

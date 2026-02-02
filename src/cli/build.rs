@@ -4,8 +4,9 @@ use crate::filesystem::project::Project;
 use crate::hop::program::Program;
 use crate::ir::{GoTranspiler, PythonTranspiler, RustTranspiler, Transpiler, TsTranspiler};
 use crate::orchestrator::{OrchestrateOptions, orchestrate};
-use crate::tui::timing::{self, TimingCollector};
+use crate::tui::timing::TimingCollector;
 use anyhow::Result;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use tailwind_runner::TailwindRunner;
 
@@ -15,14 +16,14 @@ pub struct CompileResult {
 }
 
 pub async fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResult> {
-    let mut timer = timing::TimingCollector::new();
+    let mut timer = TimingCollector::new();
 
     let config = project.load_config().await?;
     let resolved = config.get_resolved_config()?;
 
     timer.start_phase("load modules");
     let module_ids = project.find_modules()?;
-    let mut hop_modules = std::collections::HashMap::new();
+    let mut hop_modules = HashMap::new();
     for module_id in module_ids {
         let document = project.load_module(&module_id)?;
         hop_modules.insert(module_id, document);
