@@ -3,8 +3,8 @@ pub mod timing;
 
 use colored::Colorize;
 
-pub fn print_header(action: &str, elapsed: u128) {
+pub fn print_header(message: &str) {
     println!();
-    println!("  {} | {} in {} ms", "hop".bold(), action, elapsed);
+    println!("  {} | {}", "hop".bold(), message);
     println!();
 }

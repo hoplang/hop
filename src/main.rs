@@ -88,7 +88,7 @@ async fn main() -> anyhow::Result<()> {
             let result = cli::fmt::execute(&root, file.as_deref())?;
             let elapsed = start_time.elapsed();
 
-            tui::print_header("formatted", elapsed.as_millis());
+            tui::print_header(&format!("formatted in {} ms", elapsed.as_millis()));
             println!(
                 "    {} file(s) formatted, {} unchanged",
                 result.files_formatted, result.files_unchanged
@@ -99,6 +99,7 @@ async fn main() -> anyhow::Result<()> {
             project,
             no_optimize,
         }) => {
+            use colored::*;
             use std::time::Instant;
             let start_time = Instant::now();
 
@@ -110,15 +111,11 @@ async fn main() -> anyhow::Result<()> {
             let mut result = cli::compile::execute(&root, *no_optimize).await?;
             let elapsed = start_time.elapsed();
 
-            tui::print_header("compiled", elapsed.as_millis());
+            tui::print_header(&format!("compiled in {} ms", elapsed.as_millis()));
 
-            // Display output file path
-            {
-                use colored::*;
-                println!("  {}", "output".bold());
-                println!();
-                println!("    {}", result.output_path.display());
-            }
+            println!("  {}", "output".bold());
+            println!();
+            println!("    {}", result.output_path.display());
 
             result.timer.print();
             println!();
@@ -128,8 +125,6 @@ async fn main() -> anyhow::Result<()> {
             port,
             host,
         }) => {
-            use colored::*;
-
             let root = match project {
                 Some(d) => ProjectRoot::from(Path::new(d))?,
                 None => ProjectRoot::find_upwards(Path::new("."))?,
@@ -151,18 +146,10 @@ async fn main() -> anyhow::Result<()> {
                 anyhow::anyhow!("failed to bind to ports {}-{} on {}", port, port + 5, host)
             })?;
 
-            // Start the dev server
             let res = cli::dev::execute(&root).await?;
             let dev_server = axum::serve(listener, res.router);
 
-            println!();
-            println!(
-                "  {} | served at http://{}:{}",
-                "hop".bold(),
-                host,
-                bound_port
-            );
-            println!();
+            tui::print_header(&format!("served at http://{}:{}", host, bound_port));
 
             dev_server
                 .await
