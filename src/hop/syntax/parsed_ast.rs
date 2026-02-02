@@ -7,7 +7,6 @@ use crate::dop::ParsedType;
 use crate::dop::VarName;
 use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::type_name::TypeName;
-use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_id::ModuleId;
 use pretty::BoxDoc;
 
@@ -373,7 +372,7 @@ impl ParsedEnumDeclaration {
 
 #[derive(Debug, Clone)]
 pub struct ParsedComponentDeclaration {
-    pub component_name: ComponentName,
+    pub component_name: TypeName,
     pub tag_name: DocumentRange,
     pub closing_tag_name: Option<DocumentRange>,
     pub params: Option<(Vec<ParsedParameter>, DocumentRange)>,
@@ -431,7 +430,7 @@ impl ParsedComponentDeclaration {
 
 #[derive(Debug, Clone)]
 pub struct ParsedEntrypointDeclaration {
-    pub name: ComponentName,
+    pub name: TypeName,
     pub name_range: DocumentRange,
     pub params: Vec<ParsedParameter>,
     pub children: Vec<ParsedNode>,

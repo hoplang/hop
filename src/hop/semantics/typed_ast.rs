@@ -5,7 +5,6 @@ use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::type_name::TypeName;
 use crate::dop::{Type, TypedExpr, VarName};
 use crate::hop::semantics::typed_node::TypedNode;
-use crate::hop::symbols::component_name::ComponentName;
 use pretty::BoxDoc;
 
 #[derive(Debug, Clone)]
@@ -89,14 +88,14 @@ impl TypedEnumDeclaration {
 
 #[derive(Debug, Clone)]
 pub struct TypedComponentDeclaration {
-    pub component_name: ComponentName,
+    pub component_name: TypeName,
     pub children: Vec<TypedNode>,
     pub params: Vec<(VarName, Arc<Type>, Option<TypedExpr>)>,
 }
 
 #[derive(Debug, Clone)]
 pub struct TypedEntrypointDeclaration {
-    pub name: ComponentName,
+    pub name: TypeName,
     pub children: Vec<TypedNode>,
     pub params: Vec<(VarName, Arc<Type>, Option<TypedExpr>)>,
 }

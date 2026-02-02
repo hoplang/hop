@@ -12,14 +12,14 @@ pub use ts::TsTranspiler;
 use crate::dop::patterns::Match;
 use crate::dop::semantics::r#type::{ComparableType, EquatableType, NumericType, Type};
 use crate::dop::symbols::field_name::FieldName;
+use crate::dop::symbols::type_name::TypeName;
 use crate::dop::symbols::var_name::VarName;
-use crate::hop::symbols::component_name::ComponentName;
 use crate::ir::ast::{IrEntrypointDeclaration, IrExpr, IrForSource, IrModule, IrStatement};
 
 pub trait Transpiler {
     fn transpile_entrypoint<'a>(
         &mut self,
-        name: &'a ComponentName,
+        name: &'a TypeName,
         entrypoint: &'a IrEntrypointDeclaration,
     ) -> BoxDoc<'a>;
     fn transpile_module(&mut self, module: &IrModule) -> String;

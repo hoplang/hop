@@ -1063,12 +1063,12 @@ mod tests {
     fn should_use_default_parameter_when_arg_not_provided() {
         use crate::document::CheapString;
         use crate::dop::VarName;
-        use crate::hop::symbols::component_name::ComponentName;
+        use crate::dop::symbols::type_name::TypeName;
         use crate::ir::ast::{IrEntrypointDeclaration, IrExpr, IrStatement};
 
         // Create an entrypoint with a parameter that has a default value
         let entrypoint = IrEntrypointDeclaration {
-            name: ComponentName::new("Test".to_string()).unwrap(),
+            name: TypeName::new("Test").unwrap(),
             parameters: vec![(
                 VarName::new("greeting").unwrap(),
                 Arc::new(Type::String),
@@ -1098,12 +1098,12 @@ mod tests {
     fn should_use_provided_arg_over_default_parameter() {
         use crate::document::CheapString;
         use crate::dop::VarName;
-        use crate::hop::symbols::component_name::ComponentName;
+        use crate::dop::symbols::type_name::TypeName;
         use crate::ir::ast::{IrEntrypointDeclaration, IrExpr, IrStatement};
 
         // Create an entrypoint with a parameter that has a default value
         let entrypoint = IrEntrypointDeclaration {
-            name: ComponentName::new("Test".to_string()).unwrap(),
+            name: TypeName::new("Test").unwrap(),
             parameters: vec![(
                 VarName::new("greeting").unwrap(),
                 Arc::new(Type::String),
@@ -1137,12 +1137,12 @@ mod tests {
     #[test]
     fn should_error_when_required_param_not_provided() {
         use crate::dop::VarName;
-        use crate::hop::symbols::component_name::ComponentName;
+        use crate::dop::symbols::type_name::TypeName;
         use crate::ir::ast::{IrEntrypointDeclaration, IrExpr, IrStatement};
 
         // Create an entrypoint with a required parameter (no default)
         let entrypoint = IrEntrypointDeclaration {
-            name: ComponentName::new("Test".to_string()).unwrap(),
+            name: TypeName::new("Test").unwrap(),
             parameters: vec![(
                 VarName::new("name").unwrap(),
                 Arc::new(Type::String),

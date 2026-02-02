@@ -16,11 +16,11 @@ use std::sync::Arc;
 use super::semantics::type_annotation::TypeAnnotation;
 use super::semantics::type_checker::typecheck;
 use super::semantics::typed_ast::TypedAst;
-use super::symbols::component_name::ComponentName;
 use super::symbols::module_id::ModuleId;
 use super::syntax::find_node::find_node_at_position;
 use super::syntax::parsed_ast::ParsedAst;
 use super::syntax::parsed_node::ParsedNode;
+use crate::dop::symbols::type_name::TypeName;
 
 /// HoverInfo is a message that should be displayed when the user hovers
 /// a specific range in the source code.
@@ -400,7 +400,7 @@ impl Program {
     /// - All import statements that import the component
     fn collect_component_rename_locations(
         &self,
-        component_name: &ComponentName,
+        component_name: &TypeName,
         definition_module: &ModuleId,
     ) -> Vec<RenameLocation> {
         let mut locations = Vec::new();
@@ -602,7 +602,7 @@ impl Program {
     pub fn evaluate_entrypoint(
         &self,
         module_id: &ModuleId,
-        entrypoint_name: &ComponentName,
+        entrypoint_name: &TypeName,
         args: HashMap<String, serde_json::Value>,
         generated_tailwind_css: Option<&str>,
         skip_optimization: bool,
@@ -1997,7 +1997,7 @@ mod tests {
         args.insert("name".to_string(), serde_json::json!("Alice"));
 
         let main_module = ModuleId::new("main").unwrap();
-        let hello_world = ComponentName::new("HelloWorld".to_string()).unwrap();
+        let hello_world = TypeName::new("HelloWorld").unwrap();
         let result = program
             .evaluate_entrypoint(&main_module, &hello_world, args, None, false)
             .expect("Should evaluate successfully");
@@ -2005,7 +2005,7 @@ mod tests {
         assert!(result.contains("<h1>Hello Alice!</h1>"));
 
         // Test evaluating another-comp entrypoint without parameters
-        let another_comp = ComponentName::new("AnotherComp".to_string()).unwrap();
+        let another_comp = TypeName::new("AnotherComp").unwrap();
         let result = program
             .evaluate_entrypoint(&main_module, &another_comp, HashMap::new(), None, false)
             .expect("Should evaluate successfully");
@@ -2013,7 +2013,7 @@ mod tests {
         assert!(result.contains("<p>Static content</p>"));
 
         // Test error when entrypoint doesn't exist
-        let non_existent = ComponentName::new("NonExistent".to_string()).unwrap();
+        let non_existent = TypeName::new("NonExistent").unwrap();
         let result =
             program.evaluate_entrypoint(&main_module, &non_existent, HashMap::new(), None, false);
         assert!(result.is_err());

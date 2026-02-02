@@ -1,7 +1,7 @@
 use crate::document::CheapString;
 use crate::dop::patterns::{EnumPattern, Match};
+use crate::dop::symbols::type_name::TypeName;
 use crate::dop::{TypedExpr, VarName};
-use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_id::ModuleId;
 use pretty::BoxDoc;
 
@@ -58,7 +58,7 @@ pub enum TypedNode {
     },
 
     ComponentReference {
-        component_name: ComponentName,
+        component_name: TypeName,
         declaring_module: Option<ModuleId>,
         args: Vec<(VarName, TypedExpr)>,
         children: Vec<TypedNode>,

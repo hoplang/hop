@@ -4,7 +4,6 @@ use crate::dop::semantics::r#type::EquatableType;
 use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::type_name::TypeName;
 use crate::dop::{Type, VarName};
-use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_id::ModuleId;
 use crate::ir::ast::{ExprId, IrExpr, IrForSource, IrStatement, StatementId};
 use crate::ir::ast::{IrEntrypointDeclaration, IrEnumDeclaration, IrModule, IrRecordDeclaration};
@@ -309,8 +308,7 @@ impl IrBuilder {
 
     fn build(self, name: &str) -> IrEntrypointDeclaration {
         IrEntrypointDeclaration {
-            name: ComponentName::new(name.to_string())
-                .expect("Test component name should be valid"),
+            name: TypeName::new(name).expect("Test component name should be valid"),
             parameters: self.params,
             body: self.statements,
         }

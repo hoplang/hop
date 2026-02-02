@@ -36,13 +36,13 @@ impl Compiler {
             })
             .collect::<Vec<_>>();
 
-        let component_name = entrypoint.component_name;
+        let entrypoint_name = entrypoint.entrypoint_name;
         let children = entrypoint.children;
 
         let body = compiler.compile_nodes(children, None);
 
         IrEntrypointDeclaration {
-            name: component_name,
+            name: entrypoint_name,
             parameters: param_info,
             body,
         }

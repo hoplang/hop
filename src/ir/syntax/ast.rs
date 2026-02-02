@@ -7,7 +7,6 @@ use crate::dop::patterns::{EnumPattern, Match};
 use crate::dop::semantics::r#type::{ComparableType, EquatableType, NumericType, Type};
 use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::type_name::TypeName;
-use crate::hop::symbols::component_name::ComponentName;
 use pretty::BoxDoc;
 
 /// Unique identifier for each expression in the IR
@@ -35,7 +34,7 @@ pub struct IrModule {
 #[derive(Debug, Clone)]
 pub struct IrEntrypointDeclaration {
     /// Entrypoint name (e.g. Index)
-    pub name: ComponentName,
+    pub name: TypeName,
     /// Original parameter names with their types and optional default values
     pub parameters: Vec<(VarName, Arc<Type>, Option<IrExpr>)>,
     /// IR nodes for the entrypoint body

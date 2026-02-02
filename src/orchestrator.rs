@@ -1,5 +1,5 @@
+use crate::dop::symbols::type_name::TypeName;
 use crate::hop::semantics::typed_ast::TypedAst;
-use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_id::ModuleId;
 use crate::inlined::{
     DoctypeInjector, HtmlStructureInjector, Inliner, MetaInjector, TailwindInjector,
@@ -13,7 +13,7 @@ pub struct OrchestrateOptions {
     pub skip_html_structure: bool,
     pub skip_optimization: bool,
     /// When set, only compile the specified entrypoint instead of all entrypoints.
-    pub entrypoint_filter: Option<(ModuleId, ComponentName)>,
+    pub entrypoint_filter: Option<(ModuleId, TypeName)>,
 }
 
 pub fn orchestrate(
@@ -45,7 +45,7 @@ pub fn orchestrate(
 
     // Get entrypoints - either all of them or just the filtered one
     let inlined_entrypoints =
-        if let Some((ref module_id, ref component_name)) = options.entrypoint_filter {
+        if let Some((ref module_id, ref entrypoint_name)) = options.entrypoint_filter {
             // Only inline the specific entrypoint requested
             let module = typed_asts
                 .get(module_id)
@@ -53,7 +53,7 @@ pub fn orchestrate(
             let entrypoint = module
                 .get_entrypoint_declarations()
                 .iter()
-                .find(|ep| ep.name.as_str() == component_name.as_str())
+                .find(|ep| ep.name.as_str() == entrypoint_name.as_str())
                 .expect("Filtered entrypoint should exist");
             vec![Inliner::inline_single_entrypoint(
                 module_id, entrypoint, typed_asts,

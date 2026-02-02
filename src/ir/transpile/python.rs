@@ -5,7 +5,7 @@ use crate::dop::VarName;
 use crate::dop::patterns::{EnumPattern, Match};
 use crate::dop::semantics::r#type::Type;
 use crate::dop::symbols::field_name::FieldName;
-use crate::hop::symbols::component_name::ComponentName;
+use crate::dop::symbols::type_name::TypeName;
 use crate::ir::ast::{IrEntrypointDeclaration, IrExpr, IrForSource, IrModule, IrStatement};
 
 pub struct PythonTranspiler {
@@ -257,7 +257,7 @@ impl Transpiler for PythonTranspiler {
 
     fn transpile_entrypoint<'a>(
         &mut self,
-        name: &'a ComponentName,
+        name: &'a TypeName,
         entrypoint: &'a IrEntrypointDeclaration,
     ) -> BoxDoc<'a> {
         // Convert PascalCase to snake_case for Python function name

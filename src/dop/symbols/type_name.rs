@@ -90,6 +90,54 @@ impl Ord for TypeName {
     }
 }
 
+impl AsRef<str> for TypeName {
+    fn as_ref(&self) -> &str {
+        self.value.as_str()
+    }
+}
+
+impl TypeName {
+    /// Convert the type name to PascalCase
+    ///
+    /// Since TypeName is already in PascalCase, this just returns a copy of the string.
+    /// This method exists for clarity and consistency with other case conversion methods.
+    ///
+    /// Examples:
+    /// - "UserProfile" -> "UserProfile"
+    /// - "Button" -> "Button"
+    /// - "NavBar" -> "NavBar"
+    pub fn to_pascal_case(&self) -> String {
+        self.value.as_str().to_string()
+    }
+
+    /// Convert the type name to snake_case
+    ///
+    /// Examples:
+    /// - "UserProfile" -> "user_profile"
+    /// - "Button" -> "button"
+    /// - "NavBar" -> "nav_bar"
+    pub fn to_snake_case(&self) -> String {
+        let mut result = String::new();
+        let mut prev_was_lowercase = false;
+
+        for (i, ch) in self.value.as_str().chars().enumerate() {
+            if ch.is_uppercase() {
+                // Add underscore before uppercase if not first char and prev was lowercase
+                if i > 0 && prev_was_lowercase {
+                    result.push('_');
+                }
+                result.push(ch.to_ascii_lowercase());
+                prev_was_lowercase = true;
+            } else {
+                result.push(ch);
+                prev_was_lowercase = ch.is_lowercase();
+            }
+        }
+
+        result
+    }
+}
+
 impl TryFrom<String> for TypeName {
     type Error = InvalidTypeNameError;
 

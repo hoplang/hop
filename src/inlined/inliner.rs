@@ -55,7 +55,7 @@ impl Inliner {
         );
 
         InlinedEntrypointDeclaration {
-            component_name: entrypoint.name.clone(),
+            entrypoint_name: entrypoint.name.clone(),
             children,
             params: entrypoint
                 .params

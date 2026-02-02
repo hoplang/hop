@@ -4,7 +4,7 @@ use super::{ExpressionTranspiler, StatementTranspiler, Transpiler, TypeTranspile
 use crate::dop::patterns::{EnumPattern, Match};
 use crate::dop::semantics::r#type::Type;
 use crate::dop::symbols::field_name::FieldName;
-use crate::hop::symbols::component_name::ComponentName;
+use crate::dop::symbols::type_name::TypeName;
 use crate::ir::ast::{IrEntrypointDeclaration, IrExpr, IrForSource, IrModule, IrStatement};
 
 pub struct TsTranspiler {
@@ -309,7 +309,7 @@ impl Transpiler for TsTranspiler {
 
     fn transpile_entrypoint<'a>(
         &mut self,
-        name: &'a ComponentName,
+        name: &'a TypeName,
         entrypoint: &'a IrEntrypointDeclaration,
     ) -> BoxDoc<'a> {
         let mut result = BoxDoc::text("export function ")

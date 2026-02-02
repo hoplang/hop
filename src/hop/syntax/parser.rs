@@ -12,8 +12,8 @@ use super::tokenizer::Tokenizer;
 use crate::document::{Document, DocumentCursor, DocumentRange};
 use crate::dop;
 use crate::dop::VarName;
+use crate::dop::symbols::type_name::TypeName;
 use crate::error_collector::ErrorCollector;
-use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_id::ModuleId;
 
 use super::tokenizer::{self, Token};
@@ -309,7 +309,7 @@ fn parse_component_declaration(
         return None;
     };
 
-    let component_name = match ComponentName::new(tag_name.to_string()) {
+    let component_name = match TypeName::new(tag_name.as_str()) {
         Ok(name) => name,
         Err(error) => {
             errors.push(ParseError::InvalidComponentName {
@@ -407,7 +407,7 @@ fn parse_entrypoint_declaration(
         }
     };
 
-    let name = match ComponentName::new(name_str.to_string()) {
+    let name = match TypeName::new(&name_str) {
         Ok(n) => n,
         Err(_) => {
             errors.push(ParseError::InvalidEntrypointName {
@@ -828,7 +828,7 @@ fn construct_node(
 
                 // <ComponentReference> - PascalCase indicates a component
                 name if name.chars().next().is_some_and(|c| c.is_ascii_uppercase()) => {
-                    let component_name = match ComponentName::new(name.to_string()) {
+                    let component_name = match TypeName::new(name) {
                         Ok(name) => name,
                         Err(error) => {
                             errors.push(ParseError::InvalidComponentName {
@@ -1201,7 +1201,7 @@ mod tests {
                 </Foo-bar>
             "},
             expect![[r#"
-                error: Component name contains invalid character: '-'. Only alphanumeric characters are allowed
+                error: Type name contains invalid character: '-'
                 1 | <Foo-bar>
                   |  ^^^^^^^
             "#]],
@@ -2863,7 +2863,7 @@ mod tests {
         check(
             "<div></div>",
             expect![[r#"
-                error: Component name must start with an uppercase letter
+                error: Type name must start with an uppercase letter
                 1 | <div></div>
                   |  ^^^
             "#]],

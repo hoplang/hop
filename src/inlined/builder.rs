@@ -9,8 +9,8 @@ use crate::document::CheapString;
 use crate::dop::Type;
 use crate::dop::TypedExpr;
 use crate::dop::VarName;
+use crate::dop::symbols::type_name::TypeName;
 use crate::hop::semantics::typed_node::TypedLoopSource;
-use crate::hop::symbols::component_name::ComponentName;
 
 /// Helper function to extract (VarName, Arc<Type>) from a TypedExpr.
 /// Panics if the expression is not a variable reference.
@@ -81,9 +81,9 @@ impl InlinedBuilder {
         }
     }
 
-    fn build(self, component_name: &str) -> InlinedEntrypointDeclaration {
+    fn build(self, entrypoint_name: &str) -> InlinedEntrypointDeclaration {
         InlinedEntrypointDeclaration {
-            component_name: ComponentName::new(component_name.to_string()).unwrap(),
+            entrypoint_name: TypeName::new(entrypoint_name).unwrap(),
             params: self.params,
             children: self.children,
         }

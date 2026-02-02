@@ -3,7 +3,6 @@ use crate::dop::symbols::field_name::InvalidFieldNameError;
 use crate::dop::symbols::type_name::InvalidTypeNameError;
 use crate::dop::symbols::var_name::InvalidVarNameError;
 use crate::dop::syntax::token::Token;
-use crate::hop::symbols::component_name::InvalidComponentNameError;
 use crate::hop::symbols::module_id::InvalidModuleIdError;
 use thiserror::Error;
 
@@ -29,7 +28,7 @@ pub enum ParseError {
 
     #[error("{error}")]
     InvalidComponentName {
-        error: InvalidComponentNameError,
+        error: InvalidTypeNameError,
         range: DocumentRange,
     },
 

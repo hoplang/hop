@@ -6,9 +6,9 @@ use crate::common::is_void_element;
 use crate::document::{CheapString, DocumentRange, Ranged};
 use crate::dop::ParsedExpr;
 use crate::dop::VarName;
+use crate::dop::symbols::type_name::TypeName;
 use crate::dop::syntax::parsed::{ParsedLoopSource, ParsedMatchPattern, ParsedType};
 
-use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_id::ModuleId;
 
 use super::parsed_ast::ParsedAttribute;
@@ -80,7 +80,7 @@ pub enum ParsedNode {
     ///   ^^^^^^^^^^^^^^^^^^
     /// </my-component>
     ComponentReference {
-        component_name: ComponentName,
+        component_name: TypeName,
         component_name_opening_range: DocumentRange,
         component_name_closing_range: Option<DocumentRange>,
         declaring_module: Option<ModuleId>,

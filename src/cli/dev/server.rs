@@ -1,7 +1,7 @@
 use super::frontend;
 use crate::document::DocumentAnnotator;
+use crate::dop::symbols::type_name::TypeName;
 use crate::hop::program::Program;
-use crate::hop::symbols::component_name::ComponentName;
 use crate::log_info;
 use axum::extract::State;
 use axum::http::StatusCode;
@@ -169,7 +169,7 @@ async fn handle_render(
         .map_err(ErrorOverlay)?;
 
     // Parse entrypoint name
-    let entrypoint_name = ComponentName::new(entrypoint.clone())
+    let entrypoint_name = TypeName::new(&entrypoint)
         .map_err(|e| ErrorOverlay(format!("Invalid entrypoint name: {}", e)))?;
 
     // Check for compilation errors

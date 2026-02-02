@@ -4,8 +4,8 @@ use super::{ExpressionTranspiler, StatementTranspiler, Transpiler, TypeTranspile
 use crate::dop::patterns::{EnumPattern, Match};
 use crate::dop::semantics::r#type::Type;
 use crate::dop::symbols::field_name::FieldName;
+use crate::dop::symbols::type_name::TypeName;
 use crate::dop::symbols::var_name::VarName;
-use crate::hop::symbols::component_name::ComponentName;
 use crate::ir::ast::{IrEntrypointDeclaration, IrExpr, IrForSource, IrModule, IrStatement};
 
 pub struct RustTranspiler {
@@ -249,7 +249,7 @@ impl Transpiler for RustTranspiler {
 
     fn transpile_entrypoint<'a>(
         &mut self,
-        name: &'a ComponentName,
+        name: &'a TypeName,
         entrypoint: &'a IrEntrypointDeclaration,
     ) -> BoxDoc<'a> {
         let func_name = name.to_snake_case();
