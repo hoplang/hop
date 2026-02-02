@@ -18,7 +18,8 @@ use crate::type_error::TypeError;
 /// Resolve a parsed Type to a semantic Type.
 pub fn resolve_type(
     parsed_type: &ParsedType,
-    type_env: &mut Environment<Arc<Type>>,
+    type_env: &mut Environment<(Arc<Type>, DocumentRange)>,
+    definition_links: &mut Vec<DefinitionLink>,
 ) -> Result<Arc<Type>, TypeError> {
     match parsed_type {
         ParsedType::String { .. } => Ok(Arc::new(Type::String)),
@@ -27,22 +28,26 @@ pub fn resolve_type(
         ParsedType::Float { .. } => Ok(Arc::new(Type::Float)),
         ParsedType::TrustedHTML { .. } => Ok(Arc::new(Type::TrustedHTML)),
         ParsedType::Option { element, .. } => {
-            let elem_type = resolve_type(element, type_env)?;
+            let elem_type = resolve_type(element, type_env, definition_links)?;
             Ok(Arc::new(Type::Option(elem_type)))
         }
         ParsedType::Array { element, .. } => {
-            let elem_type = resolve_type(element, type_env)?;
+            let elem_type = resolve_type(element, type_env, definition_links)?;
             Ok(Arc::new(Type::Array(elem_type)))
         }
         ParsedType::Named { name, range } => {
-            let record_type =
+            let (typ, def_range) =
                 type_env
                     .lookup(name.as_str())
                     .ok_or_else(|| TypeError::UndefinedType {
                         type_name: name.clone(),
                         range: range.clone(),
                     })?;
-            Ok(record_type.clone())
+            definition_links.push(DefinitionLink {
+                use_range: range.clone(),
+                definition_range: def_range.clone(),
+            });
+            Ok(typ.clone())
         }
     }
 }
@@ -54,7 +59,7 @@ pub fn resolve_type(
 pub fn typecheck_expr(
     parsed_expr: &ParsedExpr,
     var_env: &mut Environment<(Arc<Type>, DocumentRange)>,
-    type_env: &mut Environment<Arc<Type>>,
+    type_env: &mut Environment<(Arc<Type>, DocumentRange)>,
     annotations: &mut Vec<TypeAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
     expected_type: Option<&Arc<Type>>,
@@ -766,13 +771,13 @@ pub fn typecheck_expr(
             range,
         } => {
             // Check if the record type is defined
-            let record_type = type_env
+            let (record_type, _) = type_env
                 .lookup(record_name.as_str())
                 .ok_or_else(|| TypeError::UndefinedRecord {
                     record_name: record_name.to_string(),
                     range: range.clone(),
-                })?
-                .clone();
+                })?;
+            let record_type = record_type.clone();
 
             // Extract fields from the record type
             let record_fields = match record_type.as_ref() {
@@ -860,13 +865,13 @@ pub fn typecheck_expr(
             range,
         } => {
             // Look up the enum type in the type environment
-            let enum_type = type_env
+            let (enum_type, _) = type_env
                 .lookup(enum_name.as_str())
                 .ok_or_else(|| TypeError::UndefinedEnum {
                     enum_name: enum_name.to_string(),
                     range: range.clone(),
-                })?
-                .clone();
+                })?;
+            let enum_type = enum_type.clone();
 
             // Verify it's actually an enum type and get the variant's fields
             let variant_fields = match enum_type.as_ref() {
@@ -1079,7 +1084,7 @@ fn expand_classes_macro(
     args: &[ParsedExpr],
     _range: &DocumentRange,
     var_env: &mut Environment<(Arc<Type>, DocumentRange)>,
-    type_env: &mut Environment<Arc<Type>>,
+    type_env: &mut Environment<(Arc<Type>, DocumentRange)>,
     annotations: &mut Vec<TypeAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
 ) -> Result<TypedExpr, TypeError> {
@@ -1115,7 +1120,7 @@ fn typecheck_match(
     subject: &ParsedExpr,
     arms: &[ParsedMatchArm],
     var_env: &mut Environment<(Arc<Type>, DocumentRange)>,
-    type_env: &mut Environment<Arc<Type>>,
+    type_env: &mut Environment<(Arc<Type>, DocumentRange)>,
     annotations: &mut Vec<TypeAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
 ) -> Result<TypedExpr, TypeError> {
@@ -1246,7 +1251,7 @@ fn typecheck_arm_bodies(
     arms: &[ParsedMatchArm],
     subject_type: Arc<Type>,
     env: &mut Environment<(Arc<Type>, DocumentRange)>,
-    type_env: &mut Environment<Arc<Type>>,
+    type_env: &mut Environment<(Arc<Type>, DocumentRange)>,
     annotations: &mut Vec<TypeAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
 ) -> Result<(Vec<TypedExpr>, Arc<Type>), TypeError> {
@@ -1521,7 +1526,8 @@ mod tests {
 
     fn check(declarations_str: &str, env_vars: &[(&str, &str)], expr_str: &str, expected: Expect) {
         let mut env: Environment<(Arc<Type>, DocumentRange)> = Environment::new();
-        let mut type_env: Environment<Arc<Type>> = Environment::new();
+        let mut type_env: Environment<(Arc<Type>, DocumentRange)> = Environment::new();
+        let mut definition_links = Vec::new();
         let test_module = ModuleId::new("test").unwrap();
 
         // Parse and process declarations
@@ -1535,7 +1541,12 @@ mod tests {
                 parser::parse_declaration(&mut iter, &mut comments, &mut errors, &range)
                     .expect("Failed to parse declaration");
             match declaration {
-                ParsedDeclaration::Enum { name, variants, .. } => {
+                ParsedDeclaration::Enum {
+                    name,
+                    name_range,
+                    variants,
+                    ..
+                } => {
                     // Build variant types with properly resolved field types
                     let typed_variants: Vec<_> = variants
                         .iter()
@@ -1543,8 +1554,9 @@ mod tests {
                             let typed_fields: Vec<_> = fields
                                 .iter()
                                 .map(|(field_name, _, parsed_type)| {
-                                    let resolved_type = resolve_type(parsed_type, &mut type_env)
-                                        .expect("Test enum field type should be valid");
+                                    let resolved_type =
+                                        resolve_type(parsed_type, &mut type_env, &mut definition_links)
+                                            .expect("Test enum field type should be valid");
                                     (field_name.clone(), resolved_type)
                                 })
                                 .collect();
@@ -1556,18 +1568,20 @@ mod tests {
                         name: TypeName::new(name.as_str()).unwrap(),
                         variants: typed_variants,
                     };
-                    let _ = type_env.push(name.to_string(), Arc::new(enum_type));
+                    let _ = type_env.push(name.to_string(), (Arc::new(enum_type), name_range));
                 }
                 ParsedDeclaration::Record {
                     name,
+                    name_range,
                     fields: decl_fields,
                     ..
                 } => {
                     let fields: Vec<_> = decl_fields
                         .iter()
                         .map(|(field_name, _, field_type)| {
-                            let resolved_type = resolve_type(field_type, &mut type_env)
-                                .expect("Test record field type should be valid");
+                            let resolved_type =
+                                resolve_type(field_type, &mut type_env, &mut definition_links)
+                                    .expect("Test record field type should be valid");
                             (field_name.clone(), resolved_type)
                         })
                         .collect();
@@ -1576,7 +1590,7 @@ mod tests {
                         name: TypeName::new(name.as_str()).unwrap(),
                         fields,
                     };
-                    let _ = type_env.push(name.to_string(), Arc::new(record_type));
+                    let _ = type_env.push(name.to_string(), (Arc::new(record_type), name_range));
                 }
                 ParsedDeclaration::Import { .. } => {
                     panic!("Import declarations not supported in tests");
@@ -1592,7 +1606,7 @@ mod tests {
             let mut errors = ErrorCollector::new();
             let parsed_type = parser::parse_type(&mut iter, &mut comments, &mut errors, &range)
                 .expect("Failed to parse type");
-            let typ = resolve_type(&parsed_type, &mut type_env)
+            let typ = resolve_type(&parsed_type, &mut type_env, &mut definition_links)
                 .expect("Test parameter type should be valid");
             let _ = env.push(var_name.to_string(), (typ, range.clone()));
         }

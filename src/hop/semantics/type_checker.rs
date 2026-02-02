@@ -31,7 +31,7 @@ use crate::hop::syntax::parsed_node::{ParsedLetBinding, ParsedNode};
 
 pub fn typecheck(
     modules: &[&ParsedAst],
-    state: &mut HashMap<ModuleId, HashMap<String, Arc<Type>>>,
+    state: &mut HashMap<ModuleId, HashMap<String, (Arc<Type>, DocumentRange)>>,
     type_errors: &mut HashMap<ModuleId, ErrorCollector<TypeError>>,
     type_annotations: &mut HashMap<ModuleId, Vec<TypeAnnotation>>,
     definition_links: &mut HashMap<ModuleId, Vec<DefinitionLink>>,
@@ -79,12 +79,12 @@ pub fn typecheck(
 
 fn typecheck_module(
     parsed_ast: &ParsedAst,
-    state: &mut HashMap<ModuleId, HashMap<String, Arc<Type>>>,
+    state: &mut HashMap<ModuleId, HashMap<String, (Arc<Type>, DocumentRange)>>,
     errors: &mut ErrorCollector<TypeError>,
     annotations: &mut Vec<TypeAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
 ) -> TypedAst {
-    let mut type_env: Environment<Arc<Type>> = Environment::new();
+    let mut type_env: Environment<(Arc<Type>, DocumentRange)> = Environment::new();
     let mut var_env: Environment<(Arc<Type>, DocumentRange)> = Environment::new();
 
     let mut typed_records = Vec::new();
@@ -109,7 +109,8 @@ fn typecheck_module(
                     continue;
                 };
 
-                let Some(typ) = imported_module_type_info.get(imported_name.as_str()) else {
+                let Some((typ, def_range)) = imported_module_type_info.get(imported_name.as_str())
+                else {
                     errors.push(TypeError::UndeclaredType {
                         module: imported_module.clone(),
                         type_name: imported_name.clone(),
@@ -118,7 +119,10 @@ fn typecheck_module(
                     continue;
                 };
 
-                let _ = type_env.push(imported_name.as_str().to_string(), typ.clone());
+                let _ = type_env.push(
+                    imported_name.as_str().to_string(),
+                    (typ.clone(), def_range.clone()),
+                );
             }
             ParsedDeclaration::Component(ParsedComponentDeclaration {
                 params,
@@ -133,9 +137,11 @@ fn typecheck_module(
                 let mut typed_params = Vec::new();
                 if let Some((params, _)) = params {
                     for param in params {
-                        let Some(param_type) =
-                            errors.ok_or_add(resolve_type(&param.var_type, &mut type_env))
-                        else {
+                        let Some(param_type) = errors.ok_or_add(resolve_type(
+                            &param.var_type,
+                            &mut type_env,
+                            definition_links,
+                        )) else {
                             continue;
                         };
 
@@ -233,7 +239,10 @@ fn typecheck_module(
                     parameters: resolved_param_types,
                 });
 
-                let _ = type_env.push(component_name.to_string(), component_type.clone());
+                let _ = type_env.push(
+                    component_name.to_string(),
+                    (component_type.clone(), tag_name.clone()),
+                );
 
                 // Add type annotation for the component definition opening tag
                 annotations.push(TypeAnnotation {
@@ -259,6 +268,7 @@ fn typecheck_module(
             }
             ParsedDeclaration::Record(ParsedRecordDeclaration {
                 name: record_name,
+                name_range: record_name_range,
                 fields,
                 ..
             }) => {
@@ -266,7 +276,7 @@ fn typecheck_module(
                 let mut has_errors = false;
 
                 for field in fields {
-                    match resolve_type(&field.field_type, &mut type_env) {
+                    match resolve_type(&field.field_type, &mut type_env, definition_links) {
                         Ok(resolved_type) => {
                             typed_fields.push((field.name.clone(), resolved_type));
                         }
@@ -287,15 +297,19 @@ fn typecheck_module(
                 });
                 let _ = type_env.push(
                     record_name.to_string(),
-                    Arc::new(Type::Record {
-                        module: parsed_ast.module_id.clone(),
-                        name: record_name.clone(),
-                        fields: typed_fields,
-                    }),
+                    (
+                        Arc::new(Type::Record {
+                            module: parsed_ast.module_id.clone(),
+                            name: record_name.clone(),
+                            fields: typed_fields,
+                        }),
+                        record_name_range.clone(),
+                    ),
                 );
             }
             ParsedDeclaration::Enum(ParsedEnumDeclaration {
                 name: enum_name,
+                name_range: enum_name_range,
                 variants,
                 ..
             }) => {
@@ -305,7 +319,7 @@ fn typecheck_module(
                 for variant in variants {
                     let mut typed_fields = Vec::new();
                     for (field_name, _, field_type) in &variant.fields {
-                        match resolve_type(field_type, &mut type_env) {
+                        match resolve_type(field_type, &mut type_env, definition_links) {
                             Ok(resolved_type) => {
                                 typed_fields.push((field_name.clone(), resolved_type));
                             }
@@ -324,11 +338,14 @@ fn typecheck_module(
 
                 let _ = type_env.push(
                     enum_name.to_string(),
-                    Arc::new(Type::Enum {
-                        module: parsed_ast.module_id.clone(),
-                        name: enum_name.clone(),
-                        variants: typed_variants.clone(),
-                    }),
+                    (
+                        Arc::new(Type::Enum {
+                            module: parsed_ast.module_id.clone(),
+                            name: enum_name.clone(),
+                            variants: typed_variants.clone(),
+                        }),
+                        enum_name_range.clone(),
+                    ),
                 );
 
                 typed_enums.push(TypedEnumDeclaration {
@@ -347,9 +364,11 @@ fn typecheck_module(
                 let mut typed_params = Vec::new();
 
                 for param in params {
-                    let Some(param_type) =
-                        errors.ok_or_add(resolve_type(&param.var_type, &mut type_env))
-                    else {
+                    let Some(param_type) = errors.ok_or_add(resolve_type(
+                        &param.var_type,
+                        &mut type_env,
+                        definition_links,
+                    )) else {
                         continue;
                     };
 
@@ -469,7 +488,7 @@ fn typecheck_node(
     annotations: &mut Vec<TypeAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
     errors: &mut ErrorCollector<TypeError>,
-    type_env: &mut Environment<Arc<Type>>,
+    type_env: &mut Environment<(Arc<Type>, DocumentRange)>,
 ) -> Option<TypedNode> {
     match node {
         ParsedNode::If {
@@ -659,7 +678,8 @@ fn typecheck_node(
 
             for binding in bindings {
                 // Resolve the declared type
-                let resolved_type = match resolve_type(&binding.var_type, type_env) {
+                let resolved_type = match resolve_type(&binding.var_type, type_env, definition_links)
+                {
                     Ok(t) => t,
                     Err(err) => {
                         errors.push(err);
@@ -783,7 +803,7 @@ fn typecheck_node(
 
             // Look up the component type from type_env
             let (component_module, component_type_name, component_params) =
-                match type_env.lookup(component_name.as_str()).map(|t| t.as_ref()) {
+                match type_env.lookup(component_name.as_str()).map(|(t, _)| t.as_ref()) {
                     Some(Type::Component {
                         module,
                         name,
@@ -1181,7 +1201,7 @@ fn typecheck_attributes(
     annotations: &mut Vec<TypeAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
     errors: &mut ErrorCollector<TypeError>,
-    type_env: &mut Environment<Arc<Type>>,
+    type_env: &mut Environment<(Arc<Type>, DocumentRange)>,
 ) -> Vec<TypedAttribute> {
     let mut typed_attributes = Vec::new();
 

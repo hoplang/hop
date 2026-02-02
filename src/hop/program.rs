@@ -64,7 +64,7 @@ pub struct Program {
     documents: HashMap<ModuleId, Document>,
     parse_errors: HashMap<ModuleId, ErrorCollector<ParseError>>,
     parsed_asts: HashMap<ModuleId, ParsedAst>,
-    typechecker_state: HashMap<ModuleId, HashMap<String, Arc<Type>>>,
+    typechecker_state: HashMap<ModuleId, HashMap<String, (Arc<Type>, DocumentRange)>>,
     type_errors: HashMap<ModuleId, ErrorCollector<TypeError>>,
     type_annotations: HashMap<ModuleId, Vec<TypeAnnotation>>,
     definition_links: HashMap<ModuleId, Vec<DefinitionLink>>,
@@ -1262,6 +1262,74 @@ mod tests {
                   --> main (line 2, col 9)
                 2 |   <let {greeting: String = "Hello"}>
                   |         ^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_find_definition_from_type_reference_in_parameter() {
+        check_definition_location(
+            indoc! {r#"
+                -- main.hop --
+                record User {name: String}
+
+                <Main {user: User}>
+                              ^
+                  <span>{user.name}</span>
+                </Main>
+            "#},
+            expect![[r#"
+                Definition
+                  --> main (line 1, col 8)
+                1 | record User {name: String}
+                  |        ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_find_definition_from_type_reference_in_array() {
+        check_definition_location(
+            indoc! {r#"
+                -- main.hop --
+                record Item {name: String}
+
+                <Main {items: Array[Item]}>
+                                     ^
+                  <for {item in items}>
+                    <span>{item.name}</span>
+                  </for>
+                </Main>
+            "#},
+            expect![[r#"
+                Definition
+                  --> main (line 1, col 8)
+                1 | record Item {name: String}
+                  |        ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_find_definition_from_imported_type_reference() {
+        check_definition_location(
+            indoc! {r#"
+                -- types.hop --
+                record User {name: String}
+
+                -- main.hop --
+                import types::User
+
+                <Main {user: User}>
+                              ^
+                  <span>{user.name}</span>
+                </Main>
+            "#},
+            expect![[r#"
+                Definition
+                  --> types (line 1, col 8)
+                1 | record User {name: String}
+                  |        ^^^^
             "#]],
         );
     }
