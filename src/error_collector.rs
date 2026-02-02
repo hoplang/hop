@@ -1,3 +1,9 @@
+//! A utility for accumulating multiple errors during operations that may fail
+//! in multiple ways, such as parsing or type checking.
+//!
+//! Instead of returning on the first error, [`ErrorCollector`] makes it possible to
+//! continue processing.
+
 use std::ops::Deref;
 
 #[derive(Debug)]
