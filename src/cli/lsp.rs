@@ -3,7 +3,6 @@ use crate::document::{Document, DocumentRange};
 use crate::filesystem::project::Project;
 use crate::hop::program::{DefinitionLocation, Program, RenameLocation};
 use crate::hop::symbols::module_id::ModuleId;
-use crate::hop::syntax::format;
 use std::collections::HashMap;
 use tokio::sync::{OnceCell, RwLock};
 use tower_lsp_server::jsonrpc::Result;
@@ -280,18 +279,8 @@ impl LanguageServer for HopLanguageServer {
 
             let program = self.program.read().await;
 
-            // Don't format if there are parse errors
-            if let Some(errors) = program.get_parse_errors().get(&module_id) {
-                if !errors.is_empty() {
-                    return Ok(None);
-                }
-            }
-
-            if let Some(ast) = program.get_parsed_ast(&module_id) {
-                let formatted = format(ast.clone());
-
-                // Replace the entire document
-                Ok(Some(vec![TextEdit {
+            match program.get_formatted_module(&module_id) {
+                Ok(formatted) => Ok(Some(vec![TextEdit {
                     range: lsp_types::Range {
                         start: lsp_types::Position {
                             line: 0,
@@ -303,9 +292,8 @@ impl LanguageServer for HopLanguageServer {
                         },
                     },
                     new_text: formatted,
-                }]))
-            } else {
-                Ok(None)
+                }])),
+                Err(_) => Ok(None),
             }
         } else {
             Ok(None)

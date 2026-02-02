@@ -3,7 +3,6 @@ use super::transpile::{GoTranspiler, PythonTranspiler, RustTranspiler, Transpile
 use crate::document::Document;
 use crate::hop::program::Program;
 use crate::hop::symbols::module_id::ModuleId;
-use crate::hop::syntax::format;
 use crate::orchestrator::{OrchestrateOptions, orchestrate};
 use expect_test::Expect;
 use std::collections::HashMap;
@@ -306,17 +305,6 @@ fn check(hop_source: &str, expected_output: &str, expected: Expect) {
 
     let program = Program::new(modules);
 
-    // Verify input is properly formatted
-    let parsed_ast = program
-        .get_parsed_ast(&module_id)
-        .expect("Failed to get parsed AST");
-    let formatted = format(parsed_ast.clone());
-    assert_eq!(
-        formatted.trim(),
-        hop_source.trim(),
-        "Test input is not properly formatted. Update the test input (right) to match the formatted output (left)."
-    );
-
     // Check for parse errors
     let parse_errors = program.get_parse_errors();
     let has_parse_errors = parse_errors.values().any(|e| !e.is_empty());
@@ -328,6 +316,16 @@ fn check(hop_source: &str, expected_output: &str, expected: Expect) {
         }
         panic!("Parse errors found");
     }
+
+    // Verify input is properly formatted
+    let formatted = program
+        .get_formatted_module(&module_id)
+        .expect("Failed to format module");
+    assert_eq!(
+        formatted.trim(),
+        hop_source.trim(),
+        "Test input is not properly formatted. Update the test input (right) to match the formatted output (left)."
+    );
 
     // Check for type errors
     let type_errors = program.get_type_errors();

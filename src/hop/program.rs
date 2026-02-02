@@ -2,6 +2,7 @@ use crate::document::DocumentPosition;
 use crate::document::{CheapString, Document, DocumentRange, Ranged};
 use crate::dop::{ParsedType, Type};
 use crate::error_collector::ErrorCollector;
+use crate::hop::syntax::format;
 use crate::hop::syntax::parser::parse;
 use crate::ir;
 use crate::orchestrator::{OrchestrateOptions, orchestrate};
@@ -153,8 +154,27 @@ impl Program {
         &self.type_errors
     }
 
-    pub fn get_parsed_ast(&self, module_id: &ModuleId) -> Option<&ParsedAst> {
-        self.parsed_asts.get(module_id)
+    /// Returns the formatted source code for a module.
+    ///
+    /// Returns an error if the module doesn't exist or has parse errors.
+    pub fn get_formatted_module(&self, module_id: &ModuleId) -> Result<String> {
+        // Check if module exists
+        let ast = self
+            .parsed_asts
+            .get(module_id)
+            .ok_or_else(|| anyhow::anyhow!("Module '{}' not found", module_id))?;
+
+        // Check for parse errors
+        if let Some(errors) = self.parse_errors.get(module_id) {
+            if !errors.is_empty() {
+                return Err(anyhow::anyhow!(
+                    "Cannot format module '{}': has parse errors",
+                    module_id
+                ));
+            }
+        }
+
+        Ok(format(ast.clone()))
     }
 
     /// Returns all module sources concatenated into a single string.
