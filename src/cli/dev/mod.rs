@@ -5,6 +5,7 @@ use crate::filesystem::adaptive_watcher::{AdaptiveWatcher, WatchEvent};
 use crate::filesystem::project_root::ProjectRoot;
 use crate::hop::program::Program;
 use crate::log_info;
+use crate::tui::timing;
 use server::{AppState, create_router};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -14,6 +15,7 @@ use tokio::time::{Duration, Instant, sleep_until};
 
 pub struct DevServer {
     pub router: axum::Router,
+    pub timer: timing::TimingCollector,
     _hop_watcher: AdaptiveWatcher,
     _tailwind_watcher: TailwindWatcher,
 }
@@ -143,6 +145,9 @@ async fn create_file_watcher(
 /// Also sets up a watcher that watches all source files used to construct the output files.
 /// The watcher emits SSE-events on the `/event_source` route.
 pub async fn execute(root: &ProjectRoot) -> anyhow::Result<DevServer> {
+    let mut timer = timing::TimingCollector::new();
+
+    timer.start_phase("load modules");
     let modules = root.load_all_hop_modules()?;
     let program = Program::new(modules);
 
@@ -150,12 +155,14 @@ pub async fn execute(root: &ProjectRoot) -> anyhow::Result<DevServer> {
     let input_css_path = root.get_tailwind_input_path().await?;
 
     // Create the Tailwind runner and start the watcher
+    timer.start_phase("tailwind");
     let cache_dir = PathBuf::from("/tmp/.hop-cache");
     let runner = TailwindRunner::new(cache_dir).await?;
     let tailwind_handle = runner
         .start_watcher(input_css_path, program.get_all_sources())
         .await?;
 
+    timer.start_phase("setup watchers");
     let (reload_channel, _) = tokio::sync::broadcast::channel::<()>(100);
     let app_state = AppState {
         program: Arc::new(RwLock::new(program)),
@@ -185,6 +192,7 @@ pub async fn execute(root: &ProjectRoot) -> anyhow::Result<DevServer> {
 
     Ok(DevServer {
         router,
+        timer,
         _hop_watcher: adaptive_watcher,
         _tailwind_watcher: tailwind_watcher,
     })

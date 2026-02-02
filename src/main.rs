@@ -38,6 +38,9 @@ enum Commands {
         /// Skip optimization passes
         #[arg(long)]
         no_optimize: bool,
+        /// Show timing breakdown for each compilation phase
+        #[arg(long, hide = true)]
+        timing: bool,
     },
     /// Start development server for serving a hop project
     Dev {
@@ -50,6 +53,9 @@ enum Commands {
         /// Host to bind to
         #[arg(long, default_value = "localhost")]
         host: String,
+        /// Show timing information for startup
+        #[arg(long, hide = true)]
+        timing: bool,
     },
     /// Format all .hop files in a project
     Fmt {
@@ -58,6 +64,9 @@ enum Commands {
         project: Option<String>,
         /// Specific .hop file to format (formats all files if not specified)
         file: Option<String>,
+        /// Show timing information
+        #[arg(long, hide = true)]
+        timing: bool,
     },
     /// Run the LSP server
     #[command(hide = true)]
@@ -76,7 +85,11 @@ async fn main() -> anyhow::Result<()> {
         Some(Commands::Lsp) => {
             cli::lsp::execute().await;
         }
-        Some(Commands::Fmt { project, file }) => {
+        Some(Commands::Fmt {
+            project,
+            file,
+            timing,
+        }) => {
             use std::time::Instant;
             let start_time = Instant::now();
 
@@ -85,7 +98,7 @@ async fn main() -> anyhow::Result<()> {
                 None => ProjectRoot::find_upwards(Path::new("."))?,
             };
 
-            let result = cli::fmt::execute(&root, file.as_deref())?;
+            let mut result = cli::fmt::execute(&root, file.as_deref())?;
             let elapsed = start_time.elapsed();
 
             tui::print_header(&format!("formatted in {} ms", elapsed.as_millis()));
@@ -93,11 +106,16 @@ async fn main() -> anyhow::Result<()> {
                 "    {} file(s) formatted, {} unchanged",
                 result.files_formatted, result.files_unchanged
             );
+
+            if *timing {
+                result.timer.print();
+            }
             println!();
         }
         Some(Commands::Compile {
             project,
             no_optimize,
+            timing,
         }) => {
             use colored::*;
             use std::time::Instant;
@@ -117,13 +135,16 @@ async fn main() -> anyhow::Result<()> {
             println!();
             println!("    {}", result.output_path.display());
 
-            result.timer.print();
+            if *timing {
+                result.timer.print();
+            }
             println!();
         }
         Some(Commands::Dev {
             project,
             port,
             host,
+            timing,
         }) => {
             let root = match project {
                 Some(d) => ProjectRoot::from(Path::new(d))?,
@@ -146,10 +167,15 @@ async fn main() -> anyhow::Result<()> {
                 anyhow::anyhow!("failed to bind to ports {}-{} on {}", port, port + 5, host)
             })?;
 
-            let res = cli::dev::execute(&root).await?;
+            let mut res = cli::dev::execute(&root).await?;
             let dev_server = axum::serve(listener, res.router);
 
             tui::print_header(&format!("served at http://{}:{}", host, bound_port));
+
+            if *timing {
+                res.timer.print();
+                println!();
+            }
 
             dev_server
                 .await

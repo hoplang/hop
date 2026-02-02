@@ -5,6 +5,7 @@ use crate::hop::symbols::module_id::ModuleId;
 use crate::hop::syntax::format;
 use crate::hop::syntax::parser;
 use crate::parse_error::ParseError;
+use crate::tui::timing;
 use anyhow::Result;
 use rayon::prelude::*;
 use std::path::PathBuf;
@@ -13,6 +14,7 @@ use std::path::PathBuf;
 pub struct FmtResult {
     pub files_formatted: usize,
     pub files_unchanged: usize,
+    pub timer: timing::TimingCollector,
 }
 
 struct FormattedModule {
@@ -28,6 +30,9 @@ enum ModuleResult {
 }
 
 pub fn execute(project_root: &ProjectRoot, file: Option<&str>) -> Result<FmtResult> {
+    let mut timer = timing::TimingCollector::new();
+
+    timer.start_phase("find files");
     let module_paths: Vec<PathBuf> = match file {
         Some(file_path) => vec![PathBuf::from(file_path)],
         None => {
@@ -39,6 +44,7 @@ pub fn execute(project_root: &ProjectRoot, file: Option<&str>) -> Result<FmtResu
         }
     };
 
+    timer.start_phase("parse and format");
     let results: Vec<ModuleResult> = module_paths
         .into_par_iter()
         .map(|path| {
@@ -83,6 +89,7 @@ pub fn execute(project_root: &ProjectRoot, file: Option<&str>) -> Result<FmtResu
     }
 
     // Write all results to disk (only if all loaded and parsed successfully)
+    timer.start_phase("write files");
     let mut files_formatted = 0;
     let mut files_unchanged = 0;
 
@@ -101,6 +108,7 @@ pub fn execute(project_root: &ProjectRoot, file: Option<&str>) -> Result<FmtResu
     Ok(FmtResult {
         files_formatted,
         files_unchanged,
+        timer,
     })
 }
 
