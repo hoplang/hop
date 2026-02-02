@@ -119,6 +119,11 @@ fn typecheck_module(
                     continue;
                 };
 
+                definition_links.push(DefinitionLink {
+                    use_range: import_path.clone(),
+                    definition_range: def_range.clone(),
+                });
+
                 let _ = type_env.push(
                     imported_name.as_str().to_string(),
                     (typ.clone(), def_range.clone()),
@@ -251,12 +256,22 @@ fn typecheck_module(
                     name: component_name.as_str().to_string(),
                 });
 
-                // Add type annotation for the closing tag if present
+                // Add definition link for the opening tag (points to itself)
+                definition_links.push(DefinitionLink {
+                    use_range: tag_name.clone(),
+                    definition_range: tag_name.clone(),
+                });
+
+                // Add type annotation and definition link for the closing tag if present
                 if let Some(closing_range) = closing_tag_name {
                     annotations.push(TypeAnnotation {
                         range: closing_range.clone(),
                         typ: component_type,
                         name: component_name.as_str().to_string(),
+                    });
+                    definition_links.push(DefinitionLink {
+                        use_range: closing_range.clone(),
+                        definition_range: tag_name.clone(),
                     });
                 }
 
@@ -802,20 +817,47 @@ fn typecheck_node(
                 .collect();
 
             // Look up the component type from type_env
-            let (component_module, component_type_name, component_params) =
-                match type_env.lookup(component_name.as_str()).map(|(t, _)| t.as_ref()) {
-                    Some(Type::Component {
-                        module,
-                        name,
-                        parameters,
-                    }) => (module.clone(), name.clone(), parameters.clone()),
-                    _ => {
+            let (component_module, component_type_name, component_params, component_def_range) =
+                match type_env.lookup(component_name.as_str()) {
+                    Some((typ, def_range)) => match typ.as_ref() {
+                        Type::Component {
+                            module,
+                            name,
+                            parameters,
+                        } => (
+                            module.clone(),
+                            name.clone(),
+                            parameters.clone(),
+                            def_range.clone(),
+                        ),
+                        _ => {
+                            errors.push(TypeError::UndefinedComponent {
+                                tag_name: tag_name.clone(),
+                            });
+                            return None;
+                        }
+                    },
+                    None => {
                         errors.push(TypeError::UndefinedComponent {
                             tag_name: tag_name.clone(),
                         });
                         return None;
                     }
                 };
+
+            // Add definition link for the opening tag
+            definition_links.push(DefinitionLink {
+                use_range: tag_name.clone(),
+                definition_range: component_def_range.clone(),
+            });
+
+            // Add definition link for the closing tag if present
+            if let Some(closing_range) = component_name_closing_range {
+                definition_links.push(DefinitionLink {
+                    use_range: closing_range.clone(),
+                    definition_range: component_def_range,
+                });
+            }
 
             // Add type annotation for the component reference
             let component_type = Arc::new(Type::Component {

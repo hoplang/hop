@@ -228,7 +228,6 @@ impl Program {
         module_id: &ModuleId,
         position: DocumentPosition,
     ) -> Option<DefinitionLocation> {
-        // Check if we have a definition link for this position (e.g., variable reference)
         if let Some(links) = self.definition_links.get(module_id) {
             for link in links {
                 if link.use_range.contains_position(position) {
@@ -238,77 +237,7 @@ impl Program {
                 }
             }
         }
-
-        let ast = self.parsed_asts.get(module_id)?;
-
-        // First check if we're on an import node's path (module::path::Component)
-        for import in ast.get_import_declarations() {
-            if import.path.contains_position(position) {
-                let target_module = &import.module_id;
-                let imported_name = import.type_name.as_str();
-
-                let target_ast = self.parsed_asts.get(target_module)?;
-
-                // Check if it's a component declaration
-                if let Some(component_def) = target_ast.get_component_declaration(imported_name) {
-                    return Some(DefinitionLocation {
-                        range: component_def.tag_name.clone(),
-                    });
-                }
-
-                // Check if it's a record declaration
-                if let Some(record) = target_ast.get_record_declaration(imported_name) {
-                    return Some(DefinitionLocation {
-                        range: record.name_range.clone(),
-                    });
-                }
-            }
-        }
-
-        // Check if we're on a component definition's tag name (opening or closing)
-        for component_def in ast.get_component_declarations() {
-            if component_def
-                .tag_name_ranges()
-                .any(|r| r.contains_position(position))
-            {
-                // Navigate to the opening tag of this component definition
-                return Some(DefinitionLocation {
-                    range: component_def.tag_name.clone(),
-                });
-            }
-        }
-
-        let node = find_node_at_position(ast, position)?;
-
-        let is_on_tag_name = node.tag_names().any(|r| r.contains_position(position));
-
-        if !is_on_tag_name {
-            return None;
-        }
-
-        match node {
-            ParsedNode::ComponentReference {
-                component_name,
-                declaring_module: definition_module,
-                ..
-            } => {
-                let module_id = definition_module.as_ref()?;
-                let component_def = self
-                    .parsed_asts
-                    .get(module_id)?
-                    .get_component_declaration(component_name.as_str())?;
-                Some(DefinitionLocation {
-                    range: component_def.tag_name.clone(),
-                })
-            }
-            ParsedNode::Html { tag_name, .. } => {
-                // Navigate to the opening tag of this HTML element
-                Some(DefinitionLocation {
-                    range: tag_name.clone(),
-                })
-            }
-            _ => None,
-        }
+        None
     }
 
     pub fn get_rename_locations(
@@ -822,6 +751,18 @@ mod tests {
 
         let program = program_from_archive(&archive);
 
+        for (module_id, errors) in program.get_parse_errors() {
+            if !errors.is_empty() {
+                panic!("Parse errors in module {}: {:?}", module_id, errors);
+            }
+        }
+
+        for (module_id, errors) in program.get_type_errors() {
+            if !errors.is_empty() {
+                panic!("Type errors in module {}: {:?}", module_id, errors);
+            }
+        }
+
         let loc = program
             .get_definition_location(&module, marker.position)
             .expect("Expected definition location to be defined");
@@ -1050,6 +991,32 @@ mod tests {
     }
 
     #[test]
+    fn should_find_definition_from_import_enum_name() {
+        check_definition_location(
+            indoc! {r#"
+                -- types.hop --
+                enum Status { Active, Inactive }
+                -- main.hop --
+                import types::Status
+                         ^
+
+                <Main {status: Status}>
+                  <match {status}>
+                    <case {Status::Active}><span>Active</span></case>
+                    <case {Status::Inactive}><span>Inactive</span></case>
+                  </match>
+                </Main>
+            "#},
+            expect![[r#"
+                Definition
+                  --> types (line 1, col 6)
+                1 | enum Status { Active, Inactive }
+                  |      ^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
     fn should_find_definition_from_component_definition_opening_tag() {
         check_definition_location(
             indoc! {r#"
@@ -1088,48 +1055,6 @@ mod tests {
     }
 
     #[test]
-    fn should_find_definition_from_html_opening_tag() {
-        check_definition_location(
-            indoc! {r#"
-                -- main.hop --
-                <Main>
-                  <div class="container">
-                   ^
-                    <span>Content</span>
-                  </div>
-                </Main>
-            "#},
-            expect![[r#"
-                Definition
-                  --> main (line 2, col 4)
-                2 |   <div class="container">
-                  |    ^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_find_definition_from_html_closing_tag() {
-        check_definition_location(
-            indoc! {r#"
-                -- main.hop --
-                <Main>
-                  <div class="container">
-                    <span>Content</span>
-                  </div>
-                    ^
-                </Main>
-            "#},
-            expect![[r#"
-                Definition
-                  --> main (line 2, col 4)
-                2 |   <div class="container">
-                  |    ^^^
-            "#]],
-        );
-    }
-
-    #[test]
     fn should_find_definition_from_component_reference_in_same_module_simple() {
         check_definition_location(
             indoc! {r#"
@@ -1163,7 +1088,7 @@ mod tests {
 
                 <Main {x: Option[String]}>
                   <match {x}>
-                    <case {Some(s)}>
+                    <case {Some(_)}>
                       <HelloWorld />
                        ^
                     </case>
