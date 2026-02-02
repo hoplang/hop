@@ -124,7 +124,7 @@ mod tests {
     fn formats_unformatted_file() {
         let archive = Archive::from(indoc! {r#"
             -- hop.toml --
-            [compile]
+            [build]
             target = "ts"
             output_path = "app.ts"
             -- main.hop --
@@ -156,7 +156,7 @@ mod tests {
     fn formats_multiple_files() {
         let archive = Archive::from(indoc! {r#"
             -- hop.toml --
-            [compile]
+            [build]
             target = "ts"
             output_path = "app.ts"
             -- main.hop --
@@ -178,7 +178,7 @@ mod tests {
     fn formats_single_file() {
         let archive = Archive::from(indoc! {r#"
             -- hop.toml --
-            [compile]
+            [build]
             target = "ts"
             output_path = "app.ts"
             -- main.hop --
@@ -211,7 +211,7 @@ mod tests {
     fn does_not_format_any_file_if_any_has_parse_errors() {
         let archive = Archive::from(indoc! {r#"
             -- hop.toml --
-            [compile]
+            [build]
             target = "ts"
             output_path = "app.ts"
             -- main.hop --
@@ -237,7 +237,7 @@ mod tests {
     fn displays_parse_error_details() {
         let archive = Archive::from(indoc! {r#"
             -- hop.toml --
-            [compile]
+            [build]
             target = "ts"
             output_path = "app.ts"
             -- broken.hop --

@@ -30,8 +30,8 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Compile a hop project to native code
-    Compile {
+    /// Build a hop project to native code
+    Build {
         /// Path to project root
         #[arg(long)]
         project: Option<String>,
@@ -112,7 +112,7 @@ async fn main() -> anyhow::Result<()> {
             }
             println!();
         }
-        Some(Commands::Compile {
+        Some(Commands::Build {
             project,
             no_optimize,
             timing,
@@ -126,10 +126,10 @@ async fn main() -> anyhow::Result<()> {
                 None => ProjectRoot::find_upwards(Path::new("."))?,
             };
 
-            let mut result = cli::compile::execute(&root, *no_optimize).await?;
+            let mut result = cli::build::execute(&root, *no_optimize).await?;
             let elapsed = start_time.elapsed();
 
-            tui::print_header(&format!("compiled in {} ms", elapsed.as_millis()));
+            tui::print_header(&format!("built in {} ms", elapsed.as_millis()));
 
             println!("  {}", "output".bold());
             println!();

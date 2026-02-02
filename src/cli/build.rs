@@ -183,7 +183,7 @@ mod tests {
         // Create a temporary directory with hop.toml and a simple .hop file
         let archive = Archive::from(indoc! {r#"
             -- hop.toml --
-            [compile]
+            [build]
             target = "go"
             output_path = "components/frontend.go"
 
@@ -233,7 +233,7 @@ mod tests {
         // With 8 modules, there's only 1/40320 chance of accidental success.
         let archive = Archive::from(indoc! {r#"
             -- hop.toml --
-            [compile]
+            [build]
             target = "ts"
             output_path = "output.ts"
 

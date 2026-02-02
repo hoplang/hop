@@ -235,7 +235,7 @@ mod tests {
     fn find_config_file() {
         let archive = Archive::from(indoc! {r#"
             -- hop.toml --
-            [compile]
+            [build]
             target = "ts"
             output_path = "app.ts"
             -- src/components/.gitkeep --
@@ -278,7 +278,7 @@ mod tests {
     fn path_to_module_name() {
         let archive = Archive::from(indoc! {r#"
             -- hop.toml --
-            [compile]
+            [build]
             target = "ts"
             output_path = "app.ts"
             -- main.hop --
@@ -306,7 +306,7 @@ mod tests {
     fn module_name_to_path() {
         let archive = Archive::from(indoc! {r#"
             -- hop.toml --
-            [compile]
+            [build]
             target = "ts"
             output_path = "app.ts"
         "#});
@@ -332,7 +332,7 @@ mod tests {
     fn load_all_hop_modules() {
         let archive = Archive::from(indoc! {r#"
             -- hop.toml --
-            [compile]
+            [build]
             target = "ts"
             output_path = "app.ts"
             -- src/main.hop --
@@ -376,7 +376,7 @@ mod tests {
     fn files_with_dots_in_names_are_rejected() {
         let archive = Archive::from(indoc! {r#"
             -- hop.toml --
-            [compile]
+            [build]
             target = "ts"
             output_path = "app.ts"
             -- src/foo.bar.hop --
@@ -428,7 +428,7 @@ mod tests {
     fn skip_directories() {
         let archive = Archive::from(indoc! {r#"
             -- hop.toml --
-            [compile]
+            [build]
             target = "ts"
             output_path = "app.ts"
             -- src/main.hop --
@@ -469,7 +469,7 @@ mod tests {
             [css]
             mode = "tailwind4"
 
-            [compile]
+            [build]
             target = "ts"
             output_path = "app.ts"
         "#});
@@ -487,7 +487,7 @@ mod tests {
     async fn load_config_missing_hop_toml_error() {
         let archive = Archive::from(indoc! {r#"
             -- hop.toml --
-            [compile]
+            [build]
             target = "ts"
             output_path = "app.ts"
             -- main.hop --
@@ -520,7 +520,7 @@ mod tests {
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
         let root = ProjectRoot::from(&temp_dir).unwrap();
 
-        // Empty config should now parse successfully (compile section is optional)
+        // Empty config should now parse successfully (build section is optional)
         let result = root.load_config().await;
         assert!(
             result.is_ok(),
@@ -532,7 +532,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn load_config_without_compile_section() {
+    async fn load_config_without_build_section() {
         let archive = Archive::from(indoc! {r#"
             -- hop.toml --
             [css]
@@ -544,7 +544,7 @@ mod tests {
         let result = root.load_config().await;
         assert!(
             result.is_ok(),
-            "Config without compile section should succeed: {:?}",
+            "Config without build section should succeed: {:?}",
             result.err()
         );
 
@@ -555,7 +555,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn get_tailwind_input_path_without_compile_section() {
+    async fn get_tailwind_input_path_without_build_section() {
         let archive = Archive::from(indoc! {r#"
             -- hop.toml --
             [css.tailwind]
@@ -567,7 +567,7 @@ mod tests {
         let result = root.get_tailwind_input_path().await;
         assert!(
             result.is_ok(),
-            "get_tailwind_input_path should succeed without compile section: {:?}",
+            "get_tailwind_input_path should succeed without build section: {:?}",
             result.err()
         );
 
@@ -579,7 +579,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn get_output_path_errors_without_compile_config() {
+    async fn get_output_path_errors_without_build_config() {
         let archive = Archive::from(indoc! {r#"
             -- hop.toml --
             [css]
@@ -591,7 +591,7 @@ mod tests {
         let result = root.get_output_path().await;
         assert!(
             result.is_err(),
-            "get_output_path should fail without compile config"
+            "get_output_path should fail without build config"
         );
 
         std::fs::remove_dir_all(&temp_dir).unwrap();

@@ -12,12 +12,12 @@ update-tests:
 
 build:
 	tsc --project src/cli/dev/js/tsconfig.json
-	hop compile --project src/cli/dev/frontend/
+	hop build --project src/cli/dev/frontend/
 	cargo build
 
 build-release:
 	tsc --project src/cli/dev/js/tsconfig.json
-	hop compile --project src/cli/dev/frontend/
+	hop build --project src/cli/dev/frontend/
 	cargo build --release
 
 install: build
