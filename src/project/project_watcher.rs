@@ -47,7 +47,7 @@ pub struct ProjectWatcher {
 
 impl ProjectWatcher {
     pub async fn new(project: &Project, debounce: Duration) -> anyhow::Result<Self> {
-        let root = project.get_path();
+        let root = project.get_project_root();
         let project = project.clone();
 
         let (notify_tx, mut notify_rx) = mpsc::unbounded_channel();

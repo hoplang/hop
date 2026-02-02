@@ -1,3 +1,11 @@
+//! Represents a hop project and provides methods for working with it.
+//!
+//! A [`Project`] is anchored to a directory containing a `hop.toml` configuration
+//! file. It provides functionality for:
+//!
+//! - Converting between file paths and [`ModuleId`]
+//! - Loading modules and configuration
+
 use anyhow::Context;
 use std::path::{Path, PathBuf};
 use tokio::fs as async_fs;
@@ -9,10 +17,29 @@ use crate::hop::symbols::module_id::ModuleId;
 #[derive(Debug, Clone, PartialEq)]
 pub struct Project {
     // Directory containing the hop.toml file
-    directory: PathBuf,
+    project_root: PathBuf,
 }
 
 impl Project {
+    /// Construct the project from a path.
+    ///
+    /// The path should be a directory and contain the config file.
+    pub fn from(path: &Path) -> anyhow::Result<Project> {
+        if !path.is_dir() {
+            anyhow::bail!("{:?} is not a directory", &path)
+        }
+        let canonicalized = path
+            .canonicalize()
+            .with_context(|| format!("Failed to canonicalize path {:?}", &path))?;
+        let config_file = canonicalized.join("hop.toml");
+        if !config_file.exists() {
+            anyhow::bail!("Expected to find hop.toml in {:?}", &path)
+        }
+        Ok(Project {
+            project_root: canonicalized.clone(),
+        })
+    }
+
     /// Find the project root by traversing upwards.
     pub fn find_upwards(start_path: &Path) -> anyhow::Result<Project> {
         let canonicalized = start_path
@@ -30,7 +57,7 @@ impl Project {
             let config_file = current_dir.join("hop.toml");
             if config_file.exists() {
                 return Ok(Project {
-                    directory: current_dir.to_path_buf(),
+                    project_root: current_dir.to_path_buf(),
                 });
             }
             current_dir = current_dir.parent().ok_or_else(|| {
@@ -42,33 +69,14 @@ impl Project {
         }
     }
 
-    /// Construct the project root from a path.
-    ///
-    /// The path should be a directory and contain the config file.
-    pub fn from(path: &Path) -> anyhow::Result<Project> {
-        if !path.is_dir() {
-            anyhow::bail!("{:?} is not a directory", &path)
-        }
-        let canonicalized = path
-            .canonicalize()
-            .with_context(|| format!("Failed to canonicalize path {:?}", &path))?;
-        let config_file = canonicalized.join("hop.toml");
-        if !config_file.exists() {
-            anyhow::bail!("Expected to find hop.toml in {:?}", &path)
-        }
-        Ok(Project {
-            directory: canonicalized.clone(),
-        })
-    }
-
-    pub fn get_path(&self) -> &Path {
-        &self.directory
+    pub fn get_project_root(&self) -> &Path {
+        &self.project_root
     }
 
     /// Convert a file path to a ModuleId using this project root as reference
     pub fn path_to_module_id(&self, file_path: &Path) -> anyhow::Result<ModuleId> {
         let relative_path = file_path
-            .strip_prefix(&self.directory)
+            .strip_prefix(&self.project_root)
             .with_context(|| format!("Failed to strip prefix from path {:?}", file_path))?;
 
         let module_str = relative_path
@@ -85,7 +93,7 @@ impl Project {
         let module_path = module_id
             .to_path()
             .replace('/', std::path::MAIN_SEPARATOR_STR);
-        self.directory.join(format!("{}.hop", module_path))
+        self.project_root.join(format!("{}.hop", module_path))
     }
 
     /// Load a single hop module by its module ID
@@ -100,12 +108,12 @@ impl Project {
     pub fn find_modules(&self) -> anyhow::Result<Vec<ModuleId>> {
         let mut modules = Vec::new();
 
-        if !self.directory.exists() || !self.directory.is_dir() {
+        if !self.project_root.exists() || !self.project_root.is_dir() {
             return Ok(modules);
         }
 
         let mut paths: Vec<PathBuf> = Vec::new();
-        paths.push(self.directory.clone());
+        paths.push(self.project_root.clone());
 
         while let Some(path) = paths.pop() {
             if path.is_dir() {
@@ -133,7 +141,7 @@ impl Project {
 
     /// Load the hop.toml configuration file from this project root
     pub async fn load_config(&self) -> anyhow::Result<HopConfig> {
-        let config_path = self.directory.join("hop.toml");
+        let config_path = self.project_root.join("hop.toml");
 
         if !config_path.exists() {
             anyhow::bail!("hop.toml not found at {:?}", config_path);
@@ -151,13 +159,13 @@ impl Project {
 
     pub async fn get_tailwind_input_path(&self) -> anyhow::Result<Option<PathBuf>> {
         let config = self.load_config().await?;
-        Ok(config.css.tailwind.map(|p| self.directory.join(p.input)))
+        Ok(config.css.tailwind.map(|p| self.project_root.join(p.input)))
     }
 
     pub async fn get_output_path(&self) -> anyhow::Result<PathBuf> {
         let config = self.load_config().await?;
         let resolved = config.get_resolved_config()?;
-        Ok(self.directory.join(&resolved.output_path))
+        Ok(self.project_root.join(&resolved.output_path))
     }
 
     pub async fn write_output_path(&self, data: &str) -> anyhow::Result<PathBuf> {
@@ -218,7 +226,7 @@ mod tests {
         // Test finding from nested directory
         let nested_dir = temp_dir.join("src").join("components");
         let found = Project::find_upwards(&nested_dir).unwrap();
-        assert_eq!(found.directory, temp_dir);
+        assert_eq!(found.project_root, temp_dir);
 
         // Clean up
         std::fs::remove_dir_all(&temp_dir).unwrap();
