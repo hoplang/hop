@@ -1,6 +1,6 @@
 use crate::config::TargetLanguage;
 use crate::document::DocumentAnnotator;
-use crate::filesystem::project_root::ProjectRoot;
+use crate::filesystem::project::Project;
 use crate::hop::program::Program;
 use crate::ir::{GoTranspiler, PythonTranspiler, RustTranspiler, Transpiler, TsTranspiler};
 use crate::orchestrator::{OrchestrateOptions, orchestrate};
@@ -14,17 +14,18 @@ pub struct CompileResult {
     pub output_path: PathBuf,
 }
 
-pub async fn execute(project_root: &ProjectRoot, skip_optimization: bool) -> Result<CompileResult> {
+pub async fn execute(project: &Project, skip_optimization: bool) -> Result<CompileResult> {
     let mut timer = timing::TimingCollector::new();
 
-    let config = project_root.load_config().await?;
+    let config = project.load_config().await?;
     let resolved = config.get_resolved_config()?;
 
     timer.start_phase("load modules");
-    let hop_modules = project_root.load_all_hop_modules()?;
-
-    if hop_modules.is_empty() {
-        anyhow::bail!("No .hop files found in project");
+    let module_ids = project.find_modules()?;
+    let mut hop_modules = std::collections::HashMap::new();
+    for module_id in module_ids {
+        let document = project.load_module(&module_id)?;
+        hop_modules.insert(module_id, document);
     }
 
     let hop_sources = hop_modules
@@ -35,7 +36,7 @@ pub async fn execute(project_root: &ProjectRoot, skip_optimization: bool) -> Res
 
     timer.start_phase("tailwind");
     let runner = TailwindRunner::new().await?;
-    let tailwind_input = project_root.get_tailwind_input_path().await?;
+    let tailwind_input = project.get_tailwind_input_path().await?;
     let tailwind_css = runner.compile_once(tailwind_input, &hop_sources).await?;
 
     timer.start_phase("compiling");
@@ -110,7 +111,7 @@ pub async fn execute(project_root: &ProjectRoot, skip_optimization: bool) -> Res
 
     timer.start_phase("writing output");
 
-    let output_path = project_root.write_output(&generated_code).await?;
+    let output_path = project.write_output_path(&generated_code).await?;
 
     Ok(CompileResult { timer, output_path })
 }
@@ -142,10 +143,10 @@ mod tests {
         "#});
 
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
-        let project_root = ProjectRoot::from(&temp_dir).unwrap();
+        let project = Project::from(&temp_dir).unwrap();
 
         // Execute the compile command
-        let result = execute(&project_root, false).await;
+        let result = execute(&project, false).await;
         assert!(
             result.is_ok(),
             "Compilation should succeed: {:?}",
@@ -204,10 +205,10 @@ mod tests {
         "#});
 
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
-        let project_root = ProjectRoot::from(&temp_dir).unwrap();
+        let project = Project::from(&temp_dir).unwrap();
 
         // Execute the compile command
-        let result = execute(&project_root, false).await;
+        let result = execute(&project, false).await;
         assert!(
             result.is_ok(),
             "Compilation should succeed: {:?}",

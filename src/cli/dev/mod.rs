@@ -2,7 +2,7 @@ mod frontend;
 mod server;
 
 use crate::filesystem::adaptive_watcher::{AdaptiveWatcher, WatchEvent};
-use crate::filesystem::project_root::ProjectRoot;
+use crate::filesystem::project::Project;
 use crate::hop::program::Program;
 use crate::log_info;
 use crate::tui::timing;
@@ -21,16 +21,16 @@ pub struct DevServer {
 }
 
 async fn create_file_watcher(
-    root: &ProjectRoot,
+    project: &Project,
     tailwind_watcher: TailwindWatcher,
     state: AppState,
 ) -> anyhow::Result<AdaptiveWatcher> {
-    let local_root = root.clone();
+    let local_project = project.clone();
 
     // Create adaptive watcher with ignored folders for the project directory
     let ignored_folders = vec![".git", ".direnv", "node_modules", "target"];
 
-    let adaptive_watcher = AdaptiveWatcher::new(root.get_path(), ignored_folders).await?;
+    let adaptive_watcher = AdaptiveWatcher::new(project.get_path(), ignored_folders).await?;
 
     // Spawn task to handle watch events from the adaptive watcher with debouncing
     let mut rx = adaptive_watcher.subscribe();
@@ -100,13 +100,15 @@ async fn create_file_watcher(
                         for (path, kind) in &pending_changes {
                             match kind {
                                 ChangeKind::Deleted => {
-                                    if let Ok(module_id) = local_root.path_to_module_id(path) {
+                                    if let Ok(module_id) = local_project.path_to_module_id(path) {
                                         program.remove_module(&module_id);
                                     }
                                 }
                                 ChangeKind::Modified => {
-                                    if let Ok((module_id, document)) = local_root.load_hop_module(path) {
-                                        program.update_module(module_id, document);
+                                    if let Ok(module_id) = local_project.path_to_module_id(path) {
+                                        if let Ok(document) = local_project.load_module(&module_id) {
+                                            program.update_module(module_id, document);
+                                        }
                                     }
                                 }
                             }
@@ -144,15 +146,20 @@ async fn create_file_watcher(
 ///
 /// Also sets up a watcher that watches all source files used to construct the output files.
 /// The watcher emits SSE-events on the `/event_source` route.
-pub async fn execute(root: &ProjectRoot) -> anyhow::Result<DevServer> {
+pub async fn execute(project: &Project) -> anyhow::Result<DevServer> {
     let mut timer = timing::TimingCollector::new();
 
     timer.start_phase("load modules");
-    let modules = root.load_all_hop_modules()?;
+    let module_ids = project.find_modules()?;
+    let mut modules = HashMap::new();
+    for module_id in module_ids {
+        let document = project.load_module(&module_id)?;
+        modules.insert(module_id, document);
+    }
     let program = Program::new(modules);
 
     // Get tailwind input path if it exists
-    let input_css_path = root.get_tailwind_input_path().await?;
+    let input_css_path = project.get_tailwind_input_path().await?;
 
     // Create the Tailwind runner, compile initial CSS, and start the watcher
     timer.start_phase("tailwind");
@@ -185,7 +192,7 @@ pub async fn execute(root: &ProjectRoot) -> anyhow::Result<DevServer> {
         }
     });
     let adaptive_watcher =
-        create_file_watcher(root, tailwind_watcher.clone(), app_state.clone()).await?;
+        create_file_watcher(project, tailwind_watcher.clone(), app_state.clone()).await?;
 
     let router = create_router().with_state(app_state);
 

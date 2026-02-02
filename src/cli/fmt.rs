@@ -1,6 +1,6 @@
 use crate::document::{Document, DocumentAnnotator};
 use crate::error_collector::ErrorCollector;
-use crate::filesystem::project_root::ProjectRoot;
+use crate::filesystem::project::Project;
 use crate::hop::symbols::module_id::ModuleId;
 use crate::hop::syntax::format;
 use crate::hop::syntax::parser;
@@ -26,31 +26,29 @@ struct FormattedModule {
 
 enum ModuleResult {
     Success(FormattedModule),
-    LoadError { path: PathBuf, error: anyhow::Error },
+    LoadError { module_id: ModuleId, error: anyhow::Error },
 }
 
-pub fn execute(project_root: &ProjectRoot, file: Option<&str>) -> Result<FmtResult> {
+pub fn execute(project: &Project, file: Option<&str>) -> Result<FmtResult> {
     let mut timer = timing::TimingCollector::new();
 
     timer.start_phase("find files");
-    let module_paths = match file {
-        Some(file_path) => vec![PathBuf::from(file_path)],
-        None => {
-            let paths = project_root.find_hop_files()?;
-            if paths.is_empty() {
-                anyhow::bail!("No .hop files found in project");
-            }
-            paths
+    let module_ids = match file {
+        Some(file_path) => {
+            let path = PathBuf::from(file_path);
+            let module_id = project.path_to_module_id(&path)?;
+            vec![module_id]
         }
+        None => project.find_modules()?,
     };
 
     timer.start_phase("parse and format");
-    let results = module_paths
+    let results = module_ids
         .into_par_iter()
-        .map(|path| {
-            let (module_id, document) = match project_root.load_hop_module(&path) {
-                Ok(result) => result,
-                Err(e) => return ModuleResult::LoadError { path, error: e },
+        .map(|module_id| {
+            let document = match project.load_module(&module_id) {
+                Ok(doc) => doc,
+                Err(e) => return ModuleResult::LoadError { module_id, error: e },
             };
             let mut errors = ErrorCollector::new();
             let ast = parser::parse(module_id.clone(), document.clone(), &mut errors);
@@ -73,8 +71,8 @@ pub fn execute(project_root: &ProjectRoot, file: Option<&str>) -> Result<FmtResu
 
     for result in &results {
         match result {
-            ModuleResult::LoadError { path, error } => {
-                anyhow::bail!("Failed to read {}: {}", path.display(), error);
+            ModuleResult::LoadError { module_id, error } => {
+                anyhow::bail!("Failed to read {}: {}", module_id, error);
             }
             ModuleResult::Success(m) if !m.errors.is_empty() => {
                 let filename = format!("{}.hop", m.module_id);
@@ -96,7 +94,7 @@ pub fn execute(project_root: &ProjectRoot, file: Option<&str>) -> Result<FmtResu
     for result in results {
         if let ModuleResult::Success(result) = result {
             if result.formatted != result.original.as_str() {
-                let path = project_root.module_id_to_path(&result.module_id);
+                let path = project.module_id_to_path(&result.module_id);
                 std::fs::write(&path, &result.formatted)?;
                 files_formatted += 1;
             } else {
@@ -132,9 +130,9 @@ mod tests {
         "#});
 
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
-        let project_root = ProjectRoot::from(&temp_dir).unwrap();
+        let project = Project::from(&temp_dir).unwrap();
 
-        let result = execute(&project_root, None).unwrap();
+        let result = execute(&project, None).unwrap();
 
         assert_eq!(result.files_formatted, 1);
         assert_eq!(result.files_unchanged, 0);
@@ -166,9 +164,9 @@ mod tests {
         "#});
 
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
-        let project_root = ProjectRoot::from(&temp_dir).unwrap();
+        let project = Project::from(&temp_dir).unwrap();
 
-        let result = execute(&project_root, None).unwrap();
+        let result = execute(&project, None).unwrap();
 
         assert_eq!(result.files_formatted, 2);
         assert_eq!(result.files_unchanged, 0);
@@ -188,10 +186,10 @@ mod tests {
         "#});
 
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
-        let project_root = ProjectRoot::from(&temp_dir).unwrap();
+        let project = Project::from(&temp_dir).unwrap();
 
         let main_path = temp_dir.join("main.hop");
-        let result = execute(&project_root, Some(main_path.to_str().unwrap())).unwrap();
+        let result = execute(&project, Some(main_path.to_str().unwrap())).unwrap();
 
         // Only main.hop should be formatted
         assert_eq!(result.files_formatted, 1);
@@ -221,9 +219,9 @@ mod tests {
         "#});
 
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
-        let project_root = ProjectRoot::from(&temp_dir).unwrap();
+        let project = Project::from(&temp_dir).unwrap();
 
-        let result = execute(&project_root, None);
+        let result = execute(&project, None);
 
         // Should return an error because broken.hop has parse errors
         assert!(result.is_err());
@@ -245,9 +243,9 @@ mod tests {
         "#});
 
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
-        let project_root = ProjectRoot::from(&temp_dir).unwrap();
+        let project = Project::from(&temp_dir).unwrap();
 
-        let result = execute(&project_root, None);
+        let result = execute(&project, None);
 
         let error = result.unwrap_err();
         let error_message = error.to_string();

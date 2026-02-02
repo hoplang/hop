@@ -1,48 +1,20 @@
 use anyhow::Context;
-use std::{
-    collections::HashMap,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 use tokio::fs as async_fs;
 
 use crate::config::HopConfig;
 use crate::document::Document;
 use crate::hop::symbols::module_id::ModuleId;
 
-/// Check if a directory should be skipped during .hop file search
-fn should_skip_directory(dir_name: &str) -> bool {
-    matches!(
-        dir_name,
-        "target"
-            | ".git"
-            | "node_modules"
-            | ".cargo"
-            | ".rustup"
-            | "dist"
-            | "build"
-            | ".next"
-            | ".nuxt"
-            | "coverage"
-            | ".nyc_output"
-            | ".pytest_cache"
-            | "__pycache__"
-            | ".venv"
-            | "vendor"
-            | ".idea"
-            | ".vscode"
-            | ".direnv"
-    )
-}
-
 #[derive(Debug, Clone, PartialEq)]
-pub struct ProjectRoot {
+pub struct Project {
     // Directory containing the hop.toml file
     directory: PathBuf,
 }
 
-impl ProjectRoot {
+impl Project {
     /// Find the project root by traversing upwards.
-    pub fn find_upwards(start_path: &Path) -> anyhow::Result<ProjectRoot> {
+    pub fn find_upwards(start_path: &Path) -> anyhow::Result<Project> {
         let canonicalized = start_path
             .canonicalize()
             .with_context(|| format!("Failed to canonicalize path {:?}", &start_path))?;
@@ -57,7 +29,7 @@ impl ProjectRoot {
         loop {
             let config_file = current_dir.join("hop.toml");
             if config_file.exists() {
-                return Ok(ProjectRoot {
+                return Ok(Project {
                     directory: current_dir.to_path_buf(),
                 });
             }
@@ -73,7 +45,7 @@ impl ProjectRoot {
     /// Construct the project root from a path.
     ///
     /// The path should be a directory and contain the config file.
-    pub fn from(path: &Path) -> anyhow::Result<ProjectRoot> {
+    pub fn from(path: &Path) -> anyhow::Result<Project> {
         if !path.is_dir() {
             anyhow::bail!("{:?} is not a directory", &path)
         }
@@ -84,8 +56,8 @@ impl ProjectRoot {
         if !config_file.exists() {
             anyhow::bail!("Expected to find hop.toml in {:?}", &path)
         }
-        Ok(ProjectRoot {
-            directory: canonicalized.to_path_buf(),
+        Ok(Project {
+            directory: canonicalized.clone(),
         })
     }
 
@@ -116,44 +88,20 @@ impl ProjectRoot {
         self.directory.join(format!("{}.hop", module_path))
     }
 
-    /// Load all hop modules from this project root, returning a HashMap of module_id -> content
-    pub fn load_all_hop_modules(&self) -> anyhow::Result<HashMap<ModuleId, Document>> {
-        let all_hop_files = self.find_hop_files()?;
-        let mut modules = HashMap::new();
-
-        for path in all_hop_files {
-            let module_id = self.path_to_module_id(&path)?;
-            let content = std::fs::read_to_string(&path)
-                .with_context(|| format!("Failed to read file {:?}", path))?;
-            modules.insert(module_id, Document::new(content));
-        }
-
-        Ok(modules)
+    /// Load a single hop module by its module ID
+    pub fn load_module(&self, module_id: &ModuleId) -> anyhow::Result<Document> {
+        let path = self.module_id_to_path(module_id);
+        let content = std::fs::read_to_string(&path)
+            .with_context(|| format!("Failed to read module {:?} at {:?}", module_id, path))?;
+        Ok(Document::new(content))
     }
 
-    /// Load a single hop module from a file path, returning module_id -> document
-    pub fn load_hop_module(&self, file_path: &Path) -> anyhow::Result<(ModuleId, Document)> {
-        let canonical_path = file_path
-            .canonicalize()
-            .with_context(|| format!("Failed to canonicalize path {:?}", file_path))?;
-
-        if canonical_path.extension().and_then(|s| s.to_str()) != Some("hop") {
-            anyhow::bail!("File {:?} is not a .hop file", file_path);
-        }
-
-        let module_id = self.path_to_module_id(&canonical_path)?;
-        let content = std::fs::read_to_string(&canonical_path)
-            .with_context(|| format!("Failed to read file {:?}", canonical_path))?;
-
-        Ok((module_id, Document::new(content)))
-    }
-
-    /// Recursively find all .hop files in this project root
-    pub fn find_hop_files(&self) -> anyhow::Result<Vec<PathBuf>> {
-        let mut hop_files = Vec::new();
+    /// Find all module IDs in this project root
+    pub fn find_modules(&self) -> anyhow::Result<Vec<ModuleId>> {
+        let mut modules = Vec::new();
 
         if !self.directory.exists() || !self.directory.is_dir() {
-            return Ok(hop_files);
+            return Ok(modules);
         }
 
         let mut paths: Vec<PathBuf> = Vec::new();
@@ -175,11 +123,12 @@ impl ProjectRoot {
                     paths.push(p);
                 }
             } else if path.extension().and_then(|s| s.to_str()) == Some("hop") {
-                hop_files.push(path.to_path_buf());
+                let module_id = self.path_to_module_id(&path)?;
+                modules.push(module_id);
             }
         }
 
-        Ok(hop_files)
+        Ok(modules)
     }
 
     /// Load the hop.toml configuration file from this project root
@@ -211,7 +160,7 @@ impl ProjectRoot {
         Ok(self.directory.join(&resolved.output_path))
     }
 
-    pub async fn write_output(&self, data: &str) -> anyhow::Result<PathBuf> {
+    pub async fn write_output_path(&self, data: &str) -> anyhow::Result<PathBuf> {
         let path = self.get_output_path().await?;
         // Create parent directory if it doesn't exist
         if let Some(parent) = path.parent() {
@@ -220,6 +169,31 @@ impl ProjectRoot {
         async_fs::write(&path, data).await?;
         Ok(path)
     }
+}
+
+/// Check if a directory should be skipped during .hop file search
+fn should_skip_directory(dir_name: &str) -> bool {
+    matches!(
+        dir_name,
+        "target"
+            | ".git"
+            | "node_modules"
+            | ".cargo"
+            | ".rustup"
+            | "dist"
+            | "build"
+            | ".next"
+            | ".nuxt"
+            | "coverage"
+            | ".nyc_output"
+            | ".pytest_cache"
+            | "__pycache__"
+            | ".venv"
+            | "vendor"
+            | ".idea"
+            | ".vscode"
+            | ".direnv"
+    )
 }
 
 #[cfg(test)]
@@ -243,7 +217,7 @@ mod tests {
 
         // Test finding from nested directory
         let nested_dir = temp_dir.join("src").join("components");
-        let found = ProjectRoot::find_upwards(&nested_dir).unwrap();
+        let found = Project::find_upwards(&nested_dir).unwrap();
         assert_eq!(found.directory, temp_dir);
 
         // Clean up
@@ -262,7 +236,7 @@ mod tests {
 
         // Test that find_upwards fails when no hop.toml exists
         let nested_dir = temp_dir.join("src").join("components");
-        let result = ProjectRoot::find_upwards(&nested_dir);
+        let result = Project::find_upwards(&nested_dir);
         assert!(result.is_err());
 
         let error_message = result.unwrap_err().to_string();
@@ -285,15 +259,15 @@ mod tests {
             <button-comp>Click</button-comp>
         "#});
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
-        let root = ProjectRoot::from(&temp_dir).unwrap();
+        let project = Project::from(&temp_dir).unwrap();
 
         // Test converting file paths to module names
         let button_path = temp_dir.join("src/components/button.hop");
-        let module_id = root.path_to_module_id(&button_path).unwrap();
+        let module_id = project.path_to_module_id(&button_path).unwrap();
         assert_eq!(module_id.to_path(), "src/components/button");
 
         let main_path = temp_dir.join("main.hop");
-        let main_module = root.path_to_module_id(&main_path).unwrap();
+        let main_module = project.path_to_module_id(&main_path).unwrap();
         assert_eq!(main_module.to_path(), "main");
 
         // Clean up
@@ -309,11 +283,11 @@ mod tests {
             output_path = "app.ts"
         "#});
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
-        let root = ProjectRoot::from(&temp_dir).unwrap();
+        let project = Project::from(&temp_dir).unwrap();
 
         // Test converting module names back to paths
         let module = ModuleId::new("src::components::button").unwrap();
-        let path = root.module_id_to_path(&module);
+        let path = project.module_id_to_path(&module);
         assert_eq!(
             path.strip_prefix(&temp_dir)
                 .unwrap()
@@ -327,44 +301,81 @@ mod tests {
     }
 
     #[test]
-    fn load_all_hop_modules() {
+    fn load_module() {
+        let archive = Archive::from(indoc! {r#"
+            -- hop.toml --
+            [build]
+            target = "ts"
+            output_path = "app.ts"
+            -- src/components/button.hop --
+            <button-comp>Click me!</button-comp>
+        "#});
+        let temp_dir = temp_dir_from_archive(&archive).unwrap();
+        let project = Project::from(&temp_dir).unwrap();
+
+        let module_id = ModuleId::new("src::components::button").unwrap();
+        let document = project.load_module(&module_id).unwrap();
+
+        assert!(
+            document
+                .as_str()
+                .contains("<button-comp>Click me!</button-comp>")
+        );
+
+        // Clean up
+        std::fs::remove_dir_all(&temp_dir).unwrap();
+    }
+
+    #[test]
+    fn load_module_not_found() {
+        let archive = Archive::from(indoc! {r#"
+            -- hop.toml --
+            [build]
+            target = "ts"
+            output_path = "app.ts"
+        "#});
+        let temp_dir = temp_dir_from_archive(&archive).unwrap();
+        let project = Project::from(&temp_dir).unwrap();
+
+        let module_id = ModuleId::new("nonexistent::module").unwrap();
+        let result = project.load_module(&module_id);
+
+        assert!(result.is_err());
+
+        // Clean up
+        std::fs::remove_dir_all(&temp_dir).unwrap();
+    }
+
+    #[test]
+    fn find_modules() {
         let archive = Archive::from(indoc! {r#"
             -- hop.toml --
             [build]
             target = "ts"
             output_path = "app.ts"
             -- src/main.hop --
-            <main-comp>
-              <button-comp />
-              <header-comp />
-            </main-comp>
+            <main-comp>Main</main-comp>
             -- src/components/button.hop --
             <button-comp>Click me!</button-comp>
             -- src/components/header.hop --
             <header-comp>Welcome</header-comp>
         "#});
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
-        let root = ProjectRoot::from(&temp_dir).unwrap();
+        let project = Project::from(&temp_dir).unwrap();
 
-        let modules = root.load_all_hop_modules().unwrap();
+        let mut modules = project.find_modules().unwrap();
+        modules.sort();
 
-        // Should load exactly 3 modules
         assert_eq!(modules.len(), 3);
-
-        // Check that specific modules are loaded with correct content
-        assert!(modules.contains_key(&ModuleId::new("src::main").unwrap()));
-        assert!(modules.contains_key(&ModuleId::new("src::components::button").unwrap()));
-        assert!(modules.contains_key(&ModuleId::new("src::components::header").unwrap()));
-
-        // Verify content of one module
-        let button_content = modules
-            .get(&ModuleId::new("src::components::button").unwrap())
-            .unwrap();
-        assert!(
-            button_content
-                .as_str()
-                .contains("<button-comp>Click me!</button-comp>")
+        assert_eq!(
+            modules[0],
+            ModuleId::new("src::components::button").unwrap()
         );
+        assert_eq!(
+            modules[1],
+            ModuleId::new("src::components::header").unwrap()
+        );
+        assert_eq!(modules[2], ModuleId::new("src::main").unwrap());
 
         // Clean up
         std::fs::remove_dir_all(&temp_dir).unwrap();
@@ -385,11 +396,11 @@ mod tests {
             <button-min>Minified button</button-min>
         "#});
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
-        let root = ProjectRoot::from(&temp_dir).unwrap();
+        let project = Project::from(&temp_dir).unwrap();
 
         // Files with dots in the name (excluding .hop extension) should fail validation
         let foo_bar_path = temp_dir.join("src/foo.bar.hop");
-        let result = root.path_to_module_id(&foo_bar_path);
+        let result = project.path_to_module_id(&foo_bar_path);
         assert!(result.is_err());
         assert!(
             result
@@ -400,15 +411,15 @@ mod tests {
 
         // Files with underscores should work fine
         let helper_test_path = temp_dir.join("src/utils/helper_test.hop");
-        let helper_test_module = root.path_to_module_id(&helper_test_path).unwrap();
+        let helper_test_module = project.path_to_module_id(&helper_test_path).unwrap();
         assert_eq!(helper_test_module.to_path(), "src/utils/helper_test");
 
         let button_min_path = temp_dir.join("src/components/button_min.hop");
-        let button_min_module = root.path_to_module_id(&button_min_path).unwrap();
+        let button_min_module = project.path_to_module_id(&button_min_path).unwrap();
         assert_eq!(button_min_module.to_path(), "src/components/button_min");
 
-        // load_all_hop_modules should skip files that produce invalid module names
-        let result = root.load_all_hop_modules();
+        // find_modules should fail when files produce invalid module names
+        let result = project.find_modules();
         // This will fail because foo.bar.hop creates an invalid module name
         assert!(result.is_err());
         assert!(
@@ -439,19 +450,19 @@ mod tests {
             <should-not-find>Skip this too</should-not-find>
         "#});
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
-        let root = ProjectRoot::from(&temp_dir).unwrap();
+        let project = Project::from(&temp_dir).unwrap();
 
-        // Test that load_all_hop_modules correctly skips certain directories
-        let modules = root.load_all_hop_modules().unwrap();
+        // Test that find_modules correctly skips certain directories
+        let modules = project.find_modules().unwrap();
 
         // Should only load 1 module (from src/main.hop)
         assert_eq!(modules.len(), 1);
 
         // Check which modules were loaded
-        assert!(modules.contains_key(&ModuleId::new("src::main").unwrap()));
+        assert_eq!(modules[0], ModuleId::new("src::main").unwrap());
 
         // Should NOT contain modules from skipped directories
-        let module_ids: Vec<String> = modules.keys().map(|m| m.to_string()).collect();
+        let module_ids: Vec<String> = modules.iter().map(|m| m.to_string()).collect();
         assert!(!module_ids.iter().any(|m| m.contains("node_modules")));
         assert!(!module_ids.iter().any(|m| m.contains(".git")));
         assert!(!module_ids.iter().any(|m| m.contains("target")));
@@ -472,9 +483,9 @@ mod tests {
             output_path = "app.ts"
         "#});
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
-        let root = ProjectRoot::from(&temp_dir).unwrap();
+        let project = Project::from(&temp_dir).unwrap();
 
-        let config = root.load_config().await.unwrap();
+        let config = project.load_config().await.unwrap();
 
         assert_eq!(config.css.mode, Some("tailwind4".to_string()));
 
@@ -492,12 +503,12 @@ mod tests {
             <main-component>Test</main-component>
         "#});
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
-        let root = ProjectRoot::from(&temp_dir).unwrap();
+        let project = Project::from(&temp_dir).unwrap();
 
         // Delete the hop.toml to test the error case
         std::fs::remove_file(temp_dir.join("hop.toml")).unwrap();
 
-        let result = root.load_config().await;
+        let result = project.load_config().await;
         assert!(result.is_err());
         assert!(
             result
@@ -516,10 +527,10 @@ mod tests {
             # Empty config file
         "#});
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
-        let root = ProjectRoot::from(&temp_dir).unwrap();
+        let project = Project::from(&temp_dir).unwrap();
 
         // Empty config should now parse successfully (build section is optional)
-        let result = root.load_config().await;
+        let result = project.load_config().await;
         assert!(
             result.is_ok(),
             "Empty config should parse: {:?}",
@@ -537,9 +548,9 @@ mod tests {
             mode = "tailwind4"
         "#});
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
-        let root = ProjectRoot::from(&temp_dir).unwrap();
+        let project = Project::from(&temp_dir).unwrap();
 
-        let result = root.load_config().await;
+        let result = project.load_config().await;
         assert!(
             result.is_ok(),
             "Config without build section should succeed: {:?}",
@@ -560,9 +571,9 @@ mod tests {
             input = "styles/input.css"
         "#});
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
-        let root = ProjectRoot::from(&temp_dir).unwrap();
+        let project = Project::from(&temp_dir).unwrap();
 
-        let result = root.get_tailwind_input_path().await;
+        let result = project.get_tailwind_input_path().await;
         assert!(
             result.is_ok(),
             "get_tailwind_input_path should succeed without build section: {:?}",
@@ -584,9 +595,9 @@ mod tests {
             mode = "tailwind4"
         "#});
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
-        let root = ProjectRoot::from(&temp_dir).unwrap();
+        let project = Project::from(&temp_dir).unwrap();
 
-        let result = root.get_output_path().await;
+        let result = project.get_output_path().await;
         assert!(
             result.is_err(),
             "get_output_path should fail without build config"

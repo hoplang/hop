@@ -17,7 +17,7 @@ mod tui;
 mod type_error;
 
 use clap::{CommandFactory, Parser, Subcommand};
-use filesystem::project_root::ProjectRoot;
+use filesystem::project::Project;
 use std::path::Path;
 
 #[derive(Parser)]
@@ -94,12 +94,12 @@ async fn main() -> anyhow::Result<()> {
             use std::time::Instant;
             let start_time = Instant::now();
 
-            let root = match project {
-                Some(d) => ProjectRoot::from(Path::new(d))?,
-                None => ProjectRoot::find_upwards(Path::new("."))?,
+            let proj = match project {
+                Some(d) => Project::from(Path::new(d))?,
+                None => Project::find_upwards(Path::new("."))?,
             };
 
-            let mut result = cli::fmt::execute(&root, file.as_deref())?;
+            let mut result = cli::fmt::execute(&proj, file.as_deref())?;
             let elapsed = start_time.elapsed();
 
             tui::print_header(&format!("formatted in {} ms", elapsed.as_millis()));
@@ -122,12 +122,12 @@ async fn main() -> anyhow::Result<()> {
             use std::time::Instant;
             let start_time = Instant::now();
 
-            let root = match project {
-                Some(d) => ProjectRoot::from(Path::new(d))?,
-                None => ProjectRoot::find_upwards(Path::new("."))?,
+            let proj = match project {
+                Some(d) => Project::from(Path::new(d))?,
+                None => Project::find_upwards(Path::new("."))?,
             };
 
-            let mut result = cli::build::execute(&root, *no_optimize).await?;
+            let mut result = cli::build::execute(&proj, *no_optimize).await?;
             let elapsed = start_time.elapsed();
 
             tui::print_header(&format!("built in {} ms", elapsed.as_millis()));
@@ -151,9 +151,9 @@ async fn main() -> anyhow::Result<()> {
             use std::time::Instant;
             let start_time = Instant::now();
 
-            let root = match project {
-                Some(d) => ProjectRoot::from(Path::new(d))?,
-                None => ProjectRoot::find_upwards(Path::new("."))?,
+            let proj = match project {
+                Some(d) => Project::from(Path::new(d))?,
+                None => Project::find_upwards(Path::new("."))?,
             };
 
             // Try binding to the specified port, then up to 5 additional ports
@@ -172,7 +172,7 @@ async fn main() -> anyhow::Result<()> {
                 anyhow::anyhow!("failed to bind to ports {}-{} on {}", port, port + 5, host)
             })?;
 
-            let mut res = cli::dev::execute(&root).await?;
+            let mut res = cli::dev::execute(&proj).await?;
             let elapsed = start_time.elapsed();
             let dev_server = axum::serve(listener, res.router);
 

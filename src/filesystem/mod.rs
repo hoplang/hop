@@ -1,2 +1,2 @@
 pub mod adaptive_watcher;
-pub mod project_root;
+pub mod project;
