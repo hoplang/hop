@@ -10,6 +10,14 @@ pub enum TailwindError {
     ExecutionFailed { stderr: String },
     #[error("Failed to spawn process: {0}")]
     Spawn(#[source] std::io::Error),
+    #[error("Failed to create temp directory: {0}")]
+    TempDir(#[source] std::io::Error),
+    #[error("Failed to write sources file: {0}")]
+    WriteSources(#[source] std::io::Error),
+    #[error("Failed to setup file watcher: {0}")]
+    Watch(#[source] notify::Error),
+    #[error("Channel closed")]
+    ChannelClosed,
 }
 
 pub struct TailwindRunner {
@@ -20,6 +28,34 @@ pub struct TailwindConfig {
     pub input: PathBuf,
     pub output: PathBuf,
     pub working_dir: PathBuf,
+}
+
+/// Handle for interacting with a running Tailwind watcher
+#[derive(Clone)]
+pub struct TailwindWatcher {
+    sources_tx: tokio::sync::mpsc::Sender<String>,
+    css_rx: tokio::sync::watch::Receiver<String>,
+}
+
+impl TailwindWatcher {
+    /// Update the hop sources. Tailwind will regenerate CSS automatically.
+    pub async fn update_sources(&self, sources: String) -> Result<(), TailwindError> {
+        self.sources_tx
+            .send(sources)
+            .await
+            .map_err(|_| TailwindError::ChannelClosed)
+    }
+
+    /// Subscribe to CSS changes (clones the receiver)
+    pub fn subscribe(&self) -> tokio::sync::watch::Receiver<String> {
+        self.css_rx.clone()
+    }
+}
+
+/// Result of starting a Tailwind watcher
+pub struct TailwindWatcherHandle {
+    pub watcher: TailwindWatcher,
+    pub initial_css: String,
 }
 
 impl TailwindRunner {
@@ -49,7 +85,7 @@ impl TailwindRunner {
         Ok(String::from_utf8_lossy(&output.stdout).to_string())
     }
 
-    pub fn watch(&self, config: &TailwindConfig) -> Result<tokio::process::Child, TailwindError> {
+    fn watch(&self, config: &TailwindConfig) -> Result<tokio::process::Child, TailwindError> {
         let child = tokio::process::Command::new(&self.binary_path)
             .arg("--watch=always")
             .arg("--input")
@@ -65,6 +101,117 @@ impl TailwindRunner {
             .map_err(TailwindError::Spawn)?;
 
         Ok(child)
+    }
+
+    /// Start a Tailwind watcher with a channel-based API.
+    ///
+    /// This method manages its own temp directory and file watching internally.
+    /// Clients push source code strings in and receive CSS content notifications out.
+    pub async fn start_watcher(
+        &self,
+        input_css_path: Option<PathBuf>,
+        initial_sources: String,
+    ) -> Result<TailwindWatcherHandle, TailwindError> {
+        use notify::Watcher;
+        use tokio::sync::{mpsc, watch};
+
+        // Create temp directory (owned by the background task)
+        let tmp_dir = tempfile::tempdir().map_err(TailwindError::TempDir)?;
+
+        // Write initial sources to sources.hop
+        let sources_path = tmp_dir.path().join("sources.hop");
+        tokio::fs::write(&sources_path, &initial_sources)
+            .await
+            .map_err(TailwindError::WriteSources)?;
+
+        // Set up input CSS (use provided path or create default)
+        let input_path = match input_css_path {
+            Some(p) => p,
+            None => {
+                let temp_input = tmp_dir.path().join("default-input.css");
+                let default_content = r#"@import "tailwindcss";"#;
+                tokio::fs::write(&temp_input, default_content)
+                    .await
+                    .map_err(TailwindError::WriteSources)?;
+                temp_input
+            }
+        };
+
+        let output_path = tmp_dir.path().join("tailwind-output.css");
+        let config = TailwindConfig {
+            input: input_path,
+            output: output_path.clone(),
+            working_dir: tmp_dir.path().to_path_buf(),
+        };
+
+        // Run Tailwind once to generate initial CSS
+        self.run_once(&config).await?;
+
+        // Read the generated CSS file
+        let initial_css = tokio::fs::read_to_string(&output_path)
+            .await
+            .map_err(TailwindError::WriteSources)?;
+
+        // Start Tailwind in watch mode
+        let mut tailwind_child = self.watch(&config)?;
+
+        // Create channels for source updates and CSS notifications
+        let (sources_tx, mut sources_rx) = mpsc::channel::<String>(16);
+        let (css_tx, css_rx) = watch::channel(initial_css.clone());
+
+        // Spawn background task that manages everything
+        let sources_path_clone = sources_path.clone();
+        let output_path_clone = output_path.clone();
+
+        tokio::spawn(async move {
+            // Keep tmp_dir alive for the lifetime of this task
+            let _tmp_dir = tmp_dir;
+
+            // Set up file watcher for CSS output
+            let css_tx_for_watcher = css_tx.clone();
+            let output_path_for_watcher = output_path_clone.clone();
+
+            let mut css_watcher = match notify::RecommendedWatcher::new(
+                move |res: Result<notify::Event, notify::Error>| {
+                    if let Ok(event) = res {
+                        if event.kind.is_modify() {
+                            if let Ok(new_css) = std::fs::read_to_string(&output_path_for_watcher) {
+                                let _ = css_tx_for_watcher.send(new_css);
+                            }
+                        }
+                    }
+                },
+                notify::Config::default(),
+            ) {
+                Ok(w) => w,
+                Err(_) => return,
+            };
+
+            if css_watcher
+                .watch(&output_path_clone, notify::RecursiveMode::NonRecursive)
+                .is_err()
+            {
+                return;
+            }
+
+            // Listen for source updates
+            while let Some(new_sources) = sources_rx.recv().await {
+                // Write updated sources to the file
+                if std::fs::write(&sources_path_clone, &new_sources).is_err() {
+                    continue;
+                }
+            }
+
+            // Channel closed, clean up
+            let _ = tailwind_child.kill().await;
+        });
+
+        let watcher = TailwindWatcher { sources_tx, css_rx };
+
+        Ok(TailwindWatcherHandle {
+            watcher,
+            initial_css,
+        })
     }
 }
 

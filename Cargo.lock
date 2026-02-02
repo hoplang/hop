@@ -1765,8 +1765,10 @@ version = "0.1.0"
 name = "tailwind-runner"
 version = "0.0.0"
 dependencies = [
+ "notify",
  "reqwest",
  "sha2",
+ "tempfile",
  "thiserror",
  "tokio",
  "zstd",

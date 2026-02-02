@@ -160,7 +160,7 @@ async fn main() -> anyhow::Result<()> {
                 })?;
 
                 // Start the dev server
-                let mut res = cli::dev::execute(root).await?;
+                let res = cli::dev::execute(root).await?;
                 let dev_server = axum::serve(listener, res.router);
 
                 println!();
@@ -168,28 +168,14 @@ async fn main() -> anyhow::Result<()> {
                 println!();
 
                 // Block until Ctrl-C or server exit
-                let result = tokio::select! {
+                tokio::select! {
                     _ = &mut sigint_rx => {
                         Ok(())
                     }
                     result = dev_server => {
                         result.map_err(|e| anyhow::anyhow!("Dev server error: {}", e))
                     }
-                    tailwind_status = res.tailwind_process.wait() => {
-                        match tailwind_status {
-                            Ok(exit_status) => {
-                                Err(anyhow::anyhow!("Tailwind watcher exited with status: {}", exit_status))
-                            }
-                            Err(e) => {
-                                Err(anyhow::anyhow!("Failed to wait for tailwind watcher: {}", e))
-                            }
-                        }
-                    }
-                };
-
-                let _ = res.tailwind_process.kill().await;
-
-                result
+                }
             }
 
             // Run the dev server and ensure cleanup always happens

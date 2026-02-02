@@ -9,70 +9,20 @@ use server::{AppState, create_router};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
-use tailwind_runner::TailwindRunner;
-use tokio::process::Child;
+use tailwind_runner::{TailwindRunner, TailwindWatcher};
 use tokio::time::{Duration, Instant, sleep_until};
 
 pub struct DevServer {
     pub router: axum::Router,
     _hop_watcher: AdaptiveWatcher,
-    _css_watcher: notify::RecommendedWatcher,
-    // The Tailwind process that watches the source files and writes
-    // to the output path.
-    pub tailwind_process: Child,
-    // Handle to the temporary directory, containing the tailwind output
-    // file and the tailwind binary etc.
-    _tmp_dir: tempfile::TempDir,
-}
-
-async fn start_tailwind_watcher(
-    root: &ProjectRoot,
-    tmp_dir: &tempfile::TempDir,
-    hop_sources: &str,
-) -> anyhow::Result<(String, PathBuf, PathBuf, Child)> {
-    let input_path = match root.get_tailwind_input_path().await? {
-        Some(p) => p,
-        None => {
-            let temp_input = tmp_dir.path().join("default-input.css");
-            let default_content = r#"@import "tailwindcss";"#;
-            tokio::fs::write(&temp_input, default_content).await?;
-            temp_input
-        }
-    };
-
-    let cache_dir = tmp_dir.path().to_path_buf();
-    let runner = TailwindRunner::new(cache_dir.clone()).await?;
-
-    // Write hop sources to temp dir for Tailwind to scan.
-    // This isolates Tailwind from the project's output file.
-    let sources_path = tmp_dir.path().join("sources.hop");
-    tokio::fs::write(&sources_path, hop_sources).await?;
-
-    let output_path = cache_dir.join("tailwind-output.css");
-    let tailwind_config = tailwind_runner::TailwindConfig {
-        input: input_path.to_path_buf(),
-        output: output_path.clone(),
-        working_dir: tmp_dir.path().to_path_buf(),
-    };
-
-    // Run once initially to generate CSS - return error if it fails
-    runner.run_once(&tailwind_config).await?;
-
-    // Read the generated CSS file
-    let css_content = tokio::fs::read_to_string(&tailwind_config.output).await?;
-
-    // Start watcher
-    let handle = runner.watch(&tailwind_config)?;
-
-    Ok((css_content, output_path, sources_path, handle))
+    _tailwind_watcher: TailwindWatcher,
 }
 
 async fn create_file_watcher(
     root: &ProjectRoot,
-    css_output_path: PathBuf,
-    tailwind_sources_path: PathBuf,
+    tailwind_watcher: TailwindWatcher,
     state: AppState,
-) -> anyhow::Result<(AdaptiveWatcher, notify::RecommendedWatcher)> {
+) -> anyhow::Result<AdaptiveWatcher> {
     let local_root = root.clone();
 
     // Create adaptive watcher with ignored folders for the project directory
@@ -84,7 +34,6 @@ async fn create_file_watcher(
     let mut rx = adaptive_watcher.subscribe();
     let state_clone = state.clone();
     tokio::spawn(async move {
-        let tailwind_sources_path = tailwind_sources_path;
         enum ChangeKind {
             Modified,
             Deleted,
@@ -162,9 +111,10 @@ async fn create_file_watcher(
                         }
                     }
 
-                    // Update Tailwind sources file with all current hop content
-                    if let Ok(program) = state_clone.program.read() {
-                        let _ = std::fs::write(&tailwind_sources_path, program.get_all_sources());
+                    // Update Tailwind sources via the channel
+                    let sources = state_clone.program.read().ok().map(|p| p.get_all_sources());
+                    if let Some(sources) = sources {
+                        let _ = tailwind_watcher.update_sources(sources).await;
                     }
 
                     log_info!(
@@ -185,37 +135,7 @@ async fn create_file_watcher(
         }
     });
 
-    // Create a separate watcher for the CSS output file created by Tailwind
-    use notify::Watcher;
-    let state_for_css_watcher = state.clone();
-    let local_path = css_output_path.clone();
-    let mut css_watcher = notify::RecommendedWatcher::new(
-        move |res: Result<notify::Event, notify::Error>| {
-            if let Ok(event) = res {
-                if event.kind.is_modify() {
-                    let start = std::time::Instant::now();
-                    if let Ok(new_css) = std::fs::read_to_string(local_path.as_path()) {
-                        if let Ok(mut css_guard) = state.tailwind_css.write() {
-                            *css_guard = Some(new_css);
-                        }
-                    }
-                    log_info!(
-                        "watch_event",
-                        kind = "css_modified",
-                        total = format!("{:?}", start.elapsed()),
-                    );
-                    // Tell the client to hot reload
-                    let _ = state_for_css_watcher.reload_channel.send(());
-                }
-            }
-        },
-        notify::Config::default(),
-    )?;
-
-    // Watch the CSS output file
-    css_watcher.watch(&css_output_path, notify::RecursiveMode::NonRecursive)?;
-
-    Ok((adaptive_watcher, css_watcher))
+    Ok(adaptive_watcher)
 }
 
 /// Create a router that responds to render requests.
@@ -243,11 +163,16 @@ pub async fn execute(root: &ProjectRoot) -> anyhow::Result<DevServer> {
         duration = format!("{:?}", program_start.elapsed()),
     );
 
-    let tmp_dir = tempfile::tempdir()?;
+    // Get tailwind input path if it exists
+    let input_css_path = root.get_tailwind_input_path().await?;
 
+    // Create the Tailwind runner and start the watcher
     let tailwind_start = std::time::Instant::now();
-    let (css_content, css_output_path, tailwind_sources_path, tailwind_handle) =
-        start_tailwind_watcher(root, &tmp_dir, &program.get_all_sources()).await?;
+    let cache_dir = PathBuf::from("/tmp/.hop-cache");
+    let runner = TailwindRunner::new(cache_dir).await?;
+    let tailwind_handle = runner
+        .start_watcher(input_css_path, program.get_all_sources())
+        .await?;
     log_info!(
         "dev",
         step = "tailwind",
@@ -258,12 +183,27 @@ pub async fn execute(root: &ProjectRoot) -> anyhow::Result<DevServer> {
     let app_state = AppState {
         program: Arc::new(RwLock::new(program)),
         reload_channel,
-        tailwind_css: Arc::new(RwLock::new(Some(css_content))),
+        tailwind_css: Arc::new(RwLock::new(Some(tailwind_handle.initial_css))),
     };
 
+    // Spawn a task that listens for CSS updates from the Tailwind watcher
+    let state_for_css = app_state.clone();
+    let mut css_rx = tailwind_handle.watcher.subscribe();
+    tokio::spawn(async move {
+        while css_rx.changed().await.is_ok() {
+            let new_css = css_rx.borrow().clone();
+            if let Ok(mut css_guard) = state_for_css.tailwind_css.write() {
+                *css_guard = Some(new_css);
+            }
+            log_info!("watch_event", kind = "css_modified");
+            let _ = state_for_css.reload_channel.send(());
+        }
+    });
+
     let watcher_start = std::time::Instant::now();
-    let (adaptive_watcher, css_watcher) =
-        create_file_watcher(root, css_output_path, tailwind_sources_path, app_state.clone()).await?;
+    let tailwind_watcher = tailwind_handle.watcher;
+    let adaptive_watcher =
+        create_file_watcher(root, tailwind_watcher.clone(), app_state.clone()).await?;
     log_info!(
         "dev",
         step = "setup_watchers",
@@ -281,8 +221,6 @@ pub async fn execute(root: &ProjectRoot) -> anyhow::Result<DevServer> {
     Ok(DevServer {
         router,
         _hop_watcher: adaptive_watcher,
-        _css_watcher: css_watcher,
-        tailwind_process: tailwind_handle,
-        _tmp_dir: tmp_dir,
+        _tailwind_watcher: tailwind_watcher,
     })
 }
