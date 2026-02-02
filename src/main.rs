@@ -45,7 +45,7 @@ enum Commands {
         #[arg(long)]
         project: Option<String>,
         /// Port to serve on
-        #[arg(short, long, default_value = "3000")]
+        #[arg(long, default_value = "3000")]
         port: u16,
         /// Host to bind to
         #[arg(long, default_value = "localhost")]
