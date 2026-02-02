@@ -1,6 +1,6 @@
 use crate::document::DocumentPosition;
 use crate::document::{Document, DocumentRange};
-use crate::filesystem::project::Project;
+use crate::project::Project;
 use crate::hop::program::{DefinitionLocation, Program, RenameLocation};
 use crate::hop::symbols::module_id::ModuleId;
 use std::collections::HashMap;

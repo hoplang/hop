@@ -1,6 +1,6 @@
 use crate::config::TargetLanguage;
 use crate::document::DocumentAnnotator;
-use crate::filesystem::project::Project;
+use crate::project::Project;
 use crate::hop::program::Program;
 use crate::ir::{GoTranspiler, PythonTranspiler, RustTranspiler, Transpiler, TsTranspiler};
 use crate::orchestrator::{OrchestrateOptions, orchestrate};

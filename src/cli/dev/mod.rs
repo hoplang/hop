@@ -1,8 +1,8 @@
 mod frontend;
 mod server;
 
-use crate::filesystem::project::Project;
-use crate::filesystem::project_watcher::ProjectWatcher;
+use crate::project::Project;
+use crate::project::project_watcher::ProjectWatcher;
 use crate::hop::program::Program;
 use crate::log_info;
 use crate::tui::timing;

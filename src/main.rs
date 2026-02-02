@@ -5,7 +5,7 @@ mod document;
 mod dop;
 mod environment;
 mod error_collector;
-mod filesystem;
+mod project;
 mod hop;
 mod inlined;
 mod ir;
@@ -17,7 +17,7 @@ mod tui;
 mod type_error;
 
 use clap::{CommandFactory, Parser, Subcommand};
-use filesystem::project::Project;
+use project::Project;
 use std::path::Path;
 
 #[derive(Parser)]

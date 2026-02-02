@@ -1,6 +1,6 @@
 use crate::document::{Document, DocumentAnnotator};
 use crate::error_collector::ErrorCollector;
-use crate::filesystem::project::Project;
+use crate::project::Project;
 use crate::hop::symbols::module_id::ModuleId;
 use crate::hop::syntax::format;
 use crate::hop::syntax::parser;
