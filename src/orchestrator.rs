@@ -45,10 +45,10 @@ pub fn orchestrate(
 
     // Get entrypoints - either all of them or just the filtered one
     let inlined_entrypoints =
-        if let Some((ref module_name, ref component_name)) = options.entrypoint_filter {
+        if let Some((ref module_id, ref component_name)) = options.entrypoint_filter {
             // Only inline the specific entrypoint requested
             let module = typed_asts
-                .get(module_name)
+                .get(module_id)
                 .expect("Filtered module should exist");
             let entrypoint = module
                 .get_entrypoint_declarations()
@@ -56,7 +56,7 @@ pub fn orchestrate(
                 .find(|ep| ep.name.as_str() == component_name.as_str())
                 .expect("Filtered entrypoint should exist");
             vec![Inliner::inline_single_entrypoint(
-                module_name,
+                module_id,
                 entrypoint,
                 typed_asts,
             )]

@@ -84,7 +84,7 @@ impl InlinedBuilder {
 
     fn build(self, component_name: &str) -> InlinedEntrypointDeclaration {
         InlinedEntrypointDeclaration {
-            module_name: ModuleId::new("test").unwrap(),
+            module_id: ModuleId::new("test").unwrap(),
             component_name: ComponentName::new(component_name.to_string()).unwrap(),
             params: self.params,
             children: self.children,

@@ -32,7 +32,7 @@ pub struct InlinedAttribute {
 
 #[derive(Debug, Clone)]
 pub struct InlinedEntrypointDeclaration {
-    pub module_name: ModuleId,
+    pub module_id: ModuleId,
     pub component_name: ComponentName,
     pub params: Vec<InlinedParameter>,
     pub children: Vec<Arc<InlinedNode>>,

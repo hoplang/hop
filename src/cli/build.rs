@@ -98,18 +98,18 @@ pub async fn execute(project_root: &ProjectRoot, skip_optimization: bool) -> Res
         .with_location();
 
     // Check for parse errors
-    for (module_name, errors) in program.get_parse_errors() {
+    for (module_id, errors) in program.get_parse_errors() {
         if !errors.is_empty() {
-            let filename = format!("{}.hop", module_name);
+            let filename = format!("{}.hop", module_id);
             error_output_parts.push(annotator.annotate(Some(&filename), errors.iter()));
         }
     }
 
     // Check for type errors if there's no parse errors
     if error_output_parts.is_empty() {
-        for (module_name, errors) in program.get_type_errors() {
+        for (module_id, errors) in program.get_type_errors() {
             if !errors.is_empty() {
-                let filename = format!("{}.hop", module_name);
+                let filename = format!("{}.hop", module_id);
                 error_output_parts.push(annotator.annotate(Some(&filename), errors));
             }
         }

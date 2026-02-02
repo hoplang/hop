@@ -143,7 +143,7 @@ fn format_import_declaration<'a>(
     leading_comments
         .append(arena.text("import"))
         .append(arena.space())
-        .append(arena.text(import.module_name.to_string()))
+        .append(arena.text(import.module_id.to_string()))
         .append(arena.text("::"))
         .append(arena.text(import.type_name.as_str()))
 }

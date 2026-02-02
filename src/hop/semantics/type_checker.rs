@@ -36,26 +36,26 @@ pub fn typecheck(
     typed_asts: &mut HashMap<ModuleId, TypedAst>,
 ) {
     for module in modules {
-        let module_type_errors = type_errors.entry(module.name.clone()).or_default();
-        let module_type_annotations = type_annotations.entry(module.name.clone()).or_default();
+        let module_type_errors = type_errors.entry(module.module_id.clone()).or_default();
+        let module_type_annotations = type_annotations.entry(module.module_id.clone()).or_default();
 
         module_type_errors.clear();
         module_type_annotations.clear();
 
         let typed_ast =
             typecheck_module(module, state, module_type_errors, module_type_annotations);
-        typed_asts.insert(module.name.clone(), typed_ast);
+        typed_asts.insert(module.module_id.clone(), typed_ast);
 
         if modules.len() > 1 {
             module_type_errors.clear();
             for import_node in module.get_import_declarations() {
                 let imported_module = import_node.imported_module();
                 module_type_errors.push(TypeError::import_cycle(
-                    &module.name.to_string(),
+                    &module.module_id.to_string(),
                     &imported_module.to_string(),
                     &modules
                         .iter()
-                        .map(|m| m.name.to_string())
+                        .map(|m| m.module_id.to_string())
                         .collect::<Vec<_>>(),
                     import_node.path.clone(),
                 ));
@@ -81,7 +81,7 @@ fn typecheck_module(
     for decl in parsed_ast.get_declarations() {
         match decl {
             ParsedDeclaration::Import(ParsedImportDeclaration {
-                module_name: imported_module,
+                module_id: imported_module,
                 type_name_range: imported_name_range,
                 type_name: imported_name,
                 path: import_path,
@@ -203,7 +203,7 @@ fn typecheck_module(
                 }
 
                 let component_type = Arc::new(Type::Component {
-                    module: parsed_ast.name.clone(),
+                    module: parsed_ast.module_id.clone(),
                     name: TypeName::new(component_name.as_str()).unwrap(),
                     parameters: resolved_param_types,
                 });
@@ -263,7 +263,7 @@ fn typecheck_module(
                 let _ = type_env.push(
                     record_name.to_string(),
                     Arc::new(Type::Record {
-                        module: parsed_ast.name.clone(),
+                        module: parsed_ast.module_id.clone(),
                         name: record_name.clone(),
                         fields: typed_fields,
                     }),
@@ -300,7 +300,7 @@ fn typecheck_module(
                 let _ = type_env.push(
                     enum_name.to_string(),
                     Arc::new(Type::Enum {
-                        module: parsed_ast.name.clone(),
+                        module: parsed_ast.module_id.clone(),
                         name: enum_name.clone(),
                         variants: typed_variants.clone(),
                     }),
@@ -417,7 +417,7 @@ fn typecheck_module(
             module_types.insert(enm.name.to_string(), typ.clone());
         }
     }
-    state.insert(parsed_ast.name.clone(), module_types);
+    state.insert(parsed_ast.module_id.clone(), module_types);
 
     TypedAst::new(
         typed_component_declarations,
@@ -1288,7 +1288,7 @@ mod tests {
         let mut type_errors = HashMap::new();
         let mut type_annotations = HashMap::new();
         let mut typed_asts = HashMap::new();
-        let mut module_names = Vec::new();
+        let mut module_ids = Vec::new();
 
         // Process all .hop files in the archive
         for file in archive.iter() {
@@ -1297,10 +1297,11 @@ mod tests {
             }
             let source_code = file.content.trim();
             let mut parse_errors = ErrorCollector::new();
-            let module_name = ModuleId::new(file.name.trim_end_matches(".hop")).unwrap();
-            module_names.push(module_name.clone());
+            let module_id =
+                ModuleId::new(&file.name.trim_end_matches(".hop").replace('/', "::")).unwrap();
+            module_ids.push(module_id.clone());
             let ast = parse(
-                module_name,
+                module_id,
                 Document::new(source_code.to_string()),
                 &mut parse_errors,
             );
@@ -1317,11 +1318,11 @@ mod tests {
                 &mut typed_asts,
             );
 
-            let module_type_errors = type_errors.get(&ast.name);
+            let module_type_errors = type_errors.get(&ast.module_id);
 
             if module_type_errors.is_some_and(|err| !err.is_empty()) {
                 error_output.push(
-                    error_annotator.annotate(Some(&file.name), type_errors.get(&ast.name).unwrap()),
+                    error_annotator.annotate(Some(&file.name), type_errors.get(&ast.module_id).unwrap()),
                 );
             }
         }
@@ -1329,9 +1330,9 @@ mod tests {
         if !error_output.is_empty() {
             expected.assert_eq(error_output.join("\n").as_str());
         } else {
-            for module_name in &module_names {
-                if let Some(typed_ast) = typed_asts.get(module_name) {
-                    ast_output.push(format!("-- {}.hop --\n{}", module_name, typed_ast));
+            for module_id in &module_ids {
+                if let Some(typed_ast) = typed_asts.get(module_id) {
+                    ast_output.push(format!("-- {}.hop --\n{}", module_id, typed_ast));
                 }
             }
             expected.assert_eq(&ast_output.join("\n"));

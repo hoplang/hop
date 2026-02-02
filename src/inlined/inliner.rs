@@ -23,16 +23,16 @@ impl Inliner {
     pub fn inline_ast_entrypoints(
         asts: &HashMap<ModuleId, TypedAst>,
     ) -> Vec<InlinedEntrypointDeclaration> {
-        let mut module_names: Vec<_> = asts.keys().collect();
-        module_names.sort();
+        let mut module_ids: Vec<_> = asts.keys().collect();
+        module_ids.sort();
 
-        module_names
+        module_ids
             .into_iter()
-            .flat_map(|module_name| {
-                let ast = asts.get(module_name).unwrap();
+            .flat_map(|module_id| {
+                let ast = asts.get(module_id).unwrap();
                 ast.get_entrypoint_declarations()
                     .iter()
-                    .map(|entrypoint| Self::inline_single_entrypoint(module_name, entrypoint, asts))
+                    .map(|entrypoint| Self::inline_single_entrypoint(module_id, entrypoint, asts))
                     .collect::<Vec<_>>()
             })
             .collect()
@@ -40,7 +40,7 @@ impl Inliner {
 
     /// Inline a single entrypoint declaration.
     pub fn inline_single_entrypoint(
-        module_name: &ModuleId,
+        module_id: &ModuleId,
         entrypoint: &TypedEntrypointDeclaration,
         asts: &HashMap<ModuleId, TypedAst>,
     ) -> InlinedEntrypointDeclaration {
@@ -55,7 +55,7 @@ impl Inliner {
         );
 
         InlinedEntrypointDeclaration {
-            module_name: module_name.clone(),
+            module_id: module_id.clone(),
             component_name: entrypoint.name.clone(),
             children,
             params: entrypoint
@@ -100,7 +100,7 @@ impl Inliner {
 
     /// Inline a component reference, pushing results to output
     fn inline_component_reference(
-        module_name: &ModuleId,
+        module_id: &ModuleId,
         component: &TypedComponentDeclaration,
         args: &[(VarName, TypedExpr)],
         slot_children: &[TypedNode],
@@ -163,7 +163,7 @@ impl Inliner {
                             "Missing required parameter '{}' for component '{}' in module '{}'.",
                             var_name,
                             component.component_name.as_str(),
-                            module_name
+                            module_id
                         )
                     });
                 (var_name.clone(), value)
@@ -491,14 +491,14 @@ mod tests {
         let mut errors = ErrorCollector::new();
 
         let mut untyped_asts = HashMap::new();
-        for (module_name_str, source) in sources {
-            let module_name = ModuleId::new(module_name_str).unwrap();
+        for (module_id_str, source) in sources {
+            let module_id = ModuleId::new(module_id_str).unwrap();
             let ast = parse(
-                module_name.clone(),
+                module_id.clone(),
                 Document::new(source.to_string()),
                 &mut errors,
             );
-            untyped_asts.insert(module_name, ast);
+            untyped_asts.insert(module_id, ast);
         }
 
         assert!(errors.is_empty(), "Parse errors: {:?}", errors);
@@ -517,12 +517,12 @@ mod tests {
             &mut typed_asts,
         );
 
-        for module_name in untyped_asts.keys() {
+        for module_id in untyped_asts.keys() {
             assert!(
-                type_errors.get(module_name).unwrap().is_empty(),
+                type_errors.get(module_id).unwrap().is_empty(),
                 "Type errors in {}: {:?}",
-                module_name,
-                type_errors.get(module_name).unwrap()
+                module_id,
+                type_errors.get(module_id).unwrap()
             );
         }
 

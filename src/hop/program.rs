@@ -68,8 +68,8 @@ pub struct Program {
 impl Program {
     pub fn new(modules: HashMap<ModuleId, Document>) -> Self {
         let mut program = Self::default();
-        for (module_name, document) in modules {
-            program.update_module(module_name, document);
+        for (module_id, document) in modules {
+            program.update_module(module_id, document);
         }
         program
     }
@@ -78,19 +78,19 @@ impl Program {
     ///
     /// This cleans up all state associated with the module and re-typechecks
     /// any modules that depended on it (since their imports are now broken).
-    pub fn remove_module(&mut self, module_name: &ModuleId) {
+    pub fn remove_module(&mut self, module_id: &ModuleId) {
         // Remove document and parsed state
-        self.documents.remove(module_name);
-        self.parse_errors.remove(module_name);
-        self.parsed_asts.remove(module_name);
+        self.documents.remove(module_id);
+        self.parse_errors.remove(module_id);
+        self.parsed_asts.remove(module_id);
 
         // Remove from topo sorter and get modules that depended on this one
-        let dependents = self.topo_sorter.remove_node(module_name);
+        let dependents = self.topo_sorter.remove_node(module_id);
 
-        self.typechecker_state.remove(module_name);
-        self.type_errors.remove(module_name);
-        self.type_annotations.remove(module_name);
-        self.typed_asts.remove(module_name);
+        self.typechecker_state.remove(module_id);
+        self.type_errors.remove(module_id);
+        self.type_annotations.remove(module_id);
+        self.typed_asts.remove(module_id);
 
         // Re-typecheck dependent modules (they now have broken imports)
         for dependent in dependents {
@@ -106,14 +106,14 @@ impl Program {
         }
     }
 
-    pub fn update_module(&mut self, module_name: ModuleId, document: Document) -> Vec<ModuleId> {
+    pub fn update_module(&mut self, module_id: ModuleId, document: Document) -> Vec<ModuleId> {
         // Store the document
-        self.documents.insert(module_name.clone(), document.clone());
+        self.documents.insert(module_id.clone(), document.clone());
 
         // Parse the module
-        let parse_errors = self.parse_errors.entry(module_name.clone()).or_default();
+        let parse_errors = self.parse_errors.entry(module_id.clone()).or_default();
         parse_errors.clear();
-        let parsed_ast = parse(module_name.clone(), document, parse_errors);
+        let parsed_ast = parse(module_id.clone(), document, parse_errors);
 
         // Get all modules that this module depends on
         let module_dependencies = parsed_ast
@@ -122,13 +122,11 @@ impl Program {
             .collect::<HashSet<ModuleId>>();
 
         // Store the AST
-        self.parsed_asts.insert(module_name.clone(), parsed_ast);
+        self.parsed_asts.insert(module_id.clone(), parsed_ast);
 
         // Typecheck the module along with all dependent modules (grouped
         // into strongly connected components).
-        let grouped_modules = self
-            .topo_sorter
-            .update_node(module_name, module_dependencies);
+        let grouped_modules = self.topo_sorter.update_node(module_id, module_dependencies);
         for names in &grouped_modules {
             let modules = names
                 .iter()
@@ -155,8 +153,8 @@ impl Program {
         &self.type_errors
     }
 
-    pub fn get_parsed_ast(&self, module_name: &ModuleId) -> Option<&ParsedAst> {
-        self.parsed_asts.get(module_name)
+    pub fn get_parsed_ast(&self, module_id: &ModuleId) -> Option<&ParsedAst> {
+        self.parsed_asts.get(module_id)
     }
 
     /// Returns all module sources concatenated into a single string.
@@ -170,11 +168,11 @@ impl Program {
 
     pub fn get_hover_info(
         &self,
-        module_name: &ModuleId,
+        module_id: &ModuleId,
         position: DocumentPosition,
     ) -> Option<HoverInfo> {
         self.type_annotations
-            .get(module_name)?
+            .get(module_id)?
             .iter()
             .find(|a| a.range.contains_position(position))
             .map(|annotation| HoverInfo {
@@ -185,15 +183,15 @@ impl Program {
 
     pub fn get_definition_location(
         &self,
-        module_name: &ModuleId,
+        module_id: &ModuleId,
         position: DocumentPosition,
     ) -> Option<DefinitionLocation> {
-        let ast = self.parsed_asts.get(module_name)?;
+        let ast = self.parsed_asts.get(module_id)?;
 
         // First check if we're on an import node's path (module::path::Component)
         for import in ast.get_import_declarations() {
             if import.path.contains_position(position) {
-                let target_module = &import.module_name;
+                let target_module = &import.module_id;
                 let imported_name = import.type_name.as_str();
 
                 let target_ast = self.parsed_asts.get(target_module)?;
@@ -224,7 +222,7 @@ impl Program {
             {
                 // Navigate to the opening tag of this component definition
                 return Some(DefinitionLocation {
-                    module: module_name.clone(),
+                    module: module_id.clone(),
                     range: component_def.tag_name.clone(),
                 });
             }
@@ -244,20 +242,20 @@ impl Program {
                 declaring_module: definition_module,
                 ..
             } => {
-                let module_name = definition_module.as_ref()?;
+                let module_id = definition_module.as_ref()?;
                 let component_def = self
                     .parsed_asts
-                    .get(module_name)?
+                    .get(module_id)?
                     .get_component_declaration(component_name.as_str())?;
                 Some(DefinitionLocation {
-                    module: module_name.clone(),
+                    module: module_id.clone(),
                     range: component_def.tag_name.clone(),
                 })
             }
             ParsedNode::Html { tag_name, .. } => {
                 // Navigate to the opening tag of this HTML element
                 Some(DefinitionLocation {
-                    module: module_name.clone(),
+                    module: module_id.clone(),
                     range: tag_name.clone(),
                 })
             }
@@ -267,15 +265,15 @@ impl Program {
 
     pub fn get_rename_locations(
         &self,
-        module_name: &ModuleId,
+        module_id: &ModuleId,
         position: DocumentPosition,
     ) -> Option<Vec<RenameLocation>> {
-        let ast = self.parsed_asts.get(module_name)?;
+        let ast = self.parsed_asts.get(module_id)?;
 
         // Check if cursor is on a record declaration name
         for record in ast.get_record_declarations() {
             if record.name_range.contains_position(position) {
-                return Some(self.collect_record_rename_locations(record.name(), module_name));
+                return Some(self.collect_record_rename_locations(record.name(), module_id));
             }
         }
 
@@ -285,7 +283,7 @@ impl Program {
                 .any(|r| r.contains_position(position))
             {
                 return Some(
-                    self.collect_component_rename_locations(&node.component_name, module_name),
+                    self.collect_component_rename_locations(&node.component_name, module_id),
                 );
             }
         }
@@ -309,7 +307,7 @@ impl Program {
             n @ ParsedNode::Html { .. } => Some(
                 n.tag_names()
                     .map(|range| RenameLocation {
-                        module: module_name.clone(),
+                        module: module_id.clone(),
                         range: range.clone(),
                     })
                     .collect(),
@@ -324,10 +322,10 @@ impl Program {
     /// and returns the symbol's current name and range if found.
     pub fn get_renameable_symbol(
         &self,
-        module_name: &ModuleId,
+        module_id: &ModuleId,
         position: DocumentPosition,
     ) -> Option<RenameableSymbol> {
-        let ast = self.parsed_asts.get(module_name)?;
+        let ast = self.parsed_asts.get(module_id)?;
 
         // Check if cursor is on a record declaration name
         for record in ast.get_record_declarations() {
@@ -391,7 +389,7 @@ impl Program {
             }
         }
 
-        for (module_name, ast) in &self.parsed_asts {
+        for (module_id, ast) in &self.parsed_asts {
             // Find all import statements that import this component
             locations.extend(
                 ast.get_import_declarations()
@@ -399,7 +397,7 @@ impl Program {
                         n.imports_type(component_name.as_str()) && n.imports_from(definition_module)
                     })
                     .map(|n| RenameLocation {
-                        module: module_name.clone(),
+                        module: module_id.clone(),
                         range: n.type_name_range().clone(),
                     }),
             );
@@ -422,7 +420,7 @@ impl Program {
                     })
                     .flat_map(|node| node.tag_names())
                     .map(|range| RenameLocation {
-                        module: module_name.clone(),
+                        module: module_id.clone(),
                         range: range.clone(),
                     }),
             );
@@ -453,13 +451,13 @@ impl Program {
         }
 
         // Search all modules for references to this record
-        for (module_name, ast) in &self.parsed_asts {
+        for (module_id, ast) in &self.parsed_asts {
             // Find all import statements that import this record
             locations.extend(
                 ast.get_import_declarations()
                     .filter(|n| n.imports_type(record_name) && n.imports_from(definition_module))
                     .map(|n| RenameLocation {
-                        module: module_name.clone(),
+                        module: module_id.clone(),
                         range: n.type_name_range().clone(),
                     }),
             );
@@ -472,7 +470,7 @@ impl Program {
                             &param.var_type,
                             record_name,
                             definition_module,
-                            module_name,
+                            module_id,
                         ));
                     }
                 }
@@ -534,14 +532,14 @@ impl Program {
         locations
     }
 
-    pub fn get_error_diagnostics(&self, module_name: ModuleId) -> Vec<Diagnostic> {
+    pub fn get_error_diagnostics(&self, module_id: ModuleId) -> Vec<Diagnostic> {
         let mut diagnostics = Vec::new();
 
         let mut found_parse_errors = false;
 
         for error in self
             .parse_errors
-            .get(&module_name)
+            .get(&module_id)
             .into_iter()
             .flat_map(|c| c.iter())
         {
@@ -555,7 +553,7 @@ impl Program {
         // If there's parse errors for the file we do not emit the type errors since they may be
         // non-sensical if parsing fails.
         if !found_parse_errors {
-            for error in self.type_errors.get(&module_name).into_iter().flatten() {
+            for error in self.type_errors.get(&module_id).into_iter().flatten() {
                 diagnostics.push(Diagnostic {
                     message: error.to_string(),
                     range: error.range().clone(),
@@ -569,7 +567,7 @@ impl Program {
     /// Evaluate an entrypoint given module and entrypoint name.
     pub fn evaluate_entrypoint(
         &self,
-        module_name: &ModuleId,
+        module_id: &ModuleId,
         entrypoint_name: &ComponentName,
         args: HashMap<String, serde_json::Value>,
         generated_tailwind_css: Option<&str>,
@@ -579,15 +577,15 @@ impl Program {
         crate::log_info!(
             "evaluate_entrypoint",
             step = "enter",
-            module = module_name.to_string(),
+            module = module_id.to_string(),
             entrypoint = entrypoint_name.to_string(),
         );
 
         // Validate that the module exists
-        let module = self.get_typed_modules().get(module_name).ok_or_else(|| {
+        let module = self.get_typed_modules().get(module_id).ok_or_else(|| {
             anyhow::anyhow!(
                 "Module '{}' not found. Available modules: {}",
-                module_name,
+                module_id,
                 self.get_typed_modules()
                     .keys()
                     .map(|m| m.to_string())
@@ -612,7 +610,7 @@ impl Program {
             anyhow::bail!(
                 "Entrypoint '{}' not found in module '{}'. Available entrypoints: {}",
                 entrypoint_name,
-                module_name,
+                module_id,
                 available_entrypoints.join(", ")
             );
         }
@@ -625,7 +623,7 @@ impl Program {
             generated_tailwind_css,
             OrchestrateOptions {
                 skip_optimization,
-                entrypoint_filter: Some((module_name.clone(), entrypoint_name.clone())),
+                entrypoint_filter: Some((module_id.clone(), entrypoint_name.clone())),
                 ..Default::default()
             },
         );
@@ -639,7 +637,7 @@ impl Program {
         let entrypoint = ir_module.entrypoints.first().ok_or_else(|| {
             anyhow::anyhow!(
                 "Entrypoint '{}/{}' not found after compilation",
-                module_name,
+                module_id,
                 entrypoint_name
             )
         })?;
@@ -685,8 +683,9 @@ mod tests {
         let archive = Archive::from(input);
         let mut map = HashMap::new();
         for file in archive.iter() {
-            let module_name = ModuleId::new(&file.name.replace(".hop", "")).unwrap();
-            map.insert(module_name, Document::new(file.content.clone()));
+            let module_id =
+                ModuleId::new(&file.name.replace(".hop", "").replace('/', "::")).unwrap();
+            map.insert(module_id, Document::new(file.content.clone()));
         }
         Program::new(map)
     }
@@ -694,8 +693,9 @@ mod tests {
     fn program_from_archive(archive: &Archive) -> Program {
         let mut map = HashMap::new();
         for file in archive.iter() {
-            let module_name = ModuleId::new(&file.name.replace(".hop", "")).unwrap();
-            map.insert(module_name, Document::new(file.content.clone()));
+            let module_id =
+                ModuleId::new(&file.name.replace(".hop", "").replace('/', "::")).unwrap();
+            map.insert(module_id, Document::new(file.content.clone()));
         }
         Program::new(map)
     }
@@ -710,7 +710,8 @@ mod tests {
         }
 
         let marker = &markers[0];
-        let module = ModuleId::new(&marker.filename.replace(".hop", "")).unwrap();
+        let module =
+            ModuleId::new(&marker.filename.replace(".hop", "").replace('/', "::")).unwrap();
 
         let locs = program_from_archive(&archive)
             .get_rename_locations(&module, marker.position)
@@ -720,11 +721,12 @@ mod tests {
         let annotator = DocumentAnnotator::new().with_location();
 
         for file in archive.iter() {
-            let module_name = ModuleId::new(&file.name.replace(".hop", "")).unwrap();
+            let module_id =
+                ModuleId::new(&file.name.replace(".hop", "").replace('/', "::")).unwrap();
 
             let mut annotations: Vec<SimpleAnnotation> = locs
                 .iter()
-                .filter(|l| l.module == module_name)
+                .filter(|l| l.module == module_id)
                 .map(|l| SimpleAnnotation {
                     message: "Rename".to_string(),
                     range: l.range.clone(),
@@ -752,7 +754,8 @@ mod tests {
         }
 
         let marker = &markers[0];
-        let module = ModuleId::new(&marker.filename.replace(".hop", "")).unwrap();
+        let module =
+            ModuleId::new(&marker.filename.replace(".hop", "").replace('/', "::")).unwrap();
 
         let program = program_from_archive(&archive);
 
@@ -803,10 +806,10 @@ mod tests {
             .collect();
 
         // Sort by module name for consistent output
-        modules_with_errors.sort_by_key(|(module_name, _)| module_name.to_string());
+        modules_with_errors.sort_by_key(|(module_id, _)| module_id.to_string());
 
-        for (module_name, errors) in modules_with_errors {
-            let annotated = annotator.annotate(Some(&module_name.to_string()), errors);
+        for (module_id, errors) in modules_with_errors {
+            let annotated = annotator.annotate(Some(&module_id.to_string()), errors);
 
             output.push(annotated);
         }
@@ -824,7 +827,8 @@ mod tests {
         }
 
         let marker = &markers[0];
-        let module = ModuleId::new(&marker.filename.replace(".hop", "")).unwrap();
+        let module =
+            ModuleId::new(&marker.filename.replace(".hop", "").replace('/', "::")).unwrap();
 
         let symbol = program_from_archive(&archive)
             .get_renameable_symbol(&module, marker.position)
@@ -853,7 +857,8 @@ mod tests {
         }
 
         let marker = &markers[0];
-        let module = ModuleId::new(&marker.filename.replace(".hop", "")).unwrap();
+        let module =
+            ModuleId::new(&marker.filename.replace(".hop", "").replace('/', "::")).unwrap();
 
         let hover_info = program_from_archive(&archive)
             .get_hover_info(&module, marker.position)

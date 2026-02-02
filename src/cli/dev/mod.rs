@@ -100,13 +100,13 @@ async fn create_file_watcher(
                         for (path, kind) in &pending_changes {
                             match kind {
                                 ChangeKind::Deleted => {
-                                    if let Ok(module_name) = local_root.path_to_module_name(path) {
-                                        program.remove_module(&module_name);
+                                    if let Ok(module_id) = local_root.path_to_module_id(path) {
+                                        program.remove_module(&module_id);
                                     }
                                 }
                                 ChangeKind::Modified => {
-                                    if let Ok((module_name, document)) = local_root.load_hop_module(path) {
-                                        program.update_module(module_name, document);
+                                    if let Ok((module_id, document)) = local_root.load_hop_module(path) {
+                                        program.update_module(module_id, document);
                                     }
                                 }
                             }

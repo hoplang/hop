@@ -53,9 +53,9 @@ impl HopLanguageServer {
         }
     }
 
-    fn uri_to_module_name(uri: &Uri, root: &ProjectRoot) -> ModuleId {
+    fn uri_to_module_id(uri: &Uri, root: &ProjectRoot) -> ModuleId {
         match uri.to_file_path() {
-            Some(path) => match root.path_to_module_name(&path) {
+            Some(path) => match root.path_to_module_id(&path) {
                 Ok(s) => s,
                 Err(_) => panic!(),
             },
@@ -63,15 +63,15 @@ impl HopLanguageServer {
         }
     }
 
-    fn module_name_to_uri(name: &ModuleId, root: &ProjectRoot) -> Uri {
-        let p = root.module_name_to_path(name);
+    fn module_id_to_uri(module_id: &ModuleId, root: &ProjectRoot) -> Uri {
+        let p = root.module_id_to_path(module_id);
         Uri::from_file_path(&p).expect("Failed to create URI from file path")
     }
 
     async fn publish_diagnostics(&self, root: &ProjectRoot, uri: &Uri) {
-        let module_name = Self::uri_to_module_name(uri, root);
+        let module_id = Self::uri_to_module_id(uri, root);
         let program = self.program.read().await;
-        let diagnostics = program.get_error_diagnostics(module_name);
+        let diagnostics = program.get_error_diagnostics(module_id);
 
         let lsp_diagnostics: Vec<tower_lsp_server::lsp_types::Diagnostic> = diagnostics
             .into_iter()
@@ -132,12 +132,12 @@ impl LanguageServer for HopLanguageServer {
                 let names: Vec<ModuleId> = all_modules.keys().cloned().collect();
                 {
                     let mut server = self.program.write().await;
-                    for (module_name, document) in all_modules {
-                        server.update_module(module_name, document);
+                    for (module_id, document) in all_modules {
+                        server.update_module(module_id, document);
                     }
                 }
-                for module_name in names {
-                    let uri = Self::module_name_to_uri(&module_name, root);
+                for module_id in names {
+                    let uri = Self::module_id_to_uri(&module_id, root);
                     self.publish_diagnostics(root, &uri).await;
                 }
             }
@@ -153,15 +153,15 @@ impl LanguageServer for HopLanguageServer {
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
         let uri = params.text_document.uri;
         if let Some(root) = self.root.get() {
-            let module_name = Self::uri_to_module_name(&uri, root);
+            let module_id = Self::uri_to_module_id(&uri, root);
             if let Some(change) = params.content_changes.into_iter().next() {
                 let changed_modules: Vec<ModuleId>;
                 {
                     let mut server = self.program.write().await;
-                    changed_modules = server.update_module(module_name, Document::new(change.text));
+                    changed_modules = server.update_module(module_id, Document::new(change.text));
                 }
                 for c in changed_modules {
-                    let uri = Self::module_name_to_uri(&c, root);
+                    let uri = Self::module_id_to_uri(&c, root);
                     self.publish_diagnostics(root, &uri).await;
                 }
             }
@@ -172,11 +172,11 @@ impl LanguageServer for HopLanguageServer {
         let uri = params.text_document_position_params.text_document.uri;
         let position = params.text_document_position_params.position;
         if let Some(root) = self.root.get() {
-            let module_name = Self::uri_to_module_name(&uri, root);
+            let module_id = Self::uri_to_module_id(&uri, root);
 
             let program = self.program.read().await;
             Ok(program
-                .get_hover_info(&module_name, position.into())
+                .get_hover_info(&module_id, position.into())
                 .map(|hover_info| Hover {
                     contents: HoverContents::Scalar(MarkedString::String(hover_info.message)),
                     range: Some(hover_info.range.into()),
@@ -193,15 +193,15 @@ impl LanguageServer for HopLanguageServer {
         let uri = params.text_document_position_params.text_document.uri;
         let position = params.text_document_position_params.position;
         if let Some(root) = self.root.get() {
-            let module_name = Self::uri_to_module_name(&uri, root);
+            let module_id = Self::uri_to_module_id(&uri, root);
 
             let program = self.program.read().await;
 
             Ok(program
-                .get_definition_location(&module_name, position.into())
+                .get_definition_location(&module_id, position.into())
                 .map(|DefinitionLocation { module, range }| {
                     GotoDefinitionResponse::Scalar(Location {
-                        uri: Self::module_name_to_uri(&module, root),
+                        uri: Self::module_id_to_uri(&module, root),
                         range: range.into(),
                     })
                 }))
@@ -217,12 +217,12 @@ impl LanguageServer for HopLanguageServer {
         let uri = params.text_document.uri;
         let position = params.position;
         if let Some(root) = self.root.get() {
-            let module_name = Self::uri_to_module_name(&uri, root);
+            let module_id = Self::uri_to_module_id(&uri, root);
 
             let program = self.program.read().await;
 
             if let Some(renameable_symbol) =
-                program.get_renameable_symbol(&module_name, position.into())
+                program.get_renameable_symbol(&module_id, position.into())
             {
                 Ok(Some(PrepareRenameResponse::RangeWithPlaceholder {
                     range: renameable_symbol.range.clone().into(),
@@ -241,18 +241,17 @@ impl LanguageServer for HopLanguageServer {
         let position = params.text_document_position.position;
         let new_name = params.new_name;
         if let Some(root) = self.root.get() {
-            let module_name = Self::uri_to_module_name(&uri, root);
+            let module_id = Self::uri_to_module_id(&uri, root);
 
             let server = self.program.read().await;
 
-            if let Some(rename_locations) =
-                server.get_rename_locations(&module_name, position.into())
+            if let Some(rename_locations) = server.get_rename_locations(&module_id, position.into())
             {
                 #[allow(clippy::mutable_key_type)]
                 let mut changes: HashMap<Uri, Vec<TextEdit>> = HashMap::new();
 
                 for RenameLocation { module, range } in rename_locations {
-                    let file_uri = Self::module_name_to_uri(&module, root);
+                    let file_uri = Self::module_id_to_uri(&module, root);
                     let edit = TextEdit {
                         range: range.into(),
                         new_text: new_name.clone(),
@@ -276,18 +275,18 @@ impl LanguageServer for HopLanguageServer {
     async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
         let uri = params.text_document.uri;
         if let Some(root) = self.root.get() {
-            let module_name = Self::uri_to_module_name(&uri, root);
+            let module_id = Self::uri_to_module_id(&uri, root);
 
             let program = self.program.read().await;
 
             // Don't format if there are parse errors
-            if let Some(errors) = program.get_parse_errors().get(&module_name) {
+            if let Some(errors) = program.get_parse_errors().get(&module_id) {
                 if !errors.is_empty() {
                     return Ok(None);
                 }
             }
 
-            if let Some(ast) = program.get_parsed_ast(&module_name) {
+            if let Some(ast) = program.get_parsed_ast(&module_id) {
                 let formatted = format(ast.clone());
 
                 // Replace the entire document

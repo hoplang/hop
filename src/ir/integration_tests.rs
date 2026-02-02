@@ -300,15 +300,15 @@ fn execute_evaluator(module: &super::IrModule) -> Result<String, String> {
 
 fn check(hop_source: &str, expected_output: &str, expected: Expect) {
     // Parse hop source code
-    let module_name = ModuleId::new("test").unwrap();
+    let module_id = ModuleId::new("test").unwrap();
     let mut modules = HashMap::new();
-    modules.insert(module_name.clone(), Document::new(hop_source.to_string()));
+    modules.insert(module_id.clone(), Document::new(hop_source.to_string()));
 
     let program = Program::new(modules);
 
     // Verify input is properly formatted
     let parsed_ast = program
-        .get_parsed_ast(&module_name)
+        .get_parsed_ast(&module_id)
         .expect("Failed to get parsed AST");
     let formatted = format(parsed_ast.clone());
     assert_eq!(

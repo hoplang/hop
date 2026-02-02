@@ -610,7 +610,7 @@ pub enum ParsedDeclaration {
         /// The full path range (module::path::Name) for error reporting.
         path: DocumentRange,
         /// The parsed module name.
-        module_name: ModuleId,
+        module_id: ModuleId,
         /// The full range of the declaration.
         range: DocumentRange,
     },
@@ -648,7 +648,7 @@ impl ParsedDeclaration {
     pub fn to_doc(&self) -> BoxDoc<'_> {
         match self {
             ParsedDeclaration::Import {
-                name, module_name, ..
+                name, module_id, ..
             } => BoxDoc::text("Import")
                 .append(BoxDoc::space())
                 .append(BoxDoc::text("{"))
@@ -658,8 +658,8 @@ impl ParsedDeclaration {
                         .append(BoxDoc::text(name.to_string()))
                         .append(BoxDoc::text(","))
                         .append(BoxDoc::line())
-                        .append(BoxDoc::text("module_name: "))
-                        .append(BoxDoc::text(module_name.to_string()))
+                        .append(BoxDoc::text("module_id: "))
+                        .append(BoxDoc::text(module_id.to_string()))
                         .append(BoxDoc::text(","))
                         .nest(2),
                 )

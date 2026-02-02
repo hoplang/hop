@@ -18,7 +18,7 @@ pub struct FmtResult {
 }
 
 struct FormattedModule {
-    module_name: ModuleId,
+    module_id: ModuleId,
     original: Document,
     formatted: String,
     errors: Vec<ParseError>,
@@ -48,15 +48,15 @@ pub fn execute(project_root: &ProjectRoot, file: Option<&str>) -> Result<FmtResu
     let results: Vec<ModuleResult> = module_paths
         .into_par_iter()
         .map(|path| {
-            let (module_name, document) = match project_root.load_hop_module(&path) {
+            let (module_id, document) = match project_root.load_hop_module(&path) {
                 Ok(result) => result,
                 Err(e) => return ModuleResult::LoadError { path, error: e },
             };
             let mut errors = ErrorCollector::new();
-            let ast = parser::parse(module_name.clone(), document.clone(), &mut errors);
+            let ast = parser::parse(module_id.clone(), document.clone(), &mut errors);
             let formatted = format(ast);
             ModuleResult::Success(FormattedModule {
-                module_name,
+                module_id,
                 original: document,
                 formatted,
                 errors: errors.to_vec(),
@@ -77,7 +77,7 @@ pub fn execute(project_root: &ProjectRoot, file: Option<&str>) -> Result<FmtResu
                 anyhow::bail!("Failed to read {}: {}", path.display(), error);
             }
             ModuleResult::Success(m) if !m.errors.is_empty() => {
-                let filename = format!("{}.hop", m.module_name);
+                let filename = format!("{}.hop", m.module_id);
                 error_output_parts.push(annotator.annotate(Some(&filename), m.errors.iter()));
             }
             _ => {}
@@ -96,7 +96,7 @@ pub fn execute(project_root: &ProjectRoot, file: Option<&str>) -> Result<FmtResu
     for result in results {
         if let ModuleResult::Success(result) = result {
             if result.formatted != result.original.as_str() {
-                let path = project_root.module_name_to_path(&result.module_name);
+                let path = project_root.module_id_to_path(&result.module_id);
                 std::fs::write(&path, &result.formatted)?;
                 files_formatted += 1;
             } else {

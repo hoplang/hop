@@ -15,10 +15,10 @@ use std::sync::{Arc, RwLock};
 fn find_module_for_entrypoint(program: &Program, entrypoint: &str) -> Result<ModuleId, String> {
     let mut all_entrypoints = Vec::new();
 
-    for (module_name, ast) in program.get_typed_modules() {
+    for (module_id, ast) in program.get_typed_modules() {
         for ep in ast.get_entrypoint_declarations() {
             if ep.name.as_str() == entrypoint {
-                return Ok(module_name.clone());
+                return Ok(module_id.clone());
             }
             all_entrypoints.push(ep.name.to_string());
         }
@@ -49,11 +49,11 @@ async fn handle_index(State(state): State<AppState>) -> Response<Body> {
     let program = state.program.read().unwrap();
 
     let mut entrypoints = Vec::new();
-    for (module_name, ast) in program.get_typed_modules() {
+    for (module_id, ast) in program.get_typed_modules() {
         for ep in ast.get_entrypoint_declarations() {
             entrypoints.push(frontend::EntrypointData {
                 name: ep.name.to_string(),
-                module: format!("{}.hop", module_name),
+                module: format!("{}.hop", module_id),
             });
         }
     }
@@ -186,7 +186,7 @@ async fn handle_render(
     let entrypoint_name_for_log = entrypoint.clone();
 
     // Find which module contains this entrypoint
-    let module_name = match find_module_for_entrypoint(&program, &entrypoint) {
+    let module_id = match find_module_for_entrypoint(&program, &entrypoint) {
         Ok(name) => name,
         Err(e) => {
             let error_html = frontend::overlay(&e);
@@ -219,18 +219,18 @@ async fn handle_render(
         .with_location();
 
     // Check for parse errors
-    for (module_name, errors) in program.get_parse_errors() {
+    for (module_id, errors) in program.get_parse_errors() {
         if !errors.is_empty() {
-            let filename = format!("{}.hop", module_name);
+            let filename = format!("{}.hop", module_id);
             error_output_parts.push(annotator.annotate(Some(&filename), errors.iter()));
         }
     }
 
     // Check for type errors if there are no parse errors
     if error_output_parts.is_empty() {
-        for (module_name, errors) in program.get_type_errors() {
+        for (module_id, errors) in program.get_type_errors() {
             if !errors.is_empty() {
-                let filename = format!("{}.hop", module_name);
+                let filename = format!("{}.hop", module_id);
                 error_output_parts.push(annotator.annotate(Some(&filename), errors));
             }
         }
@@ -246,7 +246,7 @@ async fn handle_render(
     }
 
     let result = match program.evaluate_entrypoint(
-        &module_name,
+        &module_id,
         &entrypoint_name,
         params,
         css_content,
@@ -312,8 +312,9 @@ mod tests {
         let archive = Archive::from(input);
         let mut modules = HashMap::new();
         for file in archive.iter() {
-            let module_name = ModuleId::new(&file.name.replace(".hop", "")).unwrap();
-            modules.insert(module_name, Document::new(file.content.clone()));
+            let module_id =
+                ModuleId::new(&file.name.replace(".hop", "").replace('/', "::")).unwrap();
+            modules.insert(module_id, Document::new(file.content.clone()));
         }
         let program = Program::new(modules);
         let (reload_channel, _) = tokio::sync::broadcast::channel::<()>(100);

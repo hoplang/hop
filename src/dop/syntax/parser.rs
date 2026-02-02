@@ -1155,35 +1155,27 @@ pub fn parse_import_declaration(
             return None;
         }
     };
-    let module_path_str = path_segments
-        .iter()
-        .map(|s| s.as_str())
-        .collect::<Vec<_>>()
-        .join("/");
-    let module_name = match ModuleId::new(&module_path_str) {
+    let module_path_range = path_segments
+        .first()
+        .unwrap()
+        .clone()
+        .to(path_segments.last().unwrap().clone());
+    let module_id = match ModuleId::new(module_path_range.as_str()) {
         Ok(name) => name,
         Err(e) => {
             errors.push(ParseError::InvalidModuleName {
                 error: e,
-                range: path_segments
-                    .first()
-                    .unwrap()
-                    .clone()
-                    .to(path_segments.last().unwrap().clone()),
+                range: module_path_range.clone(),
             });
             return None;
         }
     };
-    let path_range = path_segments
-        .first()
-        .unwrap()
-        .clone()
-        .to(name_range.clone());
+    let path_range = module_path_range.to(name_range.clone());
     Some(ParsedDeclaration::Import {
         name,
         name_range: name_range.clone(),
         path: path_range,
-        module_name,
+        module_id,
         range: import_range.to(name_range),
     })
 }
@@ -2663,7 +2655,7 @@ mod tests {
             expect![[r#"
                 Import {
                   name: UserList,
-                  module_name: user_list,
+                  module_id: user_list,
                 }
             "#]],
         );
@@ -2678,7 +2670,7 @@ mod tests {
             expect![[r#"
                 Import {
                   name: Header,
-                  module_name: components::header,
+                  module_id: components::header,
                 }
             "#]],
         );
@@ -2777,7 +2769,7 @@ mod tests {
             expect![[r#"
                 Import {
                   name: UserList,
-                  module_name: user_list,
+                  module_id: user_list,
                 }
             "#]],
         );
@@ -2796,7 +2788,7 @@ mod tests {
             expect![[r#"
                 Import {
                   name: Header,
-                  module_name: header,
+                  module_id: header,
                 }
 
                 Record {
@@ -2808,7 +2800,7 @@ mod tests {
 
                 Import {
                   name: Footer,
-                  module_name: footer,
+                  module_id: footer,
                 }
             "#]],
         );

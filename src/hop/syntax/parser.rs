@@ -67,7 +67,7 @@ fn disallow_attributes<'a>(
 
 /// Parse a hop document into a ParsedAst.
 pub fn parse(
-    module_name: ModuleId,
+    module_id: ModuleId,
     document: Document,
     errors: &mut ErrorCollector<ParseError>,
 ) -> ParsedAst {
@@ -96,14 +96,14 @@ pub fn parse(
                         name,
                         name_range,
                         path,
-                        module_name,
+                        module_id,
                         ..
                     }) => {
                         let import = ParsedImportDeclaration {
                             type_name: name,
                             type_name_range: name_range.clone(),
                             path,
-                            module_name,
+                            module_id,
                         };
                         let name_str = import.type_name.as_str();
                         if imported_components.contains_key(name_str) {
@@ -113,7 +113,7 @@ pub fn parse(
                             });
                         } else {
                             imported_components
-                                .insert(name_str.to_string(), import.module_name.clone());
+                                .insert(name_str.to_string(), import.module_id.clone());
                         }
                         declarations.push(ParsedDeclaration::Import(import));
                     }
@@ -198,7 +198,7 @@ pub fn parse(
                     &mut iter,
                     &mut comments,
                     errors,
-                    &module_name,
+                    &module_id,
                     &defined_components,
                     &imported_components,
                 ) {
@@ -243,7 +243,7 @@ pub fn parse(
                     &mut iter,
                     &mut comments,
                     errors,
-                    &module_name,
+                    &module_id,
                     &defined_components,
                     &imported_components,
                 ) {
@@ -272,7 +272,7 @@ pub fn parse(
         }
     }
 
-    ParsedAst::new(module_name, declarations, comments)
+    ParsedAst::new(module_id, declarations, comments)
 }
 
 /// Parse a component declaration from a document cursor.
@@ -285,7 +285,7 @@ fn parse_component_declaration(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut ErrorCollector<ParseError>,
-    module_name: &ModuleId,
+    module_id: &ModuleId,
     defined_components: &HashSet<String>,
     imported_components: &HashMap<String, ModuleId>,
 ) -> Option<ParsedComponentDeclaration> {
@@ -348,7 +348,7 @@ fn parse_component_declaration(
                 child,
                 comments,
                 errors,
-                module_name,
+                module_id,
                 defined_components,
                 imported_components,
             )
@@ -374,7 +374,7 @@ fn parse_entrypoint_declaration(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut ErrorCollector<ParseError>,
-    module_name: &ModuleId,
+    module_id: &ModuleId,
     defined_components: &HashSet<String>,
     imported_components: &HashMap<String, ModuleId>,
 ) -> Option<ParsedEntrypointDeclaration> {
@@ -555,7 +555,7 @@ fn parse_entrypoint_declaration(
                 tree,
                 comments,
                 errors,
-                module_name,
+                module_id,
                 defined_components,
                 imported_components,
             ) {
@@ -579,7 +579,7 @@ fn construct_node(
     tree: TokenTree,
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut ErrorCollector<ParseError>,
-    module_name: &ModuleId,
+    module_id: &ModuleId,
     defined_components: &HashSet<String>,
     imported_components: &HashMap<String, ModuleId>,
 ) -> Option<ParsedNode> {
@@ -651,7 +651,7 @@ fn construct_node(
                             child,
                             comments,
                             errors,
-                            module_name,
+                            module_id,
                             defined_components,
                             imported_components,
                         );
@@ -704,7 +704,7 @@ fn construct_node(
                                         c,
                                         comments,
                                         errors,
-                                        module_name,
+                                        module_id,
                                         defined_components,
                                         imported_components,
                                     )
@@ -739,7 +739,7 @@ fn construct_node(
                         child,
                         comments,
                         errors,
-                        module_name,
+                        module_id,
                         defined_components,
                         imported_components,
                     )
@@ -886,7 +886,7 @@ fn construct_node(
                     }
 
                     let declaring_module = if defined_components.contains(component_name.as_str()) {
-                        Some(module_name.clone())
+                        Some(module_id.clone())
                     } else {
                         imported_components.get(component_name.as_str()).cloned()
                     };

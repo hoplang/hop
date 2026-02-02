@@ -111,19 +111,19 @@ impl ParsedDeclaration {
 
 #[derive(Debug, Clone)]
 pub struct ParsedAst {
-    pub name: ModuleId,
+    pub module_id: ModuleId,
     declarations: Vec<ParsedDeclaration>,
     comments: VecDeque<DocumentRange>,
 }
 
 impl ParsedAst {
     pub fn new(
-        name: ModuleId,
+        module_id: ModuleId,
         declarations: Vec<ParsedDeclaration>,
         comments: VecDeque<DocumentRange>,
     ) -> Self {
         Self {
-            name,
+            module_id,
             declarations,
             comments,
         }
@@ -232,12 +232,12 @@ pub struct ParsedImportDeclaration {
     pub type_name_range: DocumentRange,
     /// The full path range for error reporting (covers module::TypeName)
     pub path: DocumentRange,
-    pub module_name: ModuleId,
+    pub module_id: ModuleId,
 }
 
 impl ParsedImportDeclaration {
     pub fn imported_module(&self) -> &ModuleId {
-        &self.module_name
+        &self.module_id
     }
     pub fn type_name_range(&self) -> &DocumentRange {
         &self.type_name_range
@@ -245,14 +245,14 @@ impl ParsedImportDeclaration {
     pub fn imports_type(&self, type_name: &str) -> bool {
         self.type_name.as_str() == type_name
     }
-    pub fn imports_from(&self, module_name: &ModuleId) -> bool {
-        &self.module_name == module_name
+    pub fn imports_from(&self, module_id: &ModuleId) -> bool {
+        &self.module_id == module_id
     }
 
     pub fn to_doc(&self) -> BoxDoc<'_> {
         BoxDoc::text("import")
             .append(BoxDoc::space())
-            .append(BoxDoc::text(self.module_name.to_string()))
+            .append(BoxDoc::text(self.module_id.to_string()))
             .append(BoxDoc::text("::"))
             .append(BoxDoc::text(self.type_name.as_str()))
     }

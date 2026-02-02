@@ -93,9 +93,8 @@ impl ProjectRoot {
         &self.directory
     }
 
-    /// Convert a file path to a module name using this project root as reference
-    /// Returns a module name with '/' separators (e.g., "src/components/header")
-    pub fn path_to_module_name(&self, file_path: &Path) -> anyhow::Result<ModuleId> {
+    /// Convert a file path to a ModuleId using this project root as reference
+    pub fn path_to_module_id(&self, file_path: &Path) -> anyhow::Result<ModuleId> {
         let relative_path = file_path
             .strip_prefix(&self.directory)
             .with_context(|| format!("Failed to strip prefix from path {:?}", file_path))?;
@@ -103,37 +102,36 @@ impl ProjectRoot {
         let module_str = relative_path
             .with_extension("")
             .to_string_lossy()
-            .replace(std::path::MAIN_SEPARATOR, "/");
+            .replace(std::path::MAIN_SEPARATOR, "::");
 
         ModuleId::new(&module_str)
             .map_err(|e| anyhow::anyhow!("Invalid module name for path {:?}: {}", file_path, e))
     }
 
-    /// Convert a module name with '/' separators back to a file path
-    /// (e.g., "src/components/header" -> "src/components/header.hop")
-    pub fn module_name_to_path(&self, module_name: &ModuleId) -> PathBuf {
-        let module_path = module_name
+    /// Convert a ModuleId back to a file path
+    pub fn module_id_to_path(&self, module_id: &ModuleId) -> PathBuf {
+        let module_path = module_id
             .to_path()
             .replace('/', std::path::MAIN_SEPARATOR_STR);
         self.directory.join(format!("{}.hop", module_path))
     }
 
-    /// Load all hop modules from this project root, returning a HashMap of module_name -> content
+    /// Load all hop modules from this project root, returning a HashMap of module_id -> content
     pub fn load_all_hop_modules(&self) -> anyhow::Result<HashMap<ModuleId, Document>> {
         let all_hop_files = self.find_hop_files()?;
         let mut modules = HashMap::new();
 
         for path in all_hop_files {
-            let module_name = self.path_to_module_name(&path)?;
+            let module_id = self.path_to_module_id(&path)?;
             let content = std::fs::read_to_string(&path)
                 .with_context(|| format!("Failed to read file {:?}", path))?;
-            modules.insert(module_name, Document::new(content));
+            modules.insert(module_id, Document::new(content));
         }
 
         Ok(modules)
     }
 
-    /// Load a single hop module from a file path, returning module_name -> document
+    /// Load a single hop module from a file path, returning module_id -> document
     pub fn load_hop_module(&self, file_path: &Path) -> anyhow::Result<(ModuleId, Document)> {
         let canonical_path = file_path
             .canonicalize()
@@ -143,11 +141,11 @@ impl ProjectRoot {
             anyhow::bail!("File {:?} is not a .hop file", file_path);
         }
 
-        let module_name = self.path_to_module_name(&canonical_path)?;
+        let module_id = self.path_to_module_id(&canonical_path)?;
         let content = std::fs::read_to_string(&canonical_path)
             .with_context(|| format!("Failed to read file {:?}", canonical_path))?;
 
-        Ok((module_name, Document::new(content)))
+        Ok((module_id, Document::new(content)))
     }
 
     /// Recursively find all .hop files in this project root
@@ -275,7 +273,7 @@ mod tests {
     }
 
     #[test]
-    fn path_to_module_name() {
+    fn path_to_module_id() {
         let archive = Archive::from(indoc! {r#"
             -- hop.toml --
             [build]
@@ -291,11 +289,11 @@ mod tests {
 
         // Test converting file paths to module names
         let button_path = temp_dir.join("src/components/button.hop");
-        let module_name = root.path_to_module_name(&button_path).unwrap();
-        assert_eq!(module_name.to_path(), "src/components/button");
+        let module_id = root.path_to_module_id(&button_path).unwrap();
+        assert_eq!(module_id.to_path(), "src/components/button");
 
         let main_path = temp_dir.join("main.hop");
-        let main_module = root.path_to_module_name(&main_path).unwrap();
+        let main_module = root.path_to_module_id(&main_path).unwrap();
         assert_eq!(main_module.to_path(), "main");
 
         // Clean up
@@ -303,7 +301,7 @@ mod tests {
     }
 
     #[test]
-    fn module_name_to_path() {
+    fn module_id_to_path() {
         let archive = Archive::from(indoc! {r#"
             -- hop.toml --
             [build]
@@ -314,8 +312,8 @@ mod tests {
         let root = ProjectRoot::from(&temp_dir).unwrap();
 
         // Test converting module names back to paths
-        let module = ModuleId::new("src/components/button").unwrap();
-        let path = root.module_name_to_path(&module);
+        let module = ModuleId::new("src::components::button").unwrap();
+        let path = root.module_id_to_path(&module);
         assert_eq!(
             path.strip_prefix(&temp_dir)
                 .unwrap()
@@ -354,13 +352,13 @@ mod tests {
         assert_eq!(modules.len(), 3);
 
         // Check that specific modules are loaded with correct content
-        assert!(modules.contains_key(&ModuleId::new("src/main").unwrap()));
-        assert!(modules.contains_key(&ModuleId::new("src/components/button").unwrap()));
-        assert!(modules.contains_key(&ModuleId::new("src/components/header").unwrap()));
+        assert!(modules.contains_key(&ModuleId::new("src::main").unwrap()));
+        assert!(modules.contains_key(&ModuleId::new("src::components::button").unwrap()));
+        assert!(modules.contains_key(&ModuleId::new("src::components::header").unwrap()));
 
         // Verify content of one module
         let button_content = modules
-            .get(&ModuleId::new("src/components/button").unwrap())
+            .get(&ModuleId::new("src::components::button").unwrap())
             .unwrap();
         assert!(
             button_content
@@ -391,22 +389,22 @@ mod tests {
 
         // Files with dots in the name (excluding .hop extension) should fail validation
         let foo_bar_path = temp_dir.join("src/foo.bar.hop");
-        let result = root.path_to_module_name(&foo_bar_path);
+        let result = root.path_to_module_id(&foo_bar_path);
         assert!(result.is_err());
         assert!(
             result
                 .unwrap_err()
                 .to_string()
-                .contains("Module name contains invalid character: '.'")
+                .contains("Module ID contains invalid character: '.'")
         );
 
         // Files with underscores should work fine
         let helper_test_path = temp_dir.join("src/utils/helper_test.hop");
-        let helper_test_module = root.path_to_module_name(&helper_test_path).unwrap();
+        let helper_test_module = root.path_to_module_id(&helper_test_path).unwrap();
         assert_eq!(helper_test_module.to_path(), "src/utils/helper_test");
 
         let button_min_path = temp_dir.join("src/components/button_min.hop");
-        let button_min_module = root.path_to_module_name(&button_min_path).unwrap();
+        let button_min_module = root.path_to_module_id(&button_min_path).unwrap();
         assert_eq!(button_min_module.to_path(), "src/components/button_min");
 
         // load_all_hop_modules should skip files that produce invalid module names
@@ -450,13 +448,13 @@ mod tests {
         assert_eq!(modules.len(), 1);
 
         // Check which modules were loaded
-        assert!(modules.contains_key(&ModuleId::new("src/main").unwrap()));
+        assert!(modules.contains_key(&ModuleId::new("src::main").unwrap()));
 
         // Should NOT contain modules from skipped directories
-        let module_names: Vec<String> = modules.keys().map(|m| m.to_string()).collect();
-        assert!(!module_names.iter().any(|m| m.contains("node_modules")));
-        assert!(!module_names.iter().any(|m| m.contains(".git")));
-        assert!(!module_names.iter().any(|m| m.contains("target")));
+        let module_ids: Vec<String> = modules.keys().map(|m| m.to_string()).collect();
+        assert!(!module_ids.iter().any(|m| m.contains("node_modules")));
+        assert!(!module_ids.iter().any(|m| m.contains(".git")));
+        assert!(!module_ids.iter().any(|m| m.contains("target")));
 
         // Clean up
         std::fs::remove_dir_all(&temp_dir).unwrap();
