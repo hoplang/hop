@@ -172,7 +172,7 @@ impl Project {
 }
 
 /// Check if a directory should be skipped during .hop file search
-fn should_skip_directory(dir_name: &str) -> bool {
+pub(crate) fn should_skip_directory(dir_name: &str) -> bool {
     matches!(
         dir_name,
         "target"
