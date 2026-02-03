@@ -1811,6 +1811,113 @@ mod tests {
     }
 
     #[test]
+    fn should_show_hover_info_for_type_in_let_binding() {
+        check_hover_info(
+            indoc! {r#"
+                -- main.hop --
+                <Main>
+                  <let {name: String = "hello"}>
+                              ^
+                    {name}
+                  </let>
+                </Main>
+            "#},
+            expect![[r#"
+                `String`: `String`
+                  --> main.hop (line 2, col 15)
+                2 |   <let {name: String = "hello"}>
+                  |               ^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_show_hover_info_for_type_in_component_parameter() {
+        check_hover_info(
+            indoc! {r#"
+                -- main.hop --
+                <Greeting {name: String}>
+                                 ^
+                  <h1>Hello {name}!</h1>
+                </Greeting>
+            "#},
+            expect![[r#"
+                `String`: `String`
+                  --> main.hop (line 1, col 18)
+                1 | <Greeting {name: String}>
+                  |                  ^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_show_hover_info_for_array_type() {
+        check_hover_info(
+            indoc! {r#"
+                -- main.hop --
+                <Main>
+                  <let {items: Array[String] = ["a", "b"]}>
+                               ^
+                    <for {item in items}>{item}</for>
+                  </let>
+                </Main>
+            "#},
+            expect![[r#"
+                `Array[String]`: `Array[String]`
+                  --> main.hop (line 2, col 16)
+                2 |   <let {items: Array[String] = ["a", "b"]}>
+                  |                ^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_show_hover_info_for_option_type() {
+        check_hover_info(
+            indoc! {r#"
+                -- main.hop --
+                <Main>
+                  <let {value: Option[String] = Some("hello")}>
+                               ^
+                    <match {value}>
+                      <case {Some(s)}>{s}</case>
+                      <case {None}>none</case>
+                    </match>
+                  </let>
+                </Main>
+            "#},
+            expect![[r#"
+                `Option[String]`: `Option[String]`
+                  --> main.hop (line 2, col 16)
+                2 |   <let {value: Option[String] = Some("hello")}>
+                  |                ^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_show_hover_info_for_named_type_in_let_binding() {
+        check_hover_info(
+            indoc! {r#"
+                -- main.hop --
+                record User {name: String}
+                <Main>
+                  <let {user: User = User(name: "John")}>
+                              ^
+                    {user.name}
+                  </let>
+                </Main>
+            "#},
+            expect![[r#"
+                `main::User`: `main::User`
+                  --> main.hop (line 3, col 15)
+                3 |   <let {user: User = User(name: "John")}>
+                  |               ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
     fn should_show_hover_info_for_record_literal_type_name() {
         check_hover_info(
             indoc! {r#"
