@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use tokio::sync::{OnceCell, RwLock};
 use tower_lsp_server::jsonrpc::Result;
 use tower_lsp_server::lsp_types::{self, *};
-use tower_lsp_server::{Client, LanguageServer, LspService, Server as LspServer, UriExt};
+use tower_lsp_server::{Client, LanguageServer, UriExt};
 
 // LSP uses UTF-16 encoding by default for position character offsets.
 impl From<lsp_types::Position> for DocumentPosition {
@@ -304,12 +304,4 @@ impl LanguageServer for HopLanguageServer {
     async fn shutdown(&self) -> Result<()> {
         Ok(())
     }
-}
-
-pub async fn execute() {
-    let stdin = tokio::io::stdin();
-    let stdout = tokio::io::stdout();
-
-    let (service, socket) = LspService::new(HopLanguageServer::new);
-    LspServer::new(stdin, stdout, socket).serve(service).await;
 }
