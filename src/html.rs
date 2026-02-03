@@ -15,8 +15,7 @@ pub fn write_escaped_html(text: &str, output: &mut String) {
 
 /// Return true if the string represents a void element
 /// The void elements are `area`, `base`, `br`, `col`, `embed`, `hr`,
-/// `img`, `input`, `link`, `meta`, `param`, `source`, `track` and `wbr`
-/// (native HTML nodes) as well as `import` (defined by hop).
+/// `img`, `input`, `link`, `meta`, `param`, `source`, `track` and `wbr`.
 pub fn is_void_element(el: &str) -> bool {
     matches!(
         el,
@@ -34,6 +33,5 @@ pub fn is_void_element(el: &str) -> bool {
             | "source"
             | "track"
             | "wbr"
-            | "import"
     )
 }
