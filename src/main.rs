@@ -1,23 +1,24 @@
 mod cli;
-mod html;
-mod log;
 mod config;
 mod document;
 mod dop;
 mod environment;
 mod error_collector;
-mod project;
 mod hop;
+mod html;
 mod inlined;
 mod ir;
+mod log;
 mod orchestrator;
 mod parse_error;
+mod project;
 mod test_utils;
+mod timing;
 mod toposorter;
-mod tui;
 mod type_error;
 
 use clap::{CommandFactory, Parser, Subcommand};
+use colored::Colorize;
 use project::Project;
 use std::path::Path;
 
@@ -75,6 +76,12 @@ enum Commands {
     Lsp,
 }
 
+fn print_header(message: &str) {
+    println!();
+    println!("  {} | {}", "hop".bold(), message);
+    println!();
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
@@ -103,7 +110,7 @@ async fn main() -> anyhow::Result<()> {
             let mut result = cli::fmt::execute(&proj, file.as_deref())?;
             let elapsed = start_time.elapsed();
 
-            tui::print_header(&format!("formatted in {} ms", elapsed.as_millis()));
+            print_header(&format!("formatted in {} ms", elapsed.as_millis()));
             println!(
                 "    {} file(s) formatted, {} unchanged",
                 result.files_formatted, result.files_unchanged
@@ -131,7 +138,7 @@ async fn main() -> anyhow::Result<()> {
             let mut result = cli::build::execute(&proj, *no_optimize).await?;
             let elapsed = start_time.elapsed();
 
-            tui::print_header(&format!("built in {} ms", elapsed.as_millis()));
+            print_header(&format!("built in {} ms", elapsed.as_millis()));
 
             println!("  {}", "output".bold());
             println!();
@@ -177,7 +184,7 @@ async fn main() -> anyhow::Result<()> {
             let elapsed = start_time.elapsed();
             let dev_server = axum::serve(listener, res.router);
 
-            tui::print_header(&format!("started in {} ms", elapsed.as_millis()));
+            print_header(&format!("started in {} ms", elapsed.as_millis()));
             println!("    {} http://{}:{}", "⟶".green().bold(), host, bound_port);
 
             if *timing {
