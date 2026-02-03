@@ -76,10 +76,12 @@ record EntrypointData {
   </a>
 </Entrypoint>
 
-entrypoint Index(entrypoints: Array[EntrypointData] = [
-  EntrypointData(module: "index.hop", name: "Index"),
-  EntrypointData(module: "overlay.hop", name: "Overlay"),
-]) {
+entrypoint Index(
+  entrypoints: Array[EntrypointData] = [
+    EntrypointData(module: "index.hop", name: "Index"),
+    EntrypointData(module: "overlay.hop", name: "Overlay"),
+  ],
+) {
   <head>
     <link
       rel="stylesheet"
@@ -93,7 +95,7 @@ entrypoint Index(entrypoints: Array[EntrypointData] = [
     <div class="max-w-6xl px-6 mx-auto my-8 flex flex-col">
       <a
         href="/"
-        class="mt-1 lg:mt-2 mb-16 xl:mb-32"
+        class={"mt-1 lg:mt-2 mb-16 xl:mb-32"}
         tabindex="-1"
       >
         <Logo/>
@@ -121,7 +123,10 @@ entrypoint Index(entrypoints: Array[EntrypointData] = [
               )
             }>
               <for {ep in entrypoints}>
-                <Entrypoint name={ep.name} module={ep.module}/>
+                <Entrypoint
+                  name={ep.name}
+                  module={ep.module}
+                />
               </for>
             </div>
           </case>

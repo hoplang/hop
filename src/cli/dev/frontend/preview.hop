@@ -8,7 +8,11 @@ enum Device {
   Mobile,
 }
 
-entrypoint Preview(name: String = "Index", iframe_src: String = "", device: Device = Device::Desktop) {
+entrypoint Preview(
+  name: String = "Index",
+  iframe_src: String = "",
+  device: Device = Device::Desktop,
+) {
   <head>
     <link
       rel="stylesheet"

@@ -1,6 +1,8 @@
 import lucide::CircleAlert
 
-entrypoint Overlay(message: String = "Error! Something went wrong.") {
+entrypoint Overlay(
+  message: String = "Error! Something went wrong.",
+) {
   <body class={
     classes!(
       "bg-[#f3f3f3]/90",
