@@ -4,10 +4,11 @@ use crate::hop::program::{DefinitionLocation, Program, RenameLocation};
 use crate::hop::symbols::module_id::ModuleId;
 use crate::project::Project;
 use std::collections::HashMap;
+use tokio::sync::mpsc;
 use tokio::sync::{OnceCell, RwLock};
 use tower_lsp_server::jsonrpc::Result;
 use tower_lsp_server::lsp_types::{self, *};
-use tower_lsp_server::{Client, LanguageServer, UriExt};
+use tower_lsp_server::{LanguageServer, UriExt};
 
 // LSP uses UTF-16 encoding by default for position character offsets.
 impl From<lsp_types::Position> for DocumentPosition {
@@ -37,16 +38,27 @@ impl From<DocumentRange> for lsp_types::Range {
     }
 }
 
+pub enum ClientMessage {
+    PublishDiagnostics {
+        uri: Uri,
+        diagnostics: Vec<Diagnostic>,
+    },
+    ShowMessage {
+        message_type: MessageType,
+        message: String,
+    },
+}
+
 pub struct HopLanguageServer {
-    client: Client,
+    client_tx: mpsc::Sender<ClientMessage>,
     program: RwLock<Program>,
     project: OnceCell<Project>,
 }
 
 impl HopLanguageServer {
-    pub fn new(client: Client) -> Self {
+    pub fn new(client_tx: mpsc::Sender<ClientMessage>) -> Self {
         Self {
-            client,
+            client_tx,
             program: RwLock::new(Program::default()),
             project: OnceCell::new(),
         }
@@ -72,9 +84,9 @@ impl HopLanguageServer {
         let program = self.program.read().await;
         let diagnostics = program.get_error_diagnostics(module_id);
 
-        let lsp_diagnostics: Vec<tower_lsp_server::lsp_types::Diagnostic> = diagnostics
+        let lsp_diagnostics: Vec<Diagnostic> = diagnostics
             .into_iter()
-            .map(|d| tower_lsp_server::lsp_types::Diagnostic {
+            .map(|d| Diagnostic {
                 range: d.range.into(),
                 severity: Some(DiagnosticSeverity::ERROR),
                 code: None,
@@ -87,8 +99,12 @@ impl HopLanguageServer {
             })
             .collect();
 
-        self.client
-            .publish_diagnostics(uri.clone(), lsp_diagnostics, None)
+        let _ = self
+            .client_tx
+            .send(ClientMessage::PublishDiagnostics {
+                uri: uri.clone(),
+                diagnostics: lsp_diagnostics,
+            })
             .await;
     }
 }
@@ -99,8 +115,19 @@ impl LanguageServer for HopLanguageServer {
         #[allow(deprecated)]
         if let Some(root_uri) = params.root_uri {
             if let Some(root_path) = root_uri.to_file_path() {
-                if let Ok(proj) = Project::find_upwards(&root_path) {
-                    let _ = self.project.set(proj);
+                match Project::find_upwards(&root_path) {
+                    Ok(proj) => {
+                        let _ = self.project.set(proj);
+                    }
+                    Err(e) => {
+                        let _ = self
+                            .client_tx
+                            .send(ClientMessage::ShowMessage {
+                                message_type: MessageType::WARNING,
+                                message: format!("Failed to load Hop project: {e}"),
+                            })
+                            .await;
+                    }
                 }
             }
         }
@@ -303,5 +330,80 @@ impl LanguageServer for HopLanguageServer {
 
     async fn shutdown(&self) -> Result<()> {
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::archive::temp_dir_from_archive;
+    use indoc::indoc;
+    use simple_txtar::Archive;
+
+    #[tokio::test]
+    async fn test_initialize_resolves_project() {
+        let archive = Archive::from(indoc! {r#"
+            -- hop.toml --
+            [build]
+            target = "ts"
+            output_path = "app.ts"
+            -- main.hop --
+            type User {
+                name: String
+            }
+        "#});
+        let temp_dir = temp_dir_from_archive(&archive).unwrap();
+
+        let (tx, _rx) = mpsc::channel(32);
+        let server = HopLanguageServer::new(tx);
+
+        let root_uri = Uri::from_file_path(&temp_dir).unwrap();
+        #[allow(deprecated)]
+        let params = InitializeParams {
+            root_uri: Some(root_uri),
+            ..Default::default()
+        };
+
+        server.initialize(params).await.unwrap();
+
+        let project = server.project.get().expect("project should be resolved");
+        assert_eq!(project.get_project_root(), temp_dir);
+    }
+
+    #[tokio::test]
+    async fn test_initialize_shows_warning_when_project_not_found() {
+        let archive = Archive::from(indoc! {r#"
+            -- main.hop --
+            type User {
+                name: String
+            }
+        "#});
+        let temp_dir = temp_dir_from_archive(&archive).unwrap();
+
+        let (tx, mut rx) = mpsc::channel(32);
+        let server = HopLanguageServer::new(tx);
+
+        let root_uri = Uri::from_file_path(&temp_dir).unwrap();
+        #[allow(deprecated)]
+        let params = InitializeParams {
+            root_uri: Some(root_uri),
+            ..Default::default()
+        };
+
+        server.initialize(params).await.unwrap();
+
+        assert!(server.project.get().is_none());
+
+        let msg = rx.recv().await.expect("should receive a warning message");
+        match msg {
+            ClientMessage::ShowMessage {
+                message_type,
+                message,
+            } => {
+                assert_eq!(message_type, MessageType::WARNING);
+                assert!(message.contains("Failed to load Hop project"));
+            }
+            _ => panic!("expected ShowMessage"),
+        }
     }
 }
