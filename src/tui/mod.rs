@@ -1,4 +1,3 @@
-pub mod log;
 pub mod timing;
 
 use colored::Colorize;

@@ -29,7 +29,7 @@ pub fn format_logfmt(level: &str, tag: &str, fields: &[(&str, String)]) -> Strin
 macro_rules! log_info {
     ($tag:expr, $($key:ident = $value:expr),* $(,)?) => {{
         use colored::Colorize;
-        eprintln!("{}", $crate::tui::log::format_logfmt(
+        eprintln!("{}", $crate::log::format_logfmt(
             &"info".cyan().to_string(),
             $tag,
             &[$(( stringify!($key), format!("{}", $value) )),*]
@@ -41,7 +41,7 @@ macro_rules! log_info {
 macro_rules! log_debug {
     ($tag:expr, $($key:ident = $value:expr),* $(,)?) => {{
         use colored::Colorize;
-        eprintln!("{}", $crate::tui::log::format_logfmt(
+        eprintln!("{}", $crate::log::format_logfmt(
             &"debug".dimmed().to_string(),
             $tag,
             &[$(( stringify!($key), format!("{}", $value) )),*]
@@ -53,7 +53,7 @@ macro_rules! log_debug {
 macro_rules! log_warn {
     ($tag:expr, $($key:ident = $value:expr),* $(,)?) => {{
         use colored::Colorize;
-        eprintln!("{}", $crate::tui::log::format_logfmt(
+        eprintln!("{}", $crate::log::format_logfmt(
             &"warn".yellow().to_string(),
             $tag,
             &[$(( stringify!($key), format!("{}", $value) )),*]
@@ -65,7 +65,7 @@ macro_rules! log_warn {
 macro_rules! log_error {
     ($tag:expr, $($key:ident = $value:expr),* $(,)?) => {{
         use colored::Colorize;
-        eprintln!("{}", $crate::tui::log::format_logfmt(
+        eprintln!("{}", $crate::log::format_logfmt(
             &"error".red().to_string(),
             $tag,
             &[$(( stringify!($key), format!("{}", $value) )),*]

@@ -1,5 +1,6 @@
 mod cli;
 mod html;
+mod log;
 mod config;
 mod document;
 mod dop;
