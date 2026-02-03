@@ -69,6 +69,46 @@ impl Project {
         }
     }
 
+    /// Find the project root by traversing downwards into subdirectories.
+    pub fn find_downwards(start_path: &Path) -> anyhow::Result<Project> {
+        let canonicalized = start_path
+            .canonicalize()
+            .with_context(|| format!("Failed to canonicalize path {:?}", &start_path))?;
+
+        let mut paths: Vec<PathBuf> = vec![canonicalized.clone()];
+
+        while let Some(path) = paths.pop() {
+            if path.is_dir() {
+                if let Some(dir_name) = path.file_name().and_then(|n| n.to_str()) {
+                    if should_skip_directory(dir_name) {
+                        continue;
+                    }
+                }
+
+                let config_file = path.join("hop.toml");
+                if config_file.exists() {
+                    return Ok(Project {
+                        project_root: path,
+                    });
+                }
+
+                if let Ok(entries) = std::fs::read_dir(&path) {
+                    for entry in entries.flatten() {
+                        let p = entry.path();
+                        if p.is_dir() {
+                            paths.push(p);
+                        }
+                    }
+                }
+            }
+        }
+
+        anyhow::bail!(
+            "Failed to locate hop.toml file in {:?} or any subdirectory",
+            &start_path
+        )
+    }
+
     pub fn get_project_root(&self) -> &Path {
         &self.project_root
     }
@@ -227,6 +267,25 @@ mod tests {
         let nested_dir = temp_dir.path().join("src").join("components");
         let found = Project::find_upwards(&nested_dir).unwrap();
         assert_eq!(found.project_root, temp_dir.path());
+    }
+
+    #[test]
+    fn find_config_file_downwards() {
+        let archive = Archive::from(indoc! {r#"
+            -- hop/hop.toml --
+            [build]
+            target = "ts"
+            output_path = "app.ts"
+            -- hop/main.hop --
+            type User {
+                name: String
+            }
+        "#});
+        let temp_dir = temp_dir_from_archive(&archive).unwrap();
+
+        // Test finding from parent directory
+        let found = Project::find_downwards(temp_dir.path()).unwrap();
+        assert_eq!(found.project_root, temp_dir.path().join("hop"));
     }
 
     #[test]

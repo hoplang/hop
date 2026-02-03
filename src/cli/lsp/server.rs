@@ -115,7 +115,10 @@ impl LanguageServer for HopLanguageServer {
         #[allow(deprecated)]
         if let Some(root_uri) = params.root_uri {
             if let Some(root_path) = root_uri.to_file_path() {
-                match Project::find_upwards(&root_path) {
+                let project_result = Project::find_upwards(&root_path)
+                    .or_else(|_| Project::find_downwards(&root_path));
+
+                match project_result {
                     Ok(proj) => {
                         let _ = self.project.set(proj);
                     }
@@ -368,6 +371,36 @@ mod tests {
 
         let project = server.project.get().expect("project should be resolved");
         assert_eq!(project.get_project_root(), temp_dir.path());
+    }
+
+    #[tokio::test]
+    async fn test_initialize_resolves_project_in_subfolder() {
+        let archive = Archive::from(indoc! {r#"
+            -- hop/hop.toml --
+            [build]
+            target = "ts"
+            output_path = "app.ts"
+            -- hop/main.hop --
+            type User {
+                name: String
+            }
+        "#});
+        let temp_dir = temp_dir_from_archive(&archive).unwrap();
+
+        let (tx, _rx) = mpsc::channel(32);
+        let server = HopLanguageServer::new(tx);
+
+        let root_uri = Uri::from_file_path(temp_dir.path()).unwrap();
+        #[allow(deprecated)]
+        let params = InitializeParams {
+            root_uri: Some(root_uri),
+            ..Default::default()
+        };
+
+        server.initialize(params).await.unwrap();
+
+        let project = server.project.get().expect("project should be resolved");
+        assert_eq!(project.get_project_root(), temp_dir.path().join("hop"));
     }
 
     #[tokio::test]
