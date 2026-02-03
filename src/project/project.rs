@@ -77,7 +77,7 @@ impl Project {
     pub fn path_to_module_id(&self, file_path: &Path) -> anyhow::Result<ModuleId> {
         let relative_path = file_path
             .strip_prefix(&self.project_root)
-            .with_context(|| format!("Failed to strip prefix from path {:?}", file_path))?;
+            .with_context(|| format!("Path {:?} is not inside the project at {:?}", file_path, self.project_root))?;
 
         let module_str = relative_path
             .with_extension("")
@@ -277,6 +277,33 @@ mod tests {
         let main_path = temp_dir.join("main.hop");
         let main_module = project.path_to_module_id(&main_path).unwrap();
         assert_eq!(main_module.to_path(), "main");
+
+        // Clean up
+        std::fs::remove_dir_all(&temp_dir).unwrap();
+    }
+
+    #[test]
+    fn path_to_module_id_outside_project() {
+        let archive = Archive::from(indoc! {r#"
+            -- hop.toml --
+            [build]
+            target = "ts"
+            output_path = "app.ts"
+        "#});
+        let temp_dir = temp_dir_from_archive(&archive).unwrap();
+        let project = Project::from(&temp_dir).unwrap();
+
+        // Try to convert a path outside the project
+        let outside_path = PathBuf::from("/some/other/path/file.hop");
+        let result = project.path_to_module_id(&outside_path);
+
+        assert!(result.is_err());
+        let error_message = result.unwrap_err().to_string();
+        assert!(
+            error_message.contains("is not inside the project"),
+            "Expected error about path not inside project, got: {}",
+            error_message
+        );
 
         // Clean up
         std::fs::remove_dir_all(&temp_dir).unwrap();
