@@ -14,11 +14,6 @@ pub use write_expr_simplification::WriteExprSimplificationPass;
 
 use super::ast::IrEntrypointDeclaration;
 
-/// Trait for IR optimization passes that operate on individual entrypoints
-///
-/// Each pass is responsible for managing its own environment/state while
-/// traversing the entrypoint. Since entrypoints are independent, there's
-/// no need for cross-entrypoint analysis.
 pub trait Pass {
     /// Run the pass on a single IR entrypoint, mutating it in place
     fn run(entrypoint: &mut IrEntrypointDeclaration);
