@@ -1,3 +1,8 @@
+//! A scoped environment for tracking variable bindings during compilation.
+//!
+//! [`Environment`] provides push/pop semantics for nested scopes, tracks whether
+//! variables are accessed, and generates fresh variable names.
+
 use std::collections::HashMap;
 
 /// The Environment models variable scope.
