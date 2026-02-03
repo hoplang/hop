@@ -5,7 +5,7 @@ use crate::hop::syntax::format;
 use crate::hop::syntax::parser;
 use crate::parse_error::ParseError;
 use crate::project::Project;
-use crate::tui::timing;
+use crate::timing;
 use anyhow::Result;
 use rayon::prelude::*;
 use std::path::PathBuf;

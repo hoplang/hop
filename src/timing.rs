@@ -1,3 +1,8 @@
+//! Utilities for collecting and visualizing timing information across computation phases.
+//!
+//! [`TimingCollector`] tracks the duration of named phases and renders them as a
+//! horizontal bar chart showing relative time spent in each phase.
+
 use std::time::Instant;
 
 #[derive(Debug)]
