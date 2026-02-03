@@ -774,17 +774,30 @@ pub fn typecheck_expr(
         }
         ParsedExpr::RecordLiteral {
             record_name,
+            record_name_range,
             fields,
             range,
         } => {
             // Check if the record type is defined
-            let (record_type, _) = type_env
+            let (record_type, def_range) = type_env
                 .lookup(record_name.as_str())
                 .ok_or_else(|| TypeError::UndefinedRecord {
                     record_name: record_name.to_string(),
                     range: range.clone(),
                 })?;
             let record_type = record_type.clone();
+            let def_range = def_range.clone();
+
+            // Add type annotation and definition link for the record name
+            annotations.push(TypeAnnotation {
+                range: record_name_range.clone(),
+                typ: record_type.clone(),
+                name: record_name.to_string(),
+            });
+            definition_links.push(DefinitionLink {
+                use_range: record_name_range.clone(),
+                definition_range: def_range,
+            });
 
             // Extract fields from the record type
             let record_fields = match record_type.as_ref() {
@@ -872,13 +885,25 @@ pub fn typecheck_expr(
             range,
         } => {
             // Look up the enum type in the type environment
-            let (enum_type, _) = type_env
+            let (enum_type, def_range) = type_env
                 .lookup(enum_name.as_str())
                 .ok_or_else(|| TypeError::UndefinedEnum {
                     enum_name: enum_name.to_string(),
                     range: range.clone(),
                 })?;
             let enum_type = enum_type.clone();
+            let def_range = def_range.clone();
+
+            // Add type annotation and definition link for the constructor
+            annotations.push(TypeAnnotation {
+                range: constructor_range.clone(),
+                typ: enum_type.clone(),
+                name: format!("{}::{}", enum_name, variant_name),
+            });
+            definition_links.push(DefinitionLink {
+                use_range: constructor_range.clone(),
+                definition_range: def_range,
+            });
 
             // Verify it's actually an enum type and get the variant's fields
             let variant_fields = match enum_type.as_ref() {

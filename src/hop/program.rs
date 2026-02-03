@@ -864,7 +864,21 @@ mod tests {
         let module =
             ModuleId::new(&marker.filename.replace(".hop", "").replace('/', "::")).unwrap();
 
-        let hover_info = program_from_archive(&archive)
+        let program = program_from_archive(&archive);
+
+        for (module_id, errors) in program.get_parse_errors() {
+            if !errors.is_empty() {
+                panic!("Parse errors in module {}: {:?}", module_id, errors);
+            }
+        }
+
+        for (module_id, errors) in program.get_type_errors() {
+            if !errors.is_empty() {
+                panic!("Type errors in module {}: {:?}", module_id, errors);
+            }
+        }
+
+        let hover_info = program
             .get_hover_info(&module, marker.position)
             .expect("Expected hover info to be defined");
 
@@ -1718,8 +1732,9 @@ mod tests {
         check_hover_info(
             indoc! {r#"
                 -- main.hop --
-                <Greeting {name: String}>
+                <Greeting {name: String, children: TrustedHTML}>
                   <h1>Hello {name}!</h1>
+                  {children}
                 </Greeting>
 
                 <Main>
@@ -1731,9 +1746,9 @@ mod tests {
             "#},
             expect![[r#"
                 `Greeting`: `main::Greeting`
-                  --> main.hop (line 8, col 5)
-                8 |   </Greeting>
-                  |     ^^^^^^^^
+                  --> main.hop (line 9, col 5)
+                 9 |   </Greeting>
+                   |     ^^^^^^^^
             "#]],
         );
     }
@@ -1791,6 +1806,78 @@ mod tests {
                   --> main.hop (line 2, col 9)
                 2 |   <div>{name}</div>
                   |         ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_show_hover_info_for_record_literal_type_name() {
+        check_hover_info(
+            indoc! {r#"
+                -- main.hop --
+                record User {name: String}
+                <Main>
+                  <let {user: User = User(name: "John")}>
+                                     ^
+                    {user.name}
+                  </let>
+                </Main>
+            "#},
+            expect![[r#"
+                `User`: `main::User`
+                  --> main.hop (line 3, col 22)
+                3 |   <let {user: User = User(name: "John")}>
+                  |                      ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_show_hover_info_for_enum_literal_constructor() {
+        check_hover_info(
+            indoc! {r#"
+                -- main.hop --
+                enum Color { Red, Green, Blue }
+                <Main>
+                  <let {color: Color = Color::Red}>
+                                       ^
+                    <match {color}>
+                      <case {Color::Red}>red</case>
+                      <case {_}>other</case>
+                    </match>
+                  </let>
+                </Main>
+            "#},
+            expect![[r#"
+                `Color::Red`: `main::Color`
+                  --> main.hop (line 3, col 24)
+                3 |   <let {color: Color = Color::Red}>
+                  |                        ^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_show_hover_info_for_enum_literal_constructor_with_fields() {
+        check_hover_info(
+            indoc! {r#"
+                -- main.hop --
+                enum Outcome { Success(value: String), Failure(message: String) }
+                <Main>
+                  <let {result: Outcome = Outcome::Success(value: "ok")}>
+                                          ^
+                    <match {result}>
+                      <case {Outcome::Success(value: v)}>{v}</case>
+                      <case {Outcome::Failure(message: m)}>{m}</case>
+                    </match>
+                  </let>
+                </Main>
+            "#},
+            expect![[r#"
+                `Outcome::Success`: `main::Outcome`
+                  --> main.hop (line 3, col 27)
+                3 |   <let {result: Outcome = Outcome::Success(value: "ok")}>
+                  |                           ^^^^^^^^^^^^^^^^
             "#]],
         );
     }

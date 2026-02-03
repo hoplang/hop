@@ -875,6 +875,7 @@ fn parse_record_literal(
     )?;
     Some(ParsedExpr::RecordLiteral {
         record_name: name,
+        record_name_range: name_range.clone(),
         fields,
         range: name_range.to(right_paren),
     })
