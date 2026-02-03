@@ -1,3 +1,16 @@
+//! Structured logging utilities for the cli.
+//!
+//! Provides macros for logging messages in logfmt format with automatic timestamps
+//! and colored output. Available macros: [`log_info!`], [`log_debug!`], [`log_warn!`],
+//! and [`log_error!`].
+//!
+//! # Example
+//!
+//! ```ignore
+//! log_info!("server", port = 8080, status = "running");
+//! // Output: time=12:34:56.789 level=info tag=server port=8080 status=running
+//! ```
+
 use colored::Colorize;
 use std::time::SystemTime;
 

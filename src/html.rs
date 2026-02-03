@@ -1,5 +1,5 @@
-// Escape HTML special characters to prevent XSS
-// Converts &, <, >, ", and ' to their HTML entity equivalents
+/// Escape HTML special characters to prevent XSS
+/// Converts &, <, >, ", and ' to their HTML entity equivalents
 pub fn write_escaped_html(text: &str, output: &mut String) {
     for c in text.chars() {
         match c {
@@ -13,10 +13,10 @@ pub fn write_escaped_html(text: &str, output: &mut String) {
     }
 }
 
-// Return true if the string represents a void element
-// The void elements are `area`, `base`, `br`, `col`, `embed`, `hr`,
-// `img`, `input`, `link`, `meta`, `param`, `source`, `track` and `wbr`
-// (native HTML nodes) as well as `import` (defined by hop).
+/// Return true if the string represents a void element
+/// The void elements are `area`, `base`, `br`, `col`, `embed`, `hr`,
+/// `img`, `input`, `link`, `meta`, `param`, `source`, `track` and `wbr`
+/// (native HTML nodes) as well as `import` (defined by hop).
 pub fn is_void_element(el: &str) -> bool {
     matches!(
         el,
