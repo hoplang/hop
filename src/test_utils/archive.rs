@@ -2,20 +2,18 @@ use crate::document::DocumentPosition;
 use crate::document::extract_position::extract_position;
 use simple_txtar::{Archive, Builder, File};
 use std::{
-    env, fs,
-    path::{Path, PathBuf},
+    fs,
+    path::Path,
 };
+use tempfile::TempDir;
 
 /// Creates a temporary directory with files from a txtar Archive.
 ///
-/// The directory is created with a random name in the system temp directory
-/// and populated with all files from the archive.
-pub fn temp_dir_from_archive(archive: &Archive) -> std::io::Result<PathBuf> {
-    let r = rand::random::<u64>();
-    let temp_dir = env::temp_dir().join(format!("hop_test_{}", r));
-    fs::create_dir_all(&temp_dir)?;
+/// The directory is automatically cleaned up when the returned `TempDir` is dropped.
+pub fn temp_dir_from_archive(archive: &Archive) -> std::io::Result<TempDir> {
+    let temp_dir = TempDir::new()?;
     for file in archive.iter() {
-        let file_path = temp_dir.join(&file.name);
+        let file_path = temp_dir.path().join(&file.name);
         if let Some(parent) = file_path.parent() {
             fs::create_dir_all(parent)?;
         }

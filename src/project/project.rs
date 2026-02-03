@@ -224,12 +224,9 @@ mod tests {
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
 
         // Test finding from nested directory
-        let nested_dir = temp_dir.join("src").join("components");
+        let nested_dir = temp_dir.path().join("src").join("components");
         let found = Project::find_upwards(&nested_dir).unwrap();
-        assert_eq!(found.project_root, temp_dir);
-
-        // Clean up
-        std::fs::remove_dir_all(&temp_dir).unwrap();
+        assert_eq!(found.project_root, temp_dir.path());
     }
 
     #[test]
@@ -243,15 +240,12 @@ mod tests {
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
 
         // Test that find_upwards fails when no hop.toml exists
-        let nested_dir = temp_dir.join("src").join("components");
+        let nested_dir = temp_dir.path().join("src").join("components");
         let result = Project::find_upwards(&nested_dir);
         assert!(result.is_err());
 
         let error_message = result.unwrap_err().to_string();
         assert!(error_message.contains("Failed to locate hop.toml"));
-
-        // Clean up
-        std::fs::remove_dir_all(&temp_dir).unwrap();
     }
 
     #[test]
@@ -267,19 +261,16 @@ mod tests {
             <button-comp>Click</button-comp>
         "#});
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
-        let project = Project::from(&temp_dir).unwrap();
+        let project = Project::from(temp_dir.path()).unwrap();
 
         // Test converting file paths to module names
-        let button_path = temp_dir.join("src/components/button.hop");
+        let button_path = temp_dir.path().join("src/components/button.hop");
         let module_id = project.path_to_module_id(&button_path).unwrap();
         assert_eq!(module_id.to_path(), "src/components/button");
 
-        let main_path = temp_dir.join("main.hop");
+        let main_path = temp_dir.path().join("main.hop");
         let main_module = project.path_to_module_id(&main_path).unwrap();
         assert_eq!(main_module.to_path(), "main");
-
-        // Clean up
-        std::fs::remove_dir_all(&temp_dir).unwrap();
     }
 
     #[test]
@@ -291,7 +282,7 @@ mod tests {
             output_path = "app.ts"
         "#});
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
-        let project = Project::from(&temp_dir).unwrap();
+        let project = Project::from(temp_dir.path()).unwrap();
 
         // Try to convert a path outside the project
         let outside_path = PathBuf::from("/some/other/path/file.hop");
@@ -304,9 +295,6 @@ mod tests {
             "Expected error about path not inside project, got: {}",
             error_message
         );
-
-        // Clean up
-        std::fs::remove_dir_all(&temp_dir).unwrap();
     }
 
     #[test]
@@ -318,21 +306,18 @@ mod tests {
             output_path = "app.ts"
         "#});
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
-        let project = Project::from(&temp_dir).unwrap();
+        let project = Project::from(temp_dir.path()).unwrap();
 
         // Test converting module names back to paths
         let module = ModuleId::new("src::components::button").unwrap();
         let path = project.module_id_to_path(&module);
         assert_eq!(
-            path.strip_prefix(&temp_dir)
+            path.strip_prefix(temp_dir.path())
                 .unwrap()
                 .to_string_lossy()
                 .replace('\\', "/"),
             "src/components/button.hop"
         );
-
-        // Clean up
-        std::fs::remove_dir_all(&temp_dir).unwrap();
     }
 
     #[test]
@@ -346,7 +331,7 @@ mod tests {
             <button-comp>Click me!</button-comp>
         "#});
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
-        let project = Project::from(&temp_dir).unwrap();
+        let project = Project::from(temp_dir.path()).unwrap();
 
         let module_id = ModuleId::new("src::components::button").unwrap();
         let document = project.load_module(&module_id).unwrap();
@@ -356,9 +341,6 @@ mod tests {
                 .as_str()
                 .contains("<button-comp>Click me!</button-comp>")
         );
-
-        // Clean up
-        std::fs::remove_dir_all(&temp_dir).unwrap();
     }
 
     #[test]
@@ -370,15 +352,12 @@ mod tests {
             output_path = "app.ts"
         "#});
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
-        let project = Project::from(&temp_dir).unwrap();
+        let project = Project::from(temp_dir.path()).unwrap();
 
         let module_id = ModuleId::new("nonexistent::module").unwrap();
         let result = project.load_module(&module_id);
 
         assert!(result.is_err());
-
-        // Clean up
-        std::fs::remove_dir_all(&temp_dir).unwrap();
     }
 
     #[test]
@@ -396,7 +375,7 @@ mod tests {
             <header-comp>Welcome</header-comp>
         "#});
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
-        let project = Project::from(&temp_dir).unwrap();
+        let project = Project::from(temp_dir.path()).unwrap();
 
         let mut modules = project.find_modules().unwrap();
         modules.sort();
@@ -411,9 +390,6 @@ mod tests {
             ModuleId::new("src::components::header").unwrap()
         );
         assert_eq!(modules[2], ModuleId::new("src::main").unwrap());
-
-        // Clean up
-        std::fs::remove_dir_all(&temp_dir).unwrap();
     }
 
     #[test]
@@ -431,10 +407,10 @@ mod tests {
             <button-min>Minified button</button-min>
         "#});
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
-        let project = Project::from(&temp_dir).unwrap();
+        let project = Project::from(temp_dir.path()).unwrap();
 
         // Files with dots in the name (excluding .hop extension) should fail validation
-        let foo_bar_path = temp_dir.join("src/foo.bar.hop");
+        let foo_bar_path = temp_dir.path().join("src/foo.bar.hop");
         let result = project.path_to_module_id(&foo_bar_path);
         assert!(result.is_err());
         assert!(
@@ -445,11 +421,11 @@ mod tests {
         );
 
         // Files with underscores should work fine
-        let helper_test_path = temp_dir.join("src/utils/helper_test.hop");
+        let helper_test_path = temp_dir.path().join("src/utils/helper_test.hop");
         let helper_test_module = project.path_to_module_id(&helper_test_path).unwrap();
         assert_eq!(helper_test_module.to_path(), "src/utils/helper_test");
 
-        let button_min_path = temp_dir.join("src/components/button_min.hop");
+        let button_min_path = temp_dir.path().join("src/components/button_min.hop");
         let button_min_module = project.path_to_module_id(&button_min_path).unwrap();
         assert_eq!(button_min_module.to_path(), "src/components/button_min");
 
@@ -463,9 +439,6 @@ mod tests {
                 .to_string()
                 .contains("Invalid module name")
         );
-
-        // Clean up
-        std::fs::remove_dir_all(&temp_dir).unwrap();
     }
 
     #[test]
@@ -485,7 +458,7 @@ mod tests {
             <should-not-find>Skip this too</should-not-find>
         "#});
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
-        let project = Project::from(&temp_dir).unwrap();
+        let project = Project::from(temp_dir.path()).unwrap();
 
         // Test that find_modules correctly skips certain directories
         let modules = project.find_modules().unwrap();
@@ -501,9 +474,6 @@ mod tests {
         assert!(!module_ids.iter().any(|m| m.contains("node_modules")));
         assert!(!module_ids.iter().any(|m| m.contains(".git")));
         assert!(!module_ids.iter().any(|m| m.contains("target")));
-
-        // Clean up
-        std::fs::remove_dir_all(&temp_dir).unwrap();
     }
 
     #[tokio::test]
@@ -518,13 +488,11 @@ mod tests {
             output_path = "app.ts"
         "#});
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
-        let project = Project::from(&temp_dir).unwrap();
+        let project = Project::from(temp_dir.path()).unwrap();
 
         let config = project.load_config().await.unwrap();
 
         assert_eq!(config.css.mode, Some("tailwind4".to_string()));
-
-        std::fs::remove_dir_all(&temp_dir).unwrap();
     }
 
     #[tokio::test]
@@ -538,10 +506,10 @@ mod tests {
             <main-component>Test</main-component>
         "#});
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
-        let project = Project::from(&temp_dir).unwrap();
+        let project = Project::from(temp_dir.path()).unwrap();
 
         // Delete the hop.toml to test the error case
-        std::fs::remove_file(temp_dir.join("hop.toml")).unwrap();
+        std::fs::remove_file(temp_dir.path().join("hop.toml")).unwrap();
 
         let result = project.load_config().await;
         assert!(result.is_err());
@@ -551,8 +519,6 @@ mod tests {
                 .to_string()
                 .contains("hop.toml not found")
         );
-
-        std::fs::remove_dir_all(&temp_dir).unwrap();
     }
 
     #[tokio::test]
@@ -562,7 +528,7 @@ mod tests {
             # Empty config file
         "#});
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
-        let project = Project::from(&temp_dir).unwrap();
+        let project = Project::from(temp_dir.path()).unwrap();
 
         // Empty config should now parse successfully (build section is optional)
         let result = project.load_config().await;
@@ -571,8 +537,6 @@ mod tests {
             "Empty config should parse: {:?}",
             result.err()
         );
-
-        std::fs::remove_dir_all(&temp_dir).unwrap();
     }
 
     #[tokio::test]
@@ -583,7 +547,7 @@ mod tests {
             mode = "tailwind4"
         "#});
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
-        let project = Project::from(&temp_dir).unwrap();
+        let project = Project::from(temp_dir.path()).unwrap();
 
         let result = project.load_config().await;
         assert!(
@@ -594,8 +558,6 @@ mod tests {
 
         let config = result.unwrap();
         assert_eq!(config.css.mode, Some("tailwind4".to_string()));
-
-        std::fs::remove_dir_all(&temp_dir).unwrap();
     }
 
     #[tokio::test]
@@ -606,7 +568,7 @@ mod tests {
             input = "styles/input.css"
         "#});
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
-        let project = Project::from(&temp_dir).unwrap();
+        let project = Project::from(temp_dir.path()).unwrap();
 
         let result = project.get_tailwind_input_path().await;
         assert!(
@@ -618,8 +580,6 @@ mod tests {
         let path = result.unwrap();
         assert!(path.is_some());
         assert!(path.unwrap().ends_with("styles/input.css"));
-
-        std::fs::remove_dir_all(&temp_dir).unwrap();
     }
 
     #[tokio::test]
@@ -630,14 +590,12 @@ mod tests {
             mode = "tailwind4"
         "#});
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
-        let project = Project::from(&temp_dir).unwrap();
+        let project = Project::from(temp_dir.path()).unwrap();
 
         let result = project.get_output_path().await;
         assert!(
             result.is_err(),
             "get_output_path should fail without build config"
         );
-
-        std::fs::remove_dir_all(&temp_dir).unwrap();
     }
 }

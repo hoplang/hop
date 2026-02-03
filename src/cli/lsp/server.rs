@@ -357,7 +357,7 @@ mod tests {
         let (tx, _rx) = mpsc::channel(32);
         let server = HopLanguageServer::new(tx);
 
-        let root_uri = Uri::from_file_path(&temp_dir).unwrap();
+        let root_uri = Uri::from_file_path(temp_dir.path()).unwrap();
         #[allow(deprecated)]
         let params = InitializeParams {
             root_uri: Some(root_uri),
@@ -367,7 +367,7 @@ mod tests {
         server.initialize(params).await.unwrap();
 
         let project = server.project.get().expect("project should be resolved");
-        assert_eq!(project.get_project_root(), temp_dir);
+        assert_eq!(project.get_project_root(), temp_dir.path());
     }
 
     #[tokio::test]
@@ -383,7 +383,7 @@ mod tests {
         let (tx, mut rx) = mpsc::channel(32);
         let server = HopLanguageServer::new(tx);
 
-        let root_uri = Uri::from_file_path(&temp_dir).unwrap();
+        let root_uri = Uri::from_file_path(temp_dir.path()).unwrap();
         #[allow(deprecated)]
         let params = InitializeParams {
             root_uri: Some(root_uri),

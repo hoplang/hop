@@ -144,7 +144,7 @@ mod tests {
         "#});
 
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
-        let project = Project::from(&temp_dir).unwrap();
+        let project = Project::from(temp_dir.path()).unwrap();
 
         // Execute the compile command
         let result = execute(&project, false).await;
@@ -155,7 +155,7 @@ mod tests {
         );
 
         // Verify that the output file was created at the correct path
-        let expected_output_path = temp_dir.join("components/frontend.go");
+        let expected_output_path = temp_dir.path().join("components/frontend.go");
         assert!(
             expected_output_path.exists(),
             "Output file should exist at components/frontend.go"
@@ -167,9 +167,6 @@ mod tests {
             generated_code.contains("package components"),
             "Generated Go code should use 'package components' (derived from output path)"
         );
-
-        // Clean up
-        fs::remove_dir_all(&temp_dir).unwrap();
     }
 
     #[tokio::test]
@@ -206,7 +203,7 @@ mod tests {
         "#});
 
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
-        let project = Project::from(&temp_dir).unwrap();
+        let project = Project::from(temp_dir.path()).unwrap();
 
         // Execute the compile command
         let result = execute(&project, false).await;
@@ -217,7 +214,7 @@ mod tests {
         );
 
         // Read the generated output
-        let output_path = temp_dir.join("output.ts");
+        let output_path = temp_dir.path().join("output.ts");
         let generated_code = fs::read_to_string(&output_path).unwrap();
 
         // Extract the order of exported functions from the TypeScript output.
@@ -262,8 +259,5 @@ mod tests {
             actual_order,
             generated_code
         );
-
-        // Clean up
-        fs::remove_dir_all(&temp_dir).unwrap();
     }
 }

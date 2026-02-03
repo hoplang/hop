@@ -138,14 +138,14 @@ mod tests {
         "#});
 
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
-        let project = Project::from(&temp_dir).unwrap();
+        let project = Project::from(temp_dir.path()).unwrap();
 
         let result = execute(&project, None).unwrap();
 
         assert_eq!(result.files_formatted, 1);
         assert_eq!(result.files_unchanged, 0);
 
-        let formatted_content = fs::read_to_string(temp_dir.join("main.hop")).unwrap();
+        let formatted_content = fs::read_to_string(temp_dir.path().join("main.hop")).unwrap();
         assert_eq!(
             formatted_content,
             indoc! {r#"
@@ -172,7 +172,7 @@ mod tests {
         "#});
 
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
-        let project = Project::from(&temp_dir).unwrap();
+        let project = Project::from(temp_dir.path()).unwrap();
 
         let result = execute(&project, None).unwrap();
 
@@ -194,9 +194,9 @@ mod tests {
         "#});
 
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
-        let project = Project::from(&temp_dir).unwrap();
+        let project = Project::from(temp_dir.path()).unwrap();
 
-        let main_path = temp_dir.join("main.hop");
+        let main_path = temp_dir.path().join("main.hop");
         let result = execute(&project, Some(main_path.to_str().unwrap())).unwrap();
 
         // Only main.hop should be formatted
@@ -209,7 +209,7 @@ mod tests {
         assert!(main_content.contains("  <div>"));
 
         // Verify other.hop was NOT formatted (still on one line)
-        let other_content = fs::read_to_string(temp_dir.join("other.hop")).unwrap();
+        let other_content = fs::read_to_string(temp_dir.path().join("other.hop")).unwrap();
         assert_eq!(other_content, "<Other><span>world</span></Other>\n");
     }
 
@@ -227,7 +227,7 @@ mod tests {
         "#});
 
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
-        let project = Project::from(&temp_dir).unwrap();
+        let project = Project::from(temp_dir.path()).unwrap();
 
         let result = execute(&project, None);
 
@@ -235,7 +235,7 @@ mod tests {
         assert!(result.is_err());
 
         // Verify main.hop was NOT formatted (still on one line)
-        let main_content = fs::read_to_string(temp_dir.join("main.hop")).unwrap();
+        let main_content = fs::read_to_string(temp_dir.path().join("main.hop")).unwrap();
         assert_eq!(main_content, "<Main><div>hello</div></Main>\n");
     }
 
@@ -251,7 +251,7 @@ mod tests {
         "#});
 
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
-        let project = Project::from(&temp_dir).unwrap();
+        let project = Project::from(temp_dir.path()).unwrap();
 
         let result = execute(&project, None);
 

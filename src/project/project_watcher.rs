@@ -236,10 +236,11 @@ mod tests {
     use crate::test_utils::archive::temp_dir_from_archive;
     use indoc::indoc;
     use simple_txtar::Archive;
+    use tempfile::TempDir;
 
     const TEST_DEBOUNCE: Duration = Duration::from_millis(10);
 
-    fn create_test_project() -> (PathBuf, Project) {
+    fn create_test_project() -> (TempDir, Project) {
         let archive = Archive::from(indoc! {r#"
             -- hop.toml --
             [build]
@@ -247,7 +248,7 @@ mod tests {
             output_path = "app.ts"
         "#});
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
-        let project = Project::from(&temp_dir).unwrap();
+        let project = Project::from(temp_dir.path()).unwrap();
         (temp_dir, project)
     }
 
@@ -261,22 +262,20 @@ mod tests {
 
         let mut rx = watcher.subscribe();
 
-        let test_file = temp_dir.join("test.hop");
+        let test_file = temp_dir.path().join("test.hop");
         std::fs::write(&test_file, "<test>hello</test>").expect("Failed to write test file");
 
         let batch = rx.recv().await.expect("Failed to receive batch");
         let expected_id = ModuleId::new("test").unwrap();
         assert!(batch.modified.contains(&expected_id));
         assert!(batch.deleted.is_empty());
-
-        std::fs::remove_dir_all(&temp_dir).unwrap();
     }
 
     #[tokio::test]
     async fn hop_file_modification() {
         let (temp_dir, project) = create_test_project();
 
-        let test_file = temp_dir.join("test.hop");
+        let test_file = temp_dir.path().join("test.hop");
         std::fs::write(&test_file, "<test>initial</test>").expect("Failed to write test file");
 
         let watcher = ProjectWatcher::new(&project, TEST_DEBOUNCE)
@@ -290,8 +289,6 @@ mod tests {
         let batch = rx.recv().await.expect("Failed to receive batch");
         let expected_id = ModuleId::new("test").unwrap();
         assert!(batch.modified.contains(&expected_id));
-
-        std::fs::remove_dir_all(&temp_dir).unwrap();
     }
 
     #[tokio::test]
@@ -305,16 +302,14 @@ mod tests {
         let mut rx = watcher.subscribe();
 
         // Create multiple .hop files rapidly
-        let file1 = temp_dir.join("file1.hop");
-        let file2 = temp_dir.join("file2.hop");
+        let file1 = temp_dir.path().join("file1.hop");
+        let file2 = temp_dir.path().join("file2.hop");
         std::fs::write(&file1, "<file1>one</file1>").expect("Failed to write file1");
         std::fs::write(&file2, "<file2>two</file2>").expect("Failed to write file2");
 
         let batch = rx.recv().await.expect("Failed to receive batch");
         assert!(batch.modified.contains(&ModuleId::new("file1").unwrap()));
         assert!(batch.modified.contains(&ModuleId::new("file2").unwrap()));
-
-        std::fs::remove_dir_all(&temp_dir).unwrap();
     }
 
     #[tokio::test]
@@ -328,19 +323,17 @@ mod tests {
         let mut rx = watcher.subscribe();
 
         // Create a non-.hop file (should be ignored)
-        let txt_file = temp_dir.join("test.txt");
+        let txt_file = temp_dir.path().join("test.txt");
         std::fs::write(&txt_file, "hello").expect("Failed to write txt file");
 
         // Create a .hop file
-        let hop_file = temp_dir.join("test.hop");
+        let hop_file = temp_dir.path().join("test.hop");
         std::fs::write(&hop_file, "<test>hello</test>").expect("Failed to write hop file");
 
         let batch = rx.recv().await.expect("Failed to receive batch");
         // Should only contain the .hop file
         assert_eq!(batch.modified.len(), 1);
         assert!(batch.modified.contains(&ModuleId::new("test").unwrap()));
-
-        std::fs::remove_dir_all(&temp_dir).unwrap();
     }
 
     #[tokio::test]
@@ -348,7 +341,7 @@ mod tests {
         let (temp_dir, project) = create_test_project();
 
         // Create nested directory structure
-        let nested_dir = temp_dir.join("src").join("components");
+        let nested_dir = temp_dir.path().join("src").join("components");
         std::fs::create_dir_all(&nested_dir).expect("Failed to create nested dirs");
 
         let watcher = ProjectWatcher::new(&project, TEST_DEBOUNCE)
@@ -363,8 +356,6 @@ mod tests {
         let batch = rx.recv().await.expect("Failed to receive batch");
         let expected_id = ModuleId::new("src::components::button").unwrap();
         assert!(batch.modified.contains(&expected_id));
-
-        std::fs::remove_dir_all(&temp_dir).unwrap();
     }
 
     #[tokio::test]
@@ -378,7 +369,7 @@ mod tests {
         let mut rx = watcher.subscribe();
 
         // Create a new directory
-        let new_dir = temp_dir.join("new_dir");
+        let new_dir = temp_dir.path().join("new_dir");
         std::fs::create_dir(&new_dir).expect("Failed to create directory");
 
         // Wait for the directory watch to be established
@@ -392,7 +383,5 @@ mod tests {
         let batch = rx.recv().await.expect("Failed to receive batch");
         let expected_id = ModuleId::new("new_dir::test").unwrap();
         assert!(batch.modified.contains(&expected_id));
-
-        std::fs::remove_dir_all(&temp_dir).unwrap();
     }
 }
