@@ -1,5 +1,5 @@
 mod cli;
-mod common;
+mod html;
 mod config;
 mod document;
 mod dop;

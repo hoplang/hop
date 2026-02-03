@@ -2,7 +2,7 @@ use std::fmt::{self, Display};
 use std::iter::Peekable;
 
 use super::tokenizer::{Token, Tokenizer};
-use crate::common::is_void_element;
+use crate::html::is_void_element;
 use crate::document::{DocumentCursor, DocumentRange, Ranged as _};
 use crate::error_collector::ErrorCollector;
 use crate::parse_error::ParseError;

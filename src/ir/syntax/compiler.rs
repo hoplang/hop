@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::common::is_void_element;
+use crate::html::is_void_element;
 use crate::document::CheapString;
 use crate::dop::Type;
 use crate::dop::TypedExpr;

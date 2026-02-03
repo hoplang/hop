@@ -3,8 +3,8 @@ use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::type_name::TypeName;
 use crate::ir::IrExpr;
 use crate::{
-    common::write_escaped_html,
     dop::semantics::r#type::{ComparableType, EquatableType, NumericType},
+    html::write_escaped_html,
 };
 use anyhow::{Result, anyhow};
 use std::collections::HashMap;

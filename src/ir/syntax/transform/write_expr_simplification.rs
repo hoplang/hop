@@ -1,5 +1,5 @@
 use super::Pass;
-use crate::common::write_escaped_html;
+use crate::html::write_escaped_html;
 use crate::ir::IrExpr;
 use crate::ir::ast::{IrEntrypointDeclaration, IrStatement};
 

@@ -3,7 +3,7 @@ use std::iter::Peekable;
 
 use itertools::Itertools as _;
 
-use crate::common::is_void_element;
+use crate::html::is_void_element;
 use crate::document::{DocumentCursor, DocumentRange, Ranged};
 use crate::dop;
 use crate::error_collector::ErrorCollector;

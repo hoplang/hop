@@ -2,7 +2,7 @@ use std::fmt::{self, Display};
 
 use pretty::BoxDoc;
 
-use crate::common::is_void_element;
+use crate::html::is_void_element;
 use crate::document::{CheapString, DocumentRange, Ranged};
 use crate::dop::ParsedExpr;
 use crate::dop::VarName;

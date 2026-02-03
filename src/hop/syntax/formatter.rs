@@ -7,7 +7,7 @@ use super::parsed_ast::{
     ParsedRecordDeclaration, ParsedRecordDeclarationField,
 };
 use super::parsed_node::{ParsedLetBinding, ParsedMatchCase, ParsedNode};
-use crate::common::is_void_element;
+use crate::html::is_void_element;
 use crate::document::{DocumentRange, Ranged};
 use crate::dop::syntax::parsed::{
     Constructor, ParsedExpr, ParsedLoopSource, ParsedMatchArm, ParsedMatchPattern, ParsedType,
