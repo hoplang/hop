@@ -115,7 +115,6 @@ pub trait Transpiler {
     fn transpile_bool_equals<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_int_equals<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_float_equals<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
-    fn transpile_enum_equals<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_int_less_than<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_float_less_than<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_int_less_than_or_equal<'a>(
@@ -205,7 +204,6 @@ pub trait Transpiler {
                 EquatableType::String => self.transpile_string_equals(left, right),
                 EquatableType::Int => self.transpile_int_equals(left, right),
                 EquatableType::Float => self.transpile_float_equals(left, right),
-                EquatableType::Enum { .. } => self.transpile_enum_equals(left, right),
                 EquatableType::Option(_) => todo!(),
             },
             IrExpr::LessThan {

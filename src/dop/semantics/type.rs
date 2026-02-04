@@ -16,7 +16,6 @@ pub enum EquatableType {
     Bool,
     Int,
     Float,
-    Enum { module: ModuleId, name: TypeName },
     Option(Box<EquatableType>),
 }
 
@@ -72,17 +71,15 @@ impl Type {
             Type::String => Some(EquatableType::String),
             Type::Int => Some(EquatableType::Int),
             Type::Float => Some(EquatableType::Float),
-            Type::Enum { module, name, .. } => Some(EquatableType::Enum {
-                module: module.clone(),
-                name: name.clone(),
-            }),
             Type::Option(inner) => {
                 let inner_equatable = inner.as_equatable_type()?;
                 Some(EquatableType::Option(Box::new(inner_equatable)))
             }
-            Type::TrustedHTML | Type::Array(_) | Type::Record { .. } | Type::Component { .. } => {
-                None
-            }
+            Type::TrustedHTML
+            | Type::Array(_)
+            | Type::Record { .. }
+            | Type::Enum { .. }
+            | Type::Component { .. } => None,
         }
     }
 

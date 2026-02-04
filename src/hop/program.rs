@@ -2365,4 +2365,62 @@ mod tests {
                 .contains("Entrypoint 'NonExistent' not found in module 'main'")
         );
     }
+
+    #[test]
+    fn should_report_enum_equality_as_type_error() {
+        let program = program_from_txtar(indoc! {r#"
+            -- main.hop --
+            enum Color {
+              Red,
+              Green,
+              Blue,
+            }
+
+            entrypoint Test {
+              <let {color: Color = Color::Red}>
+                <if {color == Color::Red}>
+                  equal
+                </if>
+              </let>
+            }
+        "#});
+        check_type_errors(
+            &program,
+            expect![[r#"
+                Type main::Color is not comparable
+                  --> main (line 9, col 10)
+                 9 |     <if {color == Color::Red}>
+                   |          ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_report_enum_not_equals_as_type_error() {
+        let program = program_from_txtar(indoc! {r#"
+            -- main.hop --
+            enum Color {
+              Red,
+              Green,
+              Blue,
+            }
+
+            entrypoint Test {
+              <let {color: Color = Color::Red}>
+                <if {color != Color::Red}>
+                  not equal
+                </if>
+              </let>
+            }
+        "#});
+        check_type_errors(
+            &program,
+            expect![[r#"
+                Type main::Color is not comparable
+                  --> main (line 9, col 10)
+                 9 |     <if {color != Color::Red}>
+                   |          ^^^^^
+            "#]],
+        );
+    }
 }

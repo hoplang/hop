@@ -3241,7 +3241,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_component_declaration_with_enum_parameter() {
+    fn should_reject_component_declaration_with_enum_equality() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -3253,16 +3253,11 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                -- main.hop --
-                enum Color {
-                  Red,
-                  Green,
-                  Blue,
-                }
-
-                <Main {a: main::Color, b: main::Color}>
-                  <if {(a == b)}></if>
-                </Main>
+                error: Type main::Color is not comparable
+                  --> main.hop (line 4, col 10)
+                3 | <Main {a: Color, b: Color}>
+                4 |     <if {a == b}>
+                  |          ^
             "#]],
         );
     }
@@ -3414,7 +3409,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_match_expression_with_enum_literal() {
+    fn should_reject_match_expression_with_enum_equality() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -3435,24 +3430,11 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                -- main.hop --
-                enum Color {
-                  Red,
-                  Green,
-                  Blue,
-                }
-
-                <Main {color: main::Color}>
-                  <if {(color == Color::Red)}>
-                    <div>
-                      {match color {
-                        Color::Red => "red",
-                        Color::Green => "green",
-                        Color::Blue => "blue",
-                      }}
-                    </div>
-                  </if>
-                </Main>
+                error: Type main::Color is not comparable
+                  --> main.hop (line 8, col 10)
+                 7 | <Main {color: Color}>
+                 8 |     <if {color == Color::Red}>
+                   |          ^^^^^
             "#]],
         );
     }
@@ -3504,7 +3486,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_enum_field_in_conditional() {
+    fn should_reject_enum_field_in_conditional() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -3526,25 +3508,11 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                -- main.hop --
-                record Person {
-                  name: String,
-                  role: main::Role,
-                }
-
-                enum Role {
-                  Admin,
-                  User,
-                  Guest,
-                }
-
-                <Main {person: main::Person}>
-                  <if {(person.role == Role::Admin)}>
-                    <div>
-                      Welcome, admin!
-                    </div>
-                  </if>
-                </Main>
+                error: Type main::Role is not comparable
+                  --> main.hop (line 13, col 10)
+                12 | <Main {person: Person}>
+                13 |     <if {person.role == Role::Admin}>
+                   |          ^^^^^^^^^^^
             "#]],
         );
     }

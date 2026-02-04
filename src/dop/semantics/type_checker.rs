@@ -2640,7 +2640,7 @@ mod tests {
     ///////////////////////////////////////////////////////////////////////////
 
     #[test]
-    fn should_accept_enum_equality() {
+    fn should_reject_enum_equality() {
         check(
             indoc! {"
                 enum Color {
@@ -2651,12 +2651,16 @@ mod tests {
             "},
             &[("a", "Color"), ("b", "Color")],
             "a == b",
-            expect!["Bool"],
+            expect![[r#"
+                error: Type test::Color is not comparable
+                a == b
+                ^
+            "#]],
         );
     }
 
     #[test]
-    fn should_accept_enum_inequality() {
+    fn should_reject_enum_inequality() {
         check(
             indoc! {"
                 enum Color {
@@ -2667,7 +2671,11 @@ mod tests {
             "},
             &[("a", "Color"), ("b", "Color")],
             "a != b",
-            expect!["Bool"],
+            expect![[r#"
+                error: Type test::Color is not comparable
+                a != b
+                ^
+            "#]],
         );
     }
 
@@ -2689,9 +2697,9 @@ mod tests {
             &[("color", "Color"), ("size", "Size")],
             "color == size",
             expect![[r#"
-                error: Can not compare test::Color to test::Size
+                error: Type test::Color is not comparable
                 color == size
-                ^^^^^^^^^^^^^
+                ^^^^^
             "#]],
         );
     }
@@ -2714,9 +2722,9 @@ mod tests {
             &[("color", "Color"), ("size", "Size")],
             "color != size",
             expect![[r#"
-                error: Can not compare test::Color to test::Size
+                error: Type test::Color is not comparable
                 color != size
-                ^^^^^^^^^^^^^
+                ^^^^^
             "#]],
         );
     }
@@ -2734,9 +2742,9 @@ mod tests {
             &[("color", "Color"), ("name", "String")],
             "color == name",
             expect![[r#"
-                error: Can not compare test::Color to String
+                error: Type test::Color is not comparable
                 color == name
-                ^^^^^^^^^^^^^
+                ^^^^^
             "#]],
         );
     }
@@ -2754,9 +2762,9 @@ mod tests {
             &[("color", "Color"), ("count", "Int")],
             "color == count",
             expect![[r#"
-                error: Can not compare test::Color to Int
+                error: Type test::Color is not comparable
                 color == count
-                ^^^^^^^^^^^^^^
+                ^^^^^
             "#]],
         );
     }
@@ -2774,9 +2782,9 @@ mod tests {
             &[("color", "Color"), ("flag", "Bool")],
             "color == flag",
             expect![[r#"
-                error: Can not compare test::Color to Bool
+                error: Type test::Color is not comparable
                 color == flag
-                ^^^^^^^^^^^^^
+                ^^^^^
             "#]],
         );
     }
@@ -2822,7 +2830,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_enum_in_record_field() {
+    fn should_reject_enum_in_record_field_equality() {
         check(
             indoc! {"
                 enum Status {
@@ -2837,12 +2845,16 @@ mod tests {
             "},
             &[("user", "User"), ("status", "Status")],
             "user.status == status",
-            expect!["Bool"],
+            expect![[r#"
+                error: Type test::Status is not comparable
+                user.status == status
+                ^^^^^^^^^^^
+            "#]],
         );
     }
 
     #[test]
-    fn should_accept_enum_equality_with_field_access() {
+    fn should_reject_enum_equality_with_field_access() {
         check(
             indoc! {"
                 enum Status {
@@ -2858,7 +2870,11 @@ mod tests {
             "},
             &[("user", "User"), ("admin", "Admin")],
             "user.status == admin.status",
-            expect!["Bool"],
+            expect![[r#"
+                error: Type test::Status is not comparable
+                user.status == admin.status
+                ^^^^^^^^^^^
+            "#]],
         );
     }
 
@@ -3037,7 +3053,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_enum_variant_in_equality() {
+    fn should_reject_enum_variant_in_equality() {
         check(
             indoc! {"
                 enum Color {
@@ -3048,7 +3064,11 @@ mod tests {
             "},
             &[("color", "Color")],
             "Color::Red == color",
-            expect!["Bool"],
+            expect![[r#"
+                error: Type test::Color is not comparable
+                Color::Red == color
+                ^^^^^^^^^^
+            "#]],
         );
     }
 
@@ -3072,7 +3092,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_two_enum_variants_in_equality() {
+    fn should_reject_two_enum_variants_in_equality() {
         check(
             indoc! {"
                 enum Color {
@@ -3083,7 +3103,11 @@ mod tests {
             "},
             &[],
             "Color::Red == Color::Green",
-            expect!["Bool"],
+            expect![[r#"
+                error: Type test::Color is not comparable
+                Color::Red == Color::Green
+                ^^^^^^^^^^
+            "#]],
         );
     }
 
@@ -3105,9 +3129,9 @@ mod tests {
             &[],
             "Color::Red == Shade::Red",
             expect![[r#"
-                error: Can not compare test::Color to test::Shade
+                error: Type test::Color is not comparable
                 Color::Red == Shade::Red
-                ^^^^^^^^^^^^^^^^^^^^^^^^
+                ^^^^^^^^^^
             "#]],
         );
     }

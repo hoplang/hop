@@ -697,14 +697,6 @@ impl Transpiler for RustTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_enum_equals<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
-        BoxDoc::text("(std::mem::discriminant(&")
-            .append(self.transpile_expr(left))
-            .append(BoxDoc::text(") == std::mem::discriminant(&"))
-            .append(self.transpile_expr(right))
-            .append(BoxDoc::text("))"))
-    }
-
     fn transpile_int_less_than<'a>(&mut self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("(")
             .append(self.transpile_expr(left))

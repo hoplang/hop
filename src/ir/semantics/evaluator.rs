@@ -486,17 +486,6 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value> {
         IrExpr::Equals {
             left,
             right,
-            operand_types: EquatableType::Enum { .. },
-            ..
-        } => {
-            let left_val = evaluate_expr(left, env)?;
-            let right_val = evaluate_expr(right, env)?;
-            // Compare enum variants by their variant name (unit enums for now)
-            Ok(Value::Bool(left_val == right_val))
-        }
-        IrExpr::Equals {
-            left,
-            right,
             operand_types: EquatableType::Option(_),
             ..
         } => {
@@ -822,7 +811,7 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value> {
 mod tests {
     use super::*;
     use crate::dop::Type;
-    use crate::ir::syntax::builder::{build_ir, build_ir_no_params, build_ir_with_enums_no_params};
+    use crate::ir::syntax::builder::{build_ir, build_ir_no_params};
     use expect_test::{Expect, expect};
     use std::sync::Arc;
 
@@ -960,101 +949,6 @@ mod tests {
                 <li>Banana</li>
                 <li>Cherry</li>
 
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_evaluate_enum_literal_in_condition() {
-        check(
-            build_ir_with_enums_no_params(
-                "Test",
-                vec![("Color", vec!["Red", "Green", "Blue"])],
-                |t| {
-                    let color = t.enum_variant("Color", "Red");
-                    let red = t.enum_variant("Color", "Red");
-                    t.if_stmt(t.eq(color, red), |t| {
-                        t.write("is red");
-                    });
-                },
-            ),
-            vec![],
-            expect![[r#"
-                -- before --
-                Test() {
-                  if (Color::Red == Color::Red) {
-                    write("is red")
-                  }
-                }
-
-                -- after --
-                is red
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_evaluate_enum_equality_true() {
-        check(
-            build_ir_with_enums_no_params(
-                "Test",
-                vec![("Status", vec!["Active", "Inactive", "Pending"])],
-                |t| {
-                    let active1 = t.enum_variant("Status", "Active");
-                    let active2 = t.enum_variant("Status", "Active");
-                    t.if_stmt(t.eq(active1, active2), |t| {
-                        t.write("equal");
-                    });
-                },
-            ),
-            vec![],
-            expect![[r#"
-                -- before --
-                Test() {
-                  if (Status::Active == Status::Active) {
-                    write("equal")
-                  }
-                }
-
-                -- after --
-                equal
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_evaluate_enum_equality_false() {
-        check(
-            build_ir_with_enums_no_params(
-                "Test",
-                vec![("Status", vec!["Active", "Inactive", "Pending"])],
-                |t| {
-                    let active = t.enum_variant("Status", "Active");
-                    let inactive = t.enum_variant("Status", "Inactive");
-                    t.if_else_stmt(
-                        t.eq(active, inactive),
-                        |t| {
-                            t.write("equal");
-                        },
-                        |t| {
-                            t.write("not equal");
-                        },
-                    );
-                },
-            ),
-            vec![],
-            expect![[r#"
-                -- before --
-                Test() {
-                  if (Status::Active == Status::Inactive) {
-                    write("equal")
-                  } else {
-                    write("not equal")
-                  }
-                }
-
-                -- after --
-                not equal
             "#]],
         );
     }

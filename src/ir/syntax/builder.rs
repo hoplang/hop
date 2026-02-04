@@ -381,17 +381,6 @@ impl IrBuilder {
             (Type::String, Type::String) => EquatableType::String,
             (Type::Int, Type::Int) => EquatableType::Int,
             (Type::Float, Type::Float) => EquatableType::Float,
-            (
-                Type::Enum { module, name, .. },
-                Type::Enum {
-                    module: module2,
-                    name: name2,
-                    ..
-                },
-            ) if module == module2 && name == name2 => EquatableType::Enum {
-                module: module.clone(),
-                name: name.clone(),
-            },
             _ => panic!(
                 "Unsupported type for equality comparison: {:?}",
                 left.as_type()
