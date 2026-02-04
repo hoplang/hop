@@ -1,7 +1,5 @@
 use crate::ir::ast::{IrEntrypointDeclaration, IrStatement, StatementId};
 
-use super::Pass;
-
 /// A pass that concatenates consecutive Write statements into a single Write statement.
 ///
 /// The `limit` parameter controls the maximum combined length of merged writes.
@@ -194,13 +192,6 @@ impl Default for WriteCoalescingPass {
     }
 }
 
-impl Pass for WriteCoalescingPass {
-    fn run(entrypoint: &mut IrEntrypointDeclaration) {
-        entrypoint.body =
-            Self::default().transform_statements(std::mem::take(&mut entrypoint.body));
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -212,7 +203,7 @@ mod tests {
 
     fn check(mut entrypoint: IrEntrypointDeclaration, expected: Expect) {
         let before = entrypoint.to_string();
-        WriteCoalescingPass::run(&mut entrypoint);
+        WriteCoalescingPass::default().run_with_limit_mut(&mut entrypoint);
         let after = entrypoint.to_string();
         let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
         expected.assert_eq(&output);

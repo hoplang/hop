@@ -1,4 +1,3 @@
-use super::Pass;
 use crate::dop::patterns::Match;
 use crate::ir::{
     IrExpr,
@@ -243,10 +242,8 @@ impl UnusedLetEliminationPass {
             Match::Bool { .. } => false,
         }
     }
-}
 
-impl Pass for UnusedLetEliminationPass {
-    fn run(entrypoint: &mut IrEntrypointDeclaration) {
+    pub fn run(entrypoint: &mut IrEntrypointDeclaration) {
         // Iterate until no more changes are made.
         // This is necessary because removing a let statement may make another
         // variable unused (e.g., removing `let val = v0` makes `v0` unused).

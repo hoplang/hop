@@ -1,4 +1,3 @@
-use super::Pass;
 use crate::ir::{
     IrExpr,
     ast::{IrEntrypointDeclaration, IrStatement},
@@ -31,10 +30,8 @@ impl UnusedIfEliminationPass {
             })
             .collect()
     }
-}
 
-impl Pass for UnusedIfEliminationPass {
-    fn run(comp_decl: &mut IrEntrypointDeclaration) {
+    pub fn run(comp_decl: &mut IrEntrypointDeclaration) {
         // First, recursively process all nested bodies using visit_mut
         for stmt in &mut comp_decl.body {
             stmt.traverse_mut(&mut |s| match s {

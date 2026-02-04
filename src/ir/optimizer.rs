@@ -1,6 +1,6 @@
 use super::syntax::ast::IrModule;
 use super::syntax::transform::{
-    ConstantPropagationPass, Pass, UnusedIfEliminationPass, UnusedLetEliminationPass,
+    ConstantPropagationPass, UnusedIfEliminationPass, UnusedLetEliminationPass,
     WriteCoalescingPass, WriteExprSimplificationPass,
 };
 

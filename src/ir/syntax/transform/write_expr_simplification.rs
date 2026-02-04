@@ -1,4 +1,3 @@
-use super::Pass;
 use crate::html::write_escaped_html;
 use crate::ir::IrExpr;
 use crate::ir::ast::{IrEntrypointDeclaration, IrStatement};
@@ -7,8 +6,8 @@ use crate::ir::ast::{IrEntrypointDeclaration, IrStatement};
 /// statement
 pub struct WriteExprSimplificationPass;
 
-impl Pass for WriteExprSimplificationPass {
-    fn run(entrypoint: &mut IrEntrypointDeclaration) {
+impl WriteExprSimplificationPass {
+    pub fn run(entrypoint: &mut IrEntrypointDeclaration) {
         // Use visit_mut to transform all statements in the tree
         for stmt in &mut entrypoint.body {
             stmt.traverse_mut(&mut |statement| {

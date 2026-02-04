@@ -6,8 +6,6 @@ use crate::dop::VarName;
 use crate::dop::patterns::Match;
 use crate::ir::ast::{IrEntrypointDeclaration, IrExpr, IrForSource, IrStatement};
 
-use super::Pass;
-
 // Reserved keywords across all target languages (sorted for binary search)
 const RESERVED_KEYWORDS: &[&str] = &[
     "and",
@@ -403,10 +401,8 @@ impl VariableRenamingPass {
         // Return it unchanged
         name.clone()
     }
-}
 
-impl Pass for VariableRenamingPass {
-    fn run(comp_decl: &mut IrEntrypointDeclaration) {
+    pub fn run(comp_decl: &mut IrEntrypointDeclaration) {
         let mut pass = VariableRenamingPass::new();
 
         pass.push_scope();

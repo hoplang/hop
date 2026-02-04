@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use super::Pass;
 use crate::document::CheapString;
 use crate::dop::patterns::{EnumPattern, Match};
 use crate::dop::semantics::r#type::Type;
@@ -119,8 +118,8 @@ impl Const {
 /// This pass assumes that the input is in SSA form.
 pub struct ConstantPropagationPass;
 
-impl Pass for ConstantPropagationPass {
-    fn run(entrypoint: &mut IrEntrypointDeclaration) {
+impl ConstantPropagationPass {
+    pub fn run(entrypoint: &mut IrEntrypointDeclaration) {
         let mut iteration = Iteration::new();
 
         // Synthetic IDs for intermediate results in N-ary operations
@@ -1513,8 +1512,7 @@ mod tests {
     fn should_fold_join_with_constant_strings() {
         check(
             build_ir_no_params("Test", |t| {
-                let classes =
-                    t.join(vec![t.str("flex"), t.str("items-center"), t.str("gap-4")]);
+                let classes = t.join(vec![t.str("flex"), t.str("items-center"), t.str("gap-4")]);
                 t.write_expr_escaped(t.tw_merge(classes));
             }),
             expect![[r#"
@@ -1678,14 +1676,8 @@ mod tests {
                         t.match_expr(
                             t.var("size"),
                             vec![
-                                (
-                                    "Small",
-                                    t.join(vec![t.str("p-2"), t.str("text-sm")]),
-                                ),
-                                (
-                                    "Large",
-                                    t.join(vec![t.str("p-4"), t.str("text-lg")]),
-                                ),
+                                ("Small", t.join(vec![t.str("p-2"), t.str("text-sm")])),
+                                ("Large", t.join(vec![t.str("p-4"), t.str("text-lg")])),
                             ],
                         ),
                     ]);

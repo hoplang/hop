@@ -4,7 +4,7 @@ use crate::hop::symbols::module_id::ModuleId;
 use crate::inlined::{
     DoctypeInjector, HtmlStructureInjector, Inliner, MetaInjector, TailwindInjector,
 };
-use crate::ir::syntax::transform::{Pass, VariableRenamingPass};
+use crate::ir::syntax::transform::VariableRenamingPass;
 use crate::ir::{Compiler, IrEnumDeclaration, IrModule, IrRecordDeclaration, optimize};
 use std::collections::HashMap;
 
