@@ -5,6 +5,8 @@
 
 use std::collections::HashMap;
 
+use crate::dop::VarName;
+
 /// The Environment models variable scope.
 #[derive(Debug, Clone)]
 pub struct Environment<T> {
@@ -33,10 +35,10 @@ impl<V> Environment<V> {
 
     /// Generate a fresh variable name.
     /// Returns names like "v_0", "v_1", "v_2", etc.
-    pub fn fresh_var(&mut self) -> String {
+    pub fn fresh_var(&mut self) -> VarName {
         let name = format!("v_{}", self.fresh_var_counter);
         self.fresh_var_counter += 1;
-        name
+        VarName::new(&name).unwrap()
     }
 
     /// Bind the key to the given value in the environment.

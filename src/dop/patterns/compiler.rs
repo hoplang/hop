@@ -14,6 +14,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use crate::document::DocumentRange;
+use crate::dop::VarName;
 use crate::dop::syntax::parsed::{Constructor, ParsedMatchPattern};
 
 use crate::dop::semantics::r#type::Type;
@@ -25,15 +26,15 @@ use crate::type_error::TypeError;
 #[derive(Clone, Debug)]
 pub struct Binding {
     /// The name of the variable to bind.
-    pub name: String,
+    pub name: VarName,
     /// The name of the source variable to bind from.
-    pub source_name: String,
+    pub source_name: VarName,
     /// The type of the binding.
     pub typ: Arc<Type>,
 }
 
 impl Binding {
-    pub fn new(name: String, source_name: String, typ: Arc<Type>) -> Self {
+    pub fn new(name: VarName, source_name: VarName, typ: Arc<Type>) -> Self {
         Self {
             name,
             source_name,
@@ -63,7 +64,7 @@ impl Body {
 /// A variable used in a match expression.
 #[derive(Clone, Debug)]
 pub struct Variable {
-    pub name: String,
+    pub name: VarName,
     pub typ: Arc<Type>,
     /// Whether this variable's pattern introduces no bindings.
     /// When true, the variable should not generate a binding in the output.
@@ -71,7 +72,7 @@ pub struct Variable {
 }
 
 impl Variable {
-    pub fn new(name: String, typ: Arc<Type>) -> Self {
+    pub fn new(name: VarName, typ: Arc<Type>) -> Self {
         Self {
             name,
             typ,
@@ -127,7 +128,7 @@ pub struct BoolCase {
 #[derive(Debug)]
 pub struct OptionSomeCase {
     /// The name to bind the inner value to, or None if wildcard pattern.
-    pub bound_name: Option<String>,
+    pub bound_name: Option<VarName>,
     pub body: Decision,
 }
 
@@ -143,7 +144,7 @@ pub struct FieldBinding {
     /// The field name this binding corresponds to.
     pub field_name: FieldName,
     /// The name to bind this field's value to, or None if wildcard pattern.
-    pub bound_name: Option<String>,
+    pub bound_name: Option<VarName>,
     /// The type of the field.
     pub typ: Arc<Type>,
 }
@@ -209,7 +210,7 @@ struct VarInfo {
     /// - `Some(v0)` → `[("v0", None)]`
     /// - `None` → `[]`
     /// - `Foo(a: v0, b: v1)` → `[("v0", Some("a")), ("v1", Some("b"))]`
-    args: Vec<(String, Option<String>)>,
+    args: Vec<(VarName, Option<String>)>,
 }
 
 /// Checks if a pattern introduces no bindings and requires no runtime discrimination.
@@ -248,10 +249,8 @@ pub struct Compiler<'a, T> {
     reachable: Vec<usize>,
     /// Missing pattern strings collected during compilation.
     missing_patterns: HashSet<String>,
-    /// The root variable being matched.
-    root_var: String,
     /// Maps variable names to their matched constructor info.
-    var_info: HashMap<String, VarInfo>,
+    var_info: HashMap<VarName, VarInfo>,
 }
 
 impl<'a, T> Compiler<'a, T> {
@@ -260,7 +259,6 @@ impl<'a, T> Compiler<'a, T> {
             env,
             reachable: Vec::new(),
             missing_patterns: HashSet::new(),
-            root_var: String::new(),
             var_info: HashMap::new(),
         }
     }
@@ -291,7 +289,7 @@ impl<'a, T> Compiler<'a, T> {
     pub fn compile(
         mut self,
         patterns: &[ParsedMatchPattern],
-        subject_name: &str,
+        subject_name: &VarName,
         subject_type: Arc<Type>,
         subject_range: &DocumentRange,
     ) -> Result<Decision, TypeError> {
@@ -318,8 +316,7 @@ impl<'a, T> Compiler<'a, T> {
             Self::validate_pattern(pattern, subject_type.clone())?;
         }
 
-        let subject_var = Variable::new(subject_name.to_string(), subject_type.clone());
-        self.root_var = subject_var.name.clone();
+        let subject_var = Variable::new(subject_name.clone(), subject_type.clone());
 
         let rows: Vec<Row> = patterns
             .iter()
@@ -332,7 +329,7 @@ impl<'a, T> Compiler<'a, T> {
             })
             .collect();
 
-        let tree = self.compile_rows(rows);
+        let tree = self.compile_rows(&subject_var.name, rows);
 
         // Check for unreachable arms
         let unreachable: Vec<usize> = (0..patterns.len())
@@ -371,10 +368,10 @@ impl<'a, T> Compiler<'a, T> {
         Ok(tree)
     }
 
-    fn compile_rows(&mut self, mut rows: Vec<Row>) -> Option<Decision> {
+    fn compile_rows(&mut self, root_var: &VarName, mut rows: Vec<Row>) -> Option<Decision> {
         if rows.is_empty() {
             self.missing_patterns
-                .insert(self.build_pattern_for_var(&self.root_var));
+                .insert(self.build_pattern_for_var(root_var));
             return None;
         }
 
@@ -384,7 +381,7 @@ impl<'a, T> Compiler<'a, T> {
                 ParsedMatchPattern::Wildcard { .. } => false,
                 ParsedMatchPattern::Binding { name, .. } => {
                     row.body.bindings.push(Binding::new(
-                        name.to_string(),
+                        name.clone(),
                         col.variable.name.clone(),
                         col.variable.typ.clone(),
                     ));
@@ -598,7 +595,7 @@ impl<'a, T> Compiler<'a, T> {
                 },
             );
 
-            let body = self.compile_rows(rows);
+            let body = self.compile_rows(root_var, rows);
             self.var_info.remove(&branch_var.name);
 
             compiled_cases.push((cons, vars, body));
@@ -733,7 +730,7 @@ impl<'a, T> Compiler<'a, T> {
     /// Given a row, returns the variable in that row that's referred to the
     /// most across all rows.
     fn find_branch_variable(&self, rows: &[Row]) -> Variable {
-        let mut counts: HashMap<&str, usize> = HashMap::new();
+        let mut counts: HashMap<&VarName, usize> = HashMap::new();
         for row in rows {
             for col in &row.columns {
                 *counts.entry(&col.variable.name).or_insert(0_usize) += 1
@@ -743,7 +740,7 @@ impl<'a, T> Compiler<'a, T> {
             .columns
             .iter()
             .map(|col| col.variable.clone())
-            .max_by_key(|var| counts[var.name.as_str()])
+            .max_by_key(|var| counts[&var.name])
             .unwrap()
     }
 
@@ -758,7 +755,7 @@ impl<'a, T> Compiler<'a, T> {
     /// This is used to generate human-readable missing pattern messages. Starting from
     /// the root variable, it traverses `var_info` to reconstruct the pattern that would
     /// be needed to make the match exhaustive.
-    fn build_pattern_for_var(&self, var_name: &str) -> String {
+    fn build_pattern_for_var(&self, var_name: &VarName) -> String {
         let Some(info) = self.var_info.get(var_name) else {
             return "_".to_string();
         };
@@ -989,10 +986,8 @@ mod tests {
 
         let (subject_name, subject_range, patterns) = match expr {
             ParsedExpr::Match { subject, arms, .. } => {
-                let (name, subject_range) = match subject.as_ref() {
-                    ParsedExpr::Var { value, range, .. } => {
-                        (value.as_str().to_string(), range.clone())
-                    }
+                let (name, subject_range) = match *subject {
+                    ParsedExpr::Var { value, range, .. } => (value, range.clone()),
                     _ => panic!("Expected variable as match subject"),
                 };
                 (
@@ -1056,7 +1051,11 @@ mod tests {
                 none_case,
             } => {
                 let mut out = String::new();
-                let binding_str = some_case.bound_name.as_deref().unwrap_or("_");
+                let binding_str = some_case
+                    .bound_name
+                    .as_ref()
+                    .map(|v| v.as_str())
+                    .unwrap_or("_");
                 out.push_str(&format!(
                     "{}{} is Some({})\n",
                     pad, variable.name, binding_str
@@ -1076,7 +1075,7 @@ mod tests {
                             .bindings
                             .iter()
                             .map(|b| {
-                                let name = b.bound_name.as_deref().unwrap_or("_");
+                                let name = b.bound_name.as_ref().map(|v| v.as_str()).unwrap_or("_");
                                 format!("{}: {}", b.field_name, name)
                             })
                             .collect();
@@ -1099,7 +1098,7 @@ mod tests {
                         .bindings
                         .iter()
                         .map(|b| {
-                            let name = b.bound_name.as_deref().unwrap_or("_");
+                            let name = b.bound_name.as_ref().map(|v| v.as_str()).unwrap_or("_");
                             format!("{}: {}", b.field_name, name)
                         })
                         .collect();

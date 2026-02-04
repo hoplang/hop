@@ -29,7 +29,7 @@ pub enum InvalidVarNameError {
 }
 
 /// A VarName represents a validated variable name in dop.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash)]
 pub struct VarName {
     value: CheapString,
 }

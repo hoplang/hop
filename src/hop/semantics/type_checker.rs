@@ -1132,7 +1132,7 @@ fn typecheck_node(
 
             // If subject is already a variable, use it directly; otherwise we'll wrap in a let
             let (subject_name, needs_wrapper) = match &typed_subject {
-                dop::TypedExpr::Var { value, .. } => (value.as_str().to_string(), false),
+                dop::TypedExpr::Var { value, .. } => (value.clone(), false),
                 _ => (var_env.fresh_var(), true),
             };
 
@@ -1217,7 +1217,7 @@ fn typecheck_node(
             // (only if the subject is not already a simple variable reference)
             if needs_wrapper {
                 result = vec![TypedNode::Let {
-                    var: VarName::new(&subject_name).expect("invalid variable name"),
+                    var: subject_name.clone(),
                     value: typed_subject,
                     children: result,
                 }];
@@ -1310,13 +1310,12 @@ fn decision_to_typed_nodes(decision: &Decision, typed_bodies: &[Vec<TypedNode>])
             let mut result = typed_bodies[body.value].clone();
             // Wrap with Let nodes for each binding (in reverse order so first binding is outermost)
             for binding in body.bindings.iter().rev() {
-                let var_name = VarName::new(&binding.name).expect("invalid variable name");
                 let value = TypedExpr::Var {
-                    value: VarName::new(&binding.source_name).expect("invalid variable name"),
+                    value: binding.source_name.clone(),
                     kind: binding.typ.clone(),
                 };
                 result = vec![TypedNode::Let {
-                    var: var_name,
+                    var: binding.name.clone(),
                     value,
                     children: result,
                 }];
@@ -1329,10 +1328,7 @@ fn decision_to_typed_nodes(decision: &Decision, typed_bodies: &[Vec<TypedNode>])
             true_case,
             false_case,
         } => {
-            let subject = (
-                VarName::new(&variable.name).expect("invalid variable name"),
-                variable.typ.clone(),
-            );
+            let subject = (variable.name.clone(), variable.typ.clone());
             vec![TypedNode::Match {
                 match_: Match::Bool {
                     subject,
@@ -1347,19 +1343,11 @@ fn decision_to_typed_nodes(decision: &Decision, typed_bodies: &[Vec<TypedNode>])
             some_case,
             none_case,
         } => {
-            let subject = (
-                VarName::new(&variable.name).expect("invalid variable name"),
-                variable.typ.clone(),
-            );
-            // bound_name is already Option<String> - just convert to Option<VarName>
-            let some_arm_binding = some_case
-                .bound_name
-                .as_ref()
-                .map(|name| VarName::new(name).expect("invalid variable name"));
+            let subject = (variable.name.clone(), variable.typ.clone());
             vec![TypedNode::Match {
                 match_: Match::Option {
                     subject,
-                    some_arm_binding,
+                    some_arm_binding: some_case.bound_name.clone(),
                     some_arm_body: Box::new(decision_to_typed_nodes(&some_case.body, typed_bodies)),
                     none_arm_body: Box::new(decision_to_typed_nodes(&none_case.body, typed_bodies)),
                 },
@@ -1367,10 +1355,7 @@ fn decision_to_typed_nodes(decision: &Decision, typed_bodies: &[Vec<TypedNode>])
         }
 
         Decision::SwitchEnum { variable, cases } => {
-            let subject = (
-                VarName::new(&variable.name).expect("invalid variable name"),
-                variable.typ.clone(),
-            );
+            let subject = (variable.name.clone(), variable.typ.clone());
 
             let arms = cases
                 .iter()
@@ -1385,12 +1370,9 @@ fn decision_to_typed_nodes(decision: &Decision, typed_bodies: &[Vec<TypedNode>])
                         .bindings
                         .iter()
                         .filter_map(|b| {
-                            b.bound_name.as_ref().map(|name| {
-                                (
-                                    b.field_name.clone(),
-                                    VarName::new(name).expect("invalid variable name"),
-                                )
-                            })
+                            b.bound_name
+                                .as_ref()
+                                .map(|name| (b.field_name.clone(), name.clone()))
                         })
                         .collect();
 
@@ -1409,10 +1391,7 @@ fn decision_to_typed_nodes(decision: &Decision, typed_bodies: &[Vec<TypedNode>])
         }
 
         Decision::SwitchRecord { variable, case } => {
-            let subject = (
-                VarName::new(&variable.name).expect("invalid variable name"),
-                variable.typ.clone(),
-            );
+            let subject = (variable.name.clone(), variable.typ.clone());
 
             // Build the body with Let bindings for each field
             let mut body = decision_to_typed_nodes(&case.body, typed_bodies);
@@ -1425,8 +1404,6 @@ fn decision_to_typed_nodes(decision: &Decision, typed_bodies: &[Vec<TypedNode>])
                     continue;
                 };
 
-                let var_name = VarName::new(bound_name).expect("invalid variable name");
-
                 // Create field access: subject.field_name
                 let field_access = TypedExpr::FieldAccess {
                     record: Box::new(TypedExpr::Var {
@@ -1438,7 +1415,7 @@ fn decision_to_typed_nodes(decision: &Decision, typed_bodies: &[Vec<TypedNode>])
                 };
 
                 body = vec![TypedNode::Let {
-                    var: var_name,
+                    var: bound_name.clone(),
                     value: field_access,
                     children: body,
                 }];

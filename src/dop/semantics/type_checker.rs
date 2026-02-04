@@ -6,7 +6,6 @@ use crate::document::DocumentRange;
 use crate::dop::TypedExpr;
 use crate::dop::patterns::compiler::{Compiler, Decision};
 use crate::dop::patterns::{EnumMatchArm, EnumPattern, Match};
-use crate::dop::symbols::var_name::VarName;
 use crate::dop::syntax::parsed::{
     Constructor, ParsedBinaryOp, ParsedExpr, ParsedMatchArm, ParsedMatchPattern, ParsedType,
 };
@@ -1162,7 +1161,7 @@ fn typecheck_match(
     )?;
     // If subject is already a variable, use it directly; otherwise wrap in a let
     let (subject_name, needs_wrapper) = match &typed_subject {
-        TypedExpr::Var { value, .. } => (value.as_str().to_string(), false),
+        TypedExpr::Var { value, .. } => (value.clone(), false),
         _ => (var_env.fresh_var(), true),
     };
 
@@ -1188,7 +1187,7 @@ fn typecheck_match(
     // Wrap in let if subject was not a simple variable reference
     if needs_wrapper {
         result = TypedExpr::Let {
-            var: VarName::new(&subject_name).unwrap(),
+            var: subject_name,
             value: Box::new(typed_subject),
             body: Box::new(result),
             kind: result_type,
@@ -1358,14 +1357,13 @@ fn decision_to_typed_expr(
             let mut result = typed_bodies[body.value].clone();
             // Wrap with Let expressions for each binding (in reverse order so first binding is outermost)
             for binding in body.bindings.iter().rev() {
-                let var_name = VarName::new(&binding.name).expect("invalid variable name");
                 let value = Box::new(TypedExpr::Var {
-                    value: VarName::new(&binding.source_name).expect("invalid variable name"),
+                    value: binding.source_name.clone(),
                     kind: binding.typ.clone(),
                 });
                 let kind = result.get_type();
                 result = TypedExpr::Let {
-                    var: var_name,
+                    var: binding.name.clone(),
                     value,
                     body: Box::new(result),
                     kind,
@@ -1379,10 +1377,7 @@ fn decision_to_typed_expr(
             true_case,
             false_case,
         } => {
-            let subject = (
-                VarName::new(&variable.name).expect("invalid variable name"),
-                variable.typ.clone(),
-            );
+            let subject = (variable.name.clone(), variable.typ.clone());
             TypedExpr::Match {
                 match_: Match::Bool {
                     subject,
@@ -1406,19 +1401,12 @@ fn decision_to_typed_expr(
             some_case,
             none_case,
         } => {
-            let subject = (
-                VarName::new(&variable.name).expect("invalid variable name"),
-                variable.typ.clone(),
-            );
+            let subject = (variable.name.clone(), variable.typ.clone());
             // bound_name is already Option<String> - just convert to Option<VarName>
-            let some_arm_binding = some_case
-                .bound_name
-                .as_ref()
-                .map(|name| VarName::new(name).expect("invalid variable name"));
             TypedExpr::Match {
                 match_: Match::Option {
                     subject,
-                    some_arm_binding,
+                    some_arm_binding: some_case.bound_name.clone(),
                     some_arm_body: Box::new(decision_to_typed_expr(
                         &some_case.body,
                         typed_bodies,
@@ -1435,10 +1423,7 @@ fn decision_to_typed_expr(
         }
 
         Decision::SwitchEnum { variable, cases } => {
-            let subject = (
-                VarName::new(&variable.name).expect("invalid variable name"),
-                variable.typ.clone(),
-            );
+            let subject = (variable.name.clone(), variable.typ.clone());
 
             let arms = cases
                 .iter()
@@ -1459,8 +1444,6 @@ fn decision_to_typed_expr(
                             continue;
                         };
 
-                        let var_name = VarName::new(bound_name).expect("invalid variable name");
-
                         // Create field access: subject.field_name
                         let field_access = TypedExpr::FieldAccess {
                             record: Box::new(TypedExpr::Var {
@@ -1473,8 +1456,8 @@ fn decision_to_typed_expr(
 
                         let kind = body.get_type();
                         body = TypedExpr::Let {
-                            var: var_name,
-                            value: Box::new(field_access),
+                            var: bound_name.clone(),
+                            value: Box::new(field_access.clone()),
                             body: Box::new(body),
                             kind,
                         };
@@ -1495,11 +1478,6 @@ fn decision_to_typed_expr(
         }
 
         Decision::SwitchRecord { variable, case } => {
-            let subject = (
-                VarName::new(&variable.name).expect("invalid variable name"),
-                variable.typ.clone(),
-            );
-
             // Build the body with Let bindings for each field
             let mut body = decision_to_typed_expr(&case.body, typed_bodies, result_type);
 
@@ -1511,13 +1489,11 @@ fn decision_to_typed_expr(
                     continue;
                 };
 
-                let var_name = VarName::new(bound_name).expect("invalid variable name");
-
                 // Create field access: subject.field_name
                 let field_access = TypedExpr::FieldAccess {
                     record: Box::new(TypedExpr::Var {
-                        value: subject.0.clone(),
-                        kind: subject.1.clone(),
+                        value: variable.name.clone(),
+                        kind: variable.typ.clone(),
                     }),
                     field: binding.field_name.clone(),
                     kind: binding.typ.clone(),
@@ -1525,7 +1501,7 @@ fn decision_to_typed_expr(
 
                 let kind = body.get_type();
                 body = TypedExpr::Let {
-                    var: var_name,
+                    var: bound_name.clone(),
                     value: Box::new(field_access),
                     body: Box::new(body),
                     kind,
