@@ -1,6 +1,6 @@
 use crate::document::DocumentPosition;
 use crate::document::{Document, DocumentRange};
-use crate::dop::{ParsedType, Type};
+use crate::dop::Type;
 use crate::error_collector::ErrorCollector;
 use crate::hop::syntax::format;
 use crate::hop::syntax::parser::parse;
@@ -376,95 +376,27 @@ impl Program {
         record_name: &str,
         definition_module: &ModuleId,
     ) -> Vec<RenameLocation> {
-        let mut locations = Vec::new();
+        // Find the definition range (the name_range of the record declaration)
+        let definition_range = self
+            .parsed_asts
+            .get(definition_module)
+            .and_then(|module| module.get_record_declaration(record_name))
+            .map(|decl| &decl.name_range);
 
-        // Add the record declaration itself
-        if let Some(module) = self.parsed_asts.get(definition_module) {
-            if let Some(record) = module.get_record_declaration(record_name) {
-                locations.push(RenameLocation {
-                    range: record.name_range.clone(),
-                });
-            }
-        }
+        let Some(definition_range) = definition_range else {
+            return Vec::new();
+        };
 
-        // Search all modules for references to this record
-        for (module_id, ast) in &self.parsed_asts {
-            // Find all import statements that import this record
-            locations.extend(
-                ast.get_import_declarations()
-                    .filter(|n| n.imports_type(record_name) && n.imports_from(definition_module))
-                    .map(|n| RenameLocation {
-                        range: n.type_name_range().clone(),
-                    }),
-            );
-
-            // Find all type references in component parameters
-            for component in ast.get_component_declarations() {
-                if let Some((params, _)) = &component.params {
-                    for param in params {
-                        locations.extend(self.collect_type_references(
-                            &param.var_type,
-                            record_name,
-                            definition_module,
-                            module_id,
-                        ));
-                    }
-                }
-            }
-        }
-
-        locations
-    }
-
-    /// Recursively collects all references to a named type within a ParsedType.
-    /// This handles nested types like Array[Icon].
-    fn collect_type_references(
-        &self,
-        parsed_type: &ParsedType,
-        record_name: &str,
-        definition_module: &ModuleId,
-        current_module: &ModuleId,
-    ) -> Vec<RenameLocation> {
-        let mut locations = Vec::new();
-
-        match parsed_type {
-            ParsedType::Named { name, range } => {
-                // Check if this is a reference to the record we're renaming
-                // For local references (same module), just match by name
-                // For imported references, we need to verify the import points to the right module
-                let is_local = current_module == definition_module && name == record_name;
-                let is_imported = self.parsed_asts.get(current_module).is_some_and(|ast| {
-                    ast.get_import_declarations().any(|import| {
-                        import.imports_type(record_name)
-                            && import.imports_from(definition_module)
-                            && name == record_name
-                    })
-                });
-
-                if is_local || is_imported {
-                    locations.push(RenameLocation {
-                        range: range.clone(),
-                    });
-                }
-            }
-            ParsedType::Array { element, .. } | ParsedType::Option { element, .. } => {
-                // Recursively check the element type
-                locations.extend(self.collect_type_references(
-                    element,
-                    record_name,
-                    definition_module,
-                    current_module,
-                ));
-            }
-            // Primitive types don't need renaming
-            ParsedType::String { .. }
-            | ParsedType::Bool { .. }
-            | ParsedType::Int { .. }
-            | ParsedType::Float { .. }
-            | ParsedType::TrustedHTML { .. } => {}
-        }
-
-        locations
+        // Collect all use_ranges across all modules whose definition_range
+        // matches the record's definition
+        self.definition_links
+            .values()
+            .flatten()
+            .filter(|link| link.definition_range == *definition_range)
+            .map(|link| RenameLocation {
+                range: link.use_range.clone(),
+            })
+            .collect()
     }
 
     pub fn get_error_diagnostics(&self, module_id: ModuleId) -> Vec<Diagnostic> {

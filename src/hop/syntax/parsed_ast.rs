@@ -223,15 +223,6 @@ impl ParsedImportDeclaration {
     pub fn imported_module(&self) -> &ModuleId {
         &self.module_id
     }
-    pub fn type_name_range(&self) -> &DocumentRange {
-        &self.type_name_range
-    }
-    pub fn imports_type(&self, type_name: &str) -> bool {
-        self.type_name.as_str() == type_name
-    }
-    pub fn imports_from(&self, module_id: &ModuleId) -> bool {
-        &self.module_id == module_id
-    }
 
     pub fn to_doc(&self) -> BoxDoc<'_> {
         BoxDoc::text("import")

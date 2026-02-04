@@ -327,6 +327,12 @@ fn typecheck_module(
                         record_name_range.clone(),
                     ),
                 );
+
+                // Add definition link for the record name (points to itself)
+                definition_links.push(DefinitionLink {
+                    use_range: record_name_range.clone(),
+                    definition_range: record_name_range.clone(),
+                });
             }
             ParsedDeclaration::Enum(ParsedEnumDeclaration {
                 name: enum_name,
