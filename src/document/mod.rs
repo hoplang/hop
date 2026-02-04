@@ -290,6 +290,15 @@ impl FromIterator<DocumentRange> for Option<DocumentRange> {
     }
 }
 
+/// Two ranges are equal if they span the same byte offsets in the same module.
+impl PartialEq for DocumentRange {
+    fn eq(&self, other: &Self) -> bool {
+        self.module_id == other.module_id && self.start == other.start && self.end == other.end
+    }
+}
+
+impl Eq for DocumentRange {}
+
 impl fmt::Display for DocumentRange {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.write_str(self.as_str())
