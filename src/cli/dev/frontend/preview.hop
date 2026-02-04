@@ -22,7 +22,7 @@ entrypoint Preview(
   <body
     style="font-family: Inter, sans-serif;"
     class={
-      classes!(
+      join!(
         "bg-[#f3f3f3]/90",
         "p-4",
         "flex",
@@ -34,7 +34,7 @@ entrypoint Preview(
     }
   >
     <div class={
-      classes!(
+      join!(
         "w-full",
         "flex",
         "justify-between",
@@ -54,12 +54,7 @@ entrypoint Preview(
           </p>
         </div>
       </div>
-      <div class={
-        classes!(
-          "flex",
-          "gap-2",
-        )
-      }>
+      <div class="flex gap-2">
         <a href="?device=mobile">
           <Smartphone class={
             match device {
@@ -84,7 +79,7 @@ entrypoint Preview(
       </div>
     </div>
     <div class={
-      classes!(
+      join!(
         "bg-white",
         "h-full",
         "border",

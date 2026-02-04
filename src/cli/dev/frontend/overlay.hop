@@ -3,13 +3,9 @@ import lucide::CircleAlert
 entrypoint Overlay(
   message: String = "Error! Something went wrong.",
 ) {
-  <body class={
-    classes!(
-      "bg-[#f3f3f3]/90",
-    )
-  }>
+  <body class="bg-[#f3f3f3]/90">
     <div class={
-      classes!(
+      join!(
         "py-18",
         "md:px-14",
         "max-w-4xl",
@@ -20,7 +16,7 @@ entrypoint Overlay(
       )
     }>
       <div class={
-        classes!(
+        join!(
           "bg-white",
           "p-12",
           "py-8",
@@ -35,7 +31,7 @@ entrypoint Overlay(
           {message}
         </pre>
         <CircleAlert class={
-          classes!(
+          join!(
             "hidden",
             "md:block",
             "text-[#ff6a6a]",
