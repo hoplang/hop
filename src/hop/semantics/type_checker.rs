@@ -1136,7 +1136,7 @@ fn typecheck_node(
                 _ => (var_env.fresh_var(), true),
             };
 
-            let decision = match PatMatchCompiler::new(var_env).compile(
+            let decision = match PatMatchCompiler::new(var_env.fresh_var_counter()).compile(
                 &patterns,
                 &subject_name,
                 typed_subject.get_type(),

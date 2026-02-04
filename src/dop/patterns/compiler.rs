@@ -242,9 +242,9 @@ fn is_free_from_bindings(pattern: &ParsedMatchPattern, typ: &Type) -> bool {
 }
 
 /// The `match` compiler itself.
-pub struct Compiler<'a, T> {
-    /// Environment for generating fresh variable names.
-    env: &'a mut crate::environment::Environment<T>,
+pub struct Compiler<'a> {
+    /// Counter for generating fresh variable names.
+    fresh_vars: &'a mut crate::environment::FreshVarCounter,
     /// The arm indices that are reachable.
     reachable: Vec<usize>,
     /// Missing pattern strings collected during compilation.
@@ -253,10 +253,10 @@ pub struct Compiler<'a, T> {
     var_info: HashMap<VarName, VarInfo>,
 }
 
-impl<'a, T> Compiler<'a, T> {
-    pub fn new(env: &'a mut crate::environment::Environment<T>) -> Self {
+impl<'a> Compiler<'a> {
+    pub fn new(fresh_vars: &'a mut crate::environment::FreshVarCounter) -> Self {
         Self {
-            env,
+            fresh_vars,
             reachable: Vec::new(),
             missing_patterns: HashSet::new(),
             var_info: HashMap::new(),
@@ -746,7 +746,7 @@ impl<'a, T> Compiler<'a, T> {
 
     /// Returns a new variable to use in the decision tree.
     fn fresh_var(&mut self, typ: Arc<Type>) -> Variable {
-        let name = self.env.fresh_var();
+        let name = self.fresh_vars.fresh_var();
         Variable::new(name, typ)
     }
 
@@ -999,8 +999,8 @@ mod tests {
             _ => panic!("Expected match expression"),
         };
 
-        let mut env = crate::environment::Environment::<Arc<Type>>::new();
-        let result = Compiler::new(&mut env).compile(
+        let mut fresh_vars = crate::environment::FreshVarCounter::new();
+        let result = Compiler::new(&mut fresh_vars).compile(
             &patterns,
             &subject_name,
             Arc::new(subject_type),

@@ -1166,7 +1166,7 @@ fn typecheck_match(
     };
 
     let patterns: Vec<_> = arms.iter().map(|arm| arm.pattern.clone()).collect();
-    let tree = Compiler::new(var_env).compile(
+    let tree = Compiler::new(var_env.fresh_var_counter()).compile(
         &patterns,
         &subject_name,
         typed_subject.get_type(),
