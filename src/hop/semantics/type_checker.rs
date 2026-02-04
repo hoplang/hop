@@ -376,6 +376,12 @@ fn typecheck_module(
                     ),
                 );
 
+                // Add definition link for the enum name (points to itself)
+                definition_links.push(DefinitionLink {
+                    use_range: enum_name_range.clone(),
+                    definition_range: enum_name_range.clone(),
+                });
+
                 typed_enums.push(TypedEnumDeclaration {
                     name: enum_name.clone(),
                     variants: typed_variants,

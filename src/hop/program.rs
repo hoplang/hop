@@ -257,6 +257,13 @@ impl Program {
             }
         }
 
+        // Check if cursor is on an enum declaration name
+        for enum_decl in ast.get_enum_declarations() {
+            if enum_decl.name_range.contains_position(position) {
+                return Some(self.collect_enum_rename_locations(enum_decl.name(), module_id));
+            }
+        }
+
         for node in ast.get_component_declarations() {
             if node
                 .tag_name_ranges()
@@ -311,6 +318,15 @@ impl Program {
             if record.name_range.contains_position(position) {
                 return Some(RenameableSymbol {
                     range: record.name_range.clone(),
+                });
+            }
+        }
+
+        // Check if cursor is on an enum declaration name
+        for enum_decl in ast.get_enum_declarations() {
+            if enum_decl.name_range.contains_position(position) {
+                return Some(RenameableSymbol {
+                    range: enum_decl.name_range.clone(),
                 });
             }
         }
@@ -389,6 +405,38 @@ impl Program {
 
         // Collect all use_ranges across all modules whose definition_range
         // matches the record's definition
+        self.definition_links
+            .values()
+            .flatten()
+            .filter(|link| link.definition_range == *definition_range)
+            .map(|link| RenameLocation {
+                range: link.use_range.clone(),
+            })
+            .collect()
+    }
+
+    /// Collects all locations where an enum type should be renamed, including:
+    /// - The enum declaration
+    /// - All type annotations that reference the enum
+    /// - All import statements that import the enum
+    fn collect_enum_rename_locations(
+        &self,
+        enum_name: &str,
+        definition_module: &ModuleId,
+    ) -> Vec<RenameLocation> {
+        // Find the definition range (the name_range of the enum declaration)
+        let definition_range = self
+            .parsed_asts
+            .get(definition_module)
+            .and_then(|module| module.get_enum_declaration(enum_name))
+            .map(|decl| &decl.name_range);
+
+        let Some(definition_range) = definition_range else {
+            return Vec::new();
+        };
+
+        // Collect all use_ranges across all modules whose definition_range
+        // matches the enum's definition
         self.definition_links
             .values()
             .flatten()
@@ -1515,6 +1563,89 @@ mod tests {
     }
 
     #[test]
+    fn should_find_rename_locations_for_enum_type() {
+        check_rename_locations(
+            indoc! {r#"
+                -- main.hop --
+                enum Status {
+                     ^
+                  Active,
+                  Inactive,
+                }
+
+                <UserBadge {status: Status}>
+                  <match {status}>
+                    <case {Status::Active}><span>Active</span></case>
+                    <case {Status::Inactive}><span>Inactive</span></case>
+                  </match>
+                </UserBadge>
+
+                <UsersPage {statuses: Array[Status]}>
+                  <for {status in statuses}>
+                    <UserBadge {status: status} />
+                  </for>
+                </UsersPage>
+            "#},
+            expect![[r#"
+                Rename
+                  --> main.hop (line 1, col 6)
+                 1 | enum Status {
+                   |      ^^^^^^
+
+                Rename
+                  --> main.hop (line 6, col 21)
+                 6 | <UserBadge {status: Status}>
+                   |                     ^^^^^^
+
+                Rename
+                  --> main.hop (line 13, col 29)
+                13 | <UsersPage {statuses: Array[Status]}>
+                   |                             ^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_find_rename_locations_for_imported_enum_type() {
+        check_rename_locations(
+            indoc! {r#"
+                -- types.hop --
+                enum Status {
+                     ^
+                  Active,
+                  Inactive,
+                }
+
+                -- main.hop --
+                import types::Status
+
+                <Main {status: Status}>
+                  <match {status}>
+                    <case {Status::Active}><span>Active</span></case>
+                    <case {Status::Inactive}><span>Inactive</span></case>
+                  </match>
+                </Main>
+            "#},
+            expect![[r#"
+                Rename
+                  --> types.hop (line 1, col 6)
+                1 | enum Status {
+                  |      ^^^^^^
+
+                Rename
+                  --> main.hop (line 1, col 15)
+                1 | import types::Status
+                  |               ^^^^^^
+
+                Rename
+                  --> main.hop (line 3, col 16)
+                3 | <Main {status: Status}>
+                  |                ^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
     fn should_find_rename_locations_even_when_there_is_parse_errors() {
         check_rename_locations(
             indoc! {r#"
@@ -1558,6 +1689,26 @@ mod tests {
                   --> main.hop (line 1, col 2)
                 1 | <HelloWorld>
                   |  ^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_find_renameable_symbol_from_enum_declaration() {
+        check_renameable_symbol(
+            indoc! {r#"
+                -- main.hop --
+                enum Status { Active, Inactive }
+                     ^
+                <Main {status: Status}>
+                  <div>{status}</div>
+                </Main>
+            "#},
+            expect![[r#"
+                Status
+                  --> main.hop (line 1, col 6)
+                1 | enum Status { Active, Inactive }
+                  |      ^^^^^^
             "#]],
         );
     }

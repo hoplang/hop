@@ -171,6 +171,19 @@ impl ParsedAst {
         })
     }
 
+    /// Finds an enum declaration by name.
+    pub fn get_enum_declaration(&self, name: &str) -> Option<&ParsedEnumDeclaration> {
+        self.get_enum_declarations().find(|e| e.name() == name)
+    }
+
+    /// Returns an iterator over all enum declarations in the AST.
+    pub fn get_enum_declarations(&self) -> impl Iterator<Item = &ParsedEnumDeclaration> {
+        self.declarations.iter().filter_map(|d| match d {
+            ParsedDeclaration::Enum(e) => Some(e),
+            _ => None,
+        })
+    }
+
     /// Returns an iterator over all entrypoint declarations in the AST.
     pub fn get_entrypoint_declarations(
         &self,
