@@ -1057,7 +1057,8 @@ pub fn typecheck_expr(
             definition_links,
         ),
         ParsedExpr::MacroInvocation { name, args, range } => match name.as_str() {
-            "classes" => expand_classes_macro(
+            "classes" | "join" => expand_classes_macro(
+                name.as_str(),
                 args,
                 range,
                 var_env,
@@ -1111,8 +1112,9 @@ pub fn typecheck_expr(
     }
 }
 
-/// Expand a `classes!` macro invocation to a MergeClasses expression.
+/// Expand a `classes!` or `join!` macro invocation to a MergeClasses expression.
 fn expand_classes_macro(
+    macro_name: &str,
     args: &[ParsedExpr],
     _range: &DocumentRange,
     var_env: &mut Environment<(Arc<Type>, DocumentRange)>,
@@ -1135,7 +1137,7 @@ fn expand_classes_macro(
         // Verify it's actually a String
         if typed.as_type() != &Type::String {
             return Err(TypeError::MacroArgumentTypeMismatch {
-                macro_name: "classes".to_string(),
+                macro_name: macro_name.to_string(),
                 expected: "String".to_string(),
                 actual: typed.get_type(),
                 range: arg.range().clone(),
@@ -4612,6 +4614,42 @@ mod tests {
                 error: Macro 'classes' expects String arguments, but got Int
                 classes!(name, age)
                                ^^^
+            "#]],
+        );
+    }
+
+    // join! macro tests (alias for classes!)
+
+    #[test]
+    fn should_accept_join_macro_with_string_args() {
+        check(
+            "",
+            &[("first", "String"), ("last", "String")],
+            "join!(first, last)",
+            expect!["String"],
+        );
+    }
+
+    #[test]
+    fn should_accept_join_macro_with_no_args() {
+        check("", &[], "join!()", expect!["String"]);
+    }
+
+    #[test]
+    fn should_accept_join_macro_with_string_literals() {
+        check("", &[], r#"join!("hello", "world")"#, expect!["String"]);
+    }
+
+    #[test]
+    fn should_reject_join_macro_with_non_string_arg() {
+        check(
+            "",
+            &[("count", "Int")],
+            "join!(count)",
+            expect![[r#"
+                error: Macro 'join' expects String arguments, but got Int
+                join!(count)
+                      ^^^^^
             "#]],
         );
     }

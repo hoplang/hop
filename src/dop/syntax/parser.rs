@@ -821,7 +821,7 @@ fn parse_macro_invocation(
     name_range: DocumentRange,
 ) -> Option<ParsedExpr> {
     let name_str = macro_name.as_str();
-    if name_str != "classes" {
+    if name_str != "classes" && name_str != "join" {
         errors.push(ParseError::UnknownMacro {
             name: macro_name,
             range: name_range,
@@ -3569,6 +3569,36 @@ mod tests {
             r#"classes!("hello", "world")"#,
             expect![[r#"
                 classes!("hello", "world")
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_join_macro_with_no_args() {
+        check_parse_expr(
+            "join!()",
+            expect![[r#"
+                join!()
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_join_macro_with_single_arg() {
+        check_parse_expr(
+            r#"join!("hello")"#,
+            expect![[r#"
+                join!("hello")
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_join_macro_with_multiple_args() {
+        check_parse_expr(
+            r#"join!("foo", "bar", "baz")"#,
+            expect![[r#"
+                join!("foo", "bar", "baz")
             "#]],
         );
     }

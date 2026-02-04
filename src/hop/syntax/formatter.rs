@@ -939,7 +939,7 @@ fn format_expr<'a>(
         },
         ParsedExpr::MacroInvocation { name, args, .. } => {
             let mut expanded_docs: Vec<DocBuilder<'a, Arena<'a>>> = Vec::new();
-            if name == "classes" {
+            if name == "classes" || name == "join" {
                 for e in args.iter() {
                     let leading_comments =
                         drain_comments_before(arena, comments, e.range().start());
@@ -1000,7 +1000,7 @@ fn format_expr<'a>(
                         .append(trailing_comments)
                         .nest(2)
                         .group()
-                } else if name == "classes" {
+                } else if name == "classes" || name == "join" {
                     // Always break classes! macro onto multiple lines for easier
                     // editing and minimal version control diffs
                     arena
@@ -2069,6 +2069,52 @@ mod tests {
                       "foo",
                       "bar",
                       "baz",
+                    )
+                  }>
+                  </div>
+                </Card>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn join_macro_expands_spaces_in_string_literals() {
+        check(
+            indoc! {r#"
+                <Card>
+                  <div class={join!("foo bar")}></div>
+                </Card>
+            "#},
+            expect![[r#"
+                <Card>
+                  <div class={
+                    join!(
+                      "foo",
+                      "bar",
+                    )
+                  }>
+                  </div>
+                </Card>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn join_macro_expands_mixed_variables_and_literals() {
+        check(
+            indoc! {r#"
+                <Card {a: String, b: String}>
+                  <div class={join!(a, "foo bar", b)}></div>
+                </Card>
+            "#},
+            expect![[r#"
+                <Card {a: String, b: String}>
+                  <div class={
+                    join!(
+                      a,
+                      "foo",
+                      "bar",
+                      b,
                     )
                   }>
                   </div>
