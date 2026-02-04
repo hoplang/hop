@@ -12,14 +12,14 @@ use crate::dop::syntax::parsed::{
 };
 use crate::environment::Environment;
 use crate::hop::semantics::definition_link::DefinitionLink;
-use crate::hop::semantics::type_annotation::TypeAnnotation;
+use crate::hop::semantics::annotation::Annotation;
 use crate::type_error::TypeError;
 
 /// Resolve a parsed Type to a semantic Type.
 pub fn resolve_type(
     parsed_type: &ParsedType,
     type_env: &mut Environment<(Arc<Type>, DocumentRange)>,
-    annotations: &mut Vec<TypeAnnotation>,
+    annotations: &mut Vec<Annotation>,
     definition_links: &mut Vec<DefinitionLink>,
 ) -> Result<Arc<Type>, TypeError> {
     let (typ, range) = match parsed_type {
@@ -51,7 +51,7 @@ pub fn resolve_type(
             (typ.clone(), range)
         }
     };
-    annotations.push(TypeAnnotation {
+    annotations.push(Annotation::TypeInfo {
         range: range.clone(),
         typ: typ.clone(),
         name: typ.to_string(),
@@ -67,14 +67,14 @@ pub fn typecheck_expr(
     parsed_expr: &ParsedExpr,
     var_env: &mut Environment<(Arc<Type>, DocumentRange)>,
     type_env: &mut Environment<(Arc<Type>, DocumentRange)>,
-    annotations: &mut Vec<TypeAnnotation>,
+    annotations: &mut Vec<Annotation>,
     definition_links: &mut Vec<DefinitionLink>,
     expected_type: Option<&Arc<Type>>,
 ) -> Result<TypedExpr, TypeError> {
     match parsed_expr {
         ParsedExpr::Var { value: name, .. } => {
             if let Some((var_type, def_range)) = var_env.lookup(name.as_str()) {
-                annotations.push(TypeAnnotation {
+                annotations.push(Annotation::TypeInfo {
                     range: parsed_expr.range().clone(),
                     typ: var_type.clone(),
                     name: name.to_string(),
@@ -789,7 +789,7 @@ pub fn typecheck_expr(
             let def_range = def_range.clone();
 
             // Add type annotation and definition link for the record name
-            annotations.push(TypeAnnotation {
+            annotations.push(Annotation::TypeInfo {
                 range: record_name_range.clone(),
                 typ: record_type.clone(),
                 name: record_name.to_string(),
@@ -895,7 +895,7 @@ pub fn typecheck_expr(
             let def_range = def_range.clone();
 
             // Add type annotation and definition link for the constructor
-            annotations.push(TypeAnnotation {
+            annotations.push(Annotation::TypeInfo {
                 range: constructor_range.clone(),
                 typ: enum_type.clone(),
                 name: format!("{}::{}", enum_name, variant_name),
@@ -1056,11 +1056,16 @@ pub fn typecheck_expr(
             annotations,
             definition_links,
         ),
-        ParsedExpr::MacroInvocation { name, args, range } => match name.as_str() {
+        ParsedExpr::MacroInvocation {
+            name,
+            name_range,
+            args,
+            ..
+        } => match name.as_str() {
             "classes" | "join" => expand_classes_macro(
                 name.as_str(),
                 args,
-                range,
+                name_range,
                 var_env,
                 type_env,
                 annotations,
@@ -1116,10 +1121,10 @@ pub fn typecheck_expr(
 fn expand_classes_macro(
     macro_name: &str,
     args: &[ParsedExpr],
-    _range: &DocumentRange,
+    range: &DocumentRange,
     var_env: &mut Environment<(Arc<Type>, DocumentRange)>,
     type_env: &mut Environment<(Arc<Type>, DocumentRange)>,
-    annotations: &mut Vec<TypeAnnotation>,
+    annotations: &mut Vec<Annotation>,
     definition_links: &mut Vec<DefinitionLink>,
 ) -> Result<TypedExpr, TypeError> {
     // Type-check all arguments, expecting String
@@ -1146,6 +1151,12 @@ fn expand_classes_macro(
         typed_args.push(typed);
     }
 
+    annotations.push(Annotation::Description {
+        title: format!("`{}!`", macro_name),
+        description: "Joins strings with spaces".to_string(),
+        range: range.clone(),
+    });
+
     Ok(TypedExpr::MergeClasses { args: typed_args })
 }
 
@@ -1155,7 +1166,7 @@ fn typecheck_match(
     arms: &[ParsedMatchArm],
     var_env: &mut Environment<(Arc<Type>, DocumentRange)>,
     type_env: &mut Environment<(Arc<Type>, DocumentRange)>,
-    annotations: &mut Vec<TypeAnnotation>,
+    annotations: &mut Vec<Annotation>,
     definition_links: &mut Vec<DefinitionLink>,
 ) -> Result<TypedExpr, TypeError> {
     let typed_subject = typecheck_expr(
@@ -1286,7 +1297,7 @@ fn typecheck_arm_bodies(
     subject_type: Arc<Type>,
     env: &mut Environment<(Arc<Type>, DocumentRange)>,
     type_env: &mut Environment<(Arc<Type>, DocumentRange)>,
-    annotations: &mut Vec<TypeAnnotation>,
+    annotations: &mut Vec<Annotation>,
     definition_links: &mut Vec<DefinitionLink>,
 ) -> Result<(Vec<TypedExpr>, Arc<Type>), TypeError> {
     let mut typed_bodies = Vec::new();

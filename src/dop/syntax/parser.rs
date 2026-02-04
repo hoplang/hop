@@ -844,6 +844,7 @@ fn parse_macro_invocation(
     )?;
     Some(ParsedExpr::MacroInvocation {
         name: macro_name,
+        name_range: name_range.clone(),
         args,
         range: name_range.to(right_paren),
     })

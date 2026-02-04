@@ -14,7 +14,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use super::semantics::definition_link::DefinitionLink;
-use super::semantics::type_annotation::TypeAnnotation;
+use super::semantics::annotation::Annotation;
 use super::semantics::type_checker::typecheck;
 use super::semantics::typed_ast::TypedAst;
 use super::symbols::module_id::ModuleId;
@@ -66,7 +66,7 @@ pub struct Program {
     parsed_asts: HashMap<ModuleId, ParsedAst>,
     typechecker_state: HashMap<ModuleId, HashMap<String, (Arc<Type>, DocumentRange)>>,
     type_errors: HashMap<ModuleId, ErrorCollector<TypeError>>,
-    type_annotations: HashMap<ModuleId, Vec<TypeAnnotation>>,
+    type_annotations: HashMap<ModuleId, Vec<Annotation>>,
     definition_links: HashMap<ModuleId, Vec<DefinitionLink>>,
     typed_asts: HashMap<ModuleId, TypedAst>,
 }
@@ -216,10 +216,13 @@ impl Program {
         self.type_annotations
             .get(module_id)?
             .iter()
-            .find(|a| a.range.contains_position(position))
-            .map(|annotation| HoverInfo {
-                message: format!("`{}`: `{}`", annotation.name, annotation.typ),
-                range: annotation.range.clone(),
+            .find(|a| a.range().contains_position(position))
+            .map(|annotation| {
+                let message = annotation.to_string();
+                HoverInfo {
+                    message,
+                    range: annotation.range().clone(),
+                }
             })
     }
 
@@ -1985,6 +1988,58 @@ mod tests {
                   --> main.hop (line 3, col 27)
                 3 |   <let {result: Outcome = Outcome::Success(value: "ok")}>
                   |                           ^^^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_show_hover_info_for_join_macro() {
+        check_hover_info(
+            indoc! {r#"
+                -- main.hop --
+                <Main {a: String, b: String}>
+                  <div class={
+                    join!(a, b)
+                    ^
+                  }>
+                  </div>
+                </Main>
+            "#},
+            expect![[r#"
+                `join!`
+
+                ---
+
+                Joins strings with spaces
+                  --> main.hop (line 3, col 5)
+                3 |     join!(a, b)
+                  |     ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_show_hover_info_for_classes_macro() {
+        check_hover_info(
+            indoc! {r#"
+                -- main.hop --
+                <Main {a: String, b: String}>
+                  <div class={
+                    classes!(a, b)
+                    ^
+                  }>
+                  </div>
+                </Main>
+            "#},
+            expect![[r#"
+                `classes!`
+
+                ---
+
+                Joins strings with spaces
+                  --> main.hop (line 3, col 5)
+                3 |     classes!(a, b)
+                  |     ^^^^^^^
             "#]],
         );
     }

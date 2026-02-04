@@ -336,6 +336,7 @@ pub enum ParsedExpr {
     /// A macro invocation, e.g. `join!(a, b, c)`
     MacroInvocation {
         name: CheapString,
+        name_range: DocumentRange,
         args: Vec<Self>,
         range: DocumentRange,
     },
