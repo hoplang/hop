@@ -177,11 +177,6 @@ impl ParsedNode {
             ParsedNode::TextExpression { .. } => &[],
         }
     }
-
-    pub fn iter_depth_first(&self) -> DepthFirstIterator<'_> {
-        DepthFirstIterator::new(self)
-    }
-
     /// Get the range for the opening tag of a node.
     ///
     /// Example:
@@ -447,27 +442,3 @@ impl Display for ParsedNode {
     }
 }
 
-pub struct DepthFirstIterator<'a> {
-    stack: Vec<&'a ParsedNode>,
-}
-
-impl<'a> DepthFirstIterator<'a> {
-    fn new(root: &'a ParsedNode) -> Self {
-        Self { stack: vec![root] }
-    }
-}
-
-impl<'a> Iterator for DepthFirstIterator<'a> {
-    type Item = &'a ParsedNode;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let current = self.stack.pop()?;
-
-        // Add children in reverse order so they're visited in correct order
-        for child in current.children().iter().rev() {
-            self.stack.push(child);
-        }
-
-        Some(current)
-    }
-}

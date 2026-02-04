@@ -344,61 +344,27 @@ impl Program {
         component_name: &TypeName,
         definition_module: &ModuleId,
     ) -> Vec<RenameLocation> {
-        let mut locations = Vec::new();
+        // Find the definition range (the opening tag_name of the component declaration)
+        let definition_range = self
+            .parsed_asts
+            .get(definition_module)
+            .and_then(|module| module.get_component_declaration(component_name.as_str()))
+            .map(|decl| &decl.tag_name);
 
-        if let Some(module) = self.parsed_asts.get(definition_module) {
-            if let Some(component_node) = module.get_component_declaration(component_name.as_str())
-            {
-                // Add the definition's opening tag name
-                locations.push(RenameLocation {
-                    range: component_node.tag_name.clone(),
-                });
+        let Some(definition_range) = definition_range else {
+            return Vec::new();
+        };
 
-                // Add the definition's closing tag name if it exists
-                if let Some(range) = component_node.closing_tag_name.as_ref() {
-                    locations.push(RenameLocation {
-                        range: range.clone(),
-                    });
-                }
-            }
-        }
-
-        for ast in self.parsed_asts.values() {
-            // Find all import statements that import this component
-            locations.extend(
-                ast.get_import_declarations()
-                    .filter(|n| {
-                        n.imports_type(component_name.as_str()) && n.imports_from(definition_module)
-                    })
-                    .map(|n| RenameLocation {
-                        range: n.type_name_range().clone(),
-                    }),
-            );
-
-            // Find all component references that references this component
-            locations.extend(
-                ast.iter_all_nodes()
-                    .filter(|node| match node {
-                        ParsedNode::ComponentReference {
-                            component_name: ref_component_name,
-                            declaring_module: reference_definition_module,
-                            ..
-                        } => {
-                            reference_definition_module
-                                .as_ref()
-                                .is_some_and(|d| d == definition_module)
-                                && ref_component_name == component_name
-                        }
-                        _ => false,
-                    })
-                    .flat_map(|node| node.tag_names())
-                    .map(|range| RenameLocation {
-                        range: range.clone(),
-                    }),
-            );
-        }
-
-        locations
+        // Collect all use_ranges across all modules whose definition_range
+        // matches the component's definition
+        self.definition_links
+            .values()
+            .flatten()
+            .filter(|link| link.definition_range == *definition_range)
+            .map(|link| RenameLocation {
+                range: link.use_range.clone(),
+            })
+            .collect()
     }
 
     /// Collects all locations where a record type should be renamed, including:
@@ -969,7 +935,7 @@ mod tests {
 
                 -- main.hop --
                 import hop::components::HelloWorld
-                         ^
+                                        ^
 
                 <Main>
                   <HelloWorld />
@@ -992,7 +958,7 @@ mod tests {
                 record User {name: String, age: Int}
                 -- main.hop --
                 import types::User
-                         ^
+                              ^
 
                 <Main {user: User}>
                   <div>{user.name}</div>
@@ -1015,7 +981,7 @@ mod tests {
                 enum Status { Active, Inactive }
                 -- main.hop --
                 import types::Status
-                         ^
+                              ^
 
                 <Main {status: Status}>
                   <match {status}>

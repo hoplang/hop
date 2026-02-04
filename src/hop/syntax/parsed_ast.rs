@@ -181,21 +181,6 @@ impl ParsedAst {
         })
     }
 
-    /// Returns an iterator over all nodes in the AST, iterating depth-first.
-    pub fn iter_all_nodes(&self) -> impl Iterator<Item = &ParsedNode> {
-        let component_nodes = self
-            .get_component_declarations()
-            .flat_map(|n| &n.children)
-            .flat_map(|n| n.iter_depth_first());
-
-        let entrypoint_nodes = self
-            .get_entrypoint_declarations()
-            .flat_map(|n| &n.children)
-            .flat_map(|n| n.iter_depth_first());
-
-        component_nodes.chain(entrypoint_nodes)
-    }
-
     pub fn to_doc(&self) -> BoxDoc<'_> {
         if self.declarations.is_empty() {
             BoxDoc::nil()

@@ -120,7 +120,7 @@ fn typecheck_module(
                 };
 
                 definition_links.push(DefinitionLink {
-                    use_range: import_path.clone(),
+                    use_range: imported_name_range.clone(),
                     definition_range: def_range.clone(),
                 });
 
