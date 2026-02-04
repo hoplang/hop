@@ -65,7 +65,7 @@ async fn handle_index(State(state): State<AppState>) -> Html {
     let mut entrypoints = Vec::new();
     for (module_id, ast) in program.get_typed_modules() {
         for ep in ast.get_entrypoint_declarations() {
-            entrypoints.push(frontend::EntrypointData {
+            entrypoints.push(frontend::Entrypoint {
                 name: ep.name.to_string(),
                 module: format!("{}.hop", module_id),
             });

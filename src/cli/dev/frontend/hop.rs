@@ -20,12 +20,12 @@ pub enum Device {
 }
 
 #[derive(Clone, Debug)]
-pub struct EntrypointData {
+pub struct Entrypoint {
     pub name: String,
     pub module: String,
 }
 
-pub fn index(entrypoints: &[EntrypointData]) -> String {
+pub fn index(entrypoints: &[Entrypoint]) -> String {
     let mut output = String::new();
     output.push_str("<!DOCTYPE html><html><head><meta charset=\"utf-8\"><meta");
     output.push_str(" content=\"width=device-width, initial-scale=1\"");

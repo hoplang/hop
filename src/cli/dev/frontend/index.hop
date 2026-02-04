@@ -5,12 +5,12 @@ import lucide::Maximize
 import lucide::Maximize2
 import components::logo::Logo
 
-record EntrypointData {
+record Entrypoint {
   name: String,
   module: String,
 }
 
-<Entrypoint {name: String, module: String}>
+<EntrypointItem {name: String, module: String}>
   <a
     href={"/preview/" + name}
     class="group flex flex-col gap-4 outline-none"
@@ -74,12 +74,12 @@ record EntrypointData {
       </p>
     </div>
   </a>
-</Entrypoint>
+</EntrypointItem>
 
 entrypoint Index(
-  entrypoints: Array[EntrypointData] = [
-    EntrypointData(module: "index.hop", name: "Index"),
-    EntrypointData(module: "overlay.hop", name: "Overlay"),
+  entrypoints: Array[Entrypoint] = [
+    Entrypoint(module: "index.hop", name: "Index"),
+    Entrypoint(module: "overlay.hop", name: "Overlay"),
   ],
 ) {
   <head>
@@ -130,7 +130,7 @@ entrypoint Index(
               )
             }>
               <for {ep in entrypoints}>
-                <Entrypoint
+                <EntrypointItem
                   name={ep.name}
                   module={ep.module}
                 />
