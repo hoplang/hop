@@ -20,7 +20,7 @@ use tailwind_merge::tw_merge;
 enum BinaryOp {
     Equals,
     StringConcat,
-    MergeClasses,
+    Join,
     LogicalOr,
     LogicalAnd,
 }
@@ -361,8 +361,8 @@ impl Pass for ConstantPropagationPass {
                                     .push(((*subject_def_id, field_name.clone()), expr.id()));
                             }
                         }
-                        IrExpr::MergeClasses { args, .. } => {
-                            // Convert N-ary MergeClasses to binary chain for Datalog processing
+                        IrExpr::Join { args, .. } => {
+                            // Convert N-ary Join to binary chain for Datalog processing
                             // For args = [a, b, c, d], create:
                             //   synthetic_1 = merge(a, b)
                             //   synthetic_2 = merge(synthetic_1, c)
@@ -380,9 +380,9 @@ impl Pass for ConstantPropagationPass {
                                         id
                                     };
                                     binary_left_operands
-                                        .push((left_id, (result_id, BinaryOp::MergeClasses)));
+                                        .push((left_id, (result_id, BinaryOp::Join)));
                                     binary_right_operands
-                                        .push((arg.id(), (result_id, BinaryOp::MergeClasses)));
+                                        .push((arg.id(), (result_id, BinaryOp::Join)));
                                     left_id = result_id;
                                 }
                             }
@@ -578,13 +578,13 @@ impl Pass for ConstantPropagationPass {
                                 }
                                 _ => unreachable!("StringConcat can only have string operands"),
                             },
-                            BinaryOp::MergeClasses => match (left_val, right_val) {
+                            BinaryOp::Join => match (left_val, right_val) {
                                 (Const::String(l), Const::String(r)) => {
                                     // Just concatenate with space - tw_merge is applied at TwMerge boundary
                                     let combined = format!("{} {}", l, r);
                                     Const::String(CheapString::new(combined))
                                 }
-                                _ => unreachable!("MergeClasses can only have string operands"),
+                                _ => unreachable!("Join can only have string operands"),
                             },
                             BinaryOp::LogicalOr => match (left_val, right_val) {
                                 (Const::Bool(l), Const::Bool(r)) => Const::Bool(*l || *r),
@@ -1510,17 +1510,17 @@ mod tests {
     }
 
     #[test]
-    fn should_fold_merge_classes_with_constant_strings() {
+    fn should_fold_join_with_constant_strings() {
         check(
             build_ir_no_params("Test", |t| {
                 let classes =
-                    t.merge_classes(vec![t.str("flex"), t.str("items-center"), t.str("gap-4")]);
+                    t.join(vec![t.str("flex"), t.str("items-center"), t.str("gap-4")]);
                 t.write_expr_escaped(t.tw_merge(classes));
             }),
             expect![[r#"
                 -- before --
                 Test() {
-                  write_escaped(tw_merge(merge_classes("flex", "items-center", "gap-4")))
+                  write_escaped(tw_merge(join("flex", "items-center", "gap-4")))
                 }
 
                 -- after --
@@ -1532,16 +1532,16 @@ mod tests {
     }
 
     #[test]
-    fn should_fold_merge_classes_with_tailwind_conflicts() {
+    fn should_fold_join_with_tailwind_conflicts() {
         check(
             build_ir_no_params("Test", |t| {
-                let classes = t.merge_classes(vec![t.str("px-4"), t.str("py-2"), t.str("p-6")]);
+                let classes = t.join(vec![t.str("px-4"), t.str("py-2"), t.str("p-6")]);
                 t.write_expr_escaped(t.tw_merge(classes));
             }),
             expect![[r#"
                 -- before --
                 Test() {
-                  write_escaped(tw_merge(merge_classes("px-4", "py-2", "p-6")))
+                  write_escaped(tw_merge(join("px-4", "py-2", "p-6")))
                 }
 
                 -- after --
@@ -1553,12 +1553,12 @@ mod tests {
     }
 
     #[test]
-    fn should_fold_merge_classes_with_propagated_variables() {
+    fn should_fold_join_with_propagated_variables() {
         check(
             build_ir_no_params("Test", |t| {
                 t.let_stmt("base", t.str("flex items-center"), |t| {
                     t.let_stmt("extra", t.str("gap-4 text-red-500"), |t| {
-                        let classes = t.merge_classes(vec![t.var("base"), t.var("extra")]);
+                        let classes = t.join(vec![t.var("base"), t.var("extra")]);
                         t.write_expr_escaped(t.tw_merge(classes));
                     });
                 });
@@ -1568,7 +1568,7 @@ mod tests {
                 Test() {
                   let base = "flex items-center" in {
                     let extra = "gap-4 text-red-500" in {
-                      write_escaped(tw_merge(merge_classes(base, extra)))
+                      write_escaped(tw_merge(join(base, extra)))
                     }
                   }
                 }
@@ -1586,10 +1586,10 @@ mod tests {
     }
 
     #[test]
-    fn should_fold_empty_merge_classes() {
+    fn should_fold_empty_join() {
         check(
             build_ir_no_params("Test", |t| {
-                t.write_expr_escaped(t.merge_classes(vec![]));
+                t.write_expr_escaped(t.join(vec![]));
             }),
             expect![[r#"
                 -- before --
@@ -1606,22 +1606,22 @@ mod tests {
     }
 
     #[test]
-    fn should_fold_nested_merge_classes() {
+    fn should_fold_nested_join() {
         check(
             build_ir_no_params("Test", |t| {
-                // Inner merge_classes just concatenates: "px-2 p-3"
-                // Outer merge_classes concatenates: "px-4 px-2 p-3"
+                // Inner join just concatenates: "px-2 p-3"
+                // Outer join concatenates: "px-4 px-2 p-3"
                 // tw_merge resolves conflicts: "p-3"
-                let classes = t.merge_classes(vec![
+                let classes = t.join(vec![
                     t.str("px-4"),
-                    t.merge_classes(vec![t.str("px-2"), t.str("p-3")]),
+                    t.join(vec![t.str("px-2"), t.str("p-3")]),
                 ]);
                 t.write_expr_escaped(t.tw_merge(classes));
             }),
             expect![[r#"
                 -- before --
                 Test() {
-                  write_escaped(tw_merge(merge_classes("px-4", merge_classes("px-2", "p-3"))))
+                  write_escaped(tw_merge(join("px-4", join("px-2", "p-3"))))
                 }
 
                 -- after --
@@ -1633,11 +1633,11 @@ mod tests {
     }
 
     #[test]
-    fn should_fold_merge_classes_with_enum_match() {
+    fn should_fold_join_with_enum_match() {
         check(
             build_ir_with_enums_no_params("Test", vec![("Size", vec!["Small", "Large"])], |t| {
                 t.let_stmt("size", t.enum_variant("Size", "Large"), |t| {
-                    let classes = t.merge_classes(vec![
+                    let classes = t.join(vec![
                         t.str("px-4"),
                         t.match_expr(
                             t.var("size"),
@@ -1651,7 +1651,7 @@ mod tests {
                 -- before --
                 Test() {
                   let size = Size::Large in {
-                    write_escaped(tw_merge(merge_classes("px-4", match size {
+                    write_escaped(tw_merge(join("px-4", match size {
                       Size::Small => "text-sm",
                       Size::Large => "text-lg",
                     })))
@@ -1669,22 +1669,22 @@ mod tests {
     }
 
     #[test]
-    fn should_fold_merge_classes_with_enum_match_containing_merge_classes() {
+    fn should_fold_join_with_enum_match_containing_join() {
         check(
             build_ir_with_enums_no_params("Test", vec![("Size", vec!["Small", "Large"])], |t| {
                 t.let_stmt("size", t.enum_variant("Size", "Large"), |t| {
-                    let classes = t.merge_classes(vec![
+                    let classes = t.join(vec![
                         t.str("flex"),
                         t.match_expr(
                             t.var("size"),
                             vec![
                                 (
                                     "Small",
-                                    t.merge_classes(vec![t.str("p-2"), t.str("text-sm")]),
+                                    t.join(vec![t.str("p-2"), t.str("text-sm")]),
                                 ),
                                 (
                                     "Large",
-                                    t.merge_classes(vec![t.str("p-4"), t.str("text-lg")]),
+                                    t.join(vec![t.str("p-4"), t.str("text-lg")]),
                                 ),
                             ],
                         ),
@@ -1696,9 +1696,9 @@ mod tests {
                 -- before --
                 Test() {
                   let size = Size::Large in {
-                    write_escaped(tw_merge(merge_classes("flex", match size {
-                      Size::Small => merge_classes("p-2", "text-sm"),
-                      Size::Large => merge_classes("p-4", "text-lg"),
+                    write_escaped(tw_merge(join("flex", match size {
+                      Size::Small => join("p-2", "text-sm"),
+                      Size::Large => join("p-4", "text-lg"),
                     })))
                   }
                 }

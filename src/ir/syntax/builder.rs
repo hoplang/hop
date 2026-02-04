@@ -814,7 +814,7 @@ impl IrBuilder {
         }
     }
 
-    pub fn merge_classes(&self, args: Vec<IrExpr>) -> IrExpr {
+    pub fn join(&self, args: Vec<IrExpr>) -> IrExpr {
         if args.is_empty() {
             IrExpr::StringLiteral {
                 value: CheapString::new(String::new()),
@@ -822,7 +822,7 @@ impl IrBuilder {
             }
         } else {
             // Emit N-ary form directly
-            IrExpr::MergeClasses {
+            IrExpr::Join {
                 args,
                 id: self.next_expr_id(),
             }

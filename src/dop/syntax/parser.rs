@@ -821,7 +821,7 @@ fn parse_macro_invocation(
     name_range: DocumentRange,
 ) -> Option<ParsedExpr> {
     let name_str = macro_name.as_str();
-    if name_str != "classes" && name_str != "join" {
+    if name_str != "join" {
         errors.push(ParseError::UnknownMacro {
             name: macro_name,
             range: name_range,
@@ -3525,56 +3525,6 @@ mod tests {
     ///////////////////////////////////////////////////////////////////////////
 
     #[test]
-    fn should_accept_classes_macro_with_no_args() {
-        check_parse_expr(
-            "classes!()",
-            expect![[r#"
-                classes!()
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_accept_classes_macro_with_single_arg() {
-        check_parse_expr(
-            r#"classes!("hello")"#,
-            expect![[r#"
-                classes!("hello")
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_accept_classes_macro_with_multiple_args() {
-        check_parse_expr(
-            "classes!(a, b, c)",
-            expect![[r#"
-                classes!(a, b, c)
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_accept_classes_macro_with_expressions() {
-        check_parse_expr(
-            "classes!(user.first, user.last)",
-            expect![[r#"
-                classes!(user.first, user.last)
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_accept_classes_macro_with_string_literals() {
-        check_parse_expr(
-            r#"classes!("hello", "world")"#,
-            expect![[r#"
-                classes!("hello", "world")
-            "#]],
-        );
-    }
-
-    #[test]
     fn should_accept_join_macro_with_no_args() {
         check_parse_expr(
             "join!()",
@@ -3612,30 +3562,6 @@ mod tests {
                 error: Unknown macro 'unknown'
                 unknown!(x)
                 ^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_reject_classes_macro_with_missing_closing_paren() {
-        check_parse_expr(
-            r#"classes!("p-3""#,
-            expect![[r#"
-                error: Unmatched '('
-                classes!("p-3"
-                        ^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_reject_classes_macro_with_trailing_comma_and_missing_closing_paren() {
-        check_parse_expr(
-            r#"classes!("p-3","#,
-            expect![[r#"
-                error: Unmatched '('
-                classes!("p-3",
-                        ^
             "#]],
         );
     }

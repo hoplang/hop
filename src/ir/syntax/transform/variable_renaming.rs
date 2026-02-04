@@ -250,7 +250,7 @@ impl VariableRenamingPass {
                 self.rename_expr(left);
                 self.rename_expr(right);
             }
-            IrExpr::MergeClasses { args, .. } => {
+            IrExpr::Join { args, .. } => {
                 for arg in args {
                     self.rename_expr(arg);
                 }

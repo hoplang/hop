@@ -6313,63 +6313,6 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn classes_macro_merges_css_classes() {
-        check(
-            indoc! {r#"
-                entrypoint Test {
-                  <div class={
-                    classes!(
-                      "foo",
-                      "bar",
-                      "baz",
-                    )
-                  }>
-                  </div>
-                }
-            "#},
-            r#"<div class="foo bar baz"></div>"#,
-            expect![[r#"
-                -- ir (unoptimized) --
-                Test() {
-                  write("<div")
-                  write(" class=\"")
-                  write_escaped(tw_merge(merge_classes("foo", "bar", "baz")))
-                  write("\"")
-                  write(">")
-                  write("</div>")
-                }
-                -- ir (optimized) --
-                Test() {
-                  write("<div class=\"foo bar baz\"></div>")
-                }
-                -- expected output --
-                <div class="foo bar baz"></div>
-                -- eval (unoptimized) --
-                OK
-                -- eval (optimized) --
-                OK
-                -- ts (unoptimized) --
-                OK
-                -- go (unoptimized) --
-                OK
-                -- python (unoptimized) --
-                OK
-                -- rust (unoptimized) --
-                OK
-                -- ts (optimized) --
-                OK
-                -- go (optimized) --
-                OK
-                -- python (optimized) --
-                OK
-                -- rust (optimized) --
-                OK
-            "#]],
-        );
-    }
-
-    #[test]
-    #[ignore]
     fn join_macro_merges_css_classes() {
         check(
             indoc! {r#"
@@ -6390,7 +6333,7 @@ mod tests {
                 Test() {
                   write("<div")
                   write(" class=\"")
-                  write_escaped(tw_merge(merge_classes("foo", "bar", "baz")))
+                  write_escaped(tw_merge(join("foo", "bar", "baz")))
                   write("\"")
                   write(">")
                   write("</div>")

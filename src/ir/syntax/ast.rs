@@ -177,8 +177,8 @@ pub enum IrExpr {
         id: ExprId,
     },
 
-    /// N-ary merge of CSS classes from classes!(a, b, c, ...)
-    MergeClasses { args: Vec<IrExpr>, id: ExprId },
+    /// N-ary join of strings with spaces, from join!(a, b, c, ...)
+    Join { args: Vec<IrExpr>, id: ExprId },
 
     /// Tailwind merge wrapper applied at class attribute boundary
     TwMerge { value: Box<IrExpr>, id: ExprId },
@@ -739,7 +739,7 @@ impl IrExpr {
             | IrExpr::OptionLiteral { id, .. }
             | IrExpr::Match { id, .. }
             | IrExpr::StringConcat { id, .. }
-            | IrExpr::MergeClasses { id, .. }
+            | IrExpr::Join { id, .. }
             | IrExpr::TwMerge { id, .. }
             | IrExpr::NumericAdd { id, .. }
             | IrExpr::NumericSubtract { id, .. }
@@ -777,7 +777,7 @@ impl IrExpr {
             IrExpr::IntLiteral { .. } => Arc::new(Type::Int),
 
             IrExpr::StringConcat { .. }
-            | IrExpr::MergeClasses { .. }
+            | IrExpr::Join { .. }
             | IrExpr::TwMerge { .. }
             | IrExpr::StringLiteral { .. }
             | IrExpr::IntToString { .. }
@@ -828,7 +828,7 @@ impl IrExpr {
             IrExpr::IntLiteral { .. } => &INT_TYPE,
 
             IrExpr::StringConcat { .. }
-            | IrExpr::MergeClasses { .. }
+            | IrExpr::Join { .. }
             | IrExpr::TwMerge { .. }
             | IrExpr::StringLiteral { .. }
             | IrExpr::IntToString { .. }
@@ -1150,7 +1150,7 @@ impl IrExpr {
                 .append(value.to_doc())
                 .append(BoxDoc::text(" in "))
                 .append(body.to_doc()),
-            IrExpr::MergeClasses { args, .. } => BoxDoc::text("merge_classes(")
+            IrExpr::Join { args, .. } => BoxDoc::text("join(")
                 .append(BoxDoc::intersperse(
                     args.iter().map(|arg| arg.to_doc()),
                     BoxDoc::text(", "),
@@ -1251,7 +1251,7 @@ impl IrExpr {
             | IrExpr::BooleanLiteral { .. }
             | IrExpr::FloatLiteral { .. }
             | IrExpr::IntLiteral { .. } => {}
-            IrExpr::MergeClasses { args, .. } => {
+            IrExpr::Join { args, .. } => {
                 for arg in args {
                     arg.traverse(f);
                 }
@@ -1357,7 +1357,7 @@ impl IrExpr {
             | IrExpr::BooleanLiteral { .. }
             | IrExpr::FloatLiteral { .. }
             | IrExpr::IntLiteral { .. } => {}
-            IrExpr::MergeClasses { args, .. } => {
+            IrExpr::Join { args, .. } => {
                 for arg in args {
                     arg.traverse_mut(f);
                 }

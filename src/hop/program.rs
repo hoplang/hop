@@ -2018,32 +2018,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn should_show_hover_info_for_classes_macro() {
-        check_hover_info(
-            indoc! {r#"
-                -- main.hop --
-                <Main {a: String, b: String}>
-                  <div class={
-                    classes!(a, b)
-                    ^
-                  }>
-                  </div>
-                </Main>
-            "#},
-            expect![[r#"
-                `classes!`
-
-                ---
-
-                Joins strings with spaces
-                  --> main.hop (line 3, col 5)
-                3 |     classes!(a, b)
-                  |     ^^^^^^^
-            "#]],
-        );
-    }
-
     ///////////////////////////////////////////////////////////////////////////
     // ERROR DIAGNOSTICS                                                     //
     ///////////////////////////////////////////////////////////////////////////

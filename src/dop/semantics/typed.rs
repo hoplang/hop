@@ -158,8 +158,8 @@ pub enum TypedExpr {
         kind: Arc<Type>,
     },
 
-    /// Merge CSS classes expression, e.g. classes!(a, b, c)
-    MergeClasses { args: Vec<Self> },
+    /// Join strings with spaces, e.g. join!(a, b, c)
+    Join { args: Vec<Self> },
 
     /// Array length expression, e.g. items.len()
     ArrayLength { array: Box<Self> },
@@ -197,7 +197,7 @@ impl TypedExpr {
 
             TypedExpr::StringConcat { .. }
             | TypedExpr::StringLiteral { .. }
-            | TypedExpr::MergeClasses { .. }
+            | TypedExpr::Join { .. }
             | TypedExpr::IntToString { .. }
             | TypedExpr::FloatToString { .. } => Arc::new(Type::String),
 
@@ -249,7 +249,7 @@ impl TypedExpr {
 
             TypedExpr::StringConcat { .. }
             | TypedExpr::StringLiteral { .. }
-            | TypedExpr::MergeClasses { .. }
+            | TypedExpr::Join { .. }
             | TypedExpr::IntToString { .. }
             | TypedExpr::FloatToString { .. } => &STRING_TYPE,
 
@@ -562,7 +562,7 @@ impl TypedExpr {
                 .append(value.to_doc())
                 .append(BoxDoc::text(" in "))
                 .append(body.to_doc()),
-            TypedExpr::MergeClasses { args } => {
+            TypedExpr::Join { args } => {
                 if args.is_empty() {
                     BoxDoc::text("classes!()")
                 } else {

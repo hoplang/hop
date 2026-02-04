@@ -751,13 +751,13 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value> {
             env.pop();
             Ok(result)
         }
-        IrExpr::MergeClasses { args, .. } => {
+        IrExpr::Join { args, .. } => {
             let mut strings = Vec::with_capacity(args.len());
             for arg in args {
                 let val = evaluate_expr(arg, env)?;
                 match val {
                     Value::String(s) => strings.push(s),
-                    _ => return Err(anyhow!("MergeClasses requires string arguments")),
+                    _ => return Err(anyhow!("Join requires string arguments")),
                 }
             }
             // Just concatenate - tw_merge is applied at TwMerge boundary

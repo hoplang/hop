@@ -1090,7 +1090,7 @@ impl ExpressionTranspiler for GoTranspiler {
             .append(BoxDoc::text("}()"))
     }
 
-    fn transpile_merge_classes<'a>(&mut self, args: &'a [IrExpr]) -> BoxDoc<'a> {
+    fn transpile_join<'a>(&mut self, args: &'a [IrExpr]) -> BoxDoc<'a> {
         if args.is_empty() {
             BoxDoc::text("\"\"")
         } else {

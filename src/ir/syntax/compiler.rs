@@ -581,7 +581,7 @@ impl Compiler {
                 kind: kind.clone(),
                 id: expr_id,
             },
-            TypedExpr::MergeClasses { args } => {
+            TypedExpr::Join { args } => {
                 if args.is_empty() {
                     // Empty classes!() -> empty string
                     IrExpr::StringLiteral {
@@ -590,7 +590,7 @@ impl Compiler {
                     }
                 } else {
                     // Emit N-ary form directly
-                    IrExpr::MergeClasses {
+                    IrExpr::Join {
                         args: args.iter().map(|a| self.compile_expr(a)).collect(),
                         id: expr_id,
                     }

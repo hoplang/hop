@@ -1062,15 +1062,39 @@ pub fn typecheck_expr(
             args,
             ..
         } => match name.as_str() {
-            "classes" | "join" => expand_classes_macro(
-                name.as_str(),
-                args,
-                name_range,
-                var_env,
-                type_env,
-                annotations,
-                definition_links,
-            ),
+            "join" => {
+                // Type-check all arguments, expecting String
+                let mut typed_args = Vec::new();
+                let string_type = Arc::new(Type::String);
+                for arg in args {
+                    let typed = typecheck_expr(
+                        arg,
+                        var_env,
+                        type_env,
+                        annotations,
+                        definition_links,
+                        Some(&string_type),
+                    )?;
+                    // Verify it's actually a String
+                    if typed.as_type() != &Type::String {
+                        return Err(TypeError::MacroArgumentTypeMismatch {
+                            macro_name: name.to_string(),
+                            expected: "String".to_string(),
+                            actual: typed.get_type(),
+                            range: arg.range().clone(),
+                        });
+                    }
+                    typed_args.push(typed);
+                }
+
+                annotations.push(Annotation::Description {
+                    title: "`join!`".to_string(),
+                    description: "Joins strings with spaces".to_string(),
+                    range: name_range.clone(),
+                });
+
+                Ok(TypedExpr::Join { args: typed_args })
+            }
             _ => unreachable!("Unknown macro '{}' should be caught at parse time", name),
         },
         ParsedExpr::MethodCall {
@@ -1115,49 +1139,6 @@ pub fn typecheck_expr(
             }
         }
     }
-}
-
-/// Expand a `classes!` or `join!` macro invocation to a MergeClasses expression.
-fn expand_classes_macro(
-    macro_name: &str,
-    args: &[ParsedExpr],
-    range: &DocumentRange,
-    var_env: &mut Environment<(Arc<Type>, DocumentRange)>,
-    type_env: &mut Environment<(Arc<Type>, DocumentRange)>,
-    annotations: &mut Vec<Annotation>,
-    definition_links: &mut Vec<DefinitionLink>,
-) -> Result<TypedExpr, TypeError> {
-    // Type-check all arguments, expecting String
-    let mut typed_args = Vec::new();
-    let string_type = Arc::new(Type::String);
-    for arg in args {
-        let typed = typecheck_expr(
-            arg,
-            var_env,
-            type_env,
-            annotations,
-            definition_links,
-            Some(&string_type),
-        )?;
-        // Verify it's actually a String
-        if typed.as_type() != &Type::String {
-            return Err(TypeError::MacroArgumentTypeMismatch {
-                macro_name: macro_name.to_string(),
-                expected: "String".to_string(),
-                actual: typed.get_type(),
-                range: arg.range().clone(),
-            });
-        }
-        typed_args.push(typed);
-    }
-
-    annotations.push(Annotation::Description {
-        title: format!("`{}!`", macro_name),
-        description: "Joins strings with spaces".to_string(),
-        range: range.clone(),
-    });
-
-    Ok(TypedExpr::MergeClasses { args: typed_args })
 }
 
 // Typecheck a match expression and compile it to a TypedExpr.
@@ -4570,66 +4551,6 @@ mod tests {
     ///////////////////////////////////////////////////////////////////////////
     // MACROS                                                                //
     ///////////////////////////////////////////////////////////////////////////
-
-    #[test]
-    fn should_accept_classes_macro_with_string_args() {
-        check(
-            "",
-            &[("first", "String"), ("last", "String")],
-            "classes!(first, last)",
-            expect!["String"],
-        );
-    }
-
-    #[test]
-    fn should_accept_classes_macro_with_single_arg() {
-        check(
-            "",
-            &[("name", "String")],
-            "classes!(name)",
-            expect!["String"],
-        );
-    }
-
-    #[test]
-    fn should_accept_classes_macro_with_no_args() {
-        check("", &[], "classes!()", expect!["String"]);
-    }
-
-    #[test]
-    fn should_accept_classes_macro_with_string_literals() {
-        check("", &[], r#"classes!("hello", "world")"#, expect!["String"]);
-    }
-
-    #[test]
-    fn should_reject_classes_macro_with_non_string_arg() {
-        check(
-            "",
-            &[("count", "Int")],
-            "classes!(count)",
-            expect![[r#"
-                error: Macro 'classes' expects String arguments, but got Int
-                classes!(count)
-                         ^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_reject_classes_macro_with_mixed_types() {
-        check(
-            "",
-            &[("name", "String"), ("age", "Int")],
-            "classes!(name, age)",
-            expect![[r#"
-                error: Macro 'classes' expects String arguments, but got Int
-                classes!(name, age)
-                               ^^^
-            "#]],
-        );
-    }
-
-    // join! macro tests (alias for classes!)
 
     #[test]
     fn should_accept_join_macro_with_string_args() {

@@ -939,7 +939,7 @@ fn format_expr<'a>(
         },
         ParsedExpr::MacroInvocation { name, args, .. } => {
             let mut expanded_docs: Vec<DocBuilder<'a, Arena<'a>>> = Vec::new();
-            if name == "classes" || name == "join" {
+            if name == "join" {
                 for e in args.iter() {
                     let leading_comments =
                         drain_comments_before(arena, comments, e.range().start());
@@ -1000,8 +1000,8 @@ fn format_expr<'a>(
                         .append(trailing_comments)
                         .nest(2)
                         .group()
-                } else if name == "classes" || name == "join" {
-                    // Always break classes! macro onto multiple lines for easier
+                } else if name == "join" {
+                    // Always break join! macro onto multiple lines for easier
                     // editing and minimal version control diffs
                     arena
                         .hardline()
@@ -1882,202 +1882,6 @@ mod tests {
     }
 
     #[test]
-    fn component_with_classes_macro_in_class_attribute_to_doc() {
-        check(
-            indoc! {r#"
-                <Card {base_class: String, extra_class: String}>
-                  <div class={classes!(base_class, extra_class)}></div>
-                </Card>
-            "#},
-            expect![[r#"
-                <Card {base_class: String, extra_class: String}>
-                  <div class={
-                    classes!(
-                      base_class,
-                      extra_class,
-                    )
-                  }>
-                  </div>
-                </Card>
-            "#]],
-        );
-    }
-
-    #[test]
-    fn component_with_classes_macro_multiple_classes_to_doc() {
-        check(
-            indoc! {r#"
-                <Button {size_class: String, variant_class: String, custom_class: String}>
-                  <button class={classes!(size_class, variant_class, custom_class)}>Click</button>
-                </Button>
-            "#},
-            expect![[r#"
-                <Button {
-                  size_class: String,
-                  variant_class: String,
-                  custom_class: String,
-                }>
-                  <button class={
-                    classes!(
-                      size_class,
-                      variant_class,
-                      custom_class,
-                    )
-                  }>
-                    Click
-                  </button>
-                </Button>
-            "#]],
-        );
-    }
-
-    #[test]
-    fn component_with_classes_macro_long_args_breaks_to_multiple_lines() {
-        check(
-            indoc! {r#"
-                <Component {base_styles: String, responsive_styles: String, interactive_styles: String, custom_overrides: String}>
-                  <div class={classes!(base_styles, responsive_styles, interactive_styles, custom_overrides)}></div>
-                </Component>
-            "#},
-            expect![[r#"
-                <Component {
-                  base_styles: String,
-                  responsive_styles: String,
-                  interactive_styles: String,
-                  custom_overrides: String,
-                }>
-                  <div class={
-                    classes!(
-                      base_styles,
-                      responsive_styles,
-                      interactive_styles,
-                      custom_overrides,
-                    )
-                  }>
-                  </div>
-                </Component>
-            "#]],
-        );
-    }
-
-    #[test]
-    fn classes_macro_expands_spaces_in_string_literals() {
-        check(
-            indoc! {r#"
-                <Card>
-                  <div class={classes!("foo bar")}></div>
-                </Card>
-            "#},
-            expect![[r#"
-                <Card>
-                  <div class={
-                    classes!(
-                      "foo",
-                      "bar",
-                    )
-                  }>
-                  </div>
-                </Card>
-            "#]],
-        );
-    }
-
-    #[test]
-    fn classes_macro_expands_multiple_spaces_in_string_literals() {
-        check(
-            indoc! {r#"
-                <Card>
-                  <div class={classes!("a b c")}></div>
-                </Card>
-            "#},
-            expect![[r#"
-                <Card>
-                  <div class={
-                    classes!(
-                      "a",
-                      "b",
-                      "c",
-                    )
-                  }>
-                  </div>
-                </Card>
-            "#]],
-        );
-    }
-
-    #[test]
-    fn classes_macro_expands_mixed_variables_and_literals() {
-        check(
-            indoc! {r#"
-                <Card {a: String, b: String, c: String}>
-                  <div class={classes!(a, "foo bar", b, "baz qux", c)}></div>
-                </Card>
-            "#},
-            expect![[r#"
-                <Card {a: String, b: String, c: String}>
-                  <div class={
-                    classes!(
-                      a,
-                      "foo",
-                      "bar",
-                      b,
-                      "baz",
-                      "qux",
-                      c,
-                    )
-                  }>
-                  </div>
-                </Card>
-            "#]],
-        );
-    }
-
-    #[test]
-    fn classes_macro_collapses_multiple_spaces() {
-        check(
-            indoc! {r#"
-                <Card>
-                  <div class={classes!("foo    bar")}></div>
-                </Card>
-            "#},
-            expect![[r#"
-                <Card>
-                  <div class={
-                    classes!(
-                      "foo",
-                      "bar",
-                    )
-                  }>
-                  </div>
-                </Card>
-            "#]],
-        );
-    }
-
-    #[test]
-    fn classes_macro_trims_and_collapses_whitespace() {
-        check(
-            indoc! {r#"
-                <Card>
-                  <div class={classes!("   foo  bar   baz  ")}></div>
-                </Card>
-            "#},
-            expect![[r#"
-                <Card>
-                  <div class={
-                    classes!(
-                      "foo",
-                      "bar",
-                      "baz",
-                    )
-                  }>
-                  </div>
-                </Card>
-            "#]],
-        );
-    }
-
-    #[test]
     fn join_macro_expands_spaces_in_string_literals() {
         check(
             indoc! {r#"
@@ -2829,7 +2633,7 @@ mod tests {
         check(
             indoc! {r#"
                 <Main>
-                  <div class={classes!(
+                  <div class={join!(
                     // base styles
                     "flex",
                     // conditional style
@@ -2841,7 +2645,7 @@ mod tests {
             expect![[r#"
                 <Main>
                   <div class={
-                    classes!(
+                    join!(
                       // base styles
                       "flex",
                       // conditional style
@@ -2860,7 +2664,7 @@ mod tests {
         check(
             indoc! {r#"
                 <Main>
-                  <div class={classes!(
+                  <div class={join!(
                     // base styles
                     "flex items-center",
                     // conditional style
@@ -2872,7 +2676,7 @@ mod tests {
             expect![[r#"
                 <Main>
                   <div class={
-                    classes!(
+                    join!(
                       // base styles
                       "flex",
                       "items-center",
@@ -2939,17 +2743,17 @@ mod tests {
     }
 
     #[test]
-    fn classes_macro_with_multiple_string_literals() {
+    fn join_macro_with_multiple_string_literals() {
         check(
             indoc! {r#"
                 <Main>
-                  <h1 class={classes!("text-4xl", "font-bold", "tracking-tight", "dark:hover:text-blue-300")}>Hello</h1>
+                  <h1 class={join!("text-4xl", "font-bold", "tracking-tight", "dark:hover:text-blue-300")}>Hello</h1>
                 </Main>
             "#},
             expect![[r#"
                 <Main>
                   <h1 class={
-                    classes!(
+                    join!(
                       "text-4xl",
                       "font-bold",
                       "tracking-tight",
@@ -2968,13 +2772,13 @@ mod tests {
         check(
             indoc! {r#"
                 <Main>
-                  <Button class={classes!("text-4xl", "font-bold", "tracking-tight", "dark:hover:text-blue-300")}>Click me</Button>
+                  <Button class={join!("text-4xl", "font-bold", "tracking-tight", "dark:hover:text-blue-300")}>Click me</Button>
                 </Main>
             "#},
             expect![[r#"
                 <Main>
                   <Button class={
-                    classes!(
+                    join!(
                       "text-4xl",
                       "font-bold",
                       "tracking-tight",
