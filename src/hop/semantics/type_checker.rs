@@ -1,5 +1,5 @@
+use super::annotation::TypeAnnotation;
 use super::definition_link::DefinitionLink;
-use super::annotation::Annotation;
 use crate::document::{CheapString, DocumentRange};
 use crate::dop::patterns::compiler::Compiler as PatMatchCompiler;
 use crate::dop::symbols::type_name::TypeName;
@@ -33,7 +33,7 @@ pub fn typecheck(
     modules: &[&ParsedAst],
     state: &mut HashMap<ModuleId, HashMap<String, (Arc<Type>, DocumentRange)>>,
     type_errors: &mut HashMap<ModuleId, ErrorCollector<TypeError>>,
-    type_annotations: &mut HashMap<ModuleId, Vec<Annotation>>,
+    type_annotations: &mut HashMap<ModuleId, Vec<TypeAnnotation>>,
     definition_links: &mut HashMap<ModuleId, Vec<DefinitionLink>>,
     typed_asts: &mut HashMap<ModuleId, TypedAst>,
 ) {
@@ -81,7 +81,7 @@ fn typecheck_module(
     parsed_ast: &ParsedAst,
     state: &mut HashMap<ModuleId, HashMap<String, (Arc<Type>, DocumentRange)>>,
     errors: &mut ErrorCollector<TypeError>,
-    annotations: &mut Vec<Annotation>,
+    annotations: &mut Vec<TypeAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
 ) -> TypedAst {
     let mut type_env: Environment<(Arc<Type>, DocumentRange)> = Environment::new();
@@ -193,7 +193,7 @@ fn typecheck_module(
                             }
                         };
 
-                        annotations.push(Annotation::TypeInfo {
+                        annotations.push(TypeAnnotation::TypeInfo {
                             range: param.var_name_range.clone(),
                             typ: param_type.clone(),
                             name: param.var_name.to_string(),
@@ -251,7 +251,7 @@ fn typecheck_module(
                 );
 
                 // Add type annotation for the component definition opening tag
-                annotations.push(Annotation::TypeInfo {
+                annotations.push(TypeAnnotation::TypeInfo {
                     range: tag_name.clone(),
                     typ: component_type.clone(),
                     name: component_name.as_str().to_string(),
@@ -265,7 +265,7 @@ fn typecheck_module(
 
                 // Add type annotation and definition link for the closing tag if present
                 if let Some(closing_range) = closing_tag_name {
-                    annotations.push(Annotation::TypeInfo {
+                    annotations.push(TypeAnnotation::TypeInfo {
                         range: closing_range.clone(),
                         typ: component_type,
                         name: component_name.as_str().to_string(),
@@ -340,12 +340,8 @@ fn typecheck_module(
                 for variant in variants {
                     let mut typed_fields = Vec::new();
                     for (field_name, _, field_type) in &variant.fields {
-                        match resolve_type(
-                            field_type,
-                            &mut type_env,
-                            annotations,
-                            definition_links,
-                        ) {
+                        match resolve_type(field_type, &mut type_env, annotations, definition_links)
+                        {
                             Ok(resolved_type) => {
                                 typed_fields.push((field_name.clone(), resolved_type));
                             }
@@ -430,7 +426,7 @@ fn typecheck_module(
                         }
                     };
 
-                    annotations.push(Annotation::TypeInfo {
+                    annotations.push(TypeAnnotation::TypeInfo {
                         range: param.var_name_range.clone(),
                         typ: param_type.clone(),
                         name: param.var_name.to_string(),
@@ -467,7 +463,7 @@ fn typecheck_module(
                 }
 
                 // Add type annotation for the entrypoint name
-                annotations.push(Annotation::TypeInfo {
+                annotations.push(TypeAnnotation::TypeInfo {
                     range: name_range.clone(),
                     typ: Arc::new(Type::TrustedHTML),
                     name: name.as_str().to_string(),
@@ -512,7 +508,7 @@ fn typecheck_module(
 fn typecheck_node(
     node: &ParsedNode,
     var_env: &mut Environment<(Arc<Type>, DocumentRange)>,
-    annotations: &mut Vec<Annotation>,
+    annotations: &mut Vec<TypeAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
     errors: &mut ErrorCollector<TypeError>,
     type_env: &mut Environment<(Arc<Type>, DocumentRange)>,
@@ -643,7 +639,7 @@ fn typecheck_node(
                     (element_type.clone(), var_name_range.clone()),
                 ) {
                     Ok(_) => {
-                        annotations.push(Annotation::TypeInfo {
+                        annotations.push(TypeAnnotation::TypeInfo {
                             range: var_name_range.clone(),
                             typ: element_type.clone(),
                             name: var_name.to_string(),
@@ -725,7 +721,7 @@ fn typecheck_node(
                     (resolved_type.clone(), binding.var_name_range.clone()),
                 ) {
                     Ok(_) => {
-                        annotations.push(Annotation::TypeInfo {
+                        annotations.push(TypeAnnotation::TypeInfo {
                             range: binding.var_name_range.clone(),
                             typ: resolved_type.clone(),
                             name: binding.var_name.to_string(),
@@ -881,7 +877,7 @@ fn typecheck_node(
                 name: component_type_name,
                 parameters: component_params.clone(),
             });
-            annotations.push(Annotation::TypeInfo {
+            annotations.push(TypeAnnotation::TypeInfo {
                 range: tag_name.clone(),
                 typ: component_type.clone(),
                 name: component_name.as_str().to_string(),
@@ -889,7 +885,7 @@ fn typecheck_node(
 
             // Add type annotation for the closing tag if present
             if let Some(closing_range) = component_name_closing_range {
-                annotations.push(Annotation::TypeInfo {
+                annotations.push(TypeAnnotation::TypeInfo {
                     range: closing_range.clone(),
                     typ: component_type,
                     name: component_name.as_str().to_string(),
@@ -1165,7 +1161,7 @@ fn typecheck_node(
                     for (name, typ, bind_range) in &bindings {
                         match var_env.push(name.clone(), (typ.clone(), bind_range.clone())) {
                             Ok(_) => {
-                                annotations.push(Annotation::TypeInfo {
+                                annotations.push(TypeAnnotation::TypeInfo {
                                     range: bind_range.clone(),
                                     typ: typ.clone(),
                                     name: name.clone(),
@@ -1256,7 +1252,7 @@ fn typecheck_node(
 fn typecheck_attributes(
     attributes: &[ParsedAttribute],
     var_env: &mut Environment<(Arc<Type>, DocumentRange)>,
-    annotations: &mut Vec<Annotation>,
+    annotations: &mut Vec<TypeAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
     errors: &mut ErrorCollector<TypeError>,
     type_env: &mut Environment<(Arc<Type>, DocumentRange)>,

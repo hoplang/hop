@@ -13,7 +13,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use crate::document::{DocumentRange, Ranged};
+use crate::document::DocumentRange;
 use crate::dop::syntax::parsed::{Constructor, ParsedMatchPattern};
 
 use crate::dop::semantics::r#type::Type;

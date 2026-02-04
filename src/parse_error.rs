@@ -1,4 +1,4 @@
-use crate::document::{CheapString, DocumentRange, Ranged};
+use crate::document::{Annotation, CheapString, DocumentRange};
 use crate::dop::symbols::field_name::InvalidFieldNameError;
 use crate::dop::symbols::type_name::InvalidTypeNameError;
 use crate::dop::symbols::var_name::InvalidVarNameError;
@@ -234,8 +234,8 @@ pub enum ParseError {
     },
 }
 
-impl Ranged for ParseError {
-    fn range(&self) -> &DocumentRange {
+impl ParseError {
+    pub fn range(&self) -> &DocumentRange {
         match self {
             ParseError::UnmatchedClosingTag { range, .. }
             | ParseError::UnmatchedCharacter { range, .. }
@@ -291,5 +291,14 @@ impl Ranged for ParseError {
             | ParseError::ExpectedDeclaration { range }
             | ParseError::UnknownMacro { range, .. } => range,
         }
+    }
+}
+
+impl Annotation for ParseError {
+    fn message(&self) -> String {
+        self.to_string()
+    }
+    fn range(&self) -> &DocumentRange {
+        self.range()
     }
 }

@@ -1,5 +1,5 @@
 use crate::document::DocumentPosition;
-use crate::document::{Document, DocumentRange, Ranged};
+use crate::document::{Document, DocumentRange};
 use crate::dop::{ParsedType, Type};
 use crate::error_collector::ErrorCollector;
 use crate::hop::syntax::format;
@@ -13,8 +13,8 @@ use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+use super::semantics::annotation::TypeAnnotation;
 use super::semantics::definition_link::DefinitionLink;
-use super::semantics::annotation::Annotation;
 use super::semantics::type_checker::typecheck;
 use super::semantics::typed_ast::TypedAst;
 use super::symbols::module_id::ModuleId;
@@ -66,7 +66,7 @@ pub struct Program {
     parsed_asts: HashMap<ModuleId, ParsedAst>,
     typechecker_state: HashMap<ModuleId, HashMap<String, (Arc<Type>, DocumentRange)>>,
     type_errors: HashMap<ModuleId, ErrorCollector<TypeError>>,
-    type_annotations: HashMap<ModuleId, Vec<Annotation>>,
+    type_annotations: HashMap<ModuleId, Vec<TypeAnnotation>>,
     definition_links: HashMap<ModuleId, Vec<DefinitionLink>>,
     typed_asts: HashMap<ModuleId, TypedAst>,
 }

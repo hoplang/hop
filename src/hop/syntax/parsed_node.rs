@@ -2,12 +2,12 @@ use std::fmt::{self, Display};
 
 use pretty::BoxDoc;
 
-use crate::html::is_void_element;
-use crate::document::{CheapString, DocumentRange, Ranged};
+use crate::document::{CheapString, DocumentRange};
 use crate::dop::ParsedExpr;
 use crate::dop::VarName;
 use crate::dop::symbols::type_name::TypeName;
 use crate::dop::syntax::parsed::{ParsedLoopSource, ParsedMatchPattern, ParsedType};
+use crate::html::is_void_element;
 
 use crate::hop::symbols::module_id::ModuleId;
 
@@ -147,6 +147,21 @@ pub enum ParsedNode {
 }
 
 impl ParsedNode {
+    pub fn range(&self) -> &DocumentRange {
+        match self {
+            ParsedNode::Text { range, .. }
+            | ParsedNode::Newline { range }
+            | ParsedNode::TextExpression { range, .. }
+            | ParsedNode::ComponentReference { range, .. }
+            | ParsedNode::If { range, .. }
+            | ParsedNode::For { range, .. }
+            | ParsedNode::Let { range, .. }
+            | ParsedNode::Match { range, .. }
+            | ParsedNode::Html { range, .. }
+            | ParsedNode::Doctype { range, .. } => range,
+        }
+    }
+
     /// Get the direct children of a node.
     pub fn children(&self) -> &[Self] {
         match self {
@@ -422,23 +437,6 @@ impl ParsedNode {
                         .append(BoxDoc::text(">"))
                 }
             }
-        }
-    }
-}
-
-impl Ranged for ParsedNode {
-    fn range(&self) -> &DocumentRange {
-        match self {
-            ParsedNode::Text { range, .. }
-            | ParsedNode::Newline { range }
-            | ParsedNode::TextExpression { range, .. }
-            | ParsedNode::ComponentReference { range, .. }
-            | ParsedNode::If { range, .. }
-            | ParsedNode::For { range, .. }
-            | ParsedNode::Let { range, .. }
-            | ParsedNode::Match { range, .. }
-            | ParsedNode::Html { range, .. }
-            | ParsedNode::Doctype { range, .. } => range,
         }
     }
 }

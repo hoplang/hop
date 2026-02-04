@@ -2,9 +2,9 @@ use std::fmt::{self, Display};
 use std::iter::Peekable;
 
 use super::tokenizer::{Token, Tokenizer};
-use crate::html::is_void_element;
-use crate::document::{DocumentCursor, DocumentRange, Ranged as _};
+use crate::document::{DocumentCursor, DocumentRange};
 use crate::error_collector::ErrorCollector;
+use crate::html::is_void_element;
 use crate::parse_error::ParseError;
 
 /// A TokenTree represents a tree of tokens.

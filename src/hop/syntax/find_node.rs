@@ -1,5 +1,4 @@
 use crate::document::DocumentPosition;
-use crate::document::Ranged;
 
 use super::parsed_ast::ParsedAst;
 use super::parsed_node::ParsedNode;
@@ -79,10 +78,10 @@ fn find_node_at_position_in_node(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::document::Document;
     use crate::document::DocumentAnnotator;
     use crate::document::SimpleAnnotation;
     use crate::document::extract_position::extract_position;
-    use crate::document::{Document, Ranged};
     use crate::error_collector::ErrorCollector;
     use crate::hop::symbols::module_id::ModuleId;
     use crate::hop::syntax::parser::parse;

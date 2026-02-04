@@ -3,10 +3,10 @@ use std::iter::Peekable;
 
 use itertools::Itertools as _;
 
-use crate::html::is_void_element;
-use crate::document::{DocumentCursor, DocumentRange, Ranged};
+use crate::document::{DocumentCursor, DocumentRange};
 use crate::dop;
 use crate::error_collector::ErrorCollector;
+use crate::html::is_void_element;
 use crate::parse_error::ParseError;
 
 #[derive(Debug, Clone)]
@@ -72,8 +72,8 @@ pub enum Token {
     },
 }
 
-impl Ranged for Token {
-    fn range(&self) -> &DocumentRange {
+impl Token {
+    pub fn range(&self) -> &DocumentRange {
         match self {
             Token::Doctype { range }
             | Token::Comment { range }

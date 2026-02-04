@@ -7,11 +7,11 @@ use super::parsed_ast::{
     ParsedRecordDeclaration, ParsedRecordDeclarationField,
 };
 use super::parsed_node::{ParsedLetBinding, ParsedMatchCase, ParsedNode};
-use crate::html::is_void_element;
-use crate::document::{DocumentRange, Ranged};
+use crate::document::DocumentRange;
 use crate::dop::syntax::parsed::{
     Constructor, ParsedExpr, ParsedLoopSource, ParsedMatchArm, ParsedMatchPattern, ParsedType,
 };
+use crate::html::is_void_element;
 use pretty::{Arena, DocAllocator, DocBuilder};
 
 pub fn format(ast: ParsedAst) -> String {
@@ -314,11 +314,7 @@ fn format_entrypoint_declaration<'a>(
             .append(arena.text(",").flat_alt(arena.nil()))
             .nest(2)
             .append(arena.line_());
-        arena
-            .text("(")
-            .append(body)
-            .append(arena.text(")"))
-            .group()
+        arena.text("(").append(body).append(arena.text(")")).group()
     };
 
     leading_comments

@@ -1104,7 +1104,7 @@ pub fn parse_import_declaration(
     errors: &mut ErrorCollector<ParseError>,
     range: &DocumentRange,
 ) -> Option<ParsedDeclaration> {
-    let import_range = expect_token(iter, comments, errors, range, &Token::Import)?;
+    expect_token(iter, comments, errors, range, &Token::Import)?;
     let mut path_segments: Vec<DocumentRange> = Vec::new();
     let first_segment = match next(iter, comments, errors) {
         Some((Token::Identifier(_), seg_range)) | Some((Token::TypeName(_), seg_range)) => {
@@ -1178,7 +1178,6 @@ pub fn parse_import_declaration(
         name_range: name_range.clone(),
         path: path_range,
         module_id,
-        range: import_range.to(name_range),
     })
 }
 
@@ -1333,7 +1332,7 @@ pub fn parse_declaration(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::document::{DocumentAnnotator, Ranged as _, SimpleAnnotation};
+    use crate::document::{DocumentAnnotator, SimpleAnnotation};
     use crate::hop::symbols::module_id::ModuleId;
     use expect_test::{Expect, expect};
     use indoc::indoc;

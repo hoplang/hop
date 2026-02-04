@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 use std::fmt::{self, Display};
 
-use crate::document::{DocumentRange, Ranged};
+use crate::document::DocumentRange;
 use crate::dop::ParsedExpr;
 use crate::dop::ParsedType;
 use crate::dop::VarName;
@@ -380,12 +380,6 @@ pub struct ParsedComponentDeclaration {
     pub range: DocumentRange,
 }
 
-impl Ranged for ParsedComponentDeclaration {
-    fn range(&self) -> &DocumentRange {
-        &self.range
-    }
-}
-
 impl ParsedComponentDeclaration {
     pub fn tag_name_ranges(&self) -> impl Iterator<Item = &DocumentRange> {
         self.closing_tag_name.iter().chain(Some(&self.tag_name))
@@ -435,12 +429,6 @@ pub struct ParsedEntrypointDeclaration {
     pub params: Vec<ParsedParameter>,
     pub children: Vec<ParsedNode>,
     pub range: DocumentRange,
-}
-
-impl Ranged for ParsedEntrypointDeclaration {
-    fn range(&self) -> &DocumentRange {
-        &self.range
-    }
 }
 
 impl ParsedEntrypointDeclaration {

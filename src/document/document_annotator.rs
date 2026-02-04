@@ -1,9 +1,8 @@
 use std::cmp;
-use std::fmt::Display;
 
 use itertools::Itertools as _;
 
-use super::{DocumentCursor, DocumentRange, Ranged};
+use super::{Annotation, DocumentCursor, DocumentRange};
 
 /// Annotator that can display source code with annotations
 pub struct DocumentAnnotator {
@@ -71,7 +70,7 @@ impl DocumentAnnotator {
         annotations: impl IntoIterator<Item = A>,
     ) -> String
     where
-        A: Display + Ranged,
+        A: Annotation,
     {
         let annotations: Vec<A> = annotations.into_iter().collect();
 
@@ -105,9 +104,9 @@ impl DocumentAnnotator {
             }
 
             if let Some(ref label) = self.label {
-                output.push_str(&format!("{}: {}\n", label, annotation));
+                output.push_str(&format!("{}: {}\n", label, annotation.message()));
             } else {
-                output.push_str(&format!("{}\n", annotation));
+                output.push_str(&format!("{}\n", annotation.message()));
             }
 
             if self.show_location {

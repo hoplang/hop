@@ -1,6 +1,6 @@
 use std::fmt::{self, Display};
 
-use crate::document::{CheapString, DocumentRange, Ranged};
+use crate::document::{CheapString, DocumentRange};
 use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::type_name::TypeName;
 use crate::dop::symbols::var_name::VarName;
@@ -36,21 +36,6 @@ pub enum ParsedType {
         name: CheapString,
         range: DocumentRange,
     },
-}
-
-impl Ranged for ParsedType {
-    fn range(&self) -> &DocumentRange {
-        match self {
-            ParsedType::String { range }
-            | ParsedType::Bool { range }
-            | ParsedType::Int { range }
-            | ParsedType::Float { range }
-            | ParsedType::TrustedHTML { range }
-            | ParsedType::Array { range, .. }
-            | ParsedType::Option { range, .. }
-            | ParsedType::Named { range, .. } => range,
-        }
-    }
 }
 
 impl ParsedType {
@@ -149,17 +134,15 @@ pub enum ParsedMatchPattern {
     },
 }
 
-impl Ranged for ParsedMatchPattern {
-    fn range(&self) -> &DocumentRange {
+impl ParsedMatchPattern {
+    pub fn range(&self) -> &DocumentRange {
         match self {
             ParsedMatchPattern::Constructor { range, .. }
             | ParsedMatchPattern::Wildcard { range }
             | ParsedMatchPattern::Binding { range, .. } => range,
         }
     }
-}
 
-impl ParsedMatchPattern {
     pub fn to_doc(&self) -> BoxDoc<'_> {
         match self {
             ParsedMatchPattern::Constructor {
@@ -582,12 +565,6 @@ impl ParsedExpr {
     }
 }
 
-impl Ranged for ParsedExpr {
-    fn range(&self) -> &DocumentRange {
-        self.range()
-    }
-}
-
 impl Display for ParsedExpr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.to_doc().pretty(60))
@@ -613,8 +590,6 @@ pub enum ParsedDeclaration {
         path: DocumentRange,
         /// The parsed module name.
         module_id: ModuleId,
-        /// The full range of the declaration.
-        range: DocumentRange,
     },
     /// A record declaration: `record Name {fields...}`
     Record {
@@ -762,15 +737,5 @@ impl fmt::Display for ParsedDeclaration {
 impl fmt::Debug for ParsedDeclaration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Display::fmt(self, f)
-    }
-}
-
-impl Ranged for ParsedDeclaration {
-    fn range(&self) -> &DocumentRange {
-        match self {
-            ParsedDeclaration::Import { range, .. }
-            | ParsedDeclaration::Record { range, .. }
-            | ParsedDeclaration::Enum { range, .. } => range,
-        }
     }
 }

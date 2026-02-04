@@ -333,7 +333,7 @@ pub fn peek_past_comments(iter: &Peekable<DocumentCursor>) -> Option<(Token, Doc
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::document::{DocumentAnnotator, Ranged as _, SimpleAnnotation};
+    use crate::document::{DocumentAnnotator, SimpleAnnotation};
     use crate::hop::symbols::module_id::ModuleId;
     use expect_test::{Expect, expect};
     use indoc::indoc;

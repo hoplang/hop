@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::document::{CheapString, DocumentRange, Ranged};
+use crate::document::{Annotation, CheapString, DocumentRange};
 use crate::dop::VarName;
 use crate::dop::semantics::r#type::Type;
 use crate::dop::symbols::field_name::FieldName;
@@ -380,10 +380,8 @@ impl TypeError {
             .join(", ");
         TypeError::MissingArguments { args, range }
     }
-}
 
-impl Ranged for TypeError {
-    fn range(&self) -> &DocumentRange {
+    pub fn range(&self) -> &DocumentRange {
         match self {
             TypeError::UndefinedComponent { tag_name: range }
             | TypeError::UndeclaredType { range, .. }
@@ -446,5 +444,14 @@ impl Ranged for TypeError {
             | TypeError::MacroArgumentTypeMismatch { range, .. }
             | TypeError::MethodNotAvailable { range, .. } => range,
         }
+    }
+}
+
+impl Annotation for TypeError {
+    fn message(&self) -> String {
+        self.to_string()
+    }
+    fn range(&self) -> &DocumentRange {
+        self.range()
     }
 }

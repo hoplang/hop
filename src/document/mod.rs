@@ -296,17 +296,24 @@ impl fmt::Display for DocumentRange {
     }
 }
 
-pub trait Ranged {
+pub trait Annotation {
+    fn message(&self) -> String;
     fn range(&self) -> &DocumentRange;
 }
 
-impl<T: Ranged> Ranged for &T {
+impl<T: Annotation> Annotation for &T {
+    fn message(&self) -> String {
+        (*self).message()
+    }
     fn range(&self) -> &DocumentRange {
         (*self).range()
     }
 }
 
-impl Ranged for DocumentRange {
+impl Annotation for DocumentRange {
+    fn message(&self) -> String {
+        self.as_str().to_string()
+    }
     fn range(&self) -> &DocumentRange {
         self
     }

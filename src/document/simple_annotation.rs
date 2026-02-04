@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
 use std::fmt::Display;
 
-use super::{DocumentRange, Ranged};
+use super::{Annotation, DocumentRange};
 
 /// Simple annotation implementation for basic use cases
 #[derive(Clone, Debug)]
@@ -36,7 +36,10 @@ impl Ord for SimpleAnnotation {
     }
 }
 
-impl Ranged for SimpleAnnotation {
+impl Annotation for SimpleAnnotation {
+    fn message(&self) -> String {
+        self.message.clone()
+    }
     fn range(&self) -> &DocumentRange {
         &self.range
     }

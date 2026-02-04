@@ -1,10 +1,10 @@
-use crate::document::{DocumentRange, Ranged};
+use crate::document::{Annotation, DocumentRange};
 use crate::dop::Type;
 use std::fmt::{self, Display};
 use std::sync::Arc;
 
 #[derive(Debug, Clone)]
-pub enum Annotation {
+pub enum TypeAnnotation {
     TypeInfo {
         typ: Arc<Type>,
         name: String,
@@ -17,20 +17,29 @@ pub enum Annotation {
     },
 }
 
-impl Ranged for Annotation {
-    fn range(&self) -> &DocumentRange {
+impl TypeAnnotation {
+    pub fn range(&self) -> &DocumentRange {
         match self {
-            Annotation::TypeInfo { range, .. } => range,
-            Annotation::Description { range, .. } => range,
+            TypeAnnotation::TypeInfo { range, .. } => range,
+            TypeAnnotation::Description { range, .. } => range,
         }
     }
 }
 
-impl Display for Annotation {
+impl Annotation for TypeAnnotation {
+    fn message(&self) -> String {
+        self.to_string()
+    }
+    fn range(&self) -> &DocumentRange {
+        self.range()
+    }
+}
+
+impl Display for TypeAnnotation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Annotation::TypeInfo { name, typ, .. } => write!(f, "`{}`: `{}`", name, typ),
-            Annotation::Description {
+            TypeAnnotation::TypeInfo { name, typ, .. } => write!(f, "`{}`: `{}`", name, typ),
+            TypeAnnotation::Description {
                 title, description, ..
             } => write!(f, "{}\n\n---\n\n{}", title, description),
         }
