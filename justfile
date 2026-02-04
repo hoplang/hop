@@ -21,7 +21,7 @@ build-release:
 	cargo build --release
 
 install: build
-	sudo killall hop
+	sudo killall --quiet hop || true
 	sudo cp target/debug/hop /usr/local/bin/hop
 
 install-release: build-release
