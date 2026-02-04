@@ -181,3 +181,53 @@ impl<'a> Type {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+
+    #[test]
+    fn should_be_equal_when_primitives_are_the_same() {
+        assert_eq!(Type::Bool, Type::Bool);
+        assert_eq!(Type::String, Type::String);
+        assert_eq!(Type::Int, Type::Int);
+        assert_eq!(Type::Float, Type::Float);
+        assert_eq!(Type::TrustedHTML, Type::TrustedHTML);
+    }
+
+    #[test]
+    fn should_not_be_equal_when_primitives_differ() {
+        assert_ne!(Type::Bool, Type::Int);
+        assert_ne!(Type::String, Type::Float);
+        assert_ne!(Type::Int, Type::TrustedHTML);
+    }
+
+    #[test]
+    fn should_be_equal_when_arrays_have_the_same_element_type() {
+        let a = Type::Array(Arc::new(Type::Int));
+        let b = Type::Array(Arc::new(Type::Int));
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn should_not_be_equal_when_arrays_have_different_element_types() {
+        let a = Type::Array(Arc::new(Type::Int));
+        let b = Type::Array(Arc::new(Type::String));
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn should_be_equal_when_options_have_the_same_inner_type() {
+        let a = Type::Option(Arc::new(Type::Bool));
+        let b = Type::Option(Arc::new(Type::Bool));
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn should_not_be_equal_when_options_have_different_inner_types() {
+        let a = Type::Option(Arc::new(Type::Bool));
+        let b = Type::Option(Arc::new(Type::String));
+        assert_ne!(a, b);
+    }
+}
