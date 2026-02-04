@@ -17,24 +17,24 @@ use crate::dop::symbols::var_name::VarName;
 use crate::ir::ast::{IrEntrypointDeclaration, IrExpr, IrForSource, IrModule, IrStatement};
 
 pub trait Transpiler {
+    // Module-level transpilation
     fn transpile_entrypoint<'a>(
         &mut self,
         name: &'a TypeName,
         entrypoint: &'a IrEntrypointDeclaration,
     ) -> BoxDoc<'a>;
     fn transpile_module(&mut self, module: &IrModule) -> String;
-}
 
-pub trait StatementTranspiler {
-    fn transpile_write<'a>(&mut self, content: &'a str) -> BoxDoc<'a>;
-    fn transpile_write_expr<'a>(&mut self, expr: &'a IrExpr, escape: bool) -> BoxDoc<'a>;
-    fn transpile_if<'a>(
+    // Statement transpilation
+    fn transpile_write_statement<'a>(&mut self, content: &'a str) -> BoxDoc<'a>;
+    fn transpile_write_expr_statement<'a>(&mut self, expr: &'a IrExpr, escape: bool) -> BoxDoc<'a>;
+    fn transpile_if_statement<'a>(
         &mut self,
         condition: &'a IrExpr,
         body: &'a [IrStatement],
         else_body: Option<&'a [IrStatement]>,
     ) -> BoxDoc<'a>;
-    fn transpile_for<'a>(
+    fn transpile_for_statement<'a>(
         &mut self,
         var: Option<&'a str>,
         source: &'a IrForSource,
@@ -49,17 +49,19 @@ pub trait StatementTranspiler {
     fn transpile_match_statement<'a>(&mut self, match_: &'a Match<Vec<IrStatement>>) -> BoxDoc<'a>;
     fn transpile_statement<'a>(&mut self, statement: &'a IrStatement) -> BoxDoc<'a> {
         match statement {
-            IrStatement::Write { content, .. } => self.transpile_write(content),
-            IrStatement::WriteExpr { expr, escape, .. } => self.transpile_write_expr(expr, *escape),
+            IrStatement::Write { content, .. } => self.transpile_write_statement(content),
+            IrStatement::WriteExpr { expr, escape, .. } => {
+                self.transpile_write_expr_statement(expr, *escape)
+            }
             IrStatement::If {
                 condition,
                 body,
                 else_body,
                 ..
-            } => self.transpile_if(condition, body, else_body.as_deref()),
+            } => self.transpile_if_statement(condition, body, else_body.as_deref()),
             IrStatement::For {
                 var, source, body, ..
-            } => self.transpile_for(var.as_ref().map(|v| v.as_str()), source, body),
+            } => self.transpile_for_statement(var.as_ref().map(|v| v.as_str()), source, body),
             IrStatement::Let {
                 var, value, body, ..
             } => self.transpile_let_statement(var.as_str(), value, body),
@@ -67,9 +69,8 @@ pub trait StatementTranspiler {
         }
     }
     fn transpile_statements<'a>(&mut self, statements: &'a [IrStatement]) -> BoxDoc<'a>;
-}
 
-pub trait TypeTranspiler {
+    // Type transpilation
     fn transpile_bool_type<'a>(&mut self) -> BoxDoc<'a>;
     fn transpile_string_type<'a>(&mut self) -> BoxDoc<'a>;
     fn transpile_float_type<'a>(&mut self) -> BoxDoc<'a>;
@@ -93,10 +94,8 @@ pub trait TypeTranspiler {
             Type::Component { name, .. } => self.transpile_named_type(name.as_str()),
         }
     }
-}
 
-/// Expression transpilation trait using pretty-printing
-pub trait ExpressionTranspiler {
+    // Expression transpilation
     fn transpile_var<'a>(&mut self, name: &'a str) -> BoxDoc<'a>;
     fn transpile_field_access<'a>(
         &mut self,

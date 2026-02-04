@@ -1,6 +1,6 @@
 use pretty::BoxDoc;
 
-use super::{ExpressionTranspiler, StatementTranspiler, Transpiler, TypeTranspiler};
+use super::Transpiler;
 use crate::dop::VarName;
 use crate::dop::patterns::{EnumPattern, Match};
 use crate::dop::semantics::r#type::Type;
@@ -307,16 +307,14 @@ impl Transpiler for PythonTranspiler {
             )
             .append(BoxDoc::line())
     }
-}
 
-impl StatementTranspiler for PythonTranspiler {
-    fn transpile_write<'a>(&mut self, content: &'a str) -> BoxDoc<'a> {
+    fn transpile_write_statement<'a>(&mut self, content: &'a str) -> BoxDoc<'a> {
         BoxDoc::text("output.append(\"")
             .append(BoxDoc::text(self.escape_string(content)))
             .append(BoxDoc::text("\")"))
     }
 
-    fn transpile_write_expr<'a>(&mut self, expr: &'a IrExpr, escape: bool) -> BoxDoc<'a> {
+    fn transpile_write_expr_statement<'a>(&mut self, expr: &'a IrExpr, escape: bool) -> BoxDoc<'a> {
         if escape {
             self.needs_html_escape = true;
             BoxDoc::text("output.append(html_escape(")
@@ -339,7 +337,7 @@ impl StatementTranspiler for PythonTranspiler {
         }
     }
 
-    fn transpile_if<'a>(
+    fn transpile_if_statement<'a>(
         &mut self,
         condition: &'a IrExpr,
         body: &'a [IrStatement],
@@ -369,7 +367,7 @@ impl StatementTranspiler for PythonTranspiler {
         doc
     }
 
-    fn transpile_for<'a>(
+    fn transpile_for_statement<'a>(
         &mut self,
         var: Option<&'a str>,
         source: &'a IrForSource,
@@ -554,9 +552,7 @@ impl StatementTranspiler for PythonTranspiler {
         }
         BoxDoc::intersperse(docs, BoxDoc::hardline())
     }
-}
 
-impl ExpressionTranspiler for PythonTranspiler {
     fn transpile_var<'a>(&mut self, name: &'a str) -> BoxDoc<'a> {
         BoxDoc::text(name)
     }
@@ -974,9 +970,7 @@ impl ExpressionTranspiler for PythonTranspiler {
             .append(self.transpile_expr(value))
             .append(BoxDoc::text(")"))
     }
-}
 
-impl TypeTranspiler for PythonTranspiler {
     fn transpile_bool_type<'a>(&mut self) -> BoxDoc<'a> {
         BoxDoc::text("bool")
     }

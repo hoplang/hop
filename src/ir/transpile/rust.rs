@@ -1,6 +1,6 @@
 use pretty::BoxDoc;
 
-use super::{ExpressionTranspiler, StatementTranspiler, Transpiler, TypeTranspiler};
+use super::Transpiler;
 use crate::dop::patterns::{EnumPattern, Match};
 use crate::dop::semantics::r#type::Type;
 use crate::dop::symbols::field_name::FieldName;
@@ -297,16 +297,14 @@ impl Transpiler for RustTranspiler {
             .append(BoxDoc::text("}"))
             .append(BoxDoc::hardline())
     }
-}
 
-impl StatementTranspiler for RustTranspiler {
-    fn transpile_write<'a>(&mut self, content: &'a str) -> BoxDoc<'a> {
+    fn transpile_write_statement<'a>(&mut self, content: &'a str) -> BoxDoc<'a> {
         BoxDoc::text("output.push_str(\"")
             .append(BoxDoc::text(self.escape_string(content)))
             .append(BoxDoc::text("\");"))
     }
 
-    fn transpile_write_expr<'a>(&mut self, expr: &'a IrExpr, escape: bool) -> BoxDoc<'a> {
+    fn transpile_write_expr_statement<'a>(&mut self, expr: &'a IrExpr, escape: bool) -> BoxDoc<'a> {
         let expr_type = expr.as_type();
 
         if escape {
@@ -342,7 +340,7 @@ impl StatementTranspiler for RustTranspiler {
         }
     }
 
-    fn transpile_if<'a>(
+    fn transpile_if_statement<'a>(
         &mut self,
         condition: &'a IrExpr,
         body: &'a [IrStatement],
@@ -374,7 +372,7 @@ impl StatementTranspiler for RustTranspiler {
         doc
     }
 
-    fn transpile_for<'a>(
+    fn transpile_for_statement<'a>(
         &mut self,
         var: Option<&'a str>,
         source: &'a IrForSource,
@@ -564,9 +562,7 @@ impl StatementTranspiler for RustTranspiler {
         }
         BoxDoc::intersperse(docs, BoxDoc::hardline())
     }
-}
 
-impl TypeTranspiler for RustTranspiler {
     fn transpile_bool_type<'a>(&mut self) -> BoxDoc<'a> {
         BoxDoc::text("bool")
     }
@@ -607,9 +603,7 @@ impl TypeTranspiler for RustTranspiler {
     fn transpile_enum_type<'a>(&mut self, name: &'a str) -> BoxDoc<'a> {
         BoxDoc::text(name)
     }
-}
 
-impl ExpressionTranspiler for RustTranspiler {
     fn transpile_var<'a>(&mut self, name: &'a str) -> BoxDoc<'a> {
         BoxDoc::text(name)
     }

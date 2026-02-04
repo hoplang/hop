@@ -1,6 +1,6 @@
 use pretty::BoxDoc;
 
-use super::{ExpressionTranspiler, StatementTranspiler, Transpiler, TypeTranspiler};
+use super::Transpiler;
 use crate::dop::patterns::{EnumPattern, Match};
 use crate::dop::semantics::r#type::Type;
 use crate::dop::symbols::field_name::FieldName;
@@ -343,17 +343,15 @@ impl Transpiler for TsTranspiler {
             )
             .append(BoxDoc::text("}"))
     }
-}
 
-impl StatementTranspiler for TsTranspiler {
-    fn transpile_write<'a>(&mut self, content: &'a str) -> BoxDoc<'a> {
+    fn transpile_write_statement<'a>(&mut self, content: &'a str) -> BoxDoc<'a> {
         BoxDoc::nil()
             .append(BoxDoc::text("output += "))
             .append(BoxDoc::as_string(self.quote_string(content)))
             .append(BoxDoc::text(";"))
     }
 
-    fn transpile_write_expr<'a>(&mut self, expr: &'a IrExpr, escape: bool) -> BoxDoc<'a> {
+    fn transpile_write_expr_statement<'a>(&mut self, expr: &'a IrExpr, escape: bool) -> BoxDoc<'a> {
         if escape {
             self.needs_escape_html = true;
             BoxDoc::nil()
@@ -368,7 +366,7 @@ impl StatementTranspiler for TsTranspiler {
         }
     }
 
-    fn transpile_if<'a>(
+    fn transpile_if_statement<'a>(
         &mut self,
         condition: &'a IrExpr,
         body: &'a [IrStatement],
@@ -403,7 +401,7 @@ impl StatementTranspiler for TsTranspiler {
         doc
     }
 
-    fn transpile_for<'a>(
+    fn transpile_for_statement<'a>(
         &mut self,
         var: Option<&'a str>,
         source: &'a IrForSource,
@@ -642,9 +640,7 @@ impl StatementTranspiler for TsTranspiler {
         }
         BoxDoc::intersperse(docs, BoxDoc::hardline())
     }
-}
 
-impl ExpressionTranspiler for TsTranspiler {
     fn transpile_var<'a>(&mut self, name: &'a str) -> BoxDoc<'a> {
         BoxDoc::text(name)
     }
@@ -1164,9 +1160,7 @@ impl ExpressionTranspiler for TsTranspiler {
         // In JavaScript, all numbers are floats, so no conversion needed
         self.transpile_expr(value)
     }
-}
 
-impl TypeTranspiler for TsTranspiler {
     fn transpile_bool_type<'a>(&mut self) -> BoxDoc<'a> {
         BoxDoc::text("boolean")
     }
