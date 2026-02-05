@@ -152,7 +152,7 @@ impl ParsedMatchPattern {
             } => {
                 let base = constructor.to_doc();
                 if !fields.is_empty() {
-                    // Record pattern: User(name: x, age: y)
+                    // Record pattern: User{name: x, age: y}
                     let fields_doc = BoxDoc::intersperse(
                         fields.iter().map(|(name, _, pat)| {
                             BoxDoc::text(name.as_str())
@@ -161,9 +161,9 @@ impl ParsedMatchPattern {
                         }),
                         BoxDoc::text(", "),
                     );
-                    base.append(BoxDoc::text("("))
+                    base.append(BoxDoc::text("{"))
                         .append(fields_doc)
-                        .append(BoxDoc::text(")"))
+                        .append(BoxDoc::text("}"))
                 } else if args.is_empty() {
                     base
                 } else {
@@ -446,10 +446,10 @@ impl ParsedExpr {
                 ..
             } => {
                 if fields.is_empty() {
-                    BoxDoc::text(record_name.as_str()).append(BoxDoc::text("()"))
+                    BoxDoc::text(record_name.as_str()).append(BoxDoc::text(" {}"))
                 } else {
                     BoxDoc::text(record_name.as_str())
-                        .append(BoxDoc::text("("))
+                        .append(BoxDoc::text(" {"))
                         .append(
                             BoxDoc::line_()
                                 .append(BoxDoc::intersperse(
@@ -465,7 +465,7 @@ impl ParsedExpr {
                                 .nest(2)
                                 .group(),
                         )
-                        .append(BoxDoc::text(")"))
+                        .append(BoxDoc::text("}"))
                 }
             }
             ParsedExpr::BinaryOp {
@@ -497,7 +497,7 @@ impl ParsedExpr {
                 if fields.is_empty() {
                     base
                 } else {
-                    base.append(BoxDoc::text("("))
+                    base.append(BoxDoc::text(" {"))
                         .append(BoxDoc::intersperse(
                             fields.iter().map(|(field_name, _, field_value)| {
                                 BoxDoc::text(field_name.to_string())
@@ -506,7 +506,7 @@ impl ParsedExpr {
                             }),
                             BoxDoc::text(", "),
                         ))
-                        .append(BoxDoc::text(")"))
+                        .append(BoxDoc::text("}"))
                 }
             }
             ParsedExpr::Match { subject, arms, .. } => {
@@ -690,7 +690,7 @@ impl ParsedDeclaration {
                                     BoxDoc::text(variant_name.to_string())
                                 } else {
                                     BoxDoc::text(variant_name.to_string())
-                                        .append(BoxDoc::text("("))
+                                        .append(BoxDoc::text(" {"))
                                         .append(BoxDoc::intersperse(
                                             fields.iter().map(|(field_name, _, field_type)| {
                                                 BoxDoc::text(field_name.to_string())
@@ -699,7 +699,7 @@ impl ParsedDeclaration {
                                             }),
                                             BoxDoc::text(", "),
                                         ))
-                                        .append(BoxDoc::text(")"))
+                                        .append(BoxDoc::text("}"))
                                 }
                             }),
                             BoxDoc::text(",").append(BoxDoc::line()),

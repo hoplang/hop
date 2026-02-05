@@ -245,7 +245,7 @@ impl TypedNode {
                                 if arm.bindings.is_empty() {
                                     base
                                 } else {
-                                    base.append(BoxDoc::text("("))
+                                    base.append(BoxDoc::text("{"))
                                         .append(BoxDoc::intersperse(
                                             arm.bindings.iter().map(|(field, var)| {
                                                 BoxDoc::text(field.as_str())
@@ -254,7 +254,7 @@ impl TypedNode {
                                             }),
                                             BoxDoc::text(", "),
                                         ))
-                                        .append(BoxDoc::text(")"))
+                                        .append(BoxDoc::text("}"))
                                 }
                             }
                         };

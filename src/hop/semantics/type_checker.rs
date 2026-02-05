@@ -3128,7 +3128,7 @@ mod tests {
                 import bar::User
                 import foo::Address
                 <Baz>
-                    <Bar user={User(name: "Alice", address: Address(city: "NYC"))} />
+                    <Bar user={User{name: "Alice", address: Address{city: "NYC"}}} />
                 </Baz>
             "#},
             expect![[r#"
@@ -3153,7 +3153,7 @@ mod tests {
 
                 -- baz.hop --
                 <Baz>
-                  <Bar user={User(name: "Alice", address: Address(city: "NYC"))}/>
+                  <Bar user={User {name: "Alice", address: Address {city: "NYC"}}}/>
                 </Baz>
             "#]],
         );
@@ -3702,7 +3702,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 record Config { name: String, enabled: Bool }
-                <Settings {config: Config = Config(name: "default", enabled: true)}>
+                <Settings {config: Config = Config{name: "default", enabled: true}}>
                   {config.name}
                 </Settings>
                 <Main>
@@ -3716,7 +3716,7 @@ mod tests {
                   enabled: Bool,
                 }
 
-                <Settings {config: main::Config = Config(name: "default", enabled: true)}>
+                <Settings {config: main::Config = Config {name: "default", enabled: true}}>
                   {config.name}
                 </Settings>
 
@@ -3732,10 +3732,10 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                enum Status { Active(since: Int), Inactive, Pending }
-                <Badge {status: Status = Status::Active(since: 2000)}>
+                enum Status { Active{since: Int}, Inactive, Pending }
+                <Badge {status: Status = Status::Active{since: 2000}}>
                   {match status {
-                    Status::Active(since: _) => "active",
+                    Status::Active{since: _} => "active",
                     _ => "not active",
                   }}
                 </Badge>
@@ -3746,12 +3746,12 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 enum Status {
-                  Active(since: Int),
+                  Active{since: Int},
                   Inactive,
                   Pending,
                 }
 
-                <Badge {status: main::Status = Status::Active(since: 2000)}>
+                <Badge {status: main::Status = Status::Active {since: 2000}}>
                   {match status {
                     Status::Active => "active",
                     Status::Inactive => "not active",
@@ -3967,10 +3967,10 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                enum Status { Active(name: String), Inactive }
+                enum Status { Active{name: String}, Inactive }
                 <Main>
-                    <match {Status::Active(name: "test")}>
-                        <case {Status::Active(name: n)}>
+                    <match {Status::Active{name: "test"}}>
+                        <case {Status::Active{name: n}}>
                             {n}
                         </case>
                         <case {Status::Inactive}>
@@ -3982,14 +3982,14 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 enum Status {
-                  Active(name: String),
+                  Active{name: String},
                   Inactive,
                 }
 
                 <Main>
-                  <let {v_0 = Status::Active(name: "test")}>
+                  <let {v_0 = Status::Active {name: "test"}}>
                     <match {v_0}>
-                      <case {Status::Active(name: v_1)}>
+                      <case {Status::Active{name: v_1}}>
                         <let {n = v_1}>
                           {n}
                         </let>
@@ -4285,7 +4285,7 @@ mod tests {
                 record User { role: Role, created_at: Int }
                 <Main {user: User}>
                     <match {user}>
-                        <case {User(role: Role(title: _, salary: _), created_at: _)}>matched</case>
+                        <case {User{role: Role{title: _, salary: _}, created_at: _}}>matched</case>
                         <case {_}>fallback</case>
                     </match>
                 </Main>
@@ -4293,7 +4293,7 @@ mod tests {
             expect![[r#"
                 error: Unreachable match arm for variant '_'
                   --> main.hop (line 6, col 16)
-                5 |         <case {User(role: Role(title: _, salary: _), created_at: _)}>matched</case>
+                5 |         <case {User{role: Role{title: _, salary: _}, created_at: _}}>matched</case>
                 6 |         <case {_}>fallback</case>
                   |                ^
             "#]],
@@ -4309,7 +4309,7 @@ mod tests {
                 record User { role: Role, created_at: Int }
                 <Main {user: User}>
                     <match {user}>
-                        <case {User(role: Role(title: _, salary: _), created_at: _)}>matched</case>
+                        <case {User{role: Role{title: _, salary: _}, created_at: _}}>matched</case>
                     </match>
                 </Main>
             "#},

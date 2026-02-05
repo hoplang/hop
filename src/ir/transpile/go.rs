@@ -1636,7 +1636,7 @@ mod tests {
                 }
                 CreateUser() {
                   write("<div>")
-                  write_escaped(User(name: "John", age: 30).name)
+                  write_escaped(User {name: "John", age: 30}.name)
                   write("</div>")
                 }
 
@@ -2038,12 +2038,12 @@ mod tests {
             expect![[r#"
                 -- before --
                 enum Result {
-                  Ok(value: Int),
-                  Err(message: String),
+                  Ok {value: Int},
+                  Err {message: String},
                 }
                 ShowResult(r: test::Result) {
                   write("<div>")
-                  let ok = Result::Ok(value: 42) in {
+                  let ok = Result::Ok {value: 42} in {
                     write_expr("Created Ok!")
                   }
                   write("</div>")
@@ -2145,8 +2145,8 @@ mod tests {
             expect![[r#"
                 -- before --
                 enum Result {
-                  Ok(value: String),
-                  Err(message: String),
+                  Ok {value: String},
+                  Err {message: String},
                 }
                 ShowResult(r: test::Result) {
                   match r {

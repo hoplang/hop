@@ -320,10 +320,10 @@ impl TypedExpr {
                 ..
             } => {
                 if fields.is_empty() {
-                    BoxDoc::text(record_name.as_str()).append(BoxDoc::text("()"))
+                    BoxDoc::text(record_name.as_str()).append(BoxDoc::text(" {}"))
                 } else {
                     BoxDoc::text(record_name.as_str())
-                        .append(BoxDoc::text("("))
+                        .append(BoxDoc::text(" {"))
                         .append(
                             BoxDoc::line_()
                                 .append(BoxDoc::intersperse(
@@ -339,7 +339,7 @@ impl TypedExpr {
                                 .nest(2)
                                 .group(),
                         )
-                        .append(BoxDoc::text(")"))
+                        .append(BoxDoc::text("}"))
                 }
             }
             TypedExpr::StringConcat { left, right, .. } => BoxDoc::nil()
@@ -436,7 +436,7 @@ impl TypedExpr {
                 if fields.is_empty() {
                     base
                 } else {
-                    base.append(BoxDoc::text("("))
+                    base.append(BoxDoc::text(" {"))
                         .append(BoxDoc::intersperse(
                             fields.iter().map(|(name, expr)| {
                                 BoxDoc::text(name.as_str())
@@ -445,7 +445,7 @@ impl TypedExpr {
                             }),
                             BoxDoc::text(", "),
                         ))
-                        .append(BoxDoc::text(")"))
+                        .append(BoxDoc::text("}"))
                 }
             }
             TypedExpr::OptionLiteral { value, .. } => match value {

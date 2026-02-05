@@ -2031,7 +2031,7 @@ mod tests {
                 }
 
                 entrypoint Test {
-                  <let {person: Person = Person(name: "Alice", age: 30)}>
+                  <let {person: Person = Person {name: "Alice", age: 30}}>
                     {person.name}
                     <if {person.age == 30}>
                       :30
@@ -2047,7 +2047,7 @@ mod tests {
                   age: Int,
                 }
                 Test() {
-                  let person = Person(name: "Alice", age: 30) in {
+                  let person = Person {name: "Alice", age: 30} in {
                     write_escaped(person.name)
                     if (person.age == 30) {
                       write(":30")
@@ -2060,7 +2060,7 @@ mod tests {
                   age: Int,
                 }
                 Test() {
-                  let person = Person(name: "Alice", age: 30) in {
+                  let person = Person {name: "Alice", age: 30} in {
                     write_escaped(person.name)
                     if (person.age == 30) {
                       write(":30")
@@ -2110,10 +2110,10 @@ mod tests {
 
                 entrypoint Test {
                   <let {
-                    person: Person = Person(
+                    person: Person = Person {
                       name: "Alice",
-                      address: Address(city: "Paris", zip: "75001"),
-                    ),
+                      address: Address {city: "Paris", zip: "75001"},
+                    },
                   }>
                     {person.name},{person.address.city}
                   </let>
@@ -2131,10 +2131,10 @@ mod tests {
                   address: Address,
                 }
                 Test() {
-                  let person = Person(
+                  let person = Person {
                     name: "Alice",
-                    address: Address(city: "Paris", zip: "75001"),
-                  ) in {
+                    address: Address {city: "Paris", zip: "75001"},
+                  } in {
                     write_escaped(person.name)
                     write(",")
                     write_escaped(person.address.city)
@@ -2150,10 +2150,10 @@ mod tests {
                   address: Address,
                 }
                 Test() {
-                  let person = Person(
+                  let person = Person {
                     name: "Alice",
-                    address: Address(city: "Paris", zip: "75001"),
-                  ) in {
+                    address: Address {city: "Paris", zip: "75001"},
+                  } in {
                     write_escaped(person.name)
                     write(",")
                     write_escaped(person.address.city)
@@ -3084,17 +3084,19 @@ mod tests {
         check(
             indoc! {r#"
                 enum Outcome {
-                  Success(value: String),
-                  Failure(message: String),
+                  Success {value: String},
+                  Failure {message: String},
                 }
 
                 entrypoint Test {
-                  <let {result: Outcome = Outcome::Success(value: "hello")}>
+                  <let {
+                    result: Outcome = Outcome::Success {value: "hello"},
+                  }>
                     <match {result}>
-                      <case {Outcome::Success(value: v)}>
+                      <case {Outcome::Success {value: v}}>
                         Ok:{v}
                       </case>
-                      <case {Outcome::Failure(message: m)}>
+                      <case {Outcome::Failure {message: m}}>
                         Err:{m}
                       </case>
                     </match>
@@ -3105,11 +3107,11 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 enum Outcome {
-                  Success(value: String),
-                  Failure(message: String),
+                  Success {value: String},
+                  Failure {message: String},
                 }
                 Test() {
-                  let result = Outcome::Success(value: "hello") in {
+                  let result = Outcome::Success {value: "hello"} in {
                     match result {
                       Outcome::Success(value: v_0) => {
                         let v = v_0 in {
@@ -3128,11 +3130,11 @@ mod tests {
                 }
                 -- ir (optimized) --
                 enum Outcome {
-                  Success(value: String),
-                  Failure(message: String),
+                  Success {value: String},
+                  Failure {message: String},
                 }
                 Test() {
-                  let result = Outcome::Success(value: "hello") in {
+                  let result = Outcome::Success {value: "hello"} in {
                     match result {
                       Outcome::Success(value: v_0) => {
                         let v = v_0 in {
@@ -3181,19 +3183,19 @@ mod tests {
         check(
             indoc! {r#"
                 enum Outcome {
-                  Success(value: String),
-                  Failure(message: String),
+                  Success {value: String},
+                  Failure {message: String},
                 }
 
                 entrypoint Test {
                   <let {
-                    result: Outcome = Outcome::Failure(message: "something went wrong"),
+                    result: Outcome = Outcome::Failure {message: "something went wrong"},
                   }>
                     <match {result}>
-                      <case {Outcome::Success(value: v)}>
+                      <case {Outcome::Success {value: v}}>
                         Ok:{v}
                       </case>
-                      <case {Outcome::Failure(message: m)}>
+                      <case {Outcome::Failure {message: m}}>
                         Err:{m}
                       </case>
                     </match>
@@ -3204,11 +3206,11 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 enum Outcome {
-                  Success(value: String),
-                  Failure(message: String),
+                  Success {value: String},
+                  Failure {message: String},
                 }
                 Test() {
-                  let result = Outcome::Failure(message: "something went wrong") in {
+                  let result = Outcome::Failure {message: "something went wrong"} in {
                     match result {
                       Outcome::Success(value: v_0) => {
                         let v = v_0 in {
@@ -3227,11 +3229,11 @@ mod tests {
                 }
                 -- ir (optimized) --
                 enum Outcome {
-                  Success(value: String),
-                  Failure(message: String),
+                  Success {value: String},
+                  Failure {message: String},
                 }
                 Test() {
-                  let result = Outcome::Failure(message: "something went wrong") in {
+                  let result = Outcome::Failure {message: "something went wrong"} in {
                     match result {
                       Outcome::Success(value: v_0) => {
                         let v = v_0 in {
@@ -3280,19 +3282,19 @@ mod tests {
         check(
             indoc! {r#"
                 enum Response {
-                  Win(code: String, body: String),
-                  Lose(reason: String),
+                  Win {code: String, body: String},
+                  Lose {reason: String},
                 }
 
                 entrypoint Test {
                   <let {
-                    resp: Response = Response::Win(code: "200", body: "OK"),
+                    resp: Response = Response::Win {code: "200", body: "OK"},
                   }>
                     <match {resp}>
-                      <case {Response::Win(code: c, body: b)}>
+                      <case {Response::Win {code: c, body: b}}>
                         {c}:{b}
                       </case>
-                      <case {Response::Lose(reason: r)}>
+                      <case {Response::Lose {reason: r}}>
                         Error:{r}
                       </case>
                     </match>
@@ -3303,11 +3305,11 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 enum Response {
-                  Win(code: String, body: String),
-                  Lose(reason: String),
+                  Win {code: String, body: String},
+                  Lose {reason: String},
                 }
                 Test() {
-                  let resp = Response::Win(code: "200", body: "OK") in {
+                  let resp = Response::Win {code: "200", body: "OK"} in {
                     match resp {
                       Response::Win(code: v_0, body: v_1) => {
                         let c = v_0 in {
@@ -3329,11 +3331,11 @@ mod tests {
                 }
                 -- ir (optimized) --
                 enum Response {
-                  Win(code: String, body: String),
-                  Lose(reason: String),
+                  Win {code: String, body: String},
+                  Lose {reason: String},
                 }
                 Test() {
-                  let resp = Response::Win(code: "200", body: "OK") in {
+                  let resp = Response::Win {code: "200", body: "OK"} in {
                     match resp {
                       Response::Win(code: v_0, body: v_1) => {
                         let c = v_0 in {
@@ -5191,17 +5193,19 @@ mod tests {
         check(
             indoc! {r#"
                 enum Outcome {
-                  Success(value: String),
-                  Failure(message: String),
+                  Success {value: String},
+                  Failure {message: String},
                 }
 
                 entrypoint Test {
-                  <let {result: Outcome = Outcome::Success(value: "hello")}>
+                  <let {
+                    result: Outcome = Outcome::Success {value: "hello"},
+                  }>
                     <match {result}>
-                      <case {Outcome::Success(value: _)}>
+                      <case {Outcome::Success {value: _}}>
                         ok
                       </case>
-                      <case {Outcome::Failure(message: _)}>
+                      <case {Outcome::Failure {message: _}}>
                         err
                       </case>
                     </match>
@@ -5212,11 +5216,11 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 enum Outcome {
-                  Success(value: String),
-                  Failure(message: String),
+                  Success {value: String},
+                  Failure {message: String},
                 }
                 Test() {
-                  let result = Outcome::Success(value: "hello") in {
+                  let result = Outcome::Success {value: "hello"} in {
                     match result {
                       Outcome::Success => {
                         write("ok")
@@ -5229,11 +5233,11 @@ mod tests {
                 }
                 -- ir (optimized) --
                 enum Outcome {
-                  Success(value: String),
-                  Failure(message: String),
+                  Success {value: String},
+                  Failure {message: String},
                 }
                 Test() {
-                  let result = Outcome::Success(value: "hello") in {
+                  let result = Outcome::Success {value: "hello"} in {
                     match result {
                       Outcome::Success => {
                         write("ok")
@@ -5277,19 +5281,19 @@ mod tests {
         check(
             indoc! {r#"
                 enum Outcome {
-                  Success(value: String),
-                  Failure(message: String),
+                  Success {value: String},
+                  Failure {message: String},
                 }
 
                 entrypoint Test {
                   <let {
-                    result: Outcome = Outcome::Failure(message: "failed"),
+                    result: Outcome = Outcome::Failure {message: "failed"},
                   }>
                     <match {result}>
-                      <case {Outcome::Success(value: _)}>
+                      <case {Outcome::Success {value: _}}>
                         ok
                       </case>
-                      <case {Outcome::Failure(message: _)}>
+                      <case {Outcome::Failure {message: _}}>
                         err
                       </case>
                     </match>
@@ -5300,11 +5304,11 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 enum Outcome {
-                  Success(value: String),
-                  Failure(message: String),
+                  Success {value: String},
+                  Failure {message: String},
                 }
                 Test() {
-                  let result = Outcome::Failure(message: "failed") in {
+                  let result = Outcome::Failure {message: "failed"} in {
                     match result {
                       Outcome::Success => {
                         write("ok")
@@ -5317,11 +5321,11 @@ mod tests {
                 }
                 -- ir (optimized) --
                 enum Outcome {
-                  Success(value: String),
-                  Failure(message: String),
+                  Success {value: String},
+                  Failure {message: String},
                 }
                 Test() {
-                  let result = Outcome::Failure(message: "failed") in {
+                  let result = Outcome::Failure {message: "failed"} in {
                     match result {
                       Outcome::Success => {
                         write("ok")
@@ -5370,9 +5374,9 @@ mod tests {
                 }
 
                 entrypoint Test {
-                  <let {person: Person = Person(name: "Alice", age: 30)}>
+                  <let {person: Person = Person {name: "Alice", age: 30}}>
                     <match {person}>
-                      <case {Person(name: _, age: a)}>
+                      <case {Person {name: _, age: a}}>
                         age:{a.to_string()}
                       </case>
                     </match>
@@ -5387,7 +5391,7 @@ mod tests {
                   age: Int,
                 }
                 Test() {
-                  let person = Person(name: "Alice", age: 30) in {
+                  let person = Person {name: "Alice", age: 30} in {
                     let v_1 = person.age in {
                       let a = v_1 in {
                         write("age:")
@@ -5402,7 +5406,7 @@ mod tests {
                   age: Int,
                 }
                 Test() {
-                  let person = Person(name: "Alice", age: 30) in {
+                  let person = Person {name: "Alice", age: 30} in {
                     let v_1 = person.age in {
                       let a = v_1 in {
                         write("age:")
@@ -5555,27 +5559,27 @@ mod tests {
         check(
             indoc! {r#"
                 enum Inner {
-                  Success(value: String),
-                  Failure(message: String),
+                  Success {value: String},
+                  Failure {message: String},
                 }
 
                 enum Outer {
-                  Success(value: Inner),
-                  Failure(message: String),
+                  Success {value: Inner},
+                  Failure {message: String},
                 }
 
                 entrypoint Test {
                   <let {
-                    result: Outer = Outer::Success(value: Inner::Success(value: "deep")),
+                    result: Outer = Outer::Success {value: Inner::Success {value: "deep"}},
                   }>
                     <match {result}>
-                      <case {Outer::Success(value: Inner::Success(value: _))}>
+                      <case {Outer::Success {value: Inner::Success {value: _}}}>
                         ok-ok
                       </case>
-                      <case {Outer::Success(value: Inner::Failure(message: _))}>
+                      <case {Outer::Success {value: Inner::Failure {message: _}}}>
                         ok-err
                       </case>
-                      <case {Outer::Failure(message: _)}>
+                      <case {Outer::Failure {message: _}}>
                         err
                       </case>
                     </match>
@@ -5586,15 +5590,15 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 enum Inner {
-                  Success(value: String),
-                  Failure(message: String),
+                  Success {value: String},
+                  Failure {message: String},
                 }
                 enum Outer {
-                  Success(value: test::Inner),
-                  Failure(message: String),
+                  Success {value: test::Inner},
+                  Failure {message: String},
                 }
                 Test() {
-                  let result = Outer::Success(value: Inner::Success(value: "deep")) in {
+                  let result = Outer::Success {value: Inner::Success {value: "deep"}} in {
                     match result {
                       Outer::Success(value: v_0) => {
                         match v_0 {
@@ -5614,15 +5618,15 @@ mod tests {
                 }
                 -- ir (optimized) --
                 enum Inner {
-                  Success(value: String),
-                  Failure(message: String),
+                  Success {value: String},
+                  Failure {message: String},
                 }
                 enum Outer {
-                  Success(value: test::Inner),
-                  Failure(message: String),
+                  Success {value: test::Inner},
+                  Failure {message: String},
                 }
                 Test() {
-                  let result = Outer::Success(value: Inner::Success(value: "deep")) in {
+                  let result = Outer::Success {value: Inner::Success {value: "deep"}} in {
                     match result {
                       Outer::Success(value: v_0) => {
                         match v_0 {
@@ -6590,8 +6594,8 @@ mod tests {
                 entrypoint Test {
                   <let {
                     items: Array[Item] = [
-                      Item(name: "a", value: "1"),
-                      Item(name: "b", value: "2"),
+                      Item {name: "a", value: "1"},
+                      Item {name: "b", value: "2"},
                     ],
                   }>
                     <for {item in items}>
@@ -6611,8 +6615,8 @@ mod tests {
                 }
                 Test() {
                   let items = [
-                    Item(name: "a", value: "1"),
-                    Item(name: "b", value: "2"),
+                    Item {name: "a", value: "1"},
+                    Item {name: "b", value: "2"},
                   ] in {
                     for item in items {
                       let n = item.name in {
@@ -6630,8 +6634,8 @@ mod tests {
                 }
                 Test() {
                   let items = [
-                    Item(name: "a", value: "1"),
-                    Item(name: "b", value: "2"),
+                    Item {name: "a", value: "1"},
+                    Item {name: "b", value: "2"},
                   ] in {
                     for item in items {
                       let n = item.name in {
@@ -6685,11 +6689,14 @@ mod tests {
                 entrypoint Test {
                   <let {
                     people: Array[Person] = [
-                      Person(
+                      Person {
                         name: "alice",
-                        address: Address(city: "paris"),
-                      ),
-                      Person(name: "bob", address: Address(city: "london")),
+                        address: Address {city: "paris"},
+                      },
+                      Person {
+                        name: "bob",
+                        address: Address {city: "london"},
+                      },
                     ],
                   }>
                     <for {person in people}>
@@ -6712,8 +6719,11 @@ mod tests {
                 }
                 Test() {
                   let people = [
-                    Person(name: "alice", address: Address(city: "paris")),
-                    Person(name: "bob", address: Address(city: "london")),
+                    Person {
+                      name: "alice",
+                      address: Address {city: "paris"},
+                    },
+                    Person {name: "bob", address: Address {city: "london"}},
                   ] in {
                     for person in people {
                       let city = person.address.city in {
@@ -6734,8 +6744,11 @@ mod tests {
                 }
                 Test() {
                   let people = [
-                    Person(name: "alice", address: Address(city: "paris")),
-                    Person(name: "bob", address: Address(city: "london")),
+                    Person {
+                      name: "alice",
+                      address: Address {city: "paris"},
+                    },
+                    Person {name: "bob", address: Address {city: "london"}},
                   ] in {
                     for person in people {
                       let city = person.address.city in {
@@ -6789,12 +6802,12 @@ mod tests {
                 entrypoint Test {
                   <let {
                     sources: Array[Source] = [
-                      Source(name: "a", value: "1"),
-                      Source(name: "b", value: "2"),
+                      Source {name: "a", value: "1"},
+                      Source {name: "b", value: "2"},
                     ],
                   }>
                     <for {src in sources}>
-                      <let {target: Target = Target(label: src.name)}>
+                      <let {target: Target = Target {label: src.name}}>
                         [{target.label}]
                       </let>
                     </for>
@@ -6813,11 +6826,11 @@ mod tests {
                 }
                 Test() {
                   let sources = [
-                    Source(name: "a", value: "1"),
-                    Source(name: "b", value: "2"),
+                    Source {name: "a", value: "1"},
+                    Source {name: "b", value: "2"},
                   ] in {
                     for src in sources {
-                      let target = Target(label: src.name) in {
+                      let target = Target {label: src.name} in {
                         write("[")
                         write_escaped(target.label)
                         write("]")
@@ -6835,11 +6848,11 @@ mod tests {
                 }
                 Test() {
                   let sources = [
-                    Source(name: "a", value: "1"),
-                    Source(name: "b", value: "2"),
+                    Source {name: "a", value: "1"},
+                    Source {name: "b", value: "2"},
                   ] in {
                     for src in sources {
-                      let target = Target(label: src.name) in {
+                      let target = Target {label: src.name} in {
                         write("[")
                         write_escaped(target.label)
                         write("]")
@@ -6884,7 +6897,10 @@ mod tests {
 
                 entrypoint Test {
                   <let {
-                    items: Array[Item] = [Item(name: "a"), Item(name: "b")],
+                    items: Array[Item] = [
+                      Item {name: "a"},
+                      Item {name: "b"},
+                    ],
                   }>
                     <for {item in items}>
                       <let {opt: Option[String] = Some(item.name)}>
@@ -6908,7 +6924,7 @@ mod tests {
                   name: String,
                 }
                 Test() {
-                  let items = [Item(name: "a"), Item(name: "b")] in {
+                  let items = [Item {name: "a"}, Item {name: "b"}] in {
                     for item in items {
                       let opt = Option[String]::Some(item.name) in {
                         match opt {
@@ -6932,7 +6948,7 @@ mod tests {
                   name: String,
                 }
                 Test() {
-                  let items = [Item(name: "a"), Item(name: "b")] in {
+                  let items = [Item {name: "a"}, Item {name: "b"}] in {
                     for item in items {
                       let opt = Option[String]::Some(item.name) in {
                         match opt {
@@ -7047,7 +7063,7 @@ mod tests {
 
                 entrypoint Test {
                   <let {
-                    g: Greeting = Greeting(message: "hello" + " world"),
+                    g: Greeting = Greeting {message: "hello" + " world"},
                   }>
                     {g.message}
                   </let>
@@ -7060,7 +7076,7 @@ mod tests {
                   message: String,
                 }
                 Test() {
-                  let g = Greeting(message: ("hello" + " world")) in {
+                  let g = Greeting {message: ("hello" + " world")} in {
                     write_escaped(g.message)
                   }
                 }
@@ -7069,7 +7085,7 @@ mod tests {
                   message: String,
                 }
                 Test() {
-                  let g = Greeting(message: "hello world") in {
+                  let g = Greeting {message: "hello world"} in {
                     write_escaped(g.message)
                   }
                 }
@@ -7170,7 +7186,7 @@ mod tests {
                 }
 
                 entrypoint Test {
-                  <let {c: Container = Container(items: ["a", "b"])}>
+                  <let {c: Container = Container {items: ["a", "b"]}}>
                     <for {item in c.items}>
                       [{item}]
                     </for>
@@ -7184,7 +7200,7 @@ mod tests {
                   items: Array[String],
                 }
                 Test() {
-                  let c = Container(items: ["a", "b"]) in {
+                  let c = Container {items: ["a", "b"]} in {
                     for item in c.items {
                       write("[")
                       write_escaped(item)
@@ -7197,7 +7213,7 @@ mod tests {
                   items: Array[String],
                 }
                 Test() {
-                  let c = Container(items: ["a", "b"]) in {
+                  let c = Container {items: ["a", "b"]} in {
                     for item in c.items {
                       write("[")
                       write_escaped(item)
@@ -7241,7 +7257,7 @@ mod tests {
                 }
 
                 entrypoint Test {
-                  <let {l: Label = Label(text: 42.to_string())}>
+                  <let {l: Label = Label {text: 42.to_string()}}>
                     [{l.text}]
                   </let>
                 }
@@ -7253,7 +7269,7 @@ mod tests {
                   text: String,
                 }
                 Test() {
-                  let l = Label(text: 42.to_string()) in {
+                  let l = Label {text: 42.to_string()} in {
                     write("[")
                     write_escaped(l.text)
                     write("]")
@@ -7264,7 +7280,7 @@ mod tests {
                   text: String,
                 }
                 Test() {
-                  let l = Label(text: 42.to_string()) in {
+                  let l = Label {text: 42.to_string()} in {
                     write("[")
                     write_escaped(l.text)
                     write("]")
@@ -7310,7 +7326,9 @@ mod tests {
                 }
 
                 entrypoint Test {
-                  <let {o: Outer = Outer(inner: Inner(values: ["x", "y"]))}>
+                  <let {
+                    o: Outer = Outer {inner: Inner {values: ["x", "y"]}},
+                  }>
                     <for {v in o.inner.values}>
                       [{v}]
                     </for>
@@ -7327,7 +7345,7 @@ mod tests {
                   inner: Inner,
                 }
                 Test() {
-                  let o = Outer(inner: Inner(values: ["x", "y"])) in {
+                  let o = Outer {inner: Inner {values: ["x", "y"]}} in {
                     for v in o.inner.values {
                       write("[")
                       write_escaped(v)
@@ -7343,7 +7361,7 @@ mod tests {
                   inner: Inner,
                 }
                 Test() {
-                  let o = Outer(inner: Inner(values: ["x", "y"])) in {
+                  let o = Outer {inner: Inner {values: ["x", "y"]}} in {
                     for v in o.inner.values {
                       write("[")
                       write_escaped(v)
@@ -7387,7 +7405,7 @@ mod tests {
                 }
 
                 entrypoint Test {
-                  <let {x: Foo = Foo(a: "hello"), y: Foo = Foo(a: x.a)}>
+                  <let {x: Foo = Foo {a: "hello"}, y: Foo = Foo {a: x.a}}>
                     [{x.a}][{y.a}]
                   </let>
                 }
@@ -7399,8 +7417,8 @@ mod tests {
                   a: String,
                 }
                 Test() {
-                  let x = Foo(a: "hello") in {
-                    let y = Foo(a: x.a) in {
+                  let x = Foo {a: "hello"} in {
+                    let y = Foo {a: x.a} in {
                       write("[")
                       write_escaped(x.a)
                       write("][")
@@ -7414,8 +7432,8 @@ mod tests {
                   a: String,
                 }
                 Test() {
-                  let x = Foo(a: "hello") in {
-                    let y = Foo(a: x.a) in {
+                  let x = Foo {a: "hello"} in {
+                    let y = Foo {a: x.a} in {
                       write("[")
                       write_escaped(x.a)
                       write("][")
@@ -7460,7 +7478,7 @@ mod tests {
                 }
 
                 entrypoint Test {
-                  <let {x: Foo = Foo(a: "hello"), b: Bool = true}>
+                  <let {x: Foo = Foo {a: "hello"}, b: Bool = true}>
                     <let {
                       result: String = match b {
                         true => x.a,
@@ -7479,7 +7497,7 @@ mod tests {
                   a: String,
                 }
                 Test() {
-                  let x = Foo(a: "hello") in {
+                  let x = Foo {a: "hello"} in {
                     let b = true in {
                       let result = match b {
                         true => x.a,
@@ -7499,7 +7517,7 @@ mod tests {
                   a: String,
                 }
                 Test() {
-                  let x = Foo(a: "hello") in {
+                  let x = Foo {a: "hello"} in {
                     let b = true in {
                       let result = match b {
                         true => x.a,

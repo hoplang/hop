@@ -215,7 +215,7 @@ fn format_enum_declaration_variant<'a>(
     } else {
         leading_comments
             .append(arena.text(variant.name.as_str()))
-            .append(arena.text("("))
+            .append(arena.text(" {"))
             .append(arena.intersperse(
                 variant.fields.iter().map(|(field_name, _, field_type)| {
                     arena
@@ -225,7 +225,7 @@ fn format_enum_declaration_variant<'a>(
                 }),
                 arena.text(", "),
             ))
-            .append(arena.text(")"))
+            .append(arena.text("}"))
     }
 }
 
@@ -805,7 +805,7 @@ fn format_expr<'a>(
             ..
         } => {
             if fields.is_empty() {
-                arena.text(record_name.as_str()).append(arena.text("()"))
+                arena.text(record_name.as_str()).append(arena.text(" {}"))
             } else {
                 let mut fields_doc = arena.nil();
                 for (i, (key, value)) in fields.iter().enumerate() {
@@ -819,9 +819,9 @@ fn format_expr<'a>(
                 }
                 arena
                     .text(record_name.as_str())
-                    .append(arena.text("("))
+                    .append(arena.text(" {"))
                     .append(soft_block(arena, fields_doc))
-                    .append(arena.text(")"))
+                    .append(arena.text("}"))
             }
         }
         expr @ ParsedExpr::BinaryOp {
@@ -866,9 +866,9 @@ fn format_expr<'a>(
                         .append(arena.text(": "))
                         .append(format_expr(arena, field_value, comments));
                 }
-                base.append(arena.text("("))
+                base.append(arena.text(" {"))
                     .append(fields_doc)
-                    .append(arena.text(")"))
+                    .append(arena.text("}"))
             }
         }
         ParsedExpr::Match { subject, arms, .. } => {
@@ -1069,9 +1069,9 @@ fn format_match_pattern<'a>(
                     }),
                     arena.text(", "),
                 );
-                base.append(arena.text("("))
+                base.append(arena.text("{"))
                     .append(fields_doc)
-                    .append(arena.text(")"))
+                    .append(arena.text("}"))
             } else if args.is_empty() {
                 base
             } else {
@@ -1297,13 +1297,13 @@ mod tests {
     }
 
     #[test]
-    fn match_pattern_with_empty_parens_omits_parens() {
-        // Empty parens in enum patterns should be normalized away
+    fn match_pattern_with_empty_braces_omits_braces() {
+        // Empty braces in enum patterns should be normalized away
         check(
             indoc! {r#"
                 enum Color { Red }
                 <Main {color: Color}>
-                  <div class={match color { Color::Red() => "red" }}></div>
+                  <div class={match color { Color::Red{} => "red" }}></div>
                 </Main>
             "#},
             expect![[r#"
@@ -1320,11 +1320,11 @@ mod tests {
     }
 
     #[test]
-    fn enum_declaration_with_empty_parens_omits_parens() {
-        // Empty parens in enum declarations should be normalized away
+    fn enum_declaration_with_empty_braces_omits_braces() {
+        // Empty braces in enum declarations should be normalized away
         check(
             indoc! {r#"
-                enum Foo { Bar() }
+                enum Foo { Bar{} }
                 <Main></Main>
             "#},
             expect![[r#"
@@ -1739,7 +1739,7 @@ mod tests {
         check(
             indoc! {r#"
                 record Config { debug: Bool, timeout: Int }
-                <Settings {config: Config = Config(debug: false, timeout: 30)}>
+                <Settings {config: Config = Config {debug: false, timeout: 30}}>
                 </Settings>
             "#},
             expect![[r#"
@@ -1749,7 +1749,7 @@ mod tests {
                 }
 
                 <Settings {
-                  config: Config = Config(debug: false, timeout: 30),
+                  config: Config = Config {debug: false, timeout: 30},
                 }>
                 </Settings>
             "#]],
@@ -1773,6 +1773,101 @@ mod tests {
 
                 <Badge {status: Status = Status::Active}>
                 </Badge>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn record_literal_in_expression_to_doc() {
+        check(
+            indoc! {r#"
+                record User { name: String, age: Int }
+                <Main>
+                  <let {user: User = User {name: "Alice", age: 30}}>
+                    {user.name}
+                  </let>
+                </Main>
+            "#},
+            expect![[r#"
+                record User {
+                  name: String,
+                  age: Int,
+                }
+
+                <Main>
+                  <let {user: User = User {name: "Alice", age: 30}}>
+                    {user.name}
+                  </let>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn empty_record_literal_to_doc() {
+        check(
+            indoc! {"
+                record Empty {}
+                <Main>
+                  <let {e: Empty = Empty {}}>
+                  </let>
+                </Main>
+            "},
+            expect![[r#"
+                record Empty {}
+
+                <Main>
+                  <let {e: Empty = Empty {}}>
+                  </let>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn enum_literal_with_fields_to_doc() {
+        check(
+            indoc! {r#"
+                enum Shape { Circle {radius: Float}, Rect {w: Float, h: Float} }
+                <Main>
+                  <let {s: Shape = Shape::Circle {radius: 5.0}}>
+                  </let>
+                </Main>
+            "#},
+            expect![[r#"
+                enum Shape {
+                  Circle {radius: Float},
+                  Rect {w: Float, h: Float},
+                }
+
+                <Main>
+                  <let {s: Shape = Shape::Circle {radius: 5.0}}>
+                  </let>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn enum_literal_with_multiple_fields_to_doc() {
+        check(
+            indoc! {"
+                enum Shape { Circle {radius: Float}, Rect {w: Float, h: Float} }
+                <Main>
+                  <let {s: Shape = Shape::Rect {w: 3.0, h: 4.0}}>
+                  </let>
+                </Main>
+            "},
+            expect![[r#"
+                enum Shape {
+                  Circle {radius: Float},
+                  Rect {w: Float, h: Float},
+                }
+
+                <Main>
+                  <let {s: Shape = Shape::Rect {w: 3.0, h: 4.0}}>
+                  </let>
+                </Main>
             "#]],
         );
     }
@@ -3254,10 +3349,10 @@ mod tests {
             indoc! {r#"
                 record LoginLogo { url: String, name: String }
 
-                entrypoint LoginFormEntry(x: String = "foo bar, lorem ipsum dolor sit amet", logo: LoginLogo = LoginLogo(
+                entrypoint LoginFormEntry(x: String = "foo bar, lorem ipsum dolor sit amet", logo: LoginLogo = LoginLogo {
                   url: "/home",
                   name: "Acme Inc.",
-                )) {
+                }) {
                   <div>
                     <div class="flex w-full max-w-sm flex-col gap-6">
                       <a
@@ -3281,10 +3376,10 @@ mod tests {
 
                 entrypoint LoginFormEntry(
                   x: String = "foo bar, lorem ipsum dolor sit amet",
-                  logo: LoginLogo = LoginLogo(
+                  logo: LoginLogo = LoginLogo {
                     url: "/home",
                     name: "Acme Inc.",
-                  ),
+                  },
                 ) {
                   <div>
                     <div class="flex w-full max-w-sm flex-col gap-6">

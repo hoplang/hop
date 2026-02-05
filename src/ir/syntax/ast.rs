@@ -895,10 +895,10 @@ impl IrExpr {
                 ..
             } => {
                 if fields.is_empty() {
-                    BoxDoc::text(record_name.as_str()).append(BoxDoc::text("()"))
+                    BoxDoc::text(record_name.as_str()).append(BoxDoc::text(" {}"))
                 } else {
                     BoxDoc::text(record_name.as_str())
-                        .append(BoxDoc::text("("))
+                        .append(BoxDoc::text(" {"))
                         .append(
                             BoxDoc::line_()
                                 .append(BoxDoc::intersperse(
@@ -914,7 +914,7 @@ impl IrExpr {
                                 .nest(2)
                                 .group(),
                         )
-                        .append(BoxDoc::text(")"))
+                        .append(BoxDoc::text("}"))
                 }
             }
             IrExpr::StringConcat { left, right, .. } => BoxDoc::nil()
@@ -993,7 +993,7 @@ impl IrExpr {
                 if fields.is_empty() {
                     base
                 } else {
-                    base.append(BoxDoc::text("("))
+                    base.append(BoxDoc::text(" {"))
                         .append(BoxDoc::intersperse(
                             fields.iter().map(|(name, expr)| {
                                 BoxDoc::text(name.as_str())
@@ -1002,7 +1002,7 @@ impl IrExpr {
                             }),
                             BoxDoc::text(", "),
                         ))
-                        .append(BoxDoc::text(")"))
+                        .append(BoxDoc::text("}"))
                 }
             }
             IrExpr::OptionLiteral { value, kind, .. } => {
@@ -1056,11 +1056,11 @@ impl IrExpr {
                                                                 format!("{}: {}", field, var)
                                                             })
                                                             .collect();
-                                                        base.append(BoxDoc::text("("))
+                                                        base.append(BoxDoc::text(" {"))
                                                             .append(BoxDoc::text(
                                                                 bindings_str.join(", "),
                                                             ))
-                                                            .append(BoxDoc::text(")"))
+                                                            .append(BoxDoc::text("}"))
                                                     }
                                                 }
                                             };
@@ -1461,7 +1461,7 @@ impl fmt::Display for IrEnumDeclaration {
                     .iter()
                     .map(|(name, typ)| format!("{}: {}", name, typ))
                     .collect();
-                writeln!(f, "  {}({}),", variant_name.as_str(), fields_str.join(", "))?;
+                writeln!(f, "  {} {{{}}},", variant_name.as_str(), fields_str.join(", "))?;
             }
         }
         write!(f, "}}")

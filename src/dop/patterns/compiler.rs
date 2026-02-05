@@ -209,7 +209,7 @@ struct VarInfo {
     /// Constructor arguments: (sub_var_name, optional_field_name).
     /// - `Some(v0)` → `[("v0", None)]`
     /// - `None` → `[]`
-    /// - `Foo(a: v0, b: v1)` → `[("v0", Some("a")), ("v1", Some("b"))]`
+    /// - `Foo{a: v0, b: v1}` → `[("v0", Some("a")), ("v1", Some("b"))]`
     args: Vec<(VarName, Option<String>)>,
 }
 
@@ -762,6 +762,7 @@ impl<'a> Compiler<'a> {
         if info.args.is_empty() {
             return info.constructor.clone();
         }
+        let has_named_fields = info.args.iter().any(|(_, f)| f.is_some());
         let args = info
             .args
             .iter()
@@ -775,7 +776,11 @@ impl<'a> Compiler<'a> {
             .collect::<Vec<_>>()
             .join(", ");
 
-        format!("{}({})", info.constructor, args)
+        if has_named_fields {
+            format!("{}{{{}}}", info.constructor, args)
+        } else {
+            format!("{}({})", info.constructor, args)
+        }
     }
 
     /// Validates that a pattern is compatible with a given type.
@@ -1080,7 +1085,7 @@ mod tests {
                                 format!("{}: {}", b.field_name, name)
                             })
                             .collect();
-                        format!("({})", named.join(", "))
+                        format!("{{{}}}", named.join(", "))
                     };
                     out.push_str(&format!(
                         "{}{} is {}::{}{}\n",
@@ -1103,7 +1108,7 @@ mod tests {
                             format!("{}: {}", b.field_name, name)
                         })
                         .collect();
-                    format!("({})", named.join(", "))
+                    format!("{{{}}}", named.join(", "))
                 };
                 out.push_str(&format!(
                     "{}{} is {}{}\n",
@@ -1436,15 +1441,15 @@ mod tests {
             },
             indoc! {"
                 match x {
-                    Outcome::Success(value: v) => 0,
-                    Outcome::Failure(message: m) => 1,
+                    Outcome::Success{value: v} => 0,
+                    Outcome::Failure{message: m} => 1,
                 }
             "},
             expect![[r#"
-                x is Outcome::Success(value: v_0)
+                x is Outcome::Success{value: v_0}
                   let v = v_0
                   branch 0
-                x is Outcome::Failure(message: v_1)
+                x is Outcome::Failure{message: v_1}
                   let m = v_1
                   branch 1
             "#]],
@@ -1467,12 +1472,12 @@ mod tests {
             },
             indoc! {"
                 match x {
-                    Maybe::Just(value: v) => 0,
+                    Maybe::Just{value: v} => 0,
                     Maybe::Nothing => 1,
                 }
             "},
             expect![[r#"
-                x is Maybe::Just(value: v_0)
+                x is Maybe::Just{value: v_0}
                   let v = v_0
                   branch 0
                 x is Maybe::Nothing
@@ -1500,14 +1505,14 @@ mod tests {
             },
             indoc! {"
                 match x {
-                    Outcome::Success(value: _) => 0,
-                    Outcome::Failure(message: _) => 1,
+                    Outcome::Success{value: _} => 0,
+                    Outcome::Failure{message: _} => 1,
                 }
             "},
             expect![[r#"
-                x is Outcome::Success(value: _)
+                x is Outcome::Success{value: _}
                   branch 0
-                x is Outcome::Failure(message: _)
+                x is Outcome::Failure{message: _}
                   branch 1
             "#]],
         );
@@ -1536,16 +1541,16 @@ mod tests {
             },
             indoc! {"
                 match x {
-                    Status::Pending(since: s) => 0,
-                    Status::Active(id: i, name: n) => 1,
+                    Status::Pending{since: s} => 0,
+                    Status::Active{id: i, name: n} => 1,
                     Status::Inactive => 2,
                 }
             "},
             expect![[r#"
-                x is Status::Pending(since: v_0)
+                x is Status::Pending{since: v_0}
                   let s = v_0
                   branch 0
-                x is Status::Active(id: v_1, name: v_2)
+                x is Status::Active{id: v_1, name: v_2}
                   let i = v_1
                   let n = v_2
                   branch 1
@@ -1572,11 +1577,11 @@ mod tests {
             },
             indoc! {"
                 match x {
-                    Point3D::Coords(x: a, y: b, z: c) => 0,
+                    Point3D::Coords{x: a, y: b, z: c} => 0,
                 }
             "},
             expect![[r#"
-                x is Point3D::Coords(x: v_0, y: v_1, z: v_2)
+                x is Point3D::Coords{x: v_0, y: v_1, z: v_2}
                   let a = v_0
                   let b = v_1
                   let c = v_2
@@ -1602,11 +1607,11 @@ mod tests {
             },
             indoc! {"
                 match x {
-                    Point3D::Coords(x: _, y: _, z: _) => 0,
+                    Point3D::Coords{x: _, y: _, z: _} => 0,
                 }
             "},
             expect![[r#"
-                x is Point3D::Coords(x: _, y: _, z: _)
+                x is Point3D::Coords{x: _, y: _, z: _}
                   branch 0
             "#]],
         );
@@ -1629,11 +1634,11 @@ mod tests {
             },
             indoc! {"
                 match x {
-                    Point3D::Coords(x: a, y: _, z: c) => 0,
+                    Point3D::Coords{x: a, y: _, z: c} => 0,
                 }
             "},
             expect![[r#"
-                x is Point3D::Coords(x: v_0, y: _, z: v_2)
+                x is Point3D::Coords{x: v_0, y: _, z: v_2}
                   let a = v_0
                   let c = v_2
                   branch 0
@@ -1720,15 +1725,15 @@ mod tests {
             },
             indoc! {"
                 match x {
-                    Status::Pending(since: s) => 0,
+                    Status::Pending{since: s} => 0,
                     _ => 1,
                 }
             "},
             expect![[r#"
-                x is Status::Pending(since: v_0)
+                x is Status::Pending{since: v_0}
                   let s = v_0
                   branch 0
-                x is Status::Active(id: v_1)
+                x is Status::Active{id: v_1}
                   branch 1
                 x is Status::Inactive
                   branch 1
@@ -1755,11 +1760,11 @@ mod tests {
             },
             indoc! {"
                 match x {
-                    Outcome::Success(value: v) => 0,
+                    Outcome::Success{value: v} => 0,
                 }
             "},
             expect![[r#"
-                error: Match expression is missing arms for: Outcome::Failure(message: _)
+                error: Match expression is missing arms for: Outcome::Failure{message: _}
                 match x {
                       ^
             "#]],
@@ -1786,11 +1791,11 @@ mod tests {
             },
             indoc! {"
                 match x {
-                    Status::Pending(since: _) => 0,
+                    Status::Pending{since: _} => 0,
                 }
             "},
             expect![[r#"
-                error: Match expression is missing arms for: Status::Active(id: _), Status::Inactive
+                error: Match expression is missing arms for: Status::Active{id: _}, Status::Inactive
                 match x {
                       ^
             "#]],
@@ -1816,14 +1821,14 @@ mod tests {
             },
             indoc! {"
                 match x {
-                    Outcome::Success(value: v) => 0,
-                    Outcome::Success(value: w) => 1,
-                    Outcome::Failure(message: _) => 2,
+                    Outcome::Success{value: v} => 0,
+                    Outcome::Success{value: w} => 1,
+                    Outcome::Failure{message: _} => 2,
                 }
             "},
             expect![[r#"
-                error: Unreachable match arm for variant 'Outcome::Success(value: w)'
-                    Outcome::Success(value: w) => 1,
+                error: Unreachable match arm for variant 'Outcome::Success{value: w}'
+                    Outcome::Success{value: w} => 1,
                     ^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
         );
@@ -1849,12 +1854,12 @@ mod tests {
             indoc! {"
                 match x {
                     _ => 0,
-                    Outcome::Success(value: v) => 1,
+                    Outcome::Success{value: v} => 1,
                 }
             "},
             expect![[r#"
-                error: Unreachable match arm for variant 'Outcome::Success(value: v)'
-                    Outcome::Success(value: v) => 1,
+                error: Unreachable match arm for variant 'Outcome::Success{value: v}'
+                    Outcome::Success{value: v} => 1,
                     ^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
         );
@@ -1879,13 +1884,13 @@ mod tests {
             },
             indoc! {"
                 match x {
-                    Outcome::Success(unknown: v) => 0,
-                    Outcome::Failure(message: _) => 1,
+                    Outcome::Success{unknown: v} => 0,
+                    Outcome::Failure{message: _} => 1,
                 }
             "},
             expect![[r#"
                 error: Unknown field 'unknown' in enum variant 'Outcome::Success'
-                    Outcome::Success(unknown: v) => 0,
+                    Outcome::Success{unknown: v} => 0,
                                      ^^^^^^^
             "#]],
         );
@@ -1907,12 +1912,12 @@ mod tests {
             },
             indoc! {"
                 match x {
-                    Point::XY(x: a, unknown: b) => 0,
+                    Point::XY{x: a, unknown: b} => 0,
                 }
             "},
             expect![[r#"
                 error: Unknown field 'unknown' in enum variant 'Point::XY'
-                    Point::XY(x: a, unknown: b) => 0,
+                    Point::XY{x: a, unknown: b} => 0,
                                     ^^^^^^^
             "#]],
         );
@@ -1934,12 +1939,12 @@ mod tests {
             },
             indoc! {"
                 match x {
-                    Point::XY(foo: a, bar: b) => 0,
+                    Point::XY{foo: a, bar: b} => 0,
                 }
             "},
             expect![[r#"
                 error: Unknown field 'foo' in enum variant 'Point::XY'
-                    Point::XY(foo: a, bar: b) => 0,
+                    Point::XY{foo: a, bar: b} => 0,
                               ^^^
             "#]],
         );
@@ -1961,12 +1966,12 @@ mod tests {
             },
             indoc! {"
                 match x {
-                    Point::XY(x: a) => 0,
+                    Point::XY{x: a} => 0,
                 }
             "},
             expect![[r#"
                 error: Enum variant 'Point::XY' is missing fields: y
-                    Point::XY(x: a) => 0,
+                    Point::XY{x: a} => 0,
                     ^^^^^^^^^
             "#]],
         );
@@ -1989,12 +1994,12 @@ mod tests {
             },
             indoc! {"
                 match x {
-                    Point::XYZ(x: a) => 0,
+                    Point::XYZ{x: a} => 0,
                 }
             "},
             expect![[r#"
                 error: Enum variant 'Point::XYZ' is missing fields: y, z
-                    Point::XYZ(x: a) => 0,
+                    Point::XYZ{x: a} => 0,
                     ^^^^^^^^^^
             "#]],
         );
@@ -2043,13 +2048,13 @@ mod tests {
             },
             indoc! {"
                 match x {
-                    Maybe::Just(value: v) => 0,
-                    Maybe::Nothing(value: v) => 1,
+                    Maybe::Just{value: v} => 0,
+                    Maybe::Nothing{value: v} => 1,
                 }
             "},
             expect![[r#"
                 error: Unknown field 'value' in enum variant 'Maybe::Nothing'
-                    Maybe::Nothing(value: v) => 1,
+                    Maybe::Nothing{value: v} => 1,
                                    ^^^^^
             "#]],
         );
@@ -2071,12 +2076,12 @@ mod tests {
             },
             indoc! {"
                 match x {
-                    Container::Wrapped(inner: Some(v)) => 0,
-                    Container::Wrapped(inner: None) => 1,
+                    Container::Wrapped{inner: Some(v)} => 0,
+                    Container::Wrapped{inner: None} => 1,
                 }
             "},
             expect![[r#"
-                x is Container::Wrapped(inner: v_0)
+                x is Container::Wrapped{inner: v_0}
                   v_0 is Some(v_1)
                     let v = v_1
                     branch 0
@@ -2102,11 +2107,11 @@ mod tests {
             },
             indoc! {"
                 match x {
-                    Container::Wrapped(inner: Some(v)) => 0,
+                    Container::Wrapped{inner: Some(v)} => 0,
                 }
             "},
             expect![[r#"
-                error: Match expression is missing arms for: Container::Wrapped(inner: None)
+                error: Match expression is missing arms for: Container::Wrapped{inner: None}
                 match x {
                       ^
             "#]],
@@ -2126,12 +2131,12 @@ mod tests {
             },
             indoc! {"
                 match x {
-                    Flag::Active(enabled: true) => 0,
-                    Flag::Active(enabled: false) => 1,
+                    Flag::Active{enabled: true} => 0,
+                    Flag::Active{enabled: false} => 1,
                 }
             "},
             expect![[r#"
-                x is Flag::Active(enabled: v_0)
+                x is Flag::Active{enabled: v_0}
                   v_0 is false
                     branch 1
                   v_0 is true
@@ -2153,11 +2158,11 @@ mod tests {
             },
             indoc! {"
                 match x {
-                    Flag::Active(enabled: true) => 0,
+                    Flag::Active{enabled: true} => 0,
                 }
             "},
             expect![[r#"
-                error: Match expression is missing arms for: Flag::Active(enabled: false)
+                error: Match expression is missing arms for: Flag::Active{enabled: false}
                 match x {
                       ^
             "#]],
@@ -2182,11 +2187,11 @@ mod tests {
             },
             indoc! {"
                 match x {
-                    Rectangle::Bounds(x: a, y: b, width: w, height: h) => 0,
+                    Rectangle::Bounds{x: a, y: b, width: w, height: h} => 0,
                 }
             "},
             expect![[r#"
-                x is Rectangle::Bounds(x: v_0, y: v_1, width: v_2, height: v_3)
+                x is Rectangle::Bounds{x: v_0, y: v_1, width: v_2, height: v_3}
                   let a = v_0
                   let b = v_1
                   let w = v_2
@@ -2220,18 +2225,18 @@ mod tests {
             },
             indoc! {"
                 match x {
-                    Event::Click(x: a, y: b) => 0,
-                    Event::KeyPress(key: k) => 1,
+                    Event::Click{x: a, y: b} => 0,
+                    Event::KeyPress{key: k} => 1,
                     Event::Focus => 2,
                     Event::Blur => 3,
                 }
             "},
             expect![[r#"
-                x is Event::Click(x: v_0, y: v_1)
+                x is Event::Click{x: v_0, y: v_1}
                   let a = v_0
                   let b = v_1
                   branch 0
-                x is Event::KeyPress(key: v_2)
+                x is Event::KeyPress{key: v_2}
                   let k = v_2
                   branch 1
                 x is Event::Focus
@@ -2257,11 +2262,11 @@ mod tests {
             },
             indoc! {"
                 match x {
-                    User(name: n, age: a) => 0,
+                    User{name: n, age: a} => 0,
                 }
             "},
             expect![[r#"
-                x is User(name: v_0, age: v_1)
+                x is User{name: v_0, age: v_1}
                   let n = v_0
                   let a = v_1
                   branch 0
@@ -2282,14 +2287,14 @@ mod tests {
             },
             indoc! {"
                 match x {
-                    Foo(a: true, b: true) => 0,
-                    Foo(a: true, b: false) => 1,
-                    Foo(a: false, b: true) => 2,
-                    Foo(a: false, b: false) => 3,
+                    Foo{a: true, b: true} => 0,
+                    Foo{a: true, b: false} => 1,
+                    Foo{a: false, b: true} => 2,
+                    Foo{a: false, b: false} => 3,
                 }
             "},
             expect![[r#"
-                x is Foo(a: v_0, b: v_1)
+                x is Foo{a: v_0, b: v_1}
                   v_1 is false
                     v_0 is false
                       branch 3
@@ -2656,7 +2661,7 @@ mod tests {
             },
             indoc! {"
                 match x {
-                    User(name: _, age: _) => 0,
+                    User{name: _, age: _} => 0,
                 }
             "},
             expect![[r#"
@@ -2683,12 +2688,12 @@ mod tests {
             },
             indoc! {"
                 match x {
-                    User(name: n, email: Some(e)) => 0,
-                    User(name: n, email: None) => 1,
+                    User{name: n, email: Some(e)} => 0,
+                    User{name: n, email: None} => 1,
                 }
             "},
             expect![[r#"
-                x is User(name: v_0, email: v_1)
+                x is User{name: v_0, email: v_1}
                   v_1 is Some(v_2)
                     let n = v_0
                     let e = v_2
@@ -2716,11 +2721,11 @@ mod tests {
             },
             indoc! {"
                 match x {
-                    User(name: n, email: Some(e)) => 0,
+                    User{name: n, email: Some(e)} => 0,
                 }
             "},
             expect![[r#"
-                error: Match expression is missing arms for: User(name: _, email: None)
+                error: Match expression is missing arms for: User{name: _, email: None}
                 match x {
                       ^
             "#]],
@@ -2740,13 +2745,13 @@ mod tests {
             },
             indoc! {"
                 match x {
-                    Foo(a: true, b: true) => 0,
-                    Foo(a: true, b: false) => 1,
-                    Foo(a: false, b: true) => 2,
+                    Foo{a: true, b: true} => 0,
+                    Foo{a: true, b: false} => 1,
+                    Foo{a: false, b: true} => 2,
                 }
             "},
             expect![[r#"
-                error: Match expression is missing arms for: Foo(a: false, b: false)
+                error: Match expression is missing arms for: Foo{a: false, b: false}
                 match x {
                       ^
             "#]],
@@ -2766,12 +2771,12 @@ mod tests {
             },
             indoc! {"
                 match x {
-                    Foo(a: true, b: true) => 0,
-                    Foo(a: false, b: false) => 1,
+                    Foo{a: true, b: true} => 0,
+                    Foo{a: false, b: false} => 1,
                 }
             "},
             expect![[r#"
-                error: Match expression is missing arms for: Foo(a: false, b: true), Foo(a: true, b: false)
+                error: Match expression is missing arms for: Foo{a: false, b: true}, Foo{a: true, b: false}
                 match x {
                       ^
             "#]],
@@ -2791,13 +2796,13 @@ mod tests {
             })),
             indoc! {"
                 match x {
-                    Some(User(name: n, age: a)) => 0,
+                    Some(User{name: n, age: a}) => 0,
                     None => 1,
                 }
             "},
             expect![[r#"
                 x is Some(v_0)
-                  v_0 is User(name: v_1, age: v_2)
+                  v_0 is User{name: v_1, age: v_2}
                     let n = v_1
                     let a = v_2
                     branch 0
@@ -2820,7 +2825,7 @@ mod tests {
             })),
             indoc! {"
                 match x {
-                    Some(User(name: _, age: _)) => 0,
+                    Some(User{name: _, age: _}) => 0,
                     None => 1,
                 }
             "},
@@ -2855,7 +2860,7 @@ mod tests {
             })),
             indoc! {"
                 match x {
-                    Some(User(role: Role(title: _, salary: _), created_at: _)) => 0,
+                    Some(User{role: Role{title: _, salary: _}, created_at: _}) => 0,
                     None => 1,
                 }
             "},
@@ -2890,7 +2895,7 @@ mod tests {
             },
             indoc! {"
                 match x {
-                    User(name: _, address: Address(street: _, city: _)) => 0,
+                    User{name: _, address: Address{street: _, city: _}} => 0,
                 }
             "},
             expect![[r#"
@@ -2923,7 +2928,7 @@ mod tests {
             },
             indoc! {"
                 match x {
-                    User(role: Role(title: _, salary: _), created_at: _) => 0,
+                    User{role: Role{title: _, salary: _}, created_at: _} => 0,
                     _ => 1,
                 }
             "},
@@ -2957,11 +2962,11 @@ mod tests {
             },
             indoc! {"
                 match x {
-                    User(name: n, address: Address(street: _, city: _)) => 0,
+                    User{name: n, address: Address{street: _, city: _}} => 0,
                 }
             "},
             expect![[r#"
-                x is User(name: v_0, address: _)
+                x is User{name: v_0, address: _}
                   let n = v_0
                   branch 0
             "#]],
@@ -2999,15 +3004,15 @@ mod tests {
             },
             indoc! {"
                 match x {
-                    Outcome::Success(value: v, metadata: Metadata(created: _, updated: _)) => 0,
-                    Outcome::Failure(message: _) => 1,
+                    Outcome::Success{value: v, metadata: Metadata{created: _, updated: _}} => 0,
+                    Outcome::Failure{message: _} => 1,
                 }
             "},
             expect![[r#"
-                x is Outcome::Success(value: v_0, metadata: _)
+                x is Outcome::Success{value: v_0, metadata: _}
                   let v = v_0
                   branch 0
-                x is Outcome::Failure(message: _)
+                x is Outcome::Failure{message: _}
                   branch 1
             "#]],
         );
@@ -3040,12 +3045,12 @@ mod tests {
             },
             indoc! {"
                 match x {
-                    Outer(middle: Middle(name: n, inner: Inner(x: _, y: _))) => 0,
+                    Outer{middle: Middle{name: n, inner: Inner{x: _, y: _}}} => 0,
                 }
             "},
             expect![[r#"
-                x is Outer(middle: v_0)
-                  v_0 is Middle(name: v_1, inner: _)
+                x is Outer{middle: v_0}
+                  v_0 is Middle{name: v_1, inner: _}
                     let n = v_1
                     branch 0
             "#]],
@@ -3092,12 +3097,12 @@ mod tests {
             },
             indoc! {"
                 match x {
-                    User(name: n) => 0,
+                    User{name: n} => 0,
                 }
             "},
             expect![[r#"
                 error: Record 'User' is missing fields: age
-                    User(name: n) => 0,
+                    User{name: n} => 0,
                     ^^^^
             "#]],
         );
@@ -3113,12 +3118,12 @@ mod tests {
             },
             indoc! {"
                 match x {
-                    User(email: e) => 0,
+                    User{email: e} => 0,
                 }
             "},
             expect![[r#"
                 error: Unknown field 'email' in record 'User'
-                    User(email: e) => 0,
+                    User{email: e} => 0,
                          ^^^^^
             "#]],
         );

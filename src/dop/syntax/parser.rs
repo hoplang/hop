@@ -859,15 +859,15 @@ fn parse_record_literal(
     name: CheapString,
     name_range: DocumentRange,
 ) -> Option<ParsedExpr> {
-    let left_paren = expect_token(iter, comments, errors, range, &Token::LeftParen)?;
+    let left_delim = expect_token(iter, comments, errors, range, &Token::LeftBrace)?;
     let mut fields = Vec::new();
-    let right_paren = parse_delimited_list(
+    let right_delim = parse_delimited_list(
         iter,
         comments,
         errors,
         range,
-        &Token::LeftParen,
-        &left_paren,
+        &Token::LeftBrace,
+        &left_delim,
         |iter, comments, errors, range| {
             let (field_name, _) = expect_field_name(iter, comments, errors, range)?;
             expect_token(iter, comments, errors, range, &Token::Colon)?;
@@ -879,7 +879,7 @@ fn parse_record_literal(
         record_name: name,
         record_name_range: name_range.clone(),
         fields,
-        range: name_range.to(right_paren),
+        range: name_range.to(right_delim),
     })
 }
 
@@ -894,16 +894,17 @@ fn parse_enum_literal(
     expect_token(iter, comments, errors, range, &Token::ColonColon)?;
     let (variant_name, variant_range) = expect_type_name(iter, comments, errors, range)?;
     let constructor_range = enum_name_range.clone().to(variant_range.clone());
-    let (fields, end_range) =
-        if let Some(left_paren) = advance_if(iter, comments, errors, Token::LeftParen) {
+    let (fields, end_range) = if let Some(left_delim) =
+        advance_if(iter, comments, errors, Token::LeftBrace)
+        {
             let mut fields = Vec::new();
-            let right_paren = parse_delimited_list(
+            let right_delim = parse_delimited_list(
                 iter,
                 comments,
                 errors,
                 range,
-                &Token::LeftParen,
-                &left_paren,
+                &Token::LeftBrace,
+                &left_delim,
                 |iter, comments, errors, range| {
                     let (field_name, field_name_range) =
                         expect_field_name(iter, comments, errors, range)?;
@@ -916,7 +917,7 @@ fn parse_enum_literal(
                     Some(())
                 },
             )?;
-            (fields, right_paren)
+            (fields, right_delim)
         } else {
             (Vec::new(), variant_range)
         };
@@ -1003,15 +1004,15 @@ pub fn parse_match_pattern(
             let (variant_name, variant_range) = expect_type_name(iter, comments, errors, range)?;
 
             let (fields, end_range) =
-                if let Some(left_paren) = advance_if(iter, comments, errors, Token::LeftParen) {
+                if let Some(left_brace) = advance_if(iter, comments, errors, Token::LeftBrace) {
                     let mut fields = Vec::new();
-                    let right_paren = parse_delimited_list(
+                    let right_brace = parse_delimited_list(
                         iter,
                         comments,
                         errors,
                         range,
-                        &Token::LeftParen,
-                        &left_paren,
+                        &Token::LeftBrace,
+                        &left_brace,
                         |iter, comments, errors, range| {
                             let (field_name, field_range) =
                                 expect_field_name(iter, comments, errors, range)?;
@@ -1021,7 +1022,7 @@ pub fn parse_match_pattern(
                             Some(())
                         },
                     )?;
-                    (fields, right_paren)
+                    (fields, right_brace)
                 } else {
                     (Vec::new(), variant_range.clone())
                 };
@@ -1039,15 +1040,15 @@ pub fn parse_match_pattern(
                 range: type_name_range.to(end_range),
             });
         } else {
-            let left_paren = expect_token(iter, comments, errors, range, &Token::LeftParen)?;
+            let left_brace = expect_token(iter, comments, errors, range, &Token::LeftBrace)?;
             let mut fields = Vec::new();
-            let right_paren = parse_delimited_list(
+            let right_brace = parse_delimited_list(
                 iter,
                 comments,
                 errors,
                 range,
-                &Token::LeftParen,
-                &left_paren,
+                &Token::LeftBrace,
+                &left_brace,
                 |iter, comments, errors, range| {
                     let (field_name, field_range) =
                         expect_field_name(iter, comments, errors, range)?;
@@ -1063,7 +1064,7 @@ pub fn parse_match_pattern(
                 fields,
                 constructor_range: type_name_range.clone(),
                 enum_name_range: None,
-                range: type_name_range.to(right_paren),
+                range: type_name_range.to(right_brace),
             });
         }
     }
@@ -1259,8 +1260,8 @@ pub fn parse_enum_declaration(
                 return None;
             }
 
-            let fields = if advance_if(iter, comments, errors, Token::LeftParen).is_some() {
-                parse_enum_variant_fields(iter, comments, errors, range)?
+            let fields = if advance_if(iter, comments, errors, Token::LeftBrace).is_some() {
+                parse_enum_variant_fields(iter, comments, errors, range, &Token::RightBrace)?
             } else {
                 Vec::new()
             };
@@ -1283,10 +1284,11 @@ fn parse_enum_variant_fields(
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut ErrorCollector<ParseError>,
     range: &DocumentRange,
+    closing: &Token,
 ) -> Option<Vec<(FieldName, DocumentRange, ParsedType)>> {
     let mut fields = Vec::new();
     let mut seen_names = HashSet::new();
-    if advance_if(iter, comments, errors, Token::RightParen).is_some() {
+    if advance_if(iter, comments, errors, closing.clone()).is_some() {
         return Some(fields);
     }
     loop {
@@ -1303,11 +1305,11 @@ fn parse_enum_variant_fields(
         }
         fields.push((field_name, field_name_range, field_type));
         if advance_if(iter, comments, errors, Token::Comma).is_some() {
-            if advance_if(iter, comments, errors, Token::RightParen).is_some() {
+            if advance_if(iter, comments, errors, closing.clone()).is_some() {
                 break;
             }
         } else {
-            expect_token(iter, comments, errors, range, &Token::RightParen)?;
+            expect_token(iter, comments, errors, range, closing)?;
             break;
         }
     }
@@ -1442,9 +1444,9 @@ mod tests {
     #[test]
     fn should_accept_record_literal_with_single_field() {
         check_parse_expr(
-            r#"User(name: "John")"#,
+            r#"User {name: "John"}"#,
             expect![[r#"
-                User(name: "John")
+                User {name: "John"}
             "#]],
         );
     }
@@ -1452,9 +1454,9 @@ mod tests {
     #[test]
     fn should_accept_record_literal_with_multiple_fields() {
         check_parse_expr(
-            r#"User(name: "John", age: 30, active: true)"#,
+            r#"User {name: "John", age: 30, active: true}"#,
             expect![[r#"
-                User(name: "John", age: 30, active: true)
+                User {name: "John", age: 30, active: true}
             "#]],
         );
     }
@@ -1462,9 +1464,9 @@ mod tests {
     #[test]
     fn should_accept_record_literal_with_no_fields() {
         check_parse_expr(
-            "Empty()",
+            "Empty {}",
             expect![[r#"
-                Empty()
+                Empty {}
             "#]],
         );
     }
@@ -1472,9 +1474,9 @@ mod tests {
     #[test]
     fn should_accept_record_literal_with_trailing_comma() {
         check_parse_expr(
-            r#"User(name: "John", age: 30,)"#,
+            r#"User {name: "John", age: 30,}"#,
             expect![[r#"
-                User(name: "John", age: 30)
+                User {name: "John", age: 30}
             "#]],
         );
     }
@@ -1483,12 +1485,12 @@ mod tests {
     fn should_accept_record_literal_with_multiline_fields() {
         check_parse_expr(
             indoc! {r#"
-                User(
+                User {
                   name: "John",
-                )
+                }
             "#},
             expect![[r#"
-                User(name: "John")
+                User {name: "John"}
             "#]],
         );
     }
@@ -1496,9 +1498,9 @@ mod tests {
     #[test]
     fn should_accept_record_literal_with_nested_records() {
         check_parse_expr(
-            r#"Wrapper(inner: Inner(value: 42))"#,
+            r#"Wrapper {inner: Inner {value: 42}}"#,
             expect![[r#"
-                Wrapper(inner: Inner(value: 42))
+                Wrapper {inner: Inner {value: 42}}
             "#]],
         );
     }
@@ -1506,21 +1508,21 @@ mod tests {
     #[test]
     fn should_accept_record_literal_with_expression_values() {
         check_parse_expr(
-            "Point(x: a + b, y: c * 2)",
+            "Point {x: a + b, y: c * 2}",
             expect![[r#"
-                Point(x: a + b, y: c * 2)
+                Point {x: a + b, y: c * 2}
             "#]],
         );
     }
 
     #[test]
-    fn should_reject_record_literal_when_closing_paren_is_missing() {
+    fn should_reject_record_literal_when_closing_brace_is_missing() {
         check_parse_expr(
-            r#"User(name: "John""#,
+            r#"User {name: "John""#,
             expect![[r#"
-                error: Unmatched '('
-                User(name: "John"
-                    ^
+                error: Unmatched '{'
+                User {name: "John"
+                     ^
             "#]],
         );
     }
@@ -1528,11 +1530,67 @@ mod tests {
     #[test]
     fn should_reject_record_literal_when_colon_is_missing() {
         check_parse_expr(
-            r#"User(name "John")"#,
+            r#"User {name "John"}"#,
             expect![[r#"
                 error: Expected token ':' but got '"John"'
-                User(name "John")
-                          ^^^^^^
+                User {name "John"}
+                           ^^^^^^
+            "#]],
+        );
+    }
+
+    ///////////////////////////////////////////////////////////////////////////
+    // RECORD LITERAL (BRACE SYNTAX)                                         //
+    ///////////////////////////////////////////////////////////////////////////
+
+    #[test]
+    fn should_accept_record_literal_with_braces_single_field() {
+        check_parse_expr(
+            r#"User {name: "John"}"#,
+            expect![[r#"
+                User {name: "John"}
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_record_literal_with_braces_multiple_fields() {
+        check_parse_expr(
+            r#"User {name: "John", age: 30}"#,
+            expect![[r#"
+                User {name: "John", age: 30}
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_record_literal_with_braces_no_fields() {
+        check_parse_expr(
+            "Empty {}",
+            expect![[r#"
+                Empty {}
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_record_literal_with_braces_trailing_comma() {
+        check_parse_expr(
+            r#"User {name: "John",}"#,
+            expect![[r#"
+                User {name: "John"}
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_record_literal_with_mismatched_brace_paren() {
+        check_parse_expr(
+            r#"Foo {bar: "baz")"#,
+            expect![[r#"
+                error: Expected token '}' but got ')'
+                Foo {bar: "baz")
+                               ^
             "#]],
         );
     }
@@ -3042,13 +3100,13 @@ mod tests {
     #[test]
     fn should_accept_enum_variant_with_single_field() {
         check_parse_declarations(
-            "enum Outcome { Success(value: Int), Failure(message: String) }",
+            "enum Outcome { Success {value: Int}, Failure {message: String} }",
             expect![[r#"
                 Enum {
                   name: Outcome,
                   variants: {
-                    Success(value: Int),
-                    Failure(message: String),
+                    Success {value: Int},
+                    Failure {message: String},
                   },
                 }
             "#]],
@@ -3058,13 +3116,13 @@ mod tests {
     #[test]
     fn should_accept_enum_variant_with_multiple_fields() {
         check_parse_declarations(
-            "enum Event { Click(x: Int, y: Int), KeyPress(key: String, shift: Bool) }",
+            "enum Event { Click {x: Int, y: Int}, KeyPress {key: String, shift: Bool} }",
             expect![[r#"
                 Enum {
                   name: Event,
                   variants: {
-                    Click(x: Int, y: Int),
-                    KeyPress(key: String, shift: Bool),
+                    Click {x: Int, y: Int},
+                    KeyPress {key: String, shift: Bool},
                   },
                 }
             "#]],
@@ -3074,12 +3132,12 @@ mod tests {
     #[test]
     fn should_accept_mixed_enum_variants() {
         check_parse_declarations(
-            "enum Maybe { Just(value: Int), Nothing }",
+            "enum Maybe { Just {value: Int}, Nothing }",
             expect![[r#"
                 Enum {
                   name: Maybe,
                   variants: {
-                    Just(value: Int),
+                    Just {value: Int},
                     Nothing,
                   },
                 }
@@ -3090,12 +3148,12 @@ mod tests {
     #[test]
     fn should_accept_enum_variant_with_trailing_comma_in_fields() {
         check_parse_declarations(
-            "enum Outcome { Success(value: Int,) }",
+            "enum Outcome { Success {value: Int,} }",
             expect![[r#"
                 Enum {
                   name: Outcome,
                   variants: {
-                    Success(value: Int),
+                    Success {value: Int},
                   },
                 }
             "#]],
@@ -3105,11 +3163,11 @@ mod tests {
     #[test]
     fn should_reject_enum_variant_with_duplicate_field() {
         check_parse_declarations(
-            "enum Outcome { Success(value: Int, value: String) }",
+            "enum Outcome { Success {value: Int, value: String} }",
             expect![[r#"
                 error: Duplicate field 'value'
-                1 | enum Outcome { Success(value: Int, value: String) }
-                  |                                    ^^^^^
+                1 | enum Outcome { Success {value: Int, value: String} }
+                  |                                     ^^^^^
             "#]],
         );
     }
@@ -3117,7 +3175,7 @@ mod tests {
     #[test]
     fn should_accept_enum_variant_with_empty_parens() {
         check_parse_declarations(
-            "enum Color { Red() }",
+            "enum Color { Red {} }",
             expect![[r#"
                 Enum {
                   name: Color,
@@ -3132,14 +3190,91 @@ mod tests {
     #[test]
     fn should_accept_enum_variant_with_complex_field_types() {
         check_parse_declarations(
-            "enum Container { Wrapper(items: Array[String], count: Option[Int]) }",
+            "enum Container { Wrapper {items: Array[String], count: Option[Int]} }",
             expect![[r#"
                 Enum {
                   name: Container,
                   variants: {
-                    Wrapper(items: Array[String], count: Option[Int]),
+                    Wrapper {items: Array[String], count: Option[Int]},
                   },
                 }
+            "#]],
+        );
+    }
+
+    ///////////////////////////////////////////////////////////////////////////
+    // ENUM DECLARATION (BRACE VARIANT FIELDS)                               //
+    ///////////////////////////////////////////////////////////////////////////
+
+    #[test]
+    fn should_accept_enum_variant_fields_with_braces() {
+        check_parse_declarations(
+            "enum Outcome { Success{value: Int}, Failure{message: String} }",
+            expect![[r#"
+                Enum {
+                  name: Outcome,
+                  variants: {
+                    Success {value: Int},
+                    Failure {message: String},
+                  },
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_enum_variant_fields_with_braces_multiple_fields() {
+        check_parse_declarations(
+            "enum Event { Click{x: Int, y: Int} }",
+            expect![[r#"
+                Enum {
+                  name: Event,
+                  variants: {
+                    Click {x: Int, y: Int},
+                  },
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_enum_variant_with_empty_braces() {
+        check_parse_declarations(
+            "enum Color { Red{} }",
+            expect![[r#"
+                Enum {
+                  name: Color,
+                  variants: {
+                    Red,
+                  },
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_enum_variant_fields_with_braces_trailing_comma() {
+        check_parse_declarations(
+            "enum Outcome { Success{value: Int,} }",
+            expect![[r#"
+                Enum {
+                  name: Outcome,
+                  variants: {
+                    Success {value: Int},
+                  },
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_enum_variant_with_mismatched_brace_paren() {
+        check_parse_declarations(
+            "enum Outcome { Success{value: Int) }",
+            expect![[r#"
+                error: Expected token '}' but got ')'
+                1 | enum Outcome { Success{value: Int) }
+                  |                                  ^
             "#]],
         );
     }
@@ -3171,9 +3306,9 @@ mod tests {
     #[test]
     fn should_accept_enum_literal_in_record_field() {
         check_parse_expr(
-            r#"User(name: "Alice", status: Status::Active)"#,
+            r#"User {name: "Alice", status: Status::Active}"#,
             expect![[r#"
-                User(name: "Alice", status: Status::Active)
+                User {name: "Alice", status: Status::Active}
             "#]],
         );
     }
@@ -3205,9 +3340,9 @@ mod tests {
     #[test]
     fn should_accept_enum_literal_with_single_field() {
         check_parse_expr(
-            "Outcome::Success(value: 42)",
+            "Outcome::Success {value: 42}",
             expect![[r#"
-                Outcome::Success(value: 42)
+                Outcome::Success {value: 42}
             "#]],
         );
     }
@@ -3215,9 +3350,9 @@ mod tests {
     #[test]
     fn should_accept_enum_literal_with_multiple_fields() {
         check_parse_expr(
-            r#"Event::Click(x: 10, y: 20)"#,
+            r#"Event::Click {x: 10, y: 20}"#,
             expect![[r#"
-                Event::Click(x: 10, y: 20)
+                Event::Click {x: 10, y: 20}
             "#]],
         );
     }
@@ -3225,9 +3360,9 @@ mod tests {
     #[test]
     fn should_accept_enum_literal_with_string_field() {
         check_parse_expr(
-            r#"Outcome::Failure(message: "something went wrong")"#,
+            r#"Outcome::Failure {message: "something went wrong"}"#,
             expect![[r#"
-                Outcome::Failure(message: "something went wrong")
+                Outcome::Failure {message: "something went wrong"}
             "#]],
         );
     }
@@ -3235,9 +3370,9 @@ mod tests {
     #[test]
     fn should_accept_enum_literal_with_nested_expression() {
         check_parse_expr(
-            r#"Outcome::Success(value: x + 1)"#,
+            r#"Outcome::Success {value: x + 1}"#,
             expect![[r#"
-                Outcome::Success(value: x + 1)
+                Outcome::Success {value: x + 1}
             "#]],
         );
     }
@@ -3245,9 +3380,43 @@ mod tests {
     #[test]
     fn should_accept_enum_literal_with_trailing_comma() {
         check_parse_expr(
-            "Outcome::Success(value: 42,)",
+            "Outcome::Success {value: 42,}",
             expect![[r#"
-                Outcome::Success(value: 42)
+                Outcome::Success {value: 42}
+            "#]],
+        );
+    }
+
+    ///////////////////////////////////////////////////////////////////////////
+    // ENUM LITERAL (BRACE SYNTAX)                                           //
+    ///////////////////////////////////////////////////////////////////////////
+
+    #[test]
+    fn should_accept_enum_literal_with_braces_single_field() {
+        check_parse_expr(
+            "Outcome::Success {value: 42}",
+            expect![[r#"
+                Outcome::Success {value: 42}
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_enum_literal_with_braces_multiple_fields() {
+        check_parse_expr(
+            "Event::Click {x: 10, y: 20}",
+            expect![[r#"
+                Event::Click {x: 10, y: 20}
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_enum_literal_with_braces_containing_record_with_braces() {
+        check_parse_expr(
+            r#"Outcome::Success {value: Inner {x: 1}}"#,
+            expect![[r#"
+                Outcome::Success {value: Inner {x: 1}}
             "#]],
         );
     }
@@ -3460,11 +3629,11 @@ mod tests {
     #[test]
     fn should_accept_match_with_enum_field_pattern() {
         check_parse_expr(
-            "match result { Outcome::Success(value: v) => v, Outcome::Failure(message: m) => m }",
+            "match result { Outcome::Success{value: v} => v, Outcome::Failure{message: m} => m }",
             expect![[r#"
                 match result {
-                  Outcome::Success(value: v) => v,
-                  Outcome::Failure(message: m) => m,
+                  Outcome::Success{value: v} => v,
+                  Outcome::Failure{message: m} => m,
                 }
             "#]],
         );
@@ -3473,9 +3642,9 @@ mod tests {
     #[test]
     fn should_accept_match_with_enum_multiple_field_pattern() {
         check_parse_expr(
-            "match event { Event::Click(x: a, y: b) => a + b }",
+            "match event { Event::Click{x: a, y: b} => a + b }",
             expect![[r#"
-                match event {Event::Click(x: a, y: b) => a + b}
+                match event {Event::Click{x: a, y: b} => a + b}
             "#]],
         );
     }
@@ -3483,10 +3652,10 @@ mod tests {
     #[test]
     fn should_accept_match_with_mixed_enum_patterns() {
         check_parse_expr(
-            "match maybe { Maybe::Just(value: v) => v, Maybe::Nothing => 0 }",
+            "match maybe { Maybe::Just{value: v} => v, Maybe::Nothing => 0 }",
             expect![[r#"
                 match maybe {
-                  Maybe::Just(value: v) => v,
+                  Maybe::Just{value: v} => v,
                   Maybe::Nothing => 0,
                 }
             "#]],
@@ -3496,9 +3665,9 @@ mod tests {
     #[test]
     fn should_accept_match_with_nested_enum_field_pattern() {
         check_parse_expr(
-            "match result { Outcome::Success(data: Some(x)) => x, _ => 0 }",
+            "match result { Outcome::Success{data: Some(x)} => x, _ => 0 }",
             expect![[r#"
-                match result {Outcome::Success(data: Some(x)) => x, _ => 0}
+                match result {Outcome::Success{data: Some(x)} => x, _ => 0}
             "#]],
         );
     }
@@ -3506,21 +3675,21 @@ mod tests {
     #[test]
     fn should_accept_match_with_wildcard_field_pattern() {
         check_parse_expr(
-            "match result { Outcome::Success(value: _) => 1, Outcome::Failure(message: _) => 0 }",
+            "match result { Outcome::Success{value: _} => 1, Outcome::Failure{message: _} => 0 }",
             expect![[r#"
                 match result {
-                  Outcome::Success(value: _) => 1,
-                  Outcome::Failure(message: _) => 0,
+                  Outcome::Success{value: _} => 1,
+                  Outcome::Failure{message: _} => 0,
                 }
             "#]],
         );
     }
 
     #[test]
-    fn should_accept_match_with_empty_parens_pattern() {
-        // Empty parens are accepted but normalized away
+    fn should_accept_match_with_empty_braces_pattern() {
+        // Empty braces are accepted but normalized away
         check_parse_expr(
-            "match point { Point::XY() => 0 }",
+            "match point { Point::XY{} => 0 }",
             expect![[r#"
                 match point {Point::XY => 0}
             "#]],
@@ -3586,13 +3755,13 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_record_with_trailing_comma_and_missing_closing_paren() {
+    fn should_reject_record_with_trailing_comma_and_missing_closing_brace() {
         check_parse_expr(
-            r#"User(name: "John","#,
+            r#"User {name: "John","#,
             expect![[r#"
-                error: Unmatched '('
-                User(name: "John",
-                    ^
+                error: Unmatched '{'
+                User {name: "John",
+                     ^
             "#]],
         );
     }
@@ -3955,9 +4124,9 @@ mod tests {
     #[test]
     fn should_accept_field_access_on_record_literal() {
         check_parse_expr(
-            r#"User(name: "John").name"#,
+            r#"User {name: "John"}.name"#,
             expect![[r#"
-                User(name: "John").name
+                User {name: "John"}.name
             "#]],
         );
     }
@@ -3965,9 +4134,9 @@ mod tests {
     #[test]
     fn should_accept_method_call_on_record_literal() {
         check_parse_expr(
-            r#"User(name: "John").to_string()"#,
+            r#"User {name: "John"}.to_string()"#,
             expect![[r#"
-                User(name: "John").to_string()
+                User {name: "John"}.to_string()
             "#]],
         );
     }

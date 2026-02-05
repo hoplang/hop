@@ -2511,7 +2511,7 @@ mod tests {
         check(
             "record User {name: String, age: Int}",
             &[],
-            r#"User(name: "John", age: 30)"#,
+            r#"User {name: "John", age: 30}"#,
             expect!["test::User"],
         );
     }
@@ -2521,7 +2521,7 @@ mod tests {
         check(
             "record User {name: String, age: Int}",
             &[("user_name", "String"), ("user_age", "Int")],
-            "User(name: user_name, age: user_age)",
+            "User {name: user_name, age: user_age}",
             expect!["test::User"],
         );
     }
@@ -2531,11 +2531,11 @@ mod tests {
         check(
             "",
             &[],
-            r#"User(name: "John")"#,
+            r#"User {name: "John"}"#,
             expect![[r#"
                 error: Record type 'User' is not defined
-                User(name: "John")
-                ^^^^^^^^^^^^^^^^^^
+                User {name: "John"}
+                ^^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -2611,11 +2611,11 @@ mod tests {
         check(
             "record User {name: String, age: Int}",
             &[],
-            r#"User(name: "John")"#,
+            r#"User {name: "John"}"#,
             expect![[r#"
                 error: Record 'User' is missing fields: age
-                User(name: "John")
-                ^^^^^^^^^^^^^^^^^^
+                User {name: "John"}
+                ^^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -2649,11 +2649,11 @@ mod tests {
         check(
             "record User {name: String}",
             &[],
-            r#"User(name: "John", email: "john@example.com")"#,
+            r#"User {name: "John", email: "john@example.com"}"#,
             expect![[r#"
                 error: Unknown field 'email' in record 'User'
-                User(name: "John", email: "john@example.com")
-                                          ^^^^^^^^^^^^^^^^^^
+                User {name: "John", email: "john@example.com"}
+                                           ^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -2663,11 +2663,11 @@ mod tests {
         check(
             "record User {name: String, age: Int}",
             &[],
-            r#"User(name: "John", age: "thirty")"#,
+            r#"User {name: "John", age: "thirty"}"#,
             expect![[r#"
                 error: Field 'age' expects type Int, but got String
-                User(name: "John", age: "thirty")
-                                        ^^^^^^^^
+                User {name: "John", age: "thirty"}
+                                         ^^^^^^^^
             "#]],
         );
     }
@@ -2680,7 +2680,7 @@ mod tests {
                 record User {name: String, address: Address}
             "},
             &[],
-            r#"User(name: "John", address: Address(city: "NYC"))"#,
+            r#"User {name: "John", address: Address {city: "NYC"}}"#,
             expect!["test::User"],
         );
     }
@@ -2993,12 +2993,12 @@ mod tests {
         check(
             indoc! {"
                 enum Outcome {
-                    Success(value: Int),
-                    Failure(message: String),
+                    Success {value: Int},
+                    Failure {message: String},
                 }
             "},
             &[],
-            "Outcome::Success(value: 42)",
+            "Outcome::Success {value: 42}",
             expect!["test::Outcome"],
         );
     }
@@ -3008,12 +3008,12 @@ mod tests {
         check(
             indoc! {"
                 enum Point {
-                    XY(x: Int, y: Int),
+                    XY {x: Int, y: Int},
                     Origin,
                 }
             "},
             &[],
-            "Point::XY(x: 10, y: 20)",
+            "Point::XY {x: 10, y: 20}",
             expect!["test::Point"],
         );
     }
@@ -3023,15 +3023,15 @@ mod tests {
         check(
             indoc! {"
                 enum Outcome {
-                    Success(value: Int),
-                    Failure(message: String),
+                    Success {value: Int},
+                    Failure {message: String},
                 }
             "},
             &[],
-            "Outcome::Success()",
+            "Outcome::Success {}",
             expect![[r#"
                 error: Enum variant 'Outcome::Success' is missing fields: value
-                Outcome::Success()
+                Outcome::Success {}
                 ^^^^^^^^^^^^^^^^
             "#]],
         );
@@ -3042,14 +3042,14 @@ mod tests {
         check(
             indoc! {"
                 enum Point {
-                    XY(x: Int, y: Int),
+                    XY {x: Int, y: Int},
                 }
             "},
             &[],
-            "Point::XY()",
+            "Point::XY {}",
             expect![[r#"
                 error: Enum variant 'Point::XY' is missing fields: x, y
-                Point::XY()
+                Point::XY {}
                 ^^^^^^^^^
             "#]],
         );
@@ -3060,16 +3060,16 @@ mod tests {
         check(
             indoc! {"
                 enum Outcome {
-                    Success(value: Int),
-                    Failure(message: String),
+                    Success {value: Int},
+                    Failure {message: String},
                 }
             "},
             &[],
-            "Outcome::Success(wrong: 42)",
+            "Outcome::Success {wrong: 42}",
             expect![[r#"
                 error: Unknown field 'wrong' in enum variant 'Outcome::Success'
-                Outcome::Success(wrong: 42)
-                                 ^^^^^
+                Outcome::Success {wrong: 42}
+                                  ^^^^^
             "#]],
         );
     }
@@ -3079,16 +3079,16 @@ mod tests {
         check(
             indoc! {"
                 enum Outcome {
-                    Success(value: Int),
-                    Failure(message: String),
+                    Success {value: Int},
+                    Failure {message: String},
                 }
             "},
             &[],
-            r#"Outcome::Success(value: "hello")"#,
+            r#"Outcome::Success {value: "hello"}"#,
             expect![[r#"
                 error: Field 'value' in 'Outcome::Success' expects type Int, but got String
-                Outcome::Success(value: "hello")
-                                        ^^^^^^^
+                Outcome::Success {value: "hello"}
+                                         ^^^^^^^
             "#]],
         );
     }
@@ -3098,16 +3098,16 @@ mod tests {
         check(
             indoc! {"
                 enum Maybe {
-                    Just(value: Int),
+                    Just {value: Int},
                     Nothing,
                 }
             "},
             &[],
-            "Maybe::Nothing(value: 42)",
+            "Maybe::Nothing {value: 42}",
             expect![[r#"
                 error: Unknown field 'value' in enum variant 'Maybe::Nothing'
-                Maybe::Nothing(value: 42)
-                               ^^^^^
+                Maybe::Nothing {value: 42}
+                                ^^^^^
             "#]],
         );
     }
@@ -3146,7 +3146,7 @@ mod tests {
                 }
             "},
             &[],
-            r#"User(name: "Alice", status: Status::Active)"#,
+            r#"User {name: "Alice", status: Status::Active}"#,
             expect!["test::User"],
         );
     }
@@ -3255,7 +3255,7 @@ mod tests {
         check(
             "record Point {x: Int, y: Int}",
             &[],
-            "Some(Point(x: 1, y: 2))",
+            "Some(Point{x: 1, y: 2})",
             expect!["Option[test::Point]"],
         );
     }
@@ -3301,7 +3301,7 @@ mod tests {
         check(
             "record User {name: String, nickname: Option[String]}",
             &[],
-            r#"User(name: "Alice", nickname: None)"#,
+            r#"User {name: "Alice", nickname: None}"#,
             expect!["test::User"],
         );
     }
@@ -3311,7 +3311,7 @@ mod tests {
         check(
             "record User {name: String, nickname: Option[String]}",
             &[],
-            r#"User(name: "Alice", nickname: Some("Ali"))"#,
+            r#"User {name: "Alice", nickname: Some("Ali")}"#,
             expect!["test::User"],
         );
     }
@@ -3321,7 +3321,7 @@ mod tests {
         check(
             "record Config {value: Option[Option[Int]]}",
             &[],
-            "Config(value: Some(Some(42)))",
+            "Config {value: Some(Some(42))}",
             expect!["test::Config"],
         );
     }
@@ -3331,7 +3331,7 @@ mod tests {
         check(
             "record Config {value: Option[Option[Int]]}",
             &[],
-            "Config(value: None)",
+            "Config {value: None}",
             expect!["test::Config"],
         );
     }
@@ -3375,11 +3375,11 @@ mod tests {
         check(
             "record User {name: String, age: Option[Int]}",
             &[],
-            r#"User(name: "Alice", age: Some("thirty"))"#,
+            r#"User {name: "Alice", age: Some("thirty")}"#,
             expect![[r#"
                 error: Field 'age' expects type Option[Int], but got Option[String]
-                User(name: "Alice", age: Some("thirty"))
-                                         ^^^^^^^^^^^^^^
+                User {name: "Alice", age: Some("thirty")}
+                                          ^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -3389,11 +3389,11 @@ mod tests {
         check(
             "record User {name: String, age: Option[Int]}",
             &[],
-            r#"User(name: "Alice", age: 30)"#,
+            r#"User {name: "Alice", age: 30}"#,
             expect![[r#"
                 error: Field 'age' expects type Option[Int], but got Int
-                User(name: "Alice", age: 30)
-                                         ^^
+                User {name: "Alice", age: 30}
+                                          ^^
             "#]],
         );
     }
@@ -4347,7 +4347,7 @@ mod tests {
             &[("user", "User")],
             indoc! {r#"
                 match user {
-                    User(name: n, age: _) => n,
+                    User{name: n, age: _} => n,
                 }
             "#},
             expect!["String"],
@@ -4366,7 +4366,7 @@ mod tests {
             &[("user", "User")],
             indoc! {r#"
                 match user {
-                    User(name: _, age: _) => "matched",
+                    User{name: _, age: _} => "matched",
                 }
             "#},
             expect![[r#"
@@ -4393,7 +4393,7 @@ mod tests {
             &[("user", "User")],
             indoc! {r#"
                 match user {
-                    User(role: Role(title: _, salary: _), created_at: _) => "matched",
+                    User{role: Role{title: _, salary: _}, created_at: _} => "matched",
                 }
             "#},
             expect![[r#"
@@ -4420,7 +4420,7 @@ mod tests {
             &[("user", "User")],
             indoc! {r#"
                 match user {
-                    User(role: Role(title: _, salary: _), created_at: _) => 0,
+                    User{role: Role{title: _, salary: _}, created_at: _} => 0,
                     _ => 1,
                 }
             "#},
@@ -4448,8 +4448,8 @@ mod tests {
             &[("user", "User")],
             indoc! {r#"
                 match user {
-                    User(name: n, status: Status::Active)   => n,
-                    User(name: _, status: Status::Inactive) => "inactive",
+                    User{name: n, status: Status::Active}   => n,
+                    User{name: _, status: Status::Inactive} => "inactive",
                 }
             "#},
             expect!["String"],
@@ -4468,12 +4468,12 @@ mod tests {
             &[("user", "User")],
             indoc! {r#"
                 match user {
-                    User(name: n) => n,
+                    User{name: n} => n,
                 }
             "#},
             expect![[r#"
                 error: Record 'User' is missing fields: age
-                    User(name: n) => n,
+                    User{name: n} => n,
                     ^^^^
             "#]],
         );
@@ -4491,12 +4491,12 @@ mod tests {
             &[("user", "User")],
             indoc! {r#"
                 match user {
-                    User(name: n, email: e) => n,
+                    User{name: n, email: e} => n,
                 }
             "#},
             expect![[r#"
                 error: Unknown field 'email' in record 'User'
-                    User(name: n, email: e) => n,
+                    User{name: n, email: e} => n,
                                   ^^^^^
             "#]],
         );
@@ -4516,12 +4516,12 @@ mod tests {
             &[("user", "User")],
             indoc! {r#"
                 match user {
-                    Admin(name: n) => n,
+                    Admin{name: n} => n,
                 }
             "#},
             expect![[r#"
                 error: Match pattern record 'Admin' does not match subject record 'User'
-                    Admin(name: n) => n,
+                    Admin{name: n} => n,
                     ^^^^^^^^^^^^^^
             "#]],
         );
@@ -4539,12 +4539,12 @@ mod tests {
             &[("user", "User")],
             indoc! {r#"
                 match user {
-                    User(name: n, age: a) => "hello",
+                    User{name: n, age: a} => "hello",
                 }
             "#},
             expect![[r#"
                 error: Unused binding 'a' in match arm
-                    User(name: n, age: a) => "hello",
+                    User{name: n, age: a} => "hello",
                                        ^
             "#]],
         );
@@ -4562,8 +4562,8 @@ mod tests {
             &[("user", "User")],
             indoc! {r#"
                 match user {
-                    User(name: _, email: Some(e)) => e,
-                    User(name: n, email: None)    => n,
+                    User{name: _, email: Some(e)} => e,
+                    User{name: n, email: None}    => n,
                 }
             "#},
             expect!["String"],
@@ -4582,7 +4582,7 @@ mod tests {
             &[("maybe_user", "Option[User]")],
             indoc! {r#"
                 match maybe_user {
-                    Some(User(name: n, age: _)) => n,
+                    Some(User{name: n, age: _}) => n,
                     None                        => "Default User",
                 }
             "#},

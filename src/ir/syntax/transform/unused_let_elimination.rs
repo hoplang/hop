@@ -955,7 +955,7 @@ mod tests {
                 -- before --
                 Test() {
                   let x = "hello" in {
-                    let foo = MyEnum::Foo(value: x) in {
+                    let foo = MyEnum::Foo {value: x} in {
                       match foo {
                         MyEnum::Foo(value: v) => {
                           write_escaped(v)
@@ -968,7 +968,7 @@ mod tests {
                 -- after --
                 Test() {
                   let x = "hello" in {
-                    let foo = MyEnum::Foo(value: x) in {
+                    let foo = MyEnum::Foo {value: x} in {
                       match foo {
                         MyEnum::Foo(value: v) => {
                           write_escaped(v)
@@ -1036,7 +1036,7 @@ mod tests {
                 -- before --
                 Test() {
                   let href = "/home" in {
-                    let element = BadgeElement::Link(href: href) in {
+                    let element = BadgeElement::Link {href: href} in {
                       let match_subject = element in {
                         match match_subject {
                           BadgeElement::Span => {
@@ -1054,7 +1054,7 @@ mod tests {
                 -- after --
                 Test() {
                   let href = "/home" in {
-                    let element = BadgeElement::Link(href: href) in {
+                    let element = BadgeElement::Link {href: href} in {
                       let match_subject = element in {
                         match match_subject {
                           BadgeElement::Span => {

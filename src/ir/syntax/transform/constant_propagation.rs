@@ -1497,12 +1497,12 @@ mod tests {
             expect![[r#"
                 -- before --
                 Test() {
-                  let x = Msg::Say(text: "hi") in {}
+                  let x = Msg::Say {text: "hi"} in {}
                 }
 
                 -- after --
                 Test() {
-                  let x = Msg::Say(text: "hi") in {}
+                  let x = Msg::Say {text: "hi"} in {}
                 }
             "#]],
         );
@@ -2080,14 +2080,14 @@ mod tests {
             expect![[r#"
                 -- before --
                 Test() {
-                  let msg = Msg::Say(text: "hello") in {
-                    write_escaped(match msg {Msg::Say(text: t) => t})
+                  let msg = Msg::Say {text: "hello"} in {
+                    write_escaped(match msg {Msg::Say {text: t} => t})
                   }
                 }
 
                 -- after --
                 Test() {
-                  let msg = Msg::Say(text: "hello") in {
+                  let msg = Msg::Say {text: "hello"} in {
                     write_escaped("hello")
                   }
                 }
@@ -2129,16 +2129,16 @@ mod tests {
             expect![[r#"
                 -- before --
                 Test() {
-                  let msg = Msg::Say(text: "world") in {
+                  let msg = Msg::Say {text: "world"} in {
                     write_escaped(match msg {
-                      Msg::Say(text: t) => ("hello " + t),
+                      Msg::Say {text: t} => ("hello " + t),
                     })
                   }
                 }
 
                 -- after --
                 Test() {
-                  let msg = Msg::Say(text: "world") in {
+                  let msg = Msg::Say {text: "world"} in {
                     write_escaped("hello world")
                   }
                 }
@@ -2183,8 +2183,8 @@ mod tests {
             expect![[r#"
                 -- before --
                 Test() {
-                  let msg = Msg::Say(text: "hello") in {
-                    if match msg {Msg::Say(text: t) => (t == "hello")} {
+                  let msg = Msg::Say {text: "hello"} in {
+                    if match msg {Msg::Say {text: t} => (t == "hello")} {
                       write("matched hello")
                     }
                   }
@@ -2192,7 +2192,7 @@ mod tests {
 
                 -- after --
                 Test() {
-                  let msg = Msg::Say(text: "hello") in {
+                  let msg = Msg::Say {text: "hello"} in {
                     if true {
                       write("matched hello")
                     }
@@ -2237,17 +2237,17 @@ mod tests {
             expect![[r#"
                 -- before --
                 Test() {
-                  let x = Msg::Say(text: "hello") in {
+                  let x = Msg::Say {text: "hello"} in {
                     let y = x in {
-                      write_escaped(match y {Msg::Say(text: t) => t})
+                      write_escaped(match y {Msg::Say {text: t} => t})
                     }
                   }
                 }
 
                 -- after --
                 Test() {
-                  let x = Msg::Say(text: "hello") in {
-                    let y = Msg::Say(text: "hello") in {
+                  let x = Msg::Say {text: "hello"} in {
+                    let y = Msg::Say {text: "hello"} in {
                       write_escaped("hello")
                     }
                   }
@@ -2301,16 +2301,16 @@ mod tests {
             expect![[r#"
                 -- before --
                 Test() {
-                  let pair = Pair::Values(first: "hello", second: "world") in {
+                  let pair = Pair::Values {first: "hello", second: "world"} in {
                     write_escaped(match pair {
-                      Pair::Values(first: a, second: b) => (a + (" " + b)),
+                      Pair::Values {first: a, second: b} => (a + (" " + b)),
                     })
                   }
                 }
 
                 -- after --
                 Test() {
-                  let pair = Pair::Values(first: "hello", second: "world") in {
+                  let pair = Pair::Values {first: "hello", second: "world"} in {
                     write_escaped("hello world")
                   }
                 }
@@ -2361,17 +2361,17 @@ mod tests {
             expect![[r#"
                 -- before --
                 Test() {
-                  let result = Result::Ok(value: "success") in {
+                  let result = Result::Ok {value: "success"} in {
                     write_escaped(match result {
-                      Result::Ok(value: v) => v,
-                      Result::Err(msg: m) => ("error: " + m),
+                      Result::Ok {value: v} => v,
+                      Result::Err {msg: m} => ("error: " + m),
                     })
                   }
                 }
 
                 -- after --
                 Test() {
-                  let result = Result::Ok(value: "success") in {
+                  let result = Result::Ok {value: "success"} in {
                     write_escaped("success")
                   }
                 }
@@ -2438,10 +2438,10 @@ mod tests {
                 Test() {
                   let choice = Choice::A in {
                     let x = match choice {
-                      Choice::A => Msg::Say(text: "hello"),
-                      Choice::B => Msg::Say(text: "world"),
+                      Choice::A => Msg::Say {text: "hello"},
+                      Choice::B => Msg::Say {text: "world"},
                     } in {
-                      write_escaped(match x {Msg::Say(text: t) => t})
+                      write_escaped(match x {Msg::Say {text: t} => t})
                     }
                   }
                 }
@@ -2449,7 +2449,7 @@ mod tests {
                 -- after --
                 Test() {
                   let choice = Choice::A in {
-                    let x = Msg::Say(text: "hello") in {
+                    let x = Msg::Say {text: "hello"} in {
                       write_escaped("hello")
                     }
                   }
@@ -2652,10 +2652,10 @@ mod tests {
                 Test() {
                   let choice = Choice::A in {
                     let y = match choice {
-                      Choice::A => let x = Msg::Say(text: "hello") in x,
-                      Choice::B => Msg::Say(text: "world"),
+                      Choice::A => let x = Msg::Say {text: "hello"} in x,
+                      Choice::B => Msg::Say {text: "world"},
                     } in {
-                      write_escaped(match y {Msg::Say(text: txt) => txt})
+                      write_escaped(match y {Msg::Say {text: txt} => txt})
                     }
                   }
                 }
@@ -2663,7 +2663,7 @@ mod tests {
                 -- after --
                 Test() {
                   let choice = Choice::A in {
-                    let y = Msg::Say(text: "hello") in {
+                    let y = Msg::Say {text: "hello"} in {
                       write_escaped("hello")
                     }
                   }

@@ -2012,7 +2012,7 @@ mod tests {
                 -- main.hop --
                 record User {name: String}
                 <Main>
-                  <let {user: User = User(name: "John")}>
+                  <let {user: User = User{name: "John"}}>
                               ^
                     {user.name}
                   </let>
@@ -2021,7 +2021,7 @@ mod tests {
             expect![[r#"
                 `main::User`: `main::User`
                   --> main.hop (line 3, col 15)
-                3 |   <let {user: User = User(name: "John")}>
+                3 |   <let {user: User = User{name: "John"}}>
                   |               ^^^^
             "#]],
         );
@@ -2034,7 +2034,7 @@ mod tests {
                 -- main.hop --
                 record User {name: String}
                 <Main>
-                  <let {user: User = User(name: "John")}>
+                  <let {user: User = User{name: "John"}}>
                                      ^
                     {user.name}
                   </let>
@@ -2043,7 +2043,7 @@ mod tests {
             expect![[r#"
                 `User`: `main::User`
                   --> main.hop (line 3, col 22)
-                3 |   <let {user: User = User(name: "John")}>
+                3 |   <let {user: User = User{name: "John"}}>
                   |                      ^^^^
             "#]],
         );
@@ -2079,13 +2079,13 @@ mod tests {
         check_hover_info(
             indoc! {r#"
                 -- main.hop --
-                enum Outcome { Success(value: String), Failure(message: String) }
+                enum Outcome { Success{value: String}, Failure{message: String} }
                 <Main>
-                  <let {result: Outcome = Outcome::Success(value: "ok")}>
+                  <let {result: Outcome = Outcome::Success{value: "ok"}}>
                                           ^
                     <match {result}>
-                      <case {Outcome::Success(value: v)}>{v}</case>
-                      <case {Outcome::Failure(message: m)}>{m}</case>
+                      <case {Outcome::Success{value: v}}>{v}</case>
+                      <case {Outcome::Failure{message: m}}>{m}</case>
                     </match>
                   </let>
                 </Main>
@@ -2093,7 +2093,7 @@ mod tests {
             expect![[r#"
                 `Outcome::Success`: `main::Outcome`
                   --> main.hop (line 3, col 27)
-                3 |   <let {result: Outcome = Outcome::Success(value: "ok")}>
+                3 |   <let {result: Outcome = Outcome::Success{value: "ok"}}>
                   |                           ^^^^^^^^^^^^^^^^
             "#]],
         );

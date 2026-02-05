@@ -2228,7 +2228,7 @@ mod tests {
         check(
             indoc! {r#"
                 record Config { debug: Bool, timeout: Int }
-                <Main {config: Config = Config(debug: false, timeout: 30)}>
+                <Main {config: Config = Config {debug: false, timeout: 30}}>
                     <div></div>
                 </Main>
             "#},
@@ -2238,7 +2238,7 @@ mod tests {
                   timeout: Int,
                 }
 
-                <Main {config: Config = Config(debug: false, timeout: 30)}>
+                <Main {config: Config = Config {debug: false, timeout: 30}}>
                   <div>
                   </div>
                 </Main>
@@ -2392,13 +2392,13 @@ mod tests {
     fn should_parse_match_with_enum_variant_fields() {
         check(
             indoc! {r#"
-                enum Outcome { Success(value: Int), Failure(message: String) }
+                enum Outcome { Success {value: Int}, Failure {message: String} }
                 <Main {r: Outcome}>
                     <match {r}>
-                        <case {Outcome::Success(value: v)}>
+                        <case {Outcome::Success{value: v}}>
                             Success: {v}
                         </case>
-                        <case {Outcome::Failure(message: m)}>
+                        <case {Outcome::Failure{message: m}}>
                             Error: {m}
                         </case>
                     </match>
@@ -2406,16 +2406,16 @@ mod tests {
             "#},
             expect![[r#"
                 enum Outcome {
-                  Success(value: Int),
-                  Failure(message: String),
+                  Success {value: Int},
+                  Failure {message: String},
                 }
 
                 <Main {r: Outcome}>
                   <match {r}>
-                    <case {Outcome::Success(value: v)}>
+                    <case {Outcome::Success{value: v}}>
                       Success: {v}
                     </case>
-                    <case {Outcome::Failure(message: m)}>
+                    <case {Outcome::Failure{message: m}}>
                       Error: {m}
                     </case>
                   </match>
@@ -2428,10 +2428,10 @@ mod tests {
     fn should_parse_match_on_enum_literal_expression() {
         check(
             indoc! {r#"
-                enum Status { Active(name: String), Inactive }
+                enum Status { Active {name: String}, Inactive }
                 <Main>
-                    <match {Status::Active(name: "test")}>
-                        <case {Status::Active(name: n)}>
+                    <match {Status::Active {name: "test"}}>
+                        <case {Status::Active{name: n}}>
                             {n}
                         </case>
                         <case {Status::Inactive}>
@@ -2442,13 +2442,13 @@ mod tests {
             "#},
             expect![[r#"
                 enum Status {
-                  Active(name: String),
+                  Active {name: String},
                   Inactive,
                 }
 
                 <Main>
-                  <match {Status::Active(name: "test")}>
-                    <case {Status::Active(name: n)}>
+                  <match {Status::Active {name: "test"}}>
+                    <case {Status::Active{name: n}}>
                       {n}
                     </case>
                     <case {Status::Inactive}>
