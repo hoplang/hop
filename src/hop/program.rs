@@ -2042,6 +2042,56 @@ mod tests {
     }
 
     #[test]
+    fn should_show_hover_info_for_len_on_array() {
+        check_hover_info(
+            indoc! {r#"
+                -- main.hop --
+                <Main {items: Array[String]}>
+                  <if {items.len() == 0}>
+                             ^
+                    Empty
+                  </if>
+                </Main>
+            "#},
+            expect![[r#"
+                `.len()`
+
+                ---
+
+                Returns the number of elements in the array
+                  --> main.hop (line 2, col 14)
+                2 |   <if {items.len() == 0}>
+                  |              ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_show_hover_info_for_is_empty_on_array() {
+        check_hover_info(
+            indoc! {r#"
+                -- main.hop --
+                <Main {items: Array[String]}>
+                  <if {items.is_empty()}>
+                              ^
+                    Empty
+                  </if>
+                </Main>
+            "#},
+            expect![[r#"
+                `.is_empty()`
+
+                ---
+
+                Returns true if the array is empty
+                  --> main.hop (line 2, col 14)
+                2 |   <if {items.is_empty()}>
+                  |              ^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
     fn should_show_hover_info_for_join_macro() {
         check_hover_info(
             indoc! {r#"

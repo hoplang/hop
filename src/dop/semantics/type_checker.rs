@@ -1101,6 +1101,7 @@ pub fn typecheck_expr(
         ParsedExpr::MethodCall {
             receiver,
             method,
+            method_range,
             range,
         } => {
             let typed_receiver = typecheck_expr(
@@ -1114,12 +1115,26 @@ pub fn typecheck_expr(
             let receiver_type = typed_receiver.get_type();
 
             match (receiver_type.as_ref(), method.as_str()) {
-                (Type::Array(_), "len") => Ok(TypedExpr::ArrayLength {
-                    array: Box::new(typed_receiver),
-                }),
-                (Type::Array(_), "is_empty") => Ok(TypedExpr::ArrayIsEmpty {
-                    array: Box::new(typed_receiver),
-                }),
+                (Type::Array(_), "len") => {
+                    annotations.push(TypeAnnotation::Description {
+                        title: "`.len()`".to_string(),
+                        description: "Returns the number of elements in the array".to_string(),
+                        range: method_range.clone(),
+                    });
+                    Ok(TypedExpr::ArrayLength {
+                        array: Box::new(typed_receiver),
+                    })
+                }
+                (Type::Array(_), "is_empty") => {
+                    annotations.push(TypeAnnotation::Description {
+                        title: "`.is_empty()`".to_string(),
+                        description: "Returns true if the array is empty".to_string(),
+                        range: method_range.clone(),
+                    });
+                    Ok(TypedExpr::ArrayIsEmpty {
+                        array: Box::new(typed_receiver),
+                    })
+                }
                 (Type::Int, "to_string") => Ok(TypedExpr::IntToString {
                     value: Box::new(typed_receiver),
                 }),

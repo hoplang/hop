@@ -237,6 +237,7 @@ pub enum ParsedExpr {
     MethodCall {
         receiver: Box<Self>,
         method: FieldName,
+        method_range: DocumentRange,
         range: DocumentRange,
     },
 

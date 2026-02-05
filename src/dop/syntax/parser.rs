@@ -786,6 +786,7 @@ pub fn parse_primary(
                     expr = ParsedExpr::MethodCall {
                         receiver: Box::new(expr),
                         method: field_name,
+                        method_range: field_range,
                         range: new_range,
                     };
                 } else {
