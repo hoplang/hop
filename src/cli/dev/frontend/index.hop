@@ -10,7 +10,10 @@ record Entrypoint {
   module: String,
 }
 
-<EntrypointItem {name: String, module: String}>
+<EntrypointItem {
+  name: String,
+  module: String,
+}>
   <a
     href={"/preview/" + name}
     class="group flex flex-col gap-4 outline-none"
@@ -78,8 +81,8 @@ record Entrypoint {
 
 entrypoint Index(
   entrypoints: Array[Entrypoint] = [
-    Entrypoint(module: "index.hop", name: "Index"),
-    Entrypoint(module: "overlay.hop", name: "Overlay"),
+    Entrypoint {module: "index.hop", name: "Index"},
+    Entrypoint {module: "overlay.hop", name: "Overlay"},
   ],
 ) {
   <head>

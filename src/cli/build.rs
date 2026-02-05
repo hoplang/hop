@@ -35,11 +35,6 @@ pub async fn execute(project: &Project, skip_optimization: bool) -> Result<Compi
         .collect::<Vec<_>>()
         .join("\n");
 
-    timer.start_phase("tailwind");
-    let runner = TailwindRunner::new().await?;
-    let tailwind_input = project.get_tailwind_input_path().await?;
-    let tailwind_css = runner.compile_once(tailwind_input, &hop_sources).await?;
-
     timer.start_phase("compiling");
     let program = Program::new(hop_modules);
 
@@ -71,6 +66,11 @@ pub async fn execute(project: &Project, skip_optimization: bool) -> Result<Compi
             error_output.join("\n")
         ));
     }
+
+    timer.start_phase("tailwind");
+    let runner = TailwindRunner::new().await?;
+    let tailwind_input = project.get_tailwind_input_path().await?;
+    let tailwind_css = runner.compile_once(tailwind_input, &hop_sources).await?;
 
     timer.start_phase("compiling to IR");
 
