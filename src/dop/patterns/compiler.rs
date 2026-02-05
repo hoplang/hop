@@ -792,6 +792,7 @@ impl<'a> Compiler<'a> {
                 fields,
                 constructor_range,
                 range,
+                ..
             } => match (constructor, subject_type.as_ref()) {
                 (Constructor::BooleanTrue | Constructor::BooleanFalse, Type::Bool) => Ok(()),
 

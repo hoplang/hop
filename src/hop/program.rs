@@ -1646,6 +1646,64 @@ mod tests {
     }
 
     #[test]
+    fn should_find_rename_locations_for_enum_type_in_entrypoint() {
+        check_rename_locations(
+            indoc! {r#"
+                -- main.hop --
+                enum Device {
+                     ^
+                  Desktop,
+                  Mobile,
+                }
+
+                entrypoint Preview(
+                  iframe_src: String = "",
+                  device: Device = Device::Desktop,
+                ) {
+                  <div class={
+                    join!(
+                      "bg-white",
+                      "h-full",
+                      "border",
+                      "border-neutral-300",
+                      "rounded",
+                      "overflow-hidden",
+                      match device {
+                        Device::Mobile => "w-md",
+                        _ => "w-full",
+                      },
+                    )
+                  }>
+                    <iframe src={iframe_src} class="w-full h-full">
+                    </iframe>
+                  </div>
+                }
+            "#},
+            expect![[r#"
+                Rename
+                  --> main.hop (line 1, col 6)
+                 1 | enum Device {
+                   |      ^^^^^^
+
+                Rename
+                  --> main.hop (line 8, col 11)
+                 8 |   device: Device = Device::Desktop,
+                   |           ^^^^^^
+
+                Rename
+                  --> main.hop (line 8, col 20)
+                 8 |   device: Device = Device::Desktop,
+                   |                    ^^^^^^
+
+                Rename
+                  --> main.hop (line 19, col 9)
+                19 |         Device::Mobile => "w-md",
+                   |         ^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
     fn should_find_rename_locations_even_when_there_is_parse_errors() {
         check_rename_locations(
             indoc! {r#"

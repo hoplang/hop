@@ -882,6 +882,7 @@ pub fn typecheck_expr(
             variant_name,
             fields,
             constructor_range,
+            enum_name_range,
             range,
         } => {
             // Look up the enum type in the type environment
@@ -902,7 +903,7 @@ pub fn typecheck_expr(
                 name: format!("{}::{}", enum_name, variant_name),
             });
             definition_links.push(DefinitionLink {
-                use_range: constructor_range.clone(),
+                use_range: enum_name_range.clone(),
                 definition_range: def_range,
             });
 
@@ -1287,6 +1288,47 @@ pub fn extract_bindings_from_pattern(
     }
 }
 
+/// Collect definition links for enum variant references in match patterns.
+fn collect_pattern_definition_links(
+    pattern: &ParsedMatchPattern,
+    type_env: &mut Environment<(Arc<Type>, DocumentRange)>,
+    definition_links: &mut Vec<DefinitionLink>,
+) {
+    match pattern {
+        ParsedMatchPattern::Constructor {
+            constructor: Constructor::EnumVariant { enum_name, .. },
+            enum_name_range: Some(enum_name_range),
+            fields,
+            args,
+            ..
+        } => {
+            if let Some((_, def_range)) = type_env.lookup(enum_name.as_str()) {
+                definition_links.push(DefinitionLink {
+                    use_range: enum_name_range.clone(),
+                    definition_range: def_range.clone(),
+                });
+            }
+            for (_, _, field_pattern) in fields {
+                collect_pattern_definition_links(field_pattern, type_env, definition_links);
+            }
+            for arg in args {
+                collect_pattern_definition_links(arg, type_env, definition_links);
+            }
+        }
+        ParsedMatchPattern::Constructor {
+            fields, args, ..
+        } => {
+            for (_, _, field_pattern) in fields {
+                collect_pattern_definition_links(field_pattern, type_env, definition_links);
+            }
+            for arg in args {
+                collect_pattern_definition_links(arg, type_env, definition_links);
+            }
+        }
+        ParsedMatchPattern::Wildcard { .. } | ParsedMatchPattern::Binding { .. } => {}
+    }
+}
+
 /// Typecheck all arm bodies and verify they all have the same type.
 /// Returns the typed bodies and the common result type.
 fn typecheck_arm_bodies(
@@ -1301,6 +1343,9 @@ fn typecheck_arm_bodies(
     let mut result_type: Option<Arc<Type>> = None;
 
     for arm in arms {
+        // Collect definition links for enum variant references in patterns
+        collect_pattern_definition_links(&arm.pattern, type_env, definition_links);
+
         // Extract binding variables from the pattern and add them to the environment
         let bindings = extract_bindings_from_pattern(&arm.pattern, subject_type.clone());
         let mut pushed_count = 0;

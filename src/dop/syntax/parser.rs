@@ -925,6 +925,7 @@ fn parse_enum_literal(
         variant_name,
         fields,
         constructor_range,
+        enum_name_range: enum_name_range.clone(),
         range: enum_name_range.to(end_range),
     })
 }
@@ -946,6 +947,7 @@ pub fn parse_match_pattern(
             args: Vec::new(),
             fields: Vec::new(),
             constructor_range: pattern_range.clone(),
+            enum_name_range: None,
             range: pattern_range,
         });
     }
@@ -955,6 +957,7 @@ pub fn parse_match_pattern(
             args: Vec::new(),
             fields: Vec::new(),
             constructor_range: pattern_range.clone(),
+            enum_name_range: None,
             range: pattern_range,
         });
     }
@@ -967,6 +970,7 @@ pub fn parse_match_pattern(
             args: vec![inner_pattern],
             fields: Vec::new(),
             constructor_range: some_range.clone(),
+            enum_name_range: None,
             range: some_range.to(right_paren),
         });
     }
@@ -976,6 +980,7 @@ pub fn parse_match_pattern(
             args: Vec::new(),
             fields: Vec::new(),
             constructor_range: pattern_range.clone(),
+            enum_name_range: None,
             range: pattern_range,
         });
     }
@@ -1030,6 +1035,7 @@ pub fn parse_match_pattern(
                 args: Vec::new(),
                 fields,
                 constructor_range,
+                enum_name_range: Some(type_name_range.clone()),
                 range: type_name_range.to(end_range),
             });
         } else {
@@ -1056,6 +1062,7 @@ pub fn parse_match_pattern(
                 args: Vec::new(),
                 fields,
                 constructor_range: type_name_range.clone(),
+                enum_name_range: None,
                 range: type_name_range.to(right_paren),
             });
         }

@@ -122,6 +122,8 @@ pub enum ParsedMatchPattern {
         fields: Vec<(FieldName, DocumentRange, ParsedMatchPattern)>,
         /// Range of just the constructor (e.g., `Point::XY` without the field patterns)
         constructor_range: DocumentRange,
+        /// Range of just the enum name for enum variant patterns (e.g., `Device` in `Device::Mobile`)
+        enum_name_range: Option<DocumentRange>,
         /// Range of the entire pattern including fields
         range: DocumentRange,
     },
@@ -279,6 +281,8 @@ pub enum ParsedExpr {
         fields: Vec<(FieldName, DocumentRange, Self)>,
         /// Range of just the constructor (e.g., `Point::XY` without the field values)
         constructor_range: DocumentRange,
+        /// Range of just the enum name (e.g., `Point` in `Point::XY`)
+        enum_name_range: DocumentRange,
         range: DocumentRange,
     },
 
