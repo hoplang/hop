@@ -46,6 +46,7 @@ pub async fn execute(project: &Project) -> anyhow::Result<DevServer> {
         .compile_once(input_css_path.clone(), &sources)
         .await?;
     let tailwind_watcher = runner.start_watcher(input_css_path, sources).await?;
+    log_info!("tailwind", event = "watching", dir = tailwind_watcher.working_dir().display());
 
     timer.start_phase("setup watchers");
     let (reload_channel, _) = tokio::sync::broadcast::channel::<()>(100);
