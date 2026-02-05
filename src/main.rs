@@ -71,6 +71,8 @@ enum Commands {
         #[arg(long, hide = true)]
         timing: bool,
     },
+    /// Show the user manual
+    Man,
     /// Run the LSP server
     #[command(hide = true)]
     Lsp,
@@ -90,6 +92,9 @@ async fn main() -> anyhow::Result<()> {
         None => {
             let mut cmd = Cli::command();
             cmd.print_help().unwrap();
+        }
+        Some(Commands::Man) => {
+            cli::man::execute();
         }
         Some(Commands::Lsp) => {
             cli::lsp::execute().await;
