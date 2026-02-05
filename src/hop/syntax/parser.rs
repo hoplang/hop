@@ -1603,7 +1603,10 @@ mod tests {
                 </Main>
             "},
             expect![[r#"
-                <Main {x: Int, y: Int}>
+                <Main {
+                  x: Int,
+                  y: Int,
+                }>
                   <if {x == y}>
                     <div>
                       Equal
@@ -1627,7 +1630,10 @@ mod tests {
                 </Main>
             "},
             expect![[r#"
-                <Main {x: Bool, data: Array[String]}>
+                <Main {
+                  x: Bool,
+                  data: Array[String],
+                }>
                   <if {x}>
                     <for {d in data}>
                       {d}
@@ -2412,10 +2418,10 @@ mod tests {
 
                 <Main {r: Outcome}>
                   <match {r}>
-                    <case {Outcome::Success{value: v}}>
+                    <case {Outcome::Success {value: v}}>
                       Success: {v}
                     </case>
-                    <case {Outcome::Failure{message: m}}>
+                    <case {Outcome::Failure {message: m}}>
                       Error: {m}
                     </case>
                   </match>
@@ -2448,7 +2454,7 @@ mod tests {
 
                 <Main>
                   <match {Status::Active {name: "test"}}>
-                    <case {Status::Active{name: n}}>
+                    <case {Status::Active {name: n}}>
                       {n}
                     </case>
                     <case {Status::Inactive}>
@@ -2916,7 +2922,10 @@ mod tests {
                 }
             "},
             expect![[r#"
-                entrypoint Index(name: String, count: Int) {
+                entrypoint Index(
+                  name: String,
+                  count: Int,
+                ) {
                   <div>
                     {name}: {count}
                   </div>
@@ -3351,7 +3360,10 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                entrypoint Index(required: String, optional: Int = 42) {
+                entrypoint Index(
+                  required: String,
+                  optional: Int = 42,
+                ) {
                   <div>
                     {required}: {optional}
                   </div>

@@ -238,9 +238,17 @@ fn format_component_declaration<'a>(
     let params_doc = match &component.params {
         Some((params, params_range)) => {
             let mut params_inner = arena.nil();
+            let force_multiline = params.len() >= 2;
+            let line_break = if force_multiline {
+                arena.hardline()
+            } else {
+                arena.line()
+            };
             for (i, param) in params.iter().enumerate() {
                 if i > 0 {
-                    params_inner = params_inner.append(arena.text(",")).append(arena.line());
+                    params_inner = params_inner
+                        .append(arena.text(","))
+                        .append(line_break.clone());
                 }
                 params_inner = params_inner.append(format_parameter(arena, param, comments));
             }
@@ -258,9 +266,16 @@ fn format_component_declaration<'a>(
                         .line_()
                         .append(params_inner)
                         .append(arena.text(","))
-                        .append(arena.line())
+                        .append(line_break.clone())
                         .append(trailing_comments)
                         .nest(2)
+                } else if force_multiline {
+                    arena
+                        .hardline()
+                        .append(params_inner)
+                        .append(arena.text(","))
+                        .nest(2)
+                        .append(arena.hardline())
                 } else {
                     arena
                         .line_()
@@ -269,11 +284,8 @@ fn format_component_declaration<'a>(
                         .nest(2)
                         .append(arena.line_())
                 };
-                arena
-                    .text(" {")
-                    .append(body)
-                    .append(arena.text("}"))
-                    .group()
+                let doc = arena.text(" {").append(body).append(arena.text("}"));
+                if force_multiline { doc } else { doc.group() }
             }
         }
         None => arena.nil(),
@@ -302,19 +314,37 @@ fn format_entrypoint_declaration<'a>(
         arena.nil()
     } else {
         let mut params_inner = arena.nil();
+        let force_multiline = entrypoint.params.len() >= 2;
+        let line_break = if force_multiline {
+            arena.hardline()
+        } else {
+            arena.line()
+        };
         for (i, param) in entrypoint.params.iter().enumerate() {
             if i > 0 {
-                params_inner = params_inner.append(arena.text(",")).append(arena.line());
+                params_inner = params_inner
+                    .append(arena.text(","))
+                    .append(line_break.clone());
             }
             params_inner = params_inner.append(format_parameter(arena, param, comments));
         }
-        let body = arena
-            .line_()
-            .append(params_inner)
-            .append(arena.text(",").flat_alt(arena.nil()))
-            .nest(2)
-            .append(arena.line_());
-        arena.text("(").append(body).append(arena.text(")")).group()
+        if force_multiline {
+            let body = arena
+                .hardline()
+                .append(params_inner)
+                .append(arena.text(","))
+                .nest(2)
+                .append(arena.hardline());
+            arena.text("(").append(body).append(arena.text(")"))
+        } else {
+            let body = arena
+                .line_()
+                .append(params_inner)
+                .append(arena.text(",").flat_alt(arena.nil()))
+                .nest(2)
+                .append(arena.line_());
+            arena.text("(").append(body).append(arena.text(")")).group()
+        }
     };
 
     leading_comments
@@ -1069,7 +1099,7 @@ fn format_match_pattern<'a>(
                     }),
                     arena.text(", "),
                 );
-                base.append(arena.text("{"))
+                base.append(arena.text(" {"))
                     .append(fields_doc)
                     .append(arena.text("}"))
             } else if args.is_empty() {
@@ -1237,7 +1267,10 @@ mod tests {
                 </Main>
             "},
             expect![[r#"
-                <Main {name: String, count: Int}>
+                <Main {
+                  name: String,
+                  count: Int,
+                }>
                   <div>
                     {name}
                   </div>
@@ -1403,7 +1436,10 @@ mod tests {
                 </Main>
             "},
             expect![[r#"
-                <Main {a: String, b: String}>
+                <Main {
+                  a: String,
+                  b: String,
+                }>
                   <if {a == b}>
                     <div>
                       equal
@@ -1425,7 +1461,10 @@ mod tests {
                 </Main>
             "},
             expect![[r#"
-                <Main {a: Bool, b: Bool}>
+                <Main {
+                  a: Bool,
+                  b: Bool,
+                }>
                   <if {a && b}>
                     <div>
                       both true
@@ -1447,7 +1486,11 @@ mod tests {
                 </Main>
             "},
             expect![[r#"
-                <Main {a: Bool, b: Bool, c: Bool}>
+                <Main {
+                  a: Bool,
+                  b: Bool,
+                  c: Bool,
+                }>
                   <if {a && b || c}>
                     <div>
                       complex
@@ -1491,7 +1534,10 @@ mod tests {
                 </Main>
             "},
             expect![[r#"
-                <Main {a: String, b: String}>
+                <Main {
+                  a: String,
+                  b: String,
+                }>
                   <if {!(a == b)}>
                     <div>
                       not equal
@@ -2003,7 +2049,10 @@ mod tests {
                 </Card>
             "#},
             expect![[r#"
-                <Card {a: String, b: String}>
+                <Card {
+                  a: String,
+                  b: String,
+                }>
                   <div class={
                     join!(
                       a,
@@ -2259,7 +2308,10 @@ mod tests {
                 </Main>
             "},
             expect![[r#"
-                <Main {x: Int, y: Int}>
+                <Main {
+                  x: Int,
+                  y: Int,
+                }>
                   <let {sum: Int = x + y}>
                     <span>
                       {sum}
@@ -3212,7 +3264,10 @@ mod tests {
                 </Main>
             "},
             expect![[r#"
-                <Main {rating: String, num_reviews: String}>
+                <Main {
+                  rating: String,
+                  num_reviews: String,
+                }>
                   <span>
                     {rating} ({num_reviews} reviews)
                   </span>
