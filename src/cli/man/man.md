@@ -356,4 +356,23 @@ export function Index(title: string = "Home"): string {
 }
 ```
 
+**TrustedHTML** — when a component accepts `TrustedHTML` parameters, the compiled output includes a `trustHtml` function for passing raw HTML strings:
+
+```typescript
+export function trustHtml(str: string): TrustedHTML {
+    return str as TrustedHTML;
+}
+```
+
+Use this when you need to pass pre-rendered or sanitized HTML to a component:
+
+```typescript
+import { Card, trustHtml } from "./app";
+
+const html = trustHtml("<p>Already sanitized content</p>");
+Card({ title: "Hello", children: html });
+```
+
+**Warning:** Only call `trustHtml` with content you have sanitized yourself or that comes from a trusted source (e.g. a static string, your own rendering pipeline). Never pass unsanitized user input to `trustHtml` — doing so causes XSS vulnerabilities. If you need to display user-provided text, use a regular `String` parameter instead and hop will escape it automatically.
+
 **CSS** is inlined as a `<style>` element in the `<head>` of the output.
