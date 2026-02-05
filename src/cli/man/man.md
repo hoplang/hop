@@ -133,6 +133,44 @@ enum Result {
 }
 ```
 
+**Option** — represents a value that may or may not be present:
+
+```hop
+Some("hello")
+None
+```
+
+Pattern match to extract the value:
+
+```hop
+match option {
+  Some(value) => "Got: " + value,
+  None => "empty",
+}
+```
+
+### Methods
+
+Built-in types have methods that can be called with dot syntax. Methods can be chained.
+
+**Array[T]:**
+- `.len()` → `Int` — number of elements
+- `.is_empty()` → `Bool` — true if the array has no elements
+
+**Int:**
+- `.to_string()` → `String` — convert to string
+- `.to_float()` → `Float` — convert to float
+
+**Float:**
+- `.to_string()` → `String` — convert to string
+- `.to_int()` → `Int` — convert to integer (truncates)
+
+```hop
+<let {count: Int = items.len()}>
+  <p>{count.to_string()} items</p>
+</let>
+```
+
 ### Components
 
 Reusable UI elements with typed parameters and optional defaults:
@@ -147,6 +185,41 @@ Use components like HTML elements:
 
 ```hop
 <Button text="Click me"/>
+```
+
+**Children** — components can accept nested content via a `children` parameter typed as `TrustedHTML`:
+
+```hop
+<Card {title: String, children: TrustedHTML}>
+  <div class="card">
+    <h2>{title}</h2>
+    {children}
+  </div>
+</Card>
+```
+
+Content between the component's tags is passed as `children`:
+
+```hop
+<Card title="Welcome">
+  <p>This becomes the children content.</p>
+</Card>
+```
+
+Use `Option[TrustedHTML]` to make children optional:
+
+```hop
+<Section {children: Option[TrustedHTML] = None}>
+  <div>
+    <match {children}>
+      <case {Some(c)}>{c}</case>
+      <case {None}><p>Default content</p></case>
+    </match>
+  </div>
+</Section>
+
+<Section />
+<Section><p>Custom content</p></Section>
 ```
 
 ### Entrypoints
@@ -211,7 +284,7 @@ Hop uses HTML-like syntax for rendering:
 **Local variables:**
 
 ```hop
-<let {count: Int = items.length()}>
+<let {count: Int = items.len()}>
   <p>Total: {count}</p>
 </let>
 ```
@@ -242,3 +315,45 @@ User { name: "Alice", email: "alice@example.com" }
 Device::Desktop
 Result::Ok { value: 42 }
 ```
+
+## Compilation Output
+
+Hop compiles to idiomatic code in the target language. Here's what the generated TypeScript looks like (other targets follow similar patterns).
+
+**Records** compile to classes:
+
+```typescript
+export class User {
+    constructor(
+        public readonly name: string,
+        public readonly email: string,
+    ) {}
+}
+```
+
+**Enums** compile to namespaces with tagged unions:
+
+```typescript
+export namespace Device {
+    export type Device =
+        | { readonly tag: "Desktop" }
+        | { readonly tag: "Mobile" };
+
+    export function Desktop(): Device { return { tag: "Desktop" }; }
+    export function Mobile(): Device { return { tag: "Mobile" }; }
+}
+```
+
+**Entrypoints** compile to functions returning a string of HTML:
+
+```typescript
+export function Index(title: string = "Home"): string {
+    let output: string = "";
+    output += "<head><title>";
+    output += escapeHtml(title);
+    output += "</title></head>";
+    return output;
+}
+```
+
+**CSS** is inlined as a `<style>` element in the `<head>` of the output.
