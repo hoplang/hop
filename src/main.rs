@@ -9,6 +9,7 @@ mod html;
 mod inlined;
 mod ir;
 mod log;
+mod markdown;
 mod orchestrator;
 mod parse_error;
 mod project;
