@@ -37,8 +37,8 @@ pub struct TailwindConfig {
 /// Handle for interacting with a running Tailwind watcher
 #[derive(Clone)]
 pub struct TailwindWatcher {
-    sources_tx: tokio::sync::mpsc::Sender<String>,
-    css_rx: tokio::sync::watch::Receiver<String>,
+    pub sources_tx: tokio::sync::mpsc::Sender<String>,
+    pub css_rx: tokio::sync::watch::Receiver<String>,
     working_dir: PathBuf,
 }
 

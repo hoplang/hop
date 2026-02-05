@@ -4,7 +4,7 @@ mod server;
 use crate::hop::program::Program;
 use crate::log_info;
 use crate::project::Project;
-use crate::project::project_watcher::ProjectWatcher;
+use crate::project::project_watcher::{ProjectWatcher, WatchBatch};
 use crate::timing;
 use server::{AppState, create_router};
 use std::collections::HashMap;
@@ -17,6 +17,70 @@ pub struct DevServer {
     pub timer: timing::TimingCollector,
     _project_watcher: ProjectWatcher,
     _tailwind_watcher: TailwindWatcher,
+}
+
+// Spawn a task that listens for file changes in the project
+async fn spawn_project_watcher_rx_reader(
+    mut project_change_rx: tokio::sync::broadcast::Receiver<WatchBatch>,
+    reload_channel_tx: tokio::sync::broadcast::Sender<()>,
+    tailwind_watcher_tx: tokio::sync::mpsc::Sender<String>,
+    project: Project,
+    program: Arc<RwLock<Program>>,
+) {
+    tokio::spawn(async move {
+        while let Ok(batch) = project_change_rx.recv().await {
+            log_info!(
+                "watch_event",
+                modified = batch.modified.len(),
+                deleted = batch.deleted.len(),
+            );
+
+            let start = std::time::Instant::now();
+
+            if let Ok(mut program) = program.write() {
+                for module_id in &batch.deleted {
+                    program.remove_module(module_id);
+                }
+                for module_id in &batch.modified {
+                    if let Ok(document) = project.load_module(module_id) {
+                        program.update_module(module_id, document);
+                    }
+                }
+            }
+
+            // Update Tailwind sources
+            if let Some(sources) = program.read().ok().map(|p| p.get_all_sources()) {
+                let _ = tailwind_watcher_tx.send(sources).await;
+            }
+
+            log_info!(
+                "program",
+                event = "update_complete",
+                elapsed = format!("{:?}", start.elapsed()),
+            );
+
+            // Signal reload to connected browsers
+            let _ = reload_channel_tx.send(());
+        }
+    });
+}
+
+// Spawn a task that listens for CSS updates from the Tailwind watcher
+async fn spawn_tailwind_rx_reader(
+    mut tailwind_css_rx: tokio::sync::watch::Receiver<String>,
+    reload_channel_tx: tokio::sync::broadcast::Sender<()>,
+    tailwind_css: Arc<RwLock<String>>,
+) {
+    tokio::spawn(async move {
+        while tailwind_css_rx.changed().await.is_ok() {
+            let new_css = tailwind_css_rx.borrow().clone();
+            if let Ok(mut css_guard) = tailwind_css.write() {
+                *css_guard = new_css;
+            }
+            log_info!("watch_event", kind = "css_modified");
+            let _ = reload_channel_tx.send(());
+        }
+    });
 }
 
 /// Create a router that responds to render requests.
@@ -46,72 +110,36 @@ pub async fn execute(project: &Project) -> anyhow::Result<DevServer> {
         .compile_once(input_css_path.clone(), &sources)
         .await?;
     let tailwind_watcher = runner.start_watcher(input_css_path, sources).await?;
-    log_info!("tailwind", event = "watching", dir = tailwind_watcher.working_dir().display());
+
+    let program = Arc::new(RwLock::new(program));
+
+    let css = Arc::new(RwLock::new(initial_css));
 
     timer.start_phase("setup watchers");
     let (reload_channel, _) = tokio::sync::broadcast::channel::<()>(100);
     let app_state = AppState {
-        program: Arc::new(RwLock::new(program)),
-        reload_channel,
-        tailwind_css: Arc::new(RwLock::new(Some(initial_css))),
+        program: program.clone(),
+        reload_channel: reload_channel.clone(),
+        tailwind_css: css.clone(),
     };
 
-    // Spawn a task that listens for CSS updates from the Tailwind watcher
-    let state_for_css = app_state.clone();
-    let mut css_rx = tailwind_watcher.subscribe();
-    tokio::spawn(async move {
-        while css_rx.changed().await.is_ok() {
-            let new_css = css_rx.borrow().clone();
-            if let Ok(mut css_guard) = state_for_css.tailwind_css.write() {
-                *css_guard = Some(new_css);
-            }
-            log_info!("watch_event", kind = "css_modified");
-            let _ = state_for_css.reload_channel.send(());
-        }
-    });
+    spawn_tailwind_rx_reader(
+        tailwind_watcher.subscribe(),
+        reload_channel.clone(),
+        css.clone(),
+    )
+    .await;
 
-    // Spawn a task that listens for .hop file changes
     let project_watcher = ProjectWatcher::new(project, Duration::from_millis(50)).await?;
-    let mut hop_rx = project_watcher.subscribe();
-    let state_copy = app_state.clone();
-    let project_copy = project.clone();
-    let tailwind_watcher_copy = tailwind_watcher.clone();
-    tokio::spawn(async move {
-        while let Ok(batch) = hop_rx.recv().await {
-            log_info!(
-                "watch_event",
-                modified = batch.modified.len(),
-                deleted = batch.deleted.len(),
-            );
 
-            let start = std::time::Instant::now();
-
-            if let Ok(mut program) = state_copy.program.write() {
-                for module_id in &batch.deleted {
-                    program.remove_module(module_id);
-                }
-                for module_id in &batch.modified {
-                    if let Ok(document) = project_copy.load_module(module_id) {
-                        program.update_module(module_id, document);
-                    }
-                }
-            }
-
-            // Update Tailwind sources
-            if let Some(sources) = state_copy.program.read().ok().map(|p| p.get_all_sources()) {
-                let _ = tailwind_watcher_copy.update_sources(sources).await;
-            }
-
-            log_info!(
-                "program",
-                event = "update_complete",
-                elapsed = format!("{:?}", start.elapsed()),
-            );
-
-            // Signal reload to connected browsers
-            let _ = state_copy.reload_channel.send(());
-        }
-    });
+    spawn_project_watcher_rx_reader(
+        project_watcher.subscribe(),
+        reload_channel,
+        tailwind_watcher.sources_tx.clone(),
+        project.clone(),
+        program,
+    )
+    .await;
 
     let router = create_router().with_state(app_state);
 
