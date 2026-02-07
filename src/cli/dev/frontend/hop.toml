@@ -1,3 +1,6 @@
 [build]
 target = "rust"
 output_path = "hop.rs"
+
+[css]
+tailwind.input = "input.css"

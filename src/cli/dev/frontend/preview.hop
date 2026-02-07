@@ -13,26 +13,17 @@ entrypoint Preview(
   iframe_src: String = "",
   device: Device = Device::Desktop,
 ) {
-  <head>
-    <link
-      rel="stylesheet"
-      href="https://rsms.me/inter/inter.css"
-    >
-  </head>
-  <body
-    style="font-family: Inter, sans-serif;"
-    class={
-      join!(
-        "bg-[#f3f3f3]/90",
-        "p-4",
-        "flex",
-        "flex-col",
-        "items-center",
-        "gap-6",
-        "h-dvh",
-      )
-    }
-  >
+  <body class={
+    join!(
+      "bg-[#f3f3f3]/90",
+      "p-4",
+      "flex",
+      "flex-col",
+      "items-center",
+      "gap-6",
+      "h-dvh",
+    )
+  }>
     <div class={
       join!(
         "w-full",

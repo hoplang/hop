@@ -85,16 +85,7 @@ entrypoint Index(
     Entrypoint {module: "overlay.hop", name: "Overlay"},
   ],
 ) {
-  <head>
-    <link
-      rel="stylesheet"
-      href="https://rsms.me/inter/inter.css"
-    >
-  </head>
-  <body
-    class="bg-[#f3f3f3]"
-    style="font-family: Inter, sans-serif;"
-  >
+  <body class="bg-[#f3f3f3]">
     <div class={
       join!(
         "max-w-6xl",

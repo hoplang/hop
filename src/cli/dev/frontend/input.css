@@ -1,0 +1,11 @@
+@import "tailwindcss";
+
+@theme {
+  --default-font-family:
+    -apple-system, BlinkMacSystemFont, Avenir Next, Avenir, Segoe UI,
+    Helvetica Neue, Inter, Roboto, Adwaita Sans, Cantarell, Ubuntu, Helvetica,
+    Arial, sans-serif;
+  --default-mono-font-family:
+    Menlo, Consolas, Monaco, Adwaita Mono, Ubuntu Mono, Liberation Mono,
+    Lucida Console, monospace;
+}
