@@ -1,0 +1,6 @@
+target
+result
+.envrc
+*.dot
+*.pdf
+*.json.gz

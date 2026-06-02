@@ -1,0 +1,29 @@
+[package]
+name = "hop-core"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+tailwind-merge = { path = "../tailwind-merge" }
+serde = { version = "1.0", features = ["derive"] }
+toml = "0.9"
+unicode-width = "0.2"
+anyhow = "1.0"
+thiserror = "2.0"
+pretty = "0.12"
+datafrog = "2.0"
+rand = "0.10"
+rand_regex = "0.19"
+regex-syntax = "0.8"
+
+[dev-dependencies]
+txtar = { path = "../txtar" }
+tempfile = "3.8"
+expect-test = "1.5"
+indoc = "2.0"
+
+[lints.clippy]
+too_many_arguments = "allow"
+collapsible_if = "allow"
+type_complexity = "allow"

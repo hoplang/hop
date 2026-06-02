@@ -1,0 +1,10 @@
+[workspace]
+members = [
+    "crates/txtar",
+    "crates/tailwind-merge",
+    "crates/hop-core",
+    "crates/hop-cli",
+    "crates/esbuild-runner",
+    "crates/tailwind-runner",
+]
+resolver = "2"

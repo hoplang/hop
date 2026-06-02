@@ -1,0 +1,2873 @@
+use pretty::{Arena, DocAllocator};
+
+use super::{Doc, Transpiler};
+use crate::dop::patterns::{EnumPattern, Match};
+use crate::dop::typing::r#type::Type;
+use crate::ir::ast::{
+    IrArgument, IrComponentDeclaration, IrExpr, IrForSource, IrModule, IrStatement,
+    IrViewDeclaration,
+};
+use crate::symbols::field_name::FieldName;
+use crate::symbols::type_name::TypeName;
+use crate::symbols::var_name::VarName;
+
+pub struct TsTranspiler {
+    /// Internal flag to use template literals instead of double quotes
+    use_template_literals: bool,
+    /// Tracks whether Option type is used during transpilation
+    needs_option: bool,
+    /// Tracks whether escapeHtml function is used during transpilation
+    needs_escape_html: bool,
+    /// Tracks whether Slot type is used during transpilation
+    needs_slot: bool,
+}
+
+impl TsTranspiler {
+    pub fn new() -> Self {
+        Self {
+            use_template_literals: false,
+            needs_option: false,
+            needs_escape_html: false,
+            needs_slot: false,
+        }
+    }
+
+    fn escape_string(&mut self, s: &str) -> String {
+        if self.use_template_literals {
+            // For template literals, only escape backticks and ${
+            s.replace('\\', "\\\\")
+                .replace('`', "\\`")
+                .replace("${", "\\${")
+        } else {
+            // For regular strings, escape double quotes and common escape sequences
+            s.replace('\\', "\\\\")
+                .replace('"', "\\\"")
+                .replace('\n', "\\n")
+                .replace('\r', "\\r")
+                .replace('\t', "\\t")
+        }
+    }
+
+    // Helper method to wrap a string in the appropriate quotes
+    fn quote_string(&mut self, s: &str) -> String {
+        if self.use_template_literals {
+            format!("`{}`", self.escape_string(s))
+        } else {
+            format!("\"{}\"", self.escape_string(s))
+        }
+    }
+}
+
+impl Default for TsTranspiler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Transpiler for TsTranspiler {
+    fn transpile_module(&mut self, module: &IrModule) -> String {
+        // Reset tracking flags for this module
+        self.needs_option = false;
+        self.needs_escape_html = false;
+        self.needs_slot = false;
+
+        let arena = &Arena::new();
+
+        let views = &module.views;
+        let records = &module.records;
+
+        let mut result = arena.nil();
+
+        // Add enum type definitions (namespace-based)
+        for enum_def in &module.enums {
+            // Generate namespace with tagged union type and constructor functions
+            let variant_type_docs: Vec<Doc> = enum_def
+                .variants
+                .iter()
+                .map(|variant| {
+                    let base = arena
+                        .text("{ readonly tag: \"")
+                        .append(arena.text(variant.name.as_str()))
+                        .append(arena.text("\""));
+                    if variant.fields.is_empty() {
+                        base.append(arena.text(" }"))
+                    } else {
+                        let field_docs: Vec<Doc> = variant
+                            .fields
+                            .iter()
+                            .map(|(field_name, field_type, _)| {
+                                arena
+                                    .text(", readonly ")
+                                    .append(arena.text(field_name.as_str()))
+                                    .append(arena.text(": "))
+                                    .append(self.transpile_type(arena, field_type))
+                            })
+                            .collect();
+                        base.append(arena.intersperse(field_docs, arena.nil()))
+                            .append(arena.text(" }"))
+                    }
+                })
+                .collect();
+
+            result = result
+                .append(arena.text("export namespace "))
+                .append(arena.text(enum_def.name.as_str()))
+                .append(arena.text(" {"))
+                .append(arena.line())
+                .append(arena.text("    export type "))
+                .append(arena.text(enum_def.name.as_str()))
+                .append(arena.text(" = "))
+                .append(arena.intersperse(variant_type_docs, arena.text(" | ")))
+                .append(arena.text(";"))
+                .append(arena.line());
+
+            // Generate constructor function for each variant
+            for variant in &enum_def.variants {
+                result = result.append(arena.line());
+
+                if variant.fields.is_empty() {
+                    // Unit variant: no parameters
+                    result = result
+                        .append(arena.text("    export function "))
+                        .append(arena.text(variant.name.as_str()))
+                        .append(arena.text("(): "))
+                        .append(arena.text(enum_def.name.as_str()))
+                        .append(arena.text(" {"))
+                        .append(arena.line())
+                        .append(arena.text("        return { tag: \""))
+                        .append(arena.text(variant.name.as_str()))
+                        .append(arena.text("\" };"))
+                        .append(arena.line())
+                        .append(arena.text("    }"));
+                } else {
+                    // Variant with fields: add parameters
+                    let param_docs: Vec<Doc> = variant
+                        .fields
+                        .iter()
+                        .map(|(field_name, field_type, _)| {
+                            arena
+                                .text(field_name.as_str())
+                                .append(arena.text(": "))
+                                .append(self.transpile_type(arena, field_type))
+                        })
+                        .collect();
+                    let field_name_docs: Vec<Doc> = variant
+                        .fields
+                        .iter()
+                        .map(|(field_name, _, _)| {
+                            arena.text(", ").append(arena.text(field_name.as_str()))
+                        })
+                        .collect();
+                    result = result
+                        .append(arena.text("    export function "))
+                        .append(arena.text(variant.name.as_str()))
+                        .append(arena.text("("))
+                        .append(arena.intersperse(param_docs, arena.text(", ")))
+                        .append(arena.text("): "))
+                        .append(arena.text(enum_def.name.as_str()))
+                        .append(arena.text(" {"))
+                        .append(arena.line())
+                        .append(arena.text("        return { tag: \""))
+                        .append(arena.text(variant.name.as_str()))
+                        .append(arena.text("\""))
+                        .append(arena.intersperse(field_name_docs, arena.nil()))
+                        .append(arena.text(" };"))
+                        .append(arena.line())
+                        .append(arena.text("    }"));
+                }
+            }
+
+            result = result
+                .append(arena.line())
+                .append(arena.text("}"))
+                .append(arena.line())
+                .append(arena.line());
+        }
+
+        // Add record type definitions
+        if !records.is_empty() {
+            for record in records {
+                let field_docs: Vec<Doc> = record
+                    .fields
+                    .iter()
+                    .map(|(name, ty, _)| {
+                        arena
+                            .text("public readonly ")
+                            .append(arena.text(name.as_str()))
+                            .append(arena.text(": "))
+                            .append(self.transpile_type(arena, ty))
+                            .append(arena.text(","))
+                    })
+                    .collect();
+                result = result
+                    .append(arena.text("export class "))
+                    .append(arena.text(record.name.as_str()))
+                    .append(arena.text(" {"))
+                    .append(
+                        arena
+                            .nil()
+                            .append(arena.line())
+                            .append(arena.text("constructor("))
+                            .append(
+                                arena
+                                    .nil()
+                                    .append(arena.line())
+                                    .append(arena.intersperse(field_docs, arena.line()))
+                                    .append(arena.line())
+                                    .nest(4),
+                            )
+                            .append(arena.text(") {}"))
+                            .append(arena.line())
+                            .nest(4),
+                    )
+                    .append(arena.text("}"))
+                    .append(arena.line())
+                    .append(arena.line());
+            }
+        }
+
+        // Add component definitions
+        for component in &module.components {
+            result = result
+                .append(self.transpile_component_def(arena, component))
+                .append(arena.hardline())
+                .append(arena.hardline());
+        }
+
+        let view_docs: Vec<Doc> = views
+            .iter()
+            .map(|view| self.transpile_view(arena, &view.name, view))
+            .collect();
+        result =
+            result.append(arena.intersperse(view_docs, arena.hardline().append(arena.hardline())));
+
+        // Prepend escapeHtml function if needed (after transpilation determined it's used)
+        if self.needs_escape_html {
+            let escape_fn = arena
+                .nil()
+                .append(arena.text("function escapeHtml(str: string): string {"))
+                .append(
+                    arena
+                        .nil()
+                        .append(arena.line())
+                        .append(arena.text("return str"))
+                        .append(
+                            arena
+                                .nil()
+                                .append(arena.line())
+                                .append(arena.intersperse(
+                                    [
+                                        arena.text(".replace(/&/g, '&amp;')"),
+                                        arena.text(".replace(/</g, '&lt;')"),
+                                        arena.text(".replace(/>/g, '&gt;')"),
+                                        arena.text(".replace(/\"/g, '&quot;')"),
+                                        arena.text(".replace(/'/g, '&#39;');"),
+                                    ],
+                                    arena.line(),
+                                ))
+                                .nest(4),
+                        )
+                        .append(arena.line())
+                        .nest(4),
+                )
+                .append(arena.text("}"))
+                .append(arena.line())
+                .append(arena.line());
+            result = escape_fn.append(result);
+        }
+
+        // Prepend Option namespace if needed (after transpilation determined it's used)
+        if self.needs_option {
+            let option_ns = arena
+                .nil()
+                .append(arena.text("export namespace Option {"))
+                .append(arena.line())
+                .append(arena.text(
+                    "    export type Option<T> = { readonly tag: \"None\" } | { readonly tag: \"Some\", value: T };",
+                ))
+                .append(arena.line())
+                .append(arena.line())
+                .append(arena.text("    export function some<T>(value: T): Option<T> {"))
+                .append(arena.line())
+                .append(arena.text("        return { tag: \"Some\", value };"))
+                .append(arena.line())
+                .append(arena.text("    }"))
+                .append(arena.line())
+                .append(arena.text("    export function none<T = never>(): Option<T> {"))
+                .append(arena.line())
+                .append(arena.text("        return { tag: \"None\" };"))
+                .append(arena.line())
+                .append(arena.text("    }"))
+                .append(arena.line())
+                .append(arena.text("}"))
+                .append(arena.line())
+                .append(arena.line());
+            result = option_ns.append(result);
+        }
+
+        // Prepend Slot type if needed (after transpilation determined it's used)
+        if self.needs_slot {
+            let slot = arena
+                .nil()
+                .append(arena.text(
+                    "type Slot = string & { readonly __brand: unique symbol };",
+                ))
+                .append(arena.line())
+                .append(arena.line())
+                .append(arena.text("/** Marks a string as trusted HTML, bypassing escaping. Only use with sanitized or trusted content. Calling this function with untrusted content causes XSS vulnerabilities. */"))
+                .append(arena.line())
+                .append(arena.text("export function trustHtml(str: string): Slot {"))
+                .append(
+                    arena
+                        .nil()
+                        .append(arena.line())
+                        .append(arena.text("return str as Slot;"))
+                        .append(arena.line())
+                        .nest(4),
+                )
+                .append(arena.text("}"))
+                .append(arena.line())
+                .append(arena.line());
+            result = slot.append(result);
+        }
+
+        // Prepend warning header (must be last prepend to appear first in output)
+        let warning = arena
+            .text("// Code generated by the hop compiler. DO NOT EDIT.")
+            .append(arena.line())
+            .append(arena.line());
+        result = warning.append(result);
+
+        result.pretty(80).to_string()
+    }
+
+    fn transpile_view<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        name: &'a TypeName,
+        view: &'a IrViewDeclaration,
+    ) -> Doc<'a> {
+        let mut result = arena
+            .text("export function ")
+            .append(arena.text(name.as_ref()))
+            .append(arena.text("("));
+
+        if !view.parameters.is_empty() {
+            // Destructuring pattern: {a, b, c}
+            let name_docs: Vec<Doc> = view
+                .parameters
+                .iter()
+                .map(|param| arena.text(param.name.as_str()))
+                .collect();
+            let type_docs: Vec<Doc> = view
+                .parameters
+                .iter()
+                .map(|param| {
+                    arena
+                        .text(param.name.as_str())
+                        .append(arena.text(": "))
+                        .append(self.transpile_type(arena, &param.typ))
+                })
+                .collect();
+            result = result
+                .append(arena.text("{"))
+                .append(arena.intersperse(name_docs, arena.text(", ")))
+                .append(arena.text("}: {"))
+                .append(arena.intersperse(type_docs, arena.text(", ")))
+                .append(arena.text("}"));
+        }
+
+        // Function body
+        result
+            .append(arena.text("): string {"))
+            .append(
+                arena
+                    .nil()
+                    .append(arena.line())
+                    .append(arena.text("let output: string = \"\";"))
+                    .append(arena.line())
+                    .append(self.transpile_statements(arena, &view.body))
+                    .append(arena.line())
+                    .append(arena.text("return output;"))
+                    .append(arena.line())
+                    .nest(4),
+            )
+            .append(arena.text("}"))
+    }
+
+    fn transpile_component_def<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        component: &'a IrComponentDeclaration,
+    ) -> Doc<'a> {
+        let mut result = arena
+            .text("function render")
+            .append(arena.text(component.name.as_ref()))
+            .append(arena.text("("));
+
+        // Build parameter list including children if accepted
+        let has_params = !component.parameters.is_empty() || component.has_slot;
+        if has_params {
+            // Destructuring pattern: {a, b, c} or {a, b, children}
+            let param_names: Vec<Doc> = component
+                .parameters
+                .iter()
+                .map(|param| arena.text(param.name.as_str()))
+                .chain(if component.has_slot {
+                    vec![arena.text("slot")]
+                } else {
+                    vec![]
+                })
+                .collect();
+
+            result = result
+                .append(arena.text("{"))
+                .append(arena.intersperse(param_names, arena.text(", ")))
+                .append(arena.text("}: {"));
+
+            // Type annotation: {a: TypeA, b: TypeB, children?: Slot}
+            if component.has_slot {
+                self.needs_slot = true;
+            }
+            let param_types: Vec<Doc> = component
+                .parameters
+                .iter()
+                .map(|param| {
+                    arena
+                        .text(param.name.as_str())
+                        .append(arena.text(": "))
+                        .append(self.transpile_type(arena, &param.typ))
+                })
+                .chain(if component.has_slot {
+                    vec![arena.text("slot?: Slot")]
+                } else {
+                    vec![]
+                })
+                .collect();
+
+            result = result
+                .append(arena.intersperse(param_types, arena.text(", ")))
+                .append(arena.text("}"));
+        }
+
+        // Function body
+        let mut body = arena
+            .nil()
+            .append(arena.line())
+            .append(arena.text("let output: string = \"\";"))
+            .append(arena.line());
+
+        // Add children default if component accepts children
+        if component.has_slot {
+            body = body
+                .append(arena.text("slot = slot ?? trustHtml(\"\");"))
+                .append(arena.line());
+        }
+
+        body = body
+            .append(self.transpile_statements(arena, &component.body))
+            .append(arena.line())
+            .append(arena.text("return output;"))
+            .append(arena.line());
+
+        result
+            .append(arena.text("): string {"))
+            .append(body.nest(4))
+            .append(arena.text("}"))
+    }
+
+    fn transpile_component_call_statement<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        name: &'a TypeName,
+        args: &'a [IrArgument],
+        slot_body: &'a [IrStatement],
+    ) -> Doc<'a> {
+        let mut doc = arena
+            .nil()
+            .append(arena.text("output += render"))
+            .append(arena.text(name.as_ref()))
+            .append(arena.text("("));
+
+        let has_args = !args.is_empty() || !slot_body.is_empty();
+        if has_args {
+            // Build named arguments
+            let mut arg_docs: Vec<Doc> = args
+                .iter()
+                .map(|arg| {
+                    arena
+                        .text(arg.name.as_str())
+                        .append(arena.text(": "))
+                        .append(self.transpile_expr(arena, &arg.expr))
+                })
+                .collect();
+
+            // Add children IIFE if slot_body is non-empty
+            if !slot_body.is_empty() {
+                self.needs_slot = true;
+                let children_doc = arena
+                    .text("slot: trustHtml((() => { let output = \"\"; ")
+                    .append(self.transpile_statements(arena, slot_body))
+                    .append(arena.hardline())
+                    .append(arena.text("return output; })())"));
+                arg_docs.push(children_doc);
+            }
+
+            doc = doc
+                .append(arena.text("{"))
+                .append(arena.intersperse(arg_docs, arena.text(", ")))
+                .append(arena.text("}"));
+        }
+
+        doc.append(arena.text(");"))
+    }
+
+    fn transpile_write_statement<'a>(&mut self, arena: &'a Arena<'a>, content: &'a str) -> Doc<'a> {
+        arena
+            .nil()
+            .append(arena.text("output += "))
+            .append(arena.text(self.quote_string(content)))
+            .append(arena.text(";"))
+    }
+
+    fn transpile_write_expr_statement<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        expr: &'a IrExpr,
+        escape: bool,
+    ) -> Doc<'a> {
+        if escape {
+            self.needs_escape_html = true;
+            arena
+                .nil()
+                .append(arena.text("output += escapeHtml("))
+                .append(self.transpile_expr(arena, expr))
+                .append(arena.text(");"))
+        } else {
+            arena
+                .nil()
+                .append(arena.text("output += "))
+                .append(self.transpile_expr(arena, expr))
+                .append(arena.text(";"))
+        }
+    }
+
+    fn transpile_if_statement<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        condition: &'a IrExpr,
+        body: &'a [IrStatement],
+    ) -> Doc<'a> {
+        arena
+            .nil()
+            .append(arena.text("if ("))
+            .append(self.transpile_expr(arena, condition))
+            .append(arena.text(") {"))
+            .append(
+                arena
+                    .nil()
+                    .append(arena.hardline())
+                    .append(self.transpile_statements(arena, body))
+                    .append(arena.hardline())
+                    .nest(4),
+            )
+            .append(arena.text("}"))
+    }
+
+    fn transpile_for_statement<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        var: Option<&'a str>,
+        source: &'a IrForSource,
+        body: &'a [IrStatement],
+    ) -> Doc<'a> {
+        let var_name = var.unwrap_or("_");
+        match source {
+            IrForSource::Array(array) => arena
+                .nil()
+                .append(arena.text("for (const "))
+                .append(arena.text(var_name))
+                .append(arena.text(" of "))
+                .append(self.transpile_expr(arena, array))
+                .append(arena.text(") {"))
+                .append(
+                    arena
+                        .nil()
+                        .append(arena.hardline())
+                        .append(self.transpile_statements(arena, body))
+                        .append(arena.hardline())
+                        .nest(4),
+                )
+                .append(arena.text("}")),
+            IrForSource::RangeInclusive { start, end } => arena
+                .nil()
+                .append(arena.text("for (let "))
+                .append(arena.text(var_name))
+                .append(arena.text(" = "))
+                .append(self.transpile_expr(arena, start))
+                .append(arena.text("; "))
+                .append(arena.text(var_name))
+                .append(arena.text(" <= "))
+                .append(self.transpile_expr(arena, end))
+                .append(arena.text("; "))
+                .append(arena.text(var_name))
+                .append(arena.text("++) {"))
+                .append(
+                    arena
+                        .nil()
+                        .append(arena.hardline())
+                        .append(self.transpile_statements(arena, body))
+                        .append(arena.hardline())
+                        .nest(4),
+                )
+                .append(arena.text("}")),
+        }
+    }
+
+    fn transpile_let_statement<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        var: &'a str,
+        value: &'a IrExpr,
+        body: &'a [IrStatement],
+    ) -> Doc<'a> {
+        arena
+            .text("const ")
+            .append(arena.text(var))
+            .append(arena.text(" = "))
+            .append(self.transpile_expr(arena, value))
+            .append(arena.text(";"))
+            .append(arena.hardline())
+            .append(self.transpile_statements(arena, body))
+    }
+
+    fn transpile_match_statement<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        match_: &'a Match<Vec<IrStatement>>,
+    ) -> Doc<'a> {
+        match match_ {
+            Match::Bool {
+                subject,
+                true_body,
+                false_body,
+            } => arena
+                .text("if (")
+                .append(arena.text(subject.0.as_str()))
+                .append(arena.text(") {"))
+                .append(
+                    arena
+                        .nil()
+                        .append(arena.hardline())
+                        .append(self.transpile_statements(arena, true_body))
+                        .append(arena.hardline())
+                        .nest(4),
+                )
+                .append(arena.text("} else {"))
+                .append(
+                    arena
+                        .nil()
+                        .append(arena.hardline())
+                        .append(self.transpile_statements(arena, false_body))
+                        .append(arena.hardline())
+                        .nest(4),
+                )
+                .append(arena.text("}")),
+            Match::Option {
+                subject,
+                some_arm_binding,
+                some_arm_body,
+                none_arm_body,
+            } => {
+                self.needs_option = true;
+                let subject_name = subject.0.as_str();
+                let some_case = if let Some(var_name) = some_arm_binding {
+                    arena
+                        .text("case \"Some\": {")
+                        .append(
+                            arena
+                                .hardline()
+                                .append(arena.text("const "))
+                                .append(arena.text(var_name.as_str()))
+                                .append(arena.text(" = "))
+                                .append(arena.text(subject_name))
+                                .append(arena.text(".value;"))
+                                .append(arena.hardline())
+                                .append(self.transpile_statements(arena, some_arm_body))
+                                .append(arena.hardline())
+                                .append(arena.text("break;"))
+                                .nest(4),
+                        )
+                        .append(arena.hardline())
+                        .append(arena.text("}"))
+                } else {
+                    arena
+                        .text("case \"Some\": {")
+                        .append(
+                            arena
+                                .hardline()
+                                .append(self.transpile_statements(arena, some_arm_body))
+                                .append(arena.hardline())
+                                .append(arena.text("break;"))
+                                .nest(4),
+                        )
+                        .append(arena.hardline())
+                        .append(arena.text("}"))
+                };
+
+                let none_case = arena
+                    .text("case \"None\": {")
+                    .append(
+                        arena
+                            .hardline()
+                            .append(self.transpile_statements(arena, none_arm_body))
+                            .append(arena.hardline())
+                            .append(arena.text("break;"))
+                            .nest(4),
+                    )
+                    .append(arena.hardline())
+                    .append(arena.text("}"));
+
+                arena
+                    .text("switch (")
+                    .append(arena.text(subject_name))
+                    .append(arena.text(".tag) {"))
+                    .append(
+                        arena
+                            .hardline()
+                            .append(some_case)
+                            .append(arena.hardline())
+                            .append(none_case)
+                            .nest(4),
+                    )
+                    .append(arena.hardline())
+                    .append(arena.text("}"))
+            }
+            Match::Enum { subject, arms } => {
+                let subject_name = subject.0.as_str();
+                let case_docs: Vec<Doc> = arms
+                    .iter()
+                    .map(|arm| match &arm.pattern {
+                        EnumPattern::Variant {
+                            enum_name: _,
+                            variant_name,
+                        } => {
+                            // Generate binding destructuring if there are bindings
+                            let bindings_doc = if arm.bindings.is_empty() {
+                                arena.nil()
+                            } else {
+                                let destructure_docs: Vec<Doc> = arm
+                                    .bindings
+                                    .iter()
+                                    .map(|(field, var)| {
+                                        arena
+                                            .text(field.as_str())
+                                            .append(arena.text(": "))
+                                            .append(arena.text(var.as_str()))
+                                    })
+                                    .collect();
+                                arena
+                                    .text("const { ")
+                                    .append(arena.intersperse(destructure_docs, arena.text(", ")))
+                                    .append(arena.text(" } = "))
+                                    .append(arena.text(subject_name))
+                                    .append(arena.text(";"))
+                                    .append(arena.hardline())
+                            };
+
+                            arena
+                                .text("case \"")
+                                .append(arena.text(variant_name.as_str()))
+                                .append(arena.text("\": {"))
+                                .append(
+                                    arena
+                                        .hardline()
+                                        .append(bindings_doc)
+                                        .append(self.transpile_statements(arena, &arm.body))
+                                        .append(arena.hardline())
+                                        .append(arena.text("break;"))
+                                        .nest(4),
+                                )
+                                .append(arena.hardline())
+                                .append(arena.text("}"))
+                        }
+                    })
+                    .collect();
+                let cases = arena.intersperse(case_docs, arena.hardline());
+
+                arena
+                    .text("switch (")
+                    .append(arena.text(subject_name))
+                    .append(arena.text(".tag) {"))
+                    .append(arena.hardline().append(cases).nest(4))
+                    .append(arena.hardline())
+                    .append(arena.text("}"))
+            }
+        }
+    }
+
+    fn transpile_statements<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        statements: &'a [IrStatement],
+    ) -> Doc<'a> {
+        let mut docs: Vec<Doc<'a>> = Vec::new();
+        for stmt in statements {
+            docs.push(self.transpile_statement(arena, stmt));
+        }
+        arena.intersperse(docs, arena.hardline())
+    }
+
+    fn transpile_var<'a>(&mut self, arena: &'a Arena<'a>, name: &'a str) -> Doc<'a> {
+        arena.text(name)
+    }
+
+    fn transpile_field_access<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        object: &'a IrExpr,
+        field: &'a FieldName,
+    ) -> Doc<'a> {
+        arena
+            .nil()
+            .append(self.transpile_expr(arena, object))
+            .append(arena.text("."))
+            .append(arena.text(field.as_str()))
+    }
+
+    fn transpile_string_literal<'a>(&mut self, arena: &'a Arena<'a>, value: &'a str) -> Doc<'a> {
+        arena.text(self.quote_string(value))
+    }
+
+    fn transpile_boolean_literal<'a>(&mut self, arena: &'a Arena<'a>, value: bool) -> Doc<'a> {
+        match value {
+            true => arena.text("true"),
+            false => arena.text("false"),
+        }
+    }
+
+    fn transpile_float_literal<'a>(&mut self, arena: &'a Arena<'a>, value: f64) -> Doc<'a> {
+        arena.text(format!("{}", value))
+    }
+
+    fn transpile_int_literal<'a>(&mut self, arena: &'a Arena<'a>, value: i64) -> Doc<'a> {
+        arena.text(format!("{}", value))
+    }
+
+    fn transpile_array_literal<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        elements: &'a [IrExpr],
+        _elem_type: &'a Type,
+    ) -> Doc<'a> {
+        let elem_docs: Vec<Doc> = elements
+            .iter()
+            .map(|e| self.transpile_expr(arena, e))
+            .collect();
+        arena
+            .nil()
+            .append(arena.text("["))
+            .append(arena.intersperse(elem_docs, arena.text(", ")))
+            .append(arena.text("]"))
+    }
+
+    fn transpile_record_literal<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        record_name: &'a str,
+        fields: &'a [(FieldName, IrExpr)],
+    ) -> Doc<'a> {
+        let field_docs: Vec<Doc> = fields
+            .iter()
+            .map(|(_key, value)| self.transpile_expr(arena, value))
+            .collect();
+        arena
+            .text("new ")
+            .append(arena.text(record_name))
+            .append(arena.text("("))
+            .append(arena.intersperse(field_docs, arena.text(", ")))
+            .append(arena.text(")"))
+    }
+
+    fn transpile_enum_literal<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        enum_name: &'a str,
+        variant_name: &'a str,
+        fields: &'a [(FieldName, IrExpr)],
+    ) -> Doc<'a> {
+        // Call the namespace constructor function: Color.Red() or Result.Ok(value)
+        let base = arena
+            .text(enum_name)
+            .append(arena.text("."))
+            .append(arena.text(variant_name))
+            .append(arena.text("("));
+        if fields.is_empty() {
+            base.append(arena.text(")"))
+        } else {
+            let field_docs: Vec<Doc> = fields
+                .iter()
+                .map(|(_, field_expr)| self.transpile_expr(arena, field_expr))
+                .collect();
+            base.append(arena.intersperse(field_docs, arena.text(", ")))
+                .append(arena.text(")"))
+        }
+    }
+
+    fn transpile_string_equals<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        left: &'a IrExpr,
+        right: &'a IrExpr,
+    ) -> Doc<'a> {
+        arena
+            .nil()
+            .append(arena.text("("))
+            .append(self.transpile_expr(arena, left))
+            .append(arena.text(" === "))
+            .append(self.transpile_expr(arena, right))
+            .append(arena.text(")"))
+    }
+
+    fn transpile_bool_equals<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        left: &'a IrExpr,
+        right: &'a IrExpr,
+    ) -> Doc<'a> {
+        arena
+            .nil()
+            .append(arena.text("("))
+            .append(self.transpile_expr(arena, left))
+            .append(arena.text(" === "))
+            .append(self.transpile_expr(arena, right))
+            .append(arena.text(")"))
+    }
+
+    fn transpile_int_equals<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        left: &'a IrExpr,
+        right: &'a IrExpr,
+    ) -> Doc<'a> {
+        arena
+            .nil()
+            .append(arena.text("("))
+            .append(self.transpile_expr(arena, left))
+            .append(arena.text(" === "))
+            .append(self.transpile_expr(arena, right))
+            .append(arena.text(")"))
+    }
+
+    fn transpile_float_equals<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        left: &'a IrExpr,
+        right: &'a IrExpr,
+    ) -> Doc<'a> {
+        arena
+            .nil()
+            .append(arena.text("("))
+            .append(self.transpile_expr(arena, left))
+            .append(arena.text(" === "))
+            .append(self.transpile_expr(arena, right))
+            .append(arena.text(")"))
+    }
+
+    fn transpile_int_less_than<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        left: &'a IrExpr,
+        right: &'a IrExpr,
+    ) -> Doc<'a> {
+        arena
+            .nil()
+            .append(arena.text("("))
+            .append(self.transpile_expr(arena, left))
+            .append(arena.text(" < "))
+            .append(self.transpile_expr(arena, right))
+            .append(arena.text(")"))
+    }
+
+    fn transpile_float_less_than<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        left: &'a IrExpr,
+        right: &'a IrExpr,
+    ) -> Doc<'a> {
+        arena
+            .nil()
+            .append(arena.text("("))
+            .append(self.transpile_expr(arena, left))
+            .append(arena.text(" < "))
+            .append(self.transpile_expr(arena, right))
+            .append(arena.text(")"))
+    }
+
+    fn transpile_int_less_than_or_equal<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        left: &'a IrExpr,
+        right: &'a IrExpr,
+    ) -> Doc<'a> {
+        arena
+            .nil()
+            .append(arena.text("("))
+            .append(self.transpile_expr(arena, left))
+            .append(arena.text(" <= "))
+            .append(self.transpile_expr(arena, right))
+            .append(arena.text(")"))
+    }
+
+    fn transpile_float_less_than_or_equal<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        left: &'a IrExpr,
+        right: &'a IrExpr,
+    ) -> Doc<'a> {
+        arena
+            .nil()
+            .append(arena.text("("))
+            .append(self.transpile_expr(arena, left))
+            .append(arena.text(" <= "))
+            .append(self.transpile_expr(arena, right))
+            .append(arena.text(")"))
+    }
+
+    fn transpile_not<'a>(&mut self, arena: &'a Arena<'a>, operand: &'a IrExpr) -> Doc<'a> {
+        arena
+            .nil()
+            .append(arena.text("!("))
+            .append(self.transpile_expr(arena, operand))
+            .append(arena.text(")"))
+    }
+
+    fn transpile_numeric_negation<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        operand: &'a IrExpr,
+    ) -> Doc<'a> {
+        arena
+            .nil()
+            .append(arena.text("-("))
+            .append(self.transpile_expr(arena, operand))
+            .append(arena.text(")"))
+    }
+
+    fn transpile_string_concat<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        left: &'a IrExpr,
+        right: &'a IrExpr,
+    ) -> Doc<'a> {
+        arena
+            .nil()
+            .append(arena.text("("))
+            .append(self.transpile_expr(arena, left))
+            .append(arena.text(" + "))
+            .append(self.transpile_expr(arena, right))
+            .append(arena.text(")"))
+    }
+
+    fn transpile_logical_and<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        left: &'a IrExpr,
+        right: &'a IrExpr,
+    ) -> Doc<'a> {
+        arena
+            .nil()
+            .append(arena.text("("))
+            .append(self.transpile_expr(arena, left))
+            .append(arena.text(" && "))
+            .append(self.transpile_expr(arena, right))
+            .append(arena.text(")"))
+    }
+
+    fn transpile_logical_or<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        left: &'a IrExpr,
+        right: &'a IrExpr,
+    ) -> Doc<'a> {
+        arena
+            .nil()
+            .append(arena.text("("))
+            .append(self.transpile_expr(arena, left))
+            .append(arena.text(" || "))
+            .append(self.transpile_expr(arena, right))
+            .append(arena.text(")"))
+    }
+
+    fn transpile_int_add<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        left: &'a IrExpr,
+        right: &'a IrExpr,
+    ) -> Doc<'a> {
+        arena
+            .nil()
+            .append(arena.text("("))
+            .append(self.transpile_expr(arena, left))
+            .append(arena.text(" + "))
+            .append(self.transpile_expr(arena, right))
+            .append(arena.text(")"))
+    }
+
+    fn transpile_float_add<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        left: &'a IrExpr,
+        right: &'a IrExpr,
+    ) -> Doc<'a> {
+        arena
+            .nil()
+            .append(arena.text("("))
+            .append(self.transpile_expr(arena, left))
+            .append(arena.text(" + "))
+            .append(self.transpile_expr(arena, right))
+            .append(arena.text(")"))
+    }
+
+    fn transpile_int_subtract<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        left: &'a IrExpr,
+        right: &'a IrExpr,
+    ) -> Doc<'a> {
+        arena
+            .nil()
+            .append(arena.text("("))
+            .append(self.transpile_expr(arena, left))
+            .append(arena.text(" - "))
+            .append(self.transpile_expr(arena, right))
+            .append(arena.text(")"))
+    }
+
+    fn transpile_float_subtract<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        left: &'a IrExpr,
+        right: &'a IrExpr,
+    ) -> Doc<'a> {
+        arena
+            .nil()
+            .append(arena.text("("))
+            .append(self.transpile_expr(arena, left))
+            .append(arena.text(" - "))
+            .append(self.transpile_expr(arena, right))
+            .append(arena.text(")"))
+    }
+
+    fn transpile_int_multiply<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        left: &'a IrExpr,
+        right: &'a IrExpr,
+    ) -> Doc<'a> {
+        arena
+            .nil()
+            .append(arena.text("("))
+            .append(self.transpile_expr(arena, left))
+            .append(arena.text(" * "))
+            .append(self.transpile_expr(arena, right))
+            .append(arena.text(")"))
+    }
+
+    fn transpile_float_multiply<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        left: &'a IrExpr,
+        right: &'a IrExpr,
+    ) -> Doc<'a> {
+        arena
+            .nil()
+            .append(arena.text("("))
+            .append(self.transpile_expr(arena, left))
+            .append(arena.text(" * "))
+            .append(self.transpile_expr(arena, right))
+            .append(arena.text(")"))
+    }
+
+    fn transpile_option_literal<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        value: Option<&'a IrExpr>,
+        inner_type: &'a Type,
+    ) -> Doc<'a> {
+        self.needs_option = true;
+        match value {
+            Some(inner) => arena
+                .text("Option.some<")
+                .append(self.transpile_type(arena, inner_type))
+                .append(arena.text(">("))
+                .append(self.transpile_expr(arena, inner))
+                .append(arena.text(")")),
+            None => arena
+                .text("Option.none<")
+                .append(self.transpile_type(arena, inner_type))
+                .append(arena.text(">()")),
+        }
+    }
+
+    fn transpile_match_expr<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        match_: &'a Match<IrExpr>,
+    ) -> Doc<'a> {
+        match match_ {
+            Match::Enum { subject, arms } => {
+                let subject_name = subject.0.as_str();
+                let case_docs: Vec<Doc> =
+                    arms.iter()
+                        .map(|arm| match &arm.pattern {
+                            EnumPattern::Variant {
+                                enum_name: _,
+                                variant_name,
+                            } => {
+                                if arm.bindings.is_empty() {
+                                    arena
+                                        .text("case \"")
+                                        .append(arena.text(variant_name.as_str()))
+                                        .append(arena.text("\": return "))
+                                        .append(self.transpile_expr(arena, &arm.body))
+                                        .append(arena.text(";"))
+                                } else {
+                                    let destructure_docs: Vec<Doc> = arm
+                                        .bindings
+                                        .iter()
+                                        .map(|(field, var)| {
+                                            arena
+                                                .text(field.as_str())
+                                                .append(arena.text(": "))
+                                                .append(arena.text(var.as_str()))
+                                        })
+                                        .collect();
+                                    arena
+                                        .text("case \"")
+                                        .append(arena.text(variant_name.as_str()))
+                                        .append(arena.text("\": {"))
+                                        .append(
+                                            arena
+                                                .line()
+                                                .append(arena.text("const { "))
+                                                .append(arena.intersperse(
+                                                    destructure_docs,
+                                                    arena.text(", "),
+                                                ))
+                                                .append(arena.text(" } = "))
+                                                .append(arena.text(subject_name))
+                                                .append(arena.text(";"))
+                                                .append(arena.line())
+                                                .append(arena.text("return "))
+                                                .append(self.transpile_expr(arena, &arm.body))
+                                                .append(arena.text(";"))
+                                                .nest(2),
+                                        )
+                                        .append(arena.line())
+                                        .append(arena.text("}"))
+                                }
+                            }
+                        })
+                        .collect();
+                let cases = arena.intersperse(case_docs, arena.line());
+
+                let switch_body = arena
+                    .text("switch (")
+                    .append(arena.text(subject_name))
+                    .append(arena.text(".tag) {"))
+                    .append(arena.line().append(cases).nest(2))
+                    .append(arena.line())
+                    .append(arena.text("}"));
+
+                arena
+                    .text("(() => {")
+                    .append(arena.line())
+                    .append(switch_body)
+                    .nest(2)
+                    .append(arena.line())
+                    .append(arena.text("})()"))
+                    .group()
+            }
+            Match::Bool {
+                subject,
+                true_body,
+                false_body,
+            } => arena
+                .text("(")
+                .append(arena.text(subject.0.as_str()))
+                .append(arena.text(" ? "))
+                .append(self.transpile_expr(arena, true_body))
+                .append(arena.text(" : "))
+                .append(self.transpile_expr(arena, false_body))
+                .append(arena.text(")")),
+            Match::Option {
+                subject,
+                some_arm_binding,
+                some_arm_body,
+                none_arm_body,
+            } => {
+                self.needs_option = true;
+                let subject_name = subject.0.as_str();
+                let some_case = {
+                    let body_doc = self.transpile_expr(arena, some_arm_body);
+                    if let Some(var_name) = some_arm_binding {
+                        arena
+                            .text("case \"Some\": {")
+                            .append(
+                                arena
+                                    .line()
+                                    .append(arena.text("const "))
+                                    .append(arena.text(var_name.as_str()))
+                                    .append(arena.text(" = "))
+                                    .append(arena.text(subject_name))
+                                    .append(arena.text(".value;"))
+                                    .append(arena.line())
+                                    .append(arena.text("return "))
+                                    .append(body_doc)
+                                    .append(arena.text(";"))
+                                    .nest(2),
+                            )
+                            .append(arena.line())
+                            .append(arena.text("}"))
+                    } else {
+                        arena
+                            .text("case \"Some\": return ")
+                            .append(body_doc)
+                            .append(arena.text(";"))
+                    }
+                };
+
+                let none_case = arena
+                    .text("case \"None\": return ")
+                    .append(self.transpile_expr(arena, none_arm_body))
+                    .append(arena.text(";"));
+
+                let cases = arena.intersperse([some_case, none_case], arena.line());
+
+                let switch_body = arena
+                    .text("switch (")
+                    .append(arena.text(subject_name))
+                    .append(arena.text(".tag) {"))
+                    .append(arena.line().append(cases).nest(2))
+                    .append(arena.line())
+                    .append(arena.text("}"));
+
+                arena
+                    .text("(() => {")
+                    .append(arena.line().append(switch_body).nest(2))
+                    .append(arena.line())
+                    .append(arena.text("})()"))
+                    .group()
+            }
+        }
+    }
+
+    fn transpile_let<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        var: &'a VarName,
+        value: &'a IrExpr,
+        body: &'a IrExpr,
+    ) -> Doc<'a> {
+        arena
+            .text("(() => {")
+            .append(
+                arena
+                    .line()
+                    .append(arena.text("const "))
+                    .append(arena.text(var.as_str()))
+                    .append(arena.text(" = "))
+                    .append(self.transpile_expr(arena, value))
+                    .append(arena.text(";"))
+                    .append(arena.line())
+                    .append(arena.text("return "))
+                    .append(self.transpile_expr(arena, body))
+                    .append(arena.text(";"))
+                    .nest(2),
+            )
+            .append(arena.line())
+            .append(arena.text("})()"))
+    }
+
+    fn transpile_array_length<'a>(&mut self, arena: &'a Arena<'a>, array: &'a IrExpr) -> Doc<'a> {
+        self.transpile_expr(arena, array)
+            .append(arena.text(".length"))
+    }
+
+    fn transpile_array_is_empty<'a>(&mut self, arena: &'a Arena<'a>, array: &'a IrExpr) -> Doc<'a> {
+        self.transpile_expr(arena, array)
+            .append(arena.text(".length === 0"))
+    }
+
+    fn transpile_string_is_empty<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        string: &'a IrExpr,
+    ) -> Doc<'a> {
+        self.transpile_expr(arena, string)
+            .append(arena.text(".length === 0"))
+    }
+
+    fn transpile_option_is_some<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        option: &'a IrExpr,
+    ) -> Doc<'a> {
+        self.transpile_expr(arena, option)
+            .append(arena.text(".tag === \"Some\""))
+    }
+
+    fn transpile_option_is_none<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        option: &'a IrExpr,
+    ) -> Doc<'a> {
+        self.transpile_expr(arena, option)
+            .append(arena.text(".tag === \"None\""))
+    }
+
+    fn transpile_int_to_string<'a>(&mut self, arena: &'a Arena<'a>, value: &'a IrExpr) -> Doc<'a> {
+        arena
+            .text("(")
+            .append(self.transpile_expr(arena, value))
+            .append(arena.text(").toString()"))
+    }
+
+    fn transpile_float_to_int<'a>(&mut self, arena: &'a Arena<'a>, value: &'a IrExpr) -> Doc<'a> {
+        arena
+            .text("Math.trunc(")
+            .append(self.transpile_expr(arena, value))
+            .append(arena.text(")"))
+    }
+
+    fn transpile_int_to_float<'a>(&mut self, arena: &'a Arena<'a>, value: &'a IrExpr) -> Doc<'a> {
+        // In JavaScript, all numbers are floats, so no conversion needed
+        self.transpile_expr(arena, value)
+    }
+
+    fn transpile_bool_type<'a>(&mut self, arena: &'a Arena<'a>) -> Doc<'a> {
+        arena.text("boolean")
+    }
+
+    fn transpile_string_type<'a>(&mut self, arena: &'a Arena<'a>) -> Doc<'a> {
+        arena.text("string")
+    }
+
+    fn transpile_slot_type<'a>(&mut self, arena: &'a Arena<'a>) -> Doc<'a> {
+        self.needs_slot = true;
+        arena.text("Slot")
+    }
+
+    fn transpile_slot_empty<'a>(&mut self, arena: &'a Arena<'a>) -> Doc<'a> {
+        self.needs_slot = true;
+        arena.text("trustHtml(\"\")")
+    }
+
+    fn transpile_float_type<'a>(&mut self, arena: &'a Arena<'a>) -> Doc<'a> {
+        arena.text("number")
+    }
+
+    fn transpile_int_type<'a>(&mut self, arena: &'a Arena<'a>) -> Doc<'a> {
+        arena.text("number")
+    }
+
+    fn transpile_array_type<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        element_type: &'a Type,
+    ) -> Doc<'a> {
+        self.transpile_type(arena, element_type)
+            .append(arena.text("[]"))
+    }
+
+    fn transpile_option_type<'a>(&mut self, arena: &'a Arena<'a>, inner_type: &'a Type) -> Doc<'a> {
+        arena
+            .text("Option.Option<")
+            .append(self.transpile_type(arena, inner_type))
+            .append(arena.text(">"))
+    }
+
+    fn transpile_named_type<'a>(&mut self, arena: &'a Arena<'a>, name: &'a str) -> Doc<'a> {
+        arena.text(name)
+    }
+
+    fn transpile_enum_type<'a>(&mut self, arena: &'a Arena<'a>, name: &'a str) -> Doc<'a> {
+        arena
+            .text(name)
+            .append(arena.text("."))
+            .append(arena.text(name))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use super::*;
+    use crate::dop::typing::r#type::EnumVariant;
+    use crate::ir::syntax::builder::IrModuleBuilder;
+    use expect_test::{Expect, expect};
+
+    fn check(module: IrModule, expected: Expect) {
+        let before = module.to_string();
+        let after = TsTranspiler::new().transpile_module(&module);
+        let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
+        expected.assert_eq(&output);
+    }
+
+    #[test]
+    fn simple_component() {
+        check(
+            IrModuleBuilder::new()
+                .component_no_params("HelloWorld", |t| {
+                    t.write("<h1>Hello, World!</h1>\n");
+                })
+                .build(),
+            expect![[r#"
+                -- before --
+                view HelloWorld() {
+                  write("<h1>Hello, World!</h1>\n")
+                }
+
+                -- after --
+                // Code generated by the hop compiler. DO NOT EDIT.
+
+                export function HelloWorld(): string {
+                    let output: string = "";
+                    output += "<h1>Hello, World!</h1>\n";
+                    return output;
+                }"#]],
+        );
+    }
+
+    #[test]
+    fn component_with_params_and_escaping() {
+        check(
+            IrModuleBuilder::new()
+                .component(
+                    "UserInfo",
+                    [("name", Type::String), ("age", Type::String)],
+                    |t| {
+                        t.write("<div>\n");
+                        t.write("<h2>Name: ");
+                        t.write_expr_escaped(t.var("name"));
+                        t.write("</h2>\n");
+                        t.write("<p>Age: ");
+                        t.write_expr(t.var("age"), false);
+                        t.write("</p>\n");
+                        t.write("</div>\n");
+                    },
+                )
+                .build(),
+            expect![[r#"
+                -- before --
+                view UserInfo(name: String, age: String) {
+                  write("<div>\n")
+                  write("<h2>Name: ")
+                  write_escaped(name)
+                  write("</h2>\n")
+                  write("<p>Age: ")
+                  write_expr(age)
+                  write("</p>\n")
+                  write("</div>\n")
+                }
+
+                -- after --
+                // Code generated by the hop compiler. DO NOT EDIT.
+
+                function escapeHtml(str: string): string {
+                    return str
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;');
+                }
+
+                export function UserInfo({name, age}: {name: string, age: string}): string {
+                    let output: string = "";
+                    output += "<div>\n";
+                    output += "<h2>Name: ";
+                    output += escapeHtml(name);
+                    output += "</h2>\n";
+                    output += "<p>Age: ";
+                    output += age;
+                    output += "</p>\n";
+                    output += "</div>\n";
+                    return output;
+                }"#]],
+        );
+    }
+
+    #[test]
+    fn conditional_display() {
+        check(
+            IrModuleBuilder::new()
+                .component(
+                    "ConditionalDisplay",
+                    [("title", Type::String), ("show", Type::Bool)],
+                    |t| {
+                        t.if_stmt(t.var("show"), |t| {
+                            t.write("<h1>");
+                            t.write_expr_escaped(t.var("title"));
+                            t.write("</h1>\n");
+                        });
+                    },
+                )
+                .build(),
+            expect![[r#"
+                -- before --
+                view ConditionalDisplay(title: String, show: Bool) {
+                  if show {
+                    write("<h1>")
+                    write_escaped(title)
+                    write("</h1>\n")
+                  }
+                }
+
+                -- after --
+                // Code generated by the hop compiler. DO NOT EDIT.
+
+                function escapeHtml(str: string): string {
+                    return str
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;');
+                }
+
+                export function ConditionalDisplay({title, show}: {title: string, show: boolean}): string {
+                    let output: string = "";
+                    if (show) {
+                        output += "<h1>";
+                        output += escapeHtml(title);
+                        output += "</h1>\n";
+                    }
+                    return output;
+                }"#]],
+        );
+    }
+
+    #[test]
+    fn for_loop_with_array() {
+        check(
+            IrModuleBuilder::new()
+                .component(
+                    "ListItems",
+                    [("items", Type::Array(Arc::new(Type::String)))],
+                    |t| {
+                        t.write("<ul>\n");
+                        t.for_loop("item", t.var("items"), |t| {
+                            t.write("<li>");
+                            t.write_expr_escaped(t.var("item"));
+                            t.write("</li>\n");
+                        });
+                        t.write("</ul>\n");
+                    },
+                )
+                .build(),
+            expect![[r#"
+                -- before --
+                view ListItems(items: Array[String]) {
+                  write("<ul>\n")
+                  for item in items {
+                    write("<li>")
+                    write_escaped(item)
+                    write("</li>\n")
+                  }
+                  write("</ul>\n")
+                }
+
+                -- after --
+                // Code generated by the hop compiler. DO NOT EDIT.
+
+                function escapeHtml(str: string): string {
+                    return str
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;');
+                }
+
+                export function ListItems({items}: {items: string[]}): string {
+                    let output: string = "";
+                    output += "<ul>\n";
+                    for (const item of items) {
+                        output += "<li>";
+                        output += escapeHtml(item);
+                        output += "</li>\n";
+                    }
+                    output += "</ul>\n";
+                    return output;
+                }"#]],
+        );
+    }
+
+    #[test]
+    fn for_loop_with_range() {
+        check(
+            IrModuleBuilder::new()
+                .component_no_params("Counter", |t| {
+                    t.for_range("i", t.int(1), t.int(3), |t| {
+                        t.write_expr(t.int_to_string(t.var("i")), false);
+                        t.write(" ");
+                    });
+                })
+                .build(),
+            expect![[r#"
+                -- before --
+                view Counter() {
+                  for i in 1..=3 {
+                    write_expr(i.to_string())
+                    write(" ")
+                  }
+                }
+
+                -- after --
+                // Code generated by the hop compiler. DO NOT EDIT.
+
+                export function Counter(): string {
+                    let output: string = "";
+                    for (let i = 1; i <= 3; i++) {
+                        output += (i).toString();
+                        output += " ";
+                    }
+                    return output;
+                }"#]],
+        );
+    }
+
+    #[test]
+    fn let_binding() {
+        check(
+            IrModuleBuilder::new()
+                .component_no_params("GreetingCard", |t| {
+                    t.let_stmt("greeting", t.str("Hello from hop!"), |t| {
+                        t.write("<div class=\"card\">\n");
+                        t.write("<p>");
+                        t.write_expr_escaped(t.var("greeting"));
+                        t.write("</p>\n");
+                        t.write("</div>\n");
+                    });
+                })
+                .build(),
+            expect![[r#"
+                -- before --
+                view GreetingCard() {
+                  let greeting = "Hello from hop!" in {
+                    write("<div class=\"card\">\n")
+                    write("<p>")
+                    write_escaped(greeting)
+                    write("</p>\n")
+                    write("</div>\n")
+                  }
+                }
+
+                -- after --
+                // Code generated by the hop compiler. DO NOT EDIT.
+
+                function escapeHtml(str: string): string {
+                    return str
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;');
+                }
+
+                export function GreetingCard(): string {
+                    let output: string = "";
+                    const greeting = "Hello from hop!";
+                    output += "<div class=\"card\">\n";
+                    output += "<p>";
+                    output += escapeHtml(greeting);
+                    output += "</p>\n";
+                    output += "</div>\n";
+                    return output;
+                }"#]],
+        );
+    }
+
+    #[test]
+    fn nested_components_with_let_bindings() {
+        check(
+            IrModuleBuilder::new()
+                .component_no_params("TestMainComp", |t| {
+                    t.write("<div data-hop-id=\"test/card-comp\">");
+                    t.let_stmt("title", t.str("Hello World"), |t| {
+                        t.write("<h2>");
+                        t.write_expr_escaped(t.var("title"));
+                        t.write("</h2>");
+                    });
+                    t.write("</div>");
+                })
+                .build(),
+            expect![[r#"
+                -- before --
+                view TestMainComp() {
+                  write("<div data-hop-id=\"test/card-comp\">")
+                  let title = "Hello World" in {
+                    write("<h2>")
+                    write_escaped(title)
+                    write("</h2>")
+                  }
+                  write("</div>")
+                }
+
+                -- after --
+                // Code generated by the hop compiler. DO NOT EDIT.
+
+                function escapeHtml(str: string): string {
+                    return str
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;');
+                }
+
+                export function TestMainComp(): string {
+                    let output: string = "";
+                    output += "<div data-hop-id=\"test/card-comp\">";
+                    const title = "Hello World";
+                    output += "<h2>";
+                    output += escapeHtml(title);
+                    output += "</h2>";
+                    output += "</div>";
+                    return output;
+                }"#]],
+        );
+    }
+
+    #[test]
+    fn slot_type() {
+        check(
+            IrModuleBuilder::new()
+                .component(
+                    "RenderHtml",
+                    [("safe_content", Type::Slot), ("user_input", Type::String)],
+                    |t| {
+                        t.write("<div>");
+                        // Slot should not be escaped
+                        t.write_expr(t.var("safe_content"), false);
+                        t.write("</div><div>");
+                        // Regular strings should be escaped
+                        t.write_expr_escaped(t.var("user_input"));
+                        t.write("</div>");
+                    },
+                )
+                .build(),
+            expect![[r#"
+                -- before --
+                view RenderHtml(safe_content: Slot, user_input: String) {
+                  write("<div>")
+                  write_expr(safe_content)
+                  write("</div><div>")
+                  write_escaped(user_input)
+                  write("</div>")
+                }
+
+                -- after --
+                // Code generated by the hop compiler. DO NOT EDIT.
+
+                type Slot = string & { readonly __brand: unique symbol };
+
+                /** Marks a string as trusted HTML, bypassing escaping. Only use with sanitized or trusted content. Calling this function with untrusted content causes XSS vulnerabilities. */
+                export function trustHtml(str: string): Slot {
+                    return str as Slot;
+                }
+
+                function escapeHtml(str: string): string {
+                    return str
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;');
+                }
+
+                export function RenderHtml({safe_content, user_input}: {safe_content: Slot, user_input: string}): string {
+                    let output: string = "";
+                    output += "<div>";
+                    output += safe_content;
+                    output += "</div><div>";
+                    output += escapeHtml(user_input);
+                    output += "</div>";
+                    return output;
+                }"#]],
+        );
+    }
+
+    #[test]
+    fn record_declarations() {
+        use crate::document_id::DocumentId;
+        use crate::symbols::{field_name::FieldName, type_name::TypeName};
+
+        let user_type = Type::Record {
+            module: DocumentId::new("test.hop").unwrap(),
+            name: TypeName::new("User").unwrap(),
+            fields: vec![
+                (
+                    FieldName::new("name").unwrap(),
+                    Arc::new(Type::String),
+                    None,
+                ),
+                (FieldName::new("age").unwrap(), Arc::new(Type::Int), None),
+                (
+                    FieldName::new("active").unwrap(),
+                    Arc::new(Type::Bool),
+                    None,
+                ),
+            ],
+        };
+
+        check(
+            IrModuleBuilder::new()
+                .record("User", |r| {
+                    r.field("name", Type::String)
+                        .field("age", Type::Int)
+                        .field("active", Type::Bool);
+                })
+                .record("Address", |r| {
+                    r.field("street", Type::String).field("city", Type::String);
+                })
+                .component("UserProfile", [("user", user_type)], |t| {
+                    t.write("<div>");
+                    t.write_expr_escaped(t.field_access(t.var("user"), "name"));
+                    t.write("</div>");
+                })
+                .build(),
+            expect![[r#"
+                -- before --
+                record Address {
+                  street: String,
+                  city: String,
+                }
+                record User {
+                  name: String,
+                  age: Int,
+                  active: Bool,
+                }
+                view UserProfile(user: test::User) {
+                  write("<div>")
+                  write_escaped(user.name)
+                  write("</div>")
+                }
+
+                -- after --
+                // Code generated by the hop compiler. DO NOT EDIT.
+
+                function escapeHtml(str: string): string {
+                    return str
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;');
+                }
+
+                export class Address {
+                    constructor(
+                        public readonly street: string,
+                        public readonly city: string,
+                    ) {}
+                }
+
+                export class User {
+                    constructor(
+                        public readonly name: string,
+                        public readonly age: number,
+                        public readonly active: boolean,
+                    ) {}
+                }
+
+                export function UserProfile({user}: {user: User}): string {
+                    let output: string = "";
+                    output += "<div>";
+                    output += escapeHtml(user.name);
+                    output += "</div>";
+                    return output;
+                }"#]],
+        );
+    }
+
+    #[test]
+    fn record_literal() {
+        check(
+            IrModuleBuilder::new()
+                .record("User", |r| {
+                    r.field("name", Type::String).field("age", Type::Int);
+                })
+                .component_no_params("CreateUser", |t| {
+                    t.write("<div>");
+                    let user = t.record("User", vec![("name", t.str("John")), ("age", t.int(30))]);
+                    t.write_expr_escaped(t.field_access(user, "name"));
+                    t.write("</div>");
+                })
+                .build(),
+            expect![[r#"
+                -- before --
+                record User {
+                  name: String,
+                  age: Int,
+                }
+                view CreateUser() {
+                  write("<div>")
+                  write_escaped(User {name: "John", age: 30}.name)
+                  write("</div>")
+                }
+
+                -- after --
+                // Code generated by the hop compiler. DO NOT EDIT.
+
+                function escapeHtml(str: string): string {
+                    return str
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;');
+                }
+
+                export class User {
+                    constructor(
+                        public readonly name: string,
+                        public readonly age: number,
+                    ) {}
+                }
+
+                export function CreateUser(): string {
+                    let output: string = "";
+                    output += "<div>";
+                    output += escapeHtml(new User("John", 30).name);
+                    output += "</div>";
+                    return output;
+                }"#]],
+        );
+    }
+
+    #[test]
+    fn match_expression() {
+        use crate::document_id::DocumentId;
+        use crate::symbols::type_name::TypeName;
+
+        let color_type = Type::Enum {
+            module: DocumentId::new("test.hop").unwrap(),
+            name: TypeName::new("Color").unwrap(),
+            variants: vec![
+                EnumVariant {
+                    name: TypeName::new("Red").unwrap(),
+                    fields: vec![],
+                },
+                EnumVariant {
+                    name: TypeName::new("Green").unwrap(),
+                    fields: vec![],
+                },
+                EnumVariant {
+                    name: TypeName::new("Blue").unwrap(),
+                    fields: vec![],
+                },
+            ],
+        };
+
+        check(
+            IrModuleBuilder::new()
+                .enum_decl("Color", ["Red", "Green", "Blue"])
+                .component("ColorName", [("color", color_type)], |t| {
+                    // Use match expression to convert color to string
+                    let match_result = t.match_expr(
+                        t.var("color"),
+                        vec![
+                            ("Red", t.str("red")),
+                            ("Green", t.str("green")),
+                            ("Blue", t.str("blue")),
+                        ],
+                    );
+                    t.write_expr_escaped(match_result);
+                })
+                .build(),
+            expect![[r#"
+                -- before --
+                enum Color {
+                  Red,
+                  Green,
+                  Blue,
+                }
+                view ColorName(color: test::Color) {
+                  write_escaped(match color {
+                    Color::Red => "red",
+                    Color::Green => "green",
+                    Color::Blue => "blue",
+                  })
+                }
+
+                -- after --
+                // Code generated by the hop compiler. DO NOT EDIT.
+
+                function escapeHtml(str: string): string {
+                    return str
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;');
+                }
+
+                export namespace Color {
+                    export type Color = { readonly tag: "Red" } | { readonly tag: "Green" } | { readonly tag: "Blue" };
+
+                    export function Red(): Color {
+                        return { tag: "Red" };
+                    }
+                    export function Green(): Color {
+                        return { tag: "Green" };
+                    }
+                    export function Blue(): Color {
+                        return { tag: "Blue" };
+                    }
+                }
+
+                export function ColorName({color}: {color: Color.Color}): string {
+                    let output: string = "";
+                    output += escapeHtml((() => {
+                      switch (color.tag) {
+                        case "Red": return "red";
+                        case "Green": return "green";
+                        case "Blue": return "blue";
+                      }
+                    })());
+                    return output;
+                }"#]],
+        );
+    }
+
+    #[test]
+    fn bool_match_expression() {
+        check(
+            IrModuleBuilder::new()
+                .component("IsActive", [("active", Type::Bool)], |t| {
+                    let match_result =
+                        t.bool_match_expr(t.var("active"), t.str("yes"), t.str("no"));
+                    t.write_expr_escaped(match_result);
+                })
+                .build(),
+            expect![[r#"
+                -- before --
+                view IsActive(active: Bool) {
+                  write_escaped(match active {true => "yes", false => "no"})
+                }
+
+                -- after --
+                // Code generated by the hop compiler. DO NOT EDIT.
+
+                function escapeHtml(str: string): string {
+                    return str
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;');
+                }
+
+                export function IsActive({active}: {active: boolean}): string {
+                    let output: string = "";
+                    output += escapeHtml((active ? "yes" : "no"));
+                    return output;
+                }"#]],
+        );
+    }
+
+    #[test]
+    fn option_match_expression() {
+        check(
+            IrModuleBuilder::new()
+                .component(
+                    "CheckOption",
+                    [("opt", Type::Option(Arc::new(Type::Int)))],
+                    |t| {
+                        let match_result =
+                            t.option_match_expr(t.var("opt"), t.str("has value"), t.str("empty"));
+                        t.write_expr_escaped(match_result);
+                    },
+                )
+                .build(),
+            expect![[r#"
+                -- before --
+                view CheckOption(opt: Option[Int]) {
+                  write_escaped(match opt {
+                    Some(_) => "has value",
+                    None => "empty",
+                  })
+                }
+
+                -- after --
+                // Code generated by the hop compiler. DO NOT EDIT.
+
+                export namespace Option {
+                    export type Option<T> = { readonly tag: "None" } | { readonly tag: "Some", value: T };
+
+                    export function some<T>(value: T): Option<T> {
+                        return { tag: "Some", value };
+                    }
+                    export function none<T = never>(): Option<T> {
+                        return { tag: "None" };
+                    }
+                }
+
+                function escapeHtml(str: string): string {
+                    return str
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;');
+                }
+
+                export function CheckOption({opt}: {opt: Option.Option<number>}): string {
+                    let output: string = "";
+                    output += escapeHtml((() => {
+                      switch (opt.tag) {
+                        case "Some": return "has value";
+                        case "None": return "empty";
+                      }
+                    })());
+                    return output;
+                }"#]],
+        );
+    }
+
+    #[test]
+    fn nested_option_match_expression() {
+        let outer_option_type =
+            Arc::new(Type::Option(Arc::new(Type::Option(Arc::new(Type::Bool)))));
+
+        check(
+            IrModuleBuilder::new()
+                .component("CheckNestedOption", [("opt", outer_option_type)], |t| {
+                    // Outer match on opt: Some(v0) => middle_match, None => "none"
+                    let outer_match = t.option_match_expr_with_binding(
+                        t.var("opt"),
+                        "v0",
+                        Type::Option(Arc::new(Type::Bool)),
+                        |t| {
+                            // Middle match on v0 (Option[Bool]): Some(v1) => innermost_match, None => "some-none"
+                            t.option_match_expr_with_binding(
+                                t.var("v0"),
+                                "v1",
+                                Type::Bool,
+                                |t| {
+                                    // Inner match on v1 (Bool): true => "true", false => "false"
+                                    t.bool_match_expr(
+                                        t.var("v1"),
+                                        t.str("some-some-true"),
+                                        t.str("some-some-false"),
+                                    )
+                                },
+                                t.str("some-none"),
+                            )
+                        },
+                        t.str("none"),
+                    );
+
+                    t.write_expr_escaped(outer_match);
+                })
+                .build(),
+            expect![[r#"
+                -- before --
+                view CheckNestedOption(opt: Option[Option[Bool]]) {
+                  write_escaped(match opt {
+                    Some(v0) => match v0 {
+                      Some(v1) => match v1 {
+                        true => "some-some-true",
+                        false => "some-some-false",
+                      },
+                      None => "some-none",
+                    },
+                    None => "none",
+                  })
+                }
+
+                -- after --
+                // Code generated by the hop compiler. DO NOT EDIT.
+
+                export namespace Option {
+                    export type Option<T> = { readonly tag: "None" } | { readonly tag: "Some", value: T };
+
+                    export function some<T>(value: T): Option<T> {
+                        return { tag: "Some", value };
+                    }
+                    export function none<T = never>(): Option<T> {
+                        return { tag: "None" };
+                    }
+                }
+
+                function escapeHtml(str: string): string {
+                    return str
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;');
+                }
+
+                export function CheckNestedOption({opt}: {opt: Option.Option<Option.Option<boolean>>}): string {
+                    let output: string = "";
+                    output += escapeHtml((() => {
+                      switch (opt.tag) {
+                        case "Some": {
+                          const v0 = opt.value;
+                          return (() => {
+                            switch (v0.tag) {
+                              case "Some": {
+                                const v1 = v0.value;
+                                return (v1 ? "some-some-true" : "some-some-false");
+                              }
+                              case "None": return "some-none";
+                            }
+                          })();
+                        }
+                        case "None": return "none";
+                      }
+                    })());
+                    return output;
+                }"#]],
+        );
+    }
+
+    #[test]
+    fn let_expression() {
+        check(
+            IrModuleBuilder::new()
+                .component("LetExpr", [("name", Type::String)], |t| {
+                    // let x = name in x
+                    let result = t.let_expr("x", t.var("name"), |t| t.var("x"));
+                    t.write_expr_escaped(result);
+                })
+                .build(),
+            expect![[r#"
+                -- before --
+                view LetExpr(name: String) {
+                  write_escaped(let x = name in x)
+                }
+
+                -- after --
+                // Code generated by the hop compiler. DO NOT EDIT.
+
+                function escapeHtml(str: string): string {
+                    return str
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;');
+                }
+
+                export function LetExpr({name}: {name: string}): string {
+                    let output: string = "";
+                    output += escapeHtml((() => {
+                      const x = name;
+                      return x;
+                    })());
+                    return output;
+                }"#]],
+        );
+    }
+
+    #[test]
+    fn option_match_statement() {
+        check(
+            IrModuleBuilder::new()
+                .component(
+                    "DisplayOption",
+                    [("opt", Type::Option(Arc::new(Type::String)))],
+                    |t| {
+                        t.option_match_stmt(
+                            t.var("opt"),
+                            Some("value"),
+                            |t| {
+                                t.write("<span>Found: ");
+                                t.write_expr_escaped(t.var("value"));
+                                t.write("</span>");
+                            },
+                            |t| {
+                                t.write("<span>Nothing</span>");
+                            },
+                        );
+                    },
+                )
+                .build(),
+            expect![[r#"
+                -- before --
+                view DisplayOption(opt: Option[String]) {
+                  match opt {
+                    Some(value) => {
+                      write("<span>Found: ")
+                      write_escaped(value)
+                      write("</span>")
+                    }
+                    None => {
+                      write("<span>Nothing</span>")
+                    }
+                  }
+                }
+
+                -- after --
+                // Code generated by the hop compiler. DO NOT EDIT.
+
+                export namespace Option {
+                    export type Option<T> = { readonly tag: "None" } | { readonly tag: "Some", value: T };
+
+                    export function some<T>(value: T): Option<T> {
+                        return { tag: "Some", value };
+                    }
+                    export function none<T = never>(): Option<T> {
+                        return { tag: "None" };
+                    }
+                }
+
+                function escapeHtml(str: string): string {
+                    return str
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;');
+                }
+
+                export function DisplayOption({opt}: {opt: Option.Option<string>}): string {
+                    let output: string = "";
+                    switch (opt.tag) {
+                        case "Some": {
+                            const value = opt.value;
+                            output += "<span>Found: ";
+                            output += escapeHtml(value);
+                            output += "</span>";
+                            break;
+                        }
+                        case "None": {
+                            output += "<span>Nothing</span>";
+                            break;
+                        }
+                    }
+                    return output;
+                }"#]],
+        );
+    }
+
+    #[test]
+    fn option_literal() {
+        check(
+            IrModuleBuilder::new()
+                .component(
+                    "TestOptionLiteral",
+                    [
+                        ("opt1", Type::Option(Arc::new(Type::String))),
+                        ("opt2", Type::Option(Arc::new(Type::String))),
+                    ],
+                    |t| {
+                        // Test Some literal
+                        let match_result =
+                            t.option_match_expr(t.var("opt1"), t.str("has value"), t.str("empty"));
+                        t.write_expr(match_result, false);
+
+                        // Test None literal
+                        let match_result2 =
+                            t.option_match_expr(t.var("opt2"), t.str("HAS"), t.str("EMPTY"));
+                        t.write_expr(match_result2, false);
+                    },
+                )
+                .build(),
+            expect![[r#"
+                -- before --
+                view TestOptionLiteral(
+                  opt1: Option[String],
+                  opt2: Option[String],
+                ) {
+                  write_expr(match opt1 {
+                    Some(_) => "has value",
+                    None => "empty",
+                  })
+                  write_expr(match opt2 {Some(_) => "HAS", None => "EMPTY"})
+                }
+
+                -- after --
+                // Code generated by the hop compiler. DO NOT EDIT.
+
+                export namespace Option {
+                    export type Option<T> = { readonly tag: "None" } | { readonly tag: "Some", value: T };
+
+                    export function some<T>(value: T): Option<T> {
+                        return { tag: "Some", value };
+                    }
+                    export function none<T = never>(): Option<T> {
+                        return { tag: "None" };
+                    }
+                }
+
+                export function TestOptionLiteral({opt1, opt2}: {opt1: Option.Option<string>, opt2: Option.Option<string>}): string {
+                    let output: string = "";
+                    output += (() => {
+                      switch (opt1.tag) {
+                        case "Some": return "has value";
+                        case "None": return "empty";
+                      }
+                    })();
+                    output += (() => {
+                      switch (opt2.tag) {
+                        case "Some": return "HAS";
+                        case "None": return "EMPTY";
+                      }
+                    })();
+                    return output;
+                }"#]],
+        );
+    }
+
+    #[test]
+    fn option_literal_inline_match_stmt() {
+        check(
+            IrModuleBuilder::new()
+                .component_no_params("TestInlineMatch", |t| {
+                    t.let_stmt("opt", t.some(t.str("world")), |t| {
+                        t.option_match_stmt(
+                            t.var("opt"),
+                            Some("val"),
+                            |t| {
+                                t.write("Got:");
+                                t.write_expr(t.var("val"), false);
+                            },
+                            |t| {
+                                t.write("Empty");
+                            },
+                        );
+                    });
+                })
+                .build(),
+            expect![[r#"
+                -- before --
+                view TestInlineMatch() {
+                  let opt = Option[String]::Some("world") in {
+                    match opt {
+                      Some(val) => {
+                        write("Got:")
+                        write_expr(val)
+                      }
+                      None => {
+                        write("Empty")
+                      }
+                    }
+                  }
+                }
+
+                -- after --
+                // Code generated by the hop compiler. DO NOT EDIT.
+
+                export namespace Option {
+                    export type Option<T> = { readonly tag: "None" } | { readonly tag: "Some", value: T };
+
+                    export function some<T>(value: T): Option<T> {
+                        return { tag: "Some", value };
+                    }
+                    export function none<T = never>(): Option<T> {
+                        return { tag: "None" };
+                    }
+                }
+
+                export function TestInlineMatch(): string {
+                    let output: string = "";
+                    const opt = Option.some<string>("world");
+                    switch (opt.tag) {
+                        case "Some": {
+                            const val = opt.value;
+                            output += "Got:";
+                            output += val;
+                            break;
+                        }
+                        case "None": {
+                            output += "Empty";
+                            break;
+                        }
+                    }
+                    return output;
+                }"#]],
+        );
+    }
+
+    #[test]
+    fn enum_with_fields() {
+        use crate::document_id::DocumentId;
+        use crate::symbols::field_name::FieldName;
+        use crate::symbols::type_name::TypeName;
+
+        let result_type = Type::Enum {
+            module: DocumentId::new("test.hop").unwrap(),
+            name: TypeName::new("Result").unwrap(),
+            variants: vec![
+                EnumVariant {
+                    name: TypeName::new("Ok").unwrap(),
+                    fields: vec![(FieldName::new("value").unwrap(), Arc::new(Type::Int), None)],
+                },
+                EnumVariant {
+                    name: TypeName::new("Err").unwrap(),
+                    fields: vec![(
+                        FieldName::new("message").unwrap(),
+                        Arc::new(Type::String),
+                        None,
+                    )],
+                },
+            ],
+        };
+
+        check(
+            IrModuleBuilder::new()
+                .enum_with_fields("Result", |e| {
+                    e.variant_with_fields("Ok", vec![("value", Type::Int)]);
+                    e.variant_with_fields("Err", vec![("message", Type::String)]);
+                })
+                .component("ShowResult", [("r", result_type)], |t| {
+                    t.write("<div>");
+                    // Create an Ok variant with a field value
+                    let ok_result =
+                        t.enum_variant_with_fields("Result", "Ok", vec![("value", t.int(42))]);
+                    t.let_stmt("ok", ok_result, |t| {
+                        t.write_expr(t.str("Created Ok!"), false);
+                    });
+                    t.write("</div>");
+                })
+                .build(),
+            expect![[r#"
+                -- before --
+                enum Result {
+                  Ok {value: Int},
+                  Err {message: String},
+                }
+                view ShowResult(r: test::Result) {
+                  write("<div>")
+                  let ok = Result::Ok {value: 42} in {
+                    write_expr("Created Ok!")
+                  }
+                  write("</div>")
+                }
+
+                -- after --
+                // Code generated by the hop compiler. DO NOT EDIT.
+
+                export namespace Result {
+                    export type Result = { readonly tag: "Ok", readonly value: number } | { readonly tag: "Err", readonly message: string };
+
+                    export function Ok(value: number): Result {
+                        return { tag: "Ok", value };
+                    }
+                    export function Err(message: string): Result {
+                        return { tag: "Err", message };
+                    }
+                }
+
+                export function ShowResult({r}: {r: Result.Result}): string {
+                    let output: string = "";
+                    output += "<div>";
+                    const ok = Result.Ok(42);
+                    output += "Created Ok!";
+                    output += "</div>";
+                    return output;
+                }"#]],
+        );
+    }
+
+    #[test]
+    fn enum_match_with_field_bindings() {
+        use crate::document_id::DocumentId;
+        use crate::ir::syntax::builder::IrBuilder;
+        use crate::symbols::field_name::FieldName;
+        use crate::symbols::type_name::TypeName;
+
+        let result_type = Type::Enum {
+            module: DocumentId::new("test.hop").unwrap(),
+            name: TypeName::new("Result").unwrap(),
+            variants: vec![
+                EnumVariant {
+                    name: TypeName::new("Ok").unwrap(),
+                    fields: vec![(
+                        FieldName::new("value").unwrap(),
+                        Arc::new(Type::String),
+                        None,
+                    )],
+                },
+                EnumVariant {
+                    name: TypeName::new("Err").unwrap(),
+                    fields: vec![(
+                        FieldName::new("message").unwrap(),
+                        Arc::new(Type::String),
+                        None,
+                    )],
+                },
+            ],
+        };
+
+        check(
+            IrModuleBuilder::new()
+                .enum_with_fields("Result", |e| {
+                    e.variant_with_fields("Ok", vec![("value", Type::String)]);
+                    e.variant_with_fields("Err", vec![("message", Type::String)]);
+                })
+                .component("ShowResult", [("r", result_type)], |t| {
+                    t.enum_match_stmt_with_bindings(
+                        t.var("r"),
+                        vec![
+                            (
+                                "Ok",
+                                vec![("value", "v")],
+                                Box::new(|t: &mut IrBuilder| {
+                                    t.write("Value: ");
+                                    t.write_expr(t.var("v"), false);
+                                }),
+                            ),
+                            (
+                                "Err",
+                                vec![("message", "m")],
+                                Box::new(|t: &mut IrBuilder| {
+                                    t.write("Error: ");
+                                    t.write_expr(t.var("m"), false);
+                                }),
+                            ),
+                        ],
+                    );
+                })
+                .build(),
+            expect![[r#"
+                -- before --
+                enum Result {
+                  Ok {value: String},
+                  Err {message: String},
+                }
+                view ShowResult(r: test::Result) {
+                  match r {
+                    Result::Ok(value: v) => {
+                      write("Value: ")
+                      write_expr(v)
+                    }
+                    Result::Err(message: m) => {
+                      write("Error: ")
+                      write_expr(m)
+                    }
+                  }
+                }
+
+                -- after --
+                // Code generated by the hop compiler. DO NOT EDIT.
+
+                export namespace Result {
+                    export type Result = { readonly tag: "Ok", readonly value: string } | { readonly tag: "Err", readonly message: string };
+
+                    export function Ok(value: string): Result {
+                        return { tag: "Ok", value };
+                    }
+                    export function Err(message: string): Result {
+                        return { tag: "Err", message };
+                    }
+                }
+
+                export function ShowResult({r}: {r: Result.Result}): string {
+                    let output: string = "";
+                    switch (r.tag) {
+                        case "Ok": {
+                            const { value: v } = r;
+                            output += "Value: ";
+                            output += v;
+                            break;
+                        }
+                        case "Err": {
+                            const { message: m } = r;
+                            output += "Error: ";
+                            output += m;
+                            break;
+                        }
+                    }
+                    return output;
+                }"#]],
+        );
+    }
+
+    #[test]
+    fn component_with_children() {
+        use crate::dop::Type;
+        use crate::ir::ast::{
+            IrComponentDeclaration, IrExpr, IrModule, IrStatement, IrViewDeclaration,
+        };
+        use crate::symbols::type_name::TypeName;
+
+        let module = IrModule {
+            views: vec![IrViewDeclaration {
+                name: TypeName::new("Main").unwrap(),
+                parameters: vec![],
+                body: vec![IrStatement::ComponentInvocation {
+                    id: 1,
+                    component_name: TypeName::new("Wrapper").unwrap(),
+
+                    args: vec![],
+                    slot_body: vec![IrStatement::Write {
+                        id: 2,
+                        content: "<p>Hello</p>".to_string(),
+                    }],
+                }],
+            }],
+            components: vec![IrComponentDeclaration {
+                name: TypeName::new("Wrapper").unwrap(),
+                parameters: vec![],
+                body: vec![
+                    IrStatement::Write {
+                        id: 10,
+                        content: "<div>".to_string(),
+                    },
+                    IrStatement::WriteExpr {
+                        id: 11,
+                        expr: IrExpr::Var {
+                            value: VarName::new("slot").unwrap(),
+                            kind: Arc::new(Type::String),
+                            id: 12,
+                        },
+                        escape: false,
+                    },
+                    IrStatement::Write {
+                        id: 13,
+                        content: "</div>".to_string(),
+                    },
+                ],
+                has_slot: true,
+            }],
+            records: vec![],
+            enums: vec![],
+        };
+
+        let result = TsTranspiler::new().transpile_module(&module);
+        let expected = expect![[r#"
+            // Code generated by the hop compiler. DO NOT EDIT.
+
+            type Slot = string & { readonly __brand: unique symbol };
+
+            /** Marks a string as trusted HTML, bypassing escaping. Only use with sanitized or trusted content. Calling this function with untrusted content causes XSS vulnerabilities. */
+            export function trustHtml(str: string): Slot {
+                return str as Slot;
+            }
+
+            function renderWrapper({slot}: {slot?: Slot}): string {
+                let output: string = "";
+                slot = slot ?? trustHtml("");
+                output += "<div>";
+                output += slot;
+                output += "</div>";
+                return output;
+            }
+
+            export function Main(): string {
+                let output: string = "";
+                output += renderWrapper({slot: trustHtml((() => { let output = ""; output += "<p>Hello</p>";
+                return output; })())});
+                return output;
+            }"#]];
+        expected.assert_eq(&result);
+    }
+}

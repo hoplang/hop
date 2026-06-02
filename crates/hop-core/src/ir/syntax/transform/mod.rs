@@ -1,0 +1,13 @@
+mod if_statement_elimination;
+mod partial_evaluation;
+mod unused_variable_declaration_elimination;
+mod variable_renaming;
+mod write_coalescing;
+mod write_expr_simplification;
+
+pub use if_statement_elimination::IfStatementEliminationPass;
+pub use partial_evaluation::PartialEvaluationPass;
+pub use unused_variable_declaration_elimination::UnusedVariableDeclarationEliminationPass;
+pub use variable_renaming::VariableRenamingPass;
+pub use write_coalescing::WriteCoalescingPass;
+pub use write_expr_simplification::WriteExprSimplificationPass;

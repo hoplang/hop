@@ -1,0 +1,31 @@
+[package]
+name = "hop-cli"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[[bin]]
+name = "hop"
+path = "src/main.rs"
+
+[dependencies]
+hop-core = { path = "../hop-core" }
+esbuild-runner = { path = "../esbuild-runner" }
+tailwind-runner = { path = "../tailwind-runner" }
+clap = { version = "4.0", features = ["derive"] }
+tokio = { version = "1.0", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+anyhow = "1.0"
+tower-lsp-server = "0.23"
+crc32fast = "1"
+
+[dev-dependencies]
+txtar = { path = "../txtar" }
+indoc = "2.0"
+expect-test = "1.5"
+tempfile = "3.8"
+
+[lints.clippy]
+too_many_arguments = "allow"
+collapsible_if = "allow"
