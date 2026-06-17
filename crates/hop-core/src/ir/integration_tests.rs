@@ -2704,6 +2704,73 @@ mod tests {
 
     #[test]
     #[ignore]
+    fn enum_with_fields_match_on_expression_subject() {
+        check(
+            indoc! {r#"
+                enum Outcome {
+                  Success {
+                    value: String,
+                  },
+                  Failure {
+                    message: String,
+                  },
+                }
+
+                view Test {
+                  <let {
+                    result: String = match Outcome::Success {value: "hi"} {
+                      Outcome::Success {value: v} => v,
+                      Outcome::Failure {message: m} => m,
+                    },
+                  }>
+                    got:{result}
+                  </let>
+                }
+            "#},
+            "got:hi",
+            expect![[r#"
+                -- ir (unoptimized) --
+                enum Outcome {
+                  Success {value: String},
+                  Failure {message: String},
+                }
+                view Test() {
+                  let result = let v_0 = Outcome::Success {value: "hi"} in match v_0 {
+                    Outcome::Success {value: v_1} => let v = v_1 in v,
+                    Outcome::Failure {message: v_2} => let m = v_2 in m,
+                  } in {
+                    write("got:")
+                    write_escaped(result)
+                  }
+                }
+                -- ir (optimized) --
+                enum Outcome {
+                  Success {value: String},
+                  Failure {message: String},
+                }
+                view Test() {
+                  write("got:hi")
+                }
+                -- expected output --
+                got:hi
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
     fn enum_match_in_component_prop() {
         check(
             indoc! {r#"

@@ -1673,39 +1673,23 @@ fn decision_to_typed_expr(
                         variant_name: case.variant_name.clone(),
                     };
 
-                    let mut body =
+                    // Filter out wildcard bindings (bound_name is None)
+                    let bindings: Vec<_> = case
+                        .bindings
+                        .iter()
+                        .filter_map(|b| {
+                            b.bound_name
+                                .as_ref()
+                                .map(|name| (b.field_name.clone(), name.clone()))
+                        })
+                        .collect();
+
+                    let body =
                         decision_to_typed_expr(&case.body, typed_bodies, result_type.clone());
-
-                    // Wrap with Let expressions for each field (using FieldAccess)
-                    // Iterate in reverse so bindings are in the correct order
-                    // Skip wildcard bindings (bound_name is None)
-                    for binding in case.bindings.iter().rev() {
-                        let Some(bound_name) = &binding.bound_name else {
-                            continue;
-                        };
-
-                        // Create field access: subject.field_name
-                        let field_access = TypedExpr::FieldAccess {
-                            record: Box::new(TypedExpr::Var {
-                                value: subject.0.clone(),
-                                kind: subject.1.clone(),
-                            }),
-                            field: binding.field_name.clone(),
-                            kind: binding.typ.clone(),
-                        };
-
-                        let kind = body.get_type();
-                        body = TypedExpr::Let {
-                            var: bound_name.clone(),
-                            value: Box::new(field_access.clone()),
-                            body: Box::new(body),
-                            kind,
-                        };
-                    }
 
                     EnumMatchArm {
                         pattern,
-                        bindings: vec![],
+                        bindings,
                         body,
                     }
                 })
