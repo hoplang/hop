@@ -277,27 +277,21 @@ pub fn parse_primary(
             }
         }
         Some((Token::TypeName(name), name_range)) => {
+            let type_name = match TypeName::from_cheap_string(name) {
+                Ok(type_name) => type_name,
+                Err(error) => {
+                    errors.push(ParseError::InvalidTypeName {
+                        error,
+                        range: name_range,
+                    });
+                    return None;
+                }
+            };
             let is_enum_variant = peek(iter).map(|(t, _)| t) == Some(Token::ColonColon);
             if is_enum_variant {
-                parse_enum_literal(
-                    iter,
-                    comments,
-                    errors,
-                    range,
-                    // TODO: Avoid unwrap
-                    TypeName::new(name.as_str()).unwrap(),
-                    name_range,
-                )?
+                parse_enum_literal(iter, comments, errors, range, type_name, name_range)?
             } else {
-                parse_record_literal(
-                    iter,
-                    comments,
-                    errors,
-                    range,
-                    // TODO: Avoid unwrap
-                    TypeName::new(name.as_str()).unwrap(),
-                    name_range,
-                )?
+                parse_record_literal(iter, comments, errors, range, type_name, name_range)?
             }
         }
         Some((Token::StringLiteral(value), lit_range)) => ParsedExpr::StringLiteral {
