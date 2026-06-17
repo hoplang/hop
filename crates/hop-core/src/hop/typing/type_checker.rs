@@ -612,6 +612,19 @@ fn typecheck_module(
     )
 }
 
+/// True when reconstruction reads the subject through the synthetic variable
+/// rather than the match node, so a non-variable subject must be bound to that
+/// variable first.
+fn root_needs_subject_binding(tree: &Decision) -> bool {
+    match tree {
+        Decision::Success(body) => !body.bindings.is_empty(),
+        Decision::SwitchRecord { .. } => true,
+        Decision::SwitchBool { .. }
+        | Decision::SwitchOption { .. }
+        | Decision::SwitchEnum { .. } => false,
+    }
+}
+
 fn typecheck_node(
     node: &ParsedNode,
     var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
@@ -1261,10 +1274,10 @@ fn typecheck_node(
                 .map(|case| case.pattern.clone())
                 .collect::<Vec<_>>();
 
-            // If subject is already a variable, use it directly; otherwise we'll wrap in a let
-            let (subject_name, needs_wrapper) = match &typed_subject {
-                dop::TypedExpr::Var { value, .. } => (value.clone(), false),
-                _ => (var_env.fresh_var(), true),
+            let subject_is_var = matches!(&typed_subject, TypedExpr::Var { .. });
+            let subject_name = match &typed_subject {
+                TypedExpr::Var { value, .. } => value.clone(),
+                _ => var_env.fresh_var(),
             };
 
             let decision = match PatMatchCompiler::new(var_env.fresh_var_counter()).compile(
@@ -1344,17 +1357,18 @@ fn typecheck_node(
                 })
                 .collect::<Vec<_>>();
 
-            let mut result = decision_to_typed_nodes(&decision, &typed_bodies);
+            let keep_wrapper = !subject_is_var && root_needs_subject_binding(&decision);
 
-            // Wrap with a Let to bind the subject expression to the subject variable
-            // (only if the subject is not already a simple variable reference)
-            if needs_wrapper {
-                result = vec![TypedNode::Let {
-                    var: subject_name.clone(),
+            let result = if keep_wrapper {
+                let nodes = decision_to_typed_nodes(&decision, &typed_bodies, None);
+                vec![TypedNode::Let {
+                    var: subject_name,
                     value: typed_subject,
-                    children: result,
-                }];
-            }
+                    children: nodes,
+                }]
+            } else {
+                decision_to_typed_nodes(&decision, &typed_bodies, Some(typed_subject))
+            };
 
             result.into_iter().next()
         }
@@ -1453,7 +1467,14 @@ fn typecheck_attributes(
 
 /// Convert a compiled Decision tree into a Vec<TypedNode>.
 /// This is used for node-level match statements (as opposed to expression-level matches).
-fn decision_to_typed_nodes(decision: &Decision, typed_bodies: &[Vec<TypedNode>]) -> Vec<TypedNode> {
+///
+/// The root subject, when present, is the expression for the root switch node,
+/// used in place of a synthetic variable. Only the outermost call supplies it.
+fn decision_to_typed_nodes(
+    decision: &Decision,
+    typed_bodies: &[Vec<TypedNode>],
+    root_subject: Option<dop::TypedExpr>,
+) -> Vec<TypedNode> {
     match decision {
         Decision::Success(body) => {
             let mut result = typed_bodies[body.value].clone();
@@ -1477,12 +1498,23 @@ fn decision_to_typed_nodes(decision: &Decision, typed_bodies: &[Vec<TypedNode>])
             true_case,
             false_case,
         } => {
-            let subject = (variable.name.clone(), variable.typ.clone());
+            let subject = Box::new(root_subject.unwrap_or_else(|| TypedExpr::Var {
+                value: variable.name.clone(),
+                kind: variable.typ.clone(),
+            }));
             vec![TypedNode::Match {
                 match_: Match::Bool {
                     subject,
-                    true_body: Box::new(decision_to_typed_nodes(&true_case.body, typed_bodies)),
-                    false_body: Box::new(decision_to_typed_nodes(&false_case.body, typed_bodies)),
+                    true_body: Box::new(decision_to_typed_nodes(
+                        &true_case.body,
+                        typed_bodies,
+                        None,
+                    )),
+                    false_body: Box::new(decision_to_typed_nodes(
+                        &false_case.body,
+                        typed_bodies,
+                        None,
+                    )),
                 },
             }]
         }
@@ -1492,19 +1524,33 @@ fn decision_to_typed_nodes(decision: &Decision, typed_bodies: &[Vec<TypedNode>])
             some_case,
             none_case,
         } => {
-            let subject = (variable.name.clone(), variable.typ.clone());
+            let subject = Box::new(root_subject.unwrap_or_else(|| TypedExpr::Var {
+                value: variable.name.clone(),
+                kind: variable.typ.clone(),
+            }));
             vec![TypedNode::Match {
                 match_: Match::Option {
                     subject,
                     some_arm_binding: some_case.bound_name.clone(),
-                    some_arm_body: Box::new(decision_to_typed_nodes(&some_case.body, typed_bodies)),
-                    none_arm_body: Box::new(decision_to_typed_nodes(&none_case.body, typed_bodies)),
+                    some_arm_body: Box::new(decision_to_typed_nodes(
+                        &some_case.body,
+                        typed_bodies,
+                        None,
+                    )),
+                    none_arm_body: Box::new(decision_to_typed_nodes(
+                        &none_case.body,
+                        typed_bodies,
+                        None,
+                    )),
                 },
             }]
         }
 
         Decision::SwitchEnum { variable, cases } => {
-            let subject = (variable.name.clone(), variable.typ.clone());
+            let subject = Box::new(root_subject.unwrap_or_else(|| TypedExpr::Var {
+                value: variable.name.clone(),
+                kind: variable.typ.clone(),
+            }));
 
             let arms = cases
                 .iter()
@@ -1525,7 +1571,7 @@ fn decision_to_typed_nodes(decision: &Decision, typed_bodies: &[Vec<TypedNode>])
                         })
                         .collect();
 
-                    let body = decision_to_typed_nodes(&case.body, typed_bodies);
+                    let body = decision_to_typed_nodes(&case.body, typed_bodies, None);
                     EnumMatchArm {
                         pattern,
                         bindings,
@@ -1540,10 +1586,9 @@ fn decision_to_typed_nodes(decision: &Decision, typed_bodies: &[Vec<TypedNode>])
         }
 
         Decision::SwitchRecord { variable, case } => {
-            let subject = (variable.name.clone(), variable.typ.clone());
-
-            // Build the body with Let bindings for each field
-            let mut body = decision_to_typed_nodes(&case.body, typed_bodies);
+            // Fields read the synthetic variable, which the caller binds in its
+            // wrapper, so there is nothing to inject here.
+            let mut body = decision_to_typed_nodes(&case.body, typed_bodies, None);
 
             // Wrap with Let nodes for each field (using FieldAccess)
             // Iterate in reverse so bindings are in the correct order
@@ -1556,8 +1601,8 @@ fn decision_to_typed_nodes(decision: &Decision, typed_bodies: &[Vec<TypedNode>])
                 // Create field access: subject.field_name
                 let field_access = TypedExpr::FieldAccess {
                     record: Box::new(TypedExpr::Var {
-                        value: subject.0.clone(),
-                        kind: subject.1.clone(),
+                        value: variable.name.clone(),
+                        kind: variable.typ.clone(),
                     }),
                     field: binding.field_name.clone(),
                     kind: binding.typ.clone(),
@@ -3922,7 +3967,7 @@ mod tests {
 
                 <Main {user: main::User}>
                   <div>
-                    {let v_0 = user.status in match v_0 {
+                    {match user.status {
                       Status::Active => "active",
                       Status::Inactive => "inactive",
                     }}
@@ -4440,18 +4485,16 @@ mod tests {
                 }
 
                 <Main>
-                  <let {v_0 = Status::Active {name: "test"}}>
-                    <match {v_0}>
-                      <case {Status::Active{name: v_1}}>
-                        <let {n = v_1}>
-                          {n}
-                        </let>
-                      </case>
-                      <case {Status::Inactive}>
-                        none
-                      </case>
-                    </match>
-                  </let>
+                  <match {Status::Active {name: "test"}}>
+                    <case {Status::Active{name: v_1}}>
+                      <let {n = v_1}>
+                        {n}
+                      </let>
+                    </case>
+                    <case {Status::Inactive}>
+                      none
+                    </case>
+                  </match>
                 </Main>
             "#]],
         );
@@ -4978,18 +5021,16 @@ mod tests {
                 }
 
                 <Main {user: main::User}>
-                  <let {v_0 = user.name}>
-                    <match {v_0}>
-                      <case {Some(v_1)}>
-                        <let {n = v_1}>
-                          {n}
-                        </let>
-                      </case>
-                      <case {None}>
-                        anonymous
-                      </case>
-                    </match>
-                  </let>
+                  <match {user.name}>
+                    <case {Some(v_1)}>
+                      <let {n = v_1}>
+                        {n}
+                      </let>
+                    </case>
+                    <case {None}>
+                      anonymous
+                    </case>
+                  </match>
                 </Main>
             "#]],
         );

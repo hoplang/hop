@@ -209,15 +209,6 @@ impl EnumBuilder {
     }
 }
 
-/// Helper function to extract (VarName, Type) from an IrExpr.
-/// Panics if the expression is not a variable reference.
-fn extract_var_subject(expr: &IrExpr) -> (VarName, Arc<Type>) {
-    match expr {
-        IrExpr::Var { value, kind, .. } => (value.clone(), kind.clone()),
-        _ => panic!("Match subject must be a variable reference, got {:?}", expr),
-    }
-}
-
 pub fn build_ir_no_params<F>(name: &str, body_fn: F) -> IrViewDeclaration
 where
     F: FnOnce(&mut IrBuilder),
@@ -583,7 +574,7 @@ impl IrBuilder {
 
         IrExpr::Match {
             match_: Match::Enum {
-                subject: extract_var_subject(&subject),
+                subject: Box::new(subject),
                 arms: ir_arms,
             },
             kind: result_type,
@@ -602,7 +593,7 @@ impl IrBuilder {
 
         IrExpr::Match {
             match_: Match::Bool {
-                subject: extract_var_subject(&subject),
+                subject: Box::new(subject),
                 true_body: Box::new(true_body),
                 false_body: Box::new(false_body),
             },
@@ -622,7 +613,7 @@ impl IrBuilder {
 
         IrExpr::Match {
             match_: Match::Option {
-                subject: extract_var_subject(&subject),
+                subject: Box::new(subject),
                 some_arm_binding: None,
                 some_arm_body: Box::new(some_body),
                 none_arm_body: Box::new(none_body),
@@ -660,7 +651,7 @@ impl IrBuilder {
 
         IrExpr::Match {
             match_: Match::Option {
-                subject: extract_var_subject(&subject),
+                subject: Box::new(subject),
                 some_arm_binding: Some(VarName::new(binding_name).unwrap()),
                 some_arm_body: Box::new(some_body),
                 none_arm_body: Box::new(none_body),
@@ -741,7 +732,7 @@ impl IrBuilder {
 
         IrExpr::Match {
             match_: Match::Enum {
-                subject: extract_var_subject(&subject),
+                subject: Box::new(subject),
                 arms: ir_arms,
             },
             kind: result_type.unwrap_or_else(|| Arc::new(Type::String)),
@@ -999,7 +990,7 @@ impl IrBuilder {
         self.statements.push(IrStatement::Match {
             id: self.next_node_id(),
             match_: Match::Bool {
-                subject: extract_var_subject(&subject),
+                subject: Box::new(subject),
                 true_body: Box::new(true_builder.statements),
                 false_body: Box::new(false_builder.statements),
             },
@@ -1045,7 +1036,7 @@ impl IrBuilder {
         self.statements.push(IrStatement::Match {
             id: self.next_node_id(),
             match_: Match::Option {
-                subject: extract_var_subject(&subject),
+                subject: Box::new(subject),
                 some_arm_binding,
                 some_arm_body: Box::new(some_builder.statements),
                 none_arm_body: Box::new(none_builder.statements),
@@ -1120,7 +1111,7 @@ impl IrBuilder {
         self.statements.push(IrStatement::Match {
             id: self.next_node_id(),
             match_: Match::Enum {
-                subject: extract_var_subject(&subject),
+                subject: Box::new(subject),
                 arms: ir_arms,
             },
         });

@@ -1335,6 +1335,19 @@ pub fn typecheck_expr(
     }
 }
 
+/// True when reconstruction reads the subject through the synthetic variable
+/// rather than the match node, so a non-variable subject must be bound to that
+/// variable first.
+fn root_needs_subject_binding(tree: &Decision) -> bool {
+    match tree {
+        Decision::Success(body) => !body.bindings.is_empty(),
+        Decision::SwitchRecord { .. } => true,
+        Decision::SwitchBool { .. }
+        | Decision::SwitchOption { .. }
+        | Decision::SwitchEnum { .. } => false,
+    }
+}
+
 // Typecheck a match expression and compile it to a TypedExpr.
 fn typecheck_match(
     subject: &ParsedExpr,
@@ -1354,10 +1367,11 @@ fn typecheck_match(
         None,
         asset_references,
     )?;
-    // If subject is already a variable, use it directly; otherwise wrap in a let
-    let (subject_name, needs_wrapper) = match &typed_subject {
-        TypedExpr::Var { value, .. } => (value.clone(), false),
-        _ => (var_env.fresh_var(), true),
+
+    let subject_is_var = matches!(&typed_subject, TypedExpr::Var { .. });
+    let subject_name = match &typed_subject {
+        TypedExpr::Var { value, .. } => value.clone(),
+        _ => var_env.fresh_var(),
     };
 
     let patterns: Vec<_> = arms.iter().map(|arm| arm.pattern.clone()).collect();
@@ -1378,17 +1392,19 @@ fn typecheck_match(
         asset_references,
     )?;
 
-    let mut result = decision_to_typed_expr(&tree, &typed_bodies, result_type.clone());
+    let keep_wrapper = !subject_is_var && root_needs_subject_binding(&tree);
 
-    // Wrap in let if subject was not a simple variable reference
-    if needs_wrapper {
-        result = TypedExpr::Let {
+    let result = if keep_wrapper {
+        let body = decision_to_typed_expr(&tree, &typed_bodies, result_type.clone(), None);
+        TypedExpr::Let {
             var: subject_name,
             value: Box::new(typed_subject),
-            body: Box::new(result),
+            body: Box::new(body),
             kind: result_type,
-        };
-    }
+        }
+    } else {
+        decision_to_typed_expr(&tree, &typed_bodies, result_type, Some(typed_subject))
+    };
 
     Ok(result)
 }
@@ -1587,10 +1603,14 @@ fn typecheck_arm_bodies(
 }
 
 /// Convert a compiled Decision tree into a TypedExpr.
+///
+/// The root subject, when present, is the expression for the root switch node,
+/// used in place of a synthetic variable. Only the outermost call supplies it.
 fn decision_to_typed_expr(
     decision: &Decision,
     typed_bodies: &[TypedExpr],
     result_type: Arc<Type>,
+    root_subject: Option<TypedExpr>,
 ) -> TypedExpr {
     match decision {
         Decision::Success(body) => {
@@ -1617,7 +1637,10 @@ fn decision_to_typed_expr(
             true_case,
             false_case,
         } => {
-            let subject = (variable.name.clone(), variable.typ.clone());
+            let subject = Box::new(root_subject.unwrap_or_else(|| TypedExpr::Var {
+                value: variable.name.clone(),
+                kind: variable.typ.clone(),
+            }));
             TypedExpr::Match {
                 match_: Match::Bool {
                     subject,
@@ -1625,11 +1648,13 @@ fn decision_to_typed_expr(
                         &true_case.body,
                         typed_bodies,
                         result_type.clone(),
+                        None,
                     )),
                     false_body: Box::new(decision_to_typed_expr(
                         &false_case.body,
                         typed_bodies,
                         result_type.clone(),
+                        None,
                     )),
                 },
                 kind: result_type,
@@ -1641,8 +1666,10 @@ fn decision_to_typed_expr(
             some_case,
             none_case,
         } => {
-            let subject = (variable.name.clone(), variable.typ.clone());
-            // bound_name is already Option<String> - just convert to Option<VarName>
+            let subject = Box::new(root_subject.unwrap_or_else(|| TypedExpr::Var {
+                value: variable.name.clone(),
+                kind: variable.typ.clone(),
+            }));
             TypedExpr::Match {
                 match_: Match::Option {
                     subject,
@@ -1651,11 +1678,13 @@ fn decision_to_typed_expr(
                         &some_case.body,
                         typed_bodies,
                         result_type.clone(),
+                        None,
                     )),
                     none_arm_body: Box::new(decision_to_typed_expr(
                         &none_case.body,
                         typed_bodies,
                         result_type.clone(),
+                        None,
                     )),
                 },
                 kind: result_type,
@@ -1663,7 +1692,10 @@ fn decision_to_typed_expr(
         }
 
         Decision::SwitchEnum { variable, cases } => {
-            let subject = (variable.name.clone(), variable.typ.clone());
+            let subject = Box::new(root_subject.unwrap_or_else(|| TypedExpr::Var {
+                value: variable.name.clone(),
+                kind: variable.typ.clone(),
+            }));
 
             let arms = cases
                 .iter()
@@ -1684,8 +1716,12 @@ fn decision_to_typed_expr(
                         })
                         .collect();
 
-                    let body =
-                        decision_to_typed_expr(&case.body, typed_bodies, result_type.clone());
+                    let body = decision_to_typed_expr(
+                        &case.body,
+                        typed_bodies,
+                        result_type.clone(),
+                        None,
+                    );
 
                     EnumMatchArm {
                         pattern,
@@ -1702,8 +1738,9 @@ fn decision_to_typed_expr(
         }
 
         Decision::SwitchRecord { variable, case } => {
-            // Build the body with Let bindings for each field
-            let mut body = decision_to_typed_expr(&case.body, typed_bodies, result_type);
+            // Fields read the synthetic variable, which the caller binds in its
+            // wrapper, so there is nothing to inject here.
+            let mut body = decision_to_typed_expr(&case.body, typed_bodies, result_type, None);
 
             // Wrap with Let expressions for each field (using FieldAccess)
             // Iterate in reverse so bindings are in the correct order
@@ -4970,4 +5007,5 @@ mod tests {
     fn should_accept_method_call_on_parenthesized_arithmetic() {
         check(&[], &[], "(1 + 2).to_string()", expect!["String"]);
     }
+
 }

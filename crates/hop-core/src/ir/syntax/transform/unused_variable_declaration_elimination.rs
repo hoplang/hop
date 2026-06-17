@@ -48,23 +48,6 @@ impl UnusedVariableDeclarationEliminationPass {
                         );
                     }
                     IrStatement::Match { id, match_ } => {
-                        // Record the match subject as a variable reference
-                        let subject_name = match match_ {
-                            Match::Bool {
-                                subject: (var_name, _),
-                                ..
-                            } => var_name.clone(),
-                            Match::Enum {
-                                subject: (var_name, _),
-                                ..
-                            } => var_name.clone(),
-                            Match::Option {
-                                subject: (var_name, _),
-                                ..
-                            } => var_name.clone(),
-                        };
-                        used_var_names.insert(subject_name);
-
                         match match_ {
                             Match::Option {
                                 some_arm_binding: some_arm,
@@ -102,26 +85,6 @@ impl UnusedVariableDeclarationEliminationPass {
                 s.traverse_exprs(&mut |e| {
                     if let IrExpr::Var { value: name, .. } = e {
                         used_var_names.insert(name.clone());
-                    }
-                    // NOTE: The subject of IrExpr::Match is actually not an
-                    // IrExpr, it is always a VarName. This makes transpilation
-                    // simpler but also means we need special handling here.
-                    if let IrExpr::Match { match_, .. } = e {
-                        let subject_name = match match_ {
-                            Match::Bool {
-                                subject: (var_name, _),
-                                ..
-                            } => var_name.clone(),
-                            Match::Enum {
-                                subject: (var_name, _),
-                                ..
-                            } => var_name.clone(),
-                            Match::Option {
-                                subject: (var_name, _),
-                                ..
-                            } => var_name.clone(),
-                        };
-                        used_var_names.insert(subject_name);
                     }
                 });
             });

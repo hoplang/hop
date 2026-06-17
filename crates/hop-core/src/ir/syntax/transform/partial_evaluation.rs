@@ -262,69 +262,38 @@ impl PartialEvaluationPass {
                         }
                         IrExpr::Match { match_, .. } => match match_ {
                             Match::Enum { subject, arms } => {
-                                if let Some(def_expr_id) = variable_bindings.get(&subject.0) {
-                                    enum_match_subjects.push((*def_expr_id, expr.id()));
-
-                                    // Record bindings from match arms
-                                    for arm in arms {
-                                        for (field_name, binding_name) in &arm.bindings {
-                                            enum_field_bindings.insert(
-                                                binding_name.clone(),
-                                                (*def_expr_id, field_name.clone()),
-                                            );
-                                        }
+                                let subject_id = subject.id();
+                                enum_match_subjects.push((subject_id, expr.id()));
+                                for arm in arms {
+                                    for (field_name, binding_name) in &arm.bindings {
+                                        enum_field_bindings
+                                            .insert(binding_name.clone(), (subject_id, field_name.clone()));
                                     }
                                 }
                                 for arm in arms {
                                     match &arm.pattern {
-                                        EnumPattern::Variant {
-                                            enum_name,
-                                            variant_name,
-                                        } => {
+                                        EnumPattern::Variant { enum_name, variant_name } => {
                                             enum_match_arm_entries.push((
-                                                (
-                                                    expr.id(),
-                                                    enum_name.clone(),
-                                                    variant_name.clone(),
-                                                ),
+                                                (expr.id(), enum_name.clone(), variant_name.clone()),
                                                 arm.body.id(),
                                             ));
                                         }
                                     }
                                 }
                             }
-                            Match::Bool {
-                                subject: (subject_var_name, _),
-                                true_body,
-                                false_body,
-                            } => {
-                                if let Some(def_expr_id) = variable_bindings.get(subject_var_name) {
-                                    bool_match_subjects.push((*def_expr_id, expr.id()));
-                                    // Key arms by (match_id, is_true) for direct joining
-                                    bool_match_arm_entries
-                                        .push(((expr.id(), true), true_body.id()));
-                                    bool_match_arm_entries
-                                        .push(((expr.id(), false), false_body.id()));
-                                }
+                            Match::Bool { subject, true_body, false_body } => {
+                                let subject_id = subject.id();
+                                bool_match_subjects.push((subject_id, expr.id()));
+                                bool_match_arm_entries.push(((expr.id(), true), true_body.id()));
+                                bool_match_arm_entries.push(((expr.id(), false), false_body.id()));
                             }
-                            Match::Option {
-                                subject: (subject_var_name, _),
-                                some_arm_binding,
-                                some_arm_body,
-                                none_arm_body,
-                            } => {
-                                if let Some(def_expr_id) = variable_bindings.get(subject_var_name) {
-                                    option_match_subjects.push((*def_expr_id, expr.id()));
-                                    // Key arms by (match_id, is_some) for direct joining
-                                    option_match_arm_entries
-                                        .push(((expr.id(), true), some_arm_body.id()));
-                                    option_match_arm_entries
-                                        .push(((expr.id(), false), none_arm_body.id()));
-
-                                    // Record the binding - uses will be found when we visit Var expressions
-                                    if let Some(binding) = some_arm_binding {
-                                        option_bindings.insert(binding.clone(), *def_expr_id);
-                                    }
+                            Match::Option { subject, some_arm_binding, some_arm_body, none_arm_body } => {
+                                let subject_id = subject.id();
+                                option_match_subjects.push((subject_id, expr.id()));
+                                option_match_arm_entries.push(((expr.id(), true), some_arm_body.id()));
+                                option_match_arm_entries.push(((expr.id(), false), none_arm_body.id()));
+                                if let Some(binding) = some_arm_binding {
+                                    option_bindings.insert(binding.clone(), subject_id);
                                 }
                             }
                         },
@@ -1267,6 +1236,81 @@ mod tests {
                 view Test() {
                   let color = Color::Red in {
                     write_escaped("red")
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_evaluate_match_with_literal_subject() {
+        check(
+            build_ir_with_enums_no_params("Test", vec![("Color", vec!["Red", "Blue"])], |t| {
+                t.write_expr_escaped(t.match_expr(
+                    t.enum_variant("Color", "Blue"),
+                    vec![("Red", t.str("red")), ("Blue", t.str("blue"))],
+                ));
+            }),
+            expect![[r#"
+                -- before --
+                view Test() {
+                  write_escaped(match Color::Blue {
+                    Color::Red => "red",
+                    Color::Blue => "blue",
+                  })
+                }
+
+                -- after --
+                view Test() {
+                  write_escaped("blue")
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_inline_constant_statement_match_subject() {
+        check(
+            build_ir_no_params("Test", |t| {
+                t.let_stmt("opt", t.some(t.str("x")), |t| {
+                    t.option_match_stmt(
+                        t.var("opt"),
+                        Some("v"),
+                        |t| {
+                            t.write_expr(t.var("v"), false);
+                        },
+                        |t| {
+                            t.write("none");
+                        },
+                    );
+                });
+            }),
+            expect![[r#"
+                -- before --
+                view Test() {
+                  let opt = Option[String]::Some("x") in {
+                    match opt {
+                      Some(v) => {
+                        write_expr(v)
+                      }
+                      None => {
+                        write("none")
+                      }
+                    }
+                  }
+                }
+
+                -- after --
+                view Test() {
+                  let opt = Option[String]::Some("x") in {
+                    match Option[String]::Some("x") {
+                      Some(v) => {
+                        write_expr(v)
+                      }
+                      None => {
+                        write("none")
+                      }
+                    }
                   }
                 }
             "#]],

@@ -65,7 +65,7 @@ pub enum TypedExpr {
 
     /// A match expression (enum, bool, or option)
     Match {
-        match_: Match<Self>,
+        match_: Match<Self, Self>,
         kind: Arc<Type>,
     },
 
@@ -477,11 +477,11 @@ impl TypedExpr {
                 Match::Enum { subject, arms } => {
                     if arms.is_empty() {
                         BoxDoc::text("match ")
-                            .append(BoxDoc::text(subject.0.as_str()))
+                            .append(subject.to_doc())
                             .append(BoxDoc::text(" {}"))
                     } else {
                         BoxDoc::text("match ")
-                            .append(BoxDoc::text(subject.0.as_str()))
+                            .append(subject.to_doc())
                             .append(BoxDoc::text(" {"))
                             .append(
                                 BoxDoc::line_()
@@ -522,7 +522,7 @@ impl TypedExpr {
                         .append(false_body.to_doc());
 
                     BoxDoc::text("match ")
-                        .append(BoxDoc::text(subject.0.as_str()))
+                        .append(subject.to_doc())
                         .append(BoxDoc::text(" {"))
                         .append(
                             BoxDoc::line_()
@@ -557,7 +557,7 @@ impl TypedExpr {
                         .append(none_arm_body.to_doc());
 
                     BoxDoc::text("match ")
-                        .append(BoxDoc::text(subject.0.as_str()))
+                        .append(subject.to_doc())
                         .append(BoxDoc::text(" {"))
                         .append(
                             BoxDoc::line_()

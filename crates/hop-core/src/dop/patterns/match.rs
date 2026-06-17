@@ -1,18 +1,14 @@
 //! Generic match types that can be used across different AST representations.
 
-use std::sync::Arc;
-
-use crate::dop::typing::r#type::Type;
 use crate::symbols::field_name::FieldName;
-use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 
 /// An enum variant pattern, e.g. `Color::Red`
 #[derive(Debug, Clone, PartialEq)]
 pub enum EnumPattern {
     Variant {
-        enum_name: TypeName,
-        variant_name: TypeName,
+        enum_name: crate::symbols::type_name::TypeName,
+        variant_name: crate::symbols::type_name::TypeName,
     },
 }
 
@@ -26,36 +22,47 @@ pub struct EnumMatchArm<Body> {
 }
 
 /// A match that can be used for different expression and statement types.
-///
-/// The subject must be a variable reference (VarName, Type), not an arbitrary expression.
-/// If matching on an expression, create a let binding first.
-///
-/// - `Body`: The type of the arm bodies (expressions or statements)
 #[derive(Debug, Clone, PartialEq)]
-pub enum Match<Body> {
+pub enum Match<Subj, Body> {
     /// An enum match, e.g. `match color { Color::Red => "red", ... }`
     Enum {
-        subject: (VarName, Arc<Type>),
+        subject: Box<Subj>,
         arms: Vec<EnumMatchArm<Body>>,
     },
 
     /// A boolean match, e.g. `match flag { true => "yes", false => "no" }`
     Bool {
-        subject: (VarName, Arc<Type>),
+        subject: Box<Subj>,
         true_body: Box<Body>,
         false_body: Box<Body>,
     },
 
     /// An option match, e.g. `match opt { Some(x) => x, None => "empty" }`
     Option {
-        subject: (VarName, Arc<Type>),
+        subject: Box<Subj>,
         some_arm_binding: Option<VarName>,
         some_arm_body: Box<Body>,
         none_arm_body: Box<Body>,
     },
 }
 
-impl<Body> Match<Body> {
+impl<Subj, Body> Match<Subj, Body> {
+    pub fn subject(&self) -> &Subj {
+        match self {
+            Match::Enum { subject, .. }
+            | Match::Bool { subject, .. }
+            | Match::Option { subject, .. } => subject,
+        }
+    }
+
+    pub fn subject_mut(&mut self) -> &mut Subj {
+        match self {
+            Match::Enum { subject, .. }
+            | Match::Bool { subject, .. }
+            | Match::Option { subject, .. } => subject,
+        }
+    }
+
     /// Get references to all body branches
     pub fn bodies(&self) -> Vec<&Body> {
         match self {

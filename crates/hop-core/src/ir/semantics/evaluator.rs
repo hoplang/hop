@@ -265,10 +265,7 @@ fn eval_statement(
                 true_body,
                 false_body,
             } => {
-                let subject_value = env
-                    .lookup(subject.0.as_str())
-                    .cloned()
-                    .ok_or_else(|| anyhow!("Undefined variable: {}", subject.0))?;
+                let subject_value = evaluate_expr(subject, env)?;
                 if subject_value.as_bool().unwrap_or(false) {
                     eval_statements(true_body, env, output, component_defs)?;
                 } else {
@@ -282,10 +279,7 @@ fn eval_statement(
                 some_arm_body,
                 none_arm_body,
             } => {
-                let subject_value = env
-                    .lookup(subject.0.as_str())
-                    .cloned()
-                    .ok_or_else(|| anyhow!("Undefined variable: {}", subject.0))?;
+                let subject_value = evaluate_expr(subject, env)?;
 
                 match subject_value {
                     Value::Some(inner) => {
@@ -305,10 +299,7 @@ fn eval_statement(
                 Ok(())
             }
             Match::Enum { subject, arms } => {
-                let subject_value = env
-                    .lookup(subject.0.as_str())
-                    .cloned()
-                    .ok_or_else(|| anyhow!("Undefined variable: {}", subject.0))?;
+                let subject_value = evaluate_expr(subject, env)?;
 
                 let (variant_name, fields) = match &subject_value {
                     Value::Enum {
@@ -685,10 +676,7 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value> {
         IrExpr::SlotEmpty { .. } => Ok(Value::String(String::new())),
         IrExpr::Match { match_, .. } => match match_ {
             Match::Enum { subject, arms } => {
-                let subject_val = env
-                    .lookup(subject.0.as_str())
-                    .cloned()
-                    .ok_or_else(|| anyhow!("Undefined variable: {}", subject.0))?;
+                let subject_val = evaluate_expr(subject, env)?;
 
                 let (variant_name, fields) = match &subject_val {
                     Value::Enum {
@@ -729,10 +717,7 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value> {
                 true_body,
                 false_body,
             } => {
-                let subject_val = env
-                    .lookup(subject.0.as_str())
-                    .cloned()
-                    .ok_or_else(|| anyhow!("Undefined variable: {}", subject.0))?;
+                let subject_val = evaluate_expr(subject, env)?;
                 let subject_bool = subject_val
                     .as_bool()
                     .ok_or_else(|| anyhow!("Match subject must evaluate to a boolean"))?;
@@ -749,10 +734,7 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value> {
                 some_arm_body,
                 none_arm_body,
             } => {
-                let subject_val = env
-                    .lookup(subject.0.as_str())
-                    .cloned()
-                    .ok_or_else(|| anyhow!("Undefined variable: {}", subject.0))?;
+                let subject_val = evaluate_expr(subject, env)?;
 
                 match subject_val {
                     Value::Some(inner) => {

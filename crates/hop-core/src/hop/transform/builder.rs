@@ -11,15 +11,6 @@ use crate::hop::typing::typed_node::{
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 
-/// Helper function to extract (VarName, Arc<Type>) from a TypedExpr.
-/// Panics if the expression is not a variable reference.
-fn extract_var_subject(expr: &TypedExpr) -> (VarName, Arc<Type>) {
-    match expr {
-        TypedExpr::Var { value, kind, .. } => (value.clone(), kind.clone()),
-        _ => panic!("Match subject must be a variable reference, got {:?}", expr),
-    }
-}
-
 pub fn build_typed_view_no_params<F>(tag_name: &str, children_fn: F) -> TypedViewDeclaration
 where
     F: FnOnce(&mut TypedAstBuilder),
@@ -249,7 +240,7 @@ impl TypedAstBuilder {
 
         self.children.push(TypedNode::Match {
             match_: Match::Bool {
-                subject: extract_var_subject(&subject),
+                subject: Box::new(subject),
                 true_body: Box::new(true_builder.children),
                 false_body: Box::new(false_builder.children),
             },

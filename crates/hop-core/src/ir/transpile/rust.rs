@@ -29,6 +29,22 @@ impl RustTranspiler {
         }
     }
 
+    /// Render a match subject in head position, parenthesizing a non-variable
+    /// subject so the parser does not read its braces as the match body.
+    fn transpile_match_subject<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        subject: &'a IrExpr,
+    ) -> Doc<'a> {
+        match subject {
+            IrExpr::Var { .. } => self.transpile_expr(arena, subject),
+            _ => arena
+                .text("(")
+                .append(self.transpile_expr(arena, subject))
+                .append(arena.text(")")),
+        }
+    }
+
     fn escape_field_name(name: &str) -> String {
         match name {
             "as" | "break" | "const" | "continue" | "crate" | "else" | "enum" | "extern"
@@ -703,7 +719,7 @@ impl Transpiler for RustTranspiler {
     fn transpile_match_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        match_: &'a Match<Vec<IrStatement>>,
+        match_: &'a Match<IrExpr, Vec<IrStatement>>,
     ) -> Doc<'a> {
         match match_ {
             Match::Bool {
@@ -712,7 +728,7 @@ impl Transpiler for RustTranspiler {
                 false_body,
             } => arena
                 .text("if ")
-                .append(arena.text(subject.0.as_str()))
+                .append(self.transpile_match_subject(arena, subject))
                 .append(arena.text(" {"))
                 .append(
                     arena
@@ -766,7 +782,7 @@ impl Transpiler for RustTranspiler {
 
                 arena
                     .text("match &")
-                    .append(arena.text(subject.0.as_str()))
+                    .append(self.transpile_match_subject(arena, subject))
                     .append(arena.text(" {"))
                     .append(
                         arena
@@ -781,7 +797,8 @@ impl Transpiler for RustTranspiler {
             }
             Match::Enum { subject, arms } => {
                 // Extract variant information from the subject's type
-                let variants = match subject.1.as_ref() {
+                let subject_type = subject.get_type();
+                let variants = match subject_type.as_ref() {
                     Type::Enum { variants, .. } => variants,
                     _ => unreachable!("Enum match subject must have Enum type"),
                 };
@@ -856,7 +873,7 @@ impl Transpiler for RustTranspiler {
 
                 arena
                     .text("match &")
-                    .append(arena.text(subject.0.as_str()))
+                    .append(self.transpile_match_subject(arena, subject))
                     .append(arena.text(" {"))
                     .append(arena.hardline().append(arms_doc).nest(4))
                     .append(arena.hardline())
@@ -1346,7 +1363,7 @@ impl Transpiler for RustTranspiler {
     fn transpile_match_expr<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        match_: &'a Match<IrExpr>,
+        match_: &'a Match<IrExpr, IrExpr>,
     ) -> Doc<'a> {
         match match_ {
             Match::Bool {
@@ -1355,7 +1372,7 @@ impl Transpiler for RustTranspiler {
                 false_body,
             } => arena
                 .text("if ")
-                .append(arena.text(subject.0.as_str()))
+                .append(self.transpile_match_subject(arena, subject))
                 .append(arena.text(" { "))
                 .append(self.transpile_expr_owned(arena, true_body))
                 .append(arena.text(" } else { "))
@@ -1373,7 +1390,7 @@ impl Transpiler for RustTranspiler {
                 };
                 arena
                     .text("match &")
-                    .append(arena.text(subject.0.as_str()))
+                    .append(self.transpile_match_subject(arena, subject))
                     .append(arena.text(" { "))
                     .append(arena.text(some_pattern))
                     .append(arena.text(" => "))
@@ -1384,14 +1401,15 @@ impl Transpiler for RustTranspiler {
             }
             Match::Enum { subject, arms } => {
                 // Extract variant information from the subject's type
-                let variants = match subject.1.as_ref() {
+                let subject_type = subject.get_type();
+                let variants = match subject_type.as_ref() {
                     Type::Enum { variants, .. } => variants,
                     _ => unreachable!("Enum match subject must have Enum type"),
                 };
 
                 let mut doc = arena
                     .text("match &")
-                    .append(arena.text(subject.0.as_str()))
+                    .append(self.transpile_match_subject(arena, subject))
                     .append(arena.text(" { "));
 
                 for (i, arm) in arms.iter().enumerate() {
@@ -1668,6 +1686,68 @@ mod tests {
                         let mut output = String::new();
                         for i in 1_i64..=3_i64 {
                             output.push_str(&i.to_string());
+                        }
+                        output
+                    }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn option_match_statement_on_expression_subject() {
+        check(
+            IrModuleBuilder::new()
+                .component_no_params("Test", |t| {
+                    t.option_match_stmt(
+                        t.some(t.str("x")),
+                        Some("value"),
+                        |t| {
+                            t.write("some: ");
+                            t.write_expr(t.var("value"), false);
+                        },
+                        |t| {
+                            t.write("none");
+                        },
+                    );
+                })
+                .build(),
+            expect![[r#"
+                -- before --
+                view Test() {
+                  match Option[String]::Some("x") {
+                    Some(value) => {
+                      write("some: ")
+                      write_expr(value)
+                    }
+                    None => {
+                      write("none")
+                    }
+                  }
+                }
+
+                -- after --
+                // Code generated by the hop compiler. DO NOT EDIT.
+                #![cfg_attr(rustfmt, rustfmt_skip)]
+                #![allow(unused_parens, dead_code, clippy::all)]
+
+                pub trait View {
+                    fn render(self) -> String;
+                }
+
+                pub struct Test {}
+
+                impl View for Test {
+                    fn render(self) -> String {
+                        let mut output = String::new();
+                        match &(Some("x".to_string())) {
+                            Some(value) => {
+                                output.push_str("some: ");
+                                output.push_str(&value);
+                            }
+                            None => {
+                                output.push_str("none");
+                            }
                         }
                         output
                     }
@@ -2125,7 +2205,11 @@ mod tests {
                 body: vec![IrStatement::Match {
                     id: 10,
                     match_: Match::Enum {
-                        subject: (VarName::new("color").unwrap(), color_type.clone()),
+                        subject: Box::new(IrExpr::Var {
+                            value: VarName::new("color").unwrap(),
+                            kind: color_type.clone(),
+                            id: 0,
+                        }),
                         arms: vec![
                             EnumMatchArm {
                                 pattern: EnumPattern::Variant {

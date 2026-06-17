@@ -58,7 +58,7 @@ pub trait Transpiler {
     fn transpile_match_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        match_: &'a Match<Vec<IrStatement>>,
+        match_: &'a Match<IrExpr, Vec<IrStatement>>,
     ) -> Doc<'a>;
     fn transpile_component_def<'a>(
         &mut self,
@@ -288,7 +288,7 @@ pub trait Transpiler {
     fn transpile_match_expr<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        match_: &'a Match<IrExpr>,
+        match_: &'a Match<IrExpr, IrExpr>,
     ) -> Doc<'a>;
     fn transpile_let<'a>(
         &mut self,

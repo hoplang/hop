@@ -1009,16 +1009,14 @@ mod tests {
                   <span>
                     {node.value}
                   </span>
-                  <let {v_0 = node.next}>
-                    <match {v_0}>
-                      <case {Some(v_1)}>
-                        <let {next = v_1}>
-                          <NodeView node={next}/>
-                        </let>
-                      </case>
-                      <case {None}></case>
-                    </match>
-                  </let>
+                  <match {node.next}>
+                    <case {Some(v_1)}>
+                      <let {next = v_1}>
+                        <NodeView node={next}/>
+                      </let>
+                    </case>
+                    <case {None}></case>
+                  </match>
                 </NodeView>
 
                 view Test(node: main::Node) {
@@ -1066,16 +1064,14 @@ mod tests {
                       {text}
                     </strong>
                   </let>
-                  <let {v_0 = node.next}>
-                    <match {v_0}>
-                      <case {Some(v_1)}>
-                        <let {next = v_1}>
-                          <NodeView node={next}/>
-                        </let>
-                      </case>
-                      <case {None}></case>
-                    </match>
-                  </let>
+                  <match {node.next}>
+                    <case {Some(v_1)}>
+                      <let {next = v_1}>
+                        <NodeView node={next}/>
+                      </let>
+                    </case>
+                    <case {None}></case>
+                  </match>
                 </NodeView>
 
                 view Test(node: main::Node) {
@@ -1121,20 +1117,18 @@ mod tests {
                 <NodeView {node: main::Node}>
                   <div>
                     {slot}
-                    <let {v_0 = node.next}>
-                      <match {v_0}>
-                        <case {Some(v_1)}>
-                          <let {next = v_1}>
-                            <NodeView node={next}>
-                              <span>
-                                {node.value}
-                              </span>
-                            </NodeView>
-                          </let>
-                        </case>
-                        <case {None}></case>
-                      </match>
-                    </let>
+                    <match {node.next}>
+                      <case {Some(v_1)}>
+                        <let {next = v_1}>
+                          <NodeView node={next}>
+                            <span>
+                              {node.value}
+                            </span>
+                          </NodeView>
+                        </let>
+                      </case>
+                      <case {None}></case>
+                    </match>
                   </div>
                 </NodeView>
 

@@ -56,6 +56,70 @@ impl TsTranspiler {
             format!("\"{}\"", self.escape_string(s))
         }
     }
+
+    /// How to refer to a match subject in option and enum code generation, which
+    /// reads it more than once. A variable is referenced directly, anything else
+    /// is bound once to a reserved name that a hop identifier can never produce.
+    fn subject_ref<'b>(subject: &'b IrExpr) -> &'b str {
+        match subject {
+            IrExpr::Var { value, .. } => value.as_str(),
+            _ => "$subject",
+        }
+    }
+
+    /// For an option or enum statement match, a non-variable subject is bound
+    /// once inside a block so it runs only once. A variable passes through.
+    fn wrap_match_subject_stmt<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        subject: &'a IrExpr,
+        switch_doc: Doc<'a>,
+    ) -> Doc<'a> {
+        match subject {
+            IrExpr::Var { .. } => switch_doc,
+            _ => arena
+                .text("{")
+                .append(
+                    arena
+                        .hardline()
+                        .append(arena.text("const $subject = "))
+                        .append(self.transpile_expr(arena, subject))
+                        .append(arena.text(";"))
+                        .append(arena.hardline())
+                        .append(switch_doc)
+                        .nest(4),
+                )
+                .append(arena.hardline())
+                .append(arena.text("}")),
+        }
+    }
+
+    /// For an option or enum expression match, the switch is wrapped in an
+    /// immediately invoked function. A variable is used directly inside it,
+    /// anything else is passed in as an argument so it runs only once.
+    fn wrap_match_subject_expr<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        subject: &'a IrExpr,
+        switch_body: Doc<'a>,
+    ) -> Doc<'a> {
+        match subject {
+            IrExpr::Var { .. } => arena
+                .text("(() => {")
+                .append(arena.line().append(switch_body).nest(2))
+                .append(arena.line())
+                .append(arena.text("})()"))
+                .group(),
+            _ => arena
+                .text("(($subject) => {")
+                .append(arena.line().append(switch_body).nest(2))
+                .append(arena.line())
+                .append(arena.text("})("))
+                .append(self.transpile_expr(arena, subject))
+                .append(arena.text(")"))
+                .group(),
+        }
+    }
 }
 
 impl Default for TsTranspiler {
@@ -644,7 +708,7 @@ impl Transpiler for TsTranspiler {
     fn transpile_match_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        match_: &'a Match<Vec<IrStatement>>,
+        match_: &'a Match<IrExpr, Vec<IrStatement>>,
     ) -> Doc<'a> {
         match match_ {
             Match::Bool {
@@ -653,7 +717,7 @@ impl Transpiler for TsTranspiler {
                 false_body,
             } => arena
                 .text("if (")
-                .append(arena.text(subject.0.as_str()))
+                .append(self.transpile_expr(arena, subject))
                 .append(arena.text(") {"))
                 .append(
                     arena
@@ -680,7 +744,7 @@ impl Transpiler for TsTranspiler {
                 none_arm_body,
             } => {
                 self.needs_option = true;
-                let subject_name = subject.0.as_str();
+                let subject_name = Self::subject_ref(subject);
                 let some_case = if let Some(var_name) = some_arm_binding {
                     arena
                         .text("case \"Some\": {")
@@ -728,23 +792,27 @@ impl Transpiler for TsTranspiler {
                     .append(arena.hardline())
                     .append(arena.text("}"));
 
-                arena
-                    .text("switch (")
-                    .append(arena.text(subject_name))
-                    .append(arena.text(".tag) {"))
-                    .append(
-                        arena
-                            .hardline()
-                            .append(some_case)
-                            .append(arena.hardline())
-                            .append(none_case)
-                            .nest(4),
-                    )
-                    .append(arena.hardline())
-                    .append(arena.text("}"))
+                self.wrap_match_subject_stmt(
+                    arena,
+                    subject,
+                    arena
+                        .text("switch (")
+                        .append(arena.text(subject_name))
+                        .append(arena.text(".tag) {"))
+                        .append(
+                            arena
+                                .hardline()
+                                .append(some_case)
+                                .append(arena.hardline())
+                                .append(none_case)
+                                .nest(4),
+                        )
+                        .append(arena.hardline())
+                        .append(arena.text("}")),
+                )
             }
             Match::Enum { subject, arms } => {
-                let subject_name = subject.0.as_str();
+                let subject_name = Self::subject_ref(subject);
                 let case_docs: Vec<Doc> = arms
                     .iter()
                     .map(|arm| match &arm.pattern {
@@ -795,13 +863,17 @@ impl Transpiler for TsTranspiler {
                     .collect();
                 let cases = arena.intersperse(case_docs, arena.hardline());
 
-                arena
-                    .text("switch (")
-                    .append(arena.text(subject_name))
-                    .append(arena.text(".tag) {"))
-                    .append(arena.hardline().append(cases).nest(4))
-                    .append(arena.hardline())
-                    .append(arena.text("}"))
+                self.wrap_match_subject_stmt(
+                    arena,
+                    subject,
+                    arena
+                        .text("switch (")
+                        .append(arena.text(subject_name))
+                        .append(arena.text(".tag) {"))
+                        .append(arena.hardline().append(cases).nest(4))
+                        .append(arena.hardline())
+                        .append(arena.text("}")),
+                )
             }
         }
     }
@@ -1213,11 +1285,11 @@ impl Transpiler for TsTranspiler {
     fn transpile_match_expr<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        match_: &'a Match<IrExpr>,
+        match_: &'a Match<IrExpr, IrExpr>,
     ) -> Doc<'a> {
         match match_ {
             Match::Enum { subject, arms } => {
-                let subject_name = subject.0.as_str();
+                let subject_name = Self::subject_ref(subject);
                 let case_docs: Vec<Doc> =
                     arms.iter()
                         .map(|arm| match &arm.pattern {
@@ -1280,14 +1352,7 @@ impl Transpiler for TsTranspiler {
                     .append(arena.line())
                     .append(arena.text("}"));
 
-                arena
-                    .text("(() => {")
-                    .append(arena.line())
-                    .append(switch_body)
-                    .nest(2)
-                    .append(arena.line())
-                    .append(arena.text("})()"))
-                    .group()
+                self.wrap_match_subject_expr(arena, subject, switch_body)
             }
             Match::Bool {
                 subject,
@@ -1295,7 +1360,7 @@ impl Transpiler for TsTranspiler {
                 false_body,
             } => arena
                 .text("(")
-                .append(arena.text(subject.0.as_str()))
+                .append(self.transpile_expr(arena, subject))
                 .append(arena.text(" ? "))
                 .append(self.transpile_expr(arena, true_body))
                 .append(arena.text(" : "))
@@ -1308,7 +1373,7 @@ impl Transpiler for TsTranspiler {
                 none_arm_body,
             } => {
                 self.needs_option = true;
-                let subject_name = subject.0.as_str();
+                let subject_name = Self::subject_ref(subject);
                 let some_case = {
                     let body_doc = self.transpile_expr(arena, some_arm_body);
                     if let Some(var_name) = some_arm_binding {
@@ -1353,12 +1418,7 @@ impl Transpiler for TsTranspiler {
                     .append(arena.line())
                     .append(arena.text("}"));
 
-                arena
-                    .text("(() => {")
-                    .append(arena.line().append(switch_body).nest(2))
-                    .append(arena.line())
-                    .append(arena.text("})()"))
-                    .group()
+                self.wrap_match_subject_expr(arena, subject, switch_body)
             }
         }
     }
@@ -2591,6 +2651,139 @@ mod tests {
                             break;
                         }
                     }
+                    return output;
+                }"#]],
+        );
+    }
+
+    #[test]
+    fn option_match_statement_on_expression_subject() {
+        check(
+            IrModuleBuilder::new()
+                .component_no_params("Test", |t| {
+                    t.option_match_stmt(
+                        t.some(t.str("x")),
+                        Some("value"),
+                        |t| {
+                            t.option_match_stmt(
+                                t.some(t.var("value")),
+                                Some("inner"),
+                                |t| {
+                                    t.write_expr(t.var("inner"), false);
+                                },
+                                |t| {
+                                    t.write("none2");
+                                },
+                            );
+                        },
+                        |t| {
+                            t.write("none1");
+                        },
+                    );
+                })
+                .build(),
+            expect![[r#"
+                -- before --
+                view Test() {
+                  match Option[String]::Some("x") {
+                    Some(value) => {
+                      match Option[String]::Some(value) {
+                        Some(inner) => {
+                          write_expr(inner)
+                        }
+                        None => {
+                          write("none2")
+                        }
+                      }
+                    }
+                    None => {
+                      write("none1")
+                    }
+                  }
+                }
+
+                -- after --
+                // Code generated by the hop compiler. DO NOT EDIT.
+
+                export namespace Option {
+                    export type Option<T> = { readonly tag: "None" } | { readonly tag: "Some", value: T };
+
+                    export function some<T>(value: T): Option<T> {
+                        return { tag: "Some", value };
+                    }
+                    export function none<T = never>(): Option<T> {
+                        return { tag: "None" };
+                    }
+                }
+
+                export function Test(): string {
+                    let output: string = "";
+                    {
+                        const $subject = Option.some<string>("x");
+                        switch ($subject.tag) {
+                            case "Some": {
+                                const value = $subject.value;
+                                {
+                                    const $subject = Option.some<string>(value);
+                                    switch ($subject.tag) {
+                                        case "Some": {
+                                            const inner = $subject.value;
+                                            output += inner;
+                                            break;
+                                        }
+                                        case "None": {
+                                            output += "none2";
+                                            break;
+                                        }
+                                    }
+                                }
+                                break;
+                            }
+                            case "None": {
+                                output += "none1";
+                                break;
+                            }
+                        }
+                    }
+                    return output;
+                }"#]],
+        );
+    }
+
+    #[test]
+    fn bool_match_expression_on_expression_subject() {
+        check(
+            IrModuleBuilder::new()
+                .component("IsActive", [("active", Type::Bool)], |t| {
+                    let match_result =
+                        t.bool_match_expr(t.not(t.var("active")), t.str("yes"), t.str("no"));
+                    t.write_expr_escaped(match_result);
+                })
+                .build(),
+            expect![[r#"
+                -- before --
+                view IsActive(active: Bool) {
+                  write_escaped(match (!active) {
+                    true => "yes",
+                    false => "no",
+                  })
+                }
+
+                -- after --
+                // Code generated by the hop compiler. DO NOT EDIT.
+
+                function escapeHtml(str: string): string {
+                    return str
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;');
+                }
+
+                export function IsActive({active}: {active: boolean}): string {
+                    let output: string = "";
+                    output += escapeHtml((!(active) ? "yes" : "no"));
                     return output;
                 }"#]],
         );

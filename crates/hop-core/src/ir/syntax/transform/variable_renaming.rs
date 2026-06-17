@@ -173,49 +173,45 @@ impl VariableRenamingPass {
                 self.pop_scope();
             }
 
-            IrStatement::Match { match_, .. } => match match_ {
-                Match::Bool {
-                    subject,
-                    true_body,
-                    false_body,
-                } => {
-                    subject.0 = self.lookup_var(&subject.0);
-                    self.push_scope();
-                    self.rename_statements(true_body);
-                    self.pop_scope();
-                    self.push_scope();
-                    self.rename_statements(false_body);
-                    self.pop_scope();
-                }
-                Match::Option {
-                    subject,
-                    some_arm_binding,
-                    some_arm_body,
-                    none_arm_body,
-                } => {
-                    subject.0 = self.lookup_var(&subject.0);
-                    self.push_scope();
-                    if let Some(var) = some_arm_binding {
-                        *var = self.bind_var(var);
-                    }
-                    self.rename_statements(some_arm_body);
-                    self.pop_scope();
-                    self.push_scope();
-                    self.rename_statements(none_arm_body);
-                    self.pop_scope();
-                }
-                Match::Enum { subject, arms } => {
-                    subject.0 = self.lookup_var(&subject.0);
-                    for arm in arms {
+            IrStatement::Match { match_, .. } => {
+                self.rename_expr(match_.subject_mut());
+                match match_ {
+                    Match::Bool { true_body, false_body, .. } => {
                         self.push_scope();
-                        for (_, var) in &mut arm.bindings {
-                            *var = self.bind_var(var);
-                        }
-                        self.rename_statements(&mut arm.body);
+                        self.rename_statements(true_body);
+                        self.pop_scope();
+                        self.push_scope();
+                        self.rename_statements(false_body);
                         self.pop_scope();
                     }
+                    Match::Option {
+                        some_arm_binding,
+                        some_arm_body,
+                        none_arm_body,
+                        ..
+                    } => {
+                        self.push_scope();
+                        if let Some(var) = some_arm_binding {
+                            *var = self.bind_var(var);
+                        }
+                        self.rename_statements(some_arm_body);
+                        self.pop_scope();
+                        self.push_scope();
+                        self.rename_statements(none_arm_body);
+                        self.pop_scope();
+                    }
+                    Match::Enum { arms, .. } => {
+                        for arm in arms {
+                            self.push_scope();
+                            for (_, var) in &mut arm.bindings {
+                                *var = self.bind_var(var);
+                            }
+                            self.rename_statements(&mut arm.body);
+                            self.pop_scope();
+                        }
+                    }
                 }
-            },
+            }
         }
     }
 
@@ -264,43 +260,39 @@ impl VariableRenamingPass {
                     self.rename_expr(field_expr);
                 }
             }
-            IrExpr::Match { match_, .. } => match match_ {
-                Match::Enum { subject, arms } => {
-                    subject.0 = self.lookup_var(&subject.0);
-                    for arm in arms {
+            IrExpr::Match { match_, .. } => {
+                self.rename_expr(match_.subject_mut());
+                match match_ {
+                    Match::Enum { arms, .. } => {
+                        for arm in arms {
+                            self.push_scope();
+                            for (_, var) in &mut arm.bindings {
+                                *var = self.bind_var(var);
+                            }
+                            self.rename_expr(&mut arm.body);
+                            self.pop_scope();
+                        }
+                    }
+                    Match::Bool { true_body, false_body, .. } => {
+                        self.rename_expr(true_body);
+                        self.rename_expr(false_body);
+                    }
+                    Match::Option {
+                        some_arm_binding,
+                        some_arm_body,
+                        none_arm_body,
+                        ..
+                    } => {
                         self.push_scope();
-                        for (_, var) in &mut arm.bindings {
+                        if let Some(var) = some_arm_binding {
                             *var = self.bind_var(var);
                         }
-                        self.rename_expr(&mut arm.body);
+                        self.rename_expr(some_arm_body);
                         self.pop_scope();
+                        self.rename_expr(none_arm_body);
                     }
                 }
-                Match::Bool {
-                    subject,
-                    true_body,
-                    false_body,
-                } => {
-                    subject.0 = self.lookup_var(&subject.0);
-                    self.rename_expr(true_body);
-                    self.rename_expr(false_body);
-                }
-                Match::Option {
-                    subject,
-                    some_arm_binding,
-                    some_arm_body,
-                    none_arm_body,
-                } => {
-                    subject.0 = self.lookup_var(&subject.0);
-                    self.push_scope();
-                    if let Some(var) = some_arm_binding {
-                        *var = self.bind_var(var);
-                    }
-                    self.rename_expr(some_arm_body);
-                    self.pop_scope();
-                    self.rename_expr(none_arm_body);
-                }
-            },
+            }
             IrExpr::Let {
                 var_name,
                 value,

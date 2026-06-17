@@ -86,7 +86,7 @@ pub enum TypedNode {
     },
 
     Match {
-        match_: Match<Vec<TypedNode>>,
+        match_: Match<TypedExpr, Vec<TypedNode>>,
     },
 
     Let {
@@ -239,7 +239,7 @@ impl TypedNode {
             TypedNode::Match { match_ } => match match_ {
                 Match::Enum { subject, arms } => {
                     let header = BoxDoc::text("<match {")
-                        .append(BoxDoc::text(subject.0.as_str()))
+                        .append(subject.to_doc())
                         .append(BoxDoc::text("}>"));
                     let cases = arms.iter().map(|arm| {
                         let pattern = match &arm.pattern {
@@ -300,7 +300,7 @@ impl TypedNode {
                     false_body,
                 } => {
                     let header = BoxDoc::text("<match {")
-                        .append(BoxDoc::text(subject.0.as_str()))
+                        .append(subject.to_doc())
                         .append(BoxDoc::text("}>"));
                     let true_case = {
                         let case_header = BoxDoc::text("<case {true}>");
@@ -356,7 +356,7 @@ impl TypedNode {
                     none_arm_body,
                 } => {
                     let header = BoxDoc::text("<match {")
-                        .append(BoxDoc::text(subject.0.as_str()))
+                        .append(subject.to_doc())
                         .append(BoxDoc::text("}>"));
                     let some_pattern = match some_arm_binding {
                         Some(var) => BoxDoc::text("Some(")
