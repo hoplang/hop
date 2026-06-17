@@ -1,13 +1,14 @@
 use super::syntax::ast::{IrModule, IrStatement};
 use super::syntax::transform::{
-    IfStatementEliminationPass, PartialEvaluationPass, UnusedVariableDeclarationEliminationPass,
-    WriteCoalescingPass, WriteExprSimplificationPass,
+    IfStatementEliminationPass, MatchStatementEliminationPass, PartialEvaluationPass,
+    UnusedVariableDeclarationEliminationPass, WriteCoalescingPass, WriteExprSimplificationPass,
 };
 
 fn optimize_statements(body: &mut Vec<IrStatement>) {
     PartialEvaluationPass::run(body);
     UnusedVariableDeclarationEliminationPass::run(body);
     IfStatementEliminationPass::run(body);
+    MatchStatementEliminationPass::run(body);
     WriteExprSimplificationPass::run(body);
     WriteCoalescingPass::with_limit(60).run(body);
 }
@@ -135,6 +136,49 @@ mod tests {
                   let flag = true in {
                     if flag {
                       write("yes")
+                    }
+                  }
+                }
+
+                -- after --
+                view Test() {
+                  write("yes")
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_eliminate_bool_match_with_constant_subject() {
+        let module = IrModuleBuilder::new()
+            .component_no_params("Test", |t| {
+                t.let_stmt("flag", t.bool(true), |t| {
+                    t.bool_match_stmt(
+                        t.var("flag"),
+                        |t| {
+                            t.write("yes");
+                        },
+                        |t| {
+                            t.write("no");
+                        },
+                    );
+                });
+            })
+            .build();
+
+        check(
+            module,
+            expect![[r#"
+                -- before --
+                view Test() {
+                  let flag = true in {
+                    match flag {
+                      true => {
+                        write("yes")
+                      }
+                      false => {
+                        write("no")
+                      }
                     }
                   }
                 }

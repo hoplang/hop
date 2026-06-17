@@ -418,15 +418,10 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  match Option[String]::Some("hello") {
-                    Some(v_1) => {
-                      let result = v_1 in {
-                        write("mapped:")
-                        write_escaped(result)
-                      }
-                    }
-                    None => {
-                      write("was-none")
+                  let v_1 = "hello" in {
+                    let result = v_1 in {
+                      write("mapped:")
+                      write_escaped(result)
                     }
                   }
                 }
@@ -550,15 +545,10 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  match Option[String]::Some("hi") {
-                    Some(v_1) => {
-                      let x = v_1 in {
-                        write("got:")
-                        write_escaped(x)
-                      }
-                    }
-                    None => {
-                      write("none")
+                  let v_1 = "hi" in {
+                    let x = v_1 in {
+                      write("got:")
+                      write_escaped(x)
                     }
                   }
                 }
@@ -628,14 +618,9 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  match Option[String]::Some("inner") {
-                    Some(v_1) => {
-                      let s = v_1 in {
-                        write_escaped(s)
-                      }
-                    }
-                    None => {
-                      write("none")
+                  let v_1 = "inner" in {
+                    let s = v_1 in {
+                      write_escaped(s)
                     }
                   }
                 }
@@ -1696,14 +1681,7 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  match true {
-                    true => {
-                      write("yes")
-                    }
-                    false => {
-                      write("no")
-                    }
-                  }
+                  write("yes")
                 }
                 -- expected output --
                 yes
@@ -1758,14 +1736,7 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  match false {
-                    true => {
-                      write("yes")
-                    }
-                    false => {
-                      write("no")
-                    }
-                  }
+                  write("no")
                 }
                 -- expected output --
                 no
@@ -2323,14 +2294,9 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  match Option[String]::Some("hello") {
-                    Some(v_0) => {
-                      let s = v_0 in {
-                        write_escaped(s)
-                      }
-                    }
-                    None => {
-                      write("none")
+                  let v_0 = "hello" in {
+                    let s = v_0 in {
+                      write_escaped(s)
                     }
                   }
                 }
@@ -2387,14 +2353,7 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  match Option[String]::Some("hello") {
-                    Some(_) => {
-                      write("some")
-                    }
-                    None => {
-                      write("none")
-                    }
-                  }
+                  write("some")
                 }
                 -- expected output --
                 some
@@ -2462,14 +2421,9 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  match Option[String]::Some("inner") {
-                    Some(v_1) => {
-                      let s = v_1 in {
-                        write_escaped(s)
-                      }
-                    }
-                    None => {
-                      write("none")
+                  let v_1 = "inner" in {
+                    let s = v_1 in {
+                      write_escaped(s)
                     }
                   }
                 }
@@ -4248,21 +4202,16 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  match Option[Option[String]]::Some(Option[String]::Some("deep")) {
-                    Some(v_0) => {
-                      match v_0 {
-                        Some(v_1) => {
-                          let x = v_1 in {
-                            write_escaped(x)
-                          }
-                        }
-                        None => {
-                          write("some-none")
+                  let v_0 = Option[String]::Some("deep") in {
+                    match v_0 {
+                      Some(v_1) => {
+                        let x = v_1 in {
+                          write_escaped(x)
                         }
                       }
-                    }
-                    None => {
-                      write("none")
+                      None => {
+                        write("some-none")
+                      }
                     }
                   }
                 }
@@ -4319,14 +4268,7 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  match Option[String]::Some("x") {
-                    Some(_) => {
-                      write("some")
-                    }
-                    None => {
-                      write("none")
-                    }
-                  }
+                  write("some")
                 }
                 -- expected output --
                 some
@@ -4381,14 +4323,7 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  match Option[String]::None {
-                    Some(_) => {
-                      write("some")
-                    }
-                    None => {
-                      write("none")
-                    }
-                  }
+                  write("none")
                 }
                 -- expected output --
                 none
@@ -4542,19 +4477,14 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  match Option[Option[String]]::Some(Option[String]::Some("x")) {
-                    Some(v_0) => {
-                      match v_0 {
-                        Some(_) => {
-                          write("some-some")
-                        }
-                        None => {
-                          write("some-none")
-                        }
+                  let v_0 = Option[String]::Some("x") in {
+                    match v_0 {
+                      Some(_) => {
+                        write("some-some")
                       }
-                    }
-                    None => {
-                      write("none")
+                      None => {
+                        write("some-none")
+                      }
                     }
                   }
                 }
@@ -4612,14 +4542,7 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  match Option[Option[String]]::Some(Option[String]::Some("x")) {
-                    Some(_) => {
-                      write("some")
-                    }
-                    None => {
-                      write("none")
-                    }
-                  }
+                  write("some")
                 }
                 -- expected output --
                 some
@@ -4934,26 +4857,21 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  match Option[Option[Option[String]]]::Some(Option[Option[String]]::Some(Option[String]::Some("value"))) {
-                    Some(v_0) => {
-                      match v_0 {
-                        Some(v_1) => {
-                          match v_1 {
-                            Some(_) => {
-                              write("triple-some")
-                            }
-                            None => {
-                              write("double-some-none")
-                            }
+                  let v_0 = Option[Option[String]]::Some(Option[String]::Some("value")) in {
+                    match v_0 {
+                      Some(v_1) => {
+                        match v_1 {
+                          Some(_) => {
+                            write("triple-some")
+                          }
+                          None => {
+                            write("double-some-none")
                           }
                         }
-                        None => {
-                          write("single-some-none")
-                        }
                       }
-                    }
-                    None => {
-                      write("none")
+                      None => {
+                        write("single-some-none")
+                      }
                     }
                   }
                 }
@@ -5232,25 +5150,15 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  match Option[String]::Some("outer") {
-                    Some(v_1) => {
-                      let x = v_1 in {
-                        match Option[String]::Some("inner") {
-                          Some(v_3) => {
-                            let y = v_3 in {
-                              write_escaped(x)
-                              write(":")
-                              write_escaped(y)
-                            }
-                          }
-                          None => {
-                            write("inner-none")
-                          }
+                  let v_1 = "outer" in {
+                    let x = v_1 in {
+                      let v_3 = "inner" in {
+                        let y = v_3 in {
+                          write_escaped(x)
+                          write(":")
+                          write_escaped(y)
                         }
                       }
-                    }
-                    None => {
-                      write("outer-none")
                     }
                   }
                 }
@@ -5328,24 +5236,19 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  match Option[Option[String]]::Some(Option[String]::Some("hello")) {
-                    Some(v_0) => {
-                      let inner = v_0 in {
-                        match inner {
-                          Some(v_1) => {
-                            let value = v_1 in {
-                              write("value:")
-                              write_escaped(value)
-                            }
-                          }
-                          None => {
-                            write("inner-none")
+                  let v_0 = Option[String]::Some("hello") in {
+                    let inner = v_0 in {
+                      match inner {
+                        Some(v_1) => {
+                          let value = v_1 in {
+                            write("value:")
+                            write_escaped(value)
                           }
                         }
+                        None => {
+                          write("inner-none")
+                        }
                       }
-                    }
-                    None => {
-                      write("outer-none")
                     }
                   }
                 }
