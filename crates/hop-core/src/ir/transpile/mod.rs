@@ -60,6 +60,13 @@ pub trait Transpiler {
         arena: &'a Arena<'a>,
         match_: &'a Match<IrExpr, Vec<IrStatement>>,
     ) -> Doc<'a>;
+    fn transpile_let_record_destructure_statement<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        subject: &'a IrExpr,
+        bindings: &'a [(FieldName, VarName)],
+        body: &'a [IrStatement],
+    ) -> Doc<'a>;
     fn transpile_component_def<'a>(
         &mut self,
         arena: &'a Arena<'a>,
@@ -93,6 +100,12 @@ pub trait Transpiler {
             IrStatement::Let {
                 var, value, body, ..
             } => self.transpile_let_statement(arena, var.as_str(), value, body),
+            IrStatement::LetRecordDestructure {
+                subject,
+                bindings,
+                body,
+                ..
+            } => self.transpile_let_record_destructure_statement(arena, subject, bindings, body),
             IrStatement::Match { match_, .. } => self.transpile_match_statement(arena, match_),
             IrStatement::ComponentInvocation {
                 component_name,
@@ -297,6 +310,13 @@ pub trait Transpiler {
         value: &'a IrExpr,
         body: &'a IrExpr,
     ) -> Doc<'a>;
+    fn transpile_let_record_destructure_expr<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        subject: &'a IrExpr,
+        bindings: &'a [(FieldName, VarName)],
+        body: &'a IrExpr,
+    ) -> Doc<'a>;
     fn transpile_array_length<'a>(&mut self, arena: &'a Arena<'a>, array: &'a IrExpr) -> Doc<'a>;
     fn transpile_array_is_empty<'a>(&mut self, arena: &'a Arena<'a>, array: &'a IrExpr) -> Doc<'a>;
     fn transpile_string_is_empty<'a>(
@@ -431,6 +451,12 @@ pub trait Transpiler {
                 body,
                 ..
             } => self.transpile_let(arena, var_name, value, body),
+            IrExpr::LetRecordDestructure {
+                subject,
+                bindings,
+                body,
+                ..
+            } => self.transpile_let_record_destructure_expr(arena, subject, bindings, body),
             IrExpr::TwMerge { operand, .. } => self.transpile_expr(arena, operand),
             IrExpr::ArrayLength { array, .. } => self.transpile_array_length(arena, array),
             IrExpr::ArrayIsEmpty { array, .. } => self.transpile_array_is_empty(arena, array),

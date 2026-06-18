@@ -14,6 +14,7 @@ use crate::hop::parsing::parsed_ast::{
     ParsedRecordDeclaration, ParsedViewDeclaration,
 };
 use crate::hop::typing::definition_link::DefinitionLink;
+use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use crate::type_error::TypeError;
@@ -610,19 +611,6 @@ fn typecheck_module(
         typed_enums,
         typed_views,
     )
-}
-
-/// True when reconstruction reads the subject through the synthetic variable
-/// rather than the match node, so a non-variable subject must be bound to that
-/// variable first.
-fn root_needs_subject_binding(tree: &Decision) -> bool {
-    match tree {
-        Decision::Success(body) => !body.bindings.is_empty(),
-        Decision::SwitchRecord { .. } => true,
-        Decision::SwitchBool { .. }
-        | Decision::SwitchOption { .. }
-        | Decision::SwitchEnum { .. } => false,
-    }
 }
 
 fn typecheck_node(
@@ -1274,7 +1262,6 @@ fn typecheck_node(
                 .map(|case| case.pattern.clone())
                 .collect::<Vec<_>>();
 
-            let subject_is_var = matches!(&typed_subject, TypedExpr::Var { .. });
             let subject_name = match &typed_subject {
                 TypedExpr::Var { value, .. } => value.clone(),
                 _ => var_env.fresh_var(),
@@ -1357,18 +1344,7 @@ fn typecheck_node(
                 })
                 .collect::<Vec<_>>();
 
-            let keep_wrapper = !subject_is_var && root_needs_subject_binding(&decision);
-
-            let result = if keep_wrapper {
-                let nodes = decision_to_typed_nodes(&decision, &typed_bodies, None);
-                vec![TypedNode::Let {
-                    var: subject_name,
-                    value: typed_subject,
-                    children: nodes,
-                }]
-            } else {
-                decision_to_typed_nodes(&decision, &typed_bodies, Some(typed_subject))
-            };
+            let result = decision_to_typed_nodes(&decision, &typed_bodies, Some(typed_subject));
 
             result.into_iter().next()
         }
@@ -1478,12 +1454,15 @@ fn decision_to_typed_nodes(
     match decision {
         Decision::Success(body) => {
             let mut result = typed_bodies[body.value].clone();
+            // The root binding binds the subject expression directly; nested
+            // bindings read fresh field/payload vars (root_subject is None).
+            let mut root_subject = root_subject;
             // Wrap with Let nodes for each binding (in reverse order so first binding is outermost)
             for binding in body.bindings.iter().rev() {
-                let value = TypedExpr::Var {
+                let value = root_subject.take().unwrap_or_else(|| TypedExpr::Var {
                     value: binding.source_name.clone(),
                     kind: binding.typ.clone(),
-                };
+                });
                 result = vec![TypedNode::Let {
                     var: binding.name.clone(),
                     value,
@@ -1586,36 +1565,30 @@ fn decision_to_typed_nodes(
         }
 
         Decision::SwitchRecord { variable, case } => {
-            // Fields read the synthetic variable, which the caller binds in its
-            // wrapper, so there is nothing to inject here.
-            let mut body = decision_to_typed_nodes(&case.body, typed_bodies, None);
+            let subject = root_subject.unwrap_or_else(|| TypedExpr::Var {
+                value: variable.name.clone(),
+                kind: variable.typ.clone(),
+            });
 
-            // Wrap with Let nodes for each field (using FieldAccess)
-            // Iterate in reverse so bindings are in the correct order
+            let body = decision_to_typed_nodes(&case.body, typed_bodies, None);
+
             // Skip wildcard bindings (bound_name is None)
-            for binding in case.bindings.iter().rev() {
-                let Some(bound_name) = &binding.bound_name else {
-                    continue;
-                };
+            let bindings: Vec<(FieldName, VarName)> = case
+                .bindings
+                .iter()
+                .filter_map(|binding| {
+                    binding
+                        .bound_name
+                        .as_ref()
+                        .map(|name| (binding.field_name.clone(), name.clone()))
+                })
+                .collect();
 
-                // Create field access: subject.field_name
-                let field_access = TypedExpr::FieldAccess {
-                    record: Box::new(TypedExpr::Var {
-                        value: variable.name.clone(),
-                        kind: variable.typ.clone(),
-                    }),
-                    field: binding.field_name.clone(),
-                    kind: binding.typ.clone(),
-                };
-
-                body = vec![TypedNode::Let {
-                    var: bound_name.clone(),
-                    value: field_access,
-                    children: body,
-                }];
-            }
-
-            body
+            vec![TypedNode::LetRecordDestructure {
+                subject,
+                bindings,
+                children: body,
+            }]
         }
     }
 }

@@ -185,6 +185,7 @@ impl PartialEvaluationPass {
                     IrStatement::Let { var, value, .. } => {
                         variable_bindings.insert(var.clone(), value.id());
                     }
+                    IrStatement::LetRecordDestructure { .. } => {}
                     IrStatement::For { .. } => {}
                     IrStatement::Match { .. } => {}
                     IrStatement::If { .. }
@@ -266,32 +267,52 @@ impl PartialEvaluationPass {
                                 enum_match_subjects.push((subject_id, expr.id()));
                                 for arm in arms {
                                     for (field_name, binding_name) in &arm.bindings {
-                                        enum_field_bindings
-                                            .insert(binding_name.clone(), (subject_id, field_name.clone()));
+                                        enum_field_bindings.insert(
+                                            binding_name.clone(),
+                                            (subject_id, field_name.clone()),
+                                        );
                                     }
                                 }
                                 for arm in arms {
                                     match &arm.pattern {
-                                        EnumPattern::Variant { enum_name, variant_name } => {
+                                        EnumPattern::Variant {
+                                            enum_name,
+                                            variant_name,
+                                        } => {
                                             enum_match_arm_entries.push((
-                                                (expr.id(), enum_name.clone(), variant_name.clone()),
+                                                (
+                                                    expr.id(),
+                                                    enum_name.clone(),
+                                                    variant_name.clone(),
+                                                ),
                                                 arm.body.id(),
                                             ));
                                         }
                                     }
                                 }
                             }
-                            Match::Bool { subject, true_body, false_body } => {
+                            Match::Bool {
+                                subject,
+                                true_body,
+                                false_body,
+                            } => {
                                 let subject_id = subject.id();
                                 bool_match_subjects.push((subject_id, expr.id()));
                                 bool_match_arm_entries.push(((expr.id(), true), true_body.id()));
                                 bool_match_arm_entries.push(((expr.id(), false), false_body.id()));
                             }
-                            Match::Option { subject, some_arm_binding, some_arm_body, none_arm_body } => {
+                            Match::Option {
+                                subject,
+                                some_arm_binding,
+                                some_arm_body,
+                                none_arm_body,
+                            } => {
                                 let subject_id = subject.id();
                                 option_match_subjects.push((subject_id, expr.id()));
-                                option_match_arm_entries.push(((expr.id(), true), some_arm_body.id()));
-                                option_match_arm_entries.push(((expr.id(), false), none_arm_body.id()));
+                                option_match_arm_entries
+                                    .push(((expr.id(), true), some_arm_body.id()));
+                                option_match_arm_entries
+                                    .push(((expr.id(), false), none_arm_body.id()));
                                 if let Some(binding) = some_arm_binding {
                                     option_bindings.insert(binding.clone(), subject_id);
                                 }
@@ -330,6 +351,7 @@ impl PartialEvaluationPass {
                             variable_bindings.insert(var_name.clone(), value.id());
                             let_expr_bodies.push((body.id(), expr.id()));
                         }
+                        IrExpr::LetRecordDestructure { .. } => {}
                         IrExpr::LessThanOrEqual { .. } => {
                             // Not yet implemented
                         }

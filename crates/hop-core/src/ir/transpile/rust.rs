@@ -45,6 +45,35 @@ impl RustTranspiler {
         }
     }
 
+    /// Render `RecordName { field: var, .. } = &subject`. Destructuring a
+    /// reference binds fields as borrows; `..` ignores unbound fields.
+    fn transpile_record_destructure_pattern<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        subject: &'a IrExpr,
+        bindings: &'a [(FieldName, VarName)],
+    ) -> Doc<'a> {
+        let record_name = match subject.get_type().as_ref() {
+            Type::Record { name, .. } => name.as_str().to_string(),
+            _ => unreachable!("LetRecordDestructure subject must have Record type"),
+        };
+        let bindings_doc = arena.intersperse(
+            bindings.iter().map(|(field, var)| {
+                arena
+                    .text(Self::escape_field_name(field.as_str()))
+                    .append(arena.text(": "))
+                    .append(arena.text(var.as_str()))
+            }),
+            arena.text(", "),
+        );
+        arena
+            .text(record_name)
+            .append(arena.text(" { "))
+            .append(bindings_doc)
+            .append(arena.text(", .. } = &"))
+            .append(self.transpile_match_subject(arena, subject))
+    }
+
     fn escape_field_name(name: &str) -> String {
         match name {
             "as" | "break" | "const" | "continue" | "crate" | "else" | "enum" | "extern"
@@ -254,7 +283,11 @@ impl Transpiler for RustTranspiler {
                         .iter()
                         .map(|(field_name, field_type, _)| {
                             let ft = if is_recursive_enum {
-                                self.transpile_type_with_box(arena, field_type, enum_def.name.as_str())
+                                self.transpile_type_with_box(
+                                    arena,
+                                    field_type,
+                                    enum_def.name.as_str(),
+                                )
                             } else {
                                 self.transpile_type(arena, field_type)
                             };
@@ -711,6 +744,21 @@ impl Transpiler for RustTranspiler {
             .append(arena.text(var))
             .append(arena.text(" = "))
             .append(self.transpile_expr_owned(arena, value))
+            .append(arena.text(";"))
+            .append(arena.hardline())
+            .append(self.transpile_statements(arena, body))
+    }
+
+    fn transpile_let_record_destructure_statement<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        subject: &'a IrExpr,
+        bindings: &'a [(FieldName, VarName)],
+        body: &'a [IrStatement],
+    ) -> Doc<'a> {
+        arena
+            .text("let ")
+            .append(self.transpile_record_destructure_pattern(arena, subject, bindings))
             .append(arena.text(";"))
             .append(arena.hardline())
             .append(self.transpile_statements(arena, body))
@@ -1308,10 +1356,7 @@ impl Transpiler for RustTranspiler {
         variant_name: &'a str,
         fields: &'a [(FieldName, IrExpr)],
     ) -> Doc<'a> {
-        let is_recursive = self
-            .recursive_types
-            .iter()
-            .any(|n| n.as_str() == enum_name);
+        let is_recursive = self.recursive_types.iter().any(|n| n.as_str() == enum_name);
         if fields.is_empty() {
             arena
                 .text(enum_name)
@@ -1491,6 +1536,21 @@ impl Transpiler for RustTranspiler {
             .append(arena.text(var.as_str()))
             .append(arena.text(" = "))
             .append(self.transpile_expr_owned(arena, value))
+            .append(arena.text("; "))
+            .append(self.transpile_expr(arena, body))
+            .append(arena.text(" }"))
+    }
+
+    fn transpile_let_record_destructure_expr<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        subject: &'a IrExpr,
+        bindings: &'a [(FieldName, VarName)],
+        body: &'a IrExpr,
+    ) -> Doc<'a> {
+        arena
+            .text("{ let ")
+            .append(self.transpile_record_destructure_pattern(arena, subject, bindings))
             .append(arena.text("; "))
             .append(self.transpile_expr(arena, body))
             .append(arena.text(" }"))

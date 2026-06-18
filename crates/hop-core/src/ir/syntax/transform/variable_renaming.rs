@@ -1,6 +1,5 @@
 use std::collections::HashSet;
 
-
 use crate::dop::patterns::Match;
 use crate::ir::ast::{IrComponentDeclaration, IrExpr, IrForSource, IrStatement, IrViewDeclaration};
 use crate::symbols::var_name::VarName;
@@ -173,10 +172,29 @@ impl VariableRenamingPass {
                 self.pop_scope();
             }
 
+            IrStatement::LetRecordDestructure {
+                subject,
+                bindings,
+                body,
+                ..
+            } => {
+                self.rename_expr(subject);
+                self.push_scope();
+                for (_, var) in bindings.iter_mut() {
+                    *var = self.bind_var(var);
+                }
+                self.rename_statements(body);
+                self.pop_scope();
+            }
+
             IrStatement::Match { match_, .. } => {
                 self.rename_expr(match_.subject_mut());
                 match match_ {
-                    Match::Bool { true_body, false_body, .. } => {
+                    Match::Bool {
+                        true_body,
+                        false_body,
+                        ..
+                    } => {
                         self.push_scope();
                         self.rename_statements(true_body);
                         self.pop_scope();
@@ -273,7 +291,11 @@ impl VariableRenamingPass {
                             self.pop_scope();
                         }
                     }
-                    Match::Bool { true_body, false_body, .. } => {
+                    Match::Bool {
+                        true_body,
+                        false_body,
+                        ..
+                    } => {
                         self.rename_expr(true_body);
                         self.rename_expr(false_body);
                     }
@@ -302,6 +324,20 @@ impl VariableRenamingPass {
                 self.rename_expr(value);
                 self.push_scope();
                 *var_name = self.bind_var(var_name);
+                self.rename_expr(body);
+                self.pop_scope();
+            }
+            IrExpr::LetRecordDestructure {
+                subject,
+                bindings,
+                body,
+                ..
+            } => {
+                self.rename_expr(subject);
+                self.push_scope();
+                for (_, var) in bindings.iter_mut() {
+                    *var = self.bind_var(var);
+                }
                 self.rename_expr(body);
                 self.pop_scope();
             }

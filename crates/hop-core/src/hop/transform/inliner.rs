@@ -411,6 +411,18 @@ impl<'a> InlinerState<'a> {
                     children: self.inline_nodes(children, slot_content, slot_vars),
                 });
             }
+
+            TypedNode::LetRecordDestructure {
+                subject,
+                bindings,
+                children,
+            } => {
+                output.push(TypedNode::LetRecordDestructure {
+                    subject: subject.clone(),
+                    bindings: bindings.clone(),
+                    children: self.inline_nodes(children, slot_content, slot_vars),
+                });
+            }
         }
     }
 }

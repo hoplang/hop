@@ -471,10 +471,10 @@ mod tests {
                   y: String,
                 }
                 view Test() {
-                  let result = let v_0 = Point {
+                  let result = let {x: v_1} = Point {
                     x: "hi",
                     y: "bye",
-                  } in let v_1 = v_0.x in let a = v_1 in a in {
+                  } in let a = v_1 in a in {
                     write("got:")
                     write_escaped(result)
                   }
@@ -485,10 +485,72 @@ mod tests {
                   y: String,
                 }
                 view Test() {
-                  let result = let v_0 = Point {
+                  let result = let {x: v_1} = Point {
                     x: "hi",
                     y: "bye",
-                  } in let v_1 = v_0.x in let a = v_1 in a in {
+                  } in let a = v_1 in a in {
+                    write("got:")
+                    write_escaped(result)
+                  }
+                }
+                -- expected output --
+                got:hi
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn bind_all_match_on_expression_subject() {
+        check(
+            indoc! {r#"
+                record Point {
+                  x: String,
+                  y: String,
+                }
+
+                view Test {
+                  <let {
+                    result: String = match Point {x: "hi", y: "bye"} {
+                      p => p.x,
+                    },
+                  }>
+                    got:{result}
+                  </let>
+                }
+            "#},
+            "got:hi",
+            expect![[r#"
+                -- ir (unoptimized) --
+                record Point {
+                  x: String,
+                  y: String,
+                }
+                view Test() {
+                  let result = let p = Point {x: "hi", y: "bye"} in p.x in {
+                    write("got:")
+                    write_escaped(result)
+                  }
+                }
+                -- ir (optimized) --
+                record Point {
+                  x: String,
+                  y: String,
+                }
+                view Test() {
+                  let result = let p = Point {x: "hi", y: "bye"} in p.x in {
                     write("got:")
                     write_escaped(result)
                   }
@@ -4756,7 +4818,7 @@ mod tests {
                 }
                 view Test() {
                   let person = Person {name: "Alice", age: 30} in {
-                    let v_1 = person.age in {
+                    let {age: v_1} = person in {
                       let a = v_1 in {
                         write("age:")
                         write_escaped(a.to_string())
@@ -4771,7 +4833,7 @@ mod tests {
                 }
                 view Test() {
                   let person = Person {name: "Alice", age: 30} in {
-                    let v_1 = person.age in {
+                    let {age: v_1} = person in {
                       let a = v_1 in {
                         write("age:")
                         write_escaped(a.to_string())

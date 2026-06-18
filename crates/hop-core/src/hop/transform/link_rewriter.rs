@@ -72,6 +72,15 @@ impl LinkRewriter {
                     value,
                     children: Self::rewrite_links(children),
                 },
+                TypedNode::LetRecordDestructure {
+                    subject,
+                    bindings,
+                    children,
+                } => TypedNode::LetRecordDestructure {
+                    subject,
+                    bindings,
+                    children: Self::rewrite_links(children),
+                },
                 TypedNode::ComponentInvocation {
                     component_name,
                     component_type,

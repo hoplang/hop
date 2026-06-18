@@ -145,8 +145,6 @@ pub struct FieldBinding {
     pub field_name: FieldName,
     /// The name to bind this field's value to, or None if wildcard pattern.
     pub bound_name: Option<VarName>,
-    /// The type of the field.
-    pub typ: Arc<Type>,
 }
 
 /// A case for an enum variant - may have multiple field bindings.
@@ -556,13 +554,12 @@ impl<'a> Compiler<'a> {
         let mut compiled_cases = Vec::with_capacity(cases.len());
 
         for (cons, vars, rows) in cases {
-            let args: Vec<(VarName, Option<FieldName>)> = if let Constructor::Record { .. } = &cons {
+            let args: Vec<(VarName, Option<FieldName>)> = if let Constructor::Record { .. } = &cons
+            {
                 if let Type::Record { fields, .. } = branch_var.typ.as_ref() {
                     vars.iter()
                         .zip(fields.iter())
-                        .map(|(v, (field_name, _, _))| {
-                            (v.name.clone(), Some(field_name.clone()))
-                        })
+                        .map(|(v, (field_name, _, _))| (v.name.clone(), Some(field_name.clone())))
                         .collect()
                 } else {
                     Vec::new()
@@ -679,7 +676,6 @@ impl<'a> Compiler<'a> {
                                 } else {
                                     Some(var.name)
                                 },
-                                typ: var.typ,
                             })
                             .collect();
                         EnumCase {
@@ -714,7 +710,6 @@ impl<'a> Compiler<'a> {
                         } else {
                             Some(var.name)
                         },
-                        typ: var.typ,
                     })
                     .collect();
                 Some(Decision::SwitchRecord {
@@ -985,7 +980,8 @@ mod tests {
     use std::collections::VecDeque;
 
     fn check(subject_type: Type, expr_str: &str, expected: Expect) {
-        let cursor = DocumentCursor::new(DocumentId::new("test.hop").unwrap(), expr_str.to_string());
+        let cursor =
+            DocumentCursor::new(DocumentId::new("test.hop").unwrap(), expr_str.to_string());
         let range = cursor.range();
         let mut iter = cursor.peekable();
         let mut comments = VecDeque::new();

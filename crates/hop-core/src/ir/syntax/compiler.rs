@@ -206,6 +206,19 @@ impl Compiler {
                 });
             }
 
+            TypedNode::LetRecordDestructure {
+                subject,
+                bindings,
+                children,
+            } => {
+                output.push(IrStatement::LetRecordDestructure {
+                    id: self.next_node_id(),
+                    subject: self.compile_expr(subject),
+                    bindings: bindings.clone(),
+                    body: self.compile_nodes(children, slot_content),
+                });
+            }
+
             TypedNode::Match { match_ } => {
                 let compiled_match = match match_ {
                     Match::Bool {
@@ -649,6 +662,18 @@ impl Compiler {
             } => IrExpr::Let {
                 var_name: var.clone(),
                 value: Box::new(self.compile_expr(value)),
+                body: Box::new(self.compile_expr(body)),
+                kind: kind.clone(),
+                id: expr_id,
+            },
+            TypedExpr::LetRecordDestructure {
+                subject,
+                bindings,
+                body,
+                kind,
+            } => IrExpr::LetRecordDestructure {
+                subject: Box::new(self.compile_expr(subject)),
+                bindings: bindings.clone(),
                 body: Box::new(self.compile_expr(body)),
                 kind: kind.clone(),
                 id: expr_id,

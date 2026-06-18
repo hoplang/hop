@@ -1117,6 +1117,58 @@ impl IrBuilder {
         });
     }
 
+    /// Create a record destructure statement.
+    /// `bindings` is a list of (field_name, binding_name) pairs.
+    pub fn record_destructure_stmt<F>(
+        &mut self,
+        subject: IrExpr,
+        bindings: Vec<(&str, &str)>,
+        body_fn: F,
+    ) where
+        F: FnOnce(&mut Self),
+    {
+        let Type::Record {
+            fields: type_fields,
+            ..
+        } = subject.as_type()
+        else {
+            panic!("record_destructure_stmt subject must be a record type")
+        };
+        let type_fields = type_fields.clone();
+
+        let ir_bindings: Vec<(FieldName, VarName)> = bindings
+            .iter()
+            .map(|(field_name, binding_name)| {
+                (
+                    FieldName::new(field_name).unwrap(),
+                    VarName::new(binding_name).unwrap(),
+                )
+            })
+            .collect();
+
+        let mut inner_builder = self.new_scoped();
+        for (field_name, binding_name) in &ir_bindings {
+            let field_type = type_fields
+                .iter()
+                .find(|(f, _, _)| f == field_name)
+                .map(|(_, t, _)| t.clone())
+                .expect("Field not found in record");
+            inner_builder
+                .var_stack
+                .borrow_mut()
+                .push((binding_name.as_str().to_string(), field_type));
+        }
+
+        body_fn(&mut inner_builder);
+
+        self.statements.push(IrStatement::LetRecordDestructure {
+            id: self.next_node_id(),
+            subject,
+            bindings: ir_bindings,
+            body: inner_builder.statements,
+        });
+    }
+
     /// Emit a component reference with no children.
     pub fn component_ref(&mut self, component_name: &str, args: Vec<(&str, IrExpr)>) {
         let ir_args: Vec<IrArgument> = args

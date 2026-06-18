@@ -879,12 +879,12 @@ pub fn typecheck_expr(
         } => {
             // Check if the record type is defined
             let (record_type, def_range) =
-                type_env.lookup(record_name).ok_or_else(|| {
-                    TypeError::UndefinedRecord {
+                type_env
+                    .lookup(record_name)
+                    .ok_or_else(|| TypeError::UndefinedRecord {
                         record_name: record_name.clone(),
                         range: range.clone(),
-                    }
-                })?;
+                    })?;
             let record_type = record_type.clone();
             let def_range = def_range.clone();
 
@@ -1335,19 +1335,6 @@ pub fn typecheck_expr(
     }
 }
 
-/// True when reconstruction reads the subject through the synthetic variable
-/// rather than the match node, so a non-variable subject must be bound to that
-/// variable first.
-fn root_needs_subject_binding(tree: &Decision) -> bool {
-    match tree {
-        Decision::Success(body) => !body.bindings.is_empty(),
-        Decision::SwitchRecord { .. } => true,
-        Decision::SwitchBool { .. }
-        | Decision::SwitchOption { .. }
-        | Decision::SwitchEnum { .. } => false,
-    }
-}
-
 // Typecheck a match expression and compile it to a TypedExpr.
 fn typecheck_match(
     subject: &ParsedExpr,
@@ -1368,7 +1355,6 @@ fn typecheck_match(
         asset_references,
     )?;
 
-    let subject_is_var = matches!(&typed_subject, TypedExpr::Var { .. });
     let subject_name = match &typed_subject {
         TypedExpr::Var { value, .. } => value.clone(),
         _ => var_env.fresh_var(),
@@ -1392,19 +1378,7 @@ fn typecheck_match(
         asset_references,
     )?;
 
-    let keep_wrapper = !subject_is_var && root_needs_subject_binding(&tree);
-
-    let result = if keep_wrapper {
-        let body = decision_to_typed_expr(&tree, &typed_bodies, result_type.clone(), None);
-        TypedExpr::Let {
-            var: subject_name,
-            value: Box::new(typed_subject),
-            body: Box::new(body),
-            kind: result_type,
-        }
-    } else {
-        decision_to_typed_expr(&tree, &typed_bodies, result_type, Some(typed_subject))
-    };
+    let result = decision_to_typed_expr(&tree, &typed_bodies, result_type, Some(typed_subject));
 
     Ok(result)
 }
@@ -1615,12 +1589,15 @@ fn decision_to_typed_expr(
     match decision {
         Decision::Success(body) => {
             let mut result = typed_bodies[body.value].clone();
+            // The root binding binds the subject expression directly; nested
+            // bindings read fresh field/payload vars (root_subject is None).
+            let mut root_subject = root_subject;
             // Wrap with Let expressions for each binding (in reverse order so first binding is outermost)
             for binding in body.bindings.iter().rev() {
-                let value = Box::new(TypedExpr::Var {
+                let value = Box::new(root_subject.take().unwrap_or_else(|| TypedExpr::Var {
                     value: binding.source_name.clone(),
                     kind: binding.typ.clone(),
-                });
+                }));
                 let kind = result.get_type();
                 result = TypedExpr::Let {
                     var: binding.name.clone(),
@@ -1716,12 +1693,8 @@ fn decision_to_typed_expr(
                         })
                         .collect();
 
-                    let body = decision_to_typed_expr(
-                        &case.body,
-                        typed_bodies,
-                        result_type.clone(),
-                        None,
-                    );
+                    let body =
+                        decision_to_typed_expr(&case.body, typed_bodies, result_type.clone(), None);
 
                     EnumMatchArm {
                         pattern,
@@ -1738,38 +1711,31 @@ fn decision_to_typed_expr(
         }
 
         Decision::SwitchRecord { variable, case } => {
-            // Fields read the synthetic variable, which the caller binds in its
-            // wrapper, so there is nothing to inject here.
-            let mut body = decision_to_typed_expr(&case.body, typed_bodies, result_type, None);
+            let subject = root_subject.unwrap_or_else(|| TypedExpr::Var {
+                value: variable.name.clone(),
+                kind: variable.typ.clone(),
+            });
 
-            // Wrap with Let expressions for each field (using FieldAccess)
-            // Iterate in reverse so bindings are in the correct order
+            let body = decision_to_typed_expr(&case.body, typed_bodies, result_type.clone(), None);
+
             // Skip wildcard bindings (bound_name is None)
-            for binding in case.bindings.iter().rev() {
-                let Some(bound_name) = &binding.bound_name else {
-                    continue;
-                };
+            let bindings: Vec<(FieldName, VarName)> = case
+                .bindings
+                .iter()
+                .filter_map(|binding| {
+                    binding
+                        .bound_name
+                        .as_ref()
+                        .map(|name| (binding.field_name.clone(), name.clone()))
+                })
+                .collect();
 
-                // Create field access: subject.field_name
-                let field_access = TypedExpr::FieldAccess {
-                    record: Box::new(TypedExpr::Var {
-                        value: variable.name.clone(),
-                        kind: variable.typ.clone(),
-                    }),
-                    field: binding.field_name.clone(),
-                    kind: binding.typ.clone(),
-                };
-
-                let kind = body.get_type();
-                body = TypedExpr::Let {
-                    var: bound_name.clone(),
-                    value: Box::new(field_access),
-                    body: Box::new(body),
-                    kind,
-                };
+            TypedExpr::LetRecordDestructure {
+                subject: Box::new(subject),
+                bindings,
+                body: Box::new(body),
+                kind: result_type,
             }
-
-            body
         }
     }
 }
@@ -1821,7 +1787,8 @@ mod tests {
         type_annotations: &mut Vec<TypeAnnotation>,
         definition_links: &mut Vec<DefinitionLink>,
     ) -> (Arc<Type>, DocumentRange) {
-        let cursor = DocumentCursor::new(DocumentId::new("test.hop").unwrap(), type_str.to_string());
+        let cursor =
+            DocumentCursor::new(DocumentId::new("test.hop").unwrap(), type_str.to_string());
         let range = cursor.range();
         let mut iter = cursor.peekable();
         let mut comments = VecDeque::new();
@@ -1835,14 +1802,16 @@ mod tests {
 
     fn check(decls: &[Decl<'_>], env_vars: &[(&str, &str)], expr_str: &str, expected: Expect) {
         let mut env: VariableScope<VarName, (Arc<Type>, DocumentRange)> = VariableScope::new();
-        let mut type_env: VariableScope<TypeName, (Arc<Type>, DocumentRange)> = VariableScope::new();
+        let mut type_env: VariableScope<TypeName, (Arc<Type>, DocumentRange)> =
+            VariableScope::new();
         let mut type_annotations = Vec::new();
         let mut definition_links = Vec::new();
         let mut asset_references = Vec::new();
         let test_module = DocumentId::new("test.hop").unwrap();
 
         // Synthetic range used as the "definition site" for builder-declared types.
-        let decl_range = DocumentCursor::new(DocumentId::new("test.hop").unwrap(), String::new()).range();
+        let decl_range =
+            DocumentCursor::new(DocumentId::new("test.hop").unwrap(), String::new()).range();
 
         for decl in decls {
             match decl {
@@ -1882,10 +1851,7 @@ mod tests {
                         name: type_name.clone(),
                         fields: resolved_fields,
                     };
-                    let _ = type_env.push(
-                        type_name,
-                        (Arc::new(record_type), decl_range.clone()),
-                    );
+                    let _ = type_env.push(type_name, (Arc::new(record_type), decl_range.clone()));
                 }
                 Decl::Enum { name, variants } => {
                     let type_name = TypeName::new(name).unwrap();
@@ -1902,8 +1868,7 @@ mod tests {
                         name: type_name.clone(),
                         variants: typed_variants,
                     };
-                    let _ =
-                        type_env.push(type_name, (Arc::new(enum_type), decl_range.clone()));
+                    let _ = type_env.push(type_name, (Arc::new(enum_type), decl_range.clone()));
                 }
                 Decl::EnumWithFields { name, variants } => {
                     let type_name = TypeName::new(name).unwrap();
@@ -1949,8 +1914,7 @@ mod tests {
                         name: type_name.clone(),
                         variants: typed_variants,
                     };
-                    let _ =
-                        type_env.push(type_name, (Arc::new(enum_type), decl_range.clone()));
+                    let _ = type_env.push(type_name, (Arc::new(enum_type), decl_range.clone()));
                 }
             }
         }
@@ -1965,7 +1929,8 @@ mod tests {
             let _ = env.push(VarName::new(var_name).unwrap(), (typ, range));
         }
 
-        let cursor = DocumentCursor::new(DocumentId::new("test.hop").unwrap(), expr_str.to_string());
+        let cursor =
+            DocumentCursor::new(DocumentId::new("test.hop").unwrap(), expr_str.to_string());
         let range = cursor.range();
         let mut iter = cursor.peekable();
         let mut comments = VecDeque::new();
@@ -5007,5 +4972,4 @@ mod tests {
     fn should_accept_method_call_on_parenthesized_arithmetic() {
         check(&[], &[], "(1 + 2).to_string()", expect!["String"]);
     }
-
 }

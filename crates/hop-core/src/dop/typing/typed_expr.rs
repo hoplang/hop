@@ -158,6 +158,14 @@ pub enum TypedExpr {
         kind: Arc<Type>,
     },
 
+    /// An irrefutable record destructure, e.g. `let { x: a, y: b } = subject in body`.
+    LetRecordDestructure {
+        subject: Box<Self>,
+        bindings: Vec<(FieldName, VarName)>,
+        body: Box<Self>,
+        kind: Arc<Type>,
+    },
+
     /// Array length expression, e.g. items.len()
     ArrayLength { array: Box<Self> },
 
@@ -200,7 +208,8 @@ impl TypedExpr {
             | TypedExpr::EnumLiteral { kind, .. }
             | TypedExpr::OptionLiteral { kind, .. }
             | TypedExpr::Match { kind, .. }
-            | TypedExpr::Let { kind, .. } => kind.clone(),
+            | TypedExpr::Let { kind, .. }
+            | TypedExpr::LetRecordDestructure { kind, .. } => kind.clone(),
 
             TypedExpr::FloatLiteral { .. } | TypedExpr::IntToFloat { .. } => Arc::new(Type::Float),
             TypedExpr::IntLiteral { .. } => Arc::new(Type::Int),
@@ -257,7 +266,8 @@ impl TypedExpr {
             | TypedExpr::EnumLiteral { kind, .. }
             | TypedExpr::OptionLiteral { kind, .. }
             | TypedExpr::Match { kind, .. }
-            | TypedExpr::Let { kind, .. } => kind.as_ref(),
+            | TypedExpr::Let { kind, .. }
+            | TypedExpr::LetRecordDestructure { kind, .. } => kind.as_ref(),
 
             TypedExpr::FloatLiteral { .. } | TypedExpr::IntToFloat { .. } => &FLOAT_TYPE,
             TypedExpr::IntLiteral { .. } => &INT_TYPE,
@@ -581,6 +591,27 @@ impl TypedExpr {
                 .append(value.to_doc())
                 .append(BoxDoc::text(" in "))
                 .append(body.to_doc()),
+            TypedExpr::LetRecordDestructure {
+                subject,
+                bindings,
+                body,
+                ..
+            } => {
+                let bindings_doc = BoxDoc::intersperse(
+                    bindings.iter().map(|(field, var)| {
+                        BoxDoc::text(field.as_str())
+                            .append(BoxDoc::text(": "))
+                            .append(BoxDoc::text(var.as_str()))
+                    }),
+                    BoxDoc::text(", "),
+                );
+                BoxDoc::text("let {")
+                    .append(bindings_doc)
+                    .append(BoxDoc::text("} = "))
+                    .append(subject.to_doc())
+                    .append(BoxDoc::text(" in "))
+                    .append(body.to_doc())
+            }
             TypedExpr::ArrayLength { array } => array.to_doc().append(BoxDoc::text(".len()")),
             TypedExpr::ArrayIsEmpty { array } => array.to_doc().append(BoxDoc::text(".is_empty()")),
             TypedExpr::StringIsEmpty { string } => {
