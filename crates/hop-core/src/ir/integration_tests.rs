@@ -445,6 +445,83 @@ mod tests {
 
     #[test]
     #[ignore]
+    fn option_string_attribute() {
+        check(
+            indoc! {r#"
+                view Test {
+                  <let {present: Option[String] = Some("hello")}>
+                    <let {absent: Option[String] = None}>
+                      <div id={present}>
+                      </div>
+                      <div id={absent}>
+                      </div>
+                    </let>
+                  </let>
+                }
+            "#},
+            "<div id=\"hello\"></div><div></div>",
+            expect![[r#"
+                -- ir (unoptimized) --
+                view Test() {
+                  let present = Option[String]::Some("hello") in {
+                    let absent = Option[String]::None in {
+                      write("<div")
+                      match present {
+                        Some(attr) => {
+                          write(" id=\"")
+                          write_escaped(attr)
+                          write("\"")
+                        }
+                        None => {
+                        }
+                      }
+                      write(">")
+                      write("</div>")
+                      write("<div")
+                      match absent {
+                        Some(attr_1) => {
+                          write(" id=\"")
+                          write_escaped(attr_1)
+                          write("\"")
+                        }
+                        None => {
+                        }
+                      }
+                      write(">")
+                      write("</div>")
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                view Test() {
+                  write("<div")
+                  let attr = "hello" in {
+                    write(" id=\"")
+                    write_escaped(attr)
+                    write("\"")
+                  }
+                  write("></div><div></div>")
+                }
+                -- expected output --
+                <div id="hello"></div><div></div>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
     fn record_match_on_expression_subject() {
         check(
             indoc! {r#"

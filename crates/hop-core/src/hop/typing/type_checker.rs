@@ -1407,10 +1407,13 @@ fn typecheck_attributes(
                     None,
                     asset_references,
                 )) {
-                    // Check that attributes evaluate to strings or booleans
+                    // Attribute expressions may be String, Bool, or Option[String].
                     let expr_type = typed_expr.get_type();
-                    if *expr_type != Type::String && *expr_type != Type::Bool {
-                        errors.push(TypeError::ExpectedStringOrBoolAttribute {
+                    let is_valid_attr_type = *expr_type == Type::String
+                        || *expr_type == Type::Bool
+                        || matches!(expr_type.as_ref(), Type::Option(inner) if **inner == Type::String);
+                    if !is_valid_attr_type {
+                        errors.push(TypeError::InvalidAttributeType {
                             found: expr_type,
                             range: expr.range().clone(),
                         });
@@ -5167,6 +5170,99 @@ mod tests {
     }
 
     #[test]
+    fn should_accept_option_string_attribute() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                component Main(maybe: Option[String]) {
+                  <div data-x={maybe}></div>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                <Main {maybe: Option[String]}>
+                  <div data-x={maybe}></div>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_some_literal_attribute() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                component Main {
+                  <div data-x={Some("hello")}></div>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                <Main>
+                  <div data-x={Some("hello")}></div>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_option_non_string_attribute() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component Main(maybe: Option[Int]) {
+                  <div data-x={maybe}></div>
+                }
+            "#},
+            expect![[r#"
+                error: Expected String, Bool, or Option[String] attribute, got Option[Int]
+                  --> main.hop (line 2, col 16)
+                1 | component Main(maybe: Option[Int]) {
+                2 |   <div data-x={maybe}></div>
+                  |                ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_option_bool_attribute() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component Main(maybe: Option[Bool]) {
+                  <div data-x={maybe}></div>
+                }
+            "#},
+            expect![[r#"
+                error: Expected String, Bool, or Option[String] attribute, got Option[Bool]
+                  --> main.hop (line 2, col 16)
+                1 | component Main(maybe: Option[Bool]) {
+                2 |   <div data-x={maybe}></div>
+                  |                ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_nested_option_string_attribute() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component Main(maybe: Option[Option[String]]) {
+                  <div data-x={maybe}></div>
+                }
+            "#},
+            expect![[r#"
+                error: Expected String, Bool, or Option[String] attribute, got Option[Option[String]]
+                  --> main.hop (line 2, col 16)
+                1 | component Main(maybe: Option[Option[String]]) {
+                2 |   <div data-x={maybe}></div>
+                  |                ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
     fn should_reject_non_string_or_bool_attribute_expression() {
         reject(
             indoc! {r#"
@@ -5176,7 +5272,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Expected String or Bool attribute, got Int
+                error: Expected String, Bool, or Option[String] attribute, got Int
                   --> main.hop (line 2, col 20)
                 1 | component Main(count: Int) {
                 2 |   <div data-count={count}></div>

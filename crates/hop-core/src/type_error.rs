@@ -112,8 +112,8 @@ pub enum TypeError {
         range: DocumentRange,
     },
 
-    #[error("Expected String or Bool attribute, got {found}")]
-    ExpectedStringOrBoolAttribute {
+    #[error("Expected String, Bool, or Option[String] attribute, got {found}")]
+    InvalidAttributeType {
         found: Arc<Type>,
         range: DocumentRange,
     },
@@ -485,7 +485,7 @@ impl TypeError {
             | TypeError::UnexpectedArgument { range, .. }
             | TypeError::ArgumentIsIncompatible { range, .. }
             | TypeError::DefaultValueTypeMismatch { range, .. }
-            | TypeError::ExpectedStringOrBoolAttribute { range, .. }
+            | TypeError::InvalidAttributeType { range, .. }
             | TypeError::DisallowedEventHandlerAttribute { range, .. }
             | TypeError::CannotIterateOver { range, .. }
             | TypeError::RangeBoundTypeMismatch { range, .. }

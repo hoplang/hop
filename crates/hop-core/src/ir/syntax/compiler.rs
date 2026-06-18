@@ -380,8 +380,56 @@ impl Compiler {
                         id: self.next_node_id(),
                         content: "\"".to_string(),
                     });
+                } else if matches!(expr.as_type(), Type::Option(inner) if **inner == Type::String) {
+                    // Option[String]: render the attribute only when Some, omit when None.
+                    let binding = VarName::new("attr").unwrap();
+
+                    // Build the same write sequence used for plain String attributes,
+                    // but over the unwrapped binding variable.
+                    let value_expr = IrExpr::Var {
+                        value: binding.clone(),
+                        kind: Arc::new(Type::String),
+                        id: self.next_expr_id(),
+                    };
+                    // Wrap class attribute values in TwMerge for Tailwind class merging.
+                    let value_expr = if name.as_str() == "class" {
+                        IrExpr::TwMerge {
+                            operand: Box::new(value_expr),
+                            id: self.next_expr_id(),
+                        }
+                    } else {
+                        value_expr
+                    };
+
+                    let some_arm_body = vec![
+                        IrStatement::Write {
+                            id: self.next_node_id(),
+                            content: format!(" {}=\"", name.as_str()),
+                        },
+                        IrStatement::WriteExpr {
+                            id: self.next_node_id(),
+                            escape: true,
+                            expr: value_expr,
+                        },
+                        IrStatement::Write {
+                            id: self.next_node_id(),
+                            content: "\"".to_string(),
+                        },
+                    ];
+
+                    output.push(IrStatement::Match {
+                        id: self.next_node_id(),
+                        match_: Match::Option {
+                            subject: Box::new(self.compile_expr(expr)),
+                            some_arm_binding: Some(binding),
+                            some_arm_body: Box::new(some_arm_body),
+                            none_arm_body: Box::new(vec![]),
+                        },
+                    });
                 } else {
-                    unreachable!("Attribute expression values must evaluate to String or Bool")
+                    unreachable!(
+                        "Attribute expression values must evaluate to String, Bool, or Option[String]"
+                    )
                 }
             }
         }
@@ -1089,6 +1137,75 @@ mod tests {
                     write(" disabled")
                   }
                   write(">")
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_compile_option_string_attribute() {
+        check(
+            build_typed_ast(
+                "TestComp",
+                vec![("maybe", Type::Option(Arc::new(Type::String)))],
+                |t| {
+                    t.html("input", vec![("data-x", t.attr_expr(t.var_expr("maybe")))], |_| {});
+                },
+            ),
+            expect![[r#"
+                -- before --
+                view TestComp(maybe: Option[String]) {
+                  <input data-x={maybe}></input>
+                }
+
+                -- after --
+                view TestComp(maybe: Option[String]) {
+                  write("<input")
+                  match maybe {
+                    Some(attr) => {
+                      write(" data-x=\"")
+                      write_escaped(attr)
+                      write("\"")
+                    }
+                    None => {
+                    }
+                  }
+                  write(">")
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_compile_option_string_class_attribute() {
+        check(
+            build_typed_ast(
+                "TestComp",
+                vec![("maybe", Type::Option(Arc::new(Type::String)))],
+                |t| {
+                    t.html("div", vec![("class", t.attr_expr(t.var_expr("maybe")))], |_| {});
+                },
+            ),
+            expect![[r#"
+                -- before --
+                view TestComp(maybe: Option[String]) {
+                  <div class={maybe}></div>
+                }
+
+                -- after --
+                view TestComp(maybe: Option[String]) {
+                  write("<div")
+                  match maybe {
+                    Some(attr) => {
+                      write(" class=\"")
+                      write_escaped(tw_merge(attr))
+                      write("\"")
+                    }
+                    None => {
+                    }
+                  }
+                  write(">")
+                  write("</div>")
                 }
             "#]],
         );
