@@ -1,9 +1,7 @@
 use crate::document_id::DocumentId;
 use crate::dop::patterns::{EnumMatchArm, Match};
 use crate::dop::{Type, TypedExpr};
-use crate::hop::typing::typed_ast::{
-    TypedAst, TypedComponentDeclaration, TypedParameter, TypedViewDeclaration,
-};
+use crate::hop::typing::typed_ast::{TypedAst, TypedComponentDeclaration, TypedViewDeclaration};
 use crate::hop::typing::typed_node::{TypedArgument, TypedNode};
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
@@ -86,19 +84,12 @@ impl<'a> InlinerState<'a> {
         let mut slot_vars = Vec::new();
         let inlined_body = self.inline_nodes(&component.children, None, &mut slot_vars);
 
-        let params: Vec<TypedParameter> = component
-            .params
-            .iter()
-            .filter(|param| param.var_name.as_str() != "slot")
-            .cloned()
-            .collect();
-
         self.component_defs.push(TypedComponentDeclaration {
             component_name: component.component_name.clone(),
-            params,
+            params: component.params.clone(),
             children: inlined_body,
             is_recursive: true,
-            has_slot: component.has_slot,
+            slot: component.slot.clone(),
         });
     }
 
@@ -113,7 +104,6 @@ impl<'a> InlinerState<'a> {
         };
         parameters
             .iter()
-            .filter(|(param_name, _, _)| param_name.as_str() != "slot")
             .map(|(param_name, _, default_value)| {
                 let value = args
                     .iter()
@@ -151,7 +141,7 @@ impl<'a> InlinerState<'a> {
         parent_slot_vars: &mut Vec<VarName>,
         output: &mut Vec<TypedNode>,
     ) {
-        let has_slot = component.has_slot;
+        let has_slot = component.slot.is_some();
 
         // Inline slot_children in parent context
         let inlined_slot_content: Option<Vec<TypedNode>> = if has_slot && !slot_children.is_empty()
@@ -223,10 +213,7 @@ impl<'a> InlinerState<'a> {
                 args,
                 children,
             } => {
-                let Type::Component {
-                    module, parameters, ..
-                } = component_type.as_ref()
-                else {
+                let Type::Component { module, slot, .. } = component_type.as_ref() else {
                     unreachable!("ComponentInvocation must have Component type");
                 };
 
@@ -235,10 +222,9 @@ impl<'a> InlinerState<'a> {
                     self.emit_component_def(module, component_name);
 
                     let resolved_args = Self::resolve_call_args(component_type, args);
-                    let has_slot = parameters.iter().any(|(n, _, _)| n.as_str() == "slot");
 
                     // Inline slot children in the parent context
-                    let inlined_children = if has_slot && !children.is_empty() {
+                    let inlined_children = if slot.is_some() && !children.is_empty() {
                         self.inline_nodes(children, slot_content, slot_vars)
                     } else {
                         vec![]
@@ -1126,7 +1112,7 @@ mod tests {
                 "#,
             )],
             expect![[r#"
-                <NodeView {node: main::Node}>
+                <NodeView {node: main::Node, slot: Slot}>
                   <div>
                     {slot}
                     <match {node.next}>

@@ -2,7 +2,7 @@ use super::type_annotation::TypeAnnotation;
 use crate::asset_reference::AssetReference;
 use crate::document::{CheapString, DocumentRange};
 use crate::dop::patterns::compiler::Compiler as PatMatchCompiler;
-use crate::dop::typing::r#type::EnumVariant;
+use crate::dop::typing::r#type::{EnumVariant, SlotParam};
 use crate::dop::typing::type_checker::{
     extract_bindings_from_pattern, resolve_type, typecheck_expr,
 };
@@ -166,6 +166,7 @@ fn typecheck_module(
                 let mut pushed_params = Vec::new();
                 let mut resolved_param_types = Vec::new();
                 let mut typed_params = Vec::new();
+                let mut component_slot: Option<SlotParam> = None;
                 if let Some((params, _)) = params {
                     for param in params {
                         let Some(param_type) = errors.ok_or_add(resolve_type(
@@ -176,13 +177,6 @@ fn typecheck_module(
                         )) else {
                             continue;
                         };
-
-                        // Validate that children parameter must be typed as Slot
-                        if param.var_name.as_str() == "slot" && *param_type != Type::Slot {
-                            errors.push(TypeError::ChildrenMustBeSlot {
-                                range: param.var_name_range.clone(),
-                            });
-                        }
 
                         // Typecheck default value
                         let typed_default_value = {
@@ -233,17 +227,30 @@ fn typecheck_module(
                         );
 
                         pushed_params.push(param);
-                        resolved_param_types.push((
-                            param.var_name.clone(),
-                            param_type.clone(),
-                            typed_default_value.clone(),
-                        ));
-                        typed_params.push(TypedParameter {
-                            var_name: param.var_name.clone(),
-                            var_type: param_type,
-                            default_value: typed_default_value,
-                            examples: param.examples.clone(),
-                        });
+                        if param.var_name.as_str() == "slot" {
+                            // Validate that children parameter must be typed as Slot
+                            if *param_type != Type::Slot {
+                                errors.push(TypeError::ChildrenMustBeSlot {
+                                    range: param.var_name_range.clone(),
+                                });
+                            }
+                            component_slot = Some(SlotParam {
+                                typ: param_type.clone(),
+                                default_value: typed_default_value.clone(),
+                            });
+                        } else {
+                            resolved_param_types.push((
+                                param.var_name.clone(),
+                                param_type.clone(),
+                                typed_default_value.clone(),
+                            ));
+                            typed_params.push(TypedParameter {
+                                var_name: param.var_name.clone(),
+                                var_type: param_type,
+                                default_value: typed_default_value,
+                                examples: param.examples.clone(),
+                            });
+                        }
                     }
                 }
 
@@ -253,6 +260,7 @@ fn typecheck_module(
                     module: parsed_ast.document_id.clone(),
                     name: TypeName::new(component_name.as_str()).unwrap(),
                     parameters: resolved_param_types,
+                    slot: component_slot.clone(),
                 });
 
                 let _ = type_env.push(
@@ -313,14 +321,12 @@ fn typecheck_module(
                     });
                 }
 
-                let has_slot = typed_params.iter().any(|p| p.var_name.as_str() == "slot");
-
                 typed_component_declarations.push(TypedComponentDeclaration {
                     component_name: component_name.clone(),
                     params: typed_params,
                     children: typed_children,
                     is_recursive,
-                    has_slot,
+                    slot: component_slot,
                 });
             }
             ParsedDeclaration::Record(ParsedRecordDeclaration {
@@ -949,35 +955,42 @@ fn typecheck_node(
                 .collect();
 
             // Look up the component type from type_env
-            let (component_module, component_type_name, component_params, component_def_range) =
-                match type_env.lookup(component_name) {
-                    Some((typ, def_range)) => match typ.as_ref() {
-                        Type::Component {
-                            module,
-                            name,
-                            parameters,
-                        } => (
-                            module.clone(),
-                            name.clone(),
-                            parameters.clone(),
-                            def_range.clone(),
-                        ),
-                        _ => {
-                            errors.push(TypeError::UndefinedComponent {
-                                tag_name: component_name.clone(),
-                                range: component_name_opening_range.clone(),
-                            });
-                            return None;
-                        }
-                    },
-                    None => {
+            let (
+                component_module,
+                component_type_name,
+                component_params,
+                component_slot,
+                component_def_range,
+            ) = match type_env.lookup(component_name) {
+                Some((typ, def_range)) => match typ.as_ref() {
+                    Type::Component {
+                        module,
+                        name,
+                        parameters,
+                        slot,
+                    } => (
+                        module.clone(),
+                        name.clone(),
+                        parameters.clone(),
+                        slot.clone(),
+                        def_range.clone(),
+                    ),
+                    _ => {
                         errors.push(TypeError::UndefinedComponent {
                             tag_name: component_name.clone(),
                             range: component_name_opening_range.clone(),
                         });
                         return None;
                     }
-                };
+                },
+                None => {
+                    errors.push(TypeError::UndefinedComponent {
+                        tag_name: component_name.clone(),
+                        range: component_name_opening_range.clone(),
+                    });
+                    return None;
+                }
+            };
 
             // Add definition link for the opening tag
             definition_links.push(DefinitionLink {
@@ -998,6 +1011,7 @@ fn typecheck_node(
                 module: component_module.clone(),
                 name: component_type_name,
                 parameters: component_params.clone(),
+                slot: component_slot.clone(),
             });
             annotations.push(TypeAnnotation::TypeForTypeName {
                 typ: component_type.clone(),
@@ -1014,13 +1028,8 @@ fn typecheck_node(
                 });
             }
 
-            // Check if component accepts children (has a `children` parameter)
-            let has_slot = component_params
-                .iter()
-                .any(|(name, _, _)| name.as_str() == "slot");
-
             // Validate that content is only passed to components with children: Slot parameter
-            if !children.is_empty() && !has_slot {
+            if !children.is_empty() && component_slot.is_none() {
                 errors.push(TypeError::ComponentDoesNotAcceptChildren {
                     component: component_name.clone(),
                     range: component_name_opening_range.clone(),
@@ -1028,10 +1037,9 @@ fn typecheck_node(
             }
 
             // Check if children are required (Slot without default) but not provided
-            let children_required = component_params
-                .iter()
-                .find(|(name, _, _)| name.as_str() == "slot")
-                .is_some_and(|(_, typ, default)| **typ == Type::Slot && default.is_none());
+            let children_required = component_slot
+                .as_ref()
+                .is_some_and(|s| *s.typ == Type::Slot && s.default_value.is_none());
 
             if children_required && children.is_empty() {
                 errors.push(TypeError::MissingChildren {
@@ -1041,19 +1049,12 @@ fn typecheck_node(
             }
 
             // Validate arguments and build typed versions
-            // Filter out children parameter - it's handled separately via component children
-            let params_without_children: Vec<_> = component_params
-                .iter()
-                .filter(|(name, _, _)| name.as_str() != "slot")
-                .cloned()
-                .collect();
-
             // Check if there are any required (non-default) params
-            let has_required_params = params_without_children
+            let has_required_params = component_params
                 .iter()
                 .any(|(_, _, default)| default.is_none());
 
-            let typed_args = match (params_without_children.as_slice(), args.as_slice()) {
+            let typed_args = match (component_params.as_slice(), args.as_slice()) {
                 ([], []) => Vec::new(),
                 ([], args) => {
                     for arg in args {
@@ -1086,9 +1087,6 @@ fn typecheck_node(
                         }
                     }
 
-                    // Use all params (including children) for type checking provided args
-                    let all_params = &component_params;
-
                     for arg in args {
                         let arg_name = arg.name.as_str();
 
@@ -1100,7 +1098,7 @@ fn typecheck_node(
                             continue;
                         }
 
-                        let (_, param_type, _) = match all_params
+                        let (_, param_type, _) = match component_params
                             .iter()
                             .find(|(name, _, _)| name.as_str() == arg_name)
                         {

@@ -36,7 +36,6 @@ impl Compiler {
         let parameters = decl
             .params
             .into_iter()
-            .filter(|param| param.var_name.as_str() != "slot")
             .map(|param| {
                 let default = param.default_value.map(|expr| compiler.compile_expr(&expr));
                 IrParameter {
@@ -51,7 +50,7 @@ impl Compiler {
             name: decl.component_name,
             parameters,
             body: compiler.compile_nodes(&decl.children, None),
-            has_slot: decl.has_slot,
+            has_slot: decl.slot.is_some(),
         }
     }
 
@@ -265,21 +264,20 @@ impl Compiler {
                 args,
                 children,
             } => {
-                let Type::Component { parameters, .. } = component_type.as_ref() else {
+                let Type::Component {
+                    parameters, slot, ..
+                } = component_type.as_ref()
+                else {
                     unreachable!("ComponentInvocation must have a Component type");
                 };
 
                 let has_slot_content = !children.is_empty();
-                let has_slot = parameters
-                    .iter()
-                    .any(|(name, _, _)| name.as_str() == "slot");
 
                 // Build args in parameter definition order, filling in defaults
                 // for missing args. This ensures positional transpilers
                 // emit arguments in the correct order.
                 let mut compiled_args: Vec<IrArgument> = parameters
                     .iter()
-                    .filter(|(name, _, _)| name.as_str() != "slot")
                     .map(|(param_name, _, default_value)| {
                         if let Some(arg) = args.iter().find(|a| &a.name == param_name) {
                             IrArgument {
@@ -302,7 +300,7 @@ impl Compiler {
 
                 // When component accepts children but call-site provides none,
                 // append an empty Slot as the children arg (last position)
-                if has_slot && !has_slot_content {
+                if slot.is_some() && !has_slot_content {
                     compiled_args.push(IrArgument {
                         name: VarName::new("slot").unwrap(),
                         expr: IrExpr::SlotEmpty {

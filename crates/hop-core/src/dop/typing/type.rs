@@ -9,6 +9,12 @@ use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 
+#[derive(Debug, Clone)]
+pub struct SlotParam {
+    pub typ: Arc<Type>,
+    pub default_value: Option<TypedExpr>,
+}
+
 #[derive(Debug)]
 pub enum Type {
     String,
@@ -33,6 +39,7 @@ pub enum Type {
         name: TypeName,
         /// Parameters: (name, type, default_value)
         parameters: Vec<(VarName, Arc<Type>, Option<TypedExpr>)>,
+        slot: Option<SlotParam>,
     },
 }
 

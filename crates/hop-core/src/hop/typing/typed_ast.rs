@@ -1,7 +1,7 @@
 use std::fmt::{self, Display};
 use std::sync::Arc;
 
-use crate::dop::typing::r#type::EnumVariant;
+use crate::dop::typing::r#type::{EnumVariant, SlotParam};
 use crate::dop::{ExamplesAnnotation, Type, TypedExpr};
 use crate::hop::typing::typed_node::TypedNode;
 use crate::symbols::field_name::FieldName;
@@ -35,7 +35,7 @@ pub struct TypedComponentDeclaration {
     pub children: Vec<TypedNode>,
     pub params: Vec<TypedParameter>,
     pub is_recursive: bool,
-    pub has_slot: bool,
+    pub slot: Option<SlotParam>,
 }
 
 #[derive(Debug, Clone)]
@@ -200,24 +200,36 @@ impl TypedEnumDeclaration {
 impl TypedComponentDeclaration {
     pub fn to_doc(&self) -> BoxDoc<'_> {
         let tag = BoxDoc::text("<").append(BoxDoc::text(self.component_name.as_str()));
-        let tag_with_params = if self.params.is_empty() {
+        let mut param_docs: Vec<BoxDoc> = self
+            .params
+            .iter()
+            .map(|param| {
+                let base = BoxDoc::text(param.var_name.as_str())
+                    .append(BoxDoc::text(": "))
+                    .append(param.var_type.to_doc());
+                match &param.default_value {
+                    Some(expr) => base.append(BoxDoc::text(" = ")).append(expr.to_doc()),
+                    None => base,
+                }
+            })
+            .collect();
+        if let Some(slot) = &self.slot {
+            let base = BoxDoc::text("slot")
+                .append(BoxDoc::text(": "))
+                .append(slot.typ.to_doc());
+            param_docs.push(match &slot.default_value {
+                Some(expr) => base.append(BoxDoc::text(" = ")).append(expr.to_doc()),
+                None => base,
+            });
+        }
+        let tag_with_params = if param_docs.is_empty() {
             tag
         } else {
             tag.append(BoxDoc::text(" {"))
                 .append(
                     BoxDoc::line_()
                         .append(BoxDoc::intersperse(
-                            self.params.iter().map(|param| {
-                                let base = BoxDoc::text(param.var_name.as_str())
-                                    .append(BoxDoc::text(": "))
-                                    .append(param.var_type.to_doc());
-                                match &param.default_value {
-                                    Some(expr) => {
-                                        base.append(BoxDoc::text(" = ")).append(expr.to_doc())
-                                    }
-                                    None => base,
-                                }
-                            }),
+                            param_docs,
                             BoxDoc::text(",").append(BoxDoc::line()),
                         ))
                         .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
