@@ -150,7 +150,7 @@ impl ParsedMatchCase {
 pub struct ParsedLetBinding {
     pub var_name: VarName,
     pub var_name_range: DocumentRange,
-    pub var_type: ParsedType,
+    pub var_type: Option<ParsedType>,
     pub value_expr: ParsedExpr,
 }
 
@@ -346,10 +346,13 @@ impl ParsedNode {
                 let bindings_doc = BoxDoc::line_()
                     .append(BoxDoc::intersperse(
                         bindings.iter().map(|b| {
-                            BoxDoc::text(b.var_name.as_str())
-                                .append(BoxDoc::text(": "))
-                                .append(BoxDoc::text(b.var_type.to_string()))
-                                .append(BoxDoc::text(" = "))
+                            let mut doc = BoxDoc::text(b.var_name.as_str());
+                            if let Some(var_type) = &b.var_type {
+                                doc = doc
+                                    .append(BoxDoc::text(": "))
+                                    .append(BoxDoc::text(var_type.to_string()));
+                            }
+                            doc.append(BoxDoc::text(" = "))
                                 .append(b.value_expr.to_doc())
                         }),
                         BoxDoc::text(",").append(BoxDoc::line()),

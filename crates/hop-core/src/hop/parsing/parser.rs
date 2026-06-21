@@ -1093,7 +1093,7 @@ fn parse_let_bindings(
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut Vec<ParseError>,
     range: &DocumentRange,
-) -> Option<Vec<(VarName, DocumentRange, ParsedType, dop::ParsedExpr)>> {
+) -> Option<Vec<(VarName, DocumentRange, Option<ParsedType>, dop::ParsedExpr)>> {
     let mut bindings = Vec::new();
     dop::tokenizer::parse_comma_separated(
         iter,
@@ -1103,8 +1103,14 @@ fn parse_let_bindings(
         |iter, comments, errors, range| {
             let (var_name, var_name_range) =
                 dop::tokenizer::expect_variable_name(iter, comments, errors, range)?;
-            dop::tokenizer::expect_token(iter, comments, errors, range, &dop::Token::Colon)?;
-            let var_type = parse_type(iter, comments, errors, range)?;
+            let var_type = if let Some((dop::Token::Colon, _)) =
+                dop::tokenizer::peek_past_comments(iter)
+            {
+                dop::tokenizer::expect_token(iter, comments, errors, range, &dop::Token::Colon)?;
+                Some(parse_type(iter, comments, errors, range)?)
+            } else {
+                None
+            };
             dop::tokenizer::expect_token(iter, comments, errors, range, &dop::Token::Assign)?;
             let value_expr = dop::parse_expr::parse_logical(iter, comments, errors, range)?;
             bindings.push((var_name, var_name_range, var_type, value_expr));
@@ -3269,8 +3275,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_let_with_missing_type() {
-        reject(
+    fn should_accept_let_with_omitted_type() {
+        accept(
             indoc! {"
                 component Main {
                     <let {x = 1}>
@@ -3279,10 +3285,13 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Expected token ':' but got '='
-                1 | component Main {
-                2 |     <let {x = 1}>
-                  |             ^
+                component Main {
+                  <let {x = 1}>
+                    <div>
+                      Content
+                    </div>
+                  </let>
+                }
             "#]],
         );
     }

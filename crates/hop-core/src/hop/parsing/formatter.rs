@@ -819,11 +819,13 @@ fn format_let_binding<'a>(
     comments: &mut VecDeque<&'a DocumentRange>,
 ) -> DocBuilder<'a, Arena<'a>> {
     let leading_comments = drain_comments_before(arena, comments, binding.var_name_range.start());
-    leading_comments
-        .append(arena.text(binding.var_name.as_str()))
-        .append(arena.text(": "))
-        .append(format_type(arena, &binding.var_type))
-        .append(arena.text(" = "))
+    let mut doc = leading_comments.append(arena.text(binding.var_name.as_str()));
+    if let Some(var_type) = &binding.var_type {
+        doc = doc
+            .append(arena.text(": "))
+            .append(format_type(arena, var_type));
+    }
+    doc.append(arena.text(" = "))
         .append(format_expr(arena, &binding.value_expr, comments))
 }
 
@@ -2215,6 +2217,26 @@ mod tests {
                 component Main {
                   <let {user: User = User {name: "Alice", age: 30}}>
                     {user.name}
+                  </let>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn inferred_let_binding_is_preserved() {
+        check(
+            indoc! {r#"
+                component Main {
+                  <let {name = "World"}>
+                    {name}
+                  </let>
+                }
+            "#},
+            expect![[r#"
+                component Main {
+                  <let {name = "World"}>
+                    {name}
                   </let>
                 }
             "#]],

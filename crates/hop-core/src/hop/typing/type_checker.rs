@@ -829,68 +829,99 @@ fn typecheck_node(
             let mut typed_bindings: Vec<(&ParsedLetBinding, TypedExpr)> = Vec::new();
 
             for binding in bindings {
-                // Resolve the declared type
-                let resolved_type = match resolve_type(
-                    &binding.var_type,
-                    type_env,
-                    annotations,
-                    definition_links,
-                ) {
-                    Ok(t) => t,
-                    Err(err) => {
-                        errors.push(err);
-                        continue;
-                    }
+                // Resolve the declared type, if an annotation is present.
+                let declared_type = match &binding.var_type {
+                    Some(parsed_type) => match resolve_type(
+                        parsed_type,
+                        type_env,
+                        annotations,
+                        definition_links,
+                    ) {
+                        Ok(t) => Some(t),
+                        Err(err) => {
+                            errors.push(err);
+                            continue;
+                        }
+                    },
+                    None => None,
                 };
 
-                // Push the variable into scope first, so later bindings can reference it
-                // even if the value expression fails to typecheck
-                let pushed = match var_env.push(
-                    binding.var_name.clone(),
-                    (resolved_type.clone(), binding.var_name_range.clone()),
-                ) {
-                    Ok(_) => {
-                        annotations.push(TypeAnnotation::TypeForVarName {
-                            range: binding.var_name_range.clone(),
-                            typ: resolved_type.clone(),
-                            var_name: binding.var_name.clone(),
-                        });
-                        true
+                // For annotated bindings the type is known up front, so push the
+                // variable into scope before typechecking the value. This lets
+                // later bindings reference it even if the value fails to typecheck.
+                if let Some(declared) = &declared_type {
+                    match var_env.push(
+                        binding.var_name.clone(),
+                        (declared.clone(), binding.var_name_range.clone()),
+                    ) {
+                        Ok(_) => {
+                            annotations.push(TypeAnnotation::TypeForVarName {
+                                range: binding.var_name_range.clone(),
+                                typ: declared.clone(),
+                                var_name: binding.var_name.clone(),
+                            });
+                            pushed_bindings.push(binding);
+                        }
+                        Err(_) => {
+                            errors.push(TypeError::VariableAlreadyDefined {
+                                name: binding.var_name.clone(),
+                                range: binding.var_name_range.clone(),
+                            });
+                        }
                     }
-                    Err(_) => {
-                        errors.push(TypeError::VariableAlreadyDefined {
-                            name: binding.var_name.clone(),
-                            range: binding.var_name_range.clone(),
-                        });
-                        false
-                    }
-                };
-
-                if pushed {
-                    pushed_bindings.push(binding);
                 }
 
-                // Type-check the value expression with the expected type
+                // Type-check the value. An annotation acts as the expected type;
+                // otherwise the value is checked with no expectation and its
+                // inferred type becomes the binding's type.
                 let Some(typed_value) = errors.ok_or_add(typecheck_expr(
                     &binding.value_expr,
                     var_env,
                     type_env,
                     annotations,
                     definition_links,
-                    Some(&resolved_type),
+                    declared_type.as_ref(),
                     asset_references,
                 )) else {
                     continue;
                 };
 
-                // Validate that the expression type matches the declared type
-                let value_type = typed_value.get_type();
-                if *value_type != *resolved_type {
-                    errors.push(TypeError::LetBindingTypeMismatch {
-                        expected: resolved_type.clone(),
-                        found: value_type,
-                        range: binding.value_expr.range().clone(),
-                    });
+                match &declared_type {
+                    Some(declared) => {
+                        // Validate that the value type matches the declared type.
+                        let value_type = typed_value.get_type();
+                        if *value_type != **declared {
+                            errors.push(TypeError::LetBindingTypeMismatch {
+                                expected: declared.clone(),
+                                found: value_type,
+                                range: binding.value_expr.range().clone(),
+                            });
+                        }
+                    }
+                    None => {
+                        // Inferred binding: adopt the value's type and push the
+                        // variable into scope now that the type is known.
+                        let inferred = typed_value.get_type();
+                        match var_env.push(
+                            binding.var_name.clone(),
+                            (inferred.clone(), binding.var_name_range.clone()),
+                        ) {
+                            Ok(_) => {
+                                annotations.push(TypeAnnotation::TypeForVarName {
+                                    range: binding.var_name_range.clone(),
+                                    typ: inferred.clone(),
+                                    var_name: binding.var_name.clone(),
+                                });
+                                pushed_bindings.push(binding);
+                            }
+                            Err(_) => {
+                                errors.push(TypeError::VariableAlreadyDefined {
+                                    name: binding.var_name.clone(),
+                                    range: binding.var_name_range.clone(),
+                                });
+                            }
+                        }
+                    }
                 }
 
                 typed_bindings.push((binding, typed_value));
@@ -5477,6 +5508,248 @@ mod tests {
                     </div>
                   </let>
                 </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_infer_string_let_binding() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                component Main {
+                  <let {name = "World"}>
+                    <div>{name}</div>
+                  </let>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                <Main>
+                  <let {name = "World"}>
+                    <div>
+                      {name}
+                    </div>
+                  </let>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_infer_int_let_binding() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                component Main {
+                  <let {count = 42}>
+                    <div>{count.to_string()}</div>
+                  </let>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                <Main>
+                  <let {count = 42}>
+                    <div>
+                      {count.to_string()}
+                    </div>
+                  </let>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_infer_float_let_binding() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                component Main {
+                  <let {price = 2.5}>
+                    <div>{price.to_int().to_string()}</div>
+                  </let>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                <Main>
+                  <let {price = 2.5}>
+                    <div>
+                      {price.to_int().to_string()}
+                    </div>
+                  </let>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_infer_nonempty_array_let_binding() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                component Main {
+                  <let {items = [1, 2, 3]}>
+                    <div>{items.len().to_string()}</div>
+                  </let>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                <Main>
+                  <let {items = [1, 2, 3]}>
+                    <div>
+                      {items.len().to_string()}
+                    </div>
+                  </let>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_infer_record_literal_let_binding() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                record User { name: String, age: Int }
+                component Main {
+                  <let {user = User {name: "Alice", age: 30}}>
+                    <div>{user.name}</div>
+                  </let>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                record User {
+                  name: String,
+                  age: Int,
+                }
+
+                <Main>
+                  <let {user = User {name: "Alice", age: 30}}>
+                    <div>
+                      {user.name}
+                    </div>
+                  </let>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_infer_mixed_annotated_and_inferred_bindings() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                component Main {
+                  <let {first: String = "Hello", second = "World"}>
+                    <div>{first}{second}</div>
+                  </let>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                <Main>
+                  <let {first = "Hello"}>
+                    <let {second = "World"}>
+                      <div>
+                        {first}
+                        {second}
+                      </div>
+                    </let>
+                  </let>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_infer_binding_referencing_earlier_inferred_binding() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                component Main {
+                  <let {greeting = "Hello", shout = greeting}>
+                    <div>{shout}</div>
+                  </let>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                <Main>
+                  <let {greeting = "Hello"}>
+                    <let {shout = greeting}>
+                      <div>
+                        {shout}
+                      </div>
+                    </let>
+                  </let>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_warn_on_unused_inferred_let_binding() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component Main {
+                  <let {name = "World"}>
+                    <div>x</div>
+                  </let>
+                }
+            "#},
+            expect![[r#"
+                warning: Unused variable name
+                  --> main.hop (line 2, col 9)
+                1 | component Main {
+                2 |   <let {name = "World"}>
+                  |         ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_inferring_empty_array_let_binding() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component Main {
+                  <let {items = []}>
+                    <div>x</div>
+                  </let>
+                }
+            "#},
+            expect![[r#"
+                error: Cannot infer type of empty array
+                  --> main.hop (line 2, col 17)
+                1 | component Main {
+                2 |   <let {items = []}>
+                  |                 ^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_inferring_none_let_binding() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component Main {
+                  <let {maybe = None}>
+                    <div>x</div>
+                  </let>
+                }
+            "#},
+            expect![[r#"
+                error: Cannot infer type of None without context
+                  --> main.hop (line 2, col 17)
+                1 | component Main {
+                2 |   <let {maybe = None}>
+                  |                 ^^^^
             "#]],
         );
     }
