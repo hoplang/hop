@@ -1,10 +1,9 @@
 use crate::document_id::DocumentId;
 use crate::dop::patterns::{EnumMatchArm, Match};
-use crate::dop::{Type, TypedExpr};
+use crate::dop::Type;
 use crate::hop::typing::typed_ast::{TypedAst, TypedComponentDeclaration, TypedViewDeclaration};
 use crate::hop::typing::typed_node::{TypedArgument, TypedNode};
 use crate::symbols::type_name::TypeName;
-use crate::symbols::var_name::VarName;
 use std::collections::{HashMap, HashSet};
 
 /// The Inliner transforms ASTs by replacing ComponentInvocation nodes with their
@@ -81,8 +80,7 @@ impl<'a> InlinerState<'a> {
             .expect("Component declaration should exist");
 
         // Inline the component body - self-references will become ComponentInvocation
-        let mut slot_vars = Vec::new();
-        let inlined_body = self.inline_nodes(&component.children, None, &mut slot_vars);
+        let inlined_body = self.inline_nodes(&component.children, None);
 
         self.component_defs.push(TypedComponentDeclaration {
             component_name: component.component_name.clone(),
@@ -126,8 +124,7 @@ impl<'a> InlinerState<'a> {
 
     fn inline_view(&mut self, view: &mut TypedViewDeclaration) {
         let old_children = std::mem::take(&mut view.children);
-        let mut slot_vars = Vec::new();
-        view.children = self.inline_nodes(&old_children, None, &mut slot_vars);
+        view.children = self.inline_nodes(&old_children, None);
     }
 
     /// Inline a component reference, pushing results to output
@@ -138,7 +135,6 @@ impl<'a> InlinerState<'a> {
         args: &[TypedArgument],
         slot_children: &[TypedNode],
         parent_slot_content: Option<&[TypedNode]>,
-        parent_slot_vars: &mut Vec<VarName>,
         output: &mut Vec<TypedNode>,
     ) {
         let has_slot = component.slot.is_some();
@@ -146,7 +142,7 @@ impl<'a> InlinerState<'a> {
         // Inline slot_children in parent context
         let inlined_slot_content: Option<Vec<TypedNode>> = if has_slot && !slot_children.is_empty()
         {
-            let content = self.inline_nodes(slot_children, parent_slot_content, parent_slot_vars);
+            let content = self.inline_nodes(slot_children, parent_slot_content);
             Some(content)
         } else if has_slot {
             Some(vec![])
@@ -154,17 +150,8 @@ impl<'a> InlinerState<'a> {
             None
         };
 
-        // Track children variable for slot content substitution
-        let mut slot_vars = Vec::new();
-        if has_slot {
-            slot_vars.push(VarName::new("slot").unwrap());
-        }
-
-        let inlined_children = self.inline_nodes(
-            &component.children,
-            inlined_slot_content.as_deref(),
-            &mut slot_vars,
-        );
+        let inlined_children =
+            self.inline_nodes(&component.children, inlined_slot_content.as_deref());
 
         let bindings = Self::resolve_call_args(component_type, args);
 
@@ -189,11 +176,10 @@ impl<'a> InlinerState<'a> {
         &mut self,
         nodes: &[TypedNode],
         slot_content: Option<&[TypedNode]>,
-        slot_vars: &mut Vec<VarName>,
     ) -> Vec<TypedNode> {
         let mut output = Vec::with_capacity(nodes.len());
         for node in nodes {
-            self.inline_node(node, slot_content, slot_vars, &mut output);
+            self.inline_node(node, slot_content, &mut output);
         }
         output
     }
@@ -203,10 +189,13 @@ impl<'a> InlinerState<'a> {
         &mut self,
         node: &TypedNode,
         slot_content: Option<&[TypedNode]>,
-        slot_vars: &mut Vec<VarName>,
         output: &mut Vec<TypedNode>,
     ) {
         match node {
+            TypedNode::Slot => match slot_content {
+                Some(content) => output.extend_from_slice(content),
+                None => output.push(TypedNode::Slot),
+            },
             TypedNode::ComponentInvocation {
                 component_name,
                 component_type,
@@ -225,7 +214,7 @@ impl<'a> InlinerState<'a> {
 
                     // Inline slot children in the parent context
                     let inlined_children = if slot.is_some() && !children.is_empty() {
-                        self.inline_nodes(children, slot_content, slot_vars)
+                        self.inline_nodes(children, slot_content)
                     } else {
                         vec![]
                     };
@@ -250,7 +239,6 @@ impl<'a> InlinerState<'a> {
                         args,
                         children,
                         slot_content,
-                        slot_vars,
                         output,
                     );
                 }
@@ -264,7 +252,7 @@ impl<'a> InlinerState<'a> {
                 output.push(TypedNode::Html {
                     tag_name: tag_name.clone(),
                     attributes: attributes.clone(),
-                    children: self.inline_nodes(children, slot_content, slot_vars),
+                    children: self.inline_nodes(children, slot_content),
                 });
             }
 
@@ -274,7 +262,7 @@ impl<'a> InlinerState<'a> {
             } => {
                 output.push(TypedNode::If {
                     condition: condition.clone(),
-                    children: self.inline_nodes(children, slot_content, slot_vars),
+                    children: self.inline_nodes(children, slot_content),
                 });
             }
 
@@ -286,7 +274,7 @@ impl<'a> InlinerState<'a> {
                 output.push(TypedNode::For {
                     var_name: var_name.clone(),
                     source: source.clone(),
-                    children: self.inline_nodes(children, slot_content, slot_vars),
+                    children: self.inline_nodes(children, slot_content),
                 });
             }
 
@@ -297,20 +285,6 @@ impl<'a> InlinerState<'a> {
             }
 
             TypedNode::TextExpression { expression } => {
-                if let TypedExpr::Var { value, kind, .. } = expression {
-                    if slot_vars.contains(value) {
-                        assert_eq!(
-                            **kind,
-                            Type::Slot,
-                            "children-derived variable in TextExpression must be Slot"
-                        );
-                        output.extend_from_slice(
-                            slot_content
-                                .expect("children-derived Slot variable should have slot content"),
-                        );
-                        return;
-                    }
-                }
                 output.push(TypedNode::TextExpression {
                     expression: expression.clone(),
                 });
@@ -329,8 +303,8 @@ impl<'a> InlinerState<'a> {
                         true_body,
                         false_body,
                     } => {
-                        let true_output = self.inline_nodes(true_body, slot_content, slot_vars);
-                        let false_output = self.inline_nodes(false_body, slot_content, slot_vars);
+                        let true_output = self.inline_nodes(true_body, slot_content);
+                        let false_output = self.inline_nodes(false_body, slot_content);
                         Match::Bool {
                             subject: subject.clone(),
                             true_body: Box::new(true_output),
@@ -345,16 +319,8 @@ impl<'a> InlinerState<'a> {
                     } => Match::Option {
                         subject: subject.clone(),
                         some_arm_binding: some_arm_binding.clone(),
-                        some_arm_body: Box::new(self.inline_nodes(
-                            some_arm_body,
-                            slot_content,
-                            slot_vars,
-                        )),
-                        none_arm_body: Box::new(self.inline_nodes(
-                            none_arm_body,
-                            slot_content,
-                            slot_vars,
-                        )),
+                        some_arm_body: Box::new(self.inline_nodes(some_arm_body, slot_content)),
+                        none_arm_body: Box::new(self.inline_nodes(none_arm_body, slot_content)),
                     },
                     Match::Enum { subject, arms } => Match::Enum {
                         subject: subject.clone(),
@@ -363,7 +329,7 @@ impl<'a> InlinerState<'a> {
                             .map(|arm| EnumMatchArm {
                                 pattern: arm.pattern.clone(),
                                 bindings: arm.bindings.clone(),
-                                body: self.inline_nodes(&arm.body, slot_content, slot_vars),
+                                body: self.inline_nodes(&arm.body, slot_content),
                             })
                             .collect(),
                     },
@@ -378,23 +344,10 @@ impl<'a> InlinerState<'a> {
                 value,
                 children,
             } => {
-                // Propagate children-derived status through variable aliases
-                if let TypedExpr::Var {
-                    value: var_value, ..
-                } = value
-                {
-                    if slot_vars.contains(var_value) {
-                        slot_vars.push(var.clone());
-                        output.extend(self.inline_nodes(children, slot_content, slot_vars));
-                        slot_vars.pop();
-                        return;
-                    }
-                }
-
                 output.push(TypedNode::Let {
                     var: var.clone(),
                     value: value.clone(),
-                    children: self.inline_nodes(children, slot_content, slot_vars),
+                    children: self.inline_nodes(children, slot_content),
                 });
             }
 
@@ -406,7 +359,7 @@ impl<'a> InlinerState<'a> {
                 output.push(TypedNode::LetRecordDestructure {
                     subject: subject.clone(),
                     bindings: bindings.clone(),
-                    children: self.inline_nodes(children, slot_content, slot_vars),
+                    children: self.inline_nodes(children, slot_content),
                 });
             }
         }

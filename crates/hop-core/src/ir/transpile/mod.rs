@@ -29,6 +29,7 @@ pub trait Transpiler {
 
     // Statement transpilation
     fn transpile_write_statement<'a>(&mut self, arena: &'a Arena<'a>, content: &'a str) -> Doc<'a>;
+    fn transpile_write_slot_statement<'a>(&mut self, arena: &'a Arena<'a>) -> Doc<'a>;
     fn transpile_write_expr_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
@@ -89,6 +90,7 @@ pub trait Transpiler {
             IrStatement::WriteExpr { expr, escape, .. } => {
                 self.transpile_write_expr_statement(arena, expr, *escape)
             }
+            IrStatement::WriteSlot { .. } => self.transpile_write_slot_statement(arena),
             IrStatement::If {
                 condition, body, ..
             } => self.transpile_if_statement(arena, condition, body),

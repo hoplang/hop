@@ -478,6 +478,7 @@ fn format_node<'a>(
             .text("{")
             .append(format_expr(arena, expression, comments))
             .append(arena.text("}")),
+        ParsedNode::Slot { .. } => arena.text("{slot}"),
         ParsedNode::ComponentInvocation {
             component_name,
             args,
@@ -707,7 +708,7 @@ fn format_node<'a>(
 fn is_inline(node: &ParsedNode) -> bool {
     matches!(
         node,
-        ParsedNode::Text { .. } | ParsedNode::TextExpression { .. }
+        ParsedNode::Text { .. } | ParsedNode::TextExpression { .. } | ParsedNode::Slot { .. }
     )
 }
 

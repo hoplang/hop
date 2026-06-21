@@ -190,6 +190,7 @@ impl PartialEvaluationPass {
                     IrStatement::Match { .. } => {}
                     IrStatement::If { .. }
                     | IrStatement::Write { .. }
+                    | IrStatement::WriteSlot { .. }
                     | IrStatement::WriteExpr { .. }
                     | IrStatement::ComponentInvocation { .. } => {
                         // No bindings

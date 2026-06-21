@@ -6985,7 +6985,7 @@ mod tests {
                   write(">")
                   write_escaped(title)
                   write("</h2>")
-                  write_expr(slot)
+                  write_slot()
                   write("</div>")
                 }
                 view Test() {
@@ -7052,7 +7052,7 @@ mod tests {
                   write("<div")
                   write(" class=\"inner\"")
                   write(">")
-                  write_expr(slot)
+                  write_slot()
                   write("</div>")
                 }
                 component Outer() [children] {
@@ -7060,7 +7060,7 @@ mod tests {
                   write(" class=\"outer\"")
                   write(">")
                   call Inner() {
-                    write_expr(slot)
+                    write_slot()
                   }
                   write("</div>")
                 }
@@ -7159,7 +7159,7 @@ mod tests {
                   write("<div")
                   write(" class=\"layout\"")
                   write(">")
-                  write_expr(slot)
+                  write_slot()
                   write("</div>")
                 }
                 view Test() {
@@ -7183,69 +7183,6 @@ mod tests {
                 }
                 -- expected output --
                 <div class="layout"><header><h1>Welcome</h1></header><main><p>Hello world</p></main><footer><p>Copyright 2024</p></footer></div>
-                -- eval (unoptimized) --
-                OK
-                -- eval (optimized) --
-                OK
-                -- ts (unoptimized) --
-                OK
-                -- rust (unoptimized) --
-                OK
-                -- ts (optimized) --
-                OK
-                -- rust (optimized) --
-                OK
-            "#]],
-        );
-    }
-
-    #[test]
-    #[ignore]
-    fn component_children_aliased_through_let() {
-        check(
-            indoc! {r#"
-                component Wrapper(slot: Slot) {
-                  <let {content: Slot = slot}>
-                    <div class="wrapper">
-                      {content}
-                    </div>
-                  </let>
-                }
-
-                view Test {
-                  <Wrapper>
-                    <span>
-                      hello
-                    </span>
-                  </Wrapper>
-                }
-            "#},
-            r#"<div class="wrapper"><span>hello</span></div>"#,
-            expect![[r#"
-                -- ir (unoptimized) --
-                component Wrapper() [children] {
-                  let content = slot in {
-                    write("<div")
-                    write(" class=\"wrapper\"")
-                    write(">")
-                    write_expr(content)
-                    write("</div>")
-                  }
-                }
-                view Test() {
-                  call Wrapper() {
-                    write("<span")
-                    write(">")
-                    write("hello")
-                    write("</span>")
-                  }
-                }
-                -- ir (optimized) --
-                view Test() {
-                  write("<div class=\"wrapper\"><span>hello</span></div>")
-                }
-                -- expected output --
-                <div class="wrapper"><span>hello</span></div>
                 -- eval (unoptimized) --
                 OK
                 -- eval (optimized) --
@@ -7291,12 +7228,12 @@ mod tests {
                   write("<div")
                   write(" class=\"first\"")
                   write(">")
-                  write_expr(slot)
+                  write_slot()
                   write("</div>")
                   write("<div")
                   write(" class=\"second\"")
                   write(">")
-                  write_expr(slot)
+                  write_slot()
                   write("</div>")
                 }
                 view Test() {
@@ -7635,7 +7572,7 @@ mod tests {
                 component NodeView(node: test::Node) [children] {
                   write("<div")
                   write(">")
-                  write_expr(slot)
+                  write_slot()
                   match node.next {
                     Some(v_1) => {
                       let next = v_1 in {
@@ -7675,7 +7612,7 @@ mod tests {
                 }
                 component NodeView(node: test::Node) [children] {
                   write("<div>")
-                  write_expr(slot)
+                  write_slot()
                   match node.next {
                     Some(v_1) => {
                       let next = v_1 in {
@@ -8027,7 +7964,7 @@ mod tests {
                   write(">")
                   write_escaped(title)
                   write("</h2>")
-                  write_expr(slot)
+                  write_slot()
                   write("</div>")
                 }
                 view Test() {
@@ -8092,7 +8029,7 @@ mod tests {
                   write(">")
                   write_escaped(title)
                   write("</h2>")
-                  write_expr(slot)
+                  write_slot()
                   write("</div>")
                 }
                 view Test() {
@@ -8111,136 +8048,6 @@ mod tests {
                 }
                 -- expected output --
                 <div class="card"><h2>With</h2><p>body</p></div><div class="card"><h2>Without</h2></div>
-                -- eval (unoptimized) --
-                OK
-                -- eval (optimized) --
-                OK
-                -- ts (unoptimized) --
-                OK
-                -- rust (unoptimized) --
-                OK
-                -- ts (optimized) --
-                OK
-                -- rust (optimized) --
-                OK
-            "#]],
-        );
-    }
-
-    #[test]
-    #[ignore]
-    fn slot_empty_in_let_binding() {
-        check(
-            indoc! {r#"
-                component Card(slot: Slot) {
-                  <div class="card">
-                    {slot}
-                  </div>
-                }
-
-                view Test {
-                  <let {content: Slot = Slot::Empty}>
-                    <Card>
-                      {content}
-                    </Card>
-                  </let>
-                }
-            "#},
-            r#"<div class="card"></div>"#,
-            expect![[r#"
-                -- ir (unoptimized) --
-                component Card() [children] {
-                  write("<div")
-                  write(" class=\"card\"")
-                  write(">")
-                  write_expr(slot)
-                  write("</div>")
-                }
-                view Test() {
-                  let content = Slot::Empty in {
-                    call Card() {
-                      write_expr(content)
-                    }
-                  }
-                }
-                -- ir (optimized) --
-                view Test() {
-                  let content = Slot::Empty in {
-                    write("<div class=\"card\">")
-                    write_expr(content)
-                    write("</div>")
-                  }
-                }
-                -- expected output --
-                <div class="card"></div>
-                -- eval (unoptimized) --
-                OK
-                -- eval (optimized) --
-                OK
-                -- ts (unoptimized) --
-                OK
-                -- rust (unoptimized) --
-                OK
-                -- ts (optimized) --
-                OK
-                -- rust (optimized) --
-                OK
-            "#]],
-        );
-    }
-
-    #[test]
-    #[ignore]
-    fn slot_empty_copied_between_let_bindings() {
-        check(
-            indoc! {r#"
-                component Card(slot: Slot) {
-                  <div class="card">
-                    {slot}
-                  </div>
-                }
-
-                view Test {
-                  <let {a: Slot = Slot::Empty}>
-                    <let {b: Slot = a}>
-                      <Card>
-                        {b}
-                      </Card>
-                    </let>
-                  </let>
-                }
-            "#},
-            r#"<div class="card"></div>"#,
-            expect![[r#"
-                -- ir (unoptimized) --
-                component Card() [children] {
-                  write("<div")
-                  write(" class=\"card\"")
-                  write(">")
-                  write_expr(slot)
-                  write("</div>")
-                }
-                view Test() {
-                  let a = Slot::Empty in {
-                    let b = a in {
-                      call Card() {
-                        write_expr(b)
-                      }
-                    }
-                  }
-                }
-                -- ir (optimized) --
-                view Test() {
-                  let a = Slot::Empty in {
-                    let b = a in {
-                      write("<div class=\"card\">")
-                      write_expr(b)
-                      write("</div>")
-                    }
-                  }
-                }
-                -- expected output --
-                <div class="card"></div>
                 -- eval (unoptimized) --
                 OK
                 -- eval (optimized) --

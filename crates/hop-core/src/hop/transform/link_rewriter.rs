@@ -129,6 +129,7 @@ impl LinkRewriter {
                 },
                 node @ (TypedNode::Text { .. }
                 | TypedNode::TextExpression { .. }
+                | TypedNode::Slot
                 | TypedNode::Doctype { .. }) => node,
             })
             .collect()

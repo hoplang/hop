@@ -69,6 +69,11 @@ pub enum TypeError {
     ChildrenMustBeSlot { range: DocumentRange },
 
     #[error(
+        "`{{slot}}` can only be used inside a component that declares a `slot: Slot` parameter"
+    )]
+    SlotOutsideSlottedComponent { range: DocumentRange },
+
+    #[error(
         "Import cycle: {importer_module} imports from {imported_component} which creates a dependency cycle: {cycle_display}"
     )]
     ImportCycle {
@@ -478,6 +483,7 @@ impl TypeError {
             | TypeError::MissingChildren { range, .. }
             | TypeError::ChildrenArgNotAllowed { range, .. }
             | TypeError::ChildrenMustBeSlot { range, .. }
+            | TypeError::SlotOutsideSlottedComponent { range, .. }
             | TypeError::ImportCycle { range, .. }
             | TypeError::ExpectedBooleanCondition { range, .. }
             | TypeError::MissingRequiredParameter { range, .. }

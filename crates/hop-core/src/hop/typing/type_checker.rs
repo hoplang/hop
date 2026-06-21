@@ -215,10 +215,12 @@ fn typecheck_module(
                             typ: param_type.clone(),
                             var_name: param.var_name.clone(),
                         });
-                        let _ = var_env.push(
-                            param.var_name.clone(),
-                            (param_type.clone(), param.var_name_range.clone()),
-                        );
+                        if param.var_name.as_str() != "slot" {
+                            let _ = var_env.push(
+                                param.var_name.clone(),
+                                (param_type.clone(), param.var_name_range.clone()),
+                            );
+                        }
                         validate_examples_annotation(
                             &param.examples,
                             &param_type,
@@ -226,7 +228,6 @@ fn typecheck_module(
                             errors,
                         );
 
-                        pushed_params.push(param);
                         if param.var_name.as_str() == "slot" {
                             // Validate that children parameter must be typed as Slot
                             if *param_type != Type::Slot {
@@ -239,6 +240,7 @@ fn typecheck_module(
                                 default_value: typed_default_value.clone(),
                             });
                         } else {
+                            pushed_params.push(param);
                             resolved_param_types.push((
                                 param.var_name.clone(),
                                 param_type.clone(),
@@ -279,6 +281,7 @@ fn typecheck_module(
                             errors,
                             &mut type_env,
                             asset_references,
+                            component_slot.is_some(),
                         )
                     })
                     .collect::<Vec<_>>();
@@ -544,6 +547,7 @@ fn typecheck_module(
                             errors,
                             &mut type_env,
                             asset_references,
+                            false,
                         )
                     })
                     .collect::<Vec<_>>();
@@ -627,6 +631,7 @@ fn typecheck_node(
     errors: &mut Vec<TypeError>,
     type_env: &mut VariableScope<TypeName, (Arc<Type>, DocumentRange)>,
     asset_references: &mut Vec<AssetReference>,
+    slot_in_scope: bool,
 ) -> Option<TypedNode> {
     match node {
         ParsedNode::If {
@@ -645,6 +650,7 @@ fn typecheck_node(
                         errors,
                         type_env,
                         asset_references,
+                        slot_in_scope,
                     )
                 })
                 .collect();
@@ -790,6 +796,7 @@ fn typecheck_node(
                         errors,
                         type_env,
                         asset_references,
+                        slot_in_scope,
                     )
                 })
                 .collect();
@@ -901,6 +908,7 @@ fn typecheck_node(
                         errors,
                         type_env,
                         asset_references,
+                        slot_in_scope,
                     )
                 })
                 .collect();
@@ -950,6 +958,7 @@ fn typecheck_node(
                         errors,
                         type_env,
                         asset_references,
+                        slot_in_scope,
                     )
                 })
                 .collect();
@@ -1206,6 +1215,7 @@ fn typecheck_node(
                         errors,
                         type_env,
                         asset_references,
+                        slot_in_scope,
                     )
                 })
                 .collect();
@@ -1231,7 +1241,7 @@ fn typecheck_node(
                 asset_references,
             )) {
                 let expr_type = typed_expr.get_type();
-                if *expr_type != Type::String && *expr_type != Type::Slot {
+                if *expr_type != Type::String {
                     errors.push(TypeError::ExpectedStringForTextExpression {
                         found: expr_type,
                         range: expression.range().clone(),
@@ -1243,6 +1253,15 @@ fn typecheck_node(
             } else {
                 None
             }
+        }
+
+        ParsedNode::Slot { range } => {
+            if !slot_in_scope {
+                errors.push(TypeError::SlotOutsideSlottedComponent {
+                    range: range.clone(),
+                });
+            }
+            Some(TypedNode::Slot)
         }
 
         ParsedNode::Match { subject, cases, .. } => {
@@ -1319,6 +1338,7 @@ fn typecheck_node(
                                 errors,
                                 type_env,
                                 asset_references,
+                                slot_in_scope,
                             )
                         })
                         .collect::<Vec<_>>();
@@ -1774,6 +1794,95 @@ mod tests {
             "-- main.hop --",
             expect![[r#"
                 -- main.hop --
+            "#]],
+        );
+    }
+
+    #[test]
+    fn slot_accepted_in_slotted_component() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                component Card(slot: Slot) {
+                    <div>
+                        {slot}
+                    </div>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                <Card {slot: Slot}>
+                  <div>
+                    {slot}
+                  </div>
+                </Card>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn slot_rejected_in_view() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                view Main {
+                    <div>
+                        {slot}
+                    </div>
+                }
+            "#},
+            expect![[r#"
+                error: `{slot}` can only be used inside a component that declares a `slot: Slot` parameter
+                  --> main.hop (line 3, col 9)
+                2 |     <div>
+                3 |         {slot}
+                  |         ^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn slot_rejected_in_expression_position() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component Card(slot: Slot) {
+                    <div class={slot}></div>
+                }
+            "#},
+            expect![[r#"
+                error: Undefined variable: slot
+                  --> main.hop (line 2, col 17)
+                1 | component Card(slot: Slot) {
+                2 |     <div class={slot}></div>
+                  |                 ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn slot_rejected_as_let_expression() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component Card(slot: Slot) {
+                    <let {content: Slot = slot}>
+                        <div></div>
+                    </let>
+                }
+            "#},
+            expect![[r#"
+                error: Undefined variable: slot
+                  --> main.hop (line 2, col 27)
+                1 | component Card(slot: Slot) {
+                2 |     <let {content: Slot = slot}>
+                  |                           ^^^^
+
+                warning: Unused variable content
+                  --> main.hop (line 2, col 11)
+                1 | component Card(slot: Slot) {
+                2 |     <let {content: Slot = slot}>
+                  |           ^^^^^^^
             "#]],
         );
     }
@@ -5340,11 +5449,6 @@ mod tests {
             "#},
             expect![[r#"
                 error: The 'slot' parameter must be typed as Slot
-                  --> main.hop (line 1, col 21)
-                1 | component Separator(slot: Option[Slot] = None) {
-                  |                     ^^^^
-
-                warning: Unused variable slot
                   --> main.hop (line 1, col 21)
                 1 | component Separator(slot: Option[Slot] = None) {
                   |                     ^^^^

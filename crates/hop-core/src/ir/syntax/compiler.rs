@@ -100,6 +100,11 @@ impl Compiler {
         output: &mut Vec<IrStatement>,
     ) {
         match node {
+            TypedNode::Slot => {
+                output.push(IrStatement::WriteSlot {
+                    id: self.next_node_id(),
+                });
+            }
             TypedNode::Text { value } => {
                 output.push(IrStatement::Write {
                     id: self.next_node_id(),
@@ -111,7 +116,7 @@ impl Compiler {
                 output.push(IrStatement::WriteExpr {
                     id: self.next_node_id(),
                     expr: self.compile_expr(expression),
-                    escape: expression.as_type() != &Type::Slot,
+                    escape: true,
                 });
             }
 
@@ -373,7 +378,7 @@ impl Compiler {
                     };
                     output.push(IrStatement::WriteExpr {
                         id: self.next_node_id(),
-                        escape: expr.as_type() != &Type::Slot,
+                        escape: true,
                         expr,
                     });
                     output.push(IrStatement::Write {

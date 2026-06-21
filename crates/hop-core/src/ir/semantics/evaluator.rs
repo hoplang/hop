@@ -17,11 +17,15 @@ use crate::ir::syntax::ast::{IrComponentDeclaration, IrForSource, IrStatement, I
 /// Uses a Vec instead of HashMap for better performance with small scopes.
 struct Env {
     stack: Vec<(VarName, Value)>,
+    slots: Vec<String>,
 }
 
 impl Env {
     fn new() -> Self {
-        Self { stack: Vec::new() }
+        Self {
+            stack: Vec::new(),
+            slots: Vec::new(),
+        }
     }
 
     fn push(&mut self, key: VarName, value: Value) {
@@ -38,6 +42,18 @@ impl Env {
             .rev()
             .find(|(k, _)| k.as_str() == key)
             .map(|(_, v)| v)
+    }
+
+    fn push_slot(&mut self, content: String) {
+        self.slots.push(content);
+    }
+
+    fn pop_slot(&mut self) {
+        self.slots.pop();
+    }
+
+    fn current_slot(&self) -> &str {
+        self.slots.last().map(String::as_str).unwrap_or("")
     }
 }
 
@@ -175,6 +191,11 @@ fn eval_statement(
     match node {
         IrStatement::Write { id: _, content } => {
             output.push_str(content);
+            Ok(())
+        }
+
+        IrStatement::WriteSlot { .. } => {
+            output.push_str(env.current_slot());
             Ok(())
         }
 
@@ -381,7 +402,7 @@ fn eval_statement(
             };
 
             // Evaluate args and bind to component parameters
-            let mut bind_count = component_def.parameters.len();
+            let bind_count = component_def.parameters.len();
             for param in &component_def.parameters {
                 if let Some(arg) = args
                     .iter()
@@ -401,14 +422,15 @@ fn eval_statement(
                 }
             }
 
-            // Bind children string if the component accepts children
             if component_def.has_slot {
-                let slot_val = slot_string.unwrap_or_default();
-                env.push(VarName::new("slot").unwrap(), Value::String(slot_val));
-                bind_count += 1;
+                env.push_slot(slot_string.unwrap_or_default());
             }
 
             eval_statements(&component_def.body, env, output, component_defs)?;
+
+            if component_def.has_slot {
+                env.pop_slot();
+            }
 
             for _ in 0..bind_count {
                 env.pop();
@@ -1128,7 +1150,7 @@ mod tests {
 
     #[test]
     fn should_evaluate_component_with_children() {
-        use crate::ir::ast::{IrComponentDeclaration, IrExpr, IrStatement, IrViewDeclaration};
+        use crate::ir::ast::{IrComponentDeclaration, IrStatement, IrViewDeclaration};
 
         // Component: Wrapper that accepts children
         // component Wrapper() [children] {
@@ -1144,15 +1166,7 @@ mod tests {
                     id: 10,
                     content: "<div class=\"wrapper\">".to_string(),
                 },
-                IrStatement::WriteExpr {
-                    id: 11,
-                    expr: IrExpr::Var {
-                        value: VarName::new("slot").unwrap(),
-                        kind: Arc::new(Type::String),
-                        id: 12,
-                    },
-                    escape: false,
-                },
+                IrStatement::WriteSlot { id: 11 },
                 IrStatement::Write {
                     id: 13,
                     content: "</div>".to_string(),
@@ -1215,15 +1229,7 @@ mod tests {
                     id: 13,
                     content: "</h1>".to_string(),
                 },
-                IrStatement::WriteExpr {
-                    id: 14,
-                    expr: IrExpr::Var {
-                        value: VarName::new("slot").unwrap(),
-                        kind: Arc::new(Type::String),
-                        id: 15,
-                    },
-                    escape: false,
-                },
+                IrStatement::WriteSlot { id: 14 },
                 IrStatement::Write {
                     id: 16,
                     content: "</div>".to_string(),
@@ -1261,7 +1267,7 @@ mod tests {
 
     #[test]
     fn should_evaluate_component_with_empty_children() {
-        use crate::ir::ast::{IrComponentDeclaration, IrExpr, IrStatement, IrViewDeclaration};
+        use crate::ir::ast::{IrComponentDeclaration, IrStatement, IrViewDeclaration};
 
         // Component that accepts children but receives none
         let component = IrComponentDeclaration {
@@ -1272,15 +1278,7 @@ mod tests {
                     id: 10,
                     content: "<div>".to_string(),
                 },
-                IrStatement::WriteExpr {
-                    id: 11,
-                    expr: IrExpr::Var {
-                        value: VarName::new("slot").unwrap(),
-                        kind: Arc::new(Type::String),
-                        id: 12,
-                    },
-                    escape: false,
-                },
+                IrStatement::WriteSlot { id: 11 },
                 IrStatement::Write {
                     id: 13,
                     content: "</div>".to_string(),

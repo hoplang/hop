@@ -628,6 +628,11 @@ impl Transpiler for RustTranspiler {
             .append(arena.text("\");"))
     }
 
+    fn transpile_write_slot_statement<'a>(&mut self, arena: &'a Arena<'a>) -> Doc<'a> {
+        self.needs_slot = true;
+        arena.text("output.push_str(&slot.0);")
+    }
+
     fn transpile_write_expr_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,

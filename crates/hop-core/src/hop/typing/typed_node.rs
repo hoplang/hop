@@ -68,6 +68,8 @@ pub enum TypedNode {
         expression: TypedExpr,
     },
 
+    Slot,
+
     ComponentInvocation {
         component_name: TypeName,
         component_type: Arc<Type>,
@@ -121,6 +123,7 @@ impl TypedNode {
             TypedNode::TextExpression { expression } => BoxDoc::text("{")
                 .append(expression.to_doc())
                 .append(BoxDoc::text("}")),
+            TypedNode::Slot => BoxDoc::text("{slot}"),
             TypedNode::Doctype { value } => BoxDoc::text(value.as_str()),
             TypedNode::ComponentInvocation {
                 component_name,

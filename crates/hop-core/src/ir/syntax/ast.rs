@@ -98,6 +98,9 @@ pub enum IrStatement {
         escape: bool,
     },
 
+    /// Write the current slot content to the output.
+    WriteSlot { id: StatementId },
+
     /// Execute the body if a condition holds.
     If {
         id: StatementId,
@@ -348,6 +351,7 @@ impl IrStatement {
     pub fn traverse_exprs(&self, f: &mut impl FnMut(&IrExpr)) {
         match self {
             IrStatement::Write { .. } => {}
+            IrStatement::WriteSlot { .. } => {}
             IrStatement::WriteExpr { expr, .. } => expr.traverse(f),
             IrStatement::If { condition, .. } => condition.traverse(f),
             IrStatement::For { source, .. } => match source {
@@ -374,6 +378,7 @@ impl IrStatement {
     pub fn traverse_exprs_mut(&mut self, f: &mut impl FnMut(&mut IrExpr)) {
         match self {
             IrStatement::Write { .. } => {}
+            IrStatement::WriteSlot { .. } => {}
             IrStatement::WriteExpr { expr, .. } => expr.traverse_mut(f),
             IrStatement::If { condition, .. } => condition.traverse_mut(f),
             IrStatement::For { source, .. } => match source {
@@ -402,6 +407,7 @@ impl IrStatement {
         f(self);
         match self {
             IrStatement::Write { .. } => {}
+            IrStatement::WriteSlot { .. } => {}
             IrStatement::WriteExpr { .. } => {}
             IrStatement::If { body, .. } => {
                 for stmt in body {
@@ -442,6 +448,7 @@ impl IrStatement {
                 .append(BoxDoc::text("("))
                 .append(BoxDoc::text(format!("{:?}", content)))
                 .append(BoxDoc::text(")")),
+            IrStatement::WriteSlot { .. } => BoxDoc::text("write_slot()"),
             IrStatement::WriteExpr { expr, escape, .. } => {
                 let write_fn = if *escape {
                     "write_escaped"
@@ -1496,7 +1503,9 @@ pub fn traverse_statements_mut(
             IrStatement::ComponentInvocation { slot_body, .. } => {
                 traverse_statements_mut(slot_body, f);
             }
-            IrStatement::Write { .. } | IrStatement::WriteExpr { .. } => {}
+            IrStatement::Write { .. }
+            | IrStatement::WriteExpr { .. }
+            | IrStatement::WriteSlot { .. } => {}
         }
     }
     f(statements);

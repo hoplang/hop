@@ -121,6 +121,7 @@ impl VariableRenamingPass {
     fn rename_statement(&mut self, statement: &mut IrStatement) {
         match statement {
             IrStatement::Write { .. } => {}
+            IrStatement::WriteSlot { .. } => {}
 
             IrStatement::ComponentInvocation {
                 args, slot_body, ..
