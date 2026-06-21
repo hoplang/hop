@@ -190,7 +190,6 @@ impl PartialEvaluationPass {
                     IrStatement::Match { .. } => {}
                     IrStatement::If { .. }
                     | IrStatement::Write { .. }
-                    | IrStatement::WriteSlot { .. }
                     | IrStatement::WriteExpr { .. }
                     | IrStatement::ComponentInvocation { .. } => {
                         // No bindings
@@ -339,9 +338,6 @@ impl PartialEvaluationPass {
                             if let Some(inner) = value {
                                 option_contained_values.push((expr.id(), inner.id()));
                             }
-                        }
-                        IrExpr::SlotEmpty { .. } => {
-                            // Already constant
                         }
                         IrExpr::Let {
                             var_name,
@@ -2998,32 +2994,6 @@ mod tests {
                 view Test() {
                   let val = false in {
                     call Foo(enabled = false)
-                  }
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_evaluate_component_reference_args_in_children() {
-        check(
-            build_ir_no_params("Test", |t| {
-                t.component_ref_with_children("Foo", vec![("x", t.not(t.bool(false)))], |t| {
-                    t.write("content");
-                });
-            }),
-            expect![[r#"
-                -- before --
-                view Test() {
-                  call Foo(x = (!false)) {
-                    write("content")
-                  }
-                }
-
-                -- after --
-                view Test() {
-                  call Foo(x = true) {
-                    write("content")
                   }
                 }
             "#]],

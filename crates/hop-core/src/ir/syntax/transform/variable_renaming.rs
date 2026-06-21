@@ -121,15 +121,11 @@ impl VariableRenamingPass {
     fn rename_statement(&mut self, statement: &mut IrStatement) {
         match statement {
             IrStatement::Write { .. } => {}
-            IrStatement::WriteSlot { .. } => {}
 
-            IrStatement::ComponentInvocation {
-                args, slot_body, ..
-            } => {
+            IrStatement::ComponentInvocation { args, .. } => {
                 for arg in args {
                     self.rename_expr(&mut arg.expr);
                 }
-                self.rename_statements(slot_body);
             }
 
             IrStatement::WriteExpr { expr, .. } => {
@@ -272,8 +268,7 @@ impl VariableRenamingPass {
             IrExpr::StringLiteral { .. }
             | IrExpr::BooleanLiteral { .. }
             | IrExpr::FloatLiteral { .. }
-            | IrExpr::IntLiteral { .. }
-            | IrExpr::SlotEmpty { .. } => {}
+            | IrExpr::IntLiteral { .. } => {}
             IrExpr::EnumLiteral { fields, .. } => {
                 for (_, field_expr) in fields {
                     self.rename_expr(field_expr);

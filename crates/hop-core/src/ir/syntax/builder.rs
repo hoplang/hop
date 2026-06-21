@@ -1183,35 +1183,6 @@ impl IrBuilder {
             id: self.next_node_id(),
             component_name: TypeName::new(component_name).unwrap(),
             args: ir_args,
-            slot_body: vec![],
-        });
-    }
-
-    /// Emit a component reference with children.
-    pub fn component_ref_with_children<F>(
-        &mut self,
-        component_name: &str,
-        args: Vec<(&str, IrExpr)>,
-        children_fn: F,
-    ) where
-        F: FnOnce(&mut Self),
-    {
-        let ir_args: Vec<IrArgument> = args
-            .into_iter()
-            .map(|(name, expr)| IrArgument {
-                name: VarName::try_from(name.to_string()).unwrap(),
-                expr,
-            })
-            .collect();
-
-        let mut children_builder = self.new_scoped();
-        children_fn(&mut children_builder);
-
-        self.statements.push(IrStatement::ComponentInvocation {
-            id: self.next_node_id(),
-            component_name: TypeName::new(component_name).unwrap(),
-            args: ir_args,
-            slot_body: children_builder.statements,
         });
     }
 }

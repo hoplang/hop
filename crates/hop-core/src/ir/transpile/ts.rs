@@ -492,19 +492,14 @@ impl Transpiler for TsTranspiler {
             .append(arena.text(component.name.as_ref()))
             .append(arena.text("("));
 
-        // Build parameter list including children if accepted
-        let has_params = !component.parameters.is_empty() || component.has_slot;
+        // Build parameter list
+        let has_params = !component.parameters.is_empty();
         if has_params {
-            // Destructuring pattern: {a, b, c} or {a, b, children}
+            // Destructuring pattern: {a, b, c}
             let param_names: Vec<Doc> = component
                 .parameters
                 .iter()
                 .map(|param| arena.text(param.name.as_str()))
-                .chain(if component.has_slot {
-                    vec![arena.text("slot")]
-                } else {
-                    vec![]
-                })
                 .collect();
 
             result = result
@@ -512,10 +507,7 @@ impl Transpiler for TsTranspiler {
                 .append(arena.intersperse(param_names, arena.text(", ")))
                 .append(arena.text("}: {"));
 
-            // Type annotation: {a: TypeA, b: TypeB, children?: Slot}
-            if component.has_slot {
-                self.needs_slot = true;
-            }
+            // Type annotation: {a: TypeA, b: TypeB}
             let param_types: Vec<Doc> = component
                 .parameters
                 .iter()
@@ -525,11 +517,6 @@ impl Transpiler for TsTranspiler {
                         .append(arena.text(": "))
                         .append(self.transpile_type(arena, &param.typ))
                 })
-                .chain(if component.has_slot {
-                    vec![arena.text("slot?: Slot")]
-                } else {
-                    vec![]
-                })
                 .collect();
 
             result = result
@@ -538,20 +525,13 @@ impl Transpiler for TsTranspiler {
         }
 
         // Function body
-        let mut body = arena
+        let body = arena
             .nil()
             .append(arena.line())
             .append(arena.text("let output: string = \"\";"))
             .append(arena.line());
 
-        // Add children default if component accepts children
-        if component.has_slot {
-            body = body
-                .append(arena.text("slot = slot ?? trustHtml(\"\");"))
-                .append(arena.line());
-        }
-
-        body = body
+        let body = body
             .append(self.transpile_statements(arena, &component.body))
             .append(arena.line())
             .append(arena.text("return output;"))
@@ -568,7 +548,6 @@ impl Transpiler for TsTranspiler {
         arena: &'a Arena<'a>,
         name: &'a TypeName,
         args: &'a [IrArgument],
-        slot_body: &'a [IrStatement],
     ) -> Doc<'a> {
         let mut doc = arena
             .nil()
@@ -576,10 +555,9 @@ impl Transpiler for TsTranspiler {
             .append(arena.text(name.as_ref()))
             .append(arena.text("("));
 
-        let has_args = !args.is_empty() || !slot_body.is_empty();
-        if has_args {
+        if !args.is_empty() {
             // Build named arguments
-            let mut arg_docs: Vec<Doc> = args
+            let arg_docs: Vec<Doc> = args
                 .iter()
                 .map(|arg| {
                     arena
@@ -588,17 +566,6 @@ impl Transpiler for TsTranspiler {
                         .append(self.transpile_expr(arena, &arg.expr))
                 })
                 .collect();
-
-            // Add children IIFE if slot_body is non-empty
-            if !slot_body.is_empty() {
-                self.needs_slot = true;
-                let children_doc = arena
-                    .text("slot: trustHtml((() => { let output = \"\"; ")
-                    .append(self.transpile_statements(arena, slot_body))
-                    .append(arena.hardline())
-                    .append(arena.text("return output; })())"));
-                arg_docs.push(children_doc);
-            }
 
             doc = doc
                 .append(arena.text("{"))
@@ -615,11 +582,6 @@ impl Transpiler for TsTranspiler {
             .append(arena.text("output += "))
             .append(arena.text(self.quote_string(content)))
             .append(arena.text(";"))
-    }
-
-    fn transpile_write_slot_statement<'a>(&mut self, arena: &'a Arena<'a>) -> Doc<'a> {
-        self.needs_slot = true;
-        arena.nil().append(arena.text("output += slot;"))
     }
 
     fn transpile_write_expr_statement<'a>(
@@ -1585,11 +1547,6 @@ impl Transpiler for TsTranspiler {
     fn transpile_slot_type<'a>(&mut self, arena: &'a Arena<'a>) -> Doc<'a> {
         self.needs_slot = true;
         arena.text("Slot")
-    }
-
-    fn transpile_slot_empty<'a>(&mut self, arena: &'a Arena<'a>) -> Doc<'a> {
-        self.needs_slot = true;
-        arena.text("trustHtml(\"\")")
     }
 
     fn transpile_float_type<'a>(&mut self, arena: &'a Arena<'a>) -> Doc<'a> {
@@ -3052,83 +3009,4 @@ mod tests {
         );
     }
 
-    #[test]
-    fn component_with_children() {
-        use crate::dop::Type;
-        use crate::ir::ast::{
-            IrComponentDeclaration, IrExpr, IrModule, IrStatement, IrViewDeclaration,
-        };
-        use crate::symbols::type_name::TypeName;
-
-        let module = IrModule {
-            views: vec![IrViewDeclaration {
-                name: TypeName::new("Main").unwrap(),
-                parameters: vec![],
-                body: vec![IrStatement::ComponentInvocation {
-                    id: 1,
-                    component_name: TypeName::new("Wrapper").unwrap(),
-
-                    args: vec![],
-                    slot_body: vec![IrStatement::Write {
-                        id: 2,
-                        content: "<p>Hello</p>".to_string(),
-                    }],
-                }],
-            }],
-            components: vec![IrComponentDeclaration {
-                name: TypeName::new("Wrapper").unwrap(),
-                parameters: vec![],
-                body: vec![
-                    IrStatement::Write {
-                        id: 10,
-                        content: "<div>".to_string(),
-                    },
-                    IrStatement::WriteExpr {
-                        id: 11,
-                        expr: IrExpr::Var {
-                            value: VarName::new("slot").unwrap(),
-                            kind: Arc::new(Type::String),
-                            id: 12,
-                        },
-                        escape: false,
-                    },
-                    IrStatement::Write {
-                        id: 13,
-                        content: "</div>".to_string(),
-                    },
-                ],
-                has_slot: true,
-            }],
-            records: vec![],
-            enums: vec![],
-        };
-
-        let result = TsTranspiler::new().transpile_module(&module);
-        let expected = expect![[r#"
-            // Code generated by the hop compiler. DO NOT EDIT.
-
-            type Slot = string & { readonly __brand: unique symbol };
-
-            /** Marks a string as trusted HTML, bypassing escaping. Only use with sanitized or trusted content. Calling this function with untrusted content causes XSS vulnerabilities. */
-            export function trustHtml(str: string): Slot {
-                return str as Slot;
-            }
-
-            function renderWrapper({slot}: {slot?: Slot}): string {
-                let output: string = "";
-                slot = slot ?? trustHtml("");
-                output += "<div>";
-                output += slot;
-                output += "</div>";
-                return output;
-            }
-
-            export function Main(): string {
-                let output: string = "";
-                output += renderWrapper({slot: trustHtml((() => { let output = ""; output += "<p>Hello</p>";
-                return output; })())});
-                return output;
-            }"#]];
-        expected.assert_eq(&result);
-    }
 }

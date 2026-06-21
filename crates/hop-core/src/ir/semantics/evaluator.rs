@@ -17,15 +17,11 @@ use crate::ir::syntax::ast::{IrComponentDeclaration, IrForSource, IrStatement, I
 /// Uses a Vec instead of HashMap for better performance with small scopes.
 struct Env {
     stack: Vec<(VarName, Value)>,
-    slots: Vec<String>,
 }
 
 impl Env {
     fn new() -> Self {
-        Self {
-            stack: Vec::new(),
-            slots: Vec::new(),
-        }
+        Self { stack: Vec::new() }
     }
 
     fn push(&mut self, key: VarName, value: Value) {
@@ -42,18 +38,6 @@ impl Env {
             .rev()
             .find(|(k, _)| k.as_str() == key)
             .map(|(_, v)| v)
-    }
-
-    fn push_slot(&mut self, content: String) {
-        self.slots.push(content);
-    }
-
-    fn pop_slot(&mut self) {
-        self.slots.pop();
-    }
-
-    fn current_slot(&self) -> &str {
-        self.slots.last().map(String::as_str).unwrap_or("")
     }
 }
 
@@ -191,11 +175,6 @@ fn eval_statement(
     match node {
         IrStatement::Write { id: _, content } => {
             output.push_str(content);
-            Ok(())
-        }
-
-        IrStatement::WriteSlot { .. } => {
-            output.push_str(env.current_slot());
             Ok(())
         }
 
@@ -384,22 +363,12 @@ fn eval_statement(
         IrStatement::ComponentInvocation {
             component_name,
             args,
-            slot_body,
             ..
         } => {
             let component_def = component_defs
                 .iter()
                 .find(|c| c.name.as_str() == component_name.as_str())
                 .ok_or_else(|| anyhow!("Undefined component: {}", component_name.as_str()))?;
-
-            // Pre-render children body to a string if non-empty
-            let slot_string = if !slot_body.is_empty() {
-                let mut buf = String::new();
-                eval_statements(slot_body, env, &mut buf, component_defs)?;
-                Some(buf)
-            } else {
-                None
-            };
 
             // Evaluate args and bind to component parameters
             let bind_count = component_def.parameters.len();
@@ -422,15 +391,7 @@ fn eval_statement(
                 }
             }
 
-            if component_def.has_slot {
-                env.push_slot(slot_string.unwrap_or_default());
-            }
-
             eval_statements(&component_def.body, env, output, component_defs)?;
-
-            if component_def.has_slot {
-                env.pop_slot();
-            }
 
             for _ in 0..bind_count {
                 env.pop();
@@ -716,7 +677,6 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value> {
             Some(inner) => Ok(Value::Some(Box::new(evaluate_expr(inner, env)?))),
             None => Ok(Value::None),
         },
-        IrExpr::SlotEmpty { .. } => Ok(Value::String(String::new())),
         IrExpr::Match { match_, .. } => match match_ {
             Match::Enum { subject, arms } => {
                 let subject_val = evaluate_expr(subject, env)?;
@@ -1146,162 +1106,5 @@ mod tests {
         let err = result.unwrap_err();
         assert!(err.to_string().contains("Missing required parameter"));
         assert!(err.to_string().contains("name"));
-    }
-
-    #[test]
-    fn should_evaluate_component_with_children() {
-        use crate::ir::ast::{IrComponentDeclaration, IrStatement, IrViewDeclaration};
-
-        // Component: Wrapper that accepts children
-        // component Wrapper() [children] {
-        //   write("<div class=\"wrapper\">")
-        //   write_expr(children)   // unescaped
-        //   write("</div>")
-        // }
-        let component = IrComponentDeclaration {
-            name: TypeName::new("Wrapper").unwrap(),
-            parameters: vec![],
-            body: vec![
-                IrStatement::Write {
-                    id: 10,
-                    content: "<div class=\"wrapper\">".to_string(),
-                },
-                IrStatement::WriteSlot { id: 11 },
-                IrStatement::Write {
-                    id: 13,
-                    content: "</div>".to_string(),
-                },
-            ],
-            has_slot: true,
-        };
-
-        // Entrypoint calls Wrapper with children body
-        let view = IrViewDeclaration {
-            name: TypeName::new("Test").unwrap(),
-            parameters: vec![],
-            body: vec![IrStatement::ComponentInvocation {
-                id: 1,
-                component_name: TypeName::new("Wrapper").unwrap(),
-
-                args: vec![],
-                slot_body: vec![IrStatement::Write {
-                    id: 2,
-                    content: "<p>Hello</p>".to_string(),
-                }],
-            }],
-        };
-
-        let result =
-            evaluate_view(&view, HashMap::new(), &[component]).expect("Evaluation should succeed");
-        assert_eq!(result, "<div class=\"wrapper\"><p>Hello</p></div>");
-    }
-
-    #[test]
-    fn should_evaluate_component_with_children_and_params() {
-        use crate::document::CheapString;
-        use crate::ir::ast::{
-            IrArgument, IrComponentDeclaration, IrExpr, IrParameter, IrStatement, IrViewDeclaration,
-        };
-
-        // Component: Card(title: String) [children]
-        let component = IrComponentDeclaration {
-            name: TypeName::new("Card").unwrap(),
-            parameters: vec![IrParameter {
-                name: VarName::new("title").unwrap(),
-                typ: Arc::new(Type::String),
-                default_value: None,
-            }],
-            body: vec![
-                IrStatement::Write {
-                    id: 10,
-                    content: "<div><h1>".to_string(),
-                },
-                IrStatement::WriteExpr {
-                    id: 11,
-                    expr: IrExpr::Var {
-                        value: VarName::new("title").unwrap(),
-                        kind: Arc::new(Type::String),
-                        id: 12,
-                    },
-                    escape: true,
-                },
-                IrStatement::Write {
-                    id: 13,
-                    content: "</h1>".to_string(),
-                },
-                IrStatement::WriteSlot { id: 14 },
-                IrStatement::Write {
-                    id: 16,
-                    content: "</div>".to_string(),
-                },
-            ],
-            has_slot: true,
-        };
-
-        // Entrypoint calls Card with title and children
-        let view = IrViewDeclaration {
-            name: TypeName::new("Test").unwrap(),
-            parameters: vec![],
-            body: vec![IrStatement::ComponentInvocation {
-                id: 1,
-                component_name: TypeName::new("Card").unwrap(),
-
-                args: vec![IrArgument {
-                    name: VarName::new("title").unwrap(),
-                    expr: IrExpr::StringLiteral {
-                        value: CheapString::new("My Card".to_string()),
-                        id: 2,
-                    },
-                }],
-                slot_body: vec![IrStatement::Write {
-                    id: 3,
-                    content: "<p>Card content</p>".to_string(),
-                }],
-            }],
-        };
-
-        let result =
-            evaluate_view(&view, HashMap::new(), &[component]).expect("Evaluation should succeed");
-        assert_eq!(result, "<div><h1>My Card</h1><p>Card content</p></div>");
-    }
-
-    #[test]
-    fn should_evaluate_component_with_empty_children() {
-        use crate::ir::ast::{IrComponentDeclaration, IrStatement, IrViewDeclaration};
-
-        // Component that accepts children but receives none
-        let component = IrComponentDeclaration {
-            name: TypeName::new("Wrapper").unwrap(),
-            parameters: vec![],
-            body: vec![
-                IrStatement::Write {
-                    id: 10,
-                    content: "<div>".to_string(),
-                },
-                IrStatement::WriteSlot { id: 11 },
-                IrStatement::Write {
-                    id: 13,
-                    content: "</div>".to_string(),
-                },
-            ],
-            has_slot: true,
-        };
-
-        // Call with empty slot_body
-        let view = IrViewDeclaration {
-            name: TypeName::new("Test").unwrap(),
-            parameters: vec![],
-            body: vec![IrStatement::ComponentInvocation {
-                id: 1,
-                component_name: TypeName::new("Wrapper").unwrap(),
-
-                args: vec![],
-                slot_body: vec![],
-            }],
-        };
-
-        let result =
-            evaluate_view(&view, HashMap::new(), &[component]).expect("Evaluation should succeed");
-        assert_eq!(result, "<div></div>");
     }
 }

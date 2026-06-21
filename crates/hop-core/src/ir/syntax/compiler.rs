@@ -50,7 +50,6 @@ impl Compiler {
             name: decl.component_name,
             parameters,
             body: compiler.compile_nodes(&decl.children, None),
-            has_slot: decl.slot.is_some(),
         }
     }
 
@@ -101,9 +100,9 @@ impl Compiler {
     ) {
         match node {
             TypedNode::Slot => {
-                output.push(IrStatement::WriteSlot {
-                    id: self.next_node_id(),
-                });
+                unreachable!(
+                    "slots must be eliminated during inlining; recursive components cannot declare slots"
+                );
             }
             TypedNode::Text { value } => {
                 output.push(IrStatement::Write {
@@ -267,21 +266,16 @@ impl Compiler {
                 component_name,
                 component_type,
                 args,
-                children,
+                ..
             } => {
-                let Type::Component {
-                    parameters, slot, ..
-                } = component_type.as_ref()
-                else {
+                let Type::Component { parameters, .. } = component_type.as_ref() else {
                     unreachable!("ComponentInvocation must have a Component type");
                 };
-
-                let has_slot_content = !children.is_empty();
 
                 // Build args in parameter definition order, filling in defaults
                 // for missing args. This ensures positional transpilers
                 // emit arguments in the correct order.
-                let mut compiled_args: Vec<IrArgument> = parameters
+                let compiled_args: Vec<IrArgument> = parameters
                     .iter()
                     .map(|(param_name, _, default_value)| {
                         if let Some(arg) = args.iter().find(|a| &a.name == param_name) {
@@ -303,22 +297,10 @@ impl Compiler {
                     })
                     .collect();
 
-                // When component accepts children but call-site provides none,
-                // append an empty Slot as the children arg (last position)
-                if slot.is_some() && !has_slot_content {
-                    compiled_args.push(IrArgument {
-                        name: VarName::new("slot").unwrap(),
-                        expr: IrExpr::SlotEmpty {
-                            id: self.next_expr_id(),
-                        },
-                    });
-                }
-
                 output.push(IrStatement::ComponentInvocation {
                     id: self.next_node_id(),
                     component_name: component_name.clone(),
                     args: compiled_args,
-                    slot_body: self.compile_nodes(children, None),
                 });
             }
         }
@@ -704,7 +686,11 @@ impl Compiler {
                 kind: kind.clone(),
                 id: expr_id,
             },
-            TypedExpr::SlotEmpty => IrExpr::SlotEmpty { id: expr_id },
+            TypedExpr::SlotEmpty => {
+                unreachable!(
+                    "slots must be eliminated during inlining; recursive components cannot declare slots"
+                );
+            }
             TypedExpr::Let {
                 var,
                 value,

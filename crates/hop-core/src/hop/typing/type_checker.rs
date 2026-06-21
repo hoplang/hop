@@ -167,6 +167,7 @@ fn typecheck_module(
                 let mut resolved_param_types = Vec::new();
                 let mut typed_params = Vec::new();
                 let mut component_slot: Option<SlotParam> = None;
+                let mut slot_param_range: Option<DocumentRange> = None;
                 if let Some((params, _)) = params {
                     for param in params {
                         let Some(param_type) = errors.ok_or_add(resolve_type(
@@ -235,6 +236,7 @@ fn typecheck_module(
                                     range: param.var_name_range.clone(),
                                 });
                             }
+                            slot_param_range = Some(param.var_name_range.clone());
                             component_slot = Some(SlotParam {
                                 typ: param_type.clone(),
                                 default_value: typed_default_value.clone(),
@@ -287,6 +289,14 @@ fn typecheck_module(
                     .collect::<Vec<_>>();
 
                 let is_recursive = type_env.has_been_accessed(component_name);
+
+                if is_recursive {
+                    if let Some(range) = &slot_param_range {
+                        errors.push(TypeError::RecursiveComponentCannotHaveSlot {
+                            range: range.clone(),
+                        });
+                    }
+                }
 
                 for param in pushed_params.iter().rev() {
                     let (name, _, accessed) = var_env.pop();
@@ -1873,6 +1883,26 @@ mod tests {
     }
 
     #[test]
+    fn should_reject_recursive_component_with_slot() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component Tree(slot: Slot) {
+                	<div>
+                		<Tree>{slot}</Tree>
+                	</div>
+                }
+            "#},
+            expect![[r#"
+                error: A recursive component cannot declare a slot
+                  --> main.hop (line 1, col 16)
+                1 | component Tree(slot: Slot) {
+                  |                ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
     fn slot_rejected_in_expression_position() {
         reject(
             indoc! {r#"
@@ -1974,30 +2004,6 @@ mod tests {
                     !
                   </h1>
                 </Main>
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_accept_recursive_component_with_children_parameter() {
-        accept(
-            indoc! {r#"
-                -- main.hop --
-                component Tree(slot: Slot) {
-                	<div>
-                		<Tree>{slot}</Tree>
-                	</div>
-                }
-            "#},
-            expect![[r#"
-                -- main.hop --
-                <Tree {slot: Slot}>
-                  <div>
-                    <Tree>
-                      {slot}
-                    </Tree>
-                  </div>
-                </Tree>
             "#]],
         );
     }
@@ -5479,7 +5485,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: The 'slot' parameter must be typed as Slot
+                error: The slot parameter must be typed as Slot
                   --> main.hop (line 1, col 21)
                 1 | component Separator(slot: Option[Slot] = None) {
                   |                     ^^^^

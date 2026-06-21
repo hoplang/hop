@@ -79,8 +79,6 @@ pub struct IrComponentDeclaration {
     pub parameters: Vec<IrParameter>,
     /// IR nodes for the component body
     pub body: Vec<IrStatement>,
-    /// Whether this component accepts children (slot content)
-    pub has_slot: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -97,9 +95,6 @@ pub enum IrStatement {
         expr: IrExpr,
         escape: bool,
     },
-
-    /// Write the current slot content to the output.
-    WriteSlot { id: StatementId },
 
     /// Execute the body if a condition holds.
     If {
@@ -144,7 +139,6 @@ pub enum IrStatement {
         id: StatementId,
         component_name: TypeName,
         args: Vec<IrArgument>,
-        slot_body: Vec<IrStatement>,
     },
 }
 
@@ -209,9 +203,6 @@ pub enum IrExpr {
         kind: Arc<Type>,
         id: ExprId,
     },
-
-    /// An empty Slot literal, e.g. `Slot::Empty`
-    SlotEmpty { id: ExprId },
 
     /// A match expression (enum, bool, or option)
     Match {
@@ -351,7 +342,6 @@ impl IrStatement {
     pub fn traverse_exprs(&self, f: &mut impl FnMut(&IrExpr)) {
         match self {
             IrStatement::Write { .. } => {}
-            IrStatement::WriteSlot { .. } => {}
             IrStatement::WriteExpr { expr, .. } => expr.traverse(f),
             IrStatement::If { condition, .. } => condition.traverse(f),
             IrStatement::For { source, .. } => match source {
@@ -378,7 +368,6 @@ impl IrStatement {
     pub fn traverse_exprs_mut(&mut self, f: &mut impl FnMut(&mut IrExpr)) {
         match self {
             IrStatement::Write { .. } => {}
-            IrStatement::WriteSlot { .. } => {}
             IrStatement::WriteExpr { expr, .. } => expr.traverse_mut(f),
             IrStatement::If { condition, .. } => condition.traverse_mut(f),
             IrStatement::For { source, .. } => match source {
@@ -407,7 +396,6 @@ impl IrStatement {
         f(self);
         match self {
             IrStatement::Write { .. } => {}
-            IrStatement::WriteSlot { .. } => {}
             IrStatement::WriteExpr { .. } => {}
             IrStatement::If { body, .. } => {
                 for stmt in body {
@@ -434,11 +422,7 @@ impl IrStatement {
                     stmt.traverse(f);
                 }
             }
-            IrStatement::ComponentInvocation { slot_body, .. } => {
-                for stmt in slot_body {
-                    stmt.traverse(f);
-                }
-            }
+            IrStatement::ComponentInvocation { .. } => {}
         }
     }
 
@@ -448,7 +432,6 @@ impl IrStatement {
                 .append(BoxDoc::text("("))
                 .append(BoxDoc::text(format!("{:?}", content)))
                 .append(BoxDoc::text(")")),
-            IrStatement::WriteSlot { .. } => BoxDoc::text("write_slot()"),
             IrStatement::WriteExpr { expr, escape, .. } => {
                 let write_fn = if *escape {
                     "write_escaped"
@@ -672,7 +655,6 @@ impl IrStatement {
             IrStatement::ComponentInvocation {
                 component_name,
                 args,
-                slot_body,
                 ..
             } => {
                 let mut doc = BoxDoc::text("call ")
@@ -689,20 +671,6 @@ impl IrStatement {
                     ));
                 }
                 doc = doc.append(BoxDoc::text(")"));
-                if !slot_body.is_empty() {
-                    doc = doc
-                        .append(BoxDoc::text(" {"))
-                        .append(
-                            BoxDoc::line()
-                                .append(BoxDoc::intersperse(
-                                    slot_body.iter().map(|s| s.to_doc()),
-                                    BoxDoc::line(),
-                                ))
-                                .nest(2),
-                        )
-                        .append(BoxDoc::line())
-                        .append(BoxDoc::text("}"));
-                }
                 doc
             }
         }
@@ -745,8 +713,7 @@ impl IrExpr {
             | IrExpr::OptionIsNone { id, .. }
             | IrExpr::IntToString { id, .. }
             | IrExpr::FloatToInt { id, .. }
-            | IrExpr::IntToFloat { id, .. }
-            | IrExpr::SlotEmpty { id, .. } => *id,
+            | IrExpr::IntToFloat { id, .. } => *id,
         }
     }
 
@@ -795,8 +762,6 @@ impl IrExpr {
             | IrExpr::OptionIsNone { .. } => Arc::new(Type::Bool),
 
             IrExpr::ArrayLength { .. } | IrExpr::FloatToInt { .. } => Arc::new(Type::Int),
-
-            IrExpr::SlotEmpty { .. } => Arc::new(Type::Slot),
         }
     }
 
@@ -806,7 +771,6 @@ impl IrExpr {
         static BOOL_TYPE: Type = Type::Bool;
         static FLOAT_TYPE: Type = Type::Float;
         static INT_TYPE: Type = Type::Int;
-        static TRUSTED_HTML_TYPE: Type = Type::Slot;
 
         match self {
             IrExpr::Var { kind, .. }
@@ -851,8 +815,6 @@ impl IrExpr {
             | IrExpr::OptionIsNone { .. } => &BOOL_TYPE,
 
             IrExpr::ArrayLength { .. } | IrExpr::FloatToInt { .. } => &INT_TYPE,
-
-            IrExpr::SlotEmpty { .. } => &TRUSTED_HTML_TYPE,
         }
     }
 
@@ -1020,7 +982,6 @@ impl IrExpr {
                     None => type_prefix.append(BoxDoc::text("None")),
                 }
             }
-            IrExpr::SlotEmpty { .. } => BoxDoc::text("Slot::Empty"),
             IrExpr::Match { match_, .. } => match match_ {
                 Match::Enum { subject, arms } => {
                     if arms.is_empty() {
@@ -1280,8 +1241,7 @@ impl IrExpr {
             | IrExpr::StringLiteral { .. }
             | IrExpr::BooleanLiteral { .. }
             | IrExpr::FloatLiteral { .. }
-            | IrExpr::IntLiteral { .. }
-            | IrExpr::SlotEmpty { .. } => {}
+            | IrExpr::IntLiteral { .. } => {}
             IrExpr::TwMerge { operand: value, .. } => {
                 value.traverse(f);
             }
@@ -1395,8 +1355,7 @@ impl IrExpr {
             | IrExpr::StringLiteral { .. }
             | IrExpr::BooleanLiteral { .. }
             | IrExpr::FloatLiteral { .. }
-            | IrExpr::IntLiteral { .. }
-            | IrExpr::SlotEmpty { .. } => {}
+            | IrExpr::IntLiteral { .. } => {}
             IrExpr::TwMerge { operand: value, .. } => {
                 value.traverse_mut(f);
             }
@@ -1500,12 +1459,8 @@ pub fn traverse_statements_mut(
                     traverse_statements_mut(body, f);
                 }
             }
-            IrStatement::ComponentInvocation { slot_body, .. } => {
-                traverse_statements_mut(slot_body, f);
-            }
-            IrStatement::Write { .. }
-            | IrStatement::WriteExpr { .. }
-            | IrStatement::WriteSlot { .. } => {}
+            IrStatement::ComponentInvocation { .. } => {}
+            IrStatement::Write { .. } | IrStatement::WriteExpr { .. } => {}
         }
     }
     f(statements);
@@ -1598,11 +1553,7 @@ impl fmt::Display for IrModule {
 
 impl<'a> IrComponentDeclaration {
     pub fn to_doc(&'a self) -> BoxDoc<'a> {
-        let closing = if self.has_slot {
-            ") [children] {"
-        } else {
-            ") {"
-        };
+        let closing = ") {";
         BoxDoc::text("component ")
             .append(BoxDoc::text(self.name.as_str()))
             .append(BoxDoc::text("("))

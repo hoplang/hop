@@ -29,7 +29,6 @@ pub trait Transpiler {
 
     // Statement transpilation
     fn transpile_write_statement<'a>(&mut self, arena: &'a Arena<'a>, content: &'a str) -> Doc<'a>;
-    fn transpile_write_slot_statement<'a>(&mut self, arena: &'a Arena<'a>) -> Doc<'a>;
     fn transpile_write_expr_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
@@ -78,7 +77,6 @@ pub trait Transpiler {
         arena: &'a Arena<'a>,
         name: &'a TypeName,
         args: &'a [IrArgument],
-        slot_body: &'a [IrStatement],
     ) -> Doc<'a>;
     fn transpile_statement<'a>(
         &mut self,
@@ -90,7 +88,6 @@ pub trait Transpiler {
             IrStatement::WriteExpr { expr, escape, .. } => {
                 self.transpile_write_expr_statement(arena, expr, *escape)
             }
-            IrStatement::WriteSlot { .. } => self.transpile_write_slot_statement(arena),
             IrStatement::If {
                 condition, body, ..
             } => self.transpile_if_statement(arena, condition, body),
@@ -112,14 +109,8 @@ pub trait Transpiler {
             IrStatement::ComponentInvocation {
                 component_name,
                 args,
-                slot_body,
                 ..
-            } => self.transpile_component_call_statement(
-                arena,
-                component_name,
-                args.as_slice(),
-                slot_body,
-            ),
+            } => self.transpile_component_call_statement(arena, component_name, args.as_slice()),
         }
     }
     fn transpile_statements<'a>(
@@ -299,7 +290,6 @@ pub trait Transpiler {
         value: Option<&'a IrExpr>,
         inner_type: &'a Type,
     ) -> Doc<'a>;
-    fn transpile_slot_empty<'a>(&mut self, arena: &'a Arena<'a>) -> Doc<'a>;
     fn transpile_match_expr<'a>(
         &mut self,
         arena: &'a Arena<'a>,
@@ -468,7 +458,6 @@ pub trait Transpiler {
             IrExpr::IntToString { value, .. } => self.transpile_int_to_string(arena, value),
             IrExpr::FloatToInt { value, .. } => self.transpile_float_to_int(arena, value),
             IrExpr::IntToFloat { value, .. } => self.transpile_int_to_float(arena, value),
-            IrExpr::SlotEmpty { .. } => self.transpile_slot_empty(arena),
         }
     }
 }
