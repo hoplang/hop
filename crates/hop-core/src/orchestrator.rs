@@ -15,9 +15,6 @@ use std::sync::Arc;
 pub struct OrchestrateOptions<'a> {
     pub skip_html_structure: bool,
     pub skip_optimization: bool,
-    /// When set, skip component inlining. All components become callable definitions
-    /// and component references compile to function calls instead of being expanded inline.
-    pub skip_inlining: bool,
     /// When set, rewrite all `<a href="...">` to `<a href="#">` to disable navigation.
     pub disable_links: bool,
     /// When set, only compile the specified view instead of all views.
@@ -73,15 +70,8 @@ pub fn orchestrate(
         })
         .collect();
 
-    // Inline component references (or skip and keep all components as callable definitions)
-    let component_declarations = if options.skip_inlining {
-        document_ids
-            .iter()
-            .flat_map(|id| typed_asts[id].get_component_declarations().to_vec())
-            .collect()
-    } else {
-        Inliner::inline_ast_views(typed_asts, &mut typed_views)
-    };
+    // Inline component references into the views
+    let component_declarations = Inliner::inline_ast_views(typed_asts, &mut typed_views);
 
     // Transform and compile each view
     let mut views = Vec::with_capacity(typed_views.len());

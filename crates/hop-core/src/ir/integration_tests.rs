@@ -216,7 +216,6 @@ fn check_with_asset_rewriter(
     let unoptimized_options = OrchestrateOptions {
         skip_html_structure: true,
         skip_optimization: true,
-        skip_inlining: true,
         asset_rewriter: asset_rewriter.clone(),
         ..Default::default()
     };
@@ -3013,21 +3012,20 @@ mod tests {
                   Green,
                   Blue,
                 }
-                component Badge(color: test::Color) {
-                  match color {
-                    Color::Red => {
-                      write("red")
-                    }
-                    Color::Green => {
-                      write("green")
-                    }
-                    Color::Blue => {
-                      write("blue")
+                view Test() {
+                  let color = Color::Green in {
+                    match color {
+                      Color::Red => {
+                        write("red")
+                      }
+                      Color::Green => {
+                        write("green")
+                      }
+                      Color::Blue => {
+                        write("blue")
+                      }
                     }
                   }
-                }
-                view Test() {
-                  call Badge(color = Color::Green)
                 }
                 -- ir (optimized) --
                 enum Color {
@@ -6919,13 +6917,12 @@ mod tests {
             "Hello, World!",
             expect![[r#"
                 -- ir (unoptimized) --
-                component Greeting(name: String) {
-                  write("Hello, ")
-                  write_escaped(name)
-                  write("!")
-                }
                 view Test() {
-                  call Greeting(name = "World")
+                  let name = "World" in {
+                    write("Hello, ")
+                    write_escaped(name)
+                    write("!")
+                  }
                 }
                 -- ir (optimized) --
                 view Test() {
@@ -6977,23 +6974,20 @@ mod tests {
             r#"<div class="card"><h2>Hello</h2><p>world</p></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                component Card(title: String) [children] {
-                  write("<div")
-                  write(" class=\"card\"")
-                  write(">")
-                  write("<h2")
-                  write(">")
-                  write_escaped(title)
-                  write("</h2>")
-                  write_slot()
-                  write("</div>")
-                }
                 view Test() {
-                  call Card(title = "Hello") {
+                  let title = "Hello" in {
+                    write("<div")
+                    write(" class=\"card\"")
+                    write(">")
+                    write("<h2")
+                    write(">")
+                    write_escaped(title)
+                    write("</h2>")
                     write("<p")
                     write(">")
                     write("world")
                     write("</p>")
+                    write("</div>")
                   }
                 }
                 -- ir (optimized) --
@@ -7048,29 +7042,19 @@ mod tests {
             r#"<div class="outer"><div class="inner"><p>hello</p></div></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                component Inner() [children] {
-                  write("<div")
-                  write(" class=\"inner\"")
-                  write(">")
-                  write_slot()
-                  write("</div>")
-                }
-                component Outer() [children] {
+                view Test() {
                   write("<div")
                   write(" class=\"outer\"")
                   write(">")
-                  call Inner() {
-                    write_slot()
-                  }
+                  write("<div")
+                  write(" class=\"inner\"")
+                  write(">")
+                  write("<p")
+                  write(">")
+                  write("hello")
+                  write("</p>")
                   write("</div>")
-                }
-                view Test() {
-                  call Outer() {
-                    write("<p")
-                    write(">")
-                    write("hello")
-                    write("</p>")
-                  }
+                  write("</div>")
                 }
                 -- ir (optimized) --
                 view Test() {
@@ -7137,16 +7121,26 @@ mod tests {
             r#"<div class="layout"><header><h1>Welcome</h1></header><main><p>Hello world</p></main><footer><p>Copyright 2024</p></footer></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                component Header(title: String) {
-                  write("<header")
+                view Test() {
+                  write("<div")
+                  write(" class=\"layout\"")
                   write(">")
-                  write("<h1")
+                  let title = "Welcome" in {
+                    write("<header")
+                    write(">")
+                    write("<h1")
+                    write(">")
+                    write_escaped(title)
+                    write("</h1>")
+                    write("</header>")
+                  }
+                  write("<main")
                   write(">")
-                  write_escaped(title)
-                  write("</h1>")
-                  write("</header>")
-                }
-                component Footer() {
+                  write("<p")
+                  write(">")
+                  write("Hello world")
+                  write("</p>")
+                  write("</main>")
                   write("<footer")
                   write(">")
                   write("<p")
@@ -7154,26 +7148,7 @@ mod tests {
                   write("Copyright 2024")
                   write("</p>")
                   write("</footer>")
-                }
-                component Layout() [children] {
-                  write("<div")
-                  write(" class=\"layout\"")
-                  write(">")
-                  write_slot()
                   write("</div>")
-                }
-                view Test() {
-                  call Layout() {
-                    call Header(title = "Welcome")
-                    write("<main")
-                    write(">")
-                    write("<p")
-                    write(">")
-                    write("Hello world")
-                    write("</p>")
-                    write("</main>")
-                    call Footer()
-                  }
                 }
                 -- ir (optimized) --
                 view Test() {
@@ -7224,25 +7199,23 @@ mod tests {
             r#"<div class="first"><span>hi</span></div><div class="second"><span>hi</span></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                component Repeat() [children] {
+                view Test() {
                   write("<div")
                   write(" class=\"first\"")
                   write(">")
-                  write_slot()
+                  write("<span")
+                  write(">")
+                  write("hi")
+                  write("</span>")
                   write("</div>")
                   write("<div")
                   write(" class=\"second\"")
                   write(">")
-                  write_slot()
+                  write("<span")
+                  write(">")
+                  write("hi")
+                  write("</span>")
                   write("</div>")
-                }
-                view Test() {
-                  call Repeat() {
-                    write("<span")
-                    write(">")
-                    write("hi")
-                    write("</span>")
-                  }
                 }
                 -- ir (optimized) --
                 view Test() {
@@ -7312,14 +7285,13 @@ mod tests {
                   value: String,
                   next: Option[test::Node],
                 }
-                component Badge(text: String) {
-                  write("<strong")
-                  write(">")
-                  write_escaped(text)
-                  write("</strong>")
-                }
                 component NodeView(node: test::Node) {
-                  call Badge(text = node.value)
+                  let text = node.value in {
+                    write("<strong")
+                    write(">")
+                    write_escaped(text)
+                    write("</strong>")
+                  }
                   match node.next {
                     Some(v_1) => {
                       let next = v_1 in {
@@ -7677,14 +7649,13 @@ mod tests {
             r#"<div>New card</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                component Card(title: String = "New card") {
-                  write("<div")
-                  write(">")
-                  write_escaped(title)
-                  write("</div>")
-                }
                 view Test() {
-                  call Card(title = "New card")
+                  let title = "New card" in {
+                    write("<div")
+                    write(">")
+                    write_escaped(title)
+                    write("</div>")
+                  }
                 }
                 -- ir (optimized) --
                 view Test() {
@@ -7726,14 +7697,13 @@ mod tests {
             r#"<div>Custom title</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                component Card(title: String = "New card") {
-                  write("<div")
-                  write(">")
-                  write_escaped(title)
-                  write("</div>")
-                }
                 view Test() {
-                  call Card(title = "Custom title")
+                  let title = "Custom title" in {
+                    write("<div")
+                    write(">")
+                    write_escaped(title)
+                    write("</div>")
+                  }
                 }
                 -- ir (optimized) --
                 view Test() {
@@ -7778,19 +7748,17 @@ mod tests {
             r#"<div>Hello - No subtitle</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                component Card(
-                  title: String,
-                  subtitle: String = "No subtitle",
-                ) {
-                  write("<div")
-                  write(">")
-                  write_escaped(title)
-                  write(" - ")
-                  write_escaped(subtitle)
-                  write("</div>")
-                }
                 view Test() {
-                  call Card(title = "Hello", subtitle = "No subtitle")
+                  let title = "Hello" in {
+                    let subtitle = "No subtitle" in {
+                      write("<div")
+                      write(">")
+                      write_escaped(title)
+                      write(" - ")
+                      write_escaped(subtitle)
+                      write("</div>")
+                    }
+                  }
                 }
                 -- ir (optimized) --
                 view Test() {
@@ -7835,19 +7803,17 @@ mod tests {
             r#"<div>Hello - World</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                component Card(
-                  title: String,
-                  subtitle: String = "No subtitle",
-                ) {
-                  write("<div")
-                  write(">")
-                  write_escaped(title)
-                  write(" - ")
-                  write_escaped(subtitle)
-                  write("</div>")
-                }
                 view Test() {
-                  call Card(title = "Hello", subtitle = "World")
+                  let title = "Hello" in {
+                    let subtitle = "World" in {
+                      write("<div")
+                      write(">")
+                      write_escaped(title)
+                      write(" - ")
+                      write_escaped(subtitle)
+                      write("</div>")
+                    }
+                  }
                 }
                 -- ir (optimized) --
                 view Test() {
@@ -7893,22 +7859,21 @@ mod tests {
             r#"<div>Default - Custom - End</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                component Card(
-                  title: String = "Default",
-                  subtitle: String = "Sub",
-                  footer: String = "End",
-                ) {
-                  write("<div")
-                  write(">")
-                  write_escaped(title)
-                  write(" - ")
-                  write_escaped(subtitle)
-                  write(" - ")
-                  write_escaped(footer)
-                  write("</div>")
-                }
                 view Test() {
-                  call Card(title = "Default", subtitle = "Custom", footer = "End")
+                  let title = "Default" in {
+                    let subtitle = "Custom" in {
+                      let footer = "End" in {
+                        write("<div")
+                        write(">")
+                        write_escaped(title)
+                        write(" - ")
+                        write_escaped(subtitle)
+                        write(" - ")
+                        write_escaped(footer)
+                        write("</div>")
+                      }
+                    }
+                  }
                 }
                 -- ir (optimized) --
                 view Test() {
@@ -7956,19 +7921,17 @@ mod tests {
             r#"<div class="card"><h2>Hello</h2></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                component Card(title: String) [children] {
-                  write("<div")
-                  write(" class=\"card\"")
-                  write(">")
-                  write("<h2")
-                  write(">")
-                  write_escaped(title)
-                  write("</h2>")
-                  write_slot()
-                  write("</div>")
-                }
                 view Test() {
-                  call Card(title = "Hello", slot = Slot::Empty)
+                  let title = "Hello" in {
+                    write("<div")
+                    write(" class=\"card\"")
+                    write(">")
+                    write("<h2")
+                    write(">")
+                    write_escaped(title)
+                    write("</h2>")
+                    write("</div>")
+                  }
                 }
                 -- ir (optimized) --
                 view Test() {
@@ -8021,25 +7984,31 @@ mod tests {
             r#"<div class="card"><h2>With</h2><p>body</p></div><div class="card"><h2>Without</h2></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                component Card(title: String) [children] {
-                  write("<div")
-                  write(" class=\"card\"")
-                  write(">")
-                  write("<h2")
-                  write(">")
-                  write_escaped(title)
-                  write("</h2>")
-                  write_slot()
-                  write("</div>")
-                }
                 view Test() {
-                  call Card(title = "With") {
+                  let title = "With" in {
+                    write("<div")
+                    write(" class=\"card\"")
+                    write(">")
+                    write("<h2")
+                    write(">")
+                    write_escaped(title)
+                    write("</h2>")
                     write("<p")
                     write(">")
                     write("body")
                     write("</p>")
+                    write("</div>")
                   }
-                  call Card(title = "Without", slot = Slot::Empty)
+                  let title_1 = "Without" in {
+                    write("<div")
+                    write(" class=\"card\"")
+                    write(">")
+                    write("<h2")
+                    write(">")
+                    write_escaped(title_1)
+                    write("</h2>")
+                    write("</div>")
+                  }
                 }
                 -- ir (optimized) --
                 view Test() {
@@ -8555,27 +8524,42 @@ mod tests {
                 enum Item {
                   Todo {label: String, done: Bool},
                 }
-                component RenderItem(item: test::Item) {
-                  match item {
-                    Item::Todo(label: v_0, done: v_1) => {
-                      let l = v_0 in {
-                        let d = v_1 in {
-                          if d {
-                            write("[x]")
+                view Test() {
+                  let item = Item::Todo {label: "Buy milk", done: true} in {
+                    match item {
+                      Item::Todo(label: v_0, done: v_1) => {
+                        let l = v_0 in {
+                          let d = v_1 in {
+                            if d {
+                              write("[x]")
+                            }
+                            if (!d) {
+                              write("[ ]")
+                            }
+                            write_escaped(l)
                           }
-                          if (!d) {
-                            write("[ ]")
-                          }
-                          write_escaped(l)
                         }
                       }
                     }
                   }
-                }
-                view Test() {
-                  call RenderItem(item = Item::Todo {label: "Buy milk", done: true})
                   write(",")
-                  call RenderItem(item = Item::Todo {label: "Walk dog", done: false})
+                  let item_1 = Item::Todo {label: "Walk dog", done: false} in {
+                    match item_1 {
+                      Item::Todo(label: v_0_2, done: v_1_3) => {
+                        let l_4 = v_0_2 in {
+                          let d_5 = v_1_3 in {
+                            if d_5 {
+                              write("[x]")
+                            }
+                            if (!d_5) {
+                              write("[ ]")
+                            }
+                            write_escaped(l_4)
+                          }
+                        }
+                      }
+                    }
+                  }
                 }
                 -- ir (optimized) --
                 enum Item {
@@ -8678,32 +8662,69 @@ mod tests {
                   MinutesAgo {count: Int},
                   HoursAgo {count: Int},
                 }
-                component Render(time: test::TimeAgo) {
-                  match time {
-                    TimeAgo::MinutesAgo(count: v_0) => {
-                      let c = v_0 in {
-                        write_escaped(match (c == 1) {
-                          true => "1 minute ago",
-                          false => (c.to_string() + " minutes ago"),
-                        })
+                view Test() {
+                  let time = TimeAgo::MinutesAgo {count: 1} in {
+                    match time {
+                      TimeAgo::MinutesAgo(count: v_0) => {
+                        let c = v_0 in {
+                          write_escaped(match (c == 1) {
+                            true => "1 minute ago",
+                            false => (c.to_string() + " minutes ago"),
+                          })
+                        }
                       }
-                    }
-                    TimeAgo::HoursAgo(count: v_1) => {
-                      let c_1 = v_1 in {
-                        write_escaped(match (c_1 == 1) {
-                          true => "1 hour ago",
-                          false => (c_1.to_string() + " hours ago"),
-                        })
+                      TimeAgo::HoursAgo(count: v_1) => {
+                        let c_1 = v_1 in {
+                          write_escaped(match (c_1 == 1) {
+                            true => "1 hour ago",
+                            false => (c_1.to_string() + " hours ago"),
+                          })
+                        }
                       }
                     }
                   }
-                }
-                view Test() {
-                  call Render(time = TimeAgo::MinutesAgo {count: 1})
                   write(",")
-                  call Render(time = TimeAgo::MinutesAgo {count: 5})
+                  let time_2 = TimeAgo::MinutesAgo {count: 5} in {
+                    match time_2 {
+                      TimeAgo::MinutesAgo(count: v_0_3) => {
+                        let c_4 = v_0_3 in {
+                          write_escaped(match (c_4 == 1) {
+                            true => "1 minute ago",
+                            false => (c_4.to_string() + " minutes ago"),
+                          })
+                        }
+                      }
+                      TimeAgo::HoursAgo(count: v_1_5) => {
+                        let c_6 = v_1_5 in {
+                          write_escaped(match (c_6 == 1) {
+                            true => "1 hour ago",
+                            false => (c_6.to_string() + " hours ago"),
+                          })
+                        }
+                      }
+                    }
+                  }
                   write(",")
-                  call Render(time = TimeAgo::HoursAgo {count: 1})
+                  let time_7 = TimeAgo::HoursAgo {count: 1} in {
+                    match time_7 {
+                      TimeAgo::MinutesAgo(count: v_0_8) => {
+                        let c_9 = v_0_8 in {
+                          write_escaped(match (c_9 == 1) {
+                            true => "1 minute ago",
+                            false => (c_9.to_string() + " minutes ago"),
+                          })
+                        }
+                      }
+                      TimeAgo::HoursAgo(count: v_1_10) => {
+                        let c_11 = v_1_10 in {
+                          write_escaped(match (c_11 == 1) {
+                            true => "1 hour ago",
+                            false => (c_11.to_string() + " hours ago"),
+                          })
+                        }
+                      }
+                    }
+                  }
                 }
                 -- ir (optimized) --
                 enum TimeAgo {
@@ -8826,20 +8847,19 @@ mod tests {
                 enum CodeBlock {
                   Snippet {language: String, code: String},
                 }
-                component RenderCode(block: test::CodeBlock) {
-                  match block {
-                    CodeBlock::Snippet(code: v_1) => {
-                      let c = v_1 in {
-                        write("<code")
-                        write(">")
-                        write_escaped(c)
-                        write("</code>")
+                view Test() {
+                  let block = CodeBlock::Snippet {language: "rust", code: "fn main()"} in {
+                    match block {
+                      CodeBlock::Snippet(code: v_1) => {
+                        let c = v_1 in {
+                          write("<code")
+                          write(">")
+                          write_escaped(c)
+                          write("</code>")
+                        }
                       }
                     }
                   }
-                }
-                view Test() {
-                  call RenderCode(block = CodeBlock::Snippet {language: "rust", code: "fn main()"})
                 }
                 -- ir (optimized) --
                 enum CodeBlock {
@@ -8917,34 +8937,33 @@ mod tests {
                   Link {href: String},
                   Button {disabled: Bool, type: String},
                 }
-                component Render(el: test::ButtonElement) {
-                  match el {
-                    ButtonElement::Link(href: v_0) => {
-                      let h = v_0 in {
-                        write("<a")
-                        write(" href=\"")
-                        write_escaped(h)
-                        write("\"")
-                        write(">")
-                        write("link")
-                        write("</a>")
+                view Test() {
+                  let el = ButtonElement::Button {disabled: false, type: "submit"} in {
+                    match el {
+                      ButtonElement::Link(href: v_0) => {
+                        let h = v_0 in {
+                          write("<a")
+                          write(" href=\"")
+                          write_escaped(h)
+                          write("\"")
+                          write(">")
+                          write("link")
+                          write("</a>")
+                        }
                       }
-                    }
-                    ButtonElement::Button(type: v_2) => {
-                      let t = v_2 in {
-                        write("<button")
-                        write(" type=\"")
-                        write_escaped(t)
-                        write("\"")
-                        write(">")
-                        write("btn")
-                        write("</button>")
+                      ButtonElement::Button(type: v_2) => {
+                        let t = v_2 in {
+                          write("<button")
+                          write(" type=\"")
+                          write_escaped(t)
+                          write("\"")
+                          write(">")
+                          write("btn")
+                          write("</button>")
+                        }
                       }
                     }
                   }
-                }
-                view Test() {
-                  call Render(el = ButtonElement::Button {disabled: false, type: "submit"})
                 }
                 -- ir (optimized) --
                 enum ButtonElement {

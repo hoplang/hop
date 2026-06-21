@@ -593,7 +593,6 @@ impl Program {
             self.get_typed_modules(),
             OrchestrateOptions {
                 skip_optimization,
-                skip_inlining: false,
                 disable_links,
                 view_filter: Some((document_id.clone(), view_name.clone())),
                 asset_rewriter,
