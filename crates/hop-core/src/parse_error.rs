@@ -248,6 +248,12 @@ pub enum ParseError {
         name: CheapString,
         range: DocumentRange,
     },
+
+    #[error("Unknown HTML element <{tag}>")]
+    UnknownHtmlElement {
+        tag: CheapString,
+        range: DocumentRange,
+    },
 }
 
 impl ParseError {
@@ -309,7 +315,8 @@ impl ParseError {
             | ParseError::ImportPathTooShort { range }
             | ParseError::ExpectedDeclaration { range }
             | ParseError::DefaultValueNotAllowedOnView { range }
-            | ParseError::UnknownMacro { range, .. } => range,
+            | ParseError::UnknownMacro { range, .. }
+            | ParseError::UnknownHtmlElement { range, .. } => range,
         }
     }
 }

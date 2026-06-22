@@ -2,6 +2,7 @@ use crate::{
     document::CheapString,
     hop::inlining::{InlinedNode, InlinedViewDeclaration},
     hop::typing::typed_node::{TypedAttribute, TypedAttributeValue},
+    html::HtmlElement,
 };
 
 /// How the generated Tailwind CSS should be referenced from the rendered <head>.
@@ -28,7 +29,7 @@ impl TailwindInjector {
         };
 
         InlinedNode::Html {
-            tag_name: CheapString::new("style".to_string()),
+            element: HtmlElement::Style,
             attributes: Vec::new(),
             children: vec![css_text],
         }
@@ -43,7 +44,7 @@ impl TailwindInjector {
         };
 
         InlinedNode::Html {
-            tag_name: CheapString::new("link".to_string()),
+            element: HtmlElement::Link,
             attributes: vec![attr("rel", "stylesheet"), attr("href", href)],
             children: vec![],
         }
@@ -62,22 +63,22 @@ impl TailwindInjector {
             .into_iter()
             .map(|node| match node {
                 InlinedNode::Html {
-                    tag_name,
+                    element,
                     attributes,
                     children,
                 } => {
-                    if tag_name.as_str() == "head" {
+                    if element == HtmlElement::Head {
                         let mut new_children = children;
                         new_children.push(Self::create_injection_element(injection));
 
                         InlinedNode::Html {
-                            tag_name,
+                            element,
                             attributes,
                             children: new_children,
                         }
                     } else {
                         InlinedNode::Html {
-                            tag_name,
+                            element,
                             attributes,
                             children: Self::inject_into_head(children, injection),
                         }

@@ -1,6 +1,6 @@
 use crate::{
-    document::CheapString,
     hop::inlining::{InlinedNode, InlinedViewDeclaration},
+    html::HtmlElement,
 };
 
 /// Transform that injects proper HTML structure (<html>, <head>, <body>)
@@ -11,7 +11,7 @@ impl HtmlStructureInjector {
     /// Check if nodes contain an HTML element
     fn has_html_element(nodes: &[InlinedNode]) -> bool {
         nodes.iter().any(
-            |node| matches!(node, InlinedNode::Html { tag_name, .. } if tag_name.as_str() == "html"),
+            |node| matches!(node, InlinedNode::Html { element, .. } if *element == HtmlElement::Html),
         )
     }
 
@@ -20,9 +20,9 @@ impl HtmlStructureInjector {
         for node in nodes {
             match node {
                 InlinedNode::Html {
-                    tag_name, children, ..
+                    element, children, ..
                 } => {
-                    if tag_name.as_str() == "head" {
+                    if *element == HtmlElement::Head {
                         return true;
                     }
                     // Recursively search children
@@ -48,9 +48,9 @@ impl HtmlStructureInjector {
         for node in nodes {
             match node {
                 InlinedNode::Html {
-                    tag_name, children, ..
+                    element, children, ..
                 } => {
-                    if tag_name.as_str() == "body" {
+                    if *element == HtmlElement::Body {
                         return true;
                     }
                     // Recursively search children
@@ -74,7 +74,8 @@ impl HtmlStructureInjector {
     /// Create an empty HTML element
     fn create_html_element(tag_name: &str, children: Vec<InlinedNode>) -> InlinedNode {
         InlinedNode::Html {
-            tag_name: CheapString::new(tag_name.to_string()),
+            element: crate::html::HtmlElement::parse(tag_name)
+                .expect("create_html_element called with an unrecognized tag name"),
             attributes: Vec::new(),
             children,
         }
@@ -155,11 +156,11 @@ impl HtmlStructureInjector {
             .into_iter()
             .map(|node| match node {
                 InlinedNode::Html {
-                    tag_name,
+                    element,
                     attributes,
                     children,
                 } => {
-                    if tag_name.as_str() == "html" {
+                    if element == HtmlElement::Html {
                         let mut new_children = Vec::new();
 
                         // Add head if missing
@@ -175,14 +176,14 @@ impl HtmlStructureInjector {
                         }
 
                         InlinedNode::Html {
-                            tag_name,
+                            element,
                             attributes,
                             children: new_children,
                         }
                     } else {
                         // Recursively process other HTML elements
                         InlinedNode::Html {
-                            tag_name,
+                            element,
                             attributes,
                             children: Self::ensure_head_and_body_in_html(children),
                         }

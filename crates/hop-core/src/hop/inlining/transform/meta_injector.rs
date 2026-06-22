@@ -1,6 +1,7 @@
 use crate::document::CheapString;
 use crate::hop::inlining::{InlinedNode, InlinedViewDeclaration};
 use crate::hop::typing::typed_node::{TypedAttribute, TypedAttributeValue};
+use crate::html::HtmlElement;
 
 /// Transform that injects meta tags into the <head> element
 /// Assumes HtmlStructureInjector has already run, so <head> exists
@@ -22,13 +23,13 @@ impl MetaInjector {
         vec![
             // <meta charset="utf-8">
             InlinedNode::Html {
-                tag_name: CheapString::new("meta".to_string()),
+                element: HtmlElement::Meta,
                 attributes: vec![Self::create_attribute("charset", "utf-8")],
                 children: vec![],
             },
             // <meta name="viewport" content="width=device-width,initial-scale=1">
             InlinedNode::Html {
-                tag_name: CheapString::new("meta".to_string()),
+                element: HtmlElement::Meta,
                 attributes: vec![
                     Self::create_attribute("content", "width=device-width, initial-scale=1"),
                     Self::create_attribute("name", "viewport"),
@@ -44,24 +45,24 @@ impl MetaInjector {
             .into_iter()
             .map(|node| match node {
                 InlinedNode::Html {
-                    tag_name,
+                    element,
                     attributes,
                     children,
                 } => {
-                    if tag_name.as_str() == "head" {
+                    if element == HtmlElement::Head {
                         // Found <head> - inject meta tags at the beginning
                         let mut new_children = Self::create_meta_elements();
                         new_children.extend(children);
 
                         InlinedNode::Html {
-                            tag_name,
+                            element,
                             attributes,
                             children: new_children,
                         }
                     } else {
                         // Recursively search other HTML elements
                         InlinedNode::Html {
-                            tag_name,
+                            element,
                             attributes,
                             children: Self::inject_meta_into_head(children),
                         }

@@ -2,6 +2,7 @@ use crate::{
     document::CheapString,
     hop::inlining::{InlinedNode, InlinedViewDeclaration},
     hop::typing::typed_node::{TypedAttribute, TypedAttributeValue},
+    html::HtmlElement,
 };
 
 /// Transform that injects a `<script type="module" src={src}></script>` element
@@ -23,7 +24,7 @@ impl ScriptInjector {
         };
 
         InlinedNode::Html {
-            tag_name: CheapString::new("script".to_string()),
+            element: HtmlElement::Script,
             attributes: vec![attr("type", "module"), attr("src", src)],
             children: vec![],
         }
@@ -35,22 +36,22 @@ impl ScriptInjector {
             .into_iter()
             .map(|node| match node {
                 InlinedNode::Html {
-                    tag_name,
+                    element,
                     attributes,
                     children,
                 } => {
-                    if tag_name.as_str() == "head" {
+                    if element == HtmlElement::Head {
                         let mut new_children = children;
                         new_children.push(Self::create_script_element(src));
 
                         InlinedNode::Html {
-                            tag_name,
+                            element,
                             attributes,
                             children: new_children,
                         }
                     } else {
                         InlinedNode::Html {
-                            tag_name,
+                            element,
                             attributes,
                             children: Self::inject_into_head(children, src),
                         }

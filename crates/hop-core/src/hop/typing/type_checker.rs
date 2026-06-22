@@ -1229,7 +1229,8 @@ fn typecheck_node(
         }
 
         ParsedNode::Html {
-            tag_name,
+            element,
+            tag_name: _,
             closing_tag_name: _,
             attributes,
             children,
@@ -1262,7 +1263,7 @@ fn typecheck_node(
                 .collect();
 
             Some(TypedNode::Html {
-                tag_name: tag_name.to_cheap_string(),
+                element: element.clone(),
                 attributes: typed_attributes,
                 children: typed_children,
             })

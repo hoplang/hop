@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use crate::document::CheapString;
 use crate::dop::patterns::{EnumPattern, Match};
+use crate::html::HtmlElement;
 use crate::dop::{Type, TypedExpr};
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
@@ -109,7 +110,7 @@ pub enum TypedNode {
     },
 
     Html {
-        tag_name: CheapString,
+        element: HtmlElement,
         attributes: Vec<TypedAttribute>,
         children: Vec<TypedNode>,
     },
@@ -458,11 +459,11 @@ impl TypedNode {
                 }
             },
             TypedNode::Html {
-                tag_name,
+                element,
                 attributes,
                 children,
             } => {
-                let tag = BoxDoc::text("<").append(BoxDoc::text(tag_name.as_str()));
+                let tag = BoxDoc::text("<").append(BoxDoc::text(element.as_str()));
                 let tag_with_attrs = if attributes.is_empty() {
                     tag
                 } else if attributes.len() <= 3 {
@@ -485,7 +486,7 @@ impl TypedNode {
                     tag_with_attrs
                         .append(BoxDoc::text(">"))
                         .append(BoxDoc::text("</"))
-                        .append(BoxDoc::text(tag_name.as_str()))
+                        .append(BoxDoc::text(element.as_str()))
                         .append(BoxDoc::text(">"))
                 } else {
                     tag_with_attrs
@@ -500,7 +501,7 @@ impl TypedNode {
                         )
                         .append(BoxDoc::line())
                         .append(BoxDoc::text("</"))
-                        .append(BoxDoc::text(tag_name.as_str()))
+                        .append(BoxDoc::text(element.as_str()))
                         .append(BoxDoc::text(">"))
                 }
             }

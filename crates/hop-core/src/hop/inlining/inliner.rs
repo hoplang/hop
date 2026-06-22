@@ -241,12 +241,12 @@ impl<'a> InlinerState<'a> {
             }
 
             TypedNode::Html {
-                tag_name,
+                element,
                 attributes,
                 children,
             } => {
                 output.push(InlinedNode::Html {
-                    tag_name: tag_name.clone(),
+                    element: element.clone(),
                     attributes: attributes.clone(),
                     children: self.inline_nodes(children, slot_content),
                 });

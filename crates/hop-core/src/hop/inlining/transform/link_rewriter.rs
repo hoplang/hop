@@ -3,6 +3,7 @@ use crate::{
     dop::patterns::Match,
     hop::inlining::{InlinedComponentDeclaration, InlinedNode, InlinedViewDeclaration},
     hop::typing::typed_node::{TypedAttribute, TypedAttributeValue},
+    html::HtmlElement,
 };
 
 /// Transform that replaces all `href` attributes on `<a>` elements with `"#"`.
@@ -15,11 +16,11 @@ impl LinkRewriter {
             .into_iter()
             .map(|node| match node {
                 InlinedNode::Html {
-                    tag_name,
+                    element,
                     attributes,
                     children,
                 } => {
-                    let new_attributes = if tag_name.as_str() == "a" {
+                    let new_attributes = if element == HtmlElement::A {
                         attributes
                             .into_iter()
                             .map(|attr| {
@@ -40,7 +41,7 @@ impl LinkRewriter {
                     };
 
                     InlinedNode::Html {
-                        tag_name,
+                        element,
                         attributes: new_attributes,
                         children: Self::rewrite_links(children),
                     }

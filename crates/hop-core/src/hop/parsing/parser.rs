@@ -12,6 +12,7 @@ use crate::document_id::DocumentId;
 use crate::dop::parsing::ParsedType;
 use crate::dop::parsing::parse_type::parse_type;
 use crate::dop::{self, ExamplesAnnotation};
+use crate::html::HtmlElement;
 use crate::parse_error::ParseError;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::module_name::ModuleName;
@@ -746,7 +747,19 @@ fn construct_node(
                 .map(|c| vec![ParsedNode::Text { range: c }])
                 .unwrap_or_default();
 
+            let element = match HtmlElement::parse(tag_name.as_str()) {
+                Some(element) => element,
+                None => {
+                    errors.push(ParseError::UnknownHtmlElement {
+                        tag: tag_name.to_cheap_string(),
+                        range: tag_name.clone(),
+                    });
+                    return None;
+                }
+            };
+
             Some(ParsedNode::Html {
+                element,
                 tag_name,
                 closing_tag_name: None,
                 attributes,
@@ -1032,7 +1045,22 @@ fn construct_node(
                     // Default case: treat as HTML
                     let attributes = parse_attributes(&attributes, comments, errors);
 
+                    let element = match HtmlElement::parse(tag_name.as_str()) {
+                        Some(element) => element,
+                        None if tag_name.as_str() == "case" => {
+                            HtmlElement::Custom(tag_name.to_cheap_string())
+                        }
+                        None => {
+                            errors.push(ParseError::UnknownHtmlElement {
+                                tag: tag_name.to_cheap_string(),
+                                range: tag_name.clone(),
+                            });
+                            return None;
+                        }
+                    };
+
                     Some(ParsedNode::Html {
+                        element,
                         tag_name,
                         closing_tag_name: tree.closing_tag_name,
                         attributes,
@@ -2229,6 +2257,58 @@ mod tests {
                       {d}
                     </for>
                   </if>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_unknown_html_element() {
+        reject(
+            indoc! {r#"
+                component Main {
+                    <dvi>oops</dvi>
+                }
+            "#},
+            expect![[r#"
+                error: Unknown HTML element <dvi>
+                1 | component Main {
+                2 |     <dvi>oops</dvi>
+                  |      ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_mathml_element() {
+        reject(
+            indoc! {r#"
+                component Main {
+                    <math></math>
+                }
+            "#},
+            expect![[r#"
+                error: Unknown HTML element <math>
+                1 | component Main {
+                2 |     <math></math>
+                  |      ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_custom_hyphenated_element() {
+        accept(
+            indoc! {r#"
+                component Main {
+                    <my-widget>hi</my-widget>
+                }
+            "#},
+            expect![[r#"
+                component Main {
+                  <my-widget>
+                    hi
+                  </my-widget>
                 }
             "#]],
         );

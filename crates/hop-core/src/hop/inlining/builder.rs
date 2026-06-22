@@ -181,7 +181,8 @@ impl InlinedAstBuilder {
             .collect();
 
         self.children.push(InlinedNode::Html {
-            tag_name: CheapString::new(tag_name.to_string()),
+            element: crate::html::HtmlElement::parse(tag_name)
+                .expect("builder html() called with an unrecognized tag name"),
             attributes: attrs,
             children: inner_builder.children,
         });

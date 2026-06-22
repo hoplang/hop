@@ -6,6 +6,7 @@ use crate::dop::TypedExpr;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
+use crate::html::HtmlElement;
 use pretty::BoxDoc;
 
 pub use crate::hop::typing::typed_node::{TypedArgument, TypedAttribute, TypedLoopSource};
@@ -57,7 +58,7 @@ pub enum InlinedNode {
     },
 
     Html {
-        tag_name: CheapString,
+        element: HtmlElement,
         attributes: Vec<TypedAttribute>,
         children: Vec<InlinedNode>,
     },
@@ -386,11 +387,11 @@ impl InlinedNode {
                 }
             },
             InlinedNode::Html {
-                tag_name,
+                element,
                 attributes,
                 children,
             } => {
-                let tag = BoxDoc::text("<").append(BoxDoc::text(tag_name.as_str()));
+                let tag = BoxDoc::text("<").append(BoxDoc::text(element.as_str()));
                 let tag_with_attrs = if attributes.is_empty() {
                     tag
                 } else if attributes.len() <= 3 {
@@ -413,7 +414,7 @@ impl InlinedNode {
                     tag_with_attrs
                         .append(BoxDoc::text(">"))
                         .append(BoxDoc::text("</"))
-                        .append(BoxDoc::text(tag_name.as_str()))
+                        .append(BoxDoc::text(element.as_str()))
                         .append(BoxDoc::text(">"))
                 } else {
                     tag_with_attrs
@@ -428,7 +429,7 @@ impl InlinedNode {
                         )
                         .append(BoxDoc::line())
                         .append(BoxDoc::text("</"))
-                        .append(BoxDoc::text(tag_name.as_str()))
+                        .append(BoxDoc::text(element.as_str()))
                         .append(BoxDoc::text(">"))
                 }
             }

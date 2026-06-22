@@ -4,7 +4,7 @@ use crate::document_id::DocumentId;
 use crate::dop::ParsedExpr;
 use crate::dop::parsing::ParsedType;
 use crate::dop::parsing::parsed_expr::ParsedMatchPattern;
-use crate::html::is_void_element;
+use crate::html::HtmlElement;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use pretty::BoxDoc;
@@ -96,6 +96,7 @@ pub enum ParsedNode {
     /// E.g. <div>...</div>
     ///      ^^^^^^^^^^^^^^
     Html {
+        element: HtmlElement,
         tag_name: DocumentRange,
         closing_tag_name: Option<DocumentRange>,
         attributes: Vec<ParsedAttribute>,
@@ -395,6 +396,7 @@ impl ParsedNode {
                 })
                 .append(BoxDoc::text("</match>")),
             ParsedNode::Html {
+                element,
                 tag_name,
                 attributes,
                 children,
@@ -425,7 +427,7 @@ impl ParsedNode {
                         .group()
                 };
 
-                if is_void_element(tag_name_str) {
+                if element.is_void() {
                     opening_tag_doc
                 } else if children.is_empty() {
                     opening_tag_doc

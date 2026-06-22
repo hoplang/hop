@@ -9,7 +9,6 @@ use crate::dop::patterns::{EnumMatchArm, Match};
 use crate::hop::inlining::{InlinedComponentDeclaration, InlinedViewDeclaration};
 use crate::hop::inlining::inlined_node::InlinedNode;
 use crate::hop::typing::typed_node::{TypedAttributeValue, TypedLoopSource};
-use crate::html::is_void_element;
 use crate::symbols::var_name::VarName;
 
 use super::ast::{
@@ -114,13 +113,13 @@ impl Compiler {
             }
 
             InlinedNode::Html {
-                tag_name,
+                element,
                 attributes,
                 children,
             } => {
                 output.push(IrStatement::Write {
                     id: self.next_node_id(),
-                    content: format!("<{}", tag_name),
+                    content: format!("<{}", element.as_str()),
                 });
                 for attr in attributes {
                     if let Some(val) = &attr.value {
@@ -137,13 +136,13 @@ impl Compiler {
                     id: self.next_node_id(),
                     content: ">".to_string(),
                 });
-                if !is_void_element(tag_name.as_str()) {
+                if !element.is_void() {
                     for child in children {
                         self.compile_node(child, output);
                     }
                     output.push(IrStatement::Write {
                         id: self.next_node_id(),
-                        content: format!("</{}>", tag_name.as_str()),
+                        content: format!("</{}>", element.as_str()),
                     });
                 }
             }
@@ -1195,6 +1194,27 @@ mod tests {
                   write(">")
                   write("alert(\"hi\")")
                   write("</script>")
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_compile_void_element() {
+        check(
+            build_inlined_view_no_params("MainComp", |t| {
+                t.html("br", vec![], |_| {});
+            }),
+            expect![[r#"
+                -- before --
+                view MainComp() {
+                  <br></br>
+                }
+
+                -- after --
+                view MainComp() {
+                  write("<br")
+                  write(">")
                 }
             "#]],
         );

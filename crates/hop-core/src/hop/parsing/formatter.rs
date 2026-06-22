@@ -11,7 +11,7 @@ use crate::dop::parsing::parsed_expr::{
     Constructor, ParsedExpr, ParsedMatchArm, ParsedMatchPattern,
 };
 use crate::hop::parsing::parsed_node::ParsedLoopSource;
-use crate::html::is_void_element;
+use crate::html::HtmlElement;
 use pretty::{Arena, DocAllocator, DocBuilder};
 use std::collections::VecDeque;
 
@@ -629,22 +629,22 @@ fn format_node<'a>(
                 .append(arena.text("</match>"))
         }
         ParsedNode::Html {
-            tag_name,
+            element,
             attributes,
             children,
             ..
         } => {
-            let tag_name_str = tag_name.as_str();
+            let element_str = element.as_str();
             let opening_tag_doc = if attributes.is_empty() {
                 arena
                     .text("<")
-                    .append(arena.text(tag_name_str))
+                    .append(arena.text(element_str))
                     .append(arena.text(">"))
             } else if attributes.len() == 1 {
                 // Single attribute: keep on same line as tag
                 arena
                     .text("<")
-                    .append(arena.text(tag_name_str))
+                    .append(arena.text(element_str))
                     .append(arena.text(" "))
                     .append(format_attribute(arena, &attributes[0], comments))
                     .append(arena.text(">"))
@@ -658,19 +658,19 @@ fn format_node<'a>(
                 }
                 arena
                     .text("<")
-                    .append(arena.text(tag_name_str))
+                    .append(arena.text(element_str))
                     .append(arena.line().append(attrs_doc).nest(2))
                     .append(arena.line_())
                     .append(arena.text(">"))
                     .group()
             };
 
-            if is_void_element(tag_name_str) {
+            if element.is_void() {
                 opening_tag_doc
             } else if children.is_empty() {
                 // Empty element - put opening and closing tags on separate lines,
                 // except for script/style where whitespace would become content
-                let sep = if tag_name_str == "script" || tag_name_str == "style" {
+                let sep = if *element == HtmlElement::Script || *element == HtmlElement::Style {
                     arena.nil()
                 } else {
                     arena.line()
@@ -678,9 +678,9 @@ fn format_node<'a>(
                 opening_tag_doc
                     .append(sep)
                     .append(arena.text("</"))
-                    .append(arena.text(tag_name_str))
+                    .append(arena.text(element_str))
                     .append(arena.text(">"))
-            } else if tag_name_str == "script" || tag_name_str == "style" {
+            } else if *element == HtmlElement::Script || *element == HtmlElement::Style {
                 // For script/style, preserve text content exactly as written
                 // to avoid altering semantically significant whitespace
                 let mut doc = opening_tag_doc;
@@ -690,13 +690,13 @@ fn format_node<'a>(
                     }
                 }
                 doc.append(arena.text("</"))
-                    .append(arena.text(tag_name_str))
+                    .append(arena.text(element_str))
                     .append(arena.text(">"))
             } else {
                 opening_tag_doc
                     .append(format_children(arena, children, comments))
                     .append(arena.text("</"))
-                    .append(arena.text(tag_name_str))
+                    .append(arena.text(element_str))
                     .append(arena.text(">"))
             }
         }
