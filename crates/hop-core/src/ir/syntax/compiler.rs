@@ -656,7 +656,7 @@ impl Compiler {
                 kind: kind.clone(),
                 id: expr_id,
             },
-            TypedExpr::SlotEmpty => {
+            TypedExpr::FragmentEmpty => {
                 unreachable!(
                     "slots must be eliminated during inlining; recursive components cannot declare slots"
                 );

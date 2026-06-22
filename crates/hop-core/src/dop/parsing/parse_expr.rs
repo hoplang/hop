@@ -339,7 +339,7 @@ pub fn parse_primary(
             value: None,
             range: none_range,
         },
-        Some((Token::TypeSlot, start_range)) => {
+        Some((Token::TypeFragment, start_range)) => {
             expect_token(iter, comments, errors, range, &Token::ColonColon)?;
             let (variant_name, variant_range) = expect_type_name(iter, comments, errors, range)?;
             if variant_name.as_str() != "Empty" {
@@ -349,7 +349,7 @@ pub fn parse_primary(
                 });
                 return None;
             }
-            ParsedExpr::SlotEmpty {
+            ParsedExpr::FragmentEmpty {
                 range: start_range.to(variant_range),
             }
         }

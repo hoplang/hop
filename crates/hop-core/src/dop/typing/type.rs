@@ -21,7 +21,7 @@ pub enum Type {
     Bool,
     Int,
     Float,
-    Slot,
+    Fragment,
     Array(Arc<Type>),
     Option(Arc<Type>),
     Record {
@@ -125,7 +125,7 @@ impl Type {
                 let inner_equatable = inner.as_equatable_type()?;
                 Some(EquatableType::Option(Box::new(inner_equatable)))
             }
-            Type::Slot
+            Type::Fragment
             | Type::Array(_)
             | Type::Record { .. }
             | Type::Enum { .. }
@@ -139,7 +139,7 @@ impl Type {
             Type::Float => Some(ComparableType::Float),
             Type::Bool
             | Type::String
-            | Type::Slot
+            | Type::Fragment
             | Type::Array(_)
             | Type::Option(_)
             | Type::Record { .. }
@@ -156,7 +156,7 @@ impl PartialEq for Type {
             (Type::String, Type::String) => true,
             (Type::Float, Type::Float) => true,
             (Type::Int, Type::Int) => true,
-            (Type::Slot, Type::Slot) => true,
+            (Type::Fragment, Type::Fragment) => true,
             (Type::Array(left), Type::Array(right)) => left == right,
             (Type::Option(left), Type::Option(right)) => left == right,
             (
@@ -213,7 +213,7 @@ impl<'a> Type {
             Type::Float => BoxDoc::text("Float"),
             Type::Int => BoxDoc::text("Int"),
             Type::Bool => BoxDoc::text("Bool"),
-            Type::Slot => BoxDoc::text("Slot"),
+            Type::Fragment => BoxDoc::text("Fragment"),
             Type::Array(elem_type) => BoxDoc::nil()
                 .append(BoxDoc::text("Array["))
                 .append(elem_type.to_doc())
@@ -246,14 +246,14 @@ mod tests {
         assert_eq!(Type::String, Type::String);
         assert_eq!(Type::Int, Type::Int);
         assert_eq!(Type::Float, Type::Float);
-        assert_eq!(Type::Slot, Type::Slot);
+        assert_eq!(Type::Fragment, Type::Fragment);
     }
 
     #[test]
     fn should_not_be_equal_when_primitives_differ() {
         assert_ne!(Type::Bool, Type::Int);
         assert_ne!(Type::String, Type::Float);
-        assert_ne!(Type::Int, Type::Slot);
+        assert_ne!(Type::Int, Type::Fragment);
     }
 
     #[test]

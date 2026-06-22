@@ -1933,7 +1933,7 @@ mod tests {
         check_hover_info(
             indoc! {r#"
                 -- main.hop --
-                component Greeting(name: String, slot: Slot) {
+                component Greeting(name: String, slot: Fragment) {
                   <h1>Hello {name}!</h1>
                   {slot}
                 }

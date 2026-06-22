@@ -588,7 +588,7 @@ mod tests {
             vec![(
                 "main.hop",
                 r#"
-                    component Card(slot: Slot) {
+                    component Card(slot: Fragment) {
                         <div class="card">
                             {slot}
                         </div>
@@ -760,7 +760,7 @@ mod tests {
                         </footer>
                     }
 
-                    component Layout(slot: Slot) {
+                    component Layout(slot: Fragment) {
                         <div class="layout">
                             {slot}
                         </div>

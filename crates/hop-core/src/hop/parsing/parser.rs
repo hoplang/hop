@@ -1379,12 +1379,12 @@ mod tests {
     fn slot_round_trips() {
         accept(
             indoc! {"
-                component Card(slot: Slot) {
+                component Card(slot: Fragment) {
                   <div>{slot}</div>
                 }
             "},
             expect![[r#"
-                component Card(slot: Slot) {
+                component Card(slot: Fragment) {
                   <div>
                     {slot}
                   </div>

@@ -230,9 +230,9 @@ fn typecheck_module(
                         );
 
                         if param.var_name.as_str() == "slot" {
-                            // Validate that children parameter must be typed as Slot
-                            if *param_type != Type::Slot {
-                                errors.push(TypeError::ChildrenMustBeSlot {
+                            // Validate that slot parameter must be typed as Fragment
+                            if *param_type != Type::Fragment {
+                                errors.push(TypeError::SlotMustHaveFragmentType {
                                     range: param.var_name_range.clone(),
                                 });
                             }
@@ -1078,7 +1078,7 @@ fn typecheck_node(
                 });
             }
 
-            // Validate that content is only passed to components with children: Slot parameter
+            // Validate that content is only passed to components with children: Fragment parameter
             if !children.is_empty() && component_slot.is_none() {
                 errors.push(TypeError::ComponentDoesNotAcceptChildren {
                     component: component_name.clone(),
@@ -1086,10 +1086,10 @@ fn typecheck_node(
                 });
             }
 
-            // Check if children are required (Slot without default) but not provided
+            // Check if children are required (slot without default) but not provided
             let children_required = component_slot
                 .as_ref()
-                .is_some_and(|s| *s.typ == Type::Slot && s.default_value.is_none());
+                .is_some_and(|s| *s.typ == Type::Fragment && s.default_value.is_none());
 
             if children_required && children.is_empty() {
                 errors.push(TypeError::MissingChildren {
@@ -1845,7 +1845,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Card(slot: Slot) {
+                component Card(slot: Fragment) {
                     <div>
                         {slot}
                     </div>
@@ -1853,7 +1853,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                <Card {slot: Slot}>
+                <Card {slot: Fragment}>
                   <div>
                     {slot}
                   </div>
@@ -1874,7 +1874,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: `{slot}` can only be used inside a component that declares a `slot: Slot` parameter
+                error: `{slot}` can only be used inside a component that declares a `slot: Fragment` parameter
                   --> main.hop (line 3, col 9)
                 2 |     <div>
                 3 |         {slot}
@@ -1888,7 +1888,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Tree(slot: Slot) {
+                component Tree(slot: Fragment) {
                 	<div>
                 		<Tree>{slot}</Tree>
                 	</div>
@@ -1897,7 +1897,7 @@ mod tests {
             expect![[r#"
                 error: A recursive component cannot declare a slot
                   --> main.hop (line 1, col 16)
-                1 | component Tree(slot: Slot) {
+                1 | component Tree(slot: Fragment) {
                   |                ^^^^
             "#]],
         );
@@ -1908,14 +1908,14 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Card(slot: Slot) {
+                component Card(slot: Fragment) {
                     <div class={slot}></div>
                 }
             "#},
             expect![[r#"
                 error: Undefined variable: slot
                   --> main.hop (line 2, col 17)
-                1 | component Card(slot: Slot) {
+                1 | component Card(slot: Fragment) {
                 2 |     <div class={slot}></div>
                   |                 ^^^^
             "#]],
@@ -1927,23 +1927,23 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Card(slot: Slot) {
-                    <let {content: Slot = slot}>
+                component Card(slot: Fragment) {
+                    <let {content: Fragment = slot}>
                         <div></div>
                     </let>
                 }
             "#},
             expect![[r#"
                 error: Undefined variable: slot
-                  --> main.hop (line 2, col 27)
-                1 | component Card(slot: Slot) {
-                2 |     <let {content: Slot = slot}>
-                  |                           ^^^^
+                  --> main.hop (line 2, col 31)
+                1 | component Card(slot: Fragment) {
+                2 |     <let {content: Fragment = slot}>
+                  |                               ^^^^
 
                 warning: Unused variable content
                   --> main.hop (line 2, col 11)
-                1 | component Card(slot: Slot) {
-                2 |     <let {content: Slot = slot}>
+                1 | component Card(slot: Fragment) {
+                2 |     <let {content: Fragment = slot}>
                   |           ^^^^^^^
             "#]],
         );
@@ -2334,7 +2334,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Component Main does not accept slot content (missing `slot: Slot` parameter)
+                error: Component Main does not accept slot content (missing `slot: Fragment` parameter)
                   --> main.hop (line 6, col 6)
                 5 | component Bar {
                 6 |     <Main>
@@ -2361,7 +2361,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Component Foo does not accept slot content (missing `slot: Slot` parameter)
+                error: Component Foo does not accept slot content (missing `slot: Fragment` parameter)
                   --> main.hop (line 4, col 6)
                 3 | component Bar {
                 4 |     <Foo>
@@ -3163,7 +3163,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Main(slot: Slot) {
+                component Main(slot: Fragment) {
                     <strong>
                         {slot}
                     </strong>
@@ -3177,7 +3177,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                <Main {slot: Slot}>
+                <Main {slot: Fragment}>
                   <strong>
                     {slot}
                   </strong>
@@ -5478,7 +5478,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Separator(slot: Option[Slot] = None) {
+                component Separator(slot: Option[Fragment] = None) {
                   <li>separator</li>
                 }
                 component Main {
@@ -5486,9 +5486,9 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: The slot parameter must be typed as Slot
+                error: The slot parameter must be typed as Fragment
                   --> main.hop (line 1, col 21)
-                1 | component Separator(slot: Option[Slot] = None) {
+                1 | component Separator(slot: Option[Fragment] = None) {
                   |                     ^^^^
             "#]],
         );

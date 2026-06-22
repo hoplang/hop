@@ -37,7 +37,7 @@ pub fn random_value(rng: &mut impl Rng, ty: &Type, examples: Option<&ExamplesAnn
             Value::Int(rng.random_range(min..=max))
         }
         Type::Float => Value::Float(rng.random_range(0.0..100.0)),
-        Type::Slot => Value::String("<span>sample</span>".to_string()),
+        Type::Fragment => Value::String("<span>sample</span>".to_string()),
         Type::Array(inner) => {
             let min = examples.and_then(|e| e.min_len).unwrap_or(0).max(0) as usize;
             let max = examples.and_then(|e| e.max_len).unwrap_or(5).max(0) as usize;

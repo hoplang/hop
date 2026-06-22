@@ -57,7 +57,7 @@ pub enum Token {
     TypeInt,
     TypeFloat,
     TypeBoolean,
-    TypeSlot,
+    TypeFragment,
     TypeArray,
     TypeOption,
 }
@@ -128,7 +128,7 @@ impl fmt::Display for Token {
             Token::TypeInt => write!(f, "Int"),
             Token::TypeFloat => write!(f, "Float"),
             Token::TypeBoolean => write!(f, "Bool"),
-            Token::TypeSlot => write!(f, "Slot"),
+            Token::TypeFragment => write!(f, "Fragment"),
             Token::TypeArray => write!(f, "Array"),
             Token::TypeOption => write!(f, "Option"),
             Token::HashBracket => write!(f, "#["),

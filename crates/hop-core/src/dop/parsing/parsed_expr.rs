@@ -116,8 +116,8 @@ pub enum ParsedExpr {
         range: DocumentRange,
     },
 
-    /// An empty Slot literal, e.g. `Slot::Empty`
-    SlotEmpty { range: DocumentRange },
+    /// An empty Fragment literal, e.g. `Fragment::Empty`
+    FragmentEmpty { range: DocumentRange },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -308,7 +308,7 @@ impl ParsedExpr {
             | ParsedExpr::Match { range, .. }
             | ParsedExpr::OptionLiteral { range, .. }
             | ParsedExpr::MacroInvocation { range, .. }
-            | ParsedExpr::SlotEmpty { range, .. } => range,
+            | ParsedExpr::FragmentEmpty { range, .. } => range,
         }
     }
 
@@ -508,7 +508,7 @@ impl ParsedExpr {
                         .append(BoxDoc::text(")"))
                 }
             }
-            ParsedExpr::SlotEmpty { .. } => BoxDoc::text("Slot::Empty"),
+            ParsedExpr::FragmentEmpty { .. } => BoxDoc::text("Fragment::Empty"),
         }
     }
 }

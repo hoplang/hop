@@ -124,7 +124,7 @@ pub trait Transpiler {
     fn transpile_string_type<'a>(&mut self, arena: &'a Arena<'a>) -> Doc<'a>;
     fn transpile_float_type<'a>(&mut self, arena: &'a Arena<'a>) -> Doc<'a>;
     fn transpile_int_type<'a>(&mut self, arena: &'a Arena<'a>) -> Doc<'a>;
-    fn transpile_slot_type<'a>(&mut self, arena: &'a Arena<'a>) -> Doc<'a>;
+    fn transpile_fragment_type<'a>(&mut self, arena: &'a Arena<'a>) -> Doc<'a>;
     fn transpile_array_type<'a>(&mut self, arena: &'a Arena<'a>, element_type: &'a Type)
     -> Doc<'a>;
     fn transpile_option_type<'a>(&mut self, arena: &'a Arena<'a>, inner_type: &'a Type) -> Doc<'a>;
@@ -136,7 +136,7 @@ pub trait Transpiler {
             Type::String => self.transpile_string_type(arena),
             Type::Float => self.transpile_float_type(arena),
             Type::Int => self.transpile_int_type(arena),
-            Type::Slot => self.transpile_slot_type(arena),
+            Type::Fragment => self.transpile_fragment_type(arena),
             Type::Array(elem) => self.transpile_array_type(arena, elem),
             Type::Option(inner) => self.transpile_option_type(arena, inner),
             Type::Record { name, .. } => self.transpile_named_type(arena, name.as_str()),

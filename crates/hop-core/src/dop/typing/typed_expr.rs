@@ -190,8 +190,8 @@ pub enum TypedExpr {
     /// Int to float conversion, e.g. count.to_float()
     IntToFloat { value: Box<Self> },
 
-    /// An empty Slot literal, e.g. `Slot::Empty`
-    SlotEmpty,
+    /// An empty Fragment literal, e.g. `Fragment::Empty`
+    FragmentEmpty,
 
     /// An asset path, e.g. asset!("/logo.svg").
     /// Resolved to a concrete string literal at IR compile time based on build mode.
@@ -247,7 +247,7 @@ impl TypedExpr {
 
             TypedExpr::ArrayLength { .. } | TypedExpr::FloatToInt { .. } => Arc::new(Type::Int),
 
-            TypedExpr::SlotEmpty => Arc::new(Type::Slot),
+            TypedExpr::FragmentEmpty => Arc::new(Type::Fragment),
         }
     }
 
@@ -256,7 +256,7 @@ impl TypedExpr {
         static BOOL_TYPE: Type = Type::Bool;
         static FLOAT_TYPE: Type = Type::Float;
         static INT_TYPE: Type = Type::Int;
-        static TRUSTED_HTML_TYPE: Type = Type::Slot;
+        static FRAGMENT_TYPE: Type = Type::Fragment;
 
         match self {
             TypedExpr::Var { kind, .. }
@@ -305,7 +305,7 @@ impl TypedExpr {
 
             TypedExpr::ArrayLength { .. } | TypedExpr::FloatToInt { .. } => &INT_TYPE,
 
-            TypedExpr::SlotEmpty => &TRUSTED_HTML_TYPE,
+            TypedExpr::FragmentEmpty => &FRAGMENT_TYPE,
         }
     }
 
@@ -626,7 +626,7 @@ impl TypedExpr {
             TypedExpr::IntToString { value } => value.to_doc().append(BoxDoc::text(".to_string()")),
             TypedExpr::FloatToInt { value } => value.to_doc().append(BoxDoc::text(".to_int()")),
             TypedExpr::IntToFloat { value } => value.to_doc().append(BoxDoc::text(".to_float()")),
-            TypedExpr::SlotEmpty => BoxDoc::text("Slot::Empty"),
+            TypedExpr::FragmentEmpty => BoxDoc::text("Fragment::Empty"),
             TypedExpr::Asset { path } => BoxDoc::text("asset!(\"")
                 .append(BoxDoc::text(path.as_str()))
                 .append(BoxDoc::text("\")")),

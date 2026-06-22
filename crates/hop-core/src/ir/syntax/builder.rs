@@ -851,8 +851,8 @@ impl IrBuilder {
 
     pub fn write_expr(&mut self, expr: IrExpr, escape: bool) {
         assert!(
-            matches!(expr.as_type(), Type::String | Type::Slot),
-            "WriteExpr expects String or Slot, got: {}",
+            matches!(expr.as_type(), Type::String | Type::Fragment),
+            "WriteExpr expects String or Fragment, got: {}",
             expr
         );
         self.statements.push(IrStatement::WriteExpr {

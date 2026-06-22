@@ -33,7 +33,7 @@ pub fn resolve_type(
         ParsedType::Bool { range } => (Arc::new(Type::Bool), range),
         ParsedType::Int { range } => (Arc::new(Type::Int), range),
         ParsedType::Float { range } => (Arc::new(Type::Float), range),
-        ParsedType::Slot { range } => (Arc::new(Type::Slot), range),
+        ParsedType::Fragment { range } => (Arc::new(Type::Fragment), range),
         ParsedType::Option { element, range } => {
             let elem_type = resolve_type(element, type_env, annotations, definition_links)?;
             (Arc::new(Type::Option(elem_type)), range)
@@ -1151,7 +1151,7 @@ pub fn typecheck_expr(
                 }
             }
         }
-        ParsedExpr::SlotEmpty { .. } => Ok(TypedExpr::SlotEmpty),
+        ParsedExpr::FragmentEmpty { .. } => Ok(TypedExpr::FragmentEmpty),
         ParsedExpr::Match { subject, arms, .. } => typecheck_match(
             subject,
             arms,

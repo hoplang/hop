@@ -225,7 +225,7 @@ pub fn next(
                 "Int" => Token::TypeInt,
                 "Float" => Token::TypeFloat,
                 "Bool" => Token::TypeBoolean,
-                "Slot" => Token::TypeSlot,
+                "Fragment" => Token::TypeFragment,
                 "Array" => Token::TypeArray,
                 "Option" => Token::TypeOption,
                 // Reserved keywords
@@ -1017,31 +1017,31 @@ mod tests {
     #[test]
     fn should_accept_type_keywords() {
         check(
-            "String Int Float Bool Slot Array",
+            "String Int Float Bool Fragment Array",
             expect![[r#"
                 token: TypeString
-                String Int Float Bool Slot Array
+                String Int Float Bool Fragment Array
                 ^^^^^^
 
                 token: TypeInt
-                String Int Float Bool Slot Array
+                String Int Float Bool Fragment Array
                        ^^^
 
                 token: TypeFloat
-                String Int Float Bool Slot Array
+                String Int Float Bool Fragment Array
                            ^^^^^
 
                 token: TypeBoolean
-                String Int Float Bool Slot Array
+                String Int Float Bool Fragment Array
                                  ^^^^
 
-                token: TypeSlot
-                String Int Float Bool Slot Array
-                                      ^^^^
+                token: TypeFragment
+                String Int Float Bool Fragment Array
+                                      ^^^^^^^^
 
                 token: TypeArray
-                String Int Float Bool Slot Array
-                                           ^^^^^
+                String Int Float Bool Fragment Array
+                                               ^^^^^
             "#]],
         );
     }

@@ -50,7 +50,7 @@ pub enum TypeError {
         range: DocumentRange,
     },
 
-    #[error("Component {component} does not accept slot content (missing `slot: Slot` parameter)")]
+    #[error("Component {component} does not accept slot content (missing `slot: Fragment` parameter)")]
     ComponentDoesNotAcceptChildren {
         component: TypeName,
         range: DocumentRange,
@@ -65,14 +65,14 @@ pub enum TypeError {
     #[error("The slot argument cannot be passed explicitly")]
     ChildrenArgNotAllowed { range: DocumentRange },
 
-    #[error("The slot parameter must be typed as Slot")]
-    ChildrenMustBeSlot { range: DocumentRange },
+    #[error("The slot parameter must be typed as Fragment")]
+    SlotMustHaveFragmentType { range: DocumentRange },
 
     #[error("A recursive component cannot declare a slot")]
     RecursiveComponentCannotHaveSlot { range: DocumentRange },
 
     #[error(
-        "`{{slot}}` can only be used inside a component that declares a `slot: Slot` parameter"
+        "`{{slot}}` can only be used inside a component that declares a `slot: Fragment` parameter"
     )]
     SlotOutsideSlottedComponent { range: DocumentRange },
 
@@ -485,7 +485,7 @@ impl TypeError {
             | TypeError::ComponentDoesNotAcceptChildren { range, .. }
             | TypeError::MissingChildren { range, .. }
             | TypeError::ChildrenArgNotAllowed { range, .. }
-            | TypeError::ChildrenMustBeSlot { range, .. }
+            | TypeError::SlotMustHaveFragmentType { range, .. }
             | TypeError::RecursiveComponentCannotHaveSlot { range, .. }
             | TypeError::SlotOutsideSlottedComponent { range, .. }
             | TypeError::ImportCycle { range, .. }

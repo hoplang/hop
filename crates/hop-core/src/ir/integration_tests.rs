@@ -6953,7 +6953,7 @@ mod tests {
             indoc! {r#"
                 component Card(
                   title: String,
-                  slot: Slot,
+                  slot: Fragment,
                 ) {
                   <div class="card">
                     <h2>
@@ -7017,13 +7017,13 @@ mod tests {
     fn component_children_forwarded_to_another_component() {
         check(
             indoc! {r#"
-                component Inner(slot: Slot) {
+                component Inner(slot: Fragment) {
                   <div class="inner">
                     {slot}
                   </div>
                 }
 
-                component Outer(slot: Slot) {
+                component Outer(slot: Fragment) {
                   <div class="outer">
                     <Inner>
                       {slot}
@@ -7100,7 +7100,7 @@ mod tests {
                   </footer>
                 }
 
-                component Layout(slot: Slot) {
+                component Layout(slot: Fragment) {
                   <div class="layout">
                     {slot}
                   </div>
@@ -7179,7 +7179,7 @@ mod tests {
     fn component_children_used_twice() {
         check(
             indoc! {r#"
-                component Repeat(slot: Slot) {
+                component Repeat(slot: Fragment) {
                   <div class="first">
                     {slot}
                   </div>
@@ -7762,7 +7762,7 @@ mod tests {
             indoc! {r#"
                 component Card(
                   title: String,
-                  slot: Slot = Slot::Empty,
+                  slot: Fragment = Fragment::Empty,
                 ) {
                   <div class="card">
                     <h2>
@@ -7820,7 +7820,7 @@ mod tests {
             indoc! {r#"
                 component Card(
                   title: String,
-                  slot: Slot = Slot::Empty,
+                  slot: Fragment = Fragment::Empty,
                 ) {
                   <div class="card">
                     <h2>

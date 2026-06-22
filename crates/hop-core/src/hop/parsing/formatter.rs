@@ -835,7 +835,7 @@ fn format_type<'a>(arena: &'a Arena<'a>, ty: &ParsedType) -> DocBuilder<'a, Aren
         ParsedType::Bool { .. } => arena.text("Bool"),
         ParsedType::Int { .. } => arena.text("Int"),
         ParsedType::Float { .. } => arena.text("Float"),
-        ParsedType::Slot { .. } => arena.text("Slot"),
+        ParsedType::Fragment { .. } => arena.text("Fragment"),
         ParsedType::Option { element, .. } => arena
             .text("Option[")
             .append(format_type(arena, element))
@@ -1109,7 +1109,7 @@ fn format_expr<'a>(
                     .append(arena.text(")"))
             }
         }
-        ParsedExpr::SlotEmpty { .. } => arena.text("Slot::Empty"),
+        ParsedExpr::FragmentEmpty { .. } => arena.text("Fragment::Empty"),
     }
 }
 

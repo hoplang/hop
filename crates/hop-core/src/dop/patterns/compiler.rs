@@ -455,7 +455,7 @@ impl<'a> Compiler<'a> {
             Type::String
             | Type::Int
             | Type::Float
-            | Type::Slot
+            | Type::Fragment
             | Type::Array(_)
             | Type::Component { .. } => {
                 panic!("pattern matching not supported for this type")

@@ -14,8 +14,8 @@ use crate::symbols::var_name::VarName;
 pub struct RustTranspiler {
     /// Tracks whether escape_html function is used during transpilation
     needs_escape_html: bool,
-    /// Tracks whether Slot type is used during transpilation
-    needs_slot: bool,
+    /// Tracks whether Fragment type is used during transpilation
+    needs_fragment: bool,
     /// Set of type names that are self-referential and need Box indirection
     recursive_types: std::collections::HashSet<TypeName>,
 }
@@ -24,7 +24,7 @@ impl RustTranspiler {
     pub fn new() -> Self {
         Self {
             needs_escape_html: false,
-            needs_slot: false,
+            needs_fragment: false,
             recursive_types: std::collections::HashSet::new(),
         }
     }
@@ -217,9 +217,9 @@ impl RustTranspiler {
             Type::String => arena.text("&str"),
             Type::Float => arena.text("f64"),
             Type::Int => arena.text("i64"),
-            Type::Slot => {
-                self.needs_slot = true;
-                arena.text("&Slot")
+            Type::Fragment => {
+                self.needs_fragment = true;
+                arena.text("&Fragment")
             }
             Type::Array(elem) => arena
                 .text("&[")
@@ -246,7 +246,7 @@ impl Transpiler for RustTranspiler {
     fn transpile_module(&mut self, module: &IrModule) -> String {
         // Reset tracking flags for this module
         self.needs_escape_html = false;
-        self.needs_slot = false;
+        self.needs_fragment = false;
         self.recursive_types = Self::compute_recursive_types(module);
 
         let arena = &Arena::new();
@@ -390,16 +390,16 @@ impl Transpiler for RustTranspiler {
             result = escape_fn.append(result);
         }
 
-        // Prepend Slot type definition if needed (after transpilation determined it's used)
-        if self.needs_slot {
-            let slot = arena
+        // Prepend Fragment type definition if needed (after transpilation determined it's used)
+        if self.needs_fragment {
+            let fragment = arena
                 .nil()
                 .append(arena.text("#[derive(Clone, Debug)]"))
                 .append(arena.line())
-                .append(arena.text("pub struct Slot(pub String);"))
+                .append(arena.text("pub struct Fragment(pub String);"))
                 .append(arena.line())
                 .append(arena.line());
-            result = slot.append(result);
+            result = fragment.append(result);
         }
 
         // Prepend View trait definition
@@ -644,7 +644,7 @@ impl Transpiler for RustTranspiler {
                     .text("output.push_str(&")
                     .append(self.transpile_expr(arena, expr))
                     .append(arena.text(");")),
-                Type::Slot => arena
+                Type::Fragment => arena
                     .text("output.push_str(&")
                     .append(self.transpile_expr(arena, expr))
                     .append(arena.text(".0);")),
@@ -942,9 +942,9 @@ impl Transpiler for RustTranspiler {
         arena.text("i64")
     }
 
-    fn transpile_slot_type<'a>(&mut self, arena: &'a Arena<'a>) -> Doc<'a> {
-        self.needs_slot = true;
-        arena.text("Slot")
+    fn transpile_fragment_type<'a>(&mut self, arena: &'a Arena<'a>) -> Doc<'a> {
+        self.needs_fragment = true;
+        arena.text("Fragment")
     }
 
     fn transpile_array_type<'a>(

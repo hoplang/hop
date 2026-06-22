@@ -18,7 +18,7 @@ pub fn parse_type(
         Some((Token::TypeInt, type_range)) => Some(ParsedType::Int { range: type_range }),
         Some((Token::TypeFloat, type_range)) => Some(ParsedType::Float { range: type_range }),
         Some((Token::TypeBoolean, type_range)) => Some(ParsedType::Bool { range: type_range }),
-        Some((Token::TypeSlot, type_range)) => Some(ParsedType::Slot { range: type_range }),
+        Some((Token::TypeFragment, type_range)) => Some(ParsedType::Fragment { range: type_range }),
         Some((Token::TypeArray, type_array)) => {
             let left_bracket = expect_token(iter, comments, errors, range, &Token::LeftBracket)?;
             let element = parse_type(iter, comments, errors, range)?;
