@@ -1,7 +1,8 @@
 use crate::asset_rewriter::AssetRewriter;
 use crate::document_id::DocumentId;
-use crate::hop::transform::{
-    DoctypeInjector, HtmlStructureInjector, Inliner, LinkRewriter, MetaInjector, ScriptInjector,
+use crate::hop::inlining::Inliner;
+use crate::hop::inlining::transform::{
+    DoctypeInjector, HtmlStructureInjector, LinkRewriter, MetaInjector, ScriptInjector,
     TailwindInjection, TailwindInjector,
 };
 use crate::hop::typing::typed_ast::TypedAst;
@@ -56,7 +57,7 @@ pub fn orchestrate(
     // Take views from all modules (sorted by module ID for deterministic order)
     let mut document_ids: Vec<_> = typed_asts.keys().cloned().collect();
     document_ids.sort();
-    let mut typed_views: Vec<_> = document_ids
+    let typed_views: Vec<_> = document_ids
         .iter()
         .flat_map(|id| {
             typed_asts[id]
@@ -71,11 +72,12 @@ pub fn orchestrate(
         .collect();
 
     // Inline component references into the views
-    let component_declarations = Inliner::inline_ast_views(typed_asts, &mut typed_views);
+    let (inlined_views, component_declarations) =
+        Inliner::inline_ast_views(typed_asts, &typed_views);
 
     // Transform and compile each view
-    let mut views = Vec::with_capacity(typed_views.len());
-    for mut e in typed_views {
+    let mut views = Vec::with_capacity(inlined_views.len());
+    for mut e in inlined_views {
         if !options.skip_html_structure {
             DoctypeInjector::run(&mut e);
             HtmlStructureInjector::run(&mut e);

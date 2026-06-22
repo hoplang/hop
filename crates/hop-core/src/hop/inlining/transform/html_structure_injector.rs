@@ -1,6 +1,6 @@
 use crate::{
     document::CheapString,
-    hop::typing::{typed_ast::TypedViewDeclaration, typed_node::TypedNode},
+    hop::inlining::{InlinedNode, InlinedViewDeclaration},
 };
 
 /// Transform that injects proper HTML structure (<html>, <head>, <body>)
@@ -9,17 +9,17 @@ pub struct HtmlStructureInjector;
 
 impl HtmlStructureInjector {
     /// Check if nodes contain an HTML element
-    fn has_html_element(nodes: &[TypedNode]) -> bool {
+    fn has_html_element(nodes: &[InlinedNode]) -> bool {
         nodes.iter().any(
-            |node| matches!(node, TypedNode::Html { tag_name, .. } if tag_name.as_str() == "html"),
+            |node| matches!(node, InlinedNode::Html { tag_name, .. } if tag_name.as_str() == "html"),
         )
     }
 
     /// Check if nodes contain a head element (recursive search)
-    fn has_head_element(nodes: &[TypedNode]) -> bool {
+    fn has_head_element(nodes: &[InlinedNode]) -> bool {
         for node in nodes {
             match node {
-                TypedNode::Html {
+                InlinedNode::Html {
                     tag_name, children, ..
                 } => {
                     if tag_name.as_str() == "head" {
@@ -30,9 +30,9 @@ impl HtmlStructureInjector {
                         return true;
                     }
                 }
-                TypedNode::If { children, .. }
-                | TypedNode::For { children, .. }
-                | TypedNode::Let { children, .. }
+                InlinedNode::If { children, .. }
+                | InlinedNode::For { children, .. }
+                | InlinedNode::Let { children, .. }
                     if Self::has_head_element(children) =>
                 {
                     return true;
@@ -44,10 +44,10 @@ impl HtmlStructureInjector {
     }
 
     /// Check if nodes contain a body element (recursive search)
-    fn has_body_element(nodes: &[TypedNode]) -> bool {
+    fn has_body_element(nodes: &[InlinedNode]) -> bool {
         for node in nodes {
             match node {
-                TypedNode::Html {
+                InlinedNode::Html {
                     tag_name, children, ..
                 } => {
                     if tag_name.as_str() == "body" {
@@ -58,9 +58,9 @@ impl HtmlStructureInjector {
                         return true;
                     }
                 }
-                TypedNode::If { children, .. }
-                | TypedNode::For { children, .. }
-                | TypedNode::Let { children, .. }
+                InlinedNode::If { children, .. }
+                | InlinedNode::For { children, .. }
+                | InlinedNode::Let { children, .. }
                     if Self::has_body_element(children) =>
                 {
                     return true;
@@ -72,8 +72,8 @@ impl HtmlStructureInjector {
     }
 
     /// Create an empty HTML element
-    fn create_html_element(tag_name: &str, children: Vec<TypedNode>) -> TypedNode {
-        TypedNode::Html {
+    fn create_html_element(tag_name: &str, children: Vec<InlinedNode>) -> InlinedNode {
+        InlinedNode::Html {
             tag_name: CheapString::new(tag_name.to_string()),
             attributes: Vec::new(),
             children,
@@ -81,14 +81,14 @@ impl HtmlStructureInjector {
     }
 
     /// Find position after DOCTYPE and leading whitespace
-    fn find_insert_position(nodes: &[TypedNode]) -> usize {
+    fn find_insert_position(nodes: &[InlinedNode]) -> usize {
         let mut pos = 0;
         for (i, node) in nodes.iter().enumerate() {
             match node {
-                TypedNode::Doctype { .. } => {
+                InlinedNode::Doctype { .. } => {
                     pos = i + 1;
                 }
-                TypedNode::Text { value, .. } if value.as_str().trim().is_empty() => {
+                InlinedNode::Text { value, .. } if value.as_str().trim().is_empty() => {
                     // Skip whitespace if we haven't found non-whitespace content yet
                     if pos == i {
                         pos = i + 1;
@@ -103,7 +103,7 @@ impl HtmlStructureInjector {
         pos
     }
 
-    pub fn run(view: &mut TypedViewDeclaration) {
+    pub fn run(view: &mut InlinedViewDeclaration) {
         // If there's no <html> element, wrap everything in proper structure
         if !Self::has_html_element(&view.children) {
             // Find where to insert (after DOCTYPE and leading whitespace)
@@ -150,11 +150,11 @@ impl HtmlStructureInjector {
     }
 
     /// Recursively ensure head and body exist within HTML elements
-    fn ensure_head_and_body_in_html(nodes: Vec<TypedNode>) -> Vec<TypedNode> {
+    fn ensure_head_and_body_in_html(nodes: Vec<InlinedNode>) -> Vec<InlinedNode> {
         nodes
             .into_iter()
             .map(|node| match node {
-                TypedNode::Html {
+                InlinedNode::Html {
                     tag_name,
                     attributes,
                     children,
@@ -174,41 +174,41 @@ impl HtmlStructureInjector {
                             new_children.push(Self::create_html_element("body", children));
                         }
 
-                        TypedNode::Html {
+                        InlinedNode::Html {
                             tag_name,
                             attributes,
                             children: new_children,
                         }
                     } else {
                         // Recursively process other HTML elements
-                        TypedNode::Html {
+                        InlinedNode::Html {
                             tag_name,
                             attributes,
                             children: Self::ensure_head_and_body_in_html(children),
                         }
                     }
                 }
-                TypedNode::If {
+                InlinedNode::If {
                     condition,
                     children,
-                } => TypedNode::If {
+                } => InlinedNode::If {
                     condition,
                     children: Self::ensure_head_and_body_in_html(children),
                 },
-                TypedNode::For {
+                InlinedNode::For {
                     var_name,
                     source,
                     children,
-                } => TypedNode::For {
+                } => InlinedNode::For {
                     var_name,
                     source,
                     children: Self::ensure_head_and_body_in_html(children),
                 },
-                TypedNode::Let {
+                InlinedNode::Let {
                     var,
                     value,
                     children,
-                } => TypedNode::Let {
+                } => InlinedNode::Let {
                     var,
                     value,
                     children: Self::ensure_head_and_body_in_html(children),

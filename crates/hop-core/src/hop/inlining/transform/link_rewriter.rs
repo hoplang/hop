@@ -1,10 +1,8 @@
 use crate::{
     document::CheapString,
     dop::patterns::Match,
-    hop::typing::{
-        typed_ast::{TypedComponentDeclaration, TypedViewDeclaration},
-        typed_node::{TypedAttribute, TypedAttributeValue, TypedNode},
-    },
+    hop::inlining::{InlinedComponentDeclaration, InlinedNode, InlinedViewDeclaration},
+    hop::typing::typed_node::{TypedAttribute, TypedAttributeValue},
 };
 
 /// Transform that replaces all `href` attributes on `<a>` elements with `"#"`.
@@ -12,11 +10,11 @@ use crate::{
 pub struct LinkRewriter;
 
 impl LinkRewriter {
-    fn rewrite_links(nodes: Vec<TypedNode>) -> Vec<TypedNode> {
+    fn rewrite_links(nodes: Vec<InlinedNode>) -> Vec<InlinedNode> {
         nodes
             .into_iter()
             .map(|node| match node {
-                TypedNode::Html {
+                InlinedNode::Html {
                     tag_name,
                     attributes,
                     children,
@@ -41,58 +39,47 @@ impl LinkRewriter {
                         attributes
                     };
 
-                    TypedNode::Html {
+                    InlinedNode::Html {
                         tag_name,
                         attributes: new_attributes,
                         children: Self::rewrite_links(children),
                     }
                 }
-                TypedNode::If {
+                InlinedNode::If {
                     condition,
                     children,
-                } => TypedNode::If {
+                } => InlinedNode::If {
                     condition,
                     children: Self::rewrite_links(children),
                 },
-                TypedNode::For {
+                InlinedNode::For {
                     var_name,
                     source,
                     children,
-                } => TypedNode::For {
+                } => InlinedNode::For {
                     var_name,
                     source,
                     children: Self::rewrite_links(children),
                 },
-                TypedNode::Let {
+                InlinedNode::Let {
                     var,
                     value,
                     children,
-                } => TypedNode::Let {
+                } => InlinedNode::Let {
                     var,
                     value,
                     children: Self::rewrite_links(children),
                 },
-                TypedNode::LetRecordDestructure {
+                InlinedNode::LetRecordDestructure {
                     subject,
                     bindings,
                     children,
-                } => TypedNode::LetRecordDestructure {
+                } => InlinedNode::LetRecordDestructure {
                     subject,
                     bindings,
                     children: Self::rewrite_links(children),
                 },
-                TypedNode::ComponentInvocation {
-                    component_name,
-                    component_type,
-                    args,
-                    children,
-                } => TypedNode::ComponentInvocation {
-                    component_name,
-                    component_type,
-                    args,
-                    children: Self::rewrite_links(children),
-                },
-                TypedNode::Match { match_ } => TypedNode::Match {
+                InlinedNode::Match { match_ } => InlinedNode::Match {
                     match_: match match_ {
                         Match::Enum { subject, arms } => Match::Enum {
                             subject,
@@ -127,19 +114,19 @@ impl LinkRewriter {
                         },
                     },
                 },
-                node @ (TypedNode::Text { .. }
-                | TypedNode::TextExpression { .. }
-                | TypedNode::Slot
-                | TypedNode::Doctype { .. }) => node,
+                node @ (InlinedNode::Text { .. }
+                | InlinedNode::TextExpression { .. }
+                | InlinedNode::ComponentInvocation { .. }
+                | InlinedNode::Doctype { .. }) => node,
             })
             .collect()
     }
 
-    pub fn run(view: &mut TypedViewDeclaration) {
+    pub fn run(view: &mut InlinedViewDeclaration) {
         view.children = Self::rewrite_links(std::mem::take(&mut view.children));
     }
 
-    pub fn run_component(component: &mut TypedComponentDeclaration) {
+    pub fn run_component(component: &mut InlinedComponentDeclaration) {
         component.children = Self::rewrite_links(std::mem::take(&mut component.children));
     }
 }
@@ -147,10 +134,10 @@ impl LinkRewriter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hop::transform::builder::build_typed_view_no_params;
+    use crate::hop::inlining::builder::build_inlined_view_no_params;
     use expect_test::{Expect, expect};
 
-    fn format_view_children(view: &TypedViewDeclaration) -> String {
+    fn format_view_children(view: &InlinedViewDeclaration) -> String {
         view.children
             .iter()
             .map(|child| child.to_string())
@@ -158,7 +145,7 @@ mod tests {
             .join("\n")
     }
 
-    fn check_link_rewrite(mut view: TypedViewDeclaration, expected: Expect) {
+    fn check_link_rewrite(mut view: InlinedViewDeclaration, expected: Expect) {
         let before = format_view_children(&view);
         LinkRewriter::run(&mut view);
         let after = format_view_children(&view);
@@ -168,7 +155,7 @@ mod tests {
 
     #[test]
     fn should_rewrite_href_to_hash() {
-        let view = build_typed_view_no_params("Nav", |t| {
+        let view = build_inlined_view_no_params("Nav", |t| {
             t.html("a", vec![("href", t.attr_str("/about"))], |t| {
                 t.text("About");
             });
@@ -191,7 +178,7 @@ mod tests {
 
     #[test]
     fn should_rewrite_nested_links() {
-        let view = build_typed_view_no_params("Nav", |t| {
+        let view = build_inlined_view_no_params("Nav", |t| {
             t.html("nav", vec![], |t| {
                 t.html("a", vec![("href", t.attr_str("/home"))], |t| {
                     t.text("Home");
@@ -229,7 +216,7 @@ mod tests {
 
     #[test]
     fn should_preserve_other_attributes() {
-        let view = build_typed_view_no_params("Nav", |t| {
+        let view = build_inlined_view_no_params("Nav", |t| {
             t.html(
                 "a",
                 vec![
@@ -258,58 +245,11 @@ mod tests {
     }
 
     #[test]
-    fn should_rewrite_links_inside_component_reference() {
-        use crate::dop::Type;
-        use crate::symbols::type_name::TypeName;
-        use std::sync::Arc;
-
-        let mut view = build_typed_view_no_params("Page", |t| {
-            t.html("div", vec![], |_t| {});
-        });
-        // Replace the div with a ComponentInvocation containing a link
-        view.children = vec![TypedNode::ComponentInvocation {
-            component_name: TypeName::new("Nav").unwrap(),
-            component_type: Arc::new(Type::String),
-            args: vec![],
-            children: vec![TypedNode::Html {
-                tag_name: CheapString::new("a".to_string()),
-                attributes: vec![TypedAttribute {
-                    name: CheapString::new("href".to_string()),
-                    value: Some(TypedAttributeValue::String(CheapString::new(
-                        "/about".to_string(),
-                    ))),
-                }],
-                children: vec![TypedNode::Text {
-                    value: CheapString::new("About".to_string()),
-                }],
-            }],
-        }];
-
-        check_link_rewrite(
-            view,
-            expect![[r##"
-                -- before --
-                <Nav>
-                  <a href="/about">
-                    About
-                  </a>
-                </Nav>
-                -- after --
-                <Nav>
-                  <a href="#">
-                    About
-                  </a>
-                </Nav>
-            "##]],
-        );
-    }
-
-    #[test]
     fn should_rewrite_links_inside_bool_match() {
         use crate::dop::Type;
 
         let view =
-            crate::hop::transform::builder::build_typed_ast("Page", [("flag", Type::Bool)], |t| {
+            crate::hop::inlining::builder::build_inlined_view("Page", [("flag", Type::Bool)], |t| {
                 t.bool_match_node(
                     t.var_expr("flag"),
                     |t| {
@@ -360,7 +300,7 @@ mod tests {
 
     #[test]
     fn should_not_modify_non_link_elements() {
-        let view = build_typed_view_no_params("Page", |t| {
+        let view = build_inlined_view_no_params("Page", |t| {
             t.html("div", vec![("class", t.attr_str("container"))], |t| {
                 t.html("p", vec![], |t| {
                     t.text("Hello");

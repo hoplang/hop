@@ -1,6 +1,8 @@
 use crate::document_id::DocumentId;
 use crate::dop::patterns::{EnumMatchArm, Match};
 use crate::dop::Type;
+use super::inlined_ast::{InlinedComponentDeclaration, InlinedViewDeclaration};
+use super::inlined_node::InlinedNode;
 use crate::hop::typing::typed_ast::{TypedAst, TypedComponentDeclaration, TypedViewDeclaration};
 use crate::hop::typing::typed_node::{TypedArgument, TypedNode};
 use crate::symbols::type_name::TypeName;
@@ -18,13 +20,14 @@ impl Inliner {
     /// Inline all view declarations found in the ASTs.
     pub fn inline_ast_views(
         asts: &HashMap<DocumentId, TypedAst>,
-        views: &mut [TypedViewDeclaration],
-    ) -> Vec<TypedComponentDeclaration> {
+        views: &[TypedViewDeclaration],
+    ) -> (Vec<InlinedViewDeclaration>, Vec<InlinedComponentDeclaration>) {
         let mut state = InlinerState::new(asts);
-        for ep in views.iter_mut() {
-            state.inline_view(ep);
-        }
-        state.component_defs
+        let inlined_views = views
+            .iter()
+            .map(|view| state.inline_view(view))
+            .collect();
+        (inlined_views, state.component_defs)
     }
 }
 
@@ -37,7 +40,7 @@ struct InlinerState<'a> {
     /// Component names whose definitions have already been emitted
     emitted_defs: HashSet<TypeName>,
     /// Collected component definitions for recursive components
-    component_defs: Vec<TypedComponentDeclaration>,
+    component_defs: Vec<InlinedComponentDeclaration>,
 }
 
 impl<'a> InlinerState<'a> {
@@ -82,12 +85,10 @@ impl<'a> InlinerState<'a> {
         // Inline the component body - self-references will become ComponentInvocation
         let inlined_body = self.inline_nodes(&component.children, None);
 
-        self.component_defs.push(TypedComponentDeclaration {
+        self.component_defs.push(InlinedComponentDeclaration {
             component_name: component.component_name.clone(),
             params: component.params.clone(),
             children: inlined_body,
-            is_recursive: true,
-            slot: component.slot.clone(),
         });
     }
 
@@ -122,9 +123,12 @@ impl<'a> InlinerState<'a> {
             .collect()
     }
 
-    fn inline_view(&mut self, view: &mut TypedViewDeclaration) {
-        let old_children = std::mem::take(&mut view.children);
-        view.children = self.inline_nodes(&old_children, None);
+    fn inline_view(&mut self, view: &TypedViewDeclaration) -> InlinedViewDeclaration {
+        InlinedViewDeclaration {
+            name: view.name.clone(),
+            params: view.params.clone(),
+            children: self.inline_nodes(&view.children, None),
+        }
     }
 
     /// Inline a component reference, pushing results to output
@@ -134,13 +138,13 @@ impl<'a> InlinerState<'a> {
         component_type: &Type,
         args: &[TypedArgument],
         slot_children: &[TypedNode],
-        parent_slot_content: Option<&[TypedNode]>,
-        output: &mut Vec<TypedNode>,
+        parent_slot_content: Option<&[InlinedNode]>,
+        output: &mut Vec<InlinedNode>,
     ) {
         let has_slot = component.slot.is_some();
 
         // Inline slot_children in parent context
-        let inlined_slot_content: Option<Vec<TypedNode>> = if has_slot && !slot_children.is_empty()
+        let inlined_slot_content: Option<Vec<InlinedNode>> = if has_slot && !slot_children.is_empty()
         {
             let content = self.inline_nodes(slot_children, parent_slot_content);
             Some(content)
@@ -161,7 +165,7 @@ impl<'a> InlinerState<'a> {
             // Nest single-binding Lets from inside out
             let mut children = inlined_children;
             for binding in bindings.into_iter().rev() {
-                children = vec![TypedNode::Let {
+                children = vec![InlinedNode::Let {
                     var: binding.name,
                     value: binding.expr,
                     children,
@@ -175,8 +179,8 @@ impl<'a> InlinerState<'a> {
     fn inline_nodes(
         &mut self,
         nodes: &[TypedNode],
-        slot_content: Option<&[TypedNode]>,
-    ) -> Vec<TypedNode> {
+        slot_content: Option<&[InlinedNode]>,
+    ) -> Vec<InlinedNode> {
         let mut output = Vec::with_capacity(nodes.len());
         for node in nodes {
             self.inline_node(node, slot_content, &mut output);
@@ -188,21 +192,22 @@ impl<'a> InlinerState<'a> {
     fn inline_node(
         &mut self,
         node: &TypedNode,
-        slot_content: Option<&[TypedNode]>,
-        output: &mut Vec<TypedNode>,
+        slot_content: Option<&[InlinedNode]>,
+        output: &mut Vec<InlinedNode>,
     ) {
         match node {
-            TypedNode::Slot => match slot_content {
-                Some(content) => output.extend_from_slice(content),
-                None => output.push(TypedNode::Slot),
-            },
+            TypedNode::Slot => {
+                let content = slot_content
+                    .expect("slot node requires slot content in scope after inlining");
+                output.extend_from_slice(content);
+            }
             TypedNode::ComponentInvocation {
                 component_name,
                 component_type,
                 args,
                 children,
             } => {
-                let Type::Component { module, slot, .. } = component_type.as_ref() else {
+                let Type::Component { module, .. } = component_type.as_ref() else {
                     unreachable!("ComponentInvocation must have Component type");
                 };
 
@@ -212,18 +217,9 @@ impl<'a> InlinerState<'a> {
 
                     let resolved_args = Self::resolve_call_args(component_type, args);
 
-                    // Inline slot children in the parent context
-                    let inlined_children = if slot.is_some() && !children.is_empty() {
-                        self.inline_nodes(children, slot_content)
-                    } else {
-                        vec![]
-                    };
-
-                    output.push(TypedNode::ComponentInvocation {
+                    output.push(InlinedNode::ComponentInvocation {
                         component_name: component_name.clone(),
-                        component_type: component_type.clone(),
                         args: resolved_args,
-                        children: inlined_children,
                     });
                 } else {
                     let component = self
@@ -249,7 +245,7 @@ impl<'a> InlinerState<'a> {
                 attributes,
                 children,
             } => {
-                output.push(TypedNode::Html {
+                output.push(InlinedNode::Html {
                     tag_name: tag_name.clone(),
                     attributes: attributes.clone(),
                     children: self.inline_nodes(children, slot_content),
@@ -260,7 +256,7 @@ impl<'a> InlinerState<'a> {
                 condition,
                 children,
             } => {
-                output.push(TypedNode::If {
+                output.push(InlinedNode::If {
                     condition: condition.clone(),
                     children: self.inline_nodes(children, slot_content),
                 });
@@ -271,7 +267,7 @@ impl<'a> InlinerState<'a> {
                 source,
                 children,
             } => {
-                output.push(TypedNode::For {
+                output.push(InlinedNode::For {
                     var_name: var_name.clone(),
                     source: source.clone(),
                     children: self.inline_nodes(children, slot_content),
@@ -279,19 +275,19 @@ impl<'a> InlinerState<'a> {
             }
 
             TypedNode::Text { value } => {
-                output.push(TypedNode::Text {
+                output.push(InlinedNode::Text {
                     value: value.clone(),
                 });
             }
 
             TypedNode::TextExpression { expression } => {
-                output.push(TypedNode::TextExpression {
+                output.push(InlinedNode::TextExpression {
                     expression: expression.clone(),
                 });
             }
 
             TypedNode::Doctype { value } => {
-                output.push(TypedNode::Doctype {
+                output.push(InlinedNode::Doctype {
                     value: value.clone(),
                 });
             }
@@ -334,7 +330,7 @@ impl<'a> InlinerState<'a> {
                             .collect(),
                     },
                 };
-                output.push(TypedNode::Match {
+                output.push(InlinedNode::Match {
                     match_: inlined_match,
                 });
             }
@@ -344,7 +340,7 @@ impl<'a> InlinerState<'a> {
                 value,
                 children,
             } => {
-                output.push(TypedNode::Let {
+                output.push(InlinedNode::Let {
                     var: var.clone(),
                     value: value.clone(),
                     children: self.inline_nodes(children, slot_content),
@@ -356,7 +352,7 @@ impl<'a> InlinerState<'a> {
                 bindings,
                 children,
             } => {
-                output.push(TypedNode::LetRecordDestructure {
+                output.push(InlinedNode::LetRecordDestructure {
                     subject: subject.clone(),
                     bindings: bindings.clone(),
                     children: self.inline_nodes(children, slot_content),
@@ -425,13 +421,13 @@ mod tests {
 
         let mut document_ids: Vec<_> = typed_asts.keys().collect();
         document_ids.sort();
-        let mut views: Vec<_> = document_ids
+        let views: Vec<_> = document_ids
             .iter()
             .flat_map(|id| typed_asts[*id].get_view_declarations())
             .cloned()
             .collect();
 
-        let component_defs = Inliner::inline_ast_views(&typed_asts, &mut views);
+        let (views, component_defs) = Inliner::inline_ast_views(&typed_asts, &views);
 
         let mut parts: Vec<String> = Vec::new();
         for def in &component_defs {

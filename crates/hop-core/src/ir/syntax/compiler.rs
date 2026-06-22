@@ -6,8 +6,9 @@ use crate::document_id::DocumentId;
 use crate::dop::Type;
 use crate::dop::TypedExpr;
 use crate::dop::patterns::{EnumMatchArm, Match};
-use crate::hop::typing::typed_ast::{TypedComponentDeclaration, TypedViewDeclaration};
-use crate::hop::typing::typed_node::{TypedAttributeValue, TypedLoopSource, TypedNode};
+use crate::hop::inlining::{InlinedComponentDeclaration, InlinedViewDeclaration};
+use crate::hop::inlining::inlined_node::InlinedNode;
+use crate::hop::typing::typed_node::{TypedAttributeValue, TypedLoopSource};
 use crate::html::is_void_element;
 use crate::symbols::var_name::VarName;
 
@@ -24,7 +25,7 @@ pub struct Compiler {
 
 impl Compiler {
     pub fn compile_component_decl(
-        decl: TypedComponentDeclaration,
+        decl: InlinedComponentDeclaration,
         asset_rewriter: Option<Arc<dyn AssetRewriter>>,
     ) -> IrComponentDeclaration {
         let mut compiler = Compiler {
@@ -49,12 +50,12 @@ impl Compiler {
         IrComponentDeclaration {
             name: decl.component_name,
             parameters,
-            body: compiler.compile_nodes(&decl.children, None),
+            body: compiler.compile_nodes(&decl.children),
         }
     }
 
     pub fn compile(
-        view: TypedViewDeclaration,
+        view: InlinedViewDeclaration,
         asset_rewriter: Option<Arc<dyn AssetRewriter>>,
     ) -> IrViewDeclaration {
         let mut compiler = Compiler {
@@ -76,42 +77,35 @@ impl Compiler {
         IrViewDeclaration {
             name: view.name,
             parameters,
-            body: compiler.compile_nodes(&view.children, None),
+            body: compiler.compile_nodes(&view.children),
         }
     }
 
     fn compile_nodes(
         &mut self,
-        nodes: &[TypedNode],
-        slot_content: Option<&[IrStatement]>,
+        nodes: &[InlinedNode],
     ) -> Vec<IrStatement> {
         let mut result = Vec::new();
         for node in nodes {
-            self.compile_node(node, slot_content, &mut result);
+            self.compile_node(node, &mut result);
         }
         result
     }
 
     fn compile_node(
         &mut self,
-        node: &TypedNode,
-        slot_content: Option<&[IrStatement]>,
+        node: &InlinedNode,
         output: &mut Vec<IrStatement>,
     ) {
         match node {
-            TypedNode::Slot => {
-                unreachable!(
-                    "slots must be eliminated during inlining; recursive components cannot declare slots"
-                );
-            }
-            TypedNode::Text { value } => {
+            InlinedNode::Text { value } => {
                 output.push(IrStatement::Write {
                     id: self.next_node_id(),
                     content: value.to_string(),
                 });
             }
 
-            TypedNode::TextExpression { expression } => {
+            InlinedNode::TextExpression { expression } => {
                 output.push(IrStatement::WriteExpr {
                     id: self.next_node_id(),
                     expr: self.compile_expr(expression),
@@ -119,7 +113,7 @@ impl Compiler {
                 });
             }
 
-            TypedNode::Html {
+            InlinedNode::Html {
                 tag_name,
                 attributes,
                 children,
@@ -145,7 +139,7 @@ impl Compiler {
                 });
                 if !is_void_element(tag_name.as_str()) {
                     for child in children {
-                        self.compile_node(child, slot_content, output);
+                        self.compile_node(child, output);
                     }
                     output.push(IrStatement::Write {
                         id: self.next_node_id(),
@@ -154,7 +148,7 @@ impl Compiler {
                 }
             }
 
-            TypedNode::If {
+            InlinedNode::If {
                 condition,
                 children,
                 ..
@@ -162,11 +156,11 @@ impl Compiler {
                 output.push(IrStatement::If {
                     id: self.next_node_id(),
                     condition: self.compile_expr(condition),
-                    body: self.compile_nodes(children, slot_content),
+                    body: self.compile_nodes(children),
                 });
             }
 
-            TypedNode::For {
+            InlinedNode::For {
                 var_name,
                 source,
                 children,
@@ -185,18 +179,18 @@ impl Compiler {
                     id: self.next_node_id(),
                     var: var_name.clone(),
                     source: ir_source,
-                    body: self.compile_nodes(children, slot_content),
+                    body: self.compile_nodes(children),
                 });
             }
 
-            TypedNode::Doctype { value } => {
+            InlinedNode::Doctype { value } => {
                 output.push(IrStatement::Write {
                     id: self.next_node_id(),
                     content: value.to_string(),
                 });
             }
 
-            TypedNode::Let {
+            InlinedNode::Let {
                 var,
                 value,
                 children,
@@ -205,11 +199,11 @@ impl Compiler {
                     id: self.next_node_id(),
                     var: var.clone(),
                     value: self.compile_expr(value),
-                    body: self.compile_nodes(children, slot_content),
+                    body: self.compile_nodes(children),
                 });
             }
 
-            TypedNode::LetRecordDestructure {
+            InlinedNode::LetRecordDestructure {
                 subject,
                 bindings,
                 children,
@@ -218,11 +212,11 @@ impl Compiler {
                     id: self.next_node_id(),
                     subject: self.compile_expr(subject),
                     bindings: bindings.clone(),
-                    body: self.compile_nodes(children, slot_content),
+                    body: self.compile_nodes(children),
                 });
             }
 
-            TypedNode::Match { match_ } => {
+            InlinedNode::Match { match_ } => {
                 let compiled_match = match match_ {
                     Match::Bool {
                         subject,
@@ -230,8 +224,8 @@ impl Compiler {
                         false_body,
                     } => Match::Bool {
                         subject: Box::new(self.compile_expr(subject)),
-                        true_body: Box::new(self.compile_nodes(true_body, slot_content)),
-                        false_body: Box::new(self.compile_nodes(false_body, slot_content)),
+                        true_body: Box::new(self.compile_nodes(true_body)),
+                        false_body: Box::new(self.compile_nodes(false_body)),
                     },
                     Match::Option {
                         subject,
@@ -241,8 +235,8 @@ impl Compiler {
                     } => Match::Option {
                         subject: Box::new(self.compile_expr(subject)),
                         some_arm_binding: some_arm_binding.clone(),
-                        some_arm_body: Box::new(self.compile_nodes(some_arm_body, slot_content)),
-                        none_arm_body: Box::new(self.compile_nodes(none_arm_body, slot_content)),
+                        some_arm_body: Box::new(self.compile_nodes(some_arm_body)),
+                        none_arm_body: Box::new(self.compile_nodes(none_arm_body)),
                     },
                     Match::Enum { subject, arms } => Match::Enum {
                         subject: Box::new(self.compile_expr(subject)),
@@ -251,7 +245,7 @@ impl Compiler {
                             .map(|arm| EnumMatchArm {
                                 pattern: arm.pattern.clone(),
                                 bindings: arm.bindings.clone(),
-                                body: self.compile_nodes(&arm.body, slot_content),
+                                body: self.compile_nodes(&arm.body),
                             })
                             .collect(),
                     },
@@ -262,38 +256,15 @@ impl Compiler {
                 });
             }
 
-            TypedNode::ComponentInvocation {
+            InlinedNode::ComponentInvocation {
                 component_name,
-                component_type,
                 args,
-                ..
             } => {
-                let Type::Component { parameters, .. } = component_type.as_ref() else {
-                    unreachable!("ComponentInvocation must have a Component type");
-                };
-
-                // Build args in parameter definition order, filling in defaults
-                // for missing args. This ensures positional transpilers
-                // emit arguments in the correct order.
-                let compiled_args: Vec<IrArgument> = parameters
+                let compiled_args: Vec<IrArgument> = args
                     .iter()
-                    .map(|(param_name, _, default_value)| {
-                        if let Some(arg) = args.iter().find(|a| &a.name == param_name) {
-                            IrArgument {
-                                name: arg.name.clone(),
-                                expr: self.compile_expr(&arg.expr),
-                            }
-                        } else if let Some(default_expr) = default_value {
-                            IrArgument {
-                                name: param_name.clone(),
-                                expr: self.compile_expr(default_expr),
-                            }
-                        } else {
-                            unreachable!(
-                                "Parameter '{}' for component '{}' has no explicit value or default",
-                                param_name, component_name
-                            )
-                        }
+                    .map(|arg| IrArgument {
+                        name: arg.name.clone(),
+                        expr: self.compile_expr(&arg.expr),
                     })
                     .collect();
 
@@ -796,10 +767,10 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
-    use crate::hop::transform::builder::{build_typed_ast, build_typed_view_no_params};
+    use crate::hop::inlining::builder::{build_inlined_view, build_inlined_view_no_params};
     use expect_test::{Expect, expect};
 
-    fn check(view: TypedViewDeclaration, expected: Expect) {
+    fn check(view: InlinedViewDeclaration, expected: Expect) {
         let before = view.to_string();
         let ir = Compiler::compile(view, None);
         let after = ir.to_string();
@@ -810,7 +781,7 @@ mod tests {
     #[test]
     fn should_compile_simple_text() {
         check(
-            build_typed_view_no_params("MainComp", |t| {
+            build_inlined_view_no_params("MainComp", |t| {
                 t.text("Hello World");
             }),
             expect![[r#"
@@ -830,7 +801,7 @@ mod tests {
     #[test]
     fn should_compile_text_expression() {
         check(
-            build_typed_ast("MainComp", [("name", Type::String)], |t| {
+            build_inlined_view("MainComp", [("name", Type::String)], |t| {
                 t.text("Hello ");
                 t.text_expr(t.var_expr("name"));
             }),
@@ -853,7 +824,7 @@ mod tests {
     #[test]
     fn should_compile_html_element() {
         check(
-            build_typed_view_no_params("MainComp", |t| {
+            build_inlined_view_no_params("MainComp", |t| {
                 t.div(vec![], |t| {
                     t.text("Content");
                 });
@@ -880,7 +851,7 @@ mod tests {
     #[test]
     fn should_compile_if_node() {
         check(
-            build_typed_ast("MainComp", [("show", Type::Bool)], |t| {
+            build_inlined_view("MainComp", [("show", Type::Bool)], |t| {
                 t.if_node(t.var_expr("show"), |t| {
                     t.div(vec![], |t| {
                         t.text("Visible");
@@ -913,7 +884,7 @@ mod tests {
     #[test]
     fn should_compile_for_node() {
         check(
-            build_typed_ast(
+            build_inlined_view(
                 "MainComp",
                 vec![("items", Type::Array(Arc::new(Type::String)))],
                 |t| {
@@ -957,7 +928,7 @@ mod tests {
     #[test]
     fn should_compile_static_attributes() {
         check(
-            build_typed_view_no_params("MainComp", |t| {
+            build_inlined_view_no_params("MainComp", |t| {
                 t.div(
                     vec![("class", t.attr_str("base")), ("id", t.attr_str("test"))],
                     |t| {
@@ -989,7 +960,7 @@ mod tests {
     #[test]
     fn should_compile_dynamic_attributes() {
         check(
-            build_typed_ast("MainComp", [("cls", Type::String)], |t| {
+            build_inlined_view("MainComp", [("cls", Type::String)], |t| {
                 t.div(
                     vec![
                         ("class", t.attr_str("base")),
@@ -1026,7 +997,7 @@ mod tests {
     #[test]
     fn should_generate_development_mode_bootstrap() {
         check(
-            build_typed_ast(
+            build_inlined_view(
                 "TestComp",
                 vec![("name", Type::String), ("count", Type::String)],
                 |t| {
@@ -1066,7 +1037,7 @@ mod tests {
     #[test]
     fn should_compile_bool_match_node() {
         check(
-            build_typed_ast("TestComp", vec![("flag", Type::Bool)], |t| {
+            build_inlined_view("TestComp", vec![("flag", Type::Bool)], |t| {
                 t.bool_match_node(
                     t.var_expr("flag"),
                     |t| {
@@ -1108,7 +1079,7 @@ mod tests {
     #[test]
     fn should_compile_boolean_attributes() {
         check(
-            build_typed_ast("TestComp", vec![("disabled", Type::Bool)], |t| {
+            build_inlined_view("TestComp", vec![("disabled", Type::Bool)], |t| {
                 t.html(
                     "input",
                     vec![("disabled", t.attr_expr(t.var_expr("disabled")))],
@@ -1136,7 +1107,7 @@ mod tests {
     #[test]
     fn should_compile_option_string_attribute() {
         check(
-            build_typed_ast(
+            build_inlined_view(
                 "TestComp",
                 vec![("maybe", Type::Option(Arc::new(Type::String)))],
                 |t| {
@@ -1170,7 +1141,7 @@ mod tests {
     #[test]
     fn should_compile_option_string_class_attribute() {
         check(
-            build_typed_ast(
+            build_inlined_view(
                 "TestComp",
                 vec![("maybe", Type::Option(Arc::new(Type::String)))],
                 |t| {
@@ -1205,7 +1176,7 @@ mod tests {
     #[test]
     fn should_compile_inline_script() {
         check(
-            build_typed_view_no_params("MainComp", |t| {
+            build_inlined_view_no_params("MainComp", |t| {
                 t.html("script", vec![], |t| {
                     t.text("alert(\"hi\")");
                 });

@@ -1,6 +1,6 @@
 use crate::{
     document::CheapString,
-    hop::typing::{typed_ast::TypedViewDeclaration, typed_node::TypedNode},
+    hop::inlining::{InlinedNode, InlinedViewDeclaration},
 };
 
 /// Transform that injects <!DOCTYPE html> at the beginning of views
@@ -9,11 +9,11 @@ pub struct DoctypeInjector;
 
 impl DoctypeInjector {
     /// Check if a list of nodes starts with a DOCTYPE declaration (ignoring leading whitespace)
-    fn has_doctype(nodes: &[TypedNode]) -> bool {
+    fn has_doctype(nodes: &[InlinedNode]) -> bool {
         for node in nodes {
             match node {
-                TypedNode::Doctype { .. } => return true,
-                TypedNode::Text { value, .. } if value.as_str().trim().is_empty() => {
+                InlinedNode::Doctype { .. } => return true,
+                InlinedNode::Text { value, .. } if value.as_str().trim().is_empty() => {
                     // Skip whitespace-only text nodes
                     continue;
                 }
@@ -26,11 +26,11 @@ impl DoctypeInjector {
         false
     }
 
-    pub fn run(view: &mut TypedViewDeclaration) {
+    pub fn run(view: &mut InlinedViewDeclaration) {
         // Only inject DOCTYPE for views
         if !Self::has_doctype(&view.children) {
             // Create a synthetic DOCTYPE node
-            let doctype_node = TypedNode::Doctype {
+            let doctype_node = InlinedNode::Doctype {
                 value: CheapString::new("<!DOCTYPE html>".to_string()),
             };
 
@@ -43,11 +43,11 @@ impl DoctypeInjector {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hop::transform::builder::build_typed_view_no_params;
+    use crate::hop::inlining::builder::build_inlined_view_no_params;
     use expect_test::{Expect, expect};
 
     /// Helper to pretty-print view children for testing
-    fn format_view_children(view: &TypedViewDeclaration) -> String {
+    fn format_view_children(view: &InlinedViewDeclaration) -> String {
         view.children
             .iter()
             .map(|child| child.to_string())
@@ -56,7 +56,7 @@ mod tests {
     }
 
     /// Helper to check DOCTYPE injection for view
-    fn check_doctype_injection(mut view: TypedViewDeclaration, expected: Expect) {
+    fn check_doctype_injection(mut view: InlinedViewDeclaration, expected: Expect) {
         let before = format_view_children(&view);
         DoctypeInjector::run(&mut view);
         let after = format_view_children(&view);
@@ -66,7 +66,7 @@ mod tests {
 
     #[test]
     fn should_not_inject_when_doctype_is_already_present() {
-        let view = build_typed_view_no_params("MainComp", |t| {
+        let view = build_inlined_view_no_params("MainComp", |t| {
             t.doctype("<!DOCTYPE html>");
         });
 
@@ -83,7 +83,7 @@ mod tests {
 
     #[test]
     fn should_not_inject_when_doctype_is_already_present_after_leading_whitespace() {
-        let view = build_typed_view_no_params("MainComp", |t| {
+        let view = build_inlined_view_no_params("MainComp", |t| {
             t.text("\n");
             t.doctype("<!DOCTYPE html>");
         });
@@ -105,7 +105,7 @@ mod tests {
 
     #[test]
     fn should_inject_doctype_for_whitespace_only_view() {
-        let view = build_typed_view_no_params("EmptyComp", |t| {
+        let view = build_inlined_view_no_params("EmptyComp", |t| {
             t.text("\n");
         });
 
@@ -125,7 +125,7 @@ mod tests {
 
     #[test]
     fn should_inject_doctype_for_text_only_view() {
-        let view = build_typed_view_no_params("TextComp", |t| {
+        let view = build_inlined_view_no_params("TextComp", |t| {
             t.text("Just some text content");
         });
 

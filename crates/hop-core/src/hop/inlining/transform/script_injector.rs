@@ -1,9 +1,7 @@
 use crate::{
     document::CheapString,
-    hop::typing::{
-        typed_ast::TypedViewDeclaration,
-        typed_node::{TypedAttribute, TypedAttributeValue, TypedNode},
-    },
+    hop::inlining::{InlinedNode, InlinedViewDeclaration},
+    hop::typing::typed_node::{TypedAttribute, TypedAttributeValue},
 };
 
 /// Transform that injects a `<script type="module" src={src}></script>` element
@@ -16,7 +14,7 @@ use crate::{
 pub struct ScriptInjector;
 
 impl ScriptInjector {
-    fn create_script_element(src: &str) -> TypedNode {
+    fn create_script_element(src: &str) -> InlinedNode {
         let attr = |name: &str, value: &str| TypedAttribute {
             name: CheapString::new(name.to_string()),
             value: Some(TypedAttributeValue::String(CheapString::new(
@@ -24,7 +22,7 @@ impl ScriptInjector {
             ))),
         };
 
-        TypedNode::Html {
+        InlinedNode::Html {
             tag_name: CheapString::new("script".to_string()),
             attributes: vec![attr("type", "module"), attr("src", src)],
             children: vec![],
@@ -32,11 +30,11 @@ impl ScriptInjector {
     }
 
     /// Recursively find and inject the script reference into `<head>` elements.
-    fn inject_into_head(nodes: Vec<TypedNode>, src: &str) -> Vec<TypedNode> {
+    fn inject_into_head(nodes: Vec<InlinedNode>, src: &str) -> Vec<InlinedNode> {
         nodes
             .into_iter()
             .map(|node| match node {
-                TypedNode::Html {
+                InlinedNode::Html {
                     tag_name,
                     attributes,
                     children,
@@ -45,40 +43,40 @@ impl ScriptInjector {
                         let mut new_children = children;
                         new_children.push(Self::create_script_element(src));
 
-                        TypedNode::Html {
+                        InlinedNode::Html {
                             tag_name,
                             attributes,
                             children: new_children,
                         }
                     } else {
-                        TypedNode::Html {
+                        InlinedNode::Html {
                             tag_name,
                             attributes,
                             children: Self::inject_into_head(children, src),
                         }
                     }
                 }
-                TypedNode::If {
+                InlinedNode::If {
                     condition,
                     children,
-                } => TypedNode::If {
+                } => InlinedNode::If {
                     condition,
                     children: Self::inject_into_head(children, src),
                 },
-                TypedNode::For {
+                InlinedNode::For {
                     var_name,
                     source,
                     children,
-                } => TypedNode::For {
+                } => InlinedNode::For {
                     var_name,
                     source,
                     children: Self::inject_into_head(children, src),
                 },
-                TypedNode::Let {
+                InlinedNode::Let {
                     var,
                     value,
                     children,
-                } => TypedNode::Let {
+                } => InlinedNode::Let {
                     var,
                     value,
                     children: Self::inject_into_head(children, src),
@@ -88,7 +86,7 @@ impl ScriptInjector {
             .collect()
     }
 
-    pub fn run(view: &mut TypedViewDeclaration, src: Option<&str>) {
+    pub fn run(view: &mut InlinedViewDeclaration, src: Option<&str>) {
         if let Some(src) = src {
             view.children = Self::inject_into_head(std::mem::take(&mut view.children), src);
         }
@@ -98,11 +96,11 @@ impl ScriptInjector {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hop::transform::builder::build_typed_view_no_params;
+    use crate::hop::inlining::builder::build_inlined_view_no_params;
     use expect_test::{Expect, expect};
 
     /// Helper to pretty-print view children for testing
-    fn format_view_children(view: &TypedViewDeclaration) -> String {
+    fn format_view_children(view: &InlinedViewDeclaration) -> String {
         view.children
             .iter()
             .map(|child| child.to_string())
@@ -111,7 +109,7 @@ mod tests {
     }
 
     fn check_script_injection(
-        mut view: TypedViewDeclaration,
+        mut view: InlinedViewDeclaration,
         src: Option<&str>,
         expected: Expect,
     ) {
@@ -124,7 +122,7 @@ mod tests {
 
     #[test]
     fn should_inject_script_into_head() {
-        let view = build_typed_view_no_params("MainComp", |t| {
+        let view = build_inlined_view_no_params("MainComp", |t| {
             t.html("html", vec![], |t| {
                 t.html("head", vec![], |_| {});
                 t.html("body", vec![], |t| {
@@ -159,7 +157,7 @@ mod tests {
 
     #[test]
     fn should_not_inject_when_src_is_none() {
-        let view = build_typed_view_no_params("MainComp", |t| {
+        let view = build_inlined_view_no_params("MainComp", |t| {
             t.html("html", vec![], |t| {
                 t.html("head", vec![], |_| {});
                 t.html("body", vec![], |t| {

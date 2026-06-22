@@ -4,25 +4,27 @@ use std::sync::Arc;
 use crate::document::CheapString;
 use crate::dop::Type;
 use crate::dop::TypedExpr;
-use crate::hop::typing::typed_ast::{TypedParameter, TypedViewDeclaration};
+use super::inlined_ast::InlinedViewDeclaration;
+use super::inlined_node::InlinedNode;
+use crate::hop::typing::typed_ast::TypedParameter;
 use crate::hop::typing::typed_node::{
-    TypedAttribute, TypedAttributeValue, TypedLoopSource, TypedNode,
+    TypedAttribute, TypedAttributeValue, TypedLoopSource,
 };
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 
-pub fn build_typed_view_no_params<F>(tag_name: &str, children_fn: F) -> TypedViewDeclaration
+pub fn build_inlined_view_no_params<F>(tag_name: &str, children_fn: F) -> InlinedViewDeclaration
 where
-    F: FnOnce(&mut TypedAstBuilder),
+    F: FnOnce(&mut InlinedAstBuilder),
 {
-    let mut builder = TypedAstBuilder::new(vec![]);
+    let mut builder = InlinedAstBuilder::new(vec![]);
     children_fn(&mut builder);
     builder.build(tag_name)
 }
 
-pub fn build_typed_ast<F, P, T>(view_name: &str, params: P, children_fn: F) -> TypedViewDeclaration
+pub fn build_inlined_view<F, P, T>(view_name: &str, params: P, children_fn: F) -> InlinedViewDeclaration
 where
-    F: FnOnce(&mut TypedAstBuilder),
+    F: FnOnce(&mut InlinedAstBuilder),
     P: IntoIterator<Item = (&'static str, T)>,
     T: Into<Arc<Type>>,
 {
@@ -30,18 +32,18 @@ where
         .into_iter()
         .map(|(k, v)| (k.to_string(), v.into()))
         .collect();
-    let mut builder = TypedAstBuilder::new(params_owned);
+    let mut builder = InlinedAstBuilder::new(params_owned);
     children_fn(&mut builder);
     builder.build(view_name)
 }
 
-pub struct TypedAstBuilder {
+pub struct InlinedAstBuilder {
     var_stack: RefCell<Vec<(String, Arc<Type>)>>,
     params: Vec<TypedParameter>,
-    children: Vec<TypedNode>,
+    children: Vec<InlinedNode>,
 }
 
-impl TypedAstBuilder {
+impl InlinedAstBuilder {
     fn new(params: Vec<(String, Arc<Type>)>) -> Self {
         let initial_vars = params.clone();
 
@@ -68,8 +70,8 @@ impl TypedAstBuilder {
         }
     }
 
-    fn build(self, view_name: &str) -> TypedViewDeclaration {
-        TypedViewDeclaration {
+    fn build(self, view_name: &str) -> InlinedViewDeclaration {
+        InlinedViewDeclaration {
             name: TypeName::new(view_name).unwrap(),
             params: self.params,
             children: self.children,
@@ -103,7 +105,7 @@ impl TypedAstBuilder {
     }
 
     pub fn text(&mut self, s: &str) {
-        self.children.push(TypedNode::Text {
+        self.children.push(InlinedNode::Text {
             value: CheapString::new(s.to_string()),
         });
     }
@@ -111,7 +113,7 @@ impl TypedAstBuilder {
     pub fn text_expr(&mut self, expr: TypedExpr) {
         assert_eq!(*expr.as_type(), Type::String, "{}", expr);
         self.children
-            .push(TypedNode::TextExpression { expression: expr });
+            .push(InlinedNode::TextExpression { expression: expr });
     }
 
     pub fn if_node<F>(&mut self, cond: TypedExpr, children_fn: F)
@@ -121,7 +123,7 @@ impl TypedAstBuilder {
         assert_eq!(*cond.as_type(), Type::Bool, "{}", cond);
         let mut inner_builder = self.new_scoped();
         children_fn(&mut inner_builder);
-        self.children.push(TypedNode::If {
+        self.children.push(InlinedNode::If {
             condition: cond,
             children: inner_builder.children,
         });
@@ -146,7 +148,7 @@ impl TypedAstBuilder {
 
         self.var_stack.borrow_mut().pop();
 
-        self.children.push(TypedNode::For {
+        self.children.push(InlinedNode::For {
             var_name: Some(VarName::try_from(var.to_string()).unwrap()),
             source: TypedLoopSource::Array(array),
             children,
@@ -154,7 +156,7 @@ impl TypedAstBuilder {
     }
 
     pub fn doctype(&mut self, value: &str) {
-        self.children.push(TypedNode::Doctype {
+        self.children.push(InlinedNode::Doctype {
             value: CheapString::new(value.to_string()),
         });
     }
@@ -178,7 +180,7 @@ impl TypedAstBuilder {
             })
             .collect();
 
-        self.children.push(TypedNode::Html {
+        self.children.push(InlinedNode::Html {
             tag_name: CheapString::new(tag_name.to_string()),
             attributes: attrs,
             children: inner_builder.children,
@@ -238,7 +240,7 @@ impl TypedAstBuilder {
         let mut false_builder = self.new_scoped();
         false_children_fn(&mut false_builder);
 
-        self.children.push(TypedNode::Match {
+        self.children.push(InlinedNode::Match {
             match_: Match::Bool {
                 subject: Box::new(subject),
                 true_body: Box::new(true_builder.children),
@@ -253,14 +255,14 @@ mod tests {
     use super::*;
     use expect_test::{Expect, expect};
 
-    fn check(component: TypedViewDeclaration, expected: Expect) {
+    fn check(component: InlinedViewDeclaration, expected: Expect) {
         expected.assert_eq(&format!("{}\n", component.to_doc().pretty(60)));
     }
 
     #[test]
     fn simple_text() {
         check(
-            build_typed_view_no_params("Hello", |b| {
+            build_inlined_view_no_params("Hello", |b| {
                 b.text("Hello, World!");
             }),
             expect![[r#"
@@ -274,7 +276,7 @@ mod tests {
     #[test]
     fn html_with_attributes() {
         check(
-            build_typed_view_no_params("Card", |b| {
+            build_inlined_view_no_params("Card", |b| {
                 b.div(vec![("class", b.attr_str("container"))], |b| {
                     b.text("Content");
                 });
@@ -292,7 +294,7 @@ mod tests {
     #[test]
     fn component_with_params() {
         check(
-            build_typed_ast("Greeting", [("name", Type::String)], |b| {
+            build_inlined_view("Greeting", [("name", Type::String)], |b| {
                 b.text("Hello, ");
                 b.text_expr(b.var_expr("name"));
             }),
@@ -308,7 +310,7 @@ mod tests {
     #[test]
     fn for_loop_with_scoped_variable() {
         check(
-            build_typed_ast(
+            build_inlined_view(
                 "List",
                 [("items", Type::Array(Arc::new(Type::String)))],
                 |b| {
@@ -338,7 +340,7 @@ mod tests {
     #[test]
     fn if_conditional() {
         check(
-            build_typed_ast("Toggle", [("visible", Type::Bool)], |b| {
+            build_inlined_view("Toggle", [("visible", Type::Bool)], |b| {
                 b.if_node(b.var_expr("visible"), |b| {
                     b.div(vec![], |b| {
                         b.text("Shown");
@@ -360,7 +362,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "Variable 'missing' not found in scope")]
     fn panics_on_undefined_variable() {
-        build_typed_view_no_params("Bad", |b| {
+        build_inlined_view_no_params("Bad", |b| {
             b.text_expr(b.var_expr("missing"));
         });
     }
@@ -368,7 +370,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "Variable 'item' not found in scope")]
     fn loop_variable_not_accessible_outside_loop() {
-        build_typed_ast(
+        build_inlined_view(
             "Bad",
             [("items", Type::Array(Arc::new(Type::String)))],
             |b| {

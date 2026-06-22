@@ -1,9 +1,7 @@
 use crate::{
     document::CheapString,
-    hop::typing::{
-        typed_ast::TypedViewDeclaration,
-        typed_node::{TypedAttribute, TypedAttributeValue, TypedNode},
-    },
+    hop::inlining::{InlinedNode, InlinedViewDeclaration},
+    hop::typing::typed_node::{TypedAttribute, TypedAttributeValue},
 };
 
 /// How the generated Tailwind CSS should be referenced from the rendered <head>.
@@ -24,19 +22,19 @@ pub enum TailwindInjection<'a> {
 pub struct TailwindInjector;
 
 impl TailwindInjector {
-    fn create_style_element(css_content: &str) -> TypedNode {
-        let css_text = TypedNode::Text {
+    fn create_style_element(css_content: &str) -> InlinedNode {
+        let css_text = InlinedNode::Text {
             value: CheapString::new(css_content.to_string()),
         };
 
-        TypedNode::Html {
+        InlinedNode::Html {
             tag_name: CheapString::new("style".to_string()),
             attributes: Vec::new(),
             children: vec![css_text],
         }
     }
 
-    fn create_link_element(href: &str) -> TypedNode {
+    fn create_link_element(href: &str) -> InlinedNode {
         let attr = |name: &str, value: &str| TypedAttribute {
             name: CheapString::new(name.to_string()),
             value: Some(TypedAttributeValue::String(CheapString::new(
@@ -44,14 +42,14 @@ impl TailwindInjector {
             ))),
         };
 
-        TypedNode::Html {
+        InlinedNode::Html {
             tag_name: CheapString::new("link".to_string()),
             attributes: vec![attr("rel", "stylesheet"), attr("href", href)],
             children: vec![],
         }
     }
 
-    fn create_injection_element(injection: TailwindInjection<'_>) -> TypedNode {
+    fn create_injection_element(injection: TailwindInjection<'_>) -> InlinedNode {
         match injection {
             TailwindInjection::Inline(css) => Self::create_style_element(css),
             TailwindInjection::Link { href } => Self::create_link_element(href),
@@ -59,11 +57,11 @@ impl TailwindInjector {
     }
 
     /// Recursively find and inject the CSS reference into `<head>` elements.
-    fn inject_into_head(nodes: Vec<TypedNode>, injection: TailwindInjection<'_>) -> Vec<TypedNode> {
+    fn inject_into_head(nodes: Vec<InlinedNode>, injection: TailwindInjection<'_>) -> Vec<InlinedNode> {
         nodes
             .into_iter()
             .map(|node| match node {
-                TypedNode::Html {
+                InlinedNode::Html {
                     tag_name,
                     attributes,
                     children,
@@ -72,40 +70,40 @@ impl TailwindInjector {
                         let mut new_children = children;
                         new_children.push(Self::create_injection_element(injection));
 
-                        TypedNode::Html {
+                        InlinedNode::Html {
                             tag_name,
                             attributes,
                             children: new_children,
                         }
                     } else {
-                        TypedNode::Html {
+                        InlinedNode::Html {
                             tag_name,
                             attributes,
                             children: Self::inject_into_head(children, injection),
                         }
                     }
                 }
-                TypedNode::If {
+                InlinedNode::If {
                     condition,
                     children,
-                } => TypedNode::If {
+                } => InlinedNode::If {
                     condition,
                     children: Self::inject_into_head(children, injection),
                 },
-                TypedNode::For {
+                InlinedNode::For {
                     var_name,
                     source,
                     children,
-                } => TypedNode::For {
+                } => InlinedNode::For {
                     var_name,
                     source,
                     children: Self::inject_into_head(children, injection),
                 },
-                TypedNode::Let {
+                InlinedNode::Let {
                     var,
                     value,
                     children,
-                } => TypedNode::Let {
+                } => InlinedNode::Let {
                     var,
                     value,
                     children: Self::inject_into_head(children, injection),
@@ -115,7 +113,7 @@ impl TailwindInjector {
             .collect()
     }
 
-    pub fn run(view: &mut TypedViewDeclaration, injection: Option<TailwindInjection<'_>>) {
+    pub fn run(view: &mut InlinedViewDeclaration, injection: Option<TailwindInjection<'_>>) {
         if let Some(injection) = injection {
             view.children = Self::inject_into_head(std::mem::take(&mut view.children), injection);
         }
@@ -125,11 +123,11 @@ impl TailwindInjector {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hop::transform::builder::build_typed_view_no_params;
+    use crate::hop::inlining::builder::build_inlined_view_no_params;
     use expect_test::{Expect, expect};
 
     /// Helper to pretty-print view children for testing
-    fn format_view_children(view: &TypedViewDeclaration) -> String {
+    fn format_view_children(view: &InlinedViewDeclaration) -> String {
         view.children
             .iter()
             .map(|child| child.to_string())
@@ -138,7 +136,7 @@ mod tests {
     }
 
     fn check_tailwind_injection(
-        mut view: TypedViewDeclaration,
+        mut view: InlinedViewDeclaration,
         injection: Option<TailwindInjection<'_>>,
         expected: Expect,
     ) {
@@ -151,7 +149,7 @@ mod tests {
 
     #[test]
     fn should_inject_style_into_head() {
-        let view = build_typed_view_no_params("MainComp", |t| {
+        let view = build_inlined_view_no_params("MainComp", |t| {
             t.html("html", vec![], |t| {
                 t.html("head", vec![], |_| {});
                 t.html("body", vec![], |t| {
@@ -190,7 +188,7 @@ mod tests {
 
     #[test]
     fn should_inject_link_into_head() {
-        let view = build_typed_view_no_params("MainComp", |t| {
+        let view = build_inlined_view_no_params("MainComp", |t| {
             t.html("html", vec![], |t| {
                 t.html("head", vec![], |_| {});
                 t.html("body", vec![], |t| {

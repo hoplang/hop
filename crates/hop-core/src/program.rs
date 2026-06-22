@@ -11,7 +11,7 @@ use crate::hop::parsing::format;
 use crate::hop::parsing::parsed_ast::ParsedAst;
 use crate::hop::parsing::parsed_node::ParsedNode;
 use crate::hop::parsing::parser::parse;
-use crate::hop::transform::TailwindInjection;
+use crate::hop::inlining::transform::TailwindInjection;
 use crate::hop::typing::definition_link::DefinitionLink;
 use crate::hop::typing::type_annotation::TypeAnnotation;
 use crate::hop::typing::type_checker::typecheck;

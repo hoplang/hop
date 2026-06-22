@@ -1,65 +1,17 @@
 use std::fmt;
-use std::sync::Arc;
 
 use crate::document::CheapString;
 use crate::dop::patterns::{EnumPattern, Match};
-use crate::dop::{Type, TypedExpr};
+use crate::dop::TypedExpr;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use pretty::BoxDoc;
 
-/// The source of iteration in a for loop - either an array or an inclusive range.
-#[derive(Debug, Clone)]
-pub enum TypedLoopSource {
-    /// Iterate over elements of an array
-    Array(TypedExpr),
-    /// Iterate over an inclusive integer range
-    RangeInclusive { start: TypedExpr, end: TypedExpr },
-}
+pub use crate::hop::typing::typed_node::{TypedArgument, TypedAttribute, TypedLoopSource};
 
 #[derive(Debug, Clone)]
-pub enum TypedAttributeValue {
-    Expression(TypedExpr),
-    String(CheapString),
-}
-
-impl TypedAttributeValue {
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        match self {
-            TypedAttributeValue::Expression(expr) => BoxDoc::text("{")
-                .append(expr.to_doc())
-                .append(BoxDoc::text("}")),
-            TypedAttributeValue::String(s) => BoxDoc::text(format!("\"{}\"", s.as_str())),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct TypedAttribute {
-    pub name: CheapString,
-    pub value: Option<TypedAttributeValue>,
-}
-
-impl TypedAttribute {
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        let name_doc = BoxDoc::text(self.name.as_str());
-        match &self.value {
-            Some(value) => name_doc.append(BoxDoc::text("=")).append(value.to_doc()),
-            None => name_doc,
-        }
-    }
-}
-
-/// An argument passed to a component reference.
-#[derive(Debug, Clone)]
-pub struct TypedArgument {
-    pub name: VarName,
-    pub expr: TypedExpr,
-}
-
-#[derive(Debug, Clone)]
-pub enum TypedNode {
+pub enum InlinedNode {
     Text {
         value: CheapString,
     },
@@ -68,40 +20,36 @@ pub enum TypedNode {
         expression: TypedExpr,
     },
 
-    Slot,
-
     ComponentInvocation {
         component_name: TypeName,
-        component_type: Arc<Type>,
         args: Vec<TypedArgument>,
-        children: Vec<TypedNode>,
     },
 
     If {
         condition: TypedExpr,
-        children: Vec<TypedNode>,
+        children: Vec<InlinedNode>,
     },
 
     For {
         var_name: Option<VarName>,
         source: TypedLoopSource,
-        children: Vec<TypedNode>,
+        children: Vec<InlinedNode>,
     },
 
     Match {
-        match_: Match<TypedExpr, Vec<TypedNode>>,
+        match_: Match<TypedExpr, Vec<InlinedNode>>,
     },
 
     Let {
         var: VarName,
         value: TypedExpr,
-        children: Vec<TypedNode>,
+        children: Vec<InlinedNode>,
     },
 
     LetRecordDestructure {
         subject: TypedExpr,
         bindings: Vec<(FieldName, VarName)>,
-        children: Vec<TypedNode>,
+        children: Vec<InlinedNode>,
     },
 
     Doctype {
@@ -111,24 +59,21 @@ pub enum TypedNode {
     Html {
         tag_name: CheapString,
         attributes: Vec<TypedAttribute>,
-        children: Vec<TypedNode>,
+        children: Vec<InlinedNode>,
     },
 }
 
-impl TypedNode {
+impl InlinedNode {
     pub fn to_doc(&self) -> BoxDoc<'_> {
         match self {
-            TypedNode::Text { value } => BoxDoc::text(value.as_str()),
-            TypedNode::TextExpression { expression } => BoxDoc::text("{")
+            InlinedNode::Text { value } => BoxDoc::text(value.as_str()),
+            InlinedNode::TextExpression { expression } => BoxDoc::text("{")
                 .append(expression.to_doc())
                 .append(BoxDoc::text("}")),
-            TypedNode::Slot => BoxDoc::text("{slot}"),
-            TypedNode::Doctype { value } => BoxDoc::text(value.as_str()),
-            TypedNode::ComponentInvocation {
+            InlinedNode::Doctype { value } => BoxDoc::text(value.as_str()),
+            InlinedNode::ComponentInvocation {
                 component_name,
                 args,
-                children,
-                ..
             } => {
                 let tag = BoxDoc::text("<").append(BoxDoc::text(component_name.as_str()));
                 let tag_with_args = if args.is_empty() {
@@ -144,26 +89,9 @@ impl TypedNode {
                         BoxDoc::space(),
                     ))
                 };
-                if children.is_empty() {
-                    tag_with_args.append(BoxDoc::text("/>"))
-                } else {
-                    tag_with_args
-                        .append(BoxDoc::text(">"))
-                        .append(
-                            BoxDoc::line()
-                                .append(BoxDoc::intersperse(
-                                    children.iter().map(|c| c.to_doc()),
-                                    BoxDoc::line(),
-                                ))
-                                .nest(2),
-                        )
-                        .append(BoxDoc::line())
-                        .append(BoxDoc::text("</"))
-                        .append(BoxDoc::text(component_name.as_str()))
-                        .append(BoxDoc::text(">"))
-                }
+                tag_with_args.append(BoxDoc::text("/>"))
             }
-            TypedNode::If {
+            InlinedNode::If {
                 condition,
                 children,
             } => {
@@ -185,7 +113,7 @@ impl TypedNode {
                     .append(BoxDoc::text("</if>"))
                 }
             }
-            TypedNode::For {
+            InlinedNode::For {
                 var_name,
                 source,
                 children,
@@ -221,7 +149,7 @@ impl TypedNode {
                     .append(BoxDoc::text("</for>"))
                 }
             }
-            TypedNode::Let {
+            InlinedNode::Let {
                 var,
                 value,
                 children,
@@ -246,7 +174,7 @@ impl TypedNode {
                     .append(BoxDoc::text("</let>"))
                 }
             }
-            TypedNode::LetRecordDestructure {
+            InlinedNode::LetRecordDestructure {
                 subject,
                 bindings,
                 children,
@@ -279,7 +207,7 @@ impl TypedNode {
                     .append(BoxDoc::text("</let>"))
                 }
             }
-            TypedNode::Match { match_ } => match match_ {
+            InlinedNode::Match { match_ } => match match_ {
                 Match::Enum { subject, arms } => {
                     let header = BoxDoc::text("<match {")
                         .append(subject.to_doc())
@@ -457,7 +385,7 @@ impl TypedNode {
                         .append(BoxDoc::text("</match>"))
                 }
             },
-            TypedNode::Html {
+            InlinedNode::Html {
                 tag_name,
                 attributes,
                 children,
@@ -508,8 +436,30 @@ impl TypedNode {
     }
 }
 
-impl fmt::Display for TypedNode {
+impl fmt::Display for InlinedNode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.to_doc().pretty(60))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::dop::Type;
+    use std::sync::Arc;
+
+    #[test]
+    fn component_invocation_renders_self_closing_with_args() {
+        let node = InlinedNode::ComponentInvocation {
+            component_name: TypeName::new("NodeView").unwrap(),
+            args: vec![TypedArgument {
+                name: VarName::new("node").unwrap(),
+                expr: TypedExpr::Var {
+                    value: VarName::new("next").unwrap(),
+                    kind: Arc::new(Type::String),
+                },
+            }],
+        };
+        assert_eq!(node.to_string(), "<NodeView node={next}/>");
     }
 }
