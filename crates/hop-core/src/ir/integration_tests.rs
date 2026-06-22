@@ -7762,7 +7762,7 @@ mod tests {
             indoc! {r#"
                 component Card(
                   title: String,
-                  slot: Fragment = Fragment::Empty,
+                  slot: Fragment = Fragment::empty(),
                 ) {
                   <div class="card">
                     <h2>
@@ -7820,7 +7820,7 @@ mod tests {
             indoc! {r#"
                 component Card(
                   title: String,
-                  slot: Fragment = Fragment::Empty,
+                  slot: Fragment = Fragment::empty(),
                 ) {
                   <div class="card">
                     <h2>

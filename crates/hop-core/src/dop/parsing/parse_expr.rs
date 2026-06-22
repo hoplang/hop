@@ -341,16 +341,34 @@ pub fn parse_primary(
         },
         Some((Token::TypeFragment, start_range)) => {
             expect_token(iter, comments, errors, range, &Token::ColonColon)?;
-            let (variant_name, variant_range) = expect_type_name(iter, comments, errors, range)?;
-            if variant_name.as_str() != "Empty" {
+            let (method_name, method_range) = match next(iter, comments, errors) {
+                Some((Token::Identifier(name), name_range)) => (name, name_range),
+                Some((token, token_range)) => {
+                    errors.push(ParseError::UnexpectedToken {
+                        token,
+                        range: token_range,
+                    });
+                    return None;
+                }
+                None => {
+                    errors.push(ParseError::UnexpectedEof {
+                        range: range.clone(),
+                    });
+                    return None;
+                }
+            };
+            if method_name.as_str() != "empty" {
                 errors.push(ParseError::UnexpectedToken {
-                    token: Token::TypeName(CheapString::new(variant_name.as_str().to_string())),
-                    range: variant_range,
+                    token: Token::Identifier(method_name),
+                    range: method_range,
                 });
                 return None;
             }
+            let left_paren = expect_token(iter, comments, errors, range, &Token::LeftParen)?;
+            let right_paren =
+                expect_opposite(iter, comments, errors, &Token::LeftParen, &left_paren)?;
             ParsedExpr::FragmentEmpty {
-                range: start_range.to(variant_range),
+                range: start_range.to(right_paren),
             }
         }
         Some((token, token_range)) => {
@@ -897,6 +915,40 @@ mod tests {
             "Empty {}",
             expect![[r#"
                 Empty {}
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_empty_fragment_literal() {
+        accept(
+            "Fragment::empty()",
+            expect![[r#"
+                Fragment::empty()
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_fragment_literal_with_unknown_method() {
+        reject(
+            "Fragment::nonempty()",
+            expect![[r#"
+                error: Unexpected token 'nonempty'
+                Fragment::nonempty()
+                          ^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_empty_fragment_literal_without_parentheses() {
+        reject(
+            "Fragment::empty",
+            expect![[r#"
+                error: Expected token '(' but got end of file
+                Fragment::empty
+                ^^^^^^^^^^^^^^^
             "#]],
         );
     }

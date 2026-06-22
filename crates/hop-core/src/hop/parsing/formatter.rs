@@ -1109,7 +1109,7 @@ fn format_expr<'a>(
                     .append(arena.text(")"))
             }
         }
-        ParsedExpr::FragmentEmpty { .. } => arena.text("Fragment::Empty"),
+        ParsedExpr::FragmentEmpty { .. } => arena.text("Fragment::empty()"),
     }
 }
 

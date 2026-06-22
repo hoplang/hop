@@ -116,7 +116,7 @@ pub enum ParsedExpr {
         range: DocumentRange,
     },
 
-    /// An empty Fragment literal, e.g. `Fragment::Empty`
+    /// An empty Fragment literal, e.g. `Fragment::empty()`
     FragmentEmpty { range: DocumentRange },
 }
 
@@ -508,7 +508,7 @@ impl ParsedExpr {
                         .append(BoxDoc::text(")"))
                 }
             }
-            ParsedExpr::FragmentEmpty { .. } => BoxDoc::text("Fragment::Empty"),
+            ParsedExpr::FragmentEmpty { .. } => BoxDoc::text("Fragment::empty()"),
         }
     }
 }

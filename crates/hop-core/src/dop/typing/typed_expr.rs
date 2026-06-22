@@ -190,7 +190,7 @@ pub enum TypedExpr {
     /// Int to float conversion, e.g. count.to_float()
     IntToFloat { value: Box<Self> },
 
-    /// An empty Fragment literal, e.g. `Fragment::Empty`
+    /// An empty Fragment literal, e.g. `Fragment::empty()`
     FragmentEmpty,
 
     /// An asset path, e.g. asset!("/logo.svg").
@@ -626,7 +626,7 @@ impl TypedExpr {
             TypedExpr::IntToString { value } => value.to_doc().append(BoxDoc::text(".to_string()")),
             TypedExpr::FloatToInt { value } => value.to_doc().append(BoxDoc::text(".to_int()")),
             TypedExpr::IntToFloat { value } => value.to_doc().append(BoxDoc::text(".to_float()")),
-            TypedExpr::FragmentEmpty => BoxDoc::text("Fragment::Empty"),
+            TypedExpr::FragmentEmpty => BoxDoc::text("Fragment::empty()"),
             TypedExpr::Asset { path } => BoxDoc::text("asset!(\"")
                 .append(BoxDoc::text(path.as_str()))
                 .append(BoxDoc::text("\")")),
