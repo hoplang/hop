@@ -210,6 +210,18 @@ impl RustTranspiler {
         self.transpile_expr_owned(arena, expr)
     }
 
+    fn passed_by_ref(t: &Type) -> bool {
+        match t {
+            Type::Bool | Type::Int | Type::Float | Type::Option(_) => false,
+            Type::String
+            | Type::Fragment
+            | Type::Array(_)
+            | Type::Record { .. }
+            | Type::Enum { .. }
+            | Type::Component { .. } => true,
+        }
+    }
+
     /// Transpile a type for use in function parameters (uses references without explicit lifetimes)
     fn transpile_param_type<'a>(&mut self, arena: &'a Arena<'a>, t: &'a Type) -> Doc<'a> {
         match t {
@@ -227,7 +239,7 @@ impl RustTranspiler {
                 .append(arena.text("]")),
             Type::Option(inner) => arena
                 .text("Option<")
-                .append(self.transpile_param_type(arena, inner))
+                .append(self.transpile_type(arena, inner))
                 .append(arena.text(">")),
             Type::Record { name, .. } => arena.text("&").append(arena.text(name.as_str())),
             Type::Enum { name, .. } => arena.text("&").append(arena.text(name.as_str())),
@@ -592,9 +604,12 @@ impl Transpiler for RustTranspiler {
         let all_args: Vec<Doc<'a>> = args
             .iter()
             .map(|arg| {
-                arena
-                    .text("&")
-                    .append(self.transpile_expr(arena, &arg.expr))
+                let arg_doc = self.transpile_expr(arena, &arg.expr);
+                if Self::passed_by_ref(arg.expr.as_type()) {
+                    arena.text("&").append(arg_doc)
+                } else {
+                    arg_doc
+                }
             })
             .collect();
 

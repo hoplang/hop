@@ -9098,4 +9098,144 @@ mod tests {
             "#]],
         );
     }
+
+    #[test]
+    #[ignore]
+    fn recursive_component_with_int_param() {
+        check(
+            indoc! {r#"
+                component Countdown(n: Int) {
+                  {n.to_string()}
+                  <if {0 < n}>
+                    <Countdown n={n - 1}/>
+                  </if>
+                }
+
+                view Test {
+                  <Countdown n={3}/>
+                }
+            "#},
+            "3210",
+            expect![[r#"
+                -- ir (unoptimized) --
+                component Countdown(n: Int) {
+                  write_escaped(n.to_string())
+                  if (0 < n) {
+                    call Countdown(n = (n - 1))
+                  }
+                }
+                view Test() {
+                  call Countdown(n = 3)
+                }
+                -- ir (optimized) --
+                component Countdown(n: Int) {
+                  write_escaped(n.to_string())
+                  if (0 < n) {
+                    call Countdown(n = (n - 1))
+                  }
+                }
+                view Test() {
+                  call Countdown(n = 3)
+                }
+                -- expected output --
+                3210
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn recursive_component_with_option_param() {
+        check(
+            indoc! {r#"
+                component Loop(
+                  n: Int,
+                  label: Option[String],
+                ) {
+                  <match {label}>
+                    <case {Some(text)}>
+                      {text}
+                    </case>
+                    <case {None}>
+                      x
+                    </case>
+                  </match>
+                  <if {0 < n}>
+                    <Loop n={n - 1} label={label}/>
+                  </if>
+                }
+
+                view Test {
+                  <Loop n={2} label={Some("a")}/>
+                }
+            "#},
+            "aaa",
+            expect![[r#"
+                -- ir (unoptimized) --
+                component Loop(n: Int, label: Option[String]) {
+                  match label {
+                    Some(v_0) => {
+                      let text = v_0 in {
+                        write_escaped(text)
+                      }
+                    }
+                    None => {
+                      write("x")
+                    }
+                  }
+                  if (0 < n) {
+                    call Loop(n = (n - 1), label = label)
+                  }
+                }
+                view Test() {
+                  call Loop(n = 2, label = Option[String]::Some("a"))
+                }
+                -- ir (optimized) --
+                component Loop(n: Int, label: Option[String]) {
+                  match label {
+                    Some(v_0) => {
+                      let text = v_0 in {
+                        write_escaped(text)
+                      }
+                    }
+                    None => {
+                      write("x")
+                    }
+                  }
+                  if (0 < n) {
+                    call Loop(n = (n - 1), label = label)
+                  }
+                }
+                view Test() {
+                  call Loop(n = 2, label = Option[String]::Some("a"))
+                }
+                -- expected output --
+                aaa
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
 }
