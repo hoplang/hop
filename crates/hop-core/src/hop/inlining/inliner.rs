@@ -1,7 +1,7 @@
-use crate::document_id::DocumentId;
-use crate::dop::patterns::{EnumMatchArm, Match};
 use super::inlined_ast::{InlinedComponentDeclaration, InlinedViewDeclaration};
 use super::inlined_node::InlinedNode;
+use crate::document_id::DocumentId;
+use crate::expr::patterns::{EnumMatchArm, Match};
 use crate::hop::typing::typed_ast::{TypedAst, TypedComponentDeclaration, TypedViewDeclaration};
 use crate::hop::typing::typed_node::{TypedArgument, TypedNode};
 use crate::symbols::type_name::TypeName;
@@ -20,12 +20,12 @@ impl Inliner {
     pub fn inline_ast_views(
         asts: &HashMap<DocumentId, TypedAst>,
         views: &[TypedViewDeclaration],
-    ) -> (Vec<InlinedViewDeclaration>, Vec<InlinedComponentDeclaration>) {
+    ) -> (
+        Vec<InlinedViewDeclaration>,
+        Vec<InlinedComponentDeclaration>,
+    ) {
         let mut state = InlinerState::new(asts);
-        let inlined_views = views
-            .iter()
-            .map(|view| state.inline_view(view))
-            .collect();
+        let inlined_views = views.iter().map(|view| state.inline_view(view)).collect();
         (inlined_views, state.component_defs)
     }
 }
@@ -976,5 +976,4 @@ mod tests {
             "#]],
         );
     }
-
 }

@@ -1,5 +1,5 @@
 use crate::document::CheapString;
-use crate::dop::TypedExpr;
+use crate::expr::TypedExpr;
 
 /// Build a balanced `StringConcat` tree from `typed_args`, interleaving spaces.
 ///

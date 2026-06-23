@@ -1,6 +1,6 @@
 use crate::annotation::Annotation;
 use crate::document::DocumentRange;
-use crate::dop::Type;
+use crate::expr::Type;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use std::fmt::{self, Display};

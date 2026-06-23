@@ -1,8 +1,8 @@
 use std::fmt::{self, Display};
 use std::sync::Arc;
 
-use crate::dop::typing::r#type::EnumVariant;
-use crate::dop::{ExamplesAnnotation, Type};
+use crate::expr::typing::r#type::EnumVariant;
+use crate::expr::{ExamplesAnnotation, Type};
 use crate::hop::typing::typed_node::TypedNode;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;

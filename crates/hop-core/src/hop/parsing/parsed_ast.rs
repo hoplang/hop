@@ -1,9 +1,9 @@
 use super::parsed_node::ParsedNode;
 use crate::document::DocumentRange;
 use crate::document_id::DocumentId;
-use crate::dop::ExamplesAnnotation;
-use crate::dop::ParsedExpr;
-use crate::dop::parsing::ParsedType;
+use crate::expr::ExamplesAnnotation;
+use crate::expr::ParsedExpr;
+use crate::expr::parsing::ParsedType;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::module_name::ModuleName;
 use crate::symbols::type_name::TypeName;

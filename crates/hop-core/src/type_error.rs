@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::annotation::Annotation;
 use crate::document::DocumentRange;
-use crate::dop::typing::r#type::Type;
+use crate::expr::typing::r#type::Type;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::module_name::ModuleName;
 use crate::symbols::type_name::TypeName;
@@ -49,15 +49,15 @@ pub enum TypeError {
         range: DocumentRange,
     },
 
-    #[error("Component {component} does not accept slot content (missing `slot: Fragment` parameter)")]
+    #[error(
+        "Component {component} does not accept slot content (missing `slot: Fragment` parameter)"
+    )]
     ComponentDoesNotAcceptChildren {
         component: TypeName,
         range: DocumentRange,
     },
 
-    #[error(
-        "slot content provided both as an explicit `slot` argument and as element children"
-    )]
+    #[error("slot content provided both as an explicit `slot` argument and as element children")]
     SlotContentAmbiguous { range: DocumentRange },
 
     #[error(

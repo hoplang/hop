@@ -1,6 +1,6 @@
 use crate::annotation::Annotation;
 use crate::document::{CheapString, DocumentRange};
-use crate::dop::parsing::token::Token;
+use crate::expr::parsing::token::Token;
 use crate::symbols::field_name::InvalidFieldNameError;
 use crate::symbols::module_name::InvalidModuleNameError;
 use crate::symbols::type_name::InvalidTypeNameError;

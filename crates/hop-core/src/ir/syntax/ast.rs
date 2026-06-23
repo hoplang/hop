@@ -2,8 +2,8 @@ use std::fmt;
 use std::sync::Arc;
 
 use crate::document::CheapString;
-use crate::dop::patterns::{EnumPattern, Match};
-use crate::dop::typing::r#type::{
+use crate::expr::patterns::{EnumPattern, Match};
+use crate::expr::typing::r#type::{
     ComparableType, EnumVariant, EquatableType, ExamplesAnnotation, NumericType, Type,
 };
 use crate::symbols::field_name::FieldName;

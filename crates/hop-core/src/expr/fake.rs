@@ -1,5 +1,5 @@
-use crate::dop::Type;
-use crate::dop::typing::r#type::ExamplesAnnotation;
+use crate::expr::Type;
+use crate::expr::typing::r#type::ExamplesAnnotation;
 use crate::ir::semantics::evaluator::Value;
 use crate::symbols::field_name::FieldName;
 use rand::{Rng, RngExt};
@@ -14,9 +14,7 @@ fn random_string_from_pattern(rng: &mut impl Rng, pattern: &str) -> Value {
 }
 
 fn random_word(rng: &mut impl Rng) -> Value {
-    const WORDS: &[&str] = &[
-        "foo", "bar", "baz",
-    ];
+    const WORDS: &[&str] = &["foo", "bar", "baz"];
     Value::String(WORDS[rng.random_range(0..WORDS.len())].to_string())
 }
 
@@ -55,10 +53,7 @@ pub fn random_value(rng: &mut impl Rng, ty: &Type, examples: Option<&ExamplesAnn
             let map = fields
                 .iter()
                 .map(|(name, ty, examples)| {
-                    (
-                        name.clone(),
-                        random_value(rng, ty, examples.as_ref()),
-                    )
+                    (name.clone(), random_value(rng, ty, examples.as_ref()))
                 })
                 .collect();
             Value::Record(map)

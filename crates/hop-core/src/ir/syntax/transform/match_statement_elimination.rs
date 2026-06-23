@@ -1,4 +1,4 @@
-use crate::dop::patterns::Match;
+use crate::expr::patterns::Match;
 use crate::ir::{
     IrExpr,
     ast::{IrStatement, traverse_statements_mut},
@@ -89,7 +89,7 @@ impl MatchStatementEliminationPass {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dop::Type;
+    use crate::expr::Type;
     use crate::ir::ast::IrViewDeclaration;
     use crate::ir::syntax::builder::{build_ir, build_ir_no_params};
     use expect_test::{Expect, expect};

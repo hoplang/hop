@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::dop::patterns::Match;
+use crate::expr::patterns::Match;
 use crate::ir::ast::{IrComponentDeclaration, IrExpr, IrForSource, IrStatement, IrViewDeclaration};
 use crate::symbols::var_name::VarName;
 
@@ -526,7 +526,7 @@ mod tests {
 
     use super::*;
     use crate::ir::syntax::builder::{build_ir, build_ir_no_params};
-    use crate::{document::CheapString, dop::Type};
+    use crate::{document::CheapString, expr::Type};
     use expect_test::{Expect, expect};
 
     fn check(mut input_view: IrViewDeclaration, expected: Expect) {

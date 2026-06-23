@@ -14,9 +14,9 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use crate::document::DocumentRange;
-use crate::dop::parsing::parsed_expr::{Constructor, ParsedMatchPattern};
+use crate::expr::parsing::parsed_expr::{Constructor, ParsedMatchPattern};
 
-use crate::dop::typing::r#type::Type;
+use crate::expr::typing::r#type::Type;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
@@ -970,9 +970,9 @@ mod tests {
     use crate::document::DocumentCursor;
     use crate::document_annotator::DocumentAnnotator;
     use crate::document_id::DocumentId;
-    use crate::dop::parse_expr;
-    use crate::dop::parsing::parsed_expr::ParsedExpr;
-    use crate::dop::typing::r#type::EnumVariant;
+    use crate::expr::parse_expr;
+    use crate::expr::parsing::parsed_expr::ParsedExpr;
+    use crate::expr::typing::r#type::EnumVariant;
     use crate::symbols::field_name::FieldName;
     use crate::symbols::type_name::TypeName;
     use expect_test::{Expect, expect};

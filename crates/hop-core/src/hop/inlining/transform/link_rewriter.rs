@@ -1,6 +1,6 @@
 use crate::{
     document::CheapString,
-    dop::patterns::Match,
+    expr::patterns::Match,
     hop::inlining::{InlinedComponentDeclaration, InlinedNode, InlinedViewDeclaration},
     hop::typing::typed_node::{TypedAttribute, TypedAttributeValue},
     html::HtmlElement,
@@ -95,7 +95,7 @@ impl LinkRewriter {
                             subject,
                             arms: arms
                                 .into_iter()
-                                .map(|arm| crate::dop::patterns::EnumMatchArm {
+                                .map(|arm| crate::expr::patterns::EnumMatchArm {
                                     pattern: arm.pattern,
                                     bindings: arm.bindings,
                                     body: Self::rewrite_links(arm.body),
@@ -256,10 +256,12 @@ mod tests {
 
     #[test]
     fn should_rewrite_links_inside_bool_match() {
-        use crate::dop::Type;
+        use crate::expr::Type;
 
-        let view =
-            crate::hop::inlining::builder::build_inlined_view("Page", [("flag", Type::Bool)], |t| {
+        let view = crate::hop::inlining::builder::build_inlined_view(
+            "Page",
+            [("flag", Type::Bool)],
+            |t| {
                 t.bool_match_node(
                     t.var_expr("flag"),
                     |t| {
@@ -273,7 +275,8 @@ mod tests {
                         });
                     },
                 );
-            });
+            },
+        );
 
         check_link_rewrite(
             view,

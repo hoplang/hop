@@ -1,12 +1,12 @@
 use std::fmt;
 
 use crate::document::CheapString;
-use crate::dop::patterns::{EnumPattern, Match};
-use crate::dop::TypedExpr;
+use crate::expr::TypedExpr;
+use crate::expr::patterns::{EnumPattern, Match};
+use crate::html::HtmlElement;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
-use crate::html::HtmlElement;
 use pretty::BoxDoc;
 
 pub use crate::hop::typing::typed_node::{TypedArgument, TypedAttribute, TypedLoopSource};
@@ -480,7 +480,7 @@ impl fmt::Display for InlinedNode {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dop::Type;
+    use crate::expr::Type;
     use std::sync::Arc;
 
     #[test]

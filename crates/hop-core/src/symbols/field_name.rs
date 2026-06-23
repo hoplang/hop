@@ -28,7 +28,7 @@ pub enum InvalidFieldNameError {
     Empty,
 }
 
-/// A FieldName represents a validated field name in dop.
+/// A FieldName represents a validated field name.
 /// Field names follow the same snake_case rules as variable names.
 #[derive(Debug, Clone)]
 pub struct FieldName {

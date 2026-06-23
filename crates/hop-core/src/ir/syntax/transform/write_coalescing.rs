@@ -73,7 +73,7 @@ impl Default for WriteCoalescingPass {
 mod tests {
     use super::*;
     use crate::{
-        dop::Type,
+        expr::Type,
         ir::{
             ast::IrViewDeclaration,
             syntax::builder::{build_ir, build_ir_no_params},

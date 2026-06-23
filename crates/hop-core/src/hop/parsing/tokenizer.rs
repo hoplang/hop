@@ -4,7 +4,7 @@ use std::iter::Peekable;
 use crate::itertools::PeekingExt as _;
 
 use crate::document::{DocumentCursor, DocumentRange};
-use crate::dop;
+use crate::expr;
 use crate::html::is_void_element;
 use crate::parse_error::ParseError;
 
@@ -230,10 +230,10 @@ fn step(iter: &mut Peekable<DocumentCursor>, errors: &mut Vec<ParseError>) -> Op
     }
 }
 
-/// Find the end of an expression using the dop tokenizer.
+/// Find the end of an expression using the expr tokenizer.
 ///
 /// Expects the current char iterator be on the first character
-/// of a dop expression.
+/// of an expression.
 ///
 /// E.g. {x + 2}
 ///       ^
@@ -241,14 +241,14 @@ fn step(iter: &mut Peekable<DocumentCursor>, errors: &mut Vec<ParseError>) -> Op
 /// Returns None if we reached EOF before finding the closing '}'.
 fn find_expression_end(mut iter: Peekable<DocumentCursor>) -> Option<DocumentRange> {
     let mut open_braces = 1;
-    let mut dop_errors = Vec::new();
+    let mut errors = Vec::new();
     loop {
-        let token = dop::tokenizer::next(&mut iter, &mut dop_errors)?;
+        let token = expr::tokenizer::next(&mut iter, &mut errors)?;
         match token {
-            (dop::Token::LeftBrace, _) => {
+            (expr::Token::LeftBrace, _) => {
                 open_braces += 1;
             }
-            (dop::Token::RightBrace, range) => {
+            (expr::Token::RightBrace, range) => {
                 open_braces -= 1;
                 if open_braces == 0 {
                     return Some(range);
@@ -434,8 +434,7 @@ fn parse_attribute(
     // the double-quoted attribute we emit, so we reject `'` outright. We still
     // consume the whole single-quoted value so the rest of the tag recovers.
     if let Some(single_open) = iter.next_if(|s| s.ch() == '\'') {
-        let _value: Option<DocumentRange> =
-            iter.peeking_take_while(|s| s.ch() != '\'').collect();
+        let _value: Option<DocumentRange> = iter.peeking_take_while(|s| s.ch() != '\'').collect();
         let range = match iter.next_if(|s| s.ch() == '\'') {
             Some(single_close) => single_open.to(single_close),
             None => single_open,
@@ -1038,7 +1037,8 @@ mod tests {
     use indoc::indoc;
 
     fn run_tokenizer(input: &str) -> (Vec<SimpleAnnotation>, Vec<SimpleAnnotation>) {
-        let mut iter = DocumentCursor::new(DocumentId::new("test.hop").unwrap(), input.to_string()).peekable();
+        let mut iter =
+            DocumentCursor::new(DocumentId::new("test.hop").unwrap(), input.to_string()).peekable();
         let mut token_annotations = Vec::new();
         let mut error_annotations = Vec::new();
         let mut errors = Vec::new();

@@ -1,12 +1,12 @@
 mod annotation;
 mod asset_error;
 mod css;
-mod itertools;
-mod dop;
 mod error_collection;
+mod expr;
 mod hop;
 mod html;
 mod ir;
+mod itertools;
 mod orchestrator;
 mod symbols;
 mod toposorter;

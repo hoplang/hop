@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::document::CheapString;
-use crate::dop::patterns::{EnumPattern, Match};
-use crate::dop::typing::r#type::Type;
+use crate::expr::patterns::{EnumPattern, Match};
+use crate::expr::typing::r#type::Type;
 use crate::ir::{
     IrExpr,
     ast::ExprId,
@@ -1536,7 +1536,7 @@ mod tests {
 
     #[test]
     fn should_preserve_enum_variant_fields() {
-        use crate::dop::Type;
+        use crate::expr::Type;
         use crate::ir::syntax::builder::IrModuleBuilder;
 
         let module = IrModuleBuilder::new()
@@ -1800,7 +1800,7 @@ mod tests {
 
     #[test]
     fn should_evaluate_option_match_with_none() {
-        use crate::dop::Type;
+        use crate::expr::Type;
 
         check(
             build_ir_no_params("Test", |t| {
@@ -1874,7 +1874,7 @@ mod tests {
 
     #[test]
     fn should_propagate_option_binding_value() {
-        use crate::dop::Type;
+        use crate::expr::Type;
 
         check(
             build_ir_no_params("Test", |t| {
@@ -1911,7 +1911,7 @@ mod tests {
 
     #[test]
     fn should_propagate_option_binding_in_nested_expression() {
-        use crate::dop::Type;
+        use crate::expr::Type;
 
         // Test that the binding value propagates into nested expressions
         check(
@@ -1952,7 +1952,7 @@ mod tests {
 
     #[test]
     fn should_propagate_option_binding_in_equality() {
-        use crate::dop::Type;
+        use crate::expr::Type;
 
         // Test that the binding value propagates into equality comparisons
         check(
@@ -1999,7 +1999,7 @@ mod tests {
 
     #[test]
     fn should_propagate_through_nested_option_match() {
-        use crate::dop::Type;
+        use crate::expr::Type;
 
         // Test nested option matches using let statements to bind intermediate values
         check(
@@ -2058,7 +2058,7 @@ mod tests {
 
     #[test]
     fn should_evaluate_nested_option_match_with_inline_let() {
-        use crate::dop::Type;
+        use crate::expr::Type;
 
         // Test nested option match where inner match is inside a let expression in the Some arm
         check(
@@ -2110,7 +2110,7 @@ mod tests {
 
     #[test]
     fn should_propagate_enum_binding_value() {
-        use crate::dop::Type;
+        use crate::expr::Type;
         use crate::ir::syntax::builder::{IrBuilder, IrModuleBuilder};
 
         let module = IrModuleBuilder::new()
@@ -2157,7 +2157,7 @@ mod tests {
 
     #[test]
     fn should_propagate_enum_binding_in_string_concat() {
-        use crate::dop::Type;
+        use crate::expr::Type;
         use crate::ir::syntax::builder::{IrBuilder, IrModuleBuilder};
 
         let module = IrModuleBuilder::new()
@@ -2208,7 +2208,7 @@ mod tests {
 
     #[test]
     fn should_propagate_enum_binding_in_equality() {
-        use crate::dop::Type;
+        use crate::expr::Type;
         use crate::ir::syntax::builder::{IrBuilder, IrModuleBuilder};
 
         let module = IrModuleBuilder::new()
@@ -2264,7 +2264,7 @@ mod tests {
 
     #[test]
     fn should_propagate_enum_binding_through_variable() {
-        use crate::dop::Type;
+        use crate::expr::Type;
         use crate::ir::syntax::builder::{IrBuilder, IrModuleBuilder};
 
         // Test that enum bindings work when the subject is propagated through a variable
@@ -2318,7 +2318,7 @@ mod tests {
 
     #[test]
     fn should_propagate_multiple_enum_bindings() {
-        use crate::dop::Type;
+        use crate::expr::Type;
         use crate::ir::syntax::builder::{IrBuilder, IrModuleBuilder};
 
         // Test multiple field bindings in a single variant
@@ -2380,7 +2380,7 @@ mod tests {
 
     #[test]
     fn should_evaluate_enum_match_selecting_correct_arm_with_bindings() {
-        use crate::dop::Type;
+        use crate::expr::Type;
         use crate::ir::syntax::builder::{IrBuilder, IrModuleBuilder};
 
         // Test that when we have multiple variants, we select the correct arm
@@ -2441,7 +2441,7 @@ mod tests {
 
     #[test]
     fn should_propagate_enum_binding_through_match_arm_selection() {
-        use crate::dop::Type;
+        use crate::expr::Type;
         use crate::ir::syntax::builder::{IrBuilder, IrModuleBuilder};
 
         // When a match expression selects an arm that returns an enum with fields,
@@ -2649,7 +2649,7 @@ mod tests {
 
     #[test]
     fn enum_binding_through_let_in_match_arm() {
-        use crate::dop::Type;
+        use crate::expr::Type;
         use crate::ir::syntax::builder::{IrBuilder, IrModuleBuilder};
 
         // Test that enum_field propagates through let expressions in match arm bodies.

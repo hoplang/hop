@@ -1,13 +1,13 @@
 use super::type_annotation::TypeAnnotation;
 use crate::asset_reference::AssetReference;
 use crate::document::{CheapString, DocumentRange};
-use crate::dop::patterns::compiler::Compiler as PatMatchCompiler;
-use crate::dop::typing::r#type::EnumVariant;
-use crate::dop::typing::type_checker::{
+use crate::error_collection::ErrorCollectionExt;
+use crate::expr::patterns::compiler::Compiler as PatMatchCompiler;
+use crate::expr::typing::r#type::EnumVariant;
+use crate::expr::typing::type_checker::{
     extract_bindings_from_pattern, resolve_type, typecheck_expr,
 };
-use crate::dop::{self, Type, TypedExpr};
-use crate::error_collection::ErrorCollectionExt;
+use crate::expr::{self, Type, TypedExpr};
 use crate::hop::parsing::parsed_ast::ParsedDeclaration;
 use crate::hop::parsing::parsed_ast::{
     ParsedAttribute, ParsedComponentDeclaration, ParsedEnumDeclaration, ParsedImportDeclaration,
@@ -23,8 +23,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::document_id::DocumentId;
-use crate::dop::patterns::compiler::Decision;
-use crate::dop::patterns::{EnumMatchArm, EnumPattern, Match};
+use crate::expr::patterns::compiler::Decision;
+use crate::expr::patterns::{EnumMatchArm, EnumPattern, Match};
 use crate::hop::parsing::parsed_ast::{ParsedAst, ParsedAttributeValue};
 use crate::hop::parsing::parsed_node::{ParsedLetBinding, ParsedLoopSource, ParsedNode};
 use crate::hop::typing::typed_ast::{
@@ -1062,12 +1062,12 @@ fn typecheck_node(
                             .as_ref()
                             .map(|r| r.to_cheap_string())
                             .unwrap_or_else(|| CheapString::new(String::new()));
-                        dop::ParsedExpr::StringLiteral {
+                        expr::ParsedExpr::StringLiteral {
                             value,
                             range: arg.name.clone(),
                         }
                     }
-                    None => dop::ParsedExpr::BooleanLiteral {
+                    None => expr::ParsedExpr::BooleanLiteral {
                         value: true,
                         range: arg.name.clone(),
                     },
@@ -1452,7 +1452,7 @@ fn typecheck_attributes(
 fn decision_to_typed_nodes(
     decision: &Decision,
     typed_bodies: &[Vec<TypedNode>],
-    root_subject: Option<dop::TypedExpr>,
+    root_subject: Option<expr::TypedExpr>,
 ) -> Vec<TypedNode> {
     match decision {
         Decision::Success(body) => {
@@ -1597,7 +1597,7 @@ fn decision_to_typed_nodes(
 }
 
 fn validate_examples_annotation(
-    examples: &Option<dop::ExamplesAnnotation>,
+    examples: &Option<expr::ExamplesAnnotation>,
     resolved_type: &Arc<Type>,
     range: &DocumentRange,
     errors: &mut Vec<TypeError>,

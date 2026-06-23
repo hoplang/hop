@@ -16,7 +16,7 @@ pub enum InvalidTypeNameError {
     Empty,
 }
 
-/// A TypeName represents a validated type name in dop.
+/// A TypeName represents a validated type name.
 /// Type names must be PascalCase (start with uppercase letter).
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct TypeName {

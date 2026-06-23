@@ -3,14 +3,14 @@ use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use crate::{
-    dop::typing::r#type::{ComparableType, EquatableType, NumericType},
+    expr::typing::r#type::{ComparableType, EquatableType, NumericType},
     html::write_escaped_html,
 };
 use anyhow::{Result, anyhow};
 use std::collections::HashMap;
 use tailwind_merge::tw_merge;
 
-use crate::dop::patterns::{EnumPattern, Match};
+use crate::expr::patterns::{EnumPattern, Match};
 use crate::ir::syntax::ast::{IrComponentDeclaration, IrForSource, IrStatement, IrViewDeclaration};
 
 /// Fast stack-based environment for the evaluator.
@@ -871,7 +871,7 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dop::Type;
+    use crate::expr::Type;
     use crate::ir::syntax::builder::{build_ir, build_ir_no_params};
     use crate::symbols::var_name::VarName;
     use expect_test::{Expect, expect};

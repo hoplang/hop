@@ -1,8 +1,8 @@
 use crate::document::CheapString;
 use crate::document_id::DocumentId;
-use crate::dop::Type;
-use crate::dop::patterns::{EnumMatchArm, EnumPattern, Match};
-use crate::dop::typing::r#type::{EnumVariant, EquatableType, ExamplesAnnotation};
+use crate::expr::Type;
+use crate::expr::patterns::{EnumMatchArm, EnumPattern, Match};
+use crate::expr::typing::r#type::{EnumVariant, EquatableType, ExamplesAnnotation};
 use crate::ir::ast::{
     ExprId, IrArgument, IrExpr, IrForSource, IrParameter, IrStatement, StatementId,
 };
@@ -1001,7 +1001,7 @@ impl IrBuilder {
         FTrue: FnOnce(&mut Self),
         FFalse: FnOnce(&mut Self),
     {
-        use crate::dop::patterns::Match;
+        use crate::expr::patterns::Match;
 
         assert_eq!(*subject.as_type(), Type::Bool);
 
@@ -1031,7 +1031,7 @@ impl IrBuilder {
         FSome: FnOnce(&mut Self),
         FNone: FnOnce(&mut Self),
     {
-        use crate::dop::patterns::Match;
+        use crate::expr::patterns::Match;
 
         let inner_type = match subject.as_type() {
             Type::Option(inner) => inner.clone(),
@@ -1076,7 +1076,7 @@ impl IrBuilder {
         subject: IrExpr,
         arms: Vec<(&str, Vec<(&str, &str)>, Box<dyn FnOnce(&mut Self)>)>,
     ) {
-        use crate::dop::patterns::Match;
+        use crate::expr::patterns::Match;
 
         let Type::Enum { name, variants, .. } = subject.as_type() else {
             panic!("Match subject must be an enum type")

@@ -33,7 +33,7 @@ impl IfStatementEliminationPass {
 mod tests {
 
     use super::*;
-    use crate::dop::Type;
+    use crate::expr::Type;
     use crate::ir::ast::IrViewDeclaration;
     use crate::ir::syntax::builder::{build_ir, build_ir_no_params};
     use expect_test::{Expect, expect};

@@ -1,4 +1,4 @@
-use crate::dop::patterns::Match;
+use crate::expr::patterns::Match;
 use crate::ir::{
     IrExpr,
     ast::{IrStatement, StatementId, traverse_statements_mut},
@@ -227,7 +227,7 @@ impl UnusedVariableDeclarationEliminationPass {
 mod tests {
     use super::*;
     use crate::{
-        dop::Type,
+        expr::Type,
         ir::{
             ast::IrViewDeclaration,
             syntax::builder::{IrBuilder, IrModuleBuilder, build_ir_no_params},

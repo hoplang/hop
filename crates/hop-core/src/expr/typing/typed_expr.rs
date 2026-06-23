@@ -2,7 +2,7 @@ use std::fmt::{self, Display};
 use std::sync::Arc;
 
 use crate::document::CheapString;
-use crate::dop::patterns::{EnumPattern, Match};
+use crate::expr::patterns::{EnumPattern, Match};
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;

@@ -27,7 +27,7 @@ pub fn optimize(mut module: IrModule) -> IrModule {
 mod tests {
 
     use super::*;
-    use crate::dop::Type;
+    use crate::expr::Type;
     use crate::ir::syntax::builder::IrModuleBuilder;
     use expect_test::{Expect, expect};
 

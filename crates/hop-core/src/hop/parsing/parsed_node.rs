@@ -1,9 +1,9 @@
 use super::parsed_ast::ParsedAttribute;
 use crate::document::{CheapString, DocumentRange};
 use crate::document_id::DocumentId;
-use crate::dop::ParsedExpr;
-use crate::dop::parsing::ParsedType;
-use crate::dop::parsing::parsed_expr::ParsedMatchPattern;
+use crate::expr::ParsedExpr;
+use crate::expr::parsing::ParsedType;
+use crate::expr::parsing::parsed_expr::ParsedMatchPattern;
 use crate::html::HtmlElement;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;

@@ -3,7 +3,7 @@ use std::{collections::VecDeque, iter::Peekable};
 use super::tokenizer::{expect_opposite, expect_token, next_collecting_comments as next};
 
 use crate::document::{DocumentCursor, DocumentRange};
-use crate::dop::{Token, parsing::ParsedType};
+use crate::expr::{Token, parsing::ParsedType};
 use crate::parse_error::ParseError;
 use crate::symbols::type_name::TypeName;
 

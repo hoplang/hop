@@ -5,13 +5,13 @@ use crate::css::{self, CssError};
 use crate::document::{Document, DocumentRange};
 use crate::document_id::DocumentId;
 use crate::document_position::DocumentPosition;
-use crate::dop::Type;
+use crate::expr::Type;
+use crate::hop::inlining::transform::TailwindInjection;
 use crate::hop::parsing::find_node::find_node_at_position;
 use crate::hop::parsing::format;
 use crate::hop::parsing::parsed_ast::ParsedAst;
 use crate::hop::parsing::parsed_node::ParsedNode;
 use crate::hop::parsing::parser::parse;
-use crate::hop::inlining::transform::TailwindInjection;
 use crate::hop::typing::definition_link::DefinitionLink;
 use crate::hop::typing::type_annotation::TypeAnnotation;
 use crate::hop::typing::type_checker::typecheck;
@@ -648,7 +648,7 @@ impl Program {
             .map(|param| {
                 (
                     param.var_name.as_str().to_string(),
-                    crate::dop::fake::random_value(rng, &param.var_type, param.examples.as_ref()),
+                    crate::expr::fake::random_value(rng, &param.var_type, param.examples.as_ref()),
                 )
             })
             .collect::<HashMap<_, _>>();

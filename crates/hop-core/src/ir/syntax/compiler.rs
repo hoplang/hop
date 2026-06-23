@@ -3,11 +3,11 @@ use std::sync::Arc;
 use crate::asset_rewriter::AssetRewriter;
 use crate::document::CheapString;
 use crate::document_id::DocumentId;
-use crate::dop::Type;
-use crate::dop::TypedExpr;
-use crate::dop::patterns::{EnumMatchArm, Match};
-use crate::hop::inlining::{InlinedComponentDeclaration, InlinedViewDeclaration};
+use crate::expr::Type;
+use crate::expr::TypedExpr;
+use crate::expr::patterns::{EnumMatchArm, Match};
 use crate::hop::inlining::inlined_node::InlinedNode;
+use crate::hop::inlining::{InlinedComponentDeclaration, InlinedViewDeclaration};
 use crate::hop::typing::typed_node::{TypedAttributeValue, TypedLoopSource};
 use crate::symbols::var_name::VarName;
 
@@ -75,10 +75,7 @@ impl Compiler {
         }
     }
 
-    fn compile_nodes(
-        &mut self,
-        nodes: &[InlinedNode],
-    ) -> Vec<IrStatement> {
+    fn compile_nodes(&mut self, nodes: &[InlinedNode]) -> Vec<IrStatement> {
         let mut result = Vec::new();
         for node in nodes {
             self.compile_node(node, &mut result);
@@ -86,11 +83,7 @@ impl Compiler {
         result
     }
 
-    fn compile_node(
-        &mut self,
-        node: &InlinedNode,
-        output: &mut Vec<IrStatement>,
-    ) {
+    fn compile_node(&mut self, node: &InlinedNode, output: &mut Vec<IrStatement>) {
         match node {
             InlinedNode::Text { value } => {
                 output.push(IrStatement::Write {
@@ -1115,7 +1108,11 @@ mod tests {
                 "TestComp",
                 vec![("maybe", Type::Option(Arc::new(Type::String)))],
                 |t| {
-                    t.html("input", vec![("data-x", t.attr_expr(t.var_expr("maybe")))], |_| {});
+                    t.html(
+                        "input",
+                        vec![("data-x", t.attr_expr(t.var_expr("maybe")))],
+                        |_| {},
+                    );
                 },
             ),
             expect![[r#"
@@ -1149,7 +1146,11 @@ mod tests {
                 "TestComp",
                 vec![("maybe", Type::Option(Arc::new(Type::String)))],
                 |t| {
-                    t.html("div", vec![("class", t.attr_expr(t.var_expr("maybe")))], |_| {});
+                    t.html(
+                        "div",
+                        vec![("class", t.attr_expr(t.var_expr("maybe")))],
+                        |_| {},
+                    );
                 },
             ),
             expect![[r#"
@@ -1249,5 +1250,4 @@ mod tests {
         let _result = compiler.compile_expr(&expr);
         // If we get here without stack overflow, the test passes
     }
-
 }

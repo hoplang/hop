@@ -2,9 +2,9 @@ use std::fmt;
 
 use crate::document::CheapString;
 use crate::document_id::DocumentId;
-use crate::dop::patterns::{EnumPattern, Match};
+use crate::expr::TypedExpr;
+use crate::expr::patterns::{EnumPattern, Match};
 use crate::html::HtmlElement;
-use crate::dop::TypedExpr;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;

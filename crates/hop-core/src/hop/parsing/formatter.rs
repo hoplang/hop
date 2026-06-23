@@ -6,8 +6,8 @@ use super::parsed_ast::{
 };
 use super::parsed_node::{ParsedLetBinding, ParsedMatchCase, ParsedNode};
 use crate::document::DocumentRange;
-use crate::dop::parsing::ParsedType;
-use crate::dop::parsing::parsed_expr::{
+use crate::expr::parsing::ParsedType;
+use crate::expr::parsing::parsed_expr::{
     Constructor, ParsedExpr, ParsedMatchArm, ParsedMatchPattern,
 };
 use crate::hop::parsing::parsed_node::ParsedLoopSource;

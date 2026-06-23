@@ -6,13 +6,13 @@ use super::r#type::{NumericType, Type};
 use crate::asset_reference::AssetReference;
 use crate::document::{CheapString, DocumentRange};
 use crate::document_id::DocumentId;
-use crate::dop::TypedExpr;
-use crate::dop::parsing::ParsedType;
-use crate::dop::parsing::parsed_expr::{
+use crate::expr::TypedExpr;
+use crate::expr::parsing::ParsedType;
+use crate::expr::parsing::parsed_expr::{
     Constructor, ParsedBinaryOp, ParsedExpr, ParsedMatchArm, ParsedMatchPattern,
 };
-use crate::dop::patterns::compiler::{Compiler, Decision};
-use crate::dop::patterns::{EnumMatchArm, EnumPattern, Match};
+use crate::expr::patterns::compiler::{Compiler, Decision};
+use crate::expr::patterns::{EnumMatchArm, EnumPattern, Match};
 use crate::hop::typing::definition_link::DefinitionLink;
 use crate::hop::typing::type_annotation::TypeAnnotation;
 use crate::symbols::field_name::FieldName;
@@ -1744,11 +1744,11 @@ mod tests {
     use super::*;
     use crate::document_annotator::DocumentAnnotator;
     use crate::document_id::DocumentId;
-    use crate::dop::parse_expr;
-    use crate::dop::typing::r#type::EnumVariant;
+    use crate::expr::parse_expr;
+    use crate::expr::typing::r#type::EnumVariant;
     use crate::symbols::field_name::FieldName;
     use crate::symbols::type_name::TypeName;
-    use crate::{document::DocumentCursor, dop::parsing::parse_type::parse_type};
+    use crate::{document::DocumentCursor, expr::parsing::parse_type::parse_type};
     use expect_test::{Expect, expect};
     use indoc::indoc;
     use std::collections::VecDeque;
@@ -1830,11 +1830,8 @@ mod tests {
                     let resolved_fields: Vec<_> = fields
                         .iter()
                         .map(|(field_name, type_str)| {
-                            let (typ, _) = parse_type_str(
-                                type_str,
-                                &mut type_env,
-                                &mut definition_links,
-                            );
+                            let (typ, _) =
+                                parse_type_str(type_str, &mut type_env, &mut definition_links);
                             (FieldName::new(field_name).unwrap(), typ, None)
                         })
                         .collect();
@@ -1915,11 +1912,7 @@ mod tests {
         }
 
         for (var_name, type_str) in env_vars {
-            let (typ, range) = parse_type_str(
-                type_str,
-                &mut type_env,
-                &mut definition_links,
-            );
+            let (typ, range) = parse_type_str(type_str, &mut type_env, &mut definition_links);
             let _ = env.push(VarName::new(var_name).unwrap(), (typ, range));
         }
 

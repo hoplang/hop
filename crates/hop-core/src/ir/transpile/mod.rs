@@ -5,8 +5,8 @@ use pretty::{Arena, DocBuilder};
 pub use rust::RustTranspiler;
 pub use ts::TsTranspiler;
 
-use crate::dop::patterns::Match;
-use crate::dop::typing::r#type::{ComparableType, EquatableType, NumericType, Type};
+use crate::expr::patterns::Match;
+use crate::expr::typing::r#type::{ComparableType, EquatableType, NumericType, Type};
 use crate::ir::ast::{
     IrArgument, IrComponentDeclaration, IrExpr, IrForSource, IrModule, IrStatement,
     IrViewDeclaration,

@@ -1,15 +1,13 @@
 use std::cell::RefCell;
 use std::sync::Arc;
 
-use crate::document::CheapString;
-use crate::dop::Type;
-use crate::dop::TypedExpr;
 use super::inlined_ast::InlinedViewDeclaration;
 use super::inlined_node::InlinedNode;
+use crate::document::CheapString;
+use crate::expr::Type;
+use crate::expr::TypedExpr;
 use crate::hop::typing::typed_ast::TypedParameter;
-use crate::hop::typing::typed_node::{
-    TypedAttribute, TypedAttributeValue, TypedLoopSource,
-};
+use crate::hop::typing::typed_node::{TypedAttribute, TypedAttributeValue, TypedLoopSource};
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 
@@ -22,7 +20,11 @@ where
     builder.build(tag_name)
 }
 
-pub fn build_inlined_view<F, P, T>(view_name: &str, params: P, children_fn: F) -> InlinedViewDeclaration
+pub fn build_inlined_view<F, P, T>(
+    view_name: &str,
+    params: P,
+    children_fn: F,
+) -> InlinedViewDeclaration
 where
     F: FnOnce(&mut InlinedAstBuilder),
     P: IntoIterator<Item = (&'static str, T)>,
@@ -233,7 +235,7 @@ impl InlinedAstBuilder {
         FTrue: FnOnce(&mut Self),
         FFalse: FnOnce(&mut Self),
     {
-        use crate::dop::patterns::Match;
+        use crate::expr::patterns::Match;
 
         let mut true_builder = self.new_scoped();
         true_children_fn(&mut true_builder);

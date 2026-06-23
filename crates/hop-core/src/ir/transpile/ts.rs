@@ -1,8 +1,8 @@
 use pretty::{Arena, DocAllocator};
 
 use super::{Doc, Transpiler};
-use crate::dop::patterns::{EnumPattern, Match};
-use crate::dop::typing::r#type::Type;
+use crate::expr::patterns::{EnumPattern, Match};
+use crate::expr::typing::r#type::Type;
 use crate::ir::ast::{
     IrArgument, IrComponentDeclaration, IrExpr, IrForSource, IrModule, IrStatement,
     IrViewDeclaration,
@@ -1624,7 +1624,7 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
-    use crate::dop::typing::r#type::EnumVariant;
+    use crate::expr::typing::r#type::EnumVariant;
     use crate::ir::syntax::builder::IrModuleBuilder;
     use expect_test::{Expect, expect};
 
@@ -1967,7 +1967,10 @@ mod tests {
             IrModuleBuilder::new()
                 .component(
                     "RenderHtml",
-                    [("safe_content", Type::Fragment), ("user_input", Type::String)],
+                    [
+                        ("safe_content", Type::Fragment),
+                        ("user_input", Type::String),
+                    ],
                     |t| {
                         t.write("<div>");
                         // Fragment should not be escaped
@@ -3094,5 +3097,4 @@ mod tests {
                 }"#]],
         );
     }
-
 }

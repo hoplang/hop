@@ -1,8 +1,8 @@
 use pretty::{Arena, DocAllocator};
 
 use super::{Doc, Transpiler};
-use crate::dop::patterns::{EnumPattern, Match};
-use crate::dop::typing::r#type::Type;
+use crate::expr::patterns::{EnumPattern, Match};
+use crate::expr::typing::r#type::Type;
 use crate::ir::ast::{
     IrArgument, IrComponentDeclaration, IrExpr, IrForSource, IrModule, IrStatement,
     IrViewDeclaration,
@@ -1648,7 +1648,7 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
-    use crate::dop::typing::r#type::EnumVariant;
+    use crate::expr::typing::r#type::EnumVariant;
     use crate::ir::syntax::builder::IrModuleBuilder;
     use expect_test::{Expect, expect};
 
@@ -2148,8 +2148,8 @@ mod tests {
 
     #[test]
     fn component_with_enum_param() {
-        use crate::dop::Type;
-        use crate::dop::patterns::{EnumMatchArm, EnumPattern, Match};
+        use crate::expr::Type;
+        use crate::expr::patterns::{EnumMatchArm, EnumPattern, Match};
         use crate::ir::ast::{
             IrArgument, IrComponentDeclaration, IrEnumDeclaration, IrExpr, IrModule, IrParameter,
             IrStatement, IrViewDeclaration,
