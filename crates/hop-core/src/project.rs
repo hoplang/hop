@@ -211,9 +211,7 @@ impl Project {
 
     pub fn get_css_input_path(&self) -> anyhow::Result<Option<PathBuf>> {
         let config = self.load_config()?;
-        Ok(config
-            .css
-            .map(|c| self.project_root.join(c.input_path)))
+        Ok(config.css.map(|c| self.project_root.join(c.input_path)))
     }
 
     pub fn get_js_input_path(&self) -> anyhow::Result<Option<PathBuf>> {
@@ -312,7 +310,10 @@ mod tests {
 
         // Test finding from parent directory
         let found = Project::find_traversing_subdirectories(temp_dir.path()).unwrap();
-        assert_eq!(found.project_root, temp_dir.path().join("hop").canonicalize().unwrap());
+        assert_eq!(
+            found.project_root,
+            temp_dir.path().join("hop").canonicalize().unwrap()
+        );
     }
 
     #[test]

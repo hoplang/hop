@@ -58,7 +58,10 @@ impl TailwindInjector {
     }
 
     /// Recursively find and inject the CSS reference into `<head>` elements.
-    fn inject_into_head(nodes: Vec<InlinedNode>, injection: TailwindInjection<'_>) -> Vec<InlinedNode> {
+    fn inject_into_head(
+        nodes: Vec<InlinedNode>,
+        injection: TailwindInjection<'_>,
+    ) -> Vec<InlinedNode> {
         nodes
             .into_iter()
             .map(|node| match node {

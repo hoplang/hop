@@ -263,7 +263,8 @@ mod tests {
 
     fn check(input: &str, expected: Expect) {
         let mut errors = Vec::new();
-        let mut iter = DocumentCursor::new(DocumentId::new("test.hop").unwrap(), input.to_string()).peekable();
+        let mut iter =
+            DocumentCursor::new(DocumentId::new("test.hop").unwrap(), input.to_string()).peekable();
         let mut tokenizer = Tokenizer::new();
 
         let mut trees = Vec::new();

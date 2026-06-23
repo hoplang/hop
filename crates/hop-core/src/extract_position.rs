@@ -33,9 +33,10 @@ pub fn extract_position(input: &str) -> Option<(String, DocumentPosition)> {
         "Multiple position markers (^) found in source"
     );
     markers.first().map(|marker| {
-        let char_starts = DocumentCursor::new(DocumentId::new("test.hop").unwrap(), input.to_string())
-            .map(|range| range.start_utf32())
-            .collect::<HashSet<_>>();
+        let char_starts =
+            DocumentCursor::new(DocumentId::new("test.hop").unwrap(), input.to_string())
+                .map(|range| range.start_utf32())
+                .collect::<HashSet<_>>();
         assert!(
             char_starts.contains(marker),
             "Marker does not point to a valid position"

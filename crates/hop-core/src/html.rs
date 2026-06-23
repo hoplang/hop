@@ -506,7 +506,10 @@ mod tests {
     #[test]
     fn classifies_hyphenated_custom_element() {
         let el = HtmlElement::parse("my-widget").unwrap();
-        assert_eq!(el, HtmlElement::Custom(CheapString::new("my-widget".to_string())));
+        assert_eq!(
+            el,
+            HtmlElement::Custom(CheapString::new("my-widget".to_string()))
+        );
         assert_eq!(el.as_str(), "my-widget");
     }
 

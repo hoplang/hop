@@ -402,7 +402,10 @@ mod tests {
         server.initialize(params).await.unwrap();
 
         let project = server.project.get().expect("project should be resolved");
-        assert_eq!(project.get_project_root(), temp_dir.path().canonicalize().unwrap());
+        assert_eq!(
+            project.get_project_root(),
+            temp_dir.path().canonicalize().unwrap()
+        );
     }
 
     #[tokio::test]
@@ -433,7 +436,10 @@ mod tests {
         server.initialize(params).await.unwrap();
 
         let project = server.project.get().expect("project should be resolved");
-        assert_eq!(project.get_project_root(), temp_dir.path().join("hop").canonicalize().unwrap());
+        assert_eq!(
+            project.get_project_root(),
+            temp_dir.path().join("hop").canonicalize().unwrap()
+        );
     }
 
     #[tokio::test]

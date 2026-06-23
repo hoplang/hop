@@ -616,7 +616,8 @@ mod tests {
     use indoc::indoc;
 
     fn check(input: &str, expected: Expect) {
-        let mut cursor = DocumentCursor::new(DocumentId::new("test.hop").unwrap(), input.to_string()).peekable();
+        let mut cursor =
+            DocumentCursor::new(DocumentId::new("test.hop").unwrap(), input.to_string()).peekable();
         let mut errors = Vec::new();
         let mut annotations = Vec::new();
         while let Some((tok, range)) = next(&mut cursor, &mut errors) {
