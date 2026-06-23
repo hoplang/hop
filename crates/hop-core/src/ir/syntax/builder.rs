@@ -288,7 +288,6 @@ impl IrBuilder {
                 .map(|(s, t)| IrParameter {
                     name: VarName::try_from(s).unwrap(),
                     typ: t,
-                    default_value: None,
                 })
                 .collect(),
             records,

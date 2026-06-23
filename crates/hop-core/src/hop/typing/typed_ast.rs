@@ -2,7 +2,7 @@ use std::fmt::{self, Display};
 use std::sync::Arc;
 
 use crate::dop::typing::r#type::EnumVariant;
-use crate::dop::{ExamplesAnnotation, Type, TypedExpr};
+use crate::dop::{ExamplesAnnotation, Type};
 use crate::hop::typing::typed_node::TypedNode;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
@@ -48,7 +48,6 @@ pub struct TypedViewDeclaration {
 pub struct TypedParameter {
     pub var_name: VarName,
     pub var_type: Arc<Type>,
-    pub default_value: Option<TypedExpr>,
     pub examples: Option<ExamplesAnnotation>,
 }
 
@@ -203,13 +202,9 @@ impl TypedComponentDeclaration {
             .params
             .iter()
             .map(|param| {
-                let base = BoxDoc::text(param.var_name.as_str())
+                BoxDoc::text(param.var_name.as_str())
                     .append(BoxDoc::text(": "))
-                    .append(param.var_type.to_doc());
-                match &param.default_value {
-                    Some(expr) => base.append(BoxDoc::text(" = ")).append(expr.to_doc()),
-                    None => base,
-                }
+                    .append(param.var_type.to_doc())
             })
             .collect();
         let tag_with_params = if param_docs.is_empty() {
@@ -260,13 +255,9 @@ impl TypedViewDeclaration {
         } else {
             BoxDoc::intersperse(
                 self.params.iter().map(|param| {
-                    let base = BoxDoc::text(param.var_name.as_str())
+                    BoxDoc::text(param.var_name.as_str())
                         .append(BoxDoc::text(": "))
-                        .append(param.var_type.to_doc());
-                    match &param.default_value {
-                        Some(expr) => base.append(BoxDoc::text(" = ")).append(expr.to_doc()),
-                        None => base,
-                    }
+                        .append(param.var_type.to_doc())
                 }),
                 BoxDoc::text(", "),
             )

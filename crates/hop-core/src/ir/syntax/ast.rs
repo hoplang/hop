@@ -22,7 +22,6 @@ pub type StatementId = usize;
 pub struct IrParameter {
     pub name: VarName,
     pub typ: Arc<Type>,
-    pub default_value: Option<IrExpr>,
 }
 
 /// An argument passed to a component invocation in the IR.
@@ -1466,15 +1465,9 @@ impl<'a> IrViewDeclaration {
                     .append(BoxDoc::line_())
                     .append(BoxDoc::intersperse(
                         self.parameters.iter().map(|param| {
-                            let base = BoxDoc::text(param.name.to_string())
+                            BoxDoc::text(param.name.to_string())
                                 .append(BoxDoc::text(": "))
-                                .append(param.typ.to_doc());
-                            match &param.default_value {
-                                Some(expr) => {
-                                    base.append(BoxDoc::text(" = ")).append(expr.to_doc())
-                                }
-                                None => base,
-                            }
+                                .append(param.typ.to_doc())
                         }),
                         BoxDoc::text(",").append(BoxDoc::line()),
                     ))
@@ -1637,15 +1630,9 @@ impl<'a> IrComponentDeclaration {
                     .append(BoxDoc::line_())
                     .append(BoxDoc::intersperse(
                         self.parameters.iter().map(|param| {
-                            let base = BoxDoc::text(param.name.to_string())
+                            BoxDoc::text(param.name.to_string())
                                 .append(BoxDoc::text(": "))
-                                .append(param.typ.to_doc());
-                            match &param.default_value {
-                                Some(expr) => {
-                                    base.append(BoxDoc::text(" = ")).append(expr.to_doc())
-                                }
-                                None => base,
-                            }
+                                .append(param.typ.to_doc())
                         }),
                         BoxDoc::text(",").append(BoxDoc::line()),
                     ))

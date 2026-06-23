@@ -228,12 +228,11 @@ fn typecheck_module(
                         resolved_param_types.push((
                             param.var_name.clone(),
                             param_type.clone(),
-                            typed_default_value.clone(),
+                            typed_default_value,
                         ));
                         typed_params.push(TypedParameter {
                             var_name: param.var_name.clone(),
                             var_type: param_type,
-                            default_value: typed_default_value,
                             examples: param.examples.clone(),
                         });
                     }
@@ -504,7 +503,6 @@ fn typecheck_module(
                     typed_params.push(TypedParameter {
                         var_name: param.var_name.clone(),
                         var_type: param_type,
-                        default_value: None,
                         examples: param.examples.clone(),
                     });
                 }
@@ -800,13 +798,15 @@ fn typecheck_node(
             for binding in bindings {
                 // Resolve the declared type, if an annotation is present.
                 let declared_type = match &binding.var_type {
-                    Some(parsed_type) => match resolve_type(parsed_type, type_env, definition_links) {
-                        Ok(t) => Some(t),
-                        Err(err) => {
-                            errors.push(err);
-                            continue;
+                    Some(parsed_type) => {
+                        match resolve_type(parsed_type, type_env, definition_links) {
+                            Ok(t) => Some(t),
+                            Err(err) => {
+                                errors.push(err);
+                                continue;
+                            }
                         }
-                    },
+                    }
                     None => None,
                 };
 
@@ -957,39 +957,35 @@ fn typecheck_node(
                 .collect::<Vec<_>>();
 
             // Look up the component type from type_env
-            let (
-                component_module,
-                component_type_name,
-                component_params,
-                component_def_range,
-            ) = match type_env.lookup(component_name) {
-                Some((typ, def_range)) => match typ.as_ref() {
-                    Type::Component {
-                        module,
-                        name,
-                        parameters,
-                    } => (
-                        module.clone(),
-                        name.clone(),
-                        parameters.clone(),
-                        def_range.clone(),
-                    ),
-                    _ => {
+            let (component_module, component_type_name, component_params, component_def_range) =
+                match type_env.lookup(component_name) {
+                    Some((typ, def_range)) => match typ.as_ref() {
+                        Type::Component {
+                            module,
+                            name,
+                            parameters,
+                        } => (
+                            module.clone(),
+                            name.clone(),
+                            parameters.clone(),
+                            def_range.clone(),
+                        ),
+                        _ => {
+                            errors.push(TypeError::UndefinedComponent {
+                                tag_name: component_name.clone(),
+                                range: component_name_opening_range.clone(),
+                            });
+                            return None;
+                        }
+                    },
+                    None => {
                         errors.push(TypeError::UndefinedComponent {
                             tag_name: component_name.clone(),
                             range: component_name_opening_range.clone(),
                         });
                         return None;
                     }
-                },
-                None => {
-                    errors.push(TypeError::UndefinedComponent {
-                        tag_name: component_name.clone(),
-                        range: component_name_opening_range.clone(),
-                    });
-                    return None;
-                }
-            };
+                };
 
             // Add definition link for the opening tag
             definition_links.push(DefinitionLink {
@@ -1031,7 +1027,8 @@ fn typecheck_node(
                 .find(|(name, typ, _)| name.as_str() == "slot" && **typ == Type::Fragment);
             let has_explicit_slot_arg = args.iter().any(|a| a.name.as_str() == "slot");
             let has_children = !typed_children.is_empty();
-            let synthesize_slot_arg = has_children && slot_param.is_some() && !has_explicit_slot_arg;
+            let synthesize_slot_arg =
+                has_children && slot_param.is_some() && !has_explicit_slot_arg;
 
             if has_children && slot_param.is_none() {
                 errors.push(TypeError::ComponentDoesNotAcceptChildren {
@@ -1146,22 +1143,39 @@ fn typecheck_node(
                 });
             }
 
+            // Resolve the call arguments into parameter-definition order, filling
+            // in default values for any omitted optional parameters.
+            let resolved_args: Vec<TypedArgument> = component_params
+                .iter()
+                .filter_map(|(param_name, _, default_value)| {
+                    typed_args
+                        .iter()
+                        .find(|arg| arg.name.as_str() == param_name.as_str())
+                        .map(|arg| arg.expr.clone())
+                        .or_else(|| default_value.clone())
+                        .map(|expr| TypedArgument {
+                            name: param_name.clone(),
+                            expr,
+                        })
+                })
+                .collect();
+
             if let Some(var) = slot_var {
                 return Some(TypedNode::LetFragment {
                     var,
                     fragment_body: typed_children,
                     body: vec![TypedNode::ComponentInvocation {
                         component_name: component_name.clone(),
-                        component_type,
-                        args: typed_args,
+                        component_module: component_module.clone(),
+                        args: resolved_args,
                     }],
                 });
             }
 
             Some(TypedNode::ComponentInvocation {
                 component_name: component_name.clone(),
-                component_type,
-                args: typed_args,
+                component_module: component_module.clone(),
+                args: resolved_args,
             })
         }
 
@@ -2570,7 +2584,7 @@ mod tests {
                 </Main>
 
                 <Foo>
-                  <Main b={"foo"} a={true}/>
+                  <Main a={true} b={"foo"}/>
                 </Foo>
             "#]],
         );
@@ -4150,14 +4164,14 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                <Greeting {name: String = "World"}>
+                <Greeting {name: String}>
                   Hello, 
                   {name}
                   !
                 </Greeting>
 
                 <Main>
-                  <Greeting/>
+                  <Greeting name={"World"}/>
                 </Main>
             "#]],
         );
@@ -4177,7 +4191,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                <Greeting {name: String = "World"}>
+                <Greeting {name: String}>
                   Hello, 
                   {name}
                   !
@@ -4204,7 +4218,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                <UserCard {name: String, role: String = "user"}>
+                <UserCard {name: String, role: String}>
                   {name}
                    (
                   {role}
@@ -4212,7 +4226,7 @@ mod tests {
                 </UserCard>
 
                 <Main>
-                  <UserCard name={"Alice"}/>
+                  <UserCard name={"Alice"} role={"user"}/>
                 </Main>
             "#]],
         );
@@ -4308,14 +4322,14 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                <ItemList {items: Array[String] = []}>
+                <ItemList {items: Array[String]}>
                   <for {item in items}>
                     {item}
                   </for>
                 </ItemList>
 
                 <Main>
-                  <ItemList/>
+                  <ItemList items={[]}/>
                 </Main>
             "#]],
         );
@@ -4341,12 +4355,12 @@ mod tests {
                   enabled: Bool,
                 }
 
-                <Settings {config: main::Config = Config {name: "default", enabled: true}}>
+                <Settings {config: main::Config}>
                   {config.name}
                 </Settings>
 
                 <Main>
-                  <Settings/>
+                  <Settings config={Config {name: "default", enabled: true}}/>
                 </Main>
             "#]],
         );
@@ -4376,7 +4390,7 @@ mod tests {
                   Pending,
                 }
 
-                <Badge {status: main::Status = Status::Active {since: 2000}}>
+                <Badge {status: main::Status}>
                   {match status {
                     Status::Active => "active",
                     Status::Inactive => "not active",
@@ -4385,7 +4399,7 @@ mod tests {
                 </Badge>
 
                 <Main>
-                  <Badge/>
+                  <Badge status={Status::Active {since: 2000}}/>
                 </Main>
             "#]],
         );
@@ -4455,12 +4469,12 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                <Greeting {name: Option[String] = None}>
+                <Greeting {name: Option[String]}>
                   <if {(name == None)}></if>
                 </Greeting>
 
                 <Main>
-                  <Greeting/>
+                  <Greeting name={None}/>
                 </Main>
             "#]],
         );
@@ -4480,12 +4494,12 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                <Greeting {name: Option[String] = Some("World")}>
+                <Greeting {name: Option[String]}>
                   <if {(name == None)}></if>
                 </Greeting>
 
                 <Main>
-                  <Greeting/>
+                  <Greeting name={Some("World")}/>
                 </Main>
             "#]],
         );

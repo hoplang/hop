@@ -1,6 +1,5 @@
 use crate::document_id::DocumentId;
 use crate::dop::patterns::{EnumMatchArm, Match};
-use crate::dop::Type;
 use super::inlined_ast::{InlinedComponentDeclaration, InlinedViewDeclaration};
 use super::inlined_node::InlinedNode;
 use crate::hop::typing::typed_ast::{TypedAst, TypedComponentDeclaration, TypedViewDeclaration};
@@ -92,37 +91,6 @@ impl<'a> InlinerState<'a> {
         });
     }
 
-    /// Resolve call arguments for a component, filling in default values
-    /// from the component type in parameter definition order.
-    fn resolve_call_args(component_type: &Type, args: &[TypedArgument]) -> Vec<TypedArgument> {
-        let Type::Component {
-            parameters, name, ..
-        } = component_type
-        else {
-            unreachable!("ComponentInvocation must have Component type");
-        };
-        parameters
-            .iter()
-            .map(|(param_name, _, default_value)| {
-                let value = args
-                    .iter()
-                    .find(|arg| arg.name.as_str() == param_name.as_str())
-                    .map(|arg| arg.expr.clone())
-                    .or_else(|| default_value.clone())
-                    .unwrap_or_else(|| {
-                        panic!(
-                            "Missing required parameter '{}' for component '{}'.",
-                            param_name, name
-                        )
-                    });
-                TypedArgument {
-                    name: param_name.clone(),
-                    expr: value,
-                }
-            })
-            .collect()
-    }
-
     fn inline_view(&mut self, view: &TypedViewDeclaration) -> InlinedViewDeclaration {
         InlinedViewDeclaration {
             name: view.name.clone(),
@@ -135,23 +103,20 @@ impl<'a> InlinerState<'a> {
     fn inline_component_invocation(
         &mut self,
         component: &TypedComponentDeclaration,
-        component_type: &Type,
         args: &[TypedArgument],
         output: &mut Vec<InlinedNode>,
     ) {
         let inlined_children = self.inline_nodes(&component.children);
 
-        let bindings = Self::resolve_call_args(component_type, args);
-
-        if bindings.is_empty() {
+        if args.is_empty() {
             output.extend(inlined_children);
         } else {
             // Nest single-binding Lets from inside out
             let mut children = inlined_children;
-            for binding in bindings.into_iter().rev() {
+            for binding in args.iter().rev() {
                 children = vec![InlinedNode::Let {
-                    var: binding.name,
-                    value: binding.expr,
+                    var: binding.name.clone(),
+                    value: binding.expr.clone(),
                     children,
                 }];
             }
@@ -173,32 +138,26 @@ impl<'a> InlinerState<'a> {
         match node {
             TypedNode::ComponentInvocation {
                 component_name,
-                component_type,
+                component_module,
                 args,
             } => {
-                let Type::Component { module, .. } = component_type.as_ref() else {
-                    unreachable!("ComponentInvocation must have Component type");
-                };
-
                 if self.recursive_components.contains(component_name) {
                     // Emit the component def if not yet emitted
-                    self.emit_component_def(module, component_name);
-
-                    let resolved_args = Self::resolve_call_args(component_type, args);
+                    self.emit_component_def(component_module, component_name);
 
                     output.push(InlinedNode::ComponentInvocation {
                         component_name: component_name.clone(),
-                        args: resolved_args,
+                        args: args.clone(),
                     });
                 } else {
                     let component = self
                         .asts
-                        .get(module)
+                        .get(component_module)
                         .expect("Component module should exist")
                         .get_component_declaration(component_name.as_str())
                         .expect("Component declaration should exist");
 
-                    self.inline_component_invocation(component, component_type, args, output);
+                    self.inline_component_invocation(component, args, output);
                 }
             }
 

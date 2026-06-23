@@ -2201,7 +2201,6 @@ mod tests {
                 parameters: vec![IrParameter {
                     name: VarName::new("color").unwrap(),
                     typ: color_type.clone(),
-                    default_value: None,
                 }],
                 body: vec![IrStatement::Match {
                     id: 10,

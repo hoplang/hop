@@ -133,9 +133,6 @@ pub fn evaluate_view(
     for param in &view.parameters {
         if let Some(value) = args.get(param.name.as_str()) {
             env.push(param.name.clone(), value.clone());
-        } else if let Some(default) = &param.default_value {
-            let default_value = evaluate_expr(default, &mut env)?;
-            env.push(param.name.clone(), default_value);
         } else {
             return Err(anyhow!(
                 "Missing required parameter '{}' for view '{}'",
@@ -392,9 +389,6 @@ fn eval_statement(
                     .find(|arg| arg.name.as_str() == param.name.as_str())
                 {
                     let value = evaluate_expr(&arg.expr, env)?;
-                    env.push(param.name.clone(), value);
-                } else if let Some(default) = &param.default_value {
-                    let value = evaluate_expr(default, env)?;
                     env.push(param.name.clone(), value);
                 } else {
                     return Err(anyhow!(
@@ -1022,77 +1016,6 @@ mod tests {
     }
 
     #[test]
-    fn should_use_default_parameter_when_arg_not_provided() {
-        use crate::document::CheapString;
-        use crate::ir::ast::{IrExpr, IrParameter, IrStatement, IrViewDeclaration};
-
-        // Create an view with a parameter that has a default value
-        let view = IrViewDeclaration {
-            name: TypeName::new("Test").unwrap(),
-            parameters: vec![IrParameter {
-                name: VarName::new("greeting").unwrap(),
-                typ: Arc::new(Type::String),
-                default_value: Some(IrExpr::StringLiteral {
-                    value: CheapString::new("Hello, World!".to_string()),
-                    id: 0,
-                }),
-            }],
-            body: vec![IrStatement::WriteExpr {
-                id: 0,
-                expr: IrExpr::Var {
-                    value: VarName::new("greeting").unwrap(),
-                    kind: Arc::new(Type::String),
-                    id: 1,
-                },
-                escape: false,
-            }],
-        };
-
-        // Call without providing the argument
-        let result =
-            evaluate_view(&view, HashMap::new(), &[]).expect("Should use default parameter");
-        assert_eq!(result, "Hello, World!");
-    }
-
-    #[test]
-    fn should_use_provided_arg_over_default_parameter() {
-        use crate::document::CheapString;
-        use crate::ir::ast::{IrExpr, IrParameter, IrStatement, IrViewDeclaration};
-
-        // Create an view with a parameter that has a default value
-        let view = IrViewDeclaration {
-            name: TypeName::new("Test").unwrap(),
-            parameters: vec![IrParameter {
-                name: VarName::new("greeting").unwrap(),
-                typ: Arc::new(Type::String),
-                default_value: Some(IrExpr::StringLiteral {
-                    value: CheapString::new("Default greeting".to_string()),
-                    id: 0,
-                }),
-            }],
-            body: vec![IrStatement::WriteExpr {
-                id: 0,
-                expr: IrExpr::Var {
-                    value: VarName::new("greeting").unwrap(),
-                    kind: Arc::new(Type::String),
-                    id: 1,
-                },
-                escape: false,
-            }],
-        };
-
-        // Call with the argument - should override the default
-        let mut args = HashMap::new();
-        args.insert(
-            "greeting".to_string(),
-            Value::String("Custom greeting".to_string()),
-        );
-
-        let result = evaluate_view(&view, args, &[]).expect("Should use provided argument");
-        assert_eq!(result, "Custom greeting");
-    }
-
-    #[test]
     fn let_fragment_renders_into_a_value_then_writes_it() {
         check(
             build_ir_no_params("Test", |t| {
@@ -1133,7 +1056,6 @@ mod tests {
             parameters: vec![IrParameter {
                 name: VarName::new("name").unwrap(),
                 typ: Arc::new(Type::String),
-                default_value: None, // No default
             }],
             body: vec![IrStatement::WriteExpr {
                 id: 0,

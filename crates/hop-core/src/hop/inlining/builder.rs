@@ -54,7 +54,6 @@ impl InlinedAstBuilder {
                 .map(|(name, typ)| TypedParameter {
                     var_name: VarName::try_from(name).unwrap(),
                     var_type: typ,
-                    default_value: None,
                     examples: None,
                 })
                 .collect(),

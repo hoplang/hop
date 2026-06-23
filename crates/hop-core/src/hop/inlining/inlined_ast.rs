@@ -26,13 +26,9 @@ impl InlinedComponentDeclaration {
             .params
             .iter()
             .map(|param| {
-                let base = BoxDoc::text(param.var_name.as_str())
+                BoxDoc::text(param.var_name.as_str())
                     .append(BoxDoc::text(": "))
-                    .append(param.var_type.to_doc());
-                match &param.default_value {
-                    Some(expr) => base.append(BoxDoc::text(" = ")).append(expr.to_doc()),
-                    None => base,
-                }
+                    .append(param.var_type.to_doc())
             })
             .collect();
         let tag_with_params = if param_docs.is_empty() {
@@ -83,13 +79,9 @@ impl InlinedViewDeclaration {
         } else {
             BoxDoc::intersperse(
                 self.params.iter().map(|param| {
-                    let base = BoxDoc::text(param.var_name.as_str())
+                    BoxDoc::text(param.var_name.as_str())
                         .append(BoxDoc::text(": "))
-                        .append(param.var_type.to_doc());
-                    match &param.default_value {
-                        Some(expr) => base.append(BoxDoc::text(" = ")).append(expr.to_doc()),
-                        None => base,
-                    }
+                        .append(param.var_type.to_doc())
                 }),
                 BoxDoc::text(", "),
             )

@@ -1,10 +1,10 @@
 use std::fmt;
-use std::sync::Arc;
 
 use crate::document::CheapString;
+use crate::document_id::DocumentId;
 use crate::dop::patterns::{EnumPattern, Match};
 use crate::html::HtmlElement;
-use crate::dop::{Type, TypedExpr};
+use crate::dop::TypedExpr;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
@@ -71,7 +71,7 @@ pub enum TypedNode {
 
     ComponentInvocation {
         component_name: TypeName,
-        component_type: Arc<Type>,
+        component_module: DocumentId,
         args: Vec<TypedArgument>,
     },
 

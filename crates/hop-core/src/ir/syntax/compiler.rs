@@ -36,13 +36,9 @@ impl Compiler {
         let parameters = decl
             .params
             .into_iter()
-            .map(|param| {
-                let default = param.default_value.map(|expr| compiler.compile_expr(&expr));
-                IrParameter {
-                    name: param.var_name,
-                    typ: param.var_type,
-                    default_value: default,
-                }
+            .map(|param| IrParameter {
+                name: param.var_name,
+                typ: param.var_type,
             })
             .collect::<Vec<_>>();
 
@@ -69,7 +65,6 @@ impl Compiler {
             .map(|param| IrParameter {
                 name: param.var_name,
                 typ: param.var_type,
-                default_value: param.default_value.map(|expr| compiler.compile_expr(&expr)),
             })
             .collect::<Vec<_>>();
 
