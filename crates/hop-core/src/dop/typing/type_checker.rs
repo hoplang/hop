@@ -25,7 +25,6 @@ use crate::variable_scope::VariableScope;
 pub fn resolve_type(
     parsed_type: &ParsedType,
     type_env: &mut VariableScope<TypeName, (Arc<Type>, DocumentRange)>,
-    annotations: &mut Vec<TypeAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
 ) -> Result<Arc<Type>, TypeError> {
     let (typ, _) = match parsed_type {
@@ -35,11 +34,11 @@ pub fn resolve_type(
         ParsedType::Float { range } => (Arc::new(Type::Float), range),
         ParsedType::Fragment { range } => (Arc::new(Type::Fragment), range),
         ParsedType::Option { element, range } => {
-            let elem_type = resolve_type(element, type_env, annotations, definition_links)?;
+            let elem_type = resolve_type(element, type_env, definition_links)?;
             (Arc::new(Type::Option(elem_type)), range)
         }
         ParsedType::Array { element, range } => {
-            let elem_type = resolve_type(element, type_env, annotations, definition_links)?;
+            let elem_type = resolve_type(element, type_env, definition_links)?;
             (Arc::new(Type::Array(elem_type)), range)
         }
         ParsedType::Named { name, range } => {
@@ -1784,7 +1783,6 @@ mod tests {
     fn parse_type_str(
         type_str: &str,
         type_env: &mut VariableScope<TypeName, (Arc<Type>, DocumentRange)>,
-        type_annotations: &mut Vec<TypeAnnotation>,
         definition_links: &mut Vec<DefinitionLink>,
     ) -> (Arc<Type>, DocumentRange) {
         let cursor =
@@ -1795,7 +1793,7 @@ mod tests {
         let mut errors = Vec::new();
         let parsed_type = parse_type(&mut iter, &mut comments, &mut errors, &range)
             .expect("Failed to parse type");
-        let typ = resolve_type(&parsed_type, type_env, type_annotations, definition_links)
+        let typ = resolve_type(&parsed_type, type_env, definition_links)
             .expect("Test type should be valid");
         (typ, range)
     }
@@ -1804,7 +1802,6 @@ mod tests {
         let mut env: VariableScope<VarName, (Arc<Type>, DocumentRange)> = VariableScope::new();
         let mut type_env: VariableScope<TypeName, (Arc<Type>, DocumentRange)> =
             VariableScope::new();
-        let mut type_annotations = Vec::new();
         let mut definition_links = Vec::new();
         let mut asset_references = Vec::new();
         let test_module = DocumentId::new("test.hop").unwrap();
@@ -1836,7 +1833,6 @@ mod tests {
                             let (typ, _) = parse_type_str(
                                 type_str,
                                 &mut type_env,
-                                &mut type_annotations,
                                 &mut definition_links,
                             );
                             (FieldName::new(field_name).unwrap(), typ, None)
@@ -1894,7 +1890,6 @@ mod tests {
                                     let (typ, _) = parse_type_str(
                                         type_str,
                                         &mut type_env,
-                                        &mut type_annotations,
                                         &mut definition_links,
                                     );
                                     (FieldName::new(field_name).unwrap(), typ, None)
@@ -1923,7 +1918,6 @@ mod tests {
             let (typ, range) = parse_type_str(
                 type_str,
                 &mut type_env,
-                &mut type_annotations,
                 &mut definition_links,
             );
             let _ = env.push(VarName::new(var_name).unwrap(), (typ, range));

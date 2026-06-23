@@ -171,7 +171,6 @@ fn typecheck_module(
                         let Some(param_type) = errors.ok_or_add(resolve_type(
                             &param.var_type,
                             &mut type_env,
-                            annotations,
                             definition_links,
                         )) else {
                             continue;
@@ -336,12 +335,7 @@ fn typecheck_module(
                 let mut has_errors = false;
 
                 for field in fields {
-                    match resolve_type(
-                        &field.field_type,
-                        &mut type_env,
-                        annotations,
-                        definition_links,
-                    ) {
+                    match resolve_type(&field.field_type, &mut type_env, definition_links) {
                         Ok(resolved_type) => {
                             validate_examples_annotation(
                                 &field.examples,
@@ -416,8 +410,7 @@ fn typecheck_module(
                 for variant in variants {
                     let mut typed_fields = Vec::new();
                     for (field_name, field_name_range, field_type, examples) in &variant.fields {
-                        match resolve_type(field_type, &mut type_env, annotations, definition_links)
-                        {
+                        match resolve_type(field_type, &mut type_env, definition_links) {
                             Ok(resolved_type) => {
                                 validate_examples_annotation(
                                     examples,
@@ -486,7 +479,6 @@ fn typecheck_module(
                     let Some(param_type) = errors.ok_or_add(resolve_type(
                         &param.var_type,
                         &mut type_env,
-                        annotations,
                         definition_links,
                     )) else {
                         continue;
@@ -808,12 +800,7 @@ fn typecheck_node(
             for binding in bindings {
                 // Resolve the declared type, if an annotation is present.
                 let declared_type = match &binding.var_type {
-                    Some(parsed_type) => match resolve_type(
-                        parsed_type,
-                        type_env,
-                        annotations,
-                        definition_links,
-                    ) {
+                    Some(parsed_type) => match resolve_type(parsed_type, type_env, definition_links) {
                         Ok(t) => Some(t),
                         Err(err) => {
                             errors.push(err);

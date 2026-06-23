@@ -83,7 +83,7 @@ impl TsTranspiler {
     /// How to refer to a match subject in option and enum code generation, which
     /// reads it more than once. A variable is referenced directly, anything else
     /// is bound once to a reserved name that a hop identifier can never produce.
-    fn subject_ref<'b>(subject: &'b IrExpr) -> &'b str {
+    fn subject_ref(subject: &IrExpr) -> &str {
         match subject {
             IrExpr::Var { value, .. } => value.as_str(),
             _ => "$subject",
