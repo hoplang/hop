@@ -29,9 +29,6 @@ pub enum ParsedNode {
         range: DocumentRange,
     },
 
-    /// The `{slot}` placeholder in a component body.
-    Slot { range: DocumentRange },
-
     /// A ComponentInvocation represents an invocation of a component.
     ComponentInvocation {
         component_name: TypeName,
@@ -161,7 +158,6 @@ impl ParsedNode {
             ParsedNode::Text { range, .. }
             | ParsedNode::Newline { range }
             | ParsedNode::TextExpression { range, .. }
-            | ParsedNode::Slot { range }
             | ParsedNode::ComponentInvocation { range, .. }
             | ParsedNode::If { range, .. }
             | ParsedNode::For { range, .. }
@@ -187,7 +183,6 @@ impl ParsedNode {
             ParsedNode::Text { .. } => &[],
             ParsedNode::Newline { .. } => &[],
             ParsedNode::TextExpression { .. } => &[],
-            ParsedNode::Slot { .. } => &[],
         }
     }
     /// Get the range for the opening tag of a node.
@@ -241,7 +236,6 @@ impl ParsedNode {
             ParsedNode::TextExpression { expression, .. } => BoxDoc::text("{")
                 .append(expression.to_doc())
                 .append(BoxDoc::text("}")),
-            ParsedNode::Slot { .. } => BoxDoc::text("{slot}"),
             ParsedNode::ComponentInvocation {
                 component_name,
                 args,

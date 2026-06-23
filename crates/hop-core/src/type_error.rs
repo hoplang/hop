@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use crate::annotation::Annotation;
 use crate::document::DocumentRange;
-use crate::dop::TypedExpr;
 use crate::dop::typing::r#type::Type;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::module_name::ModuleName;
@@ -56,25 +55,10 @@ pub enum TypeError {
         range: DocumentRange,
     },
 
-    #[error("Component {component} requires slot content")]
-    MissingChildren {
-        component: TypeName,
-        range: DocumentRange,
-    },
-
-    #[error("The slot argument cannot be passed explicitly")]
-    ChildrenArgNotAllowed { range: DocumentRange },
-
-    #[error("The slot parameter must be typed as Fragment")]
-    SlotMustHaveFragmentType { range: DocumentRange },
-
-    #[error("A recursive component cannot declare a slot")]
-    RecursiveComponentCannotHaveSlot { range: DocumentRange },
-
     #[error(
-        "`{{slot}}` can only be used inside a component that declares a `slot: Fragment` parameter"
+        "slot content provided both as an explicit `slot` argument and as element children"
     )]
-    SlotOutsideSlottedComponent { range: DocumentRange },
+    SlotContentAmbiguous { range: DocumentRange },
 
     #[error(
         "Import cycle: {importer_module} imports from {imported_component} which creates a dependency cycle: {cycle_display}"
@@ -89,12 +73,6 @@ pub enum TypeError {
     #[error("Expected boolean condition, got {found}")]
     ExpectedBooleanCondition {
         found: Arc<Type>,
-        range: DocumentRange,
-    },
-
-    #[error("Missing required parameter '{param}'")]
-    MissingRequiredParameter {
-        param: VarName,
         range: DocumentRange,
     },
 
@@ -460,20 +438,6 @@ impl TypeError {
         }
     }
 
-    pub fn missing_arguments(
-        params: &[(VarName, Arc<Type>, Option<TypedExpr>)],
-        range: DocumentRange,
-    ) -> Self {
-        // Only list required (non-default) parameters
-        let args = params
-            .iter()
-            .filter(|(_, _, default)| default.is_none())
-            .map(|(name, _, _)| name.as_str())
-            .collect::<Vec<_>>()
-            .join(", ");
-        TypeError::MissingArguments { args, range }
-    }
-
     pub fn range(&self) -> &DocumentRange {
         match self {
             TypeError::UndefinedComponent { range, .. }
@@ -483,14 +447,9 @@ impl TypeError {
             | TypeError::UnusedImport { range, .. }
             | TypeError::ModuleNotFound { range, .. }
             | TypeError::ComponentDoesNotAcceptChildren { range, .. }
-            | TypeError::MissingChildren { range, .. }
-            | TypeError::ChildrenArgNotAllowed { range, .. }
-            | TypeError::SlotMustHaveFragmentType { range, .. }
-            | TypeError::RecursiveComponentCannotHaveSlot { range, .. }
-            | TypeError::SlotOutsideSlottedComponent { range, .. }
+            | TypeError::SlotContentAmbiguous { range, .. }
             | TypeError::ImportCycle { range, .. }
             | TypeError::ExpectedBooleanCondition { range, .. }
-            | TypeError::MissingRequiredParameter { range, .. }
             | TypeError::MissingArguments { range, .. }
             | TypeError::UnexpectedArgument { range, .. }
             | TypeError::ArgumentIsIncompatible { range, .. }

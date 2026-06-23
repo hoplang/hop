@@ -968,6 +968,31 @@ impl IrBuilder {
         });
     }
 
+    pub fn let_fragment<F1, F2>(&mut self, var: &str, fragment_body_fn: F1, body_fn: F2)
+    where
+        F1: FnOnce(&mut Self),
+        F2: FnOnce(&mut Self),
+    {
+        let mut fragment_builder = self.new_scoped();
+        fragment_body_fn(&mut fragment_builder);
+
+        self.var_stack
+            .borrow_mut()
+            .push((var.to_string(), Arc::new(Type::Fragment)));
+
+        let mut body_builder = self.new_scoped();
+        body_fn(&mut body_builder);
+
+        self.var_stack.borrow_mut().pop();
+
+        self.statements.push(IrStatement::LetFragment {
+            id: self.next_node_id(),
+            var: VarName::try_from(var.to_string()).unwrap(),
+            fragment_body: fragment_builder.statements,
+            body: body_builder.statements,
+        });
+    }
+
     pub fn bool_match_stmt<FTrue, FFalse>(
         &mut self,
         subject: IrExpr,

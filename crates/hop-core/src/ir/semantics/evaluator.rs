@@ -259,6 +259,20 @@ fn eval_statement(
             Ok(())
         }
 
+        IrStatement::LetFragment {
+            id: _,
+            var,
+            fragment_body,
+            body,
+        } => {
+            let mut captured = String::new();
+            eval_statements(fragment_body, env, &mut captured, component_defs)?;
+            env.push(var.clone(), Value::String(captured));
+            eval_statements(body, env, output, component_defs)?;
+            env.pop();
+            Ok(())
+        }
+
         IrStatement::LetRecordDestructure {
             id: _,
             subject,
@@ -420,6 +434,7 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value> {
             }
         }
         IrExpr::StringLiteral { value: s, .. } => Ok(Value::String(s.to_string())),
+        IrExpr::FragmentEmpty { .. } => Ok(Value::String(String::new())),
         IrExpr::BooleanLiteral { value: b, .. } => Ok(Value::Bool(*b)),
         IrExpr::FloatLiteral { value: f, .. } => Ok(Value::Float(*f)),
         IrExpr::IntLiteral { value: i, .. } => Ok(Value::Int(*i)),
@@ -1075,6 +1090,37 @@ mod tests {
 
         let result = evaluate_view(&view, args, &[]).expect("Should use provided argument");
         assert_eq!(result, "Custom greeting");
+    }
+
+    #[test]
+    fn let_fragment_renders_into_a_value_then_writes_it() {
+        check(
+            build_ir_no_params("Test", |t| {
+                t.let_fragment(
+                    "v_0",
+                    |t| {
+                        t.write("<b>hi</b>");
+                    },
+                    |t| {
+                        t.write_expr(t.var("v_0"), false);
+                    },
+                );
+            }),
+            vec![],
+            expect![[r#"
+                -- before --
+                view Test() {
+                  let v_0 = {
+                    write("<b>hi</b>")
+                  } in {
+                    write_expr(v_0)
+                  }
+                }
+
+                -- after --
+                <b>hi</b>
+            "#]],
+        );
     }
 
     #[test]

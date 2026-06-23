@@ -2,7 +2,7 @@ use super::type_annotation::TypeAnnotation;
 use crate::asset_reference::AssetReference;
 use crate::document::{CheapString, DocumentRange};
 use crate::dop::patterns::compiler::Compiler as PatMatchCompiler;
-use crate::dop::typing::r#type::{EnumVariant, SlotParam};
+use crate::dop::typing::r#type::EnumVariant;
 use crate::dop::typing::type_checker::{
     extract_bindings_from_pattern, resolve_type, typecheck_expr,
 };
@@ -166,8 +166,6 @@ fn typecheck_module(
                 let mut pushed_params = Vec::new();
                 let mut resolved_param_types = Vec::new();
                 let mut typed_params = Vec::new();
-                let mut component_slot: Option<SlotParam> = None;
-                let mut slot_param_range: Option<DocumentRange> = None;
                 if let Some((params, _)) = params {
                     for param in params {
                         let Some(param_type) = errors.ok_or_add(resolve_type(
@@ -216,12 +214,10 @@ fn typecheck_module(
                             typ: param_type.clone(),
                             var_name: param.var_name.clone(),
                         });
-                        if param.var_name.as_str() != "slot" {
-                            let _ = var_env.push(
-                                param.var_name.clone(),
-                                (param_type.clone(), param.var_name_range.clone()),
-                            );
-                        }
+                        let _ = var_env.push(
+                            param.var_name.clone(),
+                            (param_type.clone(), param.var_name_range.clone()),
+                        );
                         validate_examples_annotation(
                             &param.examples,
                             &param_type,
@@ -229,32 +225,18 @@ fn typecheck_module(
                             errors,
                         );
 
-                        if param.var_name.as_str() == "slot" {
-                            // Validate that slot parameter must be typed as Fragment
-                            if *param_type != Type::Fragment {
-                                errors.push(TypeError::SlotMustHaveFragmentType {
-                                    range: param.var_name_range.clone(),
-                                });
-                            }
-                            slot_param_range = Some(param.var_name_range.clone());
-                            component_slot = Some(SlotParam {
-                                typ: param_type.clone(),
-                                default_value: typed_default_value.clone(),
-                            });
-                        } else {
-                            pushed_params.push(param);
-                            resolved_param_types.push((
-                                param.var_name.clone(),
-                                param_type.clone(),
-                                typed_default_value.clone(),
-                            ));
-                            typed_params.push(TypedParameter {
-                                var_name: param.var_name.clone(),
-                                var_type: param_type,
-                                default_value: typed_default_value,
-                                examples: param.examples.clone(),
-                            });
-                        }
+                        pushed_params.push(param);
+                        resolved_param_types.push((
+                            param.var_name.clone(),
+                            param_type.clone(),
+                            typed_default_value.clone(),
+                        ));
+                        typed_params.push(TypedParameter {
+                            var_name: param.var_name.clone(),
+                            var_type: param_type,
+                            default_value: typed_default_value,
+                            examples: param.examples.clone(),
+                        });
                     }
                 }
 
@@ -264,7 +246,6 @@ fn typecheck_module(
                     module: parsed_ast.document_id.clone(),
                     name: TypeName::new(component_name.as_str()).unwrap(),
                     parameters: resolved_param_types,
-                    slot: component_slot.clone(),
                 });
 
                 let _ = type_env.push(
@@ -283,20 +264,11 @@ fn typecheck_module(
                             errors,
                             &mut type_env,
                             asset_references,
-                            component_slot.is_some(),
                         )
                     })
                     .collect::<Vec<_>>();
 
                 let is_recursive = type_env.has_been_accessed(component_name);
-
-                if is_recursive {
-                    if let Some(range) = &slot_param_range {
-                        errors.push(TypeError::RecursiveComponentCannotHaveSlot {
-                            range: range.clone(),
-                        });
-                    }
-                }
 
                 for param in pushed_params.iter().rev() {
                     let (name, _, accessed) = var_env.pop();
@@ -339,7 +311,6 @@ fn typecheck_module(
                     params: typed_params,
                     children: typed_children,
                     is_recursive,
-                    slot: component_slot,
                 });
             }
             ParsedDeclaration::Record(ParsedRecordDeclaration {
@@ -557,7 +528,6 @@ fn typecheck_module(
                             errors,
                             &mut type_env,
                             asset_references,
-                            false,
                         )
                     })
                     .collect::<Vec<_>>();
@@ -641,7 +611,6 @@ fn typecheck_node(
     errors: &mut Vec<TypeError>,
     type_env: &mut VariableScope<TypeName, (Arc<Type>, DocumentRange)>,
     asset_references: &mut Vec<AssetReference>,
-    slot_in_scope: bool,
 ) -> Option<TypedNode> {
     match node {
         ParsedNode::If {
@@ -660,7 +629,6 @@ fn typecheck_node(
                         errors,
                         type_env,
                         asset_references,
-                        slot_in_scope,
                     )
                 })
                 .collect();
@@ -806,7 +774,6 @@ fn typecheck_node(
                         errors,
                         type_env,
                         asset_references,
-                        slot_in_scope,
                     )
                 })
                 .collect();
@@ -949,7 +916,6 @@ fn typecheck_node(
                         errors,
                         type_env,
                         asset_references,
-                        slot_in_scope,
                     )
                 })
                 .collect();
@@ -999,17 +965,15 @@ fn typecheck_node(
                         errors,
                         type_env,
                         asset_references,
-                        slot_in_scope,
                     )
                 })
-                .collect();
+                .collect::<Vec<_>>();
 
             // Look up the component type from type_env
             let (
                 component_module,
                 component_type_name,
                 component_params,
-                component_slot,
                 component_def_range,
             ) = match type_env.lookup(component_name) {
                 Some((typ, def_range)) => match typ.as_ref() {
@@ -1017,12 +981,10 @@ fn typecheck_node(
                         module,
                         name,
                         parameters,
-                        slot,
                     } => (
                         module.clone(),
                         name.clone(),
                         parameters.clone(),
-                        slot.clone(),
                         def_range.clone(),
                     ),
                     _ => {
@@ -1061,7 +1023,6 @@ fn typecheck_node(
                 module: component_module.clone(),
                 name: component_type_name,
                 parameters: component_params.clone(),
-                slot: component_slot.clone(),
             });
             annotations.push(TypeAnnotation::TypeForTypeName {
                 typ: component_type.clone(),
@@ -1078,153 +1039,142 @@ fn typecheck_node(
                 });
             }
 
-            // Validate that content is only passed to components with children: Fragment parameter
-            if !children.is_empty() && component_slot.is_none() {
+            let slot_param = component_params
+                .iter()
+                .find(|(name, typ, _)| name.as_str() == "slot" && **typ == Type::Fragment);
+            let has_explicit_slot_arg = args.iter().any(|a| a.name.as_str() == "slot");
+            let has_children = !typed_children.is_empty();
+            let synthesize_slot_arg = has_children && slot_param.is_some() && !has_explicit_slot_arg;
+
+            if has_children && slot_param.is_none() {
                 errors.push(TypeError::ComponentDoesNotAcceptChildren {
                     component: component_name.clone(),
                     range: component_name_opening_range.clone(),
                 });
             }
 
-            // Check if children are required (slot without default) but not provided
-            let children_required = component_slot
-                .as_ref()
-                .is_some_and(|s| *s.typ == Type::Fragment && s.default_value.is_none());
+            let mut typed_args = Vec::new();
+            for arg in args.iter() {
+                let arg_name = arg.name.as_str();
 
-            if children_required && children.is_empty() {
-                errors.push(TypeError::MissingChildren {
-                    component: component_name.clone(),
+                let (_, param_type, _) = match component_params
+                    .iter()
+                    .find(|(name, _, _)| name.as_str() == arg_name)
+                {
+                    None => {
+                        errors.push(TypeError::UnexpectedArgument {
+                            arg: arg_name.to_string(),
+                            range: arg.name.clone(),
+                        });
+                        continue;
+                    }
+                    Some(param) => param,
+                };
+
+                let arg_expr = match &arg.value {
+                    Some(ParsedAttributeValue::Expression(expr)) => expr.clone(),
+                    Some(ParsedAttributeValue::String(content)) => {
+                        let value = content
+                            .as_ref()
+                            .map(|r| r.to_cheap_string())
+                            .unwrap_or_else(|| CheapString::new(String::new()));
+                        dop::ParsedExpr::StringLiteral {
+                            value,
+                            range: arg.name.clone(),
+                        }
+                    }
+                    None => dop::ParsedExpr::BooleanLiteral {
+                        value: true,
+                        range: arg.name.clone(),
+                    },
+                };
+
+                let typed_expr = match typecheck_expr(
+                    &arg_expr,
+                    var_env,
+                    type_env,
+                    annotations,
+                    definition_links,
+                    Some(param_type),
+                    asset_references,
+                ) {
+                    Ok(t) => t,
+                    Err(err) => {
+                        errors.push(err);
+                        continue;
+                    }
+                };
+                let arg_type = typed_expr.get_type();
+
+                if *arg_type != **param_type {
+                    errors.push(TypeError::ArgumentIsIncompatible {
+                        expected: param_type.clone(),
+                        found: arg_type,
+                        arg_name: arg.name.clone(),
+                        range: arg_expr.range().clone(),
+                    });
+                    continue;
+                }
+
+                typed_args.push(TypedArgument {
+                    name: VarName::new(arg_name).unwrap(),
+                    expr: typed_expr,
+                });
+            }
+
+            if has_children && has_explicit_slot_arg {
+                errors.push(TypeError::SlotContentAmbiguous {
+                    range: component_name_opening_range.clone(),
+                });
+                return None;
+            }
+
+            let slot_var = if synthesize_slot_arg {
+                let fresh = var_env.fresh_var();
+                typed_args.push(TypedArgument {
+                    name: VarName::new("slot").unwrap(),
+                    expr: TypedExpr::Var {
+                        value: fresh.clone(),
+                        kind: Arc::new(Type::Fragment),
+                    },
+                });
+                Some(fresh)
+            } else {
+                None
+            };
+
+            let missing_args: Vec<&str> = component_params
+                .iter()
+                .filter(|(name, _, default)| {
+                    default.is_none()
+                        && !args.iter().any(|a| a.name.as_str() == name.as_str())
+                        && !(synthesize_slot_arg && name.as_str() == "slot")
+                })
+                .map(|(name, _, _)| name.as_str())
+                .collect();
+            if !missing_args.is_empty() {
+                errors.push(TypeError::MissingArguments {
+                    args: missing_args.join(", "),
                     range: component_name_opening_range.clone(),
                 });
             }
 
-            // Validate arguments and build typed versions
-            // Check if there are any required (non-default) params
-            let has_required_params = component_params
-                .iter()
-                .any(|(_, _, default)| default.is_none());
-
-            let typed_args = match (component_params.as_slice(), args.as_slice()) {
-                ([], []) => Vec::new(),
-                ([], args) => {
-                    for arg in args {
-                        errors.push(TypeError::UnexpectedArgument {
-                            arg: arg.name.as_str().to_string(),
-                            range: arg.name.clone(),
-                        });
-                    }
-                    Vec::new()
-                }
-                (params, []) if has_required_params => {
-                    errors.push(TypeError::missing_arguments(
-                        params,
-                        component_name_opening_range.clone(),
-                    ));
-                    Vec::new()
-                }
-                (_, []) => Vec::new(), // no required params, args optional
-                (params, args) => {
-                    let mut typed_arguments = Vec::new();
-                    // Only check for missing params that don't have defaults
-                    for (param_name, _, default) in params {
-                        if default.is_none()
-                            && !args.iter().any(|a| a.name.as_str() == param_name.as_str())
-                        {
-                            errors.push(TypeError::MissingRequiredParameter {
-                                param: param_name.clone(),
-                                range: component_name_opening_range.clone(),
-                            });
-                        }
-                    }
-
-                    for arg in args {
-                        let arg_name = arg.name.as_str();
-
-                        // Disallow children arg - it's handled separately via component children
-                        if arg_name == "slot" {
-                            errors.push(TypeError::ChildrenArgNotAllowed {
-                                range: arg.name.clone(),
-                            });
-                            continue;
-                        }
-
-                        let (_, param_type, _) = match component_params
-                            .iter()
-                            .find(|(name, _, _)| name.as_str() == arg_name)
-                        {
-                            None => {
-                                errors.push(TypeError::UnexpectedArgument {
-                                    arg: arg_name.to_string(),
-                                    range: arg.name.clone(),
-                                });
-                                continue;
-                            }
-                            Some(param) => param,
-                        };
-
-                        // Convert ParsedAttribute value to expression for type checking
-                        let arg_expr = match &arg.value {
-                            Some(ParsedAttributeValue::Expression(expr)) => expr.clone(),
-                            Some(ParsedAttributeValue::String(content)) => {
-                                let value = content
-                                    .as_ref()
-                                    .map(|r| r.to_cheap_string())
-                                    .unwrap_or_else(|| CheapString::new(String::new()));
-                                dop::ParsedExpr::StringLiteral {
-                                    value,
-                                    range: arg.name.clone(),
-                                }
-                            }
-                            None => dop::ParsedExpr::BooleanLiteral {
-                                value: true,
-                                range: arg.name.clone(),
-                            },
-                        };
-
-                        let typed_expr = match typecheck_expr(
-                            &arg_expr,
-                            var_env,
-                            type_env,
-                            annotations,
-                            definition_links,
-                            Some(param_type),
-                            asset_references,
-                        ) {
-                            Ok(t) => t,
-                            Err(err) => {
-                                errors.push(err);
-                                continue;
-                            }
-                        };
-                        let arg_type = typed_expr.get_type();
-
-                        // param_type is already resolved from the component's defining module
-                        if *arg_type != **param_type {
-                            errors.push(TypeError::ArgumentIsIncompatible {
-                                expected: param_type.clone(),
-                                found: arg_type,
-                                arg_name: arg.name.clone(),
-                                range: arg_expr.range().clone(),
-                            });
-                            continue;
-                        }
-
-                        let var_name = VarName::new(arg_name).unwrap();
-                        typed_arguments.push(TypedArgument {
-                            name: var_name,
-                            expr: typed_expr,
-                        });
-                    }
-
-                    typed_arguments
-                }
-            };
+            if let Some(var) = slot_var {
+                return Some(TypedNode::LetFragment {
+                    var,
+                    fragment_body: typed_children,
+                    body: vec![TypedNode::ComponentInvocation {
+                        component_name: component_name.clone(),
+                        component_type,
+                        args: typed_args,
+                    }],
+                });
+            }
 
             Some(TypedNode::ComponentInvocation {
                 component_name: component_name.clone(),
                 component_type,
                 args: typed_args,
-                children: typed_children,
             })
         }
 
@@ -1257,7 +1207,6 @@ fn typecheck_node(
                         errors,
                         type_env,
                         asset_references,
-                        slot_in_scope,
                     )
                 })
                 .collect();
@@ -1283,7 +1232,7 @@ fn typecheck_node(
                 asset_references,
             )) {
                 let expr_type = typed_expr.get_type();
-                if *expr_type != Type::String {
+                if *expr_type != Type::String && *expr_type != Type::Fragment {
                     errors.push(TypeError::ExpectedStringForTextExpression {
                         found: expr_type,
                         range: expression.range().clone(),
@@ -1295,15 +1244,6 @@ fn typecheck_node(
             } else {
                 None
             }
-        }
-
-        ParsedNode::Slot { range } => {
-            if !slot_in_scope {
-                errors.push(TypeError::SlotOutsideSlottedComponent {
-                    range: range.clone(),
-                });
-            }
-            Some(TypedNode::Slot)
         }
 
         ParsedNode::Match { subject, cases, .. } => {
@@ -1380,7 +1320,6 @@ fn typecheck_node(
                                 errors,
                                 type_env,
                                 asset_references,
-                                slot_in_scope,
                             )
                         })
                         .collect::<Vec<_>>();
@@ -1863,6 +1802,57 @@ mod tests {
     }
 
     #[test]
+    fn slotted_component_invoked_without_slot_reports_missing_required_argument() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component Card(slot: Fragment) {
+                    <div>{slot}</div>
+                }
+
+                component Main {
+                    <Card />
+                }
+            "#},
+            expect![[r#"
+                error: Component requires arguments: slot
+                  --> main.hop (line 6, col 6)
+                5 | component Main {
+                6 |     <Card />
+                  |      ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn slotted_component_accepts_explicit_slot_argument() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                component Card(slot: Fragment) {
+                    <div>{slot}</div>
+                }
+
+                component Main(slot: Fragment) {
+                    <Card slot={slot} />
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                <Card {slot: Fragment}>
+                  <div>
+                    {slot}
+                  </div>
+                </Card>
+
+                <Main {slot: Fragment}>
+                  <Card slot={slot}/>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
     fn slot_rejected_in_view() {
         reject(
             indoc! {r#"
@@ -1874,18 +1864,18 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: `{slot}` can only be used inside a component that declares a `slot: Fragment` parameter
-                  --> main.hop (line 3, col 9)
+                error: Undefined variable: slot
+                  --> main.hop (line 3, col 10)
                 2 |     <div>
                 3 |         {slot}
-                  |         ^^^^^^
+                  |          ^^^^
             "#]],
         );
     }
 
     #[test]
-    fn should_reject_recursive_component_with_slot() {
-        reject(
+    fn should_accept_recursive_component_with_slot() {
+        accept(
             indoc! {r#"
                 -- main.hop --
                 component Tree(slot: Fragment) {
@@ -1895,10 +1885,18 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: A recursive component cannot declare a slot
-                  --> main.hop (line 1, col 16)
-                1 | component Tree(slot: Fragment) {
-                  |                ^^^^
+                -- main.hop --
+                <Tree {slot: Fragment}>
+                  <div>
+                    <let {
+                      v_0 = {
+                        {slot}
+                      }
+                    }>
+                      <Tree slot={v_0}/>
+                    </let>
+                  </div>
+                </Tree>
             "#]],
         );
     }
@@ -1913,7 +1911,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Undefined variable: slot
+                error: Expected String, Bool, or Option[String] attribute, got Fragment
                   --> main.hop (line 2, col 17)
                 1 | component Card(slot: Fragment) {
                 2 |     <div class={slot}></div>
@@ -1923,7 +1921,7 @@ mod tests {
     }
 
     #[test]
-    fn slot_rejected_as_let_expression() {
+    fn slot_can_be_bound_as_a_fragment_value_in_let() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -1934,17 +1932,34 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Undefined variable: slot
-                  --> main.hop (line 2, col 31)
-                1 | component Card(slot: Fragment) {
-                2 |     <let {content: Fragment = slot}>
-                  |                               ^^^^
-
                 warning: Unused variable content
                   --> main.hop (line 2, col 11)
                 1 | component Card(slot: Fragment) {
                 2 |     <let {content: Fragment = slot}>
                   |           ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn explicit_slot_arg_combined_with_element_children_is_rejected() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component Card(slot: Fragment) {
+                    <div>{slot}</div>
+                }
+
+                component Main(slot: Fragment) {
+                    <Card slot={slot}>children</Card>
+                }
+            "#},
+            expect![[r#"
+                error: slot content provided both as an explicit `slot` argument and as element children
+                  --> main.hop (line 6, col 6)
+                5 | component Main(slot: Fragment) {
+                6 |     <Card slot={slot}>children</Card>
+                  |      ^^^^
             "#]],
         );
     }
@@ -2589,7 +2604,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Missing required parameter 'a'
+                error: Component requires arguments: a
                   --> main.hop (line 7, col 4)
                 6 | component Foo {
                 7 |   <Main b="foo"/>
@@ -3184,9 +3199,13 @@ mod tests {
                 </Main>
 
                 <Bar>
-                  <Main>
-                    Here's the content for the children
-                  </Main>
+                  <let {
+                    v_0 = {
+                      Here's the content for the children
+                    }
+                  }>
+                    <Main slot={v_0}/>
+                  </let>
                 </Bar>
             "#]],
         );
@@ -4225,7 +4244,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Missing required parameter 'name'
+                error: Component requires arguments: name
                   --> main.hop (line 5, col 4)
                 4 | component Main {
                 5 |   <UserCard role="admin" />
@@ -5474,7 +5493,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_slot_parameter_has_option_type() {
+    fn slot_named_param_with_non_fragment_type_is_an_ordinary_param() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -5486,7 +5505,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: The slot parameter must be typed as Fragment
+                warning: Unused variable slot
                   --> main.hop (line 1, col 21)
                 1 | component Separator(slot: Option[Fragment] = None) {
                   |                     ^^^^

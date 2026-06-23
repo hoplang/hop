@@ -69,13 +69,10 @@ pub enum TypedNode {
         expression: TypedExpr,
     },
 
-    Slot,
-
     ComponentInvocation {
         component_name: TypeName,
         component_type: Arc<Type>,
         args: Vec<TypedArgument>,
-        children: Vec<TypedNode>,
     },
 
     If {
@@ -97,6 +94,12 @@ pub enum TypedNode {
         var: VarName,
         value: TypedExpr,
         children: Vec<TypedNode>,
+    },
+
+    LetFragment {
+        var: VarName,
+        fragment_body: Vec<TypedNode>,
+        body: Vec<TypedNode>,
     },
 
     LetRecordDestructure {
@@ -123,12 +126,10 @@ impl TypedNode {
             TypedNode::TextExpression { expression } => BoxDoc::text("{")
                 .append(expression.to_doc())
                 .append(BoxDoc::text("}")),
-            TypedNode::Slot => BoxDoc::text("{slot}"),
             TypedNode::Doctype { value } => BoxDoc::text(value.as_str()),
             TypedNode::ComponentInvocation {
                 component_name,
                 args,
-                children,
                 ..
             } => {
                 let tag = BoxDoc::text("<").append(BoxDoc::text(component_name.as_str()));
@@ -145,24 +146,7 @@ impl TypedNode {
                         BoxDoc::space(),
                     ))
                 };
-                if children.is_empty() {
-                    tag_with_args.append(BoxDoc::text("/>"))
-                } else {
-                    tag_with_args
-                        .append(BoxDoc::text(">"))
-                        .append(
-                            BoxDoc::line()
-                                .append(BoxDoc::intersperse(
-                                    children.iter().map(|c| c.to_doc()),
-                                    BoxDoc::line(),
-                                ))
-                                .nest(2),
-                        )
-                        .append(BoxDoc::line())
-                        .append(BoxDoc::text("</"))
-                        .append(BoxDoc::text(component_name.as_str()))
-                        .append(BoxDoc::text(">"))
-                }
+                tag_with_args.append(BoxDoc::text("/>"))
             }
             TypedNode::If {
                 condition,
@@ -246,6 +230,34 @@ impl TypedNode {
                     .append(BoxDoc::line())
                     .append(BoxDoc::text("</let>"))
                 }
+            }
+            TypedNode::LetFragment {
+                var,
+                fragment_body,
+                body,
+            } => {
+                fn render(nodes: &[TypedNode]) -> BoxDoc<'_> {
+                    BoxDoc::line()
+                        .append(BoxDoc::intersperse(
+                            nodes.iter().map(|c| c.to_doc()),
+                            BoxDoc::line(),
+                        ))
+                        .nest(2)
+                }
+                let fragment = BoxDoc::text("{")
+                    .append(render(fragment_body))
+                    .append(BoxDoc::line())
+                    .append(BoxDoc::text("}"));
+                let binding = BoxDoc::text(var.as_str())
+                    .append(BoxDoc::text(" = "))
+                    .append(fragment);
+                BoxDoc::text("<let {")
+                    .append(BoxDoc::line().append(binding).nest(2))
+                    .append(BoxDoc::line())
+                    .append(BoxDoc::text("}>"))
+                    .append(render(body))
+                    .append(BoxDoc::line())
+                    .append(BoxDoc::text("</let>"))
             }
             TypedNode::LetRecordDestructure {
                 subject,

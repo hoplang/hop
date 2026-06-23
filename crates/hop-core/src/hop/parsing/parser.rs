@@ -724,14 +724,8 @@ fn construct_node(
         Token::Newline { range } => Some(ParsedNode::Newline { range }),
         Token::TextExpression { content, range } => {
             let mut iter = content.cursor().peekable();
-            dop::parse_expr::parse_expr(&mut iter, comments, errors, &content).map(|expression| {
-                match &expression {
-                    dop::ParsedExpr::Var { value, .. } if value.as_str() == "slot" => {
-                        ParsedNode::Slot { range }
-                    }
-                    _ => ParsedNode::TextExpression { expression, range },
-                }
-            })
+            dop::parse_expr::parse_expr(&mut iter, comments, errors, &content)
+                .map(|expression| ParsedNode::TextExpression { expression, range })
         }
         Token::RawTextTag {
             tag_name,

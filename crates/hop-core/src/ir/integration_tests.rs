@@ -6975,24 +6975,38 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 view Test() {
-                  let title = "Hello" in {
-                    write("<div")
-                    write(" class=\"card\"")
-                    write(">")
-                    write("<h2")
-                    write(">")
-                    write_escaped(title)
-                    write("</h2>")
+                  let v_0 = {
                     write("<p")
                     write(">")
                     write("world")
                     write("</p>")
-                    write("</div>")
+                  } in {
+                    let title = "Hello" in {
+                      let slot = v_0 in {
+                        write("<div")
+                        write(" class=\"card\"")
+                        write(">")
+                        write("<h2")
+                        write(">")
+                        write_escaped(title)
+                        write("</h2>")
+                        write_expr(slot)
+                        write("</div>")
+                      }
+                    }
                   }
                 }
                 -- ir (optimized) --
                 view Test() {
-                  write("<div class=\"card\"><h2>Hello</h2><p>world</p></div>")
+                  let v_0 = {
+                    write("<p>world</p>")
+                  } in {
+                    let slot = v_0 in {
+                      write("<div class=\"card\"><h2>Hello</h2>")
+                      write_expr(slot)
+                      write("</div>")
+                    }
+                  }
                 }
                 -- expected output --
                 <div class="card"><h2>Hello</h2><p>world</p></div>
@@ -7043,23 +7057,50 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 view Test() {
-                  write("<div")
-                  write(" class=\"outer\"")
-                  write(">")
-                  write("<div")
-                  write(" class=\"inner\"")
-                  write(">")
-                  write("<p")
-                  write(">")
-                  write("hello")
-                  write("</p>")
-                  write("</div>")
-                  write("</div>")
+                  let v_1 = {
+                    write("<p")
+                    write(">")
+                    write("hello")
+                    write("</p>")
+                  } in {
+                    let slot = v_1 in {
+                      write("<div")
+                      write(" class=\"outer\"")
+                      write(">")
+                      let v_0 = {
+                        write_expr(slot)
+                      } in {
+                        let slot_1 = v_0 in {
+                          write("<div")
+                          write(" class=\"inner\"")
+                          write(">")
+                          write_expr(slot_1)
+                          write("</div>")
+                        }
+                      }
+                      write("</div>")
+                    }
+                  }
                 }
                 -- ir (optimized) --
                 view Test() {
-                  write("<div class=\"outer\"><div class=\"inner\"><p>hello</p></div>")
-                  write("</div>")
+                  let v_1 = {
+                    write("<p>hello</p>")
+                  } in {
+                    let slot = v_1 in {
+                      write("<div class=\"outer\">")
+                      let v_0 = {
+                        write_expr(slot)
+                      } in {
+                        let slot_1 = v_0 in {
+                          write("<div class=\"inner\">")
+                          write_expr(slot_1)
+                          write("</div>")
+                        }
+                      }
+                      write("</div>")
+                    }
+                  }
                 }
                 -- expected output --
                 <div class="outer"><div class="inner"><p>hello</p></div></div>
@@ -7122,39 +7163,52 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 view Test() {
-                  write("<div")
-                  write(" class=\"layout\"")
-                  write(">")
-                  let title = "Welcome" in {
-                    write("<header")
+                  let v_0 = {
+                    let title = "Welcome" in {
+                      write("<header")
+                      write(">")
+                      write("<h1")
+                      write(">")
+                      write_escaped(title)
+                      write("</h1>")
+                      write("</header>")
+                    }
+                    write("<main")
                     write(">")
-                    write("<h1")
+                    write("<p")
                     write(">")
-                    write_escaped(title)
-                    write("</h1>")
-                    write("</header>")
+                    write("Hello world")
+                    write("</p>")
+                    write("</main>")
+                    write("<footer")
+                    write(">")
+                    write("<p")
+                    write(">")
+                    write("Copyright 2024")
+                    write("</p>")
+                    write("</footer>")
+                  } in {
+                    let slot = v_0 in {
+                      write("<div")
+                      write(" class=\"layout\"")
+                      write(">")
+                      write_expr(slot)
+                      write("</div>")
+                    }
                   }
-                  write("<main")
-                  write(">")
-                  write("<p")
-                  write(">")
-                  write("Hello world")
-                  write("</p>")
-                  write("</main>")
-                  write("<footer")
-                  write(">")
-                  write("<p")
-                  write(">")
-                  write("Copyright 2024")
-                  write("</p>")
-                  write("</footer>")
-                  write("</div>")
                 }
                 -- ir (optimized) --
                 view Test() {
-                  write("<div class=\"layout\"><header><h1>Welcome</h1></header><main>")
-                  write("<p>Hello world</p></main><footer><p>Copyright 2024</p>")
-                  write("</footer></div>")
+                  let v_0 = {
+                    write("<header><h1>Welcome</h1></header><main><p>Hello world</p>")
+                    write("</main><footer><p>Copyright 2024</p></footer>")
+                  } in {
+                    let slot = v_0 in {
+                      write("<div class=\"layout\">")
+                      write_expr(slot)
+                      write("</div>")
+                    }
+                  }
                 }
                 -- expected output --
                 <div class="layout"><header><h1>Welcome</h1></header><main><p>Hello world</p></main><footer><p>Copyright 2024</p></footer></div>
@@ -7200,27 +7254,39 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 view Test() {
-                  write("<div")
-                  write(" class=\"first\"")
-                  write(">")
-                  write("<span")
-                  write(">")
-                  write("hi")
-                  write("</span>")
-                  write("</div>")
-                  write("<div")
-                  write(" class=\"second\"")
-                  write(">")
-                  write("<span")
-                  write(">")
-                  write("hi")
-                  write("</span>")
-                  write("</div>")
+                  let v_0 = {
+                    write("<span")
+                    write(">")
+                    write("hi")
+                    write("</span>")
+                  } in {
+                    let slot = v_0 in {
+                      write("<div")
+                      write(" class=\"first\"")
+                      write(">")
+                      write_expr(slot)
+                      write("</div>")
+                      write("<div")
+                      write(" class=\"second\"")
+                      write(">")
+                      write_expr(slot)
+                      write("</div>")
+                    }
+                  }
                 }
                 -- ir (optimized) --
                 view Test() {
-                  write("<div class=\"first\"><span>hi</span></div><div class=\"second\"")
-                  write("><span>hi</span></div>")
+                  let v_0 = {
+                    write("<span>hi</span>")
+                  } in {
+                    let slot = v_0 in {
+                      write("<div class=\"first\">")
+                      write_expr(slot)
+                      write("</div><div class=\"second\">")
+                      write_expr(slot)
+                      write("</div>")
+                    }
+                  }
                 }
                 -- expected output --
                 <div class="first"><span>hi</span></div><div class="second"><span>hi</span></div>
@@ -7781,19 +7847,26 @@ mod tests {
                 -- ir (unoptimized) --
                 view Test() {
                   let title = "Hello" in {
-                    write("<div")
-                    write(" class=\"card\"")
-                    write(">")
-                    write("<h2")
-                    write(">")
-                    write_escaped(title)
-                    write("</h2>")
-                    write("</div>")
+                    let slot = Fragment::empty() in {
+                      write("<div")
+                      write(" class=\"card\"")
+                      write(">")
+                      write("<h2")
+                      write(">")
+                      write_escaped(title)
+                      write("</h2>")
+                      write_expr(slot)
+                      write("</div>")
+                    }
                   }
                 }
                 -- ir (optimized) --
                 view Test() {
-                  write("<div class=\"card\"><h2>Hello</h2></div>")
+                  let slot = Fragment::empty() in {
+                    write("<div class=\"card\"><h2>Hello</h2>")
+                    write_expr(slot)
+                    write("</div>")
+                  }
                 }
                 -- expected output --
                 <div class="card"><h2>Hello</h2></div>
@@ -7843,35 +7916,56 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 view Test() {
-                  let title = "With" in {
-                    write("<div")
-                    write(" class=\"card\"")
-                    write(">")
-                    write("<h2")
-                    write(">")
-                    write_escaped(title)
-                    write("</h2>")
+                  let v_0 = {
                     write("<p")
                     write(">")
                     write("body")
                     write("</p>")
-                    write("</div>")
+                  } in {
+                    let title = "With" in {
+                      let slot = v_0 in {
+                        write("<div")
+                        write(" class=\"card\"")
+                        write(">")
+                        write("<h2")
+                        write(">")
+                        write_escaped(title)
+                        write("</h2>")
+                        write_expr(slot)
+                        write("</div>")
+                      }
+                    }
                   }
                   let title_1 = "Without" in {
-                    write("<div")
-                    write(" class=\"card\"")
-                    write(">")
-                    write("<h2")
-                    write(">")
-                    write_escaped(title_1)
-                    write("</h2>")
-                    write("</div>")
+                    let slot_2 = Fragment::empty() in {
+                      write("<div")
+                      write(" class=\"card\"")
+                      write(">")
+                      write("<h2")
+                      write(">")
+                      write_escaped(title_1)
+                      write("</h2>")
+                      write_expr(slot_2)
+                      write("</div>")
+                    }
                   }
                 }
                 -- ir (optimized) --
                 view Test() {
-                  write("<div class=\"card\"><h2>With</h2><p>body</p></div><div")
-                  write(" class=\"card\"><h2>Without</h2></div>")
+                  let v_0 = {
+                    write("<p>body</p>")
+                  } in {
+                    let slot = v_0 in {
+                      write("<div class=\"card\"><h2>With</h2>")
+                      write_expr(slot)
+                      write("</div>")
+                    }
+                  }
+                  let slot_2 = Fragment::empty() in {
+                    write("<div class=\"card\"><h2>Without</h2>")
+                    write_expr(slot_2)
+                    write("</div>")
+                  }
                 }
                 -- expected output --
                 <div class="card"><h2>With</h2><p>body</p></div><div class="card"><h2>Without</h2></div>
@@ -9083,6 +9177,269 @@ mod tests {
                 }
                 -- expected output --
                 <img src="/static/v1/logo-a1b2c3d4.svg">
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn recursive_component_with_slot_renders() {
+        check(
+            indoc! {r#"
+                component Nest(
+                  depth: Int,
+                  slot: Fragment,
+                ) {
+                  <match {depth > 0}>
+                    <case {true}>
+                      <div>
+                        <Nest depth={depth - 1}>
+                          {slot}
+                        </Nest>
+                      </div>
+                    </case>
+                    <case {false}>
+                      {slot}
+                    </case>
+                  </match>
+                }
+
+                view Test {
+                  <Nest depth={2}>
+                    <b>
+                      x
+                    </b>
+                  </Nest>
+                }
+            "#},
+            "<div><div><b>x</b></div></div>",
+            expect![[r#"
+                -- ir (unoptimized) --
+                component Nest(depth: Int, slot: Fragment) {
+                  match (0 < depth) {
+                    true => {
+                      write("<div")
+                      write(">")
+                      let v_1 = {
+                        write_expr(slot)
+                      } in {
+                        call Nest(depth = (depth - 1), slot = v_1)
+                      }
+                      write("</div>")
+                    }
+                    false => {
+                      write_expr(slot)
+                    }
+                  }
+                }
+                view Test() {
+                  let v_2 = {
+                    write("<b")
+                    write(">")
+                    write("x")
+                    write("</b>")
+                  } in {
+                    call Nest(depth = 2, slot = v_2)
+                  }
+                }
+                -- ir (optimized) --
+                component Nest(depth: Int, slot: Fragment) {
+                  match (0 < depth) {
+                    true => {
+                      write("<div>")
+                      let v_1 = {
+                        write_expr(slot)
+                      } in {
+                        call Nest(depth = (depth - 1), slot = v_1)
+                      }
+                      write("</div>")
+                    }
+                    false => {
+                      write_expr(slot)
+                    }
+                  }
+                }
+                view Test() {
+                  let v_2 = {
+                    write("<b>x</b>")
+                  } in {
+                    call Nest(depth = 2, slot = v_2)
+                  }
+                }
+                -- expected output --
+                <div><div><b>x</b></div></div>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn slot_can_be_bound_to_a_variable() {
+        check(
+            indoc! {r#"
+                component Foo(slot: Fragment) {
+                  <let {x = slot}>
+                    <div>
+                      {x}
+                    </div>
+                  </let>
+                }
+
+                view Test {
+                  <Foo>
+                    <b>
+                      hi
+                    </b>
+                  </Foo>
+                }
+            "#},
+            "<div><b>hi</b></div>",
+            expect![[r#"
+                -- ir (unoptimized) --
+                view Test() {
+                  let v_0 = {
+                    write("<b")
+                    write(">")
+                    write("hi")
+                    write("</b>")
+                  } in {
+                    let slot = v_0 in {
+                      let x = slot in {
+                        write("<div")
+                        write(">")
+                        write_expr(x)
+                        write("</div>")
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                view Test() {
+                  let v_0 = {
+                    write("<b>hi</b>")
+                  } in {
+                    let slot = v_0 in {
+                      let x = slot in {
+                        write("<div>")
+                        write_expr(x)
+                        write("</div>")
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                <div><b>hi</b></div>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn nested_slot_forwarding() {
+        check(
+            indoc! {r#"
+                component Inner(slot: Fragment) {
+                  <em>
+                    {slot}
+                  </em>
+                }
+
+                component Outer(slot: Fragment) {
+                  <section>
+                    <Inner>
+                      {slot}
+                    </Inner>
+                  </section>
+                }
+
+                view Test {
+                  <Outer>
+                    z
+                  </Outer>
+                }
+            "#},
+            "<section><em>z</em></section>",
+            expect![[r#"
+                -- ir (unoptimized) --
+                view Test() {
+                  let v_1 = {
+                    write("z")
+                  } in {
+                    let slot = v_1 in {
+                      write("<section")
+                      write(">")
+                      let v_0 = {
+                        write_expr(slot)
+                      } in {
+                        let slot_1 = v_0 in {
+                          write("<em")
+                          write(">")
+                          write_expr(slot_1)
+                          write("</em>")
+                        }
+                      }
+                      write("</section>")
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                view Test() {
+                  let v_1 = {
+                    write("z")
+                  } in {
+                    let slot = v_1 in {
+                      write("<section>")
+                      let v_0 = {
+                        write_expr(slot)
+                      } in {
+                        let slot_1 = v_0 in {
+                          write("<em>")
+                          write_expr(slot_1)
+                          write("</em>")
+                        }
+                      }
+                      write("</section>")
+                    }
+                  }
+                }
+                -- expected output --
+                <section><em>z</em></section>
                 -- eval (unoptimized) --
                 OK
                 -- eval (optimized) --

@@ -128,6 +128,15 @@ pub enum IrStatement {
         body: Vec<IrStatement>,
     },
 
+    /// Render `fragment_body` into a fresh buffer and bind the result to `var`
+    /// as a Fragment value, then execute `body`.
+    LetFragment {
+        id: StatementId,
+        var: VarName,
+        fragment_body: Vec<IrStatement>,
+        body: Vec<IrStatement>,
+    },
+
     /// Match on a value and execute the corresponding branch.
     Match {
         id: StatementId,
@@ -162,6 +171,9 @@ pub enum IrExpr {
 
     /// A string literal expression, e.g. "foo bar"
     StringLiteral { value: CheapString, id: ExprId },
+
+    /// An empty Fragment value, i.e. Fragment::empty()
+    FragmentEmpty { id: ExprId },
 
     /// A boolean literal expression, e.g. true
     BooleanLiteral { value: bool, id: ExprId },
@@ -352,6 +364,7 @@ impl IrStatement {
                 }
             },
             IrStatement::Let { value, .. } => value.traverse(f),
+            IrStatement::LetFragment { .. } => {}
             IrStatement::LetRecordDestructure { subject, .. } => subject.traverse(f),
             IrStatement::Match { match_, .. } => match_.subject().traverse(f),
             IrStatement::ComponentInvocation { args, .. } => {
@@ -378,6 +391,7 @@ impl IrStatement {
                 }
             },
             IrStatement::Let { value, .. } => value.traverse_mut(f),
+            IrStatement::LetFragment { .. } => {}
             IrStatement::LetRecordDestructure { subject, .. } => subject.traverse_mut(f),
             IrStatement::Match { match_, .. } => match_.subject_mut().traverse_mut(f),
             IrStatement::ComponentInvocation { args, .. } => {
@@ -408,6 +422,18 @@ impl IrStatement {
                 }
             }
             IrStatement::Let { body, .. } => {
+                for stmt in body {
+                    stmt.traverse(f);
+                }
+            }
+            IrStatement::LetFragment {
+                fragment_body,
+                body,
+                ..
+            } => {
+                for stmt in fragment_body {
+                    stmt.traverse(f);
+                }
                 for stmt in body {
                     stmt.traverse(f);
                 }
@@ -499,6 +525,38 @@ impl IrStatement {
                 .append(BoxDoc::text(" = "))
                 .append(value.to_doc())
                 .append(BoxDoc::text(" in {"))
+                .append(if body.is_empty() {
+                    BoxDoc::nil()
+                } else {
+                    BoxDoc::line()
+                        .append(BoxDoc::intersperse(
+                            body.iter().map(|stmt| stmt.to_doc()),
+                            BoxDoc::line(),
+                        ))
+                        .append(BoxDoc::line())
+                        .nest(2)
+                })
+                .append(BoxDoc::text("}")),
+            IrStatement::LetFragment {
+                var,
+                fragment_body,
+                body,
+                ..
+            } => BoxDoc::text("let ")
+                .append(BoxDoc::text(var.as_str()))
+                .append(BoxDoc::text(" = {"))
+                .append(if fragment_body.is_empty() {
+                    BoxDoc::nil()
+                } else {
+                    BoxDoc::line()
+                        .append(BoxDoc::intersperse(
+                            fragment_body.iter().map(|stmt| stmt.to_doc()),
+                            BoxDoc::line(),
+                        ))
+                        .append(BoxDoc::line())
+                        .nest(2)
+                })
+                .append(BoxDoc::text("} in {"))
                 .append(if body.is_empty() {
                     BoxDoc::nil()
                 } else {
@@ -684,6 +742,7 @@ impl IrExpr {
             IrExpr::Var { id, .. }
             | IrExpr::FieldAccess { id, .. }
             | IrExpr::StringLiteral { id, .. }
+            | IrExpr::FragmentEmpty { id, .. }
             | IrExpr::BooleanLiteral { id, .. }
             | IrExpr::FloatLiteral { id, .. }
             | IrExpr::IntLiteral { id, .. }
@@ -733,6 +792,8 @@ impl IrExpr {
             IrExpr::FloatLiteral { .. } | IrExpr::IntToFloat { .. } => Arc::new(Type::Float),
             IrExpr::IntLiteral { .. } => Arc::new(Type::Int),
 
+            IrExpr::FragmentEmpty { .. } => Arc::new(Type::Fragment),
+
             IrExpr::StringConcat { .. }
             | IrExpr::TwMerge { .. }
             | IrExpr::StringLiteral { .. }
@@ -771,6 +832,7 @@ impl IrExpr {
         static BOOL_TYPE: Type = Type::Bool;
         static FLOAT_TYPE: Type = Type::Float;
         static INT_TYPE: Type = Type::Int;
+        static FRAGMENT_TYPE: Type = Type::Fragment;
 
         match self {
             IrExpr::Var { kind, .. }
@@ -785,6 +847,8 @@ impl IrExpr {
 
             IrExpr::FloatLiteral { .. } | IrExpr::IntToFloat { .. } => &FLOAT_TYPE,
             IrExpr::IntLiteral { .. } => &INT_TYPE,
+
+            IrExpr::FragmentEmpty { .. } => &FRAGMENT_TYPE,
 
             IrExpr::StringConcat { .. }
             | IrExpr::TwMerge { .. }
@@ -827,6 +891,7 @@ impl IrExpr {
                 .append(BoxDoc::text("."))
                 .append(BoxDoc::text(field.as_str())),
             IrExpr::StringLiteral { value, .. } => BoxDoc::text(format!("{:?}", value.as_str())),
+            IrExpr::FragmentEmpty { .. } => BoxDoc::text("Fragment::empty()"),
             IrExpr::BooleanLiteral { value, .. } => BoxDoc::text(value.to_string()),
             IrExpr::FloatLiteral { value, .. } => BoxDoc::text(value.to_string()),
             IrExpr::IntLiteral { value, .. } => BoxDoc::text(value.to_string()),
@@ -1239,6 +1304,7 @@ impl IrExpr {
             }
             IrExpr::Var { .. }
             | IrExpr::StringLiteral { .. }
+            | IrExpr::FragmentEmpty { .. }
             | IrExpr::BooleanLiteral { .. }
             | IrExpr::FloatLiteral { .. }
             | IrExpr::IntLiteral { .. } => {}
@@ -1353,6 +1419,7 @@ impl IrExpr {
             }
             IrExpr::Var { .. }
             | IrExpr::StringLiteral { .. }
+            | IrExpr::FragmentEmpty { .. }
             | IrExpr::BooleanLiteral { .. }
             | IrExpr::FloatLiteral { .. }
             | IrExpr::IntLiteral { .. } => {}
@@ -1449,6 +1516,14 @@ pub fn traverse_statements_mut(
                 traverse_statements_mut(body, f);
             }
             IrStatement::Let { body, .. } => {
+                traverse_statements_mut(body, f);
+            }
+            IrStatement::LetFragment {
+                fragment_body,
+                body,
+                ..
+            } => {
+                traverse_statements_mut(fragment_body, f);
                 traverse_statements_mut(body, f);
             }
             IrStatement::LetRecordDestructure { body, .. } => {

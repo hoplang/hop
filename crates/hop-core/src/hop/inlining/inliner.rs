@@ -83,7 +83,7 @@ impl<'a> InlinerState<'a> {
             .expect("Component declaration should exist");
 
         // Inline the component body - self-references will become ComponentInvocation
-        let inlined_body = self.inline_nodes(&component.children, None);
+        let inlined_body = self.inline_nodes(&component.children);
 
         self.component_defs.push(InlinedComponentDeclaration {
             component_name: component.component_name.clone(),
@@ -127,7 +127,7 @@ impl<'a> InlinerState<'a> {
         InlinedViewDeclaration {
             name: view.name.clone(),
             params: view.params.clone(),
-            children: self.inline_nodes(&view.children, None),
+            children: self.inline_nodes(&view.children),
         }
     }
 
@@ -137,25 +137,9 @@ impl<'a> InlinerState<'a> {
         component: &TypedComponentDeclaration,
         component_type: &Type,
         args: &[TypedArgument],
-        slot_children: &[TypedNode],
-        parent_slot_content: Option<&[InlinedNode]>,
         output: &mut Vec<InlinedNode>,
     ) {
-        let has_slot = component.slot.is_some();
-
-        // Inline slot_children in parent context
-        let inlined_slot_content: Option<Vec<InlinedNode>> = if has_slot && !slot_children.is_empty()
-        {
-            let content = self.inline_nodes(slot_children, parent_slot_content);
-            Some(content)
-        } else if has_slot {
-            Some(vec![])
-        } else {
-            None
-        };
-
-        let inlined_children =
-            self.inline_nodes(&component.children, inlined_slot_content.as_deref());
+        let inlined_children = self.inline_nodes(&component.children);
 
         let bindings = Self::resolve_call_args(component_type, args);
 
@@ -176,36 +160,21 @@ impl<'a> InlinerState<'a> {
     }
 
     /// Inline nodes, pushing results to output
-    fn inline_nodes(
-        &mut self,
-        nodes: &[TypedNode],
-        slot_content: Option<&[InlinedNode]>,
-    ) -> Vec<InlinedNode> {
+    fn inline_nodes(&mut self, nodes: &[TypedNode]) -> Vec<InlinedNode> {
         let mut output = Vec::with_capacity(nodes.len());
         for node in nodes {
-            self.inline_node(node, slot_content, &mut output);
+            self.inline_node(node, &mut output);
         }
         output
     }
 
     /// Inline a single node, pushing results to output
-    fn inline_node(
-        &mut self,
-        node: &TypedNode,
-        slot_content: Option<&[InlinedNode]>,
-        output: &mut Vec<InlinedNode>,
-    ) {
+    fn inline_node(&mut self, node: &TypedNode, output: &mut Vec<InlinedNode>) {
         match node {
-            TypedNode::Slot => {
-                let content = slot_content
-                    .expect("slot node requires slot content in scope after inlining");
-                output.extend_from_slice(content);
-            }
             TypedNode::ComponentInvocation {
                 component_name,
                 component_type,
                 args,
-                children,
             } => {
                 let Type::Component { module, .. } = component_type.as_ref() else {
                     unreachable!("ComponentInvocation must have Component type");
@@ -229,14 +198,7 @@ impl<'a> InlinerState<'a> {
                         .get_component_declaration(component_name.as_str())
                         .expect("Component declaration should exist");
 
-                    self.inline_component_reference(
-                        component,
-                        component_type,
-                        args,
-                        children,
-                        slot_content,
-                        output,
-                    );
+                    self.inline_component_reference(component, component_type, args, output);
                 }
             }
 
@@ -248,7 +210,7 @@ impl<'a> InlinerState<'a> {
                 output.push(InlinedNode::Html {
                     element: element.clone(),
                     attributes: attributes.clone(),
-                    children: self.inline_nodes(children, slot_content),
+                    children: self.inline_nodes(children),
                 });
             }
 
@@ -258,7 +220,7 @@ impl<'a> InlinerState<'a> {
             } => {
                 output.push(InlinedNode::If {
                     condition: condition.clone(),
-                    children: self.inline_nodes(children, slot_content),
+                    children: self.inline_nodes(children),
                 });
             }
 
@@ -270,7 +232,7 @@ impl<'a> InlinerState<'a> {
                 output.push(InlinedNode::For {
                     var_name: var_name.clone(),
                     source: source.clone(),
-                    children: self.inline_nodes(children, slot_content),
+                    children: self.inline_nodes(children),
                 });
             }
 
@@ -299,8 +261,8 @@ impl<'a> InlinerState<'a> {
                         true_body,
                         false_body,
                     } => {
-                        let true_output = self.inline_nodes(true_body, slot_content);
-                        let false_output = self.inline_nodes(false_body, slot_content);
+                        let true_output = self.inline_nodes(true_body);
+                        let false_output = self.inline_nodes(false_body);
                         Match::Bool {
                             subject: subject.clone(),
                             true_body: Box::new(true_output),
@@ -315,8 +277,8 @@ impl<'a> InlinerState<'a> {
                     } => Match::Option {
                         subject: subject.clone(),
                         some_arm_binding: some_arm_binding.clone(),
-                        some_arm_body: Box::new(self.inline_nodes(some_arm_body, slot_content)),
-                        none_arm_body: Box::new(self.inline_nodes(none_arm_body, slot_content)),
+                        some_arm_body: Box::new(self.inline_nodes(some_arm_body)),
+                        none_arm_body: Box::new(self.inline_nodes(none_arm_body)),
                     },
                     Match::Enum { subject, arms } => Match::Enum {
                         subject: subject.clone(),
@@ -325,7 +287,7 @@ impl<'a> InlinerState<'a> {
                             .map(|arm| EnumMatchArm {
                                 pattern: arm.pattern.clone(),
                                 bindings: arm.bindings.clone(),
-                                body: self.inline_nodes(&arm.body, slot_content),
+                                body: self.inline_nodes(&arm.body),
                             })
                             .collect(),
                     },
@@ -343,7 +305,19 @@ impl<'a> InlinerState<'a> {
                 output.push(InlinedNode::Let {
                     var: var.clone(),
                     value: value.clone(),
-                    children: self.inline_nodes(children, slot_content),
+                    children: self.inline_nodes(children),
+                });
+            }
+
+            TypedNode::LetFragment {
+                var,
+                fragment_body,
+                body,
+            } => {
+                output.push(InlinedNode::LetFragment {
+                    var: var.clone(),
+                    fragment_body: self.inline_nodes(fragment_body),
+                    body: self.inline_nodes(body),
                 });
             }
 
@@ -355,7 +329,7 @@ impl<'a> InlinerState<'a> {
                 output.push(InlinedNode::LetRecordDestructure {
                     subject: subject.clone(),
                     bindings: bindings.clone(),
-                    children: self.inline_nodes(children, slot_content),
+                    children: self.inline_nodes(children),
                 });
             }
         }
@@ -603,11 +577,19 @@ mod tests {
             )],
             expect![[r#"
                 view Main() {
-                  <div class="card">
-                    <p>
-                      This is slot content
-                    </p>
-                  </div>
+                  <let {
+                    v_0 = {
+                      <p>
+                        This is slot content
+                      </p>
+                    }
+                  }>
+                    <let {slot = v_0}>
+                      <div class="card">
+                        {slot}
+                      </div>
+                    </let>
+                  </let>
                 }
             "#]],
         );
@@ -779,25 +761,33 @@ mod tests {
             )],
             expect![[r#"
                 view HomePage(page_title: String) {
-                  <div class="layout">
-                    <let {title = page_title}>
-                      <header>
-                        <h1>
-                          {title}
-                        </h1>
-                      </header>
+                  <let {
+                    v_0 = {
+                      <let {title = page_title}>
+                        <header>
+                          <h1>
+                            {title}
+                          </h1>
+                        </header>
+                      </let>
+                      <main>
+                        <p>
+                          Welcome to the home page
+                        </p>
+                      </main>
+                      <footer>
+                        <p>
+                          Copyright 2024
+                        </p>
+                      </footer>
+                    }
+                  }>
+                    <let {slot = v_0}>
+                      <div class="layout">
+                        {slot}
+                      </div>
                     </let>
-                    <main>
-                      <p>
-                        Welcome to the home page
-                      </p>
-                    </main>
-                    <footer>
-                      <p>
-                        Copyright 2024
-                      </p>
-                    </footer>
-                  </div>
+                  </let>
                 }
             "#]],
         );

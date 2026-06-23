@@ -71,6 +71,15 @@ impl LinkRewriter {
                     value,
                     children: Self::rewrite_links(children),
                 },
+                InlinedNode::LetFragment {
+                    var,
+                    fragment_body,
+                    body,
+                } => InlinedNode::LetFragment {
+                    var,
+                    fragment_body: Self::rewrite_links(fragment_body),
+                    body: Self::rewrite_links(body),
+                },
                 InlinedNode::LetRecordDestructure {
                     subject,
                     bindings,

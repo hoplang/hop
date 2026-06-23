@@ -169,6 +169,20 @@ impl VariableRenamingPass {
                 self.pop_scope();
             }
 
+            IrStatement::LetFragment {
+                var,
+                fragment_body,
+                body,
+                ..
+            } => {
+                // fragment_body is evaluated in the outer scope (does NOT see var)
+                self.rename_statements(fragment_body);
+                self.push_scope();
+                *var = self.bind_var(var);
+                self.rename_statements(body);
+                self.pop_scope();
+            }
+
             IrStatement::LetRecordDestructure {
                 subject,
                 bindings,
@@ -364,6 +378,9 @@ impl VariableRenamingPass {
             | IrExpr::FloatToInt { value, .. }
             | IrExpr::IntToFloat { value, .. } => {
                 self.rename_expr(value);
+            }
+            IrExpr::FragmentEmpty { .. } => {
+                // Leaf constant with no variables to rename
             }
         }
     }

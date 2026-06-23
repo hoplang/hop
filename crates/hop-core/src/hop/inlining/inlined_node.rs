@@ -47,6 +47,12 @@ pub enum InlinedNode {
         children: Vec<InlinedNode>,
     },
 
+    LetFragment {
+        var: VarName,
+        fragment_body: Vec<InlinedNode>,
+        body: Vec<InlinedNode>,
+    },
+
     LetRecordDestructure {
         subject: TypedExpr,
         bindings: Vec<(FieldName, VarName)>,
@@ -174,6 +180,34 @@ impl InlinedNode {
                     .append(BoxDoc::line())
                     .append(BoxDoc::text("</let>"))
                 }
+            }
+            InlinedNode::LetFragment {
+                var,
+                fragment_body,
+                body,
+            } => {
+                fn render(nodes: &[InlinedNode]) -> BoxDoc<'_> {
+                    BoxDoc::line()
+                        .append(BoxDoc::intersperse(
+                            nodes.iter().map(|c| c.to_doc()),
+                            BoxDoc::line(),
+                        ))
+                        .nest(2)
+                }
+                let fragment = BoxDoc::text("{")
+                    .append(render(fragment_body))
+                    .append(BoxDoc::line())
+                    .append(BoxDoc::text("}"));
+                let binding = BoxDoc::text(var.as_str())
+                    .append(BoxDoc::text(" = "))
+                    .append(fragment);
+                BoxDoc::text("<let {")
+                    .append(BoxDoc::line().append(binding).nest(2))
+                    .append(BoxDoc::line())
+                    .append(BoxDoc::text("}>"))
+                    .append(render(body))
+                    .append(BoxDoc::line())
+                    .append(BoxDoc::text("</let>"))
             }
             InlinedNode::LetRecordDestructure {
                 subject,

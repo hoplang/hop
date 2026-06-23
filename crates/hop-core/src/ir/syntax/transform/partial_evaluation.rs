@@ -185,6 +185,7 @@ impl PartialEvaluationPass {
                     IrStatement::Let { var, value, .. } => {
                         variable_bindings.insert(var.clone(), value.id());
                     }
+                    IrStatement::LetFragment { .. } => {}
                     IrStatement::LetRecordDestructure { .. } => {}
                     IrStatement::For { .. } => {}
                     IrStatement::Match { .. } => {}
@@ -405,6 +406,9 @@ impl PartialEvaluationPass {
                         }
                         IrExpr::IntToFloat { .. } => {
                             // Not yet implemented
+                        }
+                        IrExpr::FragmentEmpty { .. } => {
+                            // Leaf constant, no sub-expressions to analyze
                         }
                     }
                 });

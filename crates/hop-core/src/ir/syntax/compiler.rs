@@ -105,10 +105,11 @@ impl Compiler {
             }
 
             InlinedNode::TextExpression { expression } => {
+                let escape = !matches!(expression.as_type(), Type::Fragment);
                 output.push(IrStatement::WriteExpr {
                     id: self.next_node_id(),
                     expr: self.compile_expr(expression),
-                    escape: true,
+                    escape,
                 });
             }
 
@@ -199,6 +200,19 @@ impl Compiler {
                     var: var.clone(),
                     value: self.compile_expr(value),
                     body: self.compile_nodes(children),
+                });
+            }
+
+            InlinedNode::LetFragment {
+                var,
+                fragment_body,
+                body,
+            } => {
+                output.push(IrStatement::LetFragment {
+                    id: self.next_node_id(),
+                    var: var.clone(),
+                    fragment_body: self.compile_nodes(fragment_body),
+                    body: self.compile_nodes(body),
                 });
             }
 
@@ -656,11 +670,7 @@ impl Compiler {
                 kind: kind.clone(),
                 id: expr_id,
             },
-            TypedExpr::FragmentEmpty => {
-                unreachable!(
-                    "slots must be eliminated during inlining; recursive components cannot declare slots"
-                );
-            }
+            TypedExpr::FragmentEmpty => IrExpr::FragmentEmpty { id: expr_id },
             TypedExpr::Let {
                 var,
                 value,
@@ -1244,4 +1254,5 @@ mod tests {
         let _result = compiler.compile_expr(&expr);
         // If we get here without stack overflow, the test passes
     }
+
 }
