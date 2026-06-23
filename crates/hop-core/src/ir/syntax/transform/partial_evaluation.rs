@@ -2956,7 +2956,7 @@ mod tests {
     }
 
     #[test]
-    fn should_evaluate_component_reference_args() {
+    fn should_evaluate_component_invocation_args() {
         check(
             build_ir_no_params("Test", |t| {
                 t.component_ref(
@@ -2979,7 +2979,7 @@ mod tests {
     }
 
     #[test]
-    fn should_evaluate_component_reference_args_with_propagated_variables() {
+    fn should_evaluate_component_invocation_args_with_propagated_variables() {
         check(
             build_ir_no_params("Test", |t| {
                 t.let_stmt("val", t.not(t.bool(true)), |t| {

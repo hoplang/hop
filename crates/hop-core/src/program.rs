@@ -988,7 +988,7 @@ mod tests {
     ///////////////////////////////////////////////////////////////////////////
 
     #[test]
-    fn should_find_definition_from_component_reference_opening_tag() {
+    fn should_find_definition_from_component_invocation_opening_tag() {
         check_definition_location(
             indoc! {r#"
                 -- hop/components.hop --
@@ -1014,7 +1014,7 @@ mod tests {
     }
 
     #[test]
-    fn should_find_definition_from_component_reference_closing_tag() {
+    fn should_find_definition_from_component_invocation_closing_tag() {
         check_definition_location(
             indoc! {r#"
                 -- hop/components.hop --
@@ -1135,7 +1135,7 @@ mod tests {
     }
 
     #[test]
-    fn should_find_definition_from_component_reference_in_same_module_simple() {
+    fn should_find_definition_from_component_invocation_in_same_module_simple() {
         check_definition_location(
             indoc! {r#"
                 -- main.hop --
@@ -1158,7 +1158,7 @@ mod tests {
     }
 
     #[test]
-    fn should_find_definition_from_component_reference_inside_match() {
+    fn should_find_definition_from_component_invocation_inside_match() {
         check_definition_location(
             indoc! {r#"
                 -- main.hop --
@@ -1186,7 +1186,7 @@ mod tests {
     }
 
     #[test]
-    fn should_find_definition_from_component_reference_inside_view() {
+    fn should_find_definition_from_component_invocation_inside_view() {
         check_definition_location(
             indoc! {r#"
                 -- main.hop --
@@ -1344,7 +1344,7 @@ mod tests {
     ///////////////////////////////////////////////////////////////////////////
 
     #[test]
-    fn should_find_rename_locations_from_component_reference() {
+    fn should_find_rename_locations_from_component_invocation() {
         check_rename_locations(
             indoc! {r#"
                 -- components.hop --
@@ -1380,7 +1380,7 @@ mod tests {
     }
 
     #[test]
-    fn should_find_rename_locations_from_component_reference_in_same_module() {
+    fn should_find_rename_locations_from_component_invocation_in_same_module() {
         check_rename_locations(
             indoc! {r#"
                 -- main.hop --
@@ -1904,7 +1904,7 @@ mod tests {
     }
 
     #[test]
-    fn should_show_hover_info_for_component_reference() {
+    fn should_show_hover_info_for_component_invocation() {
         check_hover_info(
             indoc! {r#"
                 -- main.hop --
@@ -1929,7 +1929,7 @@ mod tests {
     }
 
     #[test]
-    fn should_show_hover_info_for_component_reference_closing_tag() {
+    fn should_show_hover_info_for_component_invocation_closing_tag() {
         check_hover_info(
             indoc! {r#"
                 -- main.hop --

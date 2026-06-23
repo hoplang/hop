@@ -82,7 +82,7 @@ impl<'a> InlinerState<'a> {
             .get_component_declaration(component_name.as_str())
             .expect("Component declaration should exist");
 
-        // Inline the component body - self-references will become ComponentInvocation
+        // Inline the component body - self-invocations will become ComponentInvocation
         let inlined_body = self.inline_nodes(&component.children);
 
         self.component_defs.push(InlinedComponentDeclaration {
@@ -131,8 +131,8 @@ impl<'a> InlinerState<'a> {
         }
     }
 
-    /// Inline a component reference, pushing results to output
-    fn inline_component_reference(
+    /// Inline a component invocation, pushing results to output
+    fn inline_component_invocation(
         &mut self,
         component: &TypedComponentDeclaration,
         component_type: &Type,
@@ -198,7 +198,7 @@ impl<'a> InlinerState<'a> {
                         .get_component_declaration(component_name.as_str())
                         .expect("Component declaration should exist");
 
-                    self.inline_component_reference(component, component_type, args, output);
+                    self.inline_component_invocation(component, component_type, args, output);
                 }
             }
 

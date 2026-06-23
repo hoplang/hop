@@ -25,7 +25,7 @@ pub struct IrParameter {
     pub default_value: Option<IrExpr>,
 }
 
-/// An argument passed to a component reference in the IR.
+/// An argument passed to a component invocation in the IR.
 #[derive(Debug, Clone, PartialEq)]
 pub struct IrArgument {
     pub name: VarName,

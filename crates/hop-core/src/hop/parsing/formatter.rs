@@ -3397,7 +3397,7 @@ mod tests {
     }
 
     #[test]
-    fn component_reference_with_single_long_attribute() {
+    fn component_invocation_with_single_long_attribute() {
         check(
             indoc! {r#"
                 component Main {

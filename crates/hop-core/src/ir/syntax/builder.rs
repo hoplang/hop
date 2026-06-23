@@ -1194,7 +1194,7 @@ impl IrBuilder {
         });
     }
 
-    /// Emit a component reference with no children.
+    /// Emit a component invocation with no children.
     pub fn component_ref(&mut self, component_name: &str, args: Vec<(&str, IrExpr)>) {
         let ir_args: Vec<IrArgument> = args
             .into_iter()

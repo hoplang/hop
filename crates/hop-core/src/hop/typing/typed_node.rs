@@ -52,7 +52,7 @@ impl TypedAttribute {
     }
 }
 
-/// An argument passed to a component reference.
+/// An argument passed to a component invocation.
 #[derive(Debug, Clone)]
 pub struct TypedArgument {
     pub name: VarName,

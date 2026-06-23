@@ -71,7 +71,7 @@ pub fn orchestrate(
         })
         .collect();
 
-    // Inline component references into the views
+    // Inline component invocations into the views
     let (inlined_views, component_declarations) =
         Inliner::inline_ast_views(typed_asts, &typed_views);
 

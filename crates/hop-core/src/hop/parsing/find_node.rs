@@ -153,7 +153,7 @@ mod tests {
     }
 
     #[test]
-    fn should_find_component_reference() {
+    fn should_find_component_invocation() {
         check_find_node_at_position(
             indoc! {"
                 component Main {

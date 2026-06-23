@@ -1005,7 +1005,7 @@ fn typecheck_node(
                 });
             }
 
-            // Add type annotation for the component reference
+            // Add type annotation for the component invocation
             let component_type = Arc::new(Type::Component {
                 module: component_module.clone(),
                 name: component_type_name,
@@ -1990,7 +1990,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_when_a_component_references_itself() {
+    fn should_accept_when_a_component_invokes_itself() {
         accept(
             indoc! {r#"
                 -- main.hop --

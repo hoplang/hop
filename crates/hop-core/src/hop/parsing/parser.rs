@@ -970,7 +970,7 @@ fn construct_node(
                         }
                     };
 
-                    // Error if bare expression {..} is present on component reference
+                    // Error if bare expression {..} is present on component invocation
                     if let Some(expr_range) = &expression {
                         errors.push(ParseError::UnexpectedComponentExpression {
                             tag_name: tag_name.to_cheap_string(),
@@ -1987,7 +1987,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_component_references() {
+    fn should_accept_component_invocations() {
         accept(
             indoc! {"
                 component Main(p: String) {
@@ -2005,7 +2005,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_component_references_with_params() {
+    fn should_accept_component_invocations_with_params() {
         accept(
             indoc! {r#"
                 import foo::Foo
@@ -3671,7 +3671,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_view_with_component_reference() {
+    fn should_accept_view_with_component_invocation() {
         accept(
             indoc! {"
                 component Header(title: String) {
