@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use super::join_macro::build_balanced_join;
-use super::r#type::{NumericType, Type};
+use super::r#type::{NumericType, Type, TypeBinding, TypeEnv};
 use crate::asset_reference::AssetReference;
 use crate::document::{CheapString, DocumentRange};
 use crate::document_id::DocumentId;
@@ -16,7 +16,6 @@ use crate::expr::patterns::{EnumMatchArm, EnumPattern, Match};
 use crate::hop::typing::definition_link::DefinitionLink;
 use crate::hop::typing::type_annotation::TypeAnnotation;
 use crate::symbols::field_name::FieldName;
-use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use crate::type_error::TypeError;
 use crate::variable_scope::VariableScope;
@@ -24,7 +23,7 @@ use crate::variable_scope::VariableScope;
 /// Resolve a parsed Type to a semantic Type.
 pub fn resolve_type(
     parsed_type: &ParsedType,
-    type_env: &mut VariableScope<TypeName, (Arc<Type>, DocumentRange)>,
+    type_env: &mut TypeEnv,
     definition_links: &mut Vec<DefinitionLink>,
 ) -> Result<Arc<Type>, TypeError> {
     let (typ, _) = match parsed_type {
@@ -42,18 +41,29 @@ pub fn resolve_type(
             (Arc::new(Type::Array(elem_type)), range)
         }
         ParsedType::Named { name, range } => {
-            let (typ, def_range) =
+            let (binding, def_range) =
                 type_env
                     .lookup(name)
                     .ok_or_else(|| TypeError::UndefinedType {
                         type_name: name.clone(),
                         range: range.clone(),
                     })?;
-            definition_links.push(DefinitionLink {
-                use_range: range.clone(),
-                definition_range: def_range.clone(),
-            });
-            (typ.clone(), range)
+            match binding {
+                TypeBinding::Value(typ) => {
+                    let typ = typ.clone();
+                    definition_links.push(DefinitionLink {
+                        use_range: range.clone(),
+                        definition_range: def_range.clone(),
+                    });
+                    (typ, range)
+                }
+                TypeBinding::Component(_) => {
+                    return Err(TypeError::ComponentUsedAsType {
+                        name: name.clone(),
+                        range: range.clone(),
+                    });
+                }
+            }
         }
     };
     Ok(typ)
@@ -66,7 +76,7 @@ pub fn resolve_type(
 pub fn typecheck_expr(
     parsed_expr: &ParsedExpr,
     var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
-    type_env: &mut VariableScope<TypeName, (Arc<Type>, DocumentRange)>,
+    type_env: &mut TypeEnv,
     annotations: &mut Vec<TypeAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
     expected_type: Option<&Arc<Type>>,
@@ -877,15 +887,23 @@ pub fn typecheck_expr(
             range,
         } => {
             // Check if the record type is defined
-            let (record_type, def_range) =
+            let (binding, def_range) =
                 type_env
                     .lookup(record_name)
                     .ok_or_else(|| TypeError::UndefinedRecord {
                         record_name: record_name.clone(),
                         range: range.clone(),
                     })?;
-            let record_type = record_type.clone();
             let def_range = def_range.clone();
+            let record_type = match binding {
+                TypeBinding::Value(typ) => typ.clone(),
+                TypeBinding::Component(_) => {
+                    return Err(TypeError::UndefinedRecord {
+                        record_name: record_name.clone(),
+                        range: range.clone(),
+                    });
+                }
+            };
 
             // Add type annotation and definition link for the record name
             annotations.push(TypeAnnotation::TypeForTypeName {
@@ -984,15 +1002,23 @@ pub fn typecheck_expr(
             range,
         } => {
             // Look up the enum type in the type environment
-            let (enum_type, def_range) =
+            let (binding, def_range) =
                 type_env
                     .lookup(enum_name)
                     .ok_or_else(|| TypeError::UndefinedEnum {
                         enum_name: enum_name.clone(),
                         range: range.clone(),
                     })?;
-            let enum_type = enum_type.clone();
             let def_range = def_range.clone();
+            let enum_type = match binding {
+                TypeBinding::Value(typ) => typ.clone(),
+                TypeBinding::Component(_) => {
+                    return Err(TypeError::UndefinedEnum {
+                        enum_name: enum_name.clone(),
+                        range: range.clone(),
+                    });
+                }
+            };
 
             // Add type annotation and definition link for the constructor
             annotations.push(TypeAnnotation::TypeForTypeName {
@@ -1339,7 +1365,7 @@ fn typecheck_match(
     subject: &ParsedExpr,
     arms: &[ParsedMatchArm],
     var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
-    type_env: &mut VariableScope<TypeName, (Arc<Type>, DocumentRange)>,
+    type_env: &mut TypeEnv,
     annotations: &mut Vec<TypeAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
     asset_references: &mut Vec<AssetReference>,
@@ -1460,7 +1486,7 @@ pub fn extract_bindings_from_pattern(
 /// Collect definition links for enum variant references in match patterns.
 fn collect_pattern_definition_links(
     pattern: &ParsedMatchPattern,
-    type_env: &mut VariableScope<TypeName, (Arc<Type>, DocumentRange)>,
+    type_env: &mut TypeEnv,
     definition_links: &mut Vec<DefinitionLink>,
 ) {
     match pattern {
@@ -1502,7 +1528,7 @@ fn typecheck_arm_bodies(
     arms: &[ParsedMatchArm],
     subject_type: Arc<Type>,
     env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
-    type_env: &mut VariableScope<TypeName, (Arc<Type>, DocumentRange)>,
+    type_env: &mut TypeEnv,
     annotations: &mut Vec<TypeAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
     asset_references: &mut Vec<AssetReference>,
@@ -1782,7 +1808,7 @@ mod tests {
 
     fn parse_type_str(
         type_str: &str,
-        type_env: &mut VariableScope<TypeName, (Arc<Type>, DocumentRange)>,
+        type_env: &mut TypeEnv,
         definition_links: &mut Vec<DefinitionLink>,
     ) -> (Arc<Type>, DocumentRange) {
         let cursor =
@@ -1800,8 +1826,7 @@ mod tests {
 
     fn check(decls: &[Decl<'_>], env_vars: &[(&str, &str)], expr_str: &str, expected: Expect) {
         let mut env: VariableScope<VarName, (Arc<Type>, DocumentRange)> = VariableScope::new();
-        let mut type_env: VariableScope<TypeName, (Arc<Type>, DocumentRange)> =
-            VariableScope::new();
+        let mut type_env: TypeEnv = VariableScope::new();
         let mut definition_links = Vec::new();
         let mut asset_references = Vec::new();
         let test_module = DocumentId::new("test.hop").unwrap();
@@ -1818,11 +1843,11 @@ mod tests {
                     let _ = type_env.push(
                         type_name.clone(),
                         (
-                            Arc::new(Type::Record {
+                            TypeBinding::Value(Arc::new(Type::Record {
                                 module: test_module.clone(),
                                 name: type_name.clone(),
                                 fields: vec![],
-                            }),
+                            })),
                             decl_range.clone(),
                         ),
                     );
@@ -1844,7 +1869,13 @@ mod tests {
                         name: type_name.clone(),
                         fields: resolved_fields,
                     };
-                    let _ = type_env.push(type_name, (Arc::new(record_type), decl_range.clone()));
+                    let _ = type_env.push(
+                        type_name,
+                        (
+                            TypeBinding::Value(Arc::new(record_type)),
+                            decl_range.clone(),
+                        ),
+                    );
                 }
                 Decl::Enum { name, variants } => {
                     let type_name = TypeName::new(name).unwrap();
@@ -1861,7 +1892,10 @@ mod tests {
                         name: type_name.clone(),
                         variants: typed_variants,
                     };
-                    let _ = type_env.push(type_name, (Arc::new(enum_type), decl_range.clone()));
+                    let _ = type_env.push(
+                        type_name,
+                        (TypeBinding::Value(Arc::new(enum_type)), decl_range.clone()),
+                    );
                 }
                 Decl::EnumWithFields { name, variants } => {
                     let type_name = TypeName::new(name).unwrap();
@@ -1869,11 +1903,11 @@ mod tests {
                     let _ = type_env.push(
                         type_name.clone(),
                         (
-                            Arc::new(Type::Enum {
+                            TypeBinding::Value(Arc::new(Type::Enum {
                                 module: test_module.clone(),
                                 name: type_name.clone(),
                                 variants: vec![],
-                            }),
+                            })),
                             decl_range.clone(),
                         ),
                     );
@@ -1906,7 +1940,10 @@ mod tests {
                         name: type_name.clone(),
                         variants: typed_variants,
                     };
-                    let _ = type_env.push(type_name, (Arc::new(enum_type), decl_range.clone()));
+                    let _ = type_env.push(
+                        type_name,
+                        (TypeBinding::Value(Arc::new(enum_type)), decl_range.clone()),
+                    );
                 }
             }
         }

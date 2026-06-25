@@ -76,7 +76,6 @@ pub fn random_value(rng: &mut impl Rng, ty: &Type, examples: Option<&ExamplesAnn
                 fields,
             }
         }
-        Type::Component { .. } => Value::None,
     }
 }
 

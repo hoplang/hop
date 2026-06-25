@@ -5,7 +5,7 @@ use crate::css::{self, CssError};
 use crate::document::{Document, DocumentRange};
 use crate::document_id::DocumentId;
 use crate::document_position::DocumentPosition;
-use crate::expr::Type;
+use crate::expr::TypeBinding;
 use crate::hop::inlining::transform::TailwindInjection;
 use crate::hop::parsing::find_node::find_node_at_position;
 use crate::hop::parsing::format;
@@ -79,7 +79,7 @@ pub struct Program {
     css_errors: HashMap<DocumentId, Vec<CssError>>,
     parse_errors: HashMap<DocumentId, Vec<ParseError>>,
     parsed_asts: HashMap<DocumentId, ParsedAst>,
-    typechecker_state: HashMap<DocumentId, HashMap<TypeName, (Arc<Type>, DocumentRange, bool)>>,
+    typechecker_state: HashMap<DocumentId, HashMap<TypeName, (TypeBinding, DocumentRange, bool)>>,
     type_errors: HashMap<DocumentId, Vec<TypeError>>,
     type_annotations: HashMap<DocumentId, Vec<TypeAnnotation>>,
     definition_links: HashMap<DocumentId, Vec<DefinitionLink>>,
@@ -1899,80 +1899,6 @@ mod tests {
                   --> main.hop (line 2, col 16)
                 2 | component Main(user: User) {
                   |                ^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_show_hover_info_for_component_invocation() {
-        check_hover_info(
-            indoc! {r#"
-                -- main.hop --
-                component Greeting(name: String) {
-                  <h1>Hello {name}!</h1>
-                }
-
-                component Main {
-                  <Greeting name="World" />
-                   ^
-                }
-            "#},
-            expect![[r#"
-                ```
-                Greeting : main::Greeting
-                ```
-                  --> main.hop (line 6, col 4)
-                6 |   <Greeting name="World" />
-                  |    ^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_show_hover_info_for_component_invocation_closing_tag() {
-        check_hover_info(
-            indoc! {r#"
-                -- main.hop --
-                component Greeting(name: String, slot: Fragment) {
-                  <h1>Hello {name}!</h1>
-                  {slot}
-                }
-
-                component Main {
-                  <Greeting name="World">
-                    content
-                  </Greeting>
-                     ^
-                }
-            "#},
-            expect![[r#"
-                ```
-                Greeting : main::Greeting
-                ```
-                  --> main.hop (line 9, col 5)
-                 9 |   </Greeting>
-                   |     ^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_show_hover_info_for_component_definition_opening_tag() {
-        check_hover_info(
-            indoc! {r#"
-                -- main.hop --
-                component Greeting(name: String) {
-                           ^
-                  <h1>Hello {name}!</h1>
-                }
-            "#},
-            expect![[r#"
-                ```
-                Greeting : main::Greeting
-                ```
-                  --> main.hop (line 1, col 11)
-                1 | component Greeting(name: String) {
-                  |           ^^^^^^^^
             "#]],
         );
     }

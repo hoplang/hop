@@ -154,7 +154,6 @@ pub trait Transpiler {
             Type::Option(inner) => self.transpile_option_type(arena, inner),
             Type::Record { name, .. } => self.transpile_named_type(arena, name.as_str()),
             Type::Enum { name, .. } => self.transpile_enum_type(arena, name.as_str()),
-            Type::Component { name, .. } => self.transpile_named_type(arena, name.as_str()),
         }
     }
 

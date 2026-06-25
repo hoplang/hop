@@ -4,10 +4,12 @@ use std::sync::Arc;
 use pretty::BoxDoc;
 
 use super::typed_expr::TypedExpr;
+use crate::document::DocumentRange;
 use crate::document_id::DocumentId;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
+use crate::variable_scope::VariableScope;
 
 #[derive(Debug)]
 pub enum Type {
@@ -28,13 +30,21 @@ pub enum Type {
         name: TypeName,
         variants: Vec<EnumVariant>,
     },
-    Component {
-        module: DocumentId,
-        name: TypeName,
-        /// Parameters: (name, type, default_value)
-        parameters: Vec<(VarName, Arc<Type>, Option<TypedExpr>)>,
-    },
 }
+
+#[derive(Debug, Clone)]
+pub struct ComponentSignature {
+    pub module: DocumentId,
+    pub parameters: Vec<(VarName, Arc<Type>, Option<TypedExpr>)>,
+}
+
+#[derive(Debug, Clone)]
+pub enum TypeBinding {
+    Value(Arc<Type>),
+    Component(ComponentSignature),
+}
+
+pub type TypeEnv = VariableScope<TypeName, (TypeBinding, DocumentRange)>;
 
 /// Metadata from `#[examples(...)]` annotations on fields/parameters.
 #[derive(Debug, Clone, Default)]
@@ -118,11 +128,7 @@ impl Type {
                 let inner_equatable = inner.as_equatable_type()?;
                 Some(EquatableType::Option(Box::new(inner_equatable)))
             }
-            Type::Fragment
-            | Type::Array(_)
-            | Type::Record { .. }
-            | Type::Enum { .. }
-            | Type::Component { .. } => None,
+            Type::Fragment | Type::Array(_) | Type::Record { .. } | Type::Enum { .. } => None,
         }
     }
 
@@ -136,8 +142,7 @@ impl Type {
             | Type::Array(_)
             | Type::Option(_)
             | Type::Record { .. }
-            | Type::Enum { .. }
-            | Type::Component { .. } => None,
+            | Type::Enum { .. } => None,
         }
     }
 }
@@ -176,18 +181,6 @@ impl PartialEq for Type {
                     ..
                 },
             ) => left_module == right_module && left_name == right_name,
-            (
-                Type::Component {
-                    module: left_module,
-                    name: left_name,
-                    ..
-                },
-                Type::Component {
-                    module: right_module,
-                    name: right_name,
-                    ..
-                },
-            ) => left_module == right_module && left_name == right_name,
             _ => false,
         }
     }
@@ -219,9 +212,6 @@ impl<'a> Type {
                 BoxDoc::text(format!("{}::{}", module.to_module_id(), name))
             }
             Type::Enum { module, name, .. } => {
-                BoxDoc::text(format!("{}::{}", module.to_module_id(), name))
-            }
-            Type::Component { module, name, .. } => {
                 BoxDoc::text(format!("{}::{}", module.to_module_id(), name))
             }
         }

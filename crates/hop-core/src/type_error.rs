@@ -210,6 +210,12 @@ pub enum TypeError {
         range: DocumentRange,
     },
 
+    #[error("`{name}` is a component and cannot be used as a type")]
+    ComponentUsedAsType {
+        name: TypeName,
+        range: DocumentRange,
+    },
+
     #[error("Record type '{record_name}' is not defined")]
     UndefinedRecord {
         record_name: TypeName,
@@ -476,6 +482,7 @@ impl TypeError {
             | TypeError::IncompatibleTypesForSubtraction { range, .. }
             | TypeError::IncompatibleTypesForMultiplication { range, .. }
             | TypeError::UndefinedType { range, .. }
+            | TypeError::ComponentUsedAsType { range, .. }
             | TypeError::UndefinedRecord { range, .. }
             | TypeError::RecordMissingFields { range, .. }
             | TypeError::RecordUnknownField { range, .. }

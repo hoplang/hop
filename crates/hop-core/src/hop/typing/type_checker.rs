@@ -7,7 +7,7 @@ use crate::expr::typing::r#type::EnumVariant;
 use crate::expr::typing::type_checker::{
     extract_bindings_from_pattern, resolve_type, typecheck_expr,
 };
-use crate::expr::{self, Type, TypedExpr};
+use crate::expr::{self, ComponentSignature, Type, TypeBinding, TypeEnv, TypedExpr};
 use crate::hop::parsing::parsed_ast::ParsedDeclaration;
 use crate::hop::parsing::parsed_ast::{
     ParsedAttribute, ParsedComponentDeclaration, ParsedEnumDeclaration, ParsedImportDeclaration,
@@ -37,7 +37,7 @@ use crate::hop::typing::typed_node::{
 
 pub fn typecheck(
     modules: &[&ParsedAst],
-    state: &mut HashMap<DocumentId, HashMap<TypeName, (Arc<Type>, DocumentRange, bool)>>,
+    state: &mut HashMap<DocumentId, HashMap<TypeName, (TypeBinding, DocumentRange, bool)>>,
     type_errors: &mut HashMap<DocumentId, Vec<TypeError>>,
     type_annotations: &mut HashMap<DocumentId, Vec<TypeAnnotation>>,
     definition_links: &mut HashMap<DocumentId, Vec<DefinitionLink>>,
@@ -91,13 +91,13 @@ pub fn typecheck(
 
 fn typecheck_module(
     parsed_ast: &ParsedAst,
-    state: &mut HashMap<DocumentId, HashMap<TypeName, (Arc<Type>, DocumentRange, bool)>>,
+    state: &mut HashMap<DocumentId, HashMap<TypeName, (TypeBinding, DocumentRange, bool)>>,
     errors: &mut Vec<TypeError>,
     annotations: &mut Vec<TypeAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
     asset_references: &mut Vec<AssetReference>,
 ) -> TypedAst {
-    let mut type_env: VariableScope<TypeName, (Arc<Type>, DocumentRange)> = VariableScope::new();
+    let mut type_env: TypeEnv = VariableScope::new();
     let mut var_env: VariableScope<VarName, (Arc<Type>, DocumentRange)> = VariableScope::new();
 
     let mut typed_records = Vec::new();
@@ -238,17 +238,19 @@ fn typecheck_module(
                     }
                 }
 
-                // Register component type BEFORE type-checking body to allow
+                // Register component signature BEFORE type-checking body to allow
                 // self-referential (recursive) components
-                let component_type = Arc::new(Type::Component {
+                let component_signature = ComponentSignature {
                     module: parsed_ast.document_id.clone(),
-                    name: TypeName::new(component_name.as_str()).unwrap(),
                     parameters: resolved_param_types,
-                });
+                };
 
                 let _ = type_env.push(
                     component_name.clone(),
-                    (component_type.clone(), tag_name.clone()),
+                    (
+                        TypeBinding::Component(component_signature),
+                        tag_name.clone(),
+                    ),
                 );
 
                 let typed_children = children
@@ -278,26 +280,14 @@ fn typecheck_module(
                     }
                 }
 
-                // Add type annotation for the component definition opening tag
-                annotations.push(TypeAnnotation::TypeForTypeName {
-                    range: tag_name.clone(),
-                    typ: component_type.clone(),
-                    type_name: component_name.clone(),
-                });
-
                 // Add definition link for the opening tag (points to itself)
                 definition_links.push(DefinitionLink {
                     use_range: tag_name.clone(),
                     definition_range: tag_name.clone(),
                 });
 
-                // Add type annotation and definition link for the closing tag if present
+                // Add definition link for the closing tag if present
                 if let Some(closing_range) = closing_tag_name {
-                    annotations.push(TypeAnnotation::TypeForTypeName {
-                        range: closing_range.clone(),
-                        typ: component_type,
-                        type_name: component_name.clone(),
-                    });
                     definition_links.push(DefinitionLink {
                         use_range: closing_range.clone(),
                         definition_range: tag_name.clone(),
@@ -321,11 +311,11 @@ fn typecheck_module(
                 let _ = type_env.push(
                     record_name.clone(),
                     (
-                        Arc::new(Type::Record {
+                        TypeBinding::Value(Arc::new(Type::Record {
                             module: parsed_ast.document_id.clone(),
                             name: record_name.clone(),
                             fields: vec![],
-                        }),
+                        })),
                         record_name_range.clone(),
                     ),
                 );
@@ -369,11 +359,11 @@ fn typecheck_module(
                 let _ = type_env.push(
                     record_name.clone(),
                     (
-                        Arc::new(Type::Record {
+                        TypeBinding::Value(Arc::new(Type::Record {
                             module: parsed_ast.document_id.clone(),
                             name: record_name.clone(),
                             fields: typed_fields,
-                        }),
+                        })),
                         record_name_range.clone(),
                     ),
                 );
@@ -394,11 +384,11 @@ fn typecheck_module(
                 let _ = type_env.push(
                     enum_name.clone(),
                     (
-                        Arc::new(Type::Enum {
+                        TypeBinding::Value(Arc::new(Type::Enum {
                             module: parsed_ast.document_id.clone(),
                             name: enum_name.clone(),
                             variants: vec![],
-                        }),
+                        })),
                         enum_name_range.clone(),
                     ),
                 );
@@ -445,11 +435,11 @@ fn typecheck_module(
                 let _ = type_env.push(
                     enum_name.clone(),
                     (
-                        Arc::new(Type::Enum {
+                        TypeBinding::Value(Arc::new(Type::Enum {
                             module: parsed_ast.document_id.clone(),
                             name: enum_name.clone(),
                             variants: typed_variants.clone(),
-                        }),
+                        })),
                         enum_name_range.clone(),
                     ),
                 );
@@ -599,7 +589,7 @@ fn typecheck_node(
     annotations: &mut Vec<TypeAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
     errors: &mut Vec<TypeError>,
-    type_env: &mut VariableScope<TypeName, (Arc<Type>, DocumentRange)>,
+    type_env: &mut TypeEnv,
     asset_references: &mut Vec<AssetReference>,
 ) -> Option<TypedNode> {
     match node {
@@ -956,29 +946,15 @@ fn typecheck_node(
                 })
                 .collect::<Vec<_>>();
 
-            // Look up the component type from type_env
-            let (component_module, component_type_name, component_params, component_def_range) =
+            // Look up the component signature from type_env
+            let (component_module, component_params, component_def_range) =
                 match type_env.lookup(component_name) {
-                    Some((typ, def_range)) => match typ.as_ref() {
-                        Type::Component {
-                            module,
-                            name,
-                            parameters,
-                        } => (
-                            module.clone(),
-                            name.clone(),
-                            parameters.clone(),
-                            def_range.clone(),
-                        ),
-                        _ => {
-                            errors.push(TypeError::UndefinedComponent {
-                                tag_name: component_name.clone(),
-                                range: component_name_opening_range.clone(),
-                            });
-                            return None;
-                        }
-                    },
-                    None => {
+                    Some((TypeBinding::Component(sig), def_range)) => (
+                        sig.module.clone(),
+                        sig.parameters.clone(),
+                        def_range.clone(),
+                    ),
+                    _ => {
                         errors.push(TypeError::UndefinedComponent {
                             tag_name: component_name.clone(),
                             range: component_name_opening_range.clone(),
@@ -998,27 +974,6 @@ fn typecheck_node(
                 definition_links.push(DefinitionLink {
                     use_range: closing_range.clone(),
                     definition_range: component_def_range,
-                });
-            }
-
-            // Add type annotation for the component invocation
-            let component_type = Arc::new(Type::Component {
-                module: component_module.clone(),
-                name: component_type_name,
-                parameters: component_params.clone(),
-            });
-            annotations.push(TypeAnnotation::TypeForTypeName {
-                typ: component_type.clone(),
-                type_name: component_name.clone(),
-                range: component_name_opening_range.clone(),
-            });
-
-            // Add type annotation for the closing tag if present
-            if let Some(closing_range) = component_name_closing_range {
-                annotations.push(TypeAnnotation::TypeForTypeName {
-                    range: closing_range.clone(),
-                    typ: component_type.clone(),
-                    type_name: component_name.clone(),
                 });
             }
 
@@ -1380,7 +1335,7 @@ fn typecheck_attributes(
     annotations: &mut Vec<TypeAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
     errors: &mut Vec<TypeError>,
-    type_env: &mut VariableScope<TypeName, (Arc<Type>, DocumentRange)>,
+    type_env: &mut TypeEnv,
     asset_references: &mut Vec<AssetReference>,
 ) -> Vec<TypedAttribute> {
     let mut typed_attributes = Vec::new();
@@ -1776,6 +1731,50 @@ mod tests {
             "-- main.hop --",
             expect![[r#"
                 -- main.hop --
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_component_used_as_param_type() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component B {
+                  <div></div>
+                }
+                component Inner(child: B) {
+                  <div></div>
+                }
+            "#},
+            expect![[r#"
+                error: `B` is a component and cannot be used as a type
+                  --> main.hop (line 4, col 24)
+                3 | }
+                4 | component Inner(child: B) {
+                  |                        ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_component_used_as_field_type() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component B {
+                  <div></div>
+                }
+                record R {
+                  field: B,
+                }
+            "#},
+            expect![[r#"
+                error: `B` is a component and cannot be used as a type
+                  --> main.hop (line 5, col 10)
+                4 | record R {
+                5 |   field: B,
+                  |          ^
             "#]],
         );
     }

@@ -97,12 +97,9 @@ impl RustTranspiler {
 
     fn transpile_expr_owned<'a>(&mut self, arena: &'a Arena<'a>, expr: &'a IrExpr) -> Doc<'a> {
         match expr {
-            IrExpr::FieldAccess { kind, .. } | IrExpr::Var { kind, .. } => match kind.as_ref() {
-                Type::Component { .. } => self.transpile_expr(arena, expr),
-                _ => self
-                    .transpile_expr(arena, expr)
-                    .append(arena.text(".clone()")),
-            },
+            IrExpr::FieldAccess { .. } | IrExpr::Var { .. } => self
+                .transpile_expr(arena, expr)
+                .append(arena.text(".clone()")),
             _ => self.transpile_expr(arena, expr),
         }
     }
@@ -217,8 +214,7 @@ impl RustTranspiler {
             | Type::Fragment
             | Type::Array(_)
             | Type::Record { .. }
-            | Type::Enum { .. }
-            | Type::Component { .. } => true,
+            | Type::Enum { .. } => true,
         }
     }
 
@@ -243,7 +239,6 @@ impl RustTranspiler {
                 .append(arena.text(">")),
             Type::Record { name, .. } => arena.text("&").append(arena.text(name.as_str())),
             Type::Enum { name, .. } => arena.text("&").append(arena.text(name.as_str())),
-            Type::Component { name, .. } => arena.text("&").append(arena.text(name.as_str())),
         }
     }
 }

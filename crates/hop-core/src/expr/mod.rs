@@ -4,4 +4,4 @@ pub mod patterns;
 pub mod typing;
 
 pub use parsing::{ParsedExpr, Token, parse_expr, tokenizer};
-pub use typing::{ExamplesAnnotation, Type, TypedExpr};
+pub use typing::{ComponentSignature, ExamplesAnnotation, Type, TypeBinding, TypeEnv, TypedExpr};
