@@ -197,41 +197,32 @@ impl TypedEnumDeclaration {
 
 impl TypedComponentDeclaration {
     pub fn to_doc(&self) -> BoxDoc<'_> {
-        let tag = BoxDoc::text("<").append(BoxDoc::text(self.component_name.as_str()));
-        let param_docs: Vec<BoxDoc> = self
-            .params
-            .iter()
-            .map(|param| {
-                BoxDoc::text(param.var_name.as_str())
-                    .append(BoxDoc::text(": "))
-                    .append(param.var_type.to_doc())
-            })
-            .collect();
-        let tag_with_params = if param_docs.is_empty() {
-            tag
+        let params_doc = if self.params.is_empty() {
+            BoxDoc::nil()
         } else {
-            tag.append(BoxDoc::text(" {"))
-                .append(
-                    BoxDoc::line_()
-                        .append(BoxDoc::intersperse(
-                            param_docs,
-                            BoxDoc::text(",").append(BoxDoc::line()),
-                        ))
-                        .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
-                        .nest(2),
-                )
-                .append(BoxDoc::line_())
-                .append(BoxDoc::text("}"))
-                .group()
+            BoxDoc::text("(")
+                .append(BoxDoc::intersperse(
+                    self.params.iter().map(|param| {
+                        BoxDoc::text(param.var_name.as_str())
+                            .append(BoxDoc::text(": "))
+                            .append(param.var_type.to_doc())
+                    }),
+                    BoxDoc::text(", "),
+                ))
+                .append(BoxDoc::text(")"))
         };
-        let opening = tag_with_params.append(BoxDoc::text(">"));
+
+        let header = BoxDoc::text("component")
+            .append(BoxDoc::space())
+            .append(BoxDoc::text(self.component_name.as_str()))
+            .append(params_doc)
+            .append(BoxDoc::space())
+            .append(BoxDoc::text("{"));
+
         if self.children.is_empty() {
-            opening
-                .append(BoxDoc::text("</"))
-                .append(BoxDoc::text(self.component_name.as_str()))
-                .append(BoxDoc::text(">"))
+            header.append(BoxDoc::text("}"))
         } else {
-            opening
+            header
                 .append(
                     BoxDoc::line()
                         .append(BoxDoc::intersperse(
@@ -241,9 +232,7 @@ impl TypedComponentDeclaration {
                         .nest(2),
                 )
                 .append(BoxDoc::line())
-                .append(BoxDoc::text("</"))
-                .append(BoxDoc::text(self.component_name.as_str()))
-                .append(BoxDoc::text(">"))
+                .append(BoxDoc::text("}"))
         }
     }
 }

@@ -1805,11 +1805,11 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                <Card {slot: Fragment}>
+                component Card(slot: Fragment) {
                   <div>
                     {slot}
                   </div>
-                </Card>
+                }
             "#]],
         );
     }
@@ -1852,15 +1852,15 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                <Card {slot: Fragment}>
+                component Card(slot: Fragment) {
                   <div>
                     {slot}
                   </div>
-                </Card>
+                }
 
-                <Main {slot: Fragment}>
+                component Main(slot: Fragment) {
                   <Card slot={slot}/>
-                </Main>
+                }
             "#]],
         );
     }
@@ -1899,7 +1899,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                <Tree {slot: Fragment}>
+                component Tree(slot: Fragment) {
                   <div>
                     <let {
                       v_0 = {
@@ -1909,7 +1909,7 @@ mod tests {
                       <Tree slot={v_0}/>
                     </let>
                   </div>
-                </Tree>
+                }
             "#]],
         );
     }
@@ -1987,7 +1987,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                <Main></Main>
+                component Main {}
             "#]],
         );
     }
@@ -2026,13 +2026,13 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                <Main>
+                component Main {
                   <h1>
                     Hello, 
                     <Main/>
                     !
                   </h1>
-                </Main>
+                }
             "#]],
         );
     }
@@ -2220,16 +2220,16 @@ mod tests {
             "#},
             expect![[r#"
                 -- other.hop --
-                <Foo>
+                component Foo {
                   <span>
                     hi
                   </span>
-                </Foo>
+                }
 
                 -- main.hop --
-                <Main>
+                component Main {
                   <Foo/>
-                </Main>
+                }
             "#]],
         );
     }
@@ -2256,11 +2256,11 @@ mod tests {
                 }
 
                 -- main.hop --
-                <Main {foo: other::Foo}>
+                component Main(foo: other::Foo) {
                   <div>
                     {foo.name}
                   </div>
-                </Main>
+                }
             "#]],
         );
     }
@@ -2292,11 +2292,11 @@ mod tests {
                 }
 
                 -- main.hop --
-                <Main {color: other::Color}>
+                component Main(color: other::Color) {
                   <div>
                     {match color {Color::Red => "red", Color::Green => "green"}}
                   </div>
-                </Main>
+                }
             "#]],
         );
     }
@@ -2338,10 +2338,10 @@ mod tests {
             "#},
             expect![[r#"
                 -- other.hop --
-                <Foo></Foo>
+                component Foo {}
 
                 -- main.hop --
-                <Foo></Foo>
+                component Foo {}
             "#]],
         );
     }
@@ -2587,17 +2587,17 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                <Main {a: Bool, b: String}>
+                component Main(a: Bool, b: String) {
                   <if {a}>
                     <div>
                       {b}
                     </div>
                   </if>
-                </Main>
+                }
 
-                <Foo>
+                component Foo {
                   <Main a={true} b={"foo"}/>
-                </Foo>
+                }
             "#]],
         );
     }
@@ -2736,11 +2736,11 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                <Main {params: String}>
+                component Main(params: String) {
                   <div>
                     {params}
                   </div>
-                </Main>
+                }
             "#]],
         );
     }
@@ -2758,13 +2758,13 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                <ToggleComp {enabled: Bool}>
+                component ToggleComp(enabled: Bool) {
                   <if {enabled}>
                     <div>
                       Enabled
                     </div>
                   </if>
-                </ToggleComp>
+                }
             "#]],
         );
     }
@@ -2782,13 +2782,13 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                <CounterComp {count: Float}>
+                component CounterComp(count: Float) {
                   <if {(count == 0)}>
                     <div>
                       Zero
                     </div>
                   </if>
-                </CounterComp>
+                }
             "#]],
         );
     }
@@ -2826,12 +2826,12 @@ mod tests {
                   items: Array[main::Item],
                 }
 
-                <Main {params: main::Params}>
+                component Main(params: main::Params) {
                   <for {item in params.items}>
                     <if {item.active}></if>
                     <if {item.name}></if>
                   </for>
-                </Main>
+                }
             "#]],
         );
     }
@@ -2849,13 +2849,13 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                <ListComp {items: Array[String]}>
+                component ListComp(items: Array[String]) {
                   <for {item in items}>
                     <div>
                       {item}
                     </div>
                   </for>
-                </ListComp>
+                }
             "#]],
         );
     }
@@ -2883,13 +2883,13 @@ mod tests {
                   y: String,
                 }
 
-                <Main {params: main::Params}>
+                component Main(params: main::Params) {
                   <if {(params.x == params.y)}>
                     <div>
                       Values are equal
                     </div>
                   </if>
-                </Main>
+                }
             "#]],
         );
     }
@@ -2922,14 +2922,14 @@ mod tests {
                   b: Bool,
                 }
 
-                <Main {params: Array[main::Item]}>
+                component Main(params: Array[main::Item]) {
                   <for {j in params}>
                     <if {j.a}></if>
                   </for>
                   <for {j in params}>
                     <if {j.b}></if>
                   </for>
-                </Main>
+                }
             "#]],
         );
     }
@@ -2948,11 +2948,11 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                <Main {i: Array[Bool]}>
+                component Main(i: Array[Bool]) {
                   <for {j in i}>
                     <if {j}></if>
                   </for>
-                </Main>
+                }
             "#]],
         );
     }
@@ -2974,7 +2974,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                <Main {i: Array[Array[Bool]]}>
+                component Main(i: Array[Array[Bool]]) {
                   <for {j in i}>
                     <for {k in j}>
                       <if {k}>
@@ -2982,7 +2982,7 @@ mod tests {
                       </if>
                     </for>
                   </for>
-                </Main>
+                }
             "#]],
         );
     }
@@ -3039,24 +3039,24 @@ mod tests {
                   title: String,
                 }
 
-                <WidgetComp {config: a::bar::Config}>
+                component WidgetComp(config: a::bar::Config) {
                   <if {config.enabled}>
                     <div>
                       {config.title}
                     </div>
                   </if>
-                </WidgetComp>
+                }
 
                 -- foo.hop --
                 record Data {
                   items: Array[a::bar::Config],
                 }
 
-                <PanelComp {data: foo::Data}>
+                component PanelComp(data: foo::Data) {
                   <for {item in data.items}>
                     <WidgetComp config={item}/>
                   </for>
-                </PanelComp>
+                }
 
                 -- main.hop --
                 record Dashboard {
@@ -3067,9 +3067,9 @@ mod tests {
                   dashboard: foo::Data,
                 }
 
-                <Main {settings: main::Settings}>
+                component Main(settings: main::Settings) {
                   <PanelComp data={settings.dashboard}/>
-                </Main>
+                }
             "#]],
         );
     }
@@ -3177,11 +3177,11 @@ mod tests {
                   theme: String,
                 }
 
-                <Main {user: main::User}>
+                component Main(user: main::User) {
                   <a href={user.url} class={user.theme}>
                     Link
                   </a>
-                </Main>
+                }
             "#]],
         );
     }
@@ -3205,13 +3205,13 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                <Main {slot: Fragment}>
+                component Main(slot: Fragment) {
                   <strong>
                     {slot}
                   </strong>
-                </Main>
+                }
 
-                <Bar>
+                component Bar {
                   <let {
                     v_0 = {
                       Here's the content for the children
@@ -3219,7 +3219,7 @@ mod tests {
                   }>
                     <Main slot={v_0}/>
                   </let>
-                </Bar>
+                }
             "#]],
         );
     }
@@ -3266,13 +3266,13 @@ mod tests {
                   is_active: Bool,
                 }
 
-                <Main {user: main::User}>
+                component Main(user: main::User) {
                   <if {user.is_active}>
                     <div>
                       User is active
                     </div>
                   </if>
-                </Main>
+                }
             "#]],
         );
     }
@@ -3433,17 +3433,17 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                <ListItems {items: Array[String]}>
+                component ListItems(items: Array[String]) {
                   <for {item in items}>
                     <li>
                       {item}
                     </li>
                   </for>
-                </ListItems>
+                }
 
-                <Main>
+                component Main {
                   <ListItems items={[]}/>
-                </Main>
+                }
             "#]],
         );
     }
@@ -3522,7 +3522,7 @@ mod tests {
                   friend: main::User,
                 }
 
-                <Main></Main>
+                component Main {}
             "#]],
         );
     }
@@ -3567,11 +3567,11 @@ mod tests {
                   name: String,
                 }
 
-                <Main {user: main::User}>
+                component Main(user: main::User) {
                   <div>
                     {user.name}
                   </div>
-                </Main>
+                }
             "#]],
         );
     }
@@ -3598,11 +3598,11 @@ mod tests {
                   address: main::Address,
                 }
 
-                <Main {user: main::User}>
+                component Main(user: main::User) {
                   <div>
                     {user.address.city}
                   </div>
-                </Main>
+                }
             "#]],
         );
     }
@@ -3673,7 +3673,7 @@ mod tests {
                   app: main::App,
                 }
 
-                <Main {params: main::Params}>
+                component Main(params: main::Params) {
                   <if {params.app.ui.theme.dark}>
                     ok!
                   </if>
@@ -3683,7 +3683,7 @@ mod tests {
                   <if {params.app.database.connection.ssl}>
                     ok!
                   </if>
-                </Main>
+                }
             "#]],
         );
     }
@@ -3773,7 +3773,7 @@ mod tests {
                   city: String,
                 }
 
-                <Foo></Foo>
+                component Foo {}
 
                 -- bar.hop --
                 record User {
@@ -3781,16 +3781,16 @@ mod tests {
                   address: foo::Address,
                 }
 
-                <Bar {user: bar::User}>
+                component Bar(user: bar::User) {
                   <div>
                     {user.address.city}
                   </div>
-                </Bar>
+                }
 
                 -- baz.hop --
-                <Baz>
+                component Baz {
                   <Bar user={User {name: "Alice", address: Address {city: "NYC"}}}/>
-                </Baz>
+                }
             "#]],
         );
     }
@@ -3830,7 +3830,7 @@ mod tests {
                   Blue,
                 }
 
-                <ColorDisplay {color: colors::Color}>
+                component ColorDisplay(color: colors::Color) {
                   <div>
                     {match color {
                       Color::Red => "red",
@@ -3838,12 +3838,12 @@ mod tests {
                       Color::Blue => "blue",
                     }}
                   </div>
-                </ColorDisplay>
+                }
 
                 -- main.hop --
-                <Main>
+                component Main {
                   <ColorDisplay color={Color::Red}/>
-                </Main>
+                }
             "#]],
         );
     }
@@ -3934,7 +3934,7 @@ mod tests {
                   Blue,
                 }
 
-                <Main {color: main::Color}>
+                component Main(color: main::Color) {
                   <div>
                     {match color {
                       Color::Red => "red",
@@ -3942,7 +3942,7 @@ mod tests {
                       Color::Blue => "blue",
                     }}
                   </div>
-                </Main>
+                }
             "#]],
         );
     }
@@ -4118,14 +4118,14 @@ mod tests {
                   Inactive,
                 }
 
-                <Main {user: main::User}>
+                component Main(user: main::User) {
                   <div>
                     {match user.status {
                       Status::Active => "active",
                       Status::Inactive => "inactive",
                     }}
                   </div>
-                </Main>
+                }
             "#]],
         );
     }
@@ -4176,15 +4176,15 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                <Greeting {name: String}>
+                component Greeting(name: String) {
                   Hello, 
                   {name}
                   !
-                </Greeting>
+                }
 
-                <Main>
+                component Main {
                   <Greeting name={"World"}/>
-                </Main>
+                }
             "#]],
         );
     }
@@ -4203,15 +4203,15 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                <Greeting {name: String}>
+                component Greeting(name: String) {
                   Hello, 
                   {name}
                   !
-                </Greeting>
+                }
 
-                <Main>
+                component Main {
                   <Greeting name={"Claude"}/>
-                </Main>
+                }
             "#]],
         );
     }
@@ -4230,16 +4230,16 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                <UserCard {name: String, role: String}>
+                component UserCard(name: String, role: String) {
                   {name}
                    (
                   {role}
                   )
-                </UserCard>
+                }
 
-                <Main>
+                component Main {
                   <UserCard name={"Alice"} role={"user"}/>
-                </Main>
+                }
             "#]],
         );
     }
@@ -4334,15 +4334,15 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                <ItemList {items: Array[String]}>
+                component ItemList(items: Array[String]) {
                   <for {item in items}>
                     {item}
                   </for>
-                </ItemList>
+                }
 
-                <Main>
+                component Main {
                   <ItemList items={[]}/>
-                </Main>
+                }
             "#]],
         );
     }
@@ -4367,13 +4367,13 @@ mod tests {
                   enabled: Bool,
                 }
 
-                <Settings {config: main::Config}>
+                component Settings(config: main::Config) {
                   {config.name}
-                </Settings>
+                }
 
-                <Main>
+                component Main {
                   <Settings config={Config {name: "default", enabled: true}}/>
-                </Main>
+                }
             "#]],
         );
     }
@@ -4402,17 +4402,17 @@ mod tests {
                   Pending,
                 }
 
-                <Badge {status: main::Status}>
+                component Badge(status: main::Status) {
                   {match status {
                     Status::Active => "active",
                     Status::Inactive => "not active",
                     Status::Pending => "not active",
                   }}
-                </Badge>
+                }
 
-                <Main>
+                component Main {
                   <Badge status={Status::Active {since: 2000}}/>
-                </Main>
+                }
             "#]],
         );
     }
@@ -4431,13 +4431,13 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                <Greeting {name: Option[String]}>
+                component Greeting(name: Option[String]) {
                   <if {(name == None)}></if>
-                </Greeting>
+                }
 
-                <Main>
+                component Main {
                   <Greeting name={Some("World")}/>
-                </Main>
+                }
             "#]],
         );
     }
@@ -4456,13 +4456,13 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                <Greeting {name: Option[String]}>
+                component Greeting(name: Option[String]) {
                   <if {(name == None)}></if>
-                </Greeting>
+                }
 
-                <Main>
+                component Main {
                   <Greeting name={None}/>
-                </Main>
+                }
             "#]],
         );
     }
@@ -4481,13 +4481,13 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                <Greeting {name: Option[String]}>
+                component Greeting(name: Option[String]) {
                   <if {(name == None)}></if>
-                </Greeting>
+                }
 
-                <Main>
+                component Main {
                   <Greeting name={None}/>
-                </Main>
+                }
             "#]],
         );
     }
@@ -4506,13 +4506,13 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                <Greeting {name: Option[String]}>
+                component Greeting(name: Option[String]) {
                   <if {(name == None)}></if>
-                </Greeting>
+                }
 
-                <Main>
+                component Main {
                   <Greeting name={Some("World")}/>
-                </Main>
+                }
             "#]],
         );
     }
@@ -4557,7 +4557,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                <Main {x: Option[String]}>
+                component Main(x: Option[String]) {
                   <match {x}>
                     <case {Some(v_0)}>
                       <let {y = v_0}>
@@ -4569,7 +4569,7 @@ mod tests {
                       nothing
                     </case>
                   </match>
-                </Main>
+                }
             "#]],
         );
     }
@@ -4596,7 +4596,7 @@ mod tests {
                   Blue,
                 }
 
-                <Main {c: main::Color}>
+                component Main(c: main::Color) {
                   <match {c}>
                     <case {Color::Red}>
                       red
@@ -4608,7 +4608,7 @@ mod tests {
                       blue
                     </case>
                   </match>
-                </Main>
+                }
             "#]],
         );
     }
@@ -4637,7 +4637,7 @@ mod tests {
                   Inactive,
                 }
 
-                <Main>
+                component Main {
                   <match {Status::Active {name: "test"}}>
                     <case {Status::Active{name: v_1}}>
                       <let {n = v_1}>
@@ -4648,7 +4648,7 @@ mod tests {
                       none
                     </case>
                   </match>
-                </Main>
+                }
             "#]],
         );
     }
@@ -4667,7 +4667,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                <Main {flag: Bool}>
+                component Main(flag: Bool) {
                   <match {flag}>
                     <case {true}>
                       yes
@@ -4676,7 +4676,7 @@ mod tests {
                       no
                     </case>
                   </match>
-                </Main>
+                }
             "#]],
         );
     }
@@ -4720,7 +4720,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                <Main {x: Option[String]}>
+                component Main(x: Option[String]) {
                   <match {x}>
                     <case {Some(v_0)}>
                       <let {name = v_0}>
@@ -4731,7 +4731,7 @@ mod tests {
                       nothing
                     </case>
                   </match>
-                </Main>
+                }
             "#]],
         );
     }
@@ -5017,7 +5017,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                <Main {x: Option[Option[String]]}>
+                component Main(x: Option[Option[String]]) {
                   <match {x}>
                     <case {Some(v_0)}>
                       <let {inner = v_0}>
@@ -5037,7 +5037,7 @@ mod tests {
                       outer none
                     </case>
                   </match>
-                </Main>
+                }
             "#]],
         );
     }
@@ -5058,7 +5058,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                <Main {items: Array[Option[String]]}>
+                component Main(items: Array[Option[String]]) {
                   <for {item in items}>
                     <match {item}>
                       <case {Some(v_0)}>
@@ -5071,7 +5071,7 @@ mod tests {
                       </case>
                     </match>
                   </for>
-                </Main>
+                }
             "#]],
         );
     }
@@ -5094,7 +5094,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                <Main {x: Option[String]}>
+                component Main(x: Option[String]) {
                   <match {x}>
                     <case {Some(_)}>
                       found something
@@ -5103,7 +5103,7 @@ mod tests {
                       nothing
                     </case>
                   </match>
-                </Main>
+                }
             "#]],
         );
     }
@@ -5127,7 +5127,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                <Main {r1: Option[String], r2: Option[Bool]}>
+                component Main(r1: Option[String], r2: Option[Bool]) {
                   <match {r1}>
                     <case {Some(v_0)}>
                       <let {bound = v_0}>
@@ -5149,7 +5149,7 @@ mod tests {
                       </match>
                     </case>
                   </match>
-                </Main>
+                }
             "#]],
         );
     }
@@ -5173,7 +5173,7 @@ mod tests {
                   name: Option[String],
                 }
 
-                <Main {user: main::User}>
+                component Main(user: main::User) {
                   <match {user.name}>
                     <case {Some(v_1)}>
                       <let {n = v_1}>
@@ -5184,7 +5184,7 @@ mod tests {
                       anonymous
                     </case>
                   </match>
-                </Main>
+                }
             "#]],
         );
     }
@@ -5226,7 +5226,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                <Main {show: Bool, x: Option[String]}>
+                component Main(show: Bool, x: Option[String]) {
                   <if {show}>
                     <match {x}>
                       <case {Some(v_0)}>
@@ -5239,7 +5239,7 @@ mod tests {
                       </case>
                     </match>
                   </if>
-                </Main>
+                }
             "#]],
         );
     }
@@ -5260,7 +5260,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                <Main {x: Option[String]}>
+                component Main(x: Option[String]) {
                   <div>
                     <match {x}>
                       <case {Some(v_0)}>
@@ -5277,7 +5277,7 @@ mod tests {
                       </case>
                     </match>
                   </div>
-                </Main>
+                }
             "#]],
         );
     }
@@ -5321,9 +5321,9 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                <Main {is_required: Bool}>
+                component Main(is_required: Bool) {
                   <input required={is_required}></input>
-                </Main>
+                }
             "#]],
         );
     }
@@ -5340,10 +5340,10 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                <Main>
+                component Main {
                   <input required={true}></input>
                   <input disabled={false}></input>
-                </Main>
+                }
             "#]],
         );
     }
@@ -5359,9 +5359,9 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                <Main {maybe: Option[String]}>
+                component Main(maybe: Option[String]) {
                   <div data-x={maybe}></div>
-                </Main>
+                }
             "#]],
         );
     }
@@ -5377,9 +5377,9 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                <Main>
+                component Main {
                   <div data-x={Some("hello")}></div>
-                </Main>
+                }
             "#]],
         );
     }
@@ -5539,14 +5539,14 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                <Main>
+                component Main {
                   <let {name = "World"}>
                     <div>
                       Hello 
                       {name}
                     </div>
                   </let>
-                </Main>
+                }
             "#]],
         );
     }
@@ -5564,13 +5564,13 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                <Main>
+                component Main {
                   <let {name = "World"}>
                     <div>
                       {name}
                     </div>
                   </let>
-                </Main>
+                }
             "#]],
         );
     }
@@ -5588,13 +5588,13 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                <Main>
+                component Main {
                   <let {count = 42}>
                     <div>
                       {count.to_string()}
                     </div>
                   </let>
-                </Main>
+                }
             "#]],
         );
     }
@@ -5612,13 +5612,13 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                <Main>
+                component Main {
                   <let {price = 2.5}>
                     <div>
                       {price.to_int().to_string()}
                     </div>
                   </let>
-                </Main>
+                }
             "#]],
         );
     }
@@ -5636,13 +5636,13 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                <Main>
+                component Main {
                   <let {items = [1, 2, 3]}>
                     <div>
                       {items.len().to_string()}
                     </div>
                   </let>
-                </Main>
+                }
             "#]],
         );
     }
@@ -5666,13 +5666,13 @@ mod tests {
                   age: Int,
                 }
 
-                <Main>
+                component Main {
                   <let {user = User {name: "Alice", age: 30}}>
                     <div>
                       {user.name}
                     </div>
                   </let>
-                </Main>
+                }
             "#]],
         );
     }
@@ -5690,7 +5690,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                <Main>
+                component Main {
                   <let {first = "Hello"}>
                     <let {second = "World"}>
                       <div>
@@ -5699,7 +5699,7 @@ mod tests {
                       </div>
                     </let>
                   </let>
-                </Main>
+                }
             "#]],
         );
     }
@@ -5717,7 +5717,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                <Main>
+                component Main {
                   <let {greeting = "Hello"}>
                     <let {shout = greeting}>
                       <div>
@@ -5725,7 +5725,7 @@ mod tests {
                       </div>
                     </let>
                   </let>
-                </Main>
+                }
             "#]],
         );
     }
@@ -5874,7 +5874,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                <Main>
+                component Main {
                   <let {name = "First"}>
                     <div>
                       {name}
@@ -5885,7 +5885,7 @@ mod tests {
                       {name}
                     </div>
                   </let>
-                </Main>
+                }
             "#]],
         );
     }
@@ -5924,7 +5924,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                <Main>
+                component Main {
                   <let {first = "Hello"}>
                     <let {second = "World"}>
                       <div>
@@ -5933,7 +5933,7 @@ mod tests {
                       </div>
                     </let>
                   </let>
-                </Main>
+                }
             "#]],
         );
     }
@@ -5993,7 +5993,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                <Main>
+                component Main {
                   <let {greeting = "Hello"}>
                     <let {message = greeting}>
                       <div>
@@ -6001,7 +6001,7 @@ mod tests {
                       </div>
                     </let>
                   </let>
-                </Main>
+                }
             "#]],
         );
     }
@@ -6021,7 +6021,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                <Main>
+                component Main {
                   <let {x = 0}>
                     <let {y = (x + 1)}>
                       <let {z = (y + 2)}>
@@ -6033,7 +6033,7 @@ mod tests {
                       </let>
                     </let>
                   </let>
-                </Main>
+                }
             "#]],
         );
     }
@@ -6166,13 +6166,13 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                <Greeting {name: String}>
+                component Greeting(name: String) {
                   <div>
                     Hello, 
                     {name}
                     !
                   </div>
-                </Greeting>
+                }
 
                 view Main(name: String) {
                   <Greeting name={name}/>
@@ -6274,7 +6274,7 @@ mod tests {
                   children: Array[main::TreeNode],
                 }
 
-                <Main></Main>
+                component Main {}
             "#]],
         );
     }
@@ -6299,7 +6299,7 @@ mod tests {
                   Neg{inner: main::Expr},
                 }
 
-                <Main></Main>
+                component Main {}
             "#]],
         );
     }
@@ -6321,7 +6321,7 @@ mod tests {
                   price: Int,
                 }
 
-                <Main></Main>
+                component Main {}
             "#]],
         );
     }
@@ -6385,7 +6385,7 @@ mod tests {
                   tags: Array[String],
                 }
 
-                <Main></Main>
+                component Main {}
             "#]],
         );
     }
