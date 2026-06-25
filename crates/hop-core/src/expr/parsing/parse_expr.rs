@@ -224,18 +224,14 @@ fn parse_array_literal(
     range: &DocumentRange,
     left_bracket: DocumentRange,
 ) -> Option<ParsedExpr> {
-    let mut elements = Vec::new();
-    let right_bracket = parse_delimited_list(
+    let (elements, right_bracket) = parse_delimited_list(
         iter,
         comments,
         errors,
         range,
         &Token::LeftBracket,
         &left_bracket,
-        |iter, comments, errors, range| {
-            elements.push(parse_logical(iter, comments, errors, range)?);
-            Some(())
-        },
+        parse_logical,
     )?;
     Some(ParsedExpr::ArrayLiteral {
         elements,
@@ -450,18 +446,14 @@ fn parse_macro_invocation(
         return None;
     }
     let left_paren = expect_token(iter, comments, errors, range, &Token::LeftParen)?;
-    let mut args = Vec::new();
-    let right_paren = parse_delimited_list(
+    let (args, right_paren) = parse_delimited_list(
         iter,
         comments,
         errors,
         range,
         &Token::LeftParen,
         &left_paren,
-        |iter, comments, errors, range| {
-            args.push(parse_logical(iter, comments, errors, range)?);
-            Some(())
-        },
+        parse_logical,
     )?;
     Some(ParsedExpr::MacroInvocation {
         name: macro_name,
@@ -480,8 +472,7 @@ fn parse_record_literal(
     name_range: DocumentRange,
 ) -> Option<ParsedExpr> {
     let left_delim = expect_token(iter, comments, errors, range, &Token::LeftBrace)?;
-    let mut fields = Vec::new();
-    let right_delim = parse_delimited_list(
+    let (fields, right_delim) = parse_delimited_list(
         iter,
         comments,
         errors,
@@ -491,8 +482,7 @@ fn parse_record_literal(
         |iter, comments, errors, range| {
             let (field_name, _) = expect_field_name(iter, comments, errors, range)?;
             expect_token(iter, comments, errors, range, &Token::Colon)?;
-            fields.push((field_name, parse_logical(iter, comments, errors, range)?));
-            Some(())
+            Some((field_name, parse_logical(iter, comments, errors, range)?))
         },
     )?;
     Some(ParsedExpr::RecordLiteral {
@@ -516,8 +506,7 @@ fn parse_enum_literal(
     let constructor_range = enum_name_range.clone().to(variant_range.clone());
     let (fields, end_range) =
         if let Some(left_delim) = advance_if(iter, comments, errors, Token::LeftBrace) {
-            let mut fields = Vec::new();
-            let right_delim = parse_delimited_list(
+            parse_delimited_list(
                 iter,
                 comments,
                 errors,
@@ -528,15 +517,13 @@ fn parse_enum_literal(
                     let (field_name, field_name_range) =
                         expect_field_name(iter, comments, errors, range)?;
                     expect_token(iter, comments, errors, range, &Token::Colon)?;
-                    fields.push((
+                    Some((
                         field_name,
                         field_name_range,
                         parse_logical(iter, comments, errors, range)?,
-                    ));
-                    Some(())
+                    ))
                 },
-            )?;
-            (fields, right_delim)
+            )?
         } else {
             (Vec::new(), variant_range)
         };
@@ -559,8 +546,7 @@ fn parse_match(
 ) -> Option<ParsedExpr> {
     let subject = parse_logical(iter, comments, errors, range)?;
     let left_brace = expect_token(iter, comments, errors, range, &Token::LeftBrace)?;
-    let mut arms = Vec::new();
-    let right_brace = parse_delimited_list(
+    let (arms, right_brace) = parse_delimited_list(
         iter,
         comments,
         errors,
@@ -571,8 +557,7 @@ fn parse_match(
             let pattern = parse_match_pattern(iter, comments, errors, range)?;
             expect_token(iter, comments, errors, range, &Token::FatArrow)?;
             let body = parse_logical(iter, comments, errors, range)?;
-            arms.push(ParsedMatchArm { pattern, body });
-            Some(())
+            Some(ParsedMatchArm { pattern, body })
         },
     )?;
     Some(ParsedExpr::Match {
@@ -656,8 +641,7 @@ pub fn parse_match_pattern(
 
             let (fields, end_range) =
                 if let Some(left_brace) = advance_if(iter, comments, errors, Token::LeftBrace) {
-                    let mut fields = Vec::new();
-                    let right_brace = parse_delimited_list(
+                    parse_delimited_list(
                         iter,
                         comments,
                         errors,
@@ -676,11 +660,9 @@ pub fn parse_match_pattern(
                                         range: field_range.clone(),
                                     }
                                 };
-                            fields.push((field_name, field_range, pattern));
-                            Some(())
+                            Some((field_name, field_range, pattern))
                         },
-                    )?;
-                    (fields, right_brace)
+                    )?
                 } else {
                     (Vec::new(), variant_range.clone())
                 };
@@ -699,8 +681,7 @@ pub fn parse_match_pattern(
             });
         } else {
             let left_brace = expect_token(iter, comments, errors, range, &Token::LeftBrace)?;
-            let mut fields = Vec::new();
-            let right_brace = parse_delimited_list(
+            let (fields, right_brace) = parse_delimited_list(
                 iter,
                 comments,
                 errors,
@@ -718,8 +699,7 @@ pub fn parse_match_pattern(
                             range: field_range.clone(),
                         }
                     };
-                    fields.push((field_name, field_range, pattern));
-                    Some(())
+                    Some((field_name, field_range, pattern))
                 },
             )?;
             return Some(ParsedMatchPattern::Constructor {

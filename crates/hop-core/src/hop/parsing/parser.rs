@@ -282,9 +282,8 @@ fn parse_record_declaration(
     let (name, name_range) = expr::tokenizer::expect_type_name(iter, comments, errors, range)?;
     let left_brace =
         expr::tokenizer::expect_token(iter, comments, errors, range, &expr::Token::LeftBrace)?;
-    let mut fields = Vec::new();
     let mut seen_names = HashSet::new();
-    let right_brace = expr::tokenizer::parse_delimited_list(
+    let (fields, right_brace) = expr::tokenizer::parse_delimited_list(
         iter,
         comments,
         errors,
@@ -304,13 +303,12 @@ fn parse_record_declaration(
                 });
                 return None;
             }
-            fields.push(ParsedRecordDeclarationField {
+            Some(ParsedRecordDeclarationField {
                 name: field_name,
                 name_range: field_name_range,
                 field_type,
                 examples,
-            });
-            Some(())
+            })
         },
     )?;
     let full_range = start_range.to(right_brace);
@@ -336,9 +334,8 @@ fn parse_enum_declaration(
     let (name, name_range) = expr::tokenizer::expect_type_name(iter, comments, errors, range)?;
     let left_brace =
         expr::tokenizer::expect_token(iter, comments, errors, range, &expr::Token::LeftBrace)?;
-    let mut variants = Vec::new();
     let mut seen_names = HashSet::new();
-    let right_brace = expr::tokenizer::parse_delimited_list(
+    let (variants, right_brace) = expr::tokenizer::parse_delimited_list(
         iter,
         comments,
         errors,
@@ -369,12 +366,11 @@ fn parse_enum_declaration(
                 } else {
                     Vec::new()
                 };
-            variants.push(ParsedEnumDeclarationVariant {
+            Some(ParsedEnumDeclarationVariant {
                 name: variant_name,
                 name_range: variant_range,
                 fields,
-            });
-            Some(())
+            })
         },
     )?;
     let full_range = start_range.to(right_brace);
@@ -490,8 +486,7 @@ fn parse_component_declaration(
     let params = if let Some(left_paren) =
         expr::tokenizer::advance_if(iter, comments, errors, expr::Token::LeftParen)
     {
-        let mut params = Vec::new();
-        let right_paren = expr::tokenizer::parse_delimited_list(
+        let (params, right_paren) = expr::tokenizer::parse_delimited_list(
             iter,
             comments,
             errors,
@@ -512,14 +507,13 @@ fn parse_component_declaration(
                     } else {
                         None
                     };
-                params.push(parsed_ast::ParsedParameter {
+                Some(parsed_ast::ParsedParameter {
                     var_name,
                     var_name_range,
                     var_type,
                     default_value,
                     examples: pattern,
-                });
-                Some(())
+                })
             },
         )?;
         Some((params, left_paren.to(right_paren)))
@@ -627,8 +621,7 @@ fn parse_view_declaration(
     let (params, params_range) = if let Some(left_paren) =
         expr::tokenizer::advance_if(iter, comments, errors, expr::Token::LeftParen)
     {
-        let mut params = Vec::new();
-        let right_paren = expr::tokenizer::parse_delimited_list(
+        let (params, right_paren) = expr::tokenizer::parse_delimited_list(
             iter,
             comments,
             errors,
@@ -649,14 +642,13 @@ fn parse_view_declaration(
                     });
                     expr::parse_expr::parse_primary(iter, comments, errors, range);
                 }
-                params.push(parsed_ast::ParsedParameter {
+                Some(parsed_ast::ParsedParameter {
                     var_name,
                     var_name_range,
                     var_type,
                     default_value: None,
                     examples: pattern,
-                });
-                Some(())
+                })
             },
         )?;
         (params, left_paren.to(right_paren))
@@ -1119,8 +1111,7 @@ fn parse_let_bindings(
     errors: &mut Vec<ParseError>,
     range: &DocumentRange,
 ) -> Option<Vec<(VarName, DocumentRange, Option<ParsedType>, expr::ParsedExpr)>> {
-    let mut bindings = Vec::new();
-    expr::tokenizer::parse_comma_separated(
+    let bindings = expr::tokenizer::parse_comma_separated(
         iter,
         comments,
         errors,
@@ -1138,8 +1129,7 @@ fn parse_let_bindings(
             };
             expr::tokenizer::expect_token(iter, comments, errors, range, &expr::Token::Assign)?;
             let value_expr = expr::parse_expr::parse_logical(iter, comments, errors, range)?;
-            bindings.push((var_name, var_name_range, var_type, value_expr));
-            Some(())
+            Some((var_name, var_name_range, var_type, value_expr))
         },
         None,
     )?;

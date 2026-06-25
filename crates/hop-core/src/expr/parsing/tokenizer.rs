@@ -554,35 +554,36 @@ pub fn expect_eof(
     }
 }
 
-pub fn parse_comma_separated<F>(
+pub fn parse_comma_separated<T, F>(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut Vec<ParseError>,
     range: &DocumentRange,
     mut parse: F,
     end_token: Option<&Token>,
-) -> Option<()>
+) -> Option<Vec<T>>
 where
     F: FnMut(
         &mut Peekable<DocumentCursor>,
         &mut VecDeque<DocumentRange>,
         &mut Vec<ParseError>,
         &DocumentRange,
-    ) -> Option<()>,
+    ) -> Option<T>,
 {
-    parse(iter, comments, errors, range)?;
+    let mut items = Vec::new();
+    items.push(parse(iter, comments, errors, range)?);
     while advance_if(iter, comments, errors, Token::Comma).is_some() {
         let next_token = peek_past_comments(iter).map(|(t, _)| t);
         if next_token.as_ref() == end_token || (end_token.is_some() && next_token.is_none()) {
             break;
         }
-        parse(iter, comments, errors, range)?;
+        items.push(parse(iter, comments, errors, range)?);
     }
 
-    Some(())
+    Some(items)
 }
 
-pub fn parse_delimited_list<F>(
+pub fn parse_delimited_list<T, F>(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut Vec<ParseError>,
@@ -590,21 +591,22 @@ pub fn parse_delimited_list<F>(
     opening_token: &Token,
     opening_range: &DocumentRange,
     parse: F,
-) -> Option<DocumentRange>
+) -> Option<(Vec<T>, DocumentRange)>
 where
     F: FnMut(
         &mut Peekable<DocumentCursor>,
         &mut VecDeque<DocumentRange>,
         &mut Vec<ParseError>,
         &DocumentRange,
-    ) -> Option<()>,
+    ) -> Option<T>,
 {
     let closing_token = opening_token.opposite_token();
     if let Some(closing_range) = advance_if(iter, comments, errors, closing_token.clone()) {
-        return Some(closing_range);
+        return Some((Vec::new(), closing_range));
     }
-    parse_comma_separated(iter, comments, errors, range, parse, Some(&closing_token))?;
-    expect_opposite(iter, comments, errors, opening_token, opening_range)
+    let items = parse_comma_separated(iter, comments, errors, range, parse, Some(&closing_token))?;
+    let closing_range = expect_opposite(iter, comments, errors, opening_token, opening_range)?;
+    Some((items, closing_range))
 }
 
 #[cfg(test)]
