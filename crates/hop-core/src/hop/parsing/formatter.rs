@@ -268,11 +268,16 @@ fn format_component_declaration<'a>(
 ) -> DocBuilder<'a, Arena<'a>> {
     let leading_comments = drain_comments_before(arena, comments, component.range.start());
 
-    // Format parameters (omit parentheses if no parameters)
+    // Format parameters (omit parentheses if no parameters and no rest param)
     let params_doc = match &component.params {
         Some((params, params_range)) if !params.is_empty() => {
             let mut params_inner = arena.nil();
-            let force_multiline = params.len() >= 2;
+            let rest_param_doc = component
+                .rest_param
+                .as_ref()
+                .map(|(name, _)| arena.text("...").append(arena.text(name.as_str())));
+            let total_param_count = params.len() + rest_param_doc.is_some() as usize;
+            let force_multiline = total_param_count >= 2;
             let line_break = if force_multiline {
                 arena.hardline()
             } else {
@@ -285,6 +290,12 @@ fn format_component_declaration<'a>(
                         .append(line_break.clone());
                 }
                 params_inner = params_inner.append(format_parameter(arena, param, comments));
+            }
+            if let Some(rest_doc) = rest_param_doc {
+                params_inner = params_inner
+                    .append(arena.text(","))
+                    .append(line_break)
+                    .append(rest_doc);
             }
             let has_trailing_comments = comments
                 .front()
@@ -317,7 +328,18 @@ fn format_component_declaration<'a>(
                 arena.text("(").append(body).append(arena.text(")")).group()
             }
         }
-        _ => arena.nil(),
+        _ => {
+            // No regular params (or empty params list): emit rest param alone if present
+            if let Some((name, _)) = &component.rest_param {
+                arena
+                    .text("(")
+                    .append(arena.text("..."))
+                    .append(arena.text(name.as_str()))
+                    .append(arena.text(")"))
+            } else {
+                arena.nil()
+            }
+        }
     };
 
     let pub_prefix = if component.pub_range.is_some() {
@@ -425,15 +447,20 @@ fn format_parameter<'a>(
 
 fn format_attribute<'a>(
     arena: &'a Arena<'a>,
-    attr: &'a ParsedAttribute,
+    item: &'a ParsedAttribute,
     comments: &mut VecDeque<&'a DocumentRange>,
 ) -> DocBuilder<'a, Arena<'a>> {
-    let name_doc = arena.text(attr.name.as_str());
-    match &attr.value {
-        Some(value) => name_doc
-            .append(arena.text("="))
-            .append(format_attribute_value(arena, value, comments)),
-        None => name_doc,
+    match item {
+        ParsedAttribute::Named { name, value } => {
+            let name_doc = arena.text(name.as_str());
+            match value {
+                Some(value) => name_doc
+                    .append(arena.text("="))
+                    .append(format_attribute_value(arena, value, comments)),
+                None => name_doc,
+            }
+        }
+        ParsedAttribute::Spread { name, .. } => arena.text("...").append(arena.text(name.as_str())),
     }
 }
 
@@ -3999,6 +4026,76 @@ mod tests {
             expect![[r#"
                 view Test {
                   <!-- just a comment -->
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn spread_attribute_on_html_element_formats_correctly() {
+        check(
+            indoc! {"
+                component Foo(...rest) {
+                  <button ...rest></button>
+                }
+            "},
+            expect![[r#"
+                component Foo(...rest) {
+                  <button ...rest>
+                  </button>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn spread_attribute_on_component_invocation_formats_correctly() {
+        check(
+            indoc! {"
+                component Bar(...rest) {
+                  <Foo ...rest></Foo>
+                }
+            "},
+            expect![[r#"
+                component Bar(...rest) {
+                  <Foo ...rest/>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn formats_rest_param_and_spread() {
+        check(
+            indoc! {"
+                component Foo(class: String, ...rest) {
+                  <button ...rest></button>
+                }
+            "},
+            expect![[r#"
+                component Foo(
+                  class: String,
+                  ...rest,
+                ) {
+                  <button ...rest>
+                  </button>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn formats_only_rest_param() {
+        check(
+            indoc! {"
+                component Foo(...rest) {
+                  <button ...rest></button>
+                }
+            "},
+            expect![[r#"
+                component Foo(...rest) {
+                  <button ...rest>
+                  </button>
                 }
             "#]],
         );

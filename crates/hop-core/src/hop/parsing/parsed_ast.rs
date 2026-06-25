@@ -60,6 +60,7 @@ pub struct ParsedComponentDeclaration {
     pub tag_name: DocumentRange,
     pub closing_tag_name: Option<DocumentRange>,
     pub params: Option<(Vec<ParsedParameter>, DocumentRange)>,
+    pub rest_param: Option<(VarName, DocumentRange)>,
     pub children: Vec<ParsedNode>,
     pub range: DocumentRange,
     pub pub_range: Option<DocumentRange>,
@@ -113,15 +114,23 @@ pub struct ParsedParameter {
     pub examples: Option<ExamplesAnnotation>,
 }
 
-/// A ParsedAttribute is an attribute on a node, it can either
-/// be:
+/// A ParsedAttribute is a single entry in a node's attribute list.
+///
+/// It is either:
 /// * empty - <foo a>
 /// * an expression - <foo a={bar}>
-/// * or a string value - <foo a="b">
+/// * a string value - <foo a="b">
+/// * or a spread - <foo ...rest>
 #[derive(Debug, Clone)]
-pub struct ParsedAttribute {
-    pub name: DocumentRange,
-    pub value: Option<ParsedAttributeValue>,
+pub enum ParsedAttribute {
+    Named {
+        name: DocumentRange,
+        value: Option<ParsedAttributeValue>,
+    },
+    Spread {
+        name: VarName,
+        range: DocumentRange,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -173,10 +182,17 @@ impl ParsedAttributeValue {
 
 impl ParsedAttribute {
     pub fn to_doc(&self) -> BoxDoc<'_> {
-        let name_doc = BoxDoc::text(self.name.as_str());
-        match &self.value {
-            Some(value) => name_doc.append(BoxDoc::text("=")).append(value.to_doc()),
-            None => name_doc,
+        match self {
+            ParsedAttribute::Named { name, value } => {
+                let name_doc = BoxDoc::text(name.as_str());
+                match value {
+                    Some(value) => name_doc.append(BoxDoc::text("=")).append(value.to_doc()),
+                    None => name_doc,
+                }
+            }
+            ParsedAttribute::Spread { name, .. } => {
+                BoxDoc::text("...").append(BoxDoc::text(name.as_str()))
+            }
         }
     }
 }

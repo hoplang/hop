@@ -483,10 +483,18 @@ fn parse_component_declaration(
     };
 
     // Parse parameters (parentheses are optional if no parameters)
-    let params = if let Some(left_paren) =
+    enum ParamItem {
+        Param(Box<parsed_ast::ParsedParameter>),
+        Rest {
+            var_name: VarName,
+            range: DocumentRange,
+        },
+    }
+
+    let parsed_params = if let Some(left_paren) =
         expr::tokenizer::advance_if(iter, comments, errors, expr::Token::LeftParen)
     {
-        let (params, right_paren) = expr::tokenizer::parse_delimited_list(
+        let (items, right_paren) = expr::tokenizer::parse_delimited_list(
             iter,
             comments,
             errors,
@@ -494,6 +502,18 @@ fn parse_component_declaration(
             &expr::Token::LeftParen,
             &left_paren,
             |iter, comments, errors, range| {
+                // A `...name` rest parameter.
+                if let Some(dots_range) =
+                    expr::tokenizer::advance_if(iter, comments, errors, expr::Token::DotDotDot)
+                {
+                    let (var_name, var_name_range) =
+                        expr::tokenizer::expect_variable_name(iter, comments, errors, range)?;
+                    return Some(ParamItem::Rest {
+                        range: dots_range.to(var_name_range),
+                        var_name,
+                    });
+                }
+                // A regular parameter.
                 let pattern = parse_pattern_annotation(iter, comments, errors);
                 let (var_name, var_name_range) =
                     expr::tokenizer::expect_variable_name(iter, comments, errors, range)?;
@@ -507,19 +527,57 @@ fn parse_component_declaration(
                     } else {
                         None
                     };
-                Some(parsed_ast::ParsedParameter {
+                Some(ParamItem::Param(Box::new(parsed_ast::ParsedParameter {
                     var_name,
                     var_name_range,
                     var_type,
                     default_value,
                     examples: pattern,
-                })
+                })))
             },
         )?;
-        Some((params, left_paren.to(right_paren)))
+        Some((items, left_paren.to(right_paren)))
     } else {
         None
     };
+
+    let mut params = None;
+    let mut rest_param: Option<(VarName, DocumentRange)> = None;
+    if let Some((items, params_range)) = parsed_params {
+        if let Some(first) = items
+            .iter()
+            .position(|i| matches!(i, ParamItem::Rest { .. }))
+        {
+            let after_rest = &items[first + 1..];
+            for item in after_rest {
+                if let ParamItem::Rest { range, .. } = item {
+                    errors.push(ParseError::DuplicateRestParam {
+                        range: range.clone(),
+                    });
+                }
+            }
+            if after_rest.iter().any(|i| matches!(i, ParamItem::Param(_))) {
+                if let ParamItem::Rest { range, .. } = &items[first] {
+                    errors.push(ParseError::RestParamMustBeLast {
+                        range: range.clone(),
+                    });
+                }
+            }
+        }
+
+        let mut regular = Vec::new();
+        for item in items {
+            match item {
+                ParamItem::Param(p) => regular.push(*p),
+                ParamItem::Rest {
+                    var_name, range, ..
+                } => {
+                    rest_param.get_or_insert((var_name, range));
+                }
+            }
+        }
+        params = Some((regular, params_range));
+    }
 
     let body_start = expr::tokenizer::expect_token(
         iter,
@@ -560,6 +618,7 @@ fn parse_component_declaration(
         tag_name: name_range,
         closing_tag_name: None,
         params,
+        rest_param,
         range,
         children,
         pub_range,
@@ -975,45 +1034,7 @@ fn construct_node(
                         });
                     }
 
-                    // Parse arguments from attributes
-                    let mut parsed_args: Vec<parsed_ast::ParsedAttribute> = Vec::new();
-
-                    for attr in &attributes {
-                        // Validate attribute name is a valid variable name
-                        if VarName::new(attr.name.as_str()).is_err() {
-                            errors.push(ParseError::InvalidArgumentName {
-                                tag_name: tag_name.to_cheap_string(),
-                                name: attr.name.to_cheap_string(),
-                                range: attr.name.clone(),
-                            });
-                            continue;
-                        }
-
-                        let value = match &attr.value {
-                            Some(tokenizer::TokenizedAttributeValue::Expression(range)) => {
-                                let mut iter = range.cursor().peekable();
-                                match expr::parse_expr::parse_expr(
-                                    &mut iter, comments, errors, range,
-                                ) {
-                                    Some(expr) => {
-                                        Some(parsed_ast::ParsedAttributeValue::Expression(expr))
-                                    }
-                                    None => {
-                                        continue;
-                                    }
-                                }
-                            }
-                            Some(tokenizer::TokenizedAttributeValue::String { content }) => {
-                                Some(parsed_ast::ParsedAttributeValue::String(content.clone()))
-                            }
-                            None => None,
-                        };
-
-                        parsed_args.push(parsed_ast::ParsedAttribute {
-                            name: attr.name.clone(),
-                            value,
-                        });
-                    }
+                    let parsed_args = parse_attributes(&attributes, comments, errors);
 
                     let declaring_module = if defined_components.contains(component_name.as_str()) {
                         Some(document_id.clone())
@@ -1232,25 +1253,40 @@ fn parse_pattern_annotation(
 }
 
 fn parse_attribute(
-    attr: &tokenizer::TokenizedAttribute,
+    item: &tokenizer::TokenizedAttribute,
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut Vec<ParseError>,
 ) -> Option<parsed_ast::ParsedAttribute> {
-    let value = match &attr.value {
-        Some(tokenizer::TokenizedAttributeValue::String { content }) => {
-            Some(parsed_ast::ParsedAttributeValue::String(content.clone()))
+    match item {
+        tokenizer::TokenizedAttribute::Named { name, value, .. } => {
+            let value = match value {
+                Some(tokenizer::TokenizedAttributeValue::String { content }) => {
+                    Some(parsed_ast::ParsedAttributeValue::String(content.clone()))
+                }
+                Some(tokenizer::TokenizedAttributeValue::Expression(range)) => {
+                    let mut iter = range.cursor().peekable();
+                    let result = expr::parse_expr::parse_expr(&mut iter, comments, errors, range);
+                    Some(result.map(parsed_ast::ParsedAttributeValue::Expression)?)
+                }
+                None => None,
+            };
+            Some(parsed_ast::ParsedAttribute::Named {
+                name: name.clone(),
+                value,
+            })
         }
-        Some(tokenizer::TokenizedAttributeValue::Expression(range)) => {
-            let mut iter = range.cursor().peekable();
-            let result = expr::parse_expr::parse_expr(&mut iter, comments, errors, range);
-            Some(result.map(parsed_ast::ParsedAttributeValue::Expression)?)
+        tokenizer::TokenizedAttribute::Spread { name, range } => {
+            match VarName::new(name.as_str()) {
+                Ok(var_name) => Some(parsed_ast::ParsedAttribute::Spread {
+                    name: var_name,
+                    range: range.clone(),
+                }),
+                Err(_) => {
+                    unreachable!("spread identifier already validated by tokenizer")
+                }
+            }
         }
-        None => None,
-    };
-    Some(parsed_ast::ParsedAttribute {
-        name: attr.name.clone(),
-        value,
-    })
+    }
 }
 
 fn parse_attributes(
@@ -1260,7 +1296,7 @@ fn parse_attributes(
 ) -> Vec<parsed_ast::ParsedAttribute> {
     attributes
         .iter()
-        .filter_map(|attr| parse_attribute(attr, comments, errors))
+        .filter_map(|item| parse_attribute(item, comments, errors))
         .collect()
 }
 
@@ -1268,13 +1304,14 @@ fn disallow_attributes<'a>(
     attributes: &'a [tokenizer::TokenizedAttribute],
     tag_name: &'a DocumentRange,
 ) -> impl Iterator<Item = ParseError> + 'a {
-    attributes
-        .iter()
-        .map(move |attr| ParseError::UnrecognizedAttribute {
+    attributes.iter().map(move |item| {
+        let (name, range) = (item.name().to_cheap_string(), item.range().clone());
+        ParseError::UnrecognizedAttribute {
             tag_name: tag_name.to_cheap_string(),
-            attr_name: attr.name.to_cheap_string(),
-            range: attr.range.clone(),
-        })
+            attr_name: name,
+            range,
+        }
+    })
 }
 
 #[cfg(test)]
@@ -4160,6 +4197,91 @@ mod tests {
                 error: Invalid escape sequence '\q'
                 1 | component Test {{"invalid\q"}}
                   |                          ^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_rest_param() {
+        accept(
+            indoc! {r#"
+                component Foo(class: String, ...rest) {
+                  <div></div>
+                }
+            "#},
+            expect![[r#"
+                component Foo(
+                  class: String,
+                  ...rest,
+                ) {
+                  <div>
+                  </div>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_rest_param_not_last() {
+        reject(
+            indoc! {r#"
+                component Foo(...rest, a: String, b: String) {
+                  <div></div>
+                }
+            "#},
+            expect![[r#"
+                error: Rest parameter must be the last parameter
+                1 | component Foo(...rest, a: String, b: String) {
+                  |               ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_duplicate_rest_param() {
+        reject(
+            indoc! {r#"
+                component Foo(...a, ...b) {
+                  <div></div>
+                }
+            "#},
+            expect![[r#"
+                error: At most one rest parameter is allowed
+                1 | component Foo(...a, ...b) {
+                  |                     ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_spread_attribute_on_element() {
+        accept(
+            indoc! {r#"
+                component Foo(...rest) {
+                  <button ...rest></button>
+                }
+            "#},
+            expect![[r#"
+                component Foo(...rest) {
+                  <button ...rest>
+                  </button>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_spread_attribute_on_component() {
+        accept(
+            indoc! {r#"
+                component Bar(...rest) {
+                  <Foo ...rest></Foo>
+                }
+            "#},
+            expect![[r#"
+                component Bar(...rest) {
+                  <Foo ...rest/>
+                }
             "#]],
         );
     }

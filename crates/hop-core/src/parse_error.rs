@@ -107,15 +107,6 @@ pub enum ParseError {
     UnterminatedTagStart { range: DocumentRange },
 
     #[error(
-        "Invalid argument name '{name}' on <{tag_name}>: argument names cannot contain hyphens"
-    )]
-    InvalidArgumentName {
-        tag_name: CheapString,
-        name: CheapString,
-        range: DocumentRange,
-    },
-
-    #[error(
         "Unexpected expression on <{tag_name}>: use attribute syntax instead (e.g. attr={{value}})"
     )]
     UnexpectedComponentExpression {
@@ -254,6 +245,12 @@ pub enum ParseError {
         tag: CheapString,
         range: DocumentRange,
     },
+
+    #[error("Rest parameter must be the last parameter")]
+    RestParamMustBeLast { range: DocumentRange },
+
+    #[error("At most one rest parameter is allowed")]
+    DuplicateRestParam { range: DocumentRange },
 }
 
 impl ParseError {
@@ -269,7 +266,6 @@ impl ParseError {
             | ParseError::TypeNameIsAlreadyDefined { range, .. }
             | ParseError::DuplicateAttribute { range, .. }
             | ParseError::UnrecognizedAttribute { range, .. }
-            | ParseError::InvalidArgumentName { range, .. }
             | ParseError::UnexpectedComponentExpression { range, .. }
             | ParseError::EmptyExpression { range }
             | ParseError::MissingMatchExpression { range }
@@ -316,7 +312,9 @@ impl ParseError {
             | ParseError::ExpectedDeclaration { range }
             | ParseError::DefaultValueNotAllowedOnView { range }
             | ParseError::UnknownMacro { range, .. }
-            | ParseError::UnknownHtmlElement { range, .. } => range,
+            | ParseError::UnknownHtmlElement { range, .. }
+            | ParseError::RestParamMustBeLast { range }
+            | ParseError::DuplicateRestParam { range } => range,
         }
     }
 }

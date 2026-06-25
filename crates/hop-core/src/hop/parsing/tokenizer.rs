@@ -18,16 +18,40 @@ pub enum TokenizedAttributeValue {
 }
 
 #[derive(Debug, Clone)]
-pub struct TokenizedAttribute {
-    pub name: DocumentRange,
-    pub value: Option<TokenizedAttributeValue>,
+pub enum TokenizedAttribute {
+    Named {
+        name: DocumentRange,
+        value: Option<TokenizedAttributeValue>,
 
-    /// This is the range for the whole attribute,
-    /// including possible quotes.
-    ///
-    /// E.g. <div foo="bar">
-    ///           ^^^^^^^^^
-    pub range: DocumentRange,
+        /// This is the range for the whole attribute,
+        /// including possible quotes.
+        ///
+        /// E.g. <div foo="bar">
+        ///           ^^^^^^^^^
+        range: DocumentRange,
+    },
+    Spread {
+        name: DocumentRange,
+        range: DocumentRange,
+    },
+}
+
+impl TokenizedAttribute {
+    pub fn name(&self) -> &DocumentRange {
+        match self {
+            TokenizedAttribute::Named { name, .. } | TokenizedAttribute::Spread { name, .. } => {
+                name
+            }
+        }
+    }
+
+    pub fn range(&self) -> &DocumentRange {
+        match self {
+            TokenizedAttribute::Named { range, .. } | TokenizedAttribute::Spread { range, .. } => {
+                range
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -122,19 +146,28 @@ impl Display for Token {
                     writeln!(f, "}},")?;
                 } else {
                     writeln!(f)?;
-                    for attr in attributes {
-                        let value_str = match &attr.value {
-                            Some(TokenizedAttributeValue::String { content }) => {
-                                let val =
-                                    content.as_ref().map(|r| r.to_string()).unwrap_or_default();
-                                format!("String({:?})", val)
+                    for item in attributes {
+                        match item {
+                            TokenizedAttribute::Named { name, value, .. } => {
+                                let value_str = match value {
+                                    Some(TokenizedAttributeValue::String { content }) => {
+                                        let val = content
+                                            .as_ref()
+                                            .map(|r| r.to_string())
+                                            .unwrap_or_default();
+                                        format!("String({:?})", val)
+                                    }
+                                    Some(TokenizedAttributeValue::Expression(val)) => {
+                                        format!("Expression({:?})", val.to_string())
+                                    }
+                                    None => "None".to_string(),
+                                };
+                                writeln!(f, "    {}: {},", name, value_str)?;
                             }
-                            Some(TokenizedAttributeValue::Expression(val)) => {
-                                format!("Expression({:?})", val.to_string())
+                            TokenizedAttribute::Spread { name, .. } => {
+                                writeln!(f, "    ...{},", name)?;
                             }
-                            None => "None".to_string(),
-                        };
-                        writeln!(f, "    {}: {},", attr.name, value_str)?;
+                        }
                     }
                     writeln!(f, "  }},")?;
                 }
@@ -166,19 +199,28 @@ impl Display for Token {
                     writeln!(f, "}},")?;
                 } else {
                     writeln!(f)?;
-                    for attr in attributes {
-                        let value_str = match &attr.value {
-                            Some(TokenizedAttributeValue::String { content }) => {
-                                let val =
-                                    content.as_ref().map(|r| r.to_string()).unwrap_or_default();
-                                format!("String({:?})", val)
+                    for item in attributes {
+                        match item {
+                            TokenizedAttribute::Named { name, value, .. } => {
+                                let value_str = match value {
+                                    Some(TokenizedAttributeValue::String { content }) => {
+                                        let val = content
+                                            .as_ref()
+                                            .map(|r| r.to_string())
+                                            .unwrap_or_default();
+                                        format!("String({:?})", val)
+                                    }
+                                    Some(TokenizedAttributeValue::Expression(val)) => {
+                                        format!("Expression({:?})", val.to_string())
+                                    }
+                                    None => "None".to_string(),
+                                };
+                                writeln!(f, "    {}: {},", name, value_str)?;
                             }
-                            Some(TokenizedAttributeValue::Expression(val)) => {
-                                format!("Expression({:?})", val.to_string())
+                            TokenizedAttribute::Spread { name, .. } => {
+                                writeln!(f, "    ...{},", name)?;
                             }
-                            None => "None".to_string(),
-                        };
-                        writeln!(f, "    {}: {},", attr.name, value_str)?;
+                        }
                     }
                     writeln!(f, "  }},")?;
                 }
@@ -408,7 +450,7 @@ fn parse_attribute(
 
     // consume: '='
     let Some(eq) = iter.next_if(|s| s.ch() == '=') else {
-        return Some(TokenizedAttribute {
+        return Some(TokenizedAttribute::Named {
             name: attr_name.clone(),
             value: None,
             range: attr_name,
@@ -422,7 +464,7 @@ fn parse_attribute(
     if iter.peek().map(|s| s.ch()) == Some('{') {
         // Parse expression value
         let (expr, expr_range) = parse_expression(iter, errors)?;
-        return Some(TokenizedAttribute {
+        return Some(TokenizedAttribute::Named {
             name: attr_name.clone(),
             value: Some(TokenizedAttributeValue::Expression(expr)),
             range: attr_name.to(expr_range),
@@ -469,7 +511,7 @@ fn parse_attribute(
         content: attr_value,
     });
 
-    Some(TokenizedAttribute {
+    Some(TokenizedAttribute::Named {
         name: attr_name.clone(),
         value,
         range: attr_name.to(close_quote),
@@ -557,7 +599,37 @@ fn parse_tag_content(
     let mut expression: Option<DocumentRange> = None;
     loop {
         skip_whitespace(iter);
-        match iter.peek().map(|s| s.ch()) {
+        // Peek ahead to detect `...` spread: three consecutive '.' characters.
+        let next_ch = iter.peek().map(|s| s.ch());
+        let is_spread = next_ch == Some('.') && {
+            let mut clone = iter.clone();
+            clone.next(); // consume first '.'
+            clone.next().is_some_and(|s| s.ch() == '.')
+                && clone.next().is_some_and(|s| s.ch() == '.')
+        };
+        if is_spread {
+            // consume '...'
+            let dot1 = iter.next().unwrap();
+            let _dot2 = iter.next().unwrap();
+            let dot3 = iter.next().unwrap();
+            let dots_range = dot1.clone().to(dot3);
+            // consume identifier
+            let Some(initial) = iter.next_if(|s| s.ch().is_ascii_alphabetic() || s.ch() == '_')
+            else {
+                errors.push(ParseError::UnterminatedOpeningTag { range: dots_range });
+                continue;
+            };
+            let name = initial.extend(
+                iter.peeking_take_while(|s| s.ch().is_ascii_alphanumeric() || s.ch() == '_'),
+            );
+            let full_range = dot1.to(name.clone());
+            attributes.push(TokenizedAttribute::Spread {
+                name,
+                range: full_range,
+            });
+            continue;
+        }
+        match next_ch {
             Some('{') => {
                 let Some((expr, _)) = parse_expression(iter, errors) else {
                     continue;
@@ -568,13 +640,14 @@ fn parse_tag_content(
                 let Some(attr) = parse_attribute(iter, errors) else {
                     continue;
                 };
-                if attributes
-                    .iter()
-                    .any(|a| a.name.as_str() == attr.name.as_str())
-                {
+                let attr_name = attr.name().as_str().to_string();
+                if attributes.iter().any(|a| match a {
+                    TokenizedAttribute::Named { name, .. } => name.as_str() == attr_name,
+                    TokenizedAttribute::Spread { .. } => false,
+                }) {
                     errors.push(ParseError::DuplicateAttribute {
-                        name: attr.name.to_cheap_string(),
-                        range: attr.name.clone(),
+                        name: attr.name().to_cheap_string(),
+                        range: attr.name().clone(),
                     });
                 } else {
                     attributes.push(attr);

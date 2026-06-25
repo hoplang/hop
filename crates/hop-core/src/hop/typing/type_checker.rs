@@ -980,7 +980,10 @@ fn typecheck_node(
             let slot_param = component_params
                 .iter()
                 .find(|(name, typ, _)| name.as_str() == "slot" && **typ == Type::Fragment);
-            let has_explicit_slot_arg = args.iter().any(|a| a.name.as_str() == "slot");
+            let has_explicit_slot_arg = args.iter().any(|a| match a {
+                ParsedAttribute::Named { name, .. } => name.as_str() == "slot",
+                ParsedAttribute::Spread { .. } => false,
+            });
             let has_children = !typed_children.is_empty();
             let synthesize_slot_arg =
                 has_children && slot_param.is_some() && !has_explicit_slot_arg;
@@ -994,7 +997,11 @@ fn typecheck_node(
 
             let mut typed_args = Vec::new();
             for arg in args.iter() {
-                let arg_name = arg.name.as_str();
+                let (arg_name_range, arg_value) = match arg {
+                    ParsedAttribute::Named { name, value } => (name, value),
+                    ParsedAttribute::Spread { .. } => continue,
+                };
+                let arg_name = arg_name_range.as_str();
 
                 let (_, param_type, _) = match component_params
                     .iter()
@@ -1003,14 +1010,14 @@ fn typecheck_node(
                     None => {
                         errors.push(TypeError::UnexpectedArgument {
                             arg: arg_name.to_string(),
-                            range: arg.name.clone(),
+                            range: arg_name_range.clone(),
                         });
                         continue;
                     }
                     Some(param) => param,
                 };
 
-                let arg_expr = match &arg.value {
+                let arg_expr = match arg_value {
                     Some(ParsedAttributeValue::Expression(expr)) => expr.clone(),
                     Some(ParsedAttributeValue::String(content)) => {
                         let value = content
@@ -1019,12 +1026,12 @@ fn typecheck_node(
                             .unwrap_or_else(|| CheapString::new(String::new()));
                         expr::ParsedExpr::StringLiteral {
                             value,
-                            range: arg.name.clone(),
+                            range: arg_name_range.clone(),
                         }
                     }
                     None => expr::ParsedExpr::BooleanLiteral {
                         value: true,
-                        range: arg.name.clone(),
+                        range: arg_name_range.clone(),
                     },
                 };
 
@@ -1049,7 +1056,7 @@ fn typecheck_node(
                     errors.push(TypeError::ArgumentIsIncompatible {
                         expected: param_type.clone(),
                         found: arg_type,
-                        arg_name: arg.name.clone(),
+                        arg_name: arg_name_range.clone(),
                         range: arg_expr.range().clone(),
                     });
                     continue;
@@ -1086,7 +1093,10 @@ fn typecheck_node(
                 .iter()
                 .filter(|(name, _, default)| {
                     default.is_none()
-                        && !args.iter().any(|a| a.name.as_str() == name.as_str())
+                        && !args.iter().any(|a| match a {
+                            ParsedAttribute::Named { name: n, .. } => n.as_str() == name.as_str(),
+                            ParsedAttribute::Spread { .. } => false,
+                        })
                         && !(synthesize_slot_arg && name.as_str() == "slot")
                 })
                 .map(|(name, _, _)| name.as_str())
@@ -1341,19 +1351,22 @@ fn typecheck_attributes(
     let mut typed_attributes = Vec::new();
 
     for attr in attributes {
-        if attr
-            .name
+        let (attr_name, attr_value) = match attr {
+            ParsedAttribute::Named { name, value } => (name, value),
+            ParsedAttribute::Spread { .. } => continue,
+        };
+        if attr_name
             .as_str()
             .get(..2)
             .is_some_and(|prefix| prefix.eq_ignore_ascii_case("on"))
         {
             errors.push(TypeError::DisallowedEventHandlerAttribute {
-                range: attr.name.clone(),
+                range: attr_name.clone(),
             });
             continue;
         }
 
-        let typed_value = match &attr.value {
+        let typed_value = match attr_value {
             Some(ParsedAttributeValue::Expression(expr)) => {
                 if let Some(typed_expr) = errors.ok_or_add(typecheck_expr(
                     expr,
@@ -1391,7 +1404,7 @@ fn typecheck_attributes(
         };
 
         typed_attributes.push(TypedAttribute {
-            name: attr.name.to_cheap_string(),
+            name: attr_name.to_cheap_string(),
             value: typed_value,
         });
     }

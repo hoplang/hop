@@ -411,7 +411,7 @@ impl ParsedNode {
                         .append(
                             BoxDoc::line()
                                 .append(BoxDoc::intersperse(
-                                    attributes.iter().map(|attr| attr.to_doc()),
+                                    attributes.iter().map(|item| item.to_doc()),
                                     BoxDoc::line(),
                                 ))
                                 .nest(2),

@@ -24,13 +24,17 @@ pub fn next(
 
     let result = match start.ch() {
         '.' => {
-            // Check for ..=
+            // Check for ..= or ...
             let mut lookahead = iter.clone();
-            if lookahead.next_if(|s| s.ch() == '.').is_some()
-                && lookahead.peek().map(|s| s.ch()) == Some('=')
-            {
-                iter.next(); // consume second dot
-                let eq = iter.next().unwrap();
+            let second_is_dot = lookahead.next_if(|s| s.ch() == '.').is_some();
+            let third = lookahead.peek().map(|s| s.ch());
+            if second_is_dot && third == Some('.') {
+                iter.next(); // second dot
+                let third = iter.next().unwrap(); // third dot
+                (Token::DotDotDot, start.to(third))
+            } else if second_is_dot && third == Some('=') {
+                iter.next(); // second dot
+                let eq = iter.next().unwrap(); // '='
                 (Token::DotDotEq, start.to(eq))
             } else {
                 (Token::Dot, start)
@@ -2494,6 +2498,22 @@ mod tests {
                 error: Invalid escape sequence at end of string
                 "trailing\
                          ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn tokenizes_triple_dot() {
+        check(
+            "...rest",
+            expect![[r#"
+                token: DotDotDot
+                ...rest
+                ^^^
+
+                token: Identifier("rest")
+                ...rest
+                   ^^^^
             "#]],
         );
     }
