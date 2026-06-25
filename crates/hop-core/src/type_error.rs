@@ -98,7 +98,7 @@ pub enum TypeError {
         range: DocumentRange,
     },
 
-    #[error("Expected String, Bool, or Option[String] attribute, got {found}")]
+    #[error("Expected String attribute, got {found}")]
     InvalidAttributeType {
         found: Arc<Type>,
         range: DocumentRange,
