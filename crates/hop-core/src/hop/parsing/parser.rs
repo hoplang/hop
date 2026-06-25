@@ -1281,8 +1281,13 @@ fn parse_attribute(
                     name: var_name,
                     range: range.clone(),
                 }),
-                Err(_) => {
-                    unreachable!("spread identifier already validated by tokenizer")
+                Err(error) => {
+                    errors.push(ParseError::InvalidVariableName {
+                        name: name.to_cheap_string(),
+                        error,
+                        range: name.clone(),
+                    });
+                    None
                 }
             }
         }
@@ -4282,6 +4287,40 @@ mod tests {
                 component Bar(...rest) {
                   <Foo ...rest/>
                 }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_spread_attribute_with_uppercase_name() {
+        reject(
+            indoc! {r#"
+                component Foo(...rest) {
+                  <button ...Bar></button>
+                }
+            "#},
+            expect![[r#"
+                error: Invalid variable name 'Bar': Variable name must be lowercase (found uppercase: 'B')
+                1 | component Foo(...rest) {
+                2 |   <button ...Bar></button>
+                  |              ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_spread_attribute_with_leading_underscore() {
+        reject(
+            indoc! {r#"
+                component Foo(...rest) {
+                  <button ..._x></button>
+                }
+            "#},
+            expect![[r#"
+                error: Invalid variable name '_x': Variable name cannot start with underscore
+                1 | component Foo(...rest) {
+                2 |   <button ..._x></button>
+                  |              ^^
             "#]],
         );
     }
