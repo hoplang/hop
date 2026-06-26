@@ -79,8 +79,12 @@ pub enum TypeError {
     #[error("Component requires arguments: {args}")]
     MissingArguments { args: String, range: DocumentRange },
 
-    #[error("Unexpected argument '{arg}'")]
-    UnexpectedArgument { arg: String, range: DocumentRange },
+    #[error("Component `{component}` does not accept attribute `{attr}`")]
+    ComponentDoesNotAcceptAttribute {
+        component: TypeName,
+        attr: String,
+        range: DocumentRange,
+    },
 
     #[error("Argument of type {found} is incompatible with expected type {expected}")]
     ArgumentTypeMismatch {
@@ -450,7 +454,7 @@ impl TypeError {
             | TypeError::ImportCycle { range, .. }
             | TypeError::ExpectedBooleanCondition { range, .. }
             | TypeError::MissingArguments { range, .. }
-            | TypeError::UnexpectedArgument { range, .. }
+            | TypeError::ComponentDoesNotAcceptAttribute { range, .. }
             | TypeError::ArgumentTypeMismatch { range, .. }
             | TypeError::DefaultValueTypeMismatch { range, .. }
             | TypeError::UnknownAttribute { range, .. }

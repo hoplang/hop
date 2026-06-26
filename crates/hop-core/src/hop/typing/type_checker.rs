@@ -1237,8 +1237,9 @@ fn typecheck_arguments(
             .find(|(name, _, _)| name.as_str() == arg_name)
         {
             None => {
-                errors.push(TypeError::UnexpectedArgument {
-                    arg: arg_name.to_string(),
+                errors.push(TypeError::ComponentDoesNotAcceptAttribute {
+                    component: component_name.clone(),
+                    attr: arg_name.to_string(),
                     range: arg_name_range.clone(),
                 });
                 continue;
@@ -2702,7 +2703,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Unexpected argument 'b'
+                error: Component `Main` does not accept attribute `b`
                   --> main.hop (line 5, col 16)
                 4 | component Foo {
                 5 |     <Main a="" b={1}/>
@@ -2748,7 +2749,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Unexpected argument 'a'
+                error: Component `Main` does not accept attribute `a`
                   --> main.hop (line 5, col 9)
                 4 | component Foo {
                 5 |   <Main a="foo" />
