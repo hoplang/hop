@@ -324,25 +324,21 @@ fn typecheck_module(
                 let mut has_errors = false;
 
                 for field in fields {
-                    match resolve_type(&field.field_type, &mut type_env, definition_links) {
-                        Ok(resolved_type) => {
-                            validate_examples_annotation(
-                                &field.examples,
-                                &resolved_type,
-                                &field.name_range,
-                                errors,
-                            );
-                            typed_fields.push((
-                                field.name.clone(),
-                                resolved_type,
-                                field.examples.clone(),
-                            ));
-                        }
-                        Err(e) => {
-                            errors.push(e);
-                            has_errors = true;
-                        }
-                    }
+                    let Some(resolved_type) = errors.ok_or_add(resolve_type(
+                        &field.field_type,
+                        &mut type_env,
+                        definition_links,
+                    )) else {
+                        has_errors = true;
+                        continue;
+                    };
+                    validate_examples_annotation(
+                        &field.examples,
+                        &resolved_type,
+                        &field.name_range,
+                        errors,
+                    );
+                    typed_fields.push((field.name.clone(), resolved_type, field.examples.clone()));
                 }
 
                 // Remove placeholder
@@ -399,25 +395,21 @@ fn typecheck_module(
                 for variant in variants {
                     let mut typed_fields = Vec::new();
                     for (field_name, field_name_range, field_type, examples) in &variant.fields {
-                        match resolve_type(field_type, &mut type_env, definition_links) {
-                            Ok(resolved_type) => {
-                                validate_examples_annotation(
-                                    examples,
-                                    &resolved_type,
-                                    field_name_range,
-                                    errors,
-                                );
-                                typed_fields.push((
-                                    field_name.clone(),
-                                    resolved_type,
-                                    examples.clone(),
-                                ));
-                            }
-                            Err(e) => {
-                                errors.push(e);
-                                has_errors = true;
-                            }
-                        }
+                        let Some(resolved_type) = errors.ok_or_add(resolve_type(
+                            field_type,
+                            &mut type_env,
+                            definition_links,
+                        )) else {
+                            has_errors = true;
+                            continue;
+                        };
+                        validate_examples_annotation(
+                            examples,
+                            &resolved_type,
+                            field_name_range,
+                            errors,
+                        );
+                        typed_fields.push((field_name.clone(), resolved_type, examples.clone()));
                     }
                     typed_variants.push(EnumVariant {
                         name: variant.name.clone(),
@@ -789,13 +781,12 @@ fn typecheck_node(
                 // Resolve the declared type, if an annotation is present.
                 let declared_type = match &binding.var_type {
                     Some(parsed_type) => {
-                        match resolve_type(parsed_type, type_env, definition_links) {
-                            Ok(t) => Some(t),
-                            Err(err) => {
-                                errors.push(err);
-                                continue;
-                            }
-                        }
+                        let Some(t) =
+                            errors.ok_or_add(resolve_type(parsed_type, type_env, definition_links))
+                        else {
+                            continue;
+                        };
+                        Some(t)
                     }
                     None => None,
                 };
@@ -1099,18 +1090,14 @@ fn typecheck_node(
                 _ => var_env.fresh_var(),
             };
 
-            let decision = match PatMatchCompiler::new(var_env.fresh_var_counter()).compile(
-                &patterns,
-                &subject_name,
-                typed_subject.get_type(),
-                subject.range(),
-            ) {
-                Ok(decision) => decision,
-                Err(err) => {
-                    errors.push(err);
-                    return None;
-                }
-            };
+            let decision = errors.ok_or_add(
+                PatMatchCompiler::new(var_env.fresh_var_counter()).compile(
+                    &patterns,
+                    &subject_name,
+                    typed_subject.get_type(),
+                    subject.range(),
+                ),
+            )?;
 
             let typed_bodies = cases
                 .iter()
@@ -1275,7 +1262,7 @@ fn typecheck_arguments(
             },
         };
 
-        let typed_expr = match typecheck_expr(
+        let Some(typed_expr) = errors.ok_or_add(typecheck_expr(
             &arg_expr,
             var_env,
             type_env,
@@ -1283,12 +1270,8 @@ fn typecheck_arguments(
             definition_links,
             Some(param_type),
             asset_references,
-        ) {
-            Ok(t) => t,
-            Err(err) => {
-                errors.push(err);
-                continue;
-            }
+        )) else {
+            continue;
         };
         let arg_type = typed_expr.get_type();
 
