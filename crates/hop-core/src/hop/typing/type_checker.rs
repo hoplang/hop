@@ -925,7 +925,7 @@ fn typecheck_node(
         ParsedNode::ComponentInvocation {
             component_name,
             component_name_opening_range,
-            declaring_module: _definition_module,
+            declaring_module: _,
             component_name_closing_range,
             args,
             children,
@@ -978,153 +978,19 @@ fn typecheck_node(
                 });
             }
 
-            let slot_param = component_params
-                .iter()
-                .find(|(name, typ, _)| name.as_str() == "slot" && **typ == Type::Fragment);
-            let has_explicit_slot_arg = args.iter().any(|a| match a {
-                ParsedAttribute::Named { name, .. } => name.as_str() == "slot",
-                ParsedAttribute::Spread { .. } => false,
-            });
-            let has_body = children.is_some();
-            let synthesize_slot_arg =
-                has_body && slot_param.is_some() && !has_explicit_slot_arg;
-
-            if has_body && slot_param.is_none() {
-                errors.push(TypeError::ComponentDoesNotAcceptChildren {
-                    component: component_name.clone(),
-                    range: component_name_opening_range.clone(),
-                });
-            }
-
-            let mut typed_args = Vec::new();
-            for arg in args.iter() {
-                let (arg_name_range, arg_value) = match arg {
-                    ParsedAttribute::Named { name, value } => (name, value),
-                    ParsedAttribute::Spread { .. } => continue,
-                };
-                let arg_name = arg_name_range.as_str();
-
-                let (_, param_type, _) = match component_params
-                    .iter()
-                    .find(|(name, _, _)| name.as_str() == arg_name)
-                {
-                    None => {
-                        errors.push(TypeError::UnexpectedArgument {
-                            arg: arg_name.to_string(),
-                            range: arg_name_range.clone(),
-                        });
-                        continue;
-                    }
-                    Some(param) => param,
-                };
-
-                let arg_expr = match arg_value {
-                    Some(ParsedAttributeValue::Expression(expr)) => expr.clone(),
-                    Some(ParsedAttributeValue::String(content)) => {
-                        let value = content
-                            .as_ref()
-                            .map(|r| r.to_cheap_string())
-                            .unwrap_or_else(|| CheapString::new(String::new()));
-                        expr::ParsedExpr::StringLiteral {
-                            value,
-                            range: arg_name_range.clone(),
-                        }
-                    }
-                    None => expr::ParsedExpr::BooleanLiteral {
-                        value: true,
-                        range: arg_name_range.clone(),
-                    },
-                };
-
-                let typed_expr = match typecheck_expr(
-                    &arg_expr,
-                    var_env,
-                    type_env,
-                    annotations,
-                    definition_links,
-                    Some(param_type),
-                    asset_references,
-                ) {
-                    Ok(t) => t,
-                    Err(err) => {
-                        errors.push(err);
-                        continue;
-                    }
-                };
-                let arg_type = typed_expr.get_type();
-
-                if *arg_type != **param_type {
-                    errors.push(TypeError::ArgumentIsIncompatible {
-                        expected: param_type.clone(),
-                        found: arg_type,
-                        arg_name: arg_name_range.clone(),
-                        range: arg_expr.range().clone(),
-                    });
-                    continue;
-                }
-
-                typed_args.push(TypedArgument {
-                    name: VarName::new(arg_name).unwrap(),
-                    expr: typed_expr,
-                });
-            }
-
-            if has_body && has_explicit_slot_arg {
-                errors.push(TypeError::SlotContentAmbiguous {
-                    range: component_name_opening_range.clone(),
-                });
-                return None;
-            }
-
-            let slot_var = if synthesize_slot_arg {
-                let fresh = var_env.fresh_var();
-                typed_args.push(TypedArgument {
-                    name: VarName::new("slot").unwrap(),
-                    expr: TypedExpr::Var {
-                        value: fresh.clone(),
-                        kind: Arc::new(Type::Fragment),
-                    },
-                });
-                Some(fresh)
-            } else {
-                None
-            };
-
-            let missing_args: Vec<&str> = component_params
-                .iter()
-                .filter(|(name, _, default)| {
-                    default.is_none()
-                        && !args.iter().any(|a| match a {
-                            ParsedAttribute::Named { name: n, .. } => n.as_str() == name.as_str(),
-                            ParsedAttribute::Spread { .. } => false,
-                        })
-                        && !(synthesize_slot_arg && name.as_str() == "slot")
-                })
-                .map(|(name, _, _)| name.as_str())
-                .collect();
-            if !missing_args.is_empty() {
-                errors.push(TypeError::MissingArguments {
-                    args: missing_args.join(", "),
-                    range: component_name_opening_range.clone(),
-                });
-            }
-
-            // Resolve the call arguments into parameter-definition order, filling
-            // in default values for any omitted optional parameters.
-            let resolved_args: Vec<TypedArgument> = component_params
-                .iter()
-                .filter_map(|(param_name, _, default_value)| {
-                    typed_args
-                        .iter()
-                        .find(|arg| arg.name.as_str() == param_name.as_str())
-                        .map(|arg| arg.expr.clone())
-                        .or_else(|| default_value.clone())
-                        .map(|expr| TypedArgument {
-                            name: param_name.clone(),
-                            expr,
-                        })
-                })
-                .collect();
+            let (slot_var, resolved_args) = typecheck_arguments(
+                args,
+                var_env,
+                annotations,
+                definition_links,
+                &component_params,
+                errors,
+                type_env,
+                asset_references,
+                children.is_some(),
+                component_name,
+                component_name_opening_range,
+            );
 
             if let Some(var) = slot_var {
                 return Some(TypedNode::LetFragment {
@@ -1338,6 +1204,167 @@ fn typecheck_node(
             value: value.clone(),
         }),
     }
+}
+
+fn typecheck_arguments(
+    args: &[ParsedAttribute],
+    var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
+    annotations: &mut Vec<TypeAnnotation>,
+    definition_links: &mut Vec<DefinitionLink>,
+    component_params: &[(VarName, Arc<Type>, Option<TypedExpr>)],
+    errors: &mut Vec<TypeError>,
+    type_env: &mut TypeEnv,
+    asset_references: &mut Vec<AssetReference>,
+    has_body: bool,
+    component_name: &TypeName,
+    component_name_opening_range: &DocumentRange,
+) -> (Option<VarName>, Vec<TypedArgument>) {
+    let slot_param = component_params
+        .iter()
+        .find(|(name, typ, _)| name.as_str() == "slot" && **typ == Type::Fragment);
+    let has_explicit_slot_arg = args.iter().any(|a| match a {
+        ParsedAttribute::Named { name, .. } => name.as_str() == "slot",
+        ParsedAttribute::Spread { .. } => false,
+    });
+    let synthesize_slot_arg = has_body && slot_param.is_some() && !has_explicit_slot_arg;
+
+    if has_body && slot_param.is_none() {
+        errors.push(TypeError::ComponentDoesNotAcceptChildren {
+            component: component_name.clone(),
+            range: component_name_opening_range.clone(),
+        });
+    }
+
+    let mut typed_args = Vec::new();
+    for arg in args.iter() {
+        let (arg_name_range, arg_value) = match arg {
+            ParsedAttribute::Named { name, value } => (name, value),
+            ParsedAttribute::Spread { .. } => continue,
+        };
+        let arg_name = arg_name_range.as_str();
+
+        let (_, param_type, _) = match component_params
+            .iter()
+            .find(|(name, _, _)| name.as_str() == arg_name)
+        {
+            None => {
+                errors.push(TypeError::UnexpectedArgument {
+                    arg: arg_name.to_string(),
+                    range: arg_name_range.clone(),
+                });
+                continue;
+            }
+            Some(param) => param,
+        };
+
+        let arg_expr = match arg_value {
+            Some(ParsedAttributeValue::Expression(expr)) => expr.clone(),
+            Some(ParsedAttributeValue::String(content)) => {
+                let value = content
+                    .as_ref()
+                    .map(|r| r.to_cheap_string())
+                    .unwrap_or_else(|| CheapString::new(String::new()));
+                expr::ParsedExpr::StringLiteral {
+                    value,
+                    range: arg_name_range.clone(),
+                }
+            }
+            None => expr::ParsedExpr::BooleanLiteral {
+                value: true,
+                range: arg_name_range.clone(),
+            },
+        };
+
+        let typed_expr = match typecheck_expr(
+            &arg_expr,
+            var_env,
+            type_env,
+            annotations,
+            definition_links,
+            Some(param_type),
+            asset_references,
+        ) {
+            Ok(t) => t,
+            Err(err) => {
+                errors.push(err);
+                continue;
+            }
+        };
+        let arg_type = typed_expr.get_type();
+
+        if *arg_type != **param_type {
+            errors.push(TypeError::ArgumentIsIncompatible {
+                expected: param_type.clone(),
+                found: arg_type,
+                arg_name: arg_name_range.clone(),
+                range: arg_expr.range().clone(),
+            });
+            continue;
+        }
+
+        typed_args.push(TypedArgument {
+            name: VarName::new(arg_name).unwrap(),
+            expr: typed_expr,
+        });
+    }
+
+    if has_body && has_explicit_slot_arg {
+        errors.push(TypeError::SlotContentAmbiguous {
+            range: component_name_opening_range.clone(),
+        });
+    }
+
+    let slot_var = if synthesize_slot_arg {
+        let fresh = var_env.fresh_var();
+        typed_args.push(TypedArgument {
+            name: VarName::new("slot").unwrap(),
+            expr: TypedExpr::Var {
+                value: fresh.clone(),
+                kind: Arc::new(Type::Fragment),
+            },
+        });
+        Some(fresh)
+    } else {
+        None
+    };
+
+    let missing_args: Vec<&str> = component_params
+        .iter()
+        .filter(|(name, _, default)| {
+            default.is_none()
+                && !args.iter().any(|a| match a {
+                    ParsedAttribute::Named { name: n, .. } => n.as_str() == name.as_str(),
+                    ParsedAttribute::Spread { .. } => false,
+                })
+                && !(synthesize_slot_arg && name.as_str() == "slot")
+        })
+        .map(|(name, _, _)| name.as_str())
+        .collect();
+    if !missing_args.is_empty() {
+        errors.push(TypeError::MissingArguments {
+            args: missing_args.join(", "),
+            range: component_name_opening_range.clone(),
+        });
+    }
+
+    // Resolve the call arguments into parameter-definition order, filling
+    // in default values for any omitted optional parameters.
+    let resolved_args: Vec<TypedArgument> = component_params
+        .iter()
+        .filter_map(|(param_name, _, default_value)| {
+            typed_args
+                .iter()
+                .find(|arg| arg.name.as_str() == param_name.as_str())
+                .map(|arg| arg.expr.clone())
+                .or_else(|| default_value.clone())
+                .map(|expr| TypedArgument {
+                    name: param_name.clone(),
+                    expr,
+                })
+        })
+        .collect();
+
+    (slot_var, resolved_args)
 }
 
 fn typecheck_attributes(
