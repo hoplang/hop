@@ -36,6 +36,154 @@ pub fn is_void_element(tag_name: &str) -> bool {
     )
 }
 
+/// Return true if `name` is a recognized HTML attribute (case-insensitive).
+/// `data-`/`aria-` prefixes are accepted; `on*` handlers are intentionally absent.
+pub fn is_known_attribute(name: &str) -> bool {
+    let name = name.to_ascii_lowercase();
+    if name.starts_with("data-") || name.starts_with("aria-") {
+        return true;
+    }
+    matches!(
+        name.as_str(),
+        // Global attributes.
+        "accesskey"
+            | "autocapitalize"
+            | "autofocus"
+            | "class"
+            | "contenteditable"
+            | "dir"
+            | "draggable"
+            | "enterkeyhint"
+            | "exportparts"
+            | "hidden"
+            | "id"
+            | "inert"
+            | "inputmode"
+            | "is"
+            | "itemid"
+            | "itemprop"
+            | "itemref"
+            | "itemscope"
+            | "itemtype"
+            | "lang"
+            | "nonce"
+            | "part"
+            | "popover"
+            | "role"
+            | "slot"
+            | "spellcheck"
+            | "style"
+            | "tabindex"
+            | "title"
+            | "translate"
+            | "writingsuggestions"
+            // Element-specific attributes.
+            | "abbr"
+            | "accept"
+            | "accept-charset"
+            | "action"
+            | "allow"
+            | "allowfullscreen"
+            | "alt"
+            | "as"
+            | "async"
+            | "autocomplete"
+            | "autoplay"
+            | "blocking"
+            | "capture"
+            | "charset"
+            | "checked"
+            | "cite"
+            | "color"
+            | "cols"
+            | "colspan"
+            | "content"
+            | "controls"
+            | "coords"
+            | "crossorigin"
+            | "data"
+            | "datetime"
+            | "decoding"
+            | "default"
+            | "defer"
+            | "dirname"
+            | "disabled"
+            | "download"
+            | "enctype"
+            | "fetchpriority"
+            | "for"
+            | "form"
+            | "formaction"
+            | "formenctype"
+            | "formmethod"
+            | "formnovalidate"
+            | "formtarget"
+            | "headers"
+            | "height"
+            | "high"
+            | "href"
+            | "hreflang"
+            | "http-equiv"
+            | "imagesizes"
+            | "imagesrcset"
+            | "integrity"
+            | "ismap"
+            | "kind"
+            | "label"
+            | "list"
+            | "loading"
+            | "loop"
+            | "low"
+            | "max"
+            | "maxlength"
+            | "media"
+            | "method"
+            | "min"
+            | "minlength"
+            | "multiple"
+            | "muted"
+            | "name"
+            | "nomodule"
+            | "novalidate"
+            | "open"
+            | "optimum"
+            | "pattern"
+            | "ping"
+            | "placeholder"
+            | "playsinline"
+            | "popovertarget"
+            | "popovertargetaction"
+            | "poster"
+            | "preload"
+            | "readonly"
+            | "referrerpolicy"
+            | "rel"
+            | "required"
+            | "reversed"
+            | "rows"
+            | "rowspan"
+            | "sandbox"
+            | "scope"
+            | "selected"
+            | "shape"
+            | "size"
+            | "sizes"
+            | "span"
+            | "src"
+            | "srcdoc"
+            | "srclang"
+            | "srcset"
+            | "start"
+            | "step"
+            | "target"
+            | "type"
+            | "usemap"
+            | "value"
+            | "width"
+            | "wrap"
+    )
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HtmlElement {
     Html,
@@ -476,6 +624,40 @@ impl HtmlElement {
         is_void_element(self.as_str())
     }
 
+    /// Return true for SVG elements (attribute-name validation is skipped for them).
+    pub fn is_svg(&self) -> bool {
+        matches!(
+            self,
+            HtmlElement::Svg
+                | HtmlElement::G
+                | HtmlElement::Path
+                | HtmlElement::Circle
+                | HtmlElement::Rect
+                | HtmlElement::Line
+                | HtmlElement::Polygon
+                | HtmlElement::Polyline
+                | HtmlElement::Ellipse
+                | HtmlElement::Defs
+                | HtmlElement::Use
+                | HtmlElement::Symbol
+                | HtmlElement::Desc
+                | HtmlElement::Marker
+                | HtmlElement::Mask
+                | HtmlElement::Pattern
+                | HtmlElement::Stop
+                | HtmlElement::Switch
+                | HtmlElement::Text
+                | HtmlElement::Tspan
+                | HtmlElement::Image
+                | HtmlElement::View
+                | HtmlElement::Animate
+                | HtmlElement::Set
+                | HtmlElement::Mpath
+                | HtmlElement::Metadata
+                | HtmlElement::Filter
+        )
+    }
+
     pub fn parse(name: &str) -> Option<HtmlElement> {
         if let Some(el) = Self::known(name) {
             Some(el)
@@ -528,5 +710,58 @@ mod tests {
         assert!(HtmlElement::parse("br").unwrap().is_void());
         assert!(!HtmlElement::parse("div").unwrap().is_void());
         assert!(!HtmlElement::parse("my-widget").unwrap().is_void());
+    }
+
+    #[test]
+    fn known_attribute_accepts_global_attributes() {
+        assert!(is_known_attribute("id"));
+        assert!(is_known_attribute("class"));
+        assert!(is_known_attribute("style"));
+    }
+
+    #[test]
+    fn known_attribute_accepts_element_specific_attributes() {
+        assert!(is_known_attribute("href"));
+        assert!(is_known_attribute("colspan"));
+        assert!(is_known_attribute("placeholder"));
+    }
+
+    #[test]
+    fn known_attribute_accepts_data_and_aria_prefixes() {
+        assert!(is_known_attribute("data-foo"));
+        assert!(is_known_attribute("data-anything-here"));
+        assert!(is_known_attribute("aria-label"));
+        assert!(is_known_attribute("aria-hidden"));
+    }
+
+    #[test]
+    fn known_attribute_is_case_insensitive() {
+        assert!(is_known_attribute("CLASS"));
+        assert!(is_known_attribute("DATA-Foo"));
+    }
+
+    #[test]
+    fn known_attribute_rejects_event_handlers() {
+        assert!(!is_known_attribute("onclick"));
+        assert!(!is_known_attribute("onmouseover"));
+    }
+
+    #[test]
+    fn known_attribute_rejects_unknown_names() {
+        assert!(!is_known_attribute("flooble"));
+        assert!(!is_known_attribute("clss"));
+    }
+
+    #[test]
+    fn is_svg_classifies_svg_elements() {
+        assert!(HtmlElement::parse("svg").unwrap().is_svg());
+        assert!(HtmlElement::parse("path").unwrap().is_svg());
+        assert!(HtmlElement::parse("circle").unwrap().is_svg());
+    }
+
+    #[test]
+    fn is_svg_rejects_html_elements() {
+        assert!(!HtmlElement::parse("div").unwrap().is_svg());
+        assert!(!HtmlElement::parse("a").unwrap().is_svg());
     }
 }

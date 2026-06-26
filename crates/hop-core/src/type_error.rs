@@ -97,8 +97,8 @@ pub enum TypeError {
         range: DocumentRange,
     },
 
-    #[error("Attributes starting with 'on' are not allowed")]
-    DisallowedEventHandlerAttribute { range: DocumentRange },
+    #[error("Unknown HTML attribute '{attr}'")]
+    UnknownAttribute { attr: String, range: DocumentRange },
 
     #[error("Can not iterate over {typ}")]
     CannotIterateOver {
@@ -453,7 +453,7 @@ impl TypeError {
             | TypeError::UnexpectedArgument { range, .. }
             | TypeError::ArgumentTypeMismatch { range, .. }
             | TypeError::DefaultValueTypeMismatch { range, .. }
-            | TypeError::DisallowedEventHandlerAttribute { range, .. }
+            | TypeError::UnknownAttribute { range, .. }
             | TypeError::CannotIterateOver { range, .. }
             | TypeError::RangeBoundTypeMismatch { range, .. }
             | TypeError::LetBindingTypeMismatch { range, .. }

@@ -14,6 +14,7 @@ use crate::hop::parsing::parsed_ast::{
     ParsedRecordDeclaration, ParsedViewDeclaration,
 };
 use crate::hop::typing::definition_link::DefinitionLink;
+use crate::html::{HtmlElement, is_known_attribute};
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
@@ -1012,6 +1013,7 @@ fn typecheck_node(
         } => {
             let typed_attributes = typecheck_attributes(
                 attributes,
+                element,
                 var_env,
                 annotations,
                 definition_links,
@@ -1351,6 +1353,7 @@ fn typecheck_arguments(
 
 fn typecheck_attributes(
     attributes: &[ParsedAttribute],
+    element: &HtmlElement,
     var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
     annotations: &mut Vec<TypeAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
@@ -1358,65 +1361,86 @@ fn typecheck_attributes(
     type_env: &mut TypeEnv,
     asset_references: &mut Vec<AssetReference>,
 ) -> Vec<TypedAttribute> {
-    let mut typed_attributes = Vec::new();
 
+    let mut typed_attributes = Vec::new();
     for attr in attributes {
         let (attr_name, attr_value) = match attr {
             ParsedAttribute::Named { name, value } => (name, value),
             ParsedAttribute::Spread { .. } => continue,
         };
-        if attr_name
-            .as_str()
-            .get(..2)
-            .is_some_and(|prefix| prefix.eq_ignore_ascii_case("on"))
-        {
-            errors.push(TypeError::DisallowedEventHandlerAttribute {
-                range: attr_name.clone(),
-            });
-            continue;
+        if let Some(typed) = typecheck_html_attribute(
+            element,
+            attr_name,
+            attr_value,
+            var_env,
+            annotations,
+            definition_links,
+            errors,
+            type_env,
+            asset_references,
+        ) {
+            typed_attributes.push(typed);
         }
-
-        let typed_value = match attr_value {
-            Some(ParsedAttributeValue::Expression(expr)) => {
-                if let Some(typed_expr) = errors.ok_or_add(typecheck_expr(
-                    expr,
-                    var_env,
-                    type_env,
-                    annotations,
-                    definition_links,
-                    None,
-                    asset_references,
-                )) {
-                    // Attribute expressions must be String.
-                    if *typed_expr.get_type() != Type::String {
-                        errors.push(TypeError::ArgumentTypeMismatch {
-                            expected: Arc::new(Type::String),
-                            found: typed_expr.get_type(),
-                            range: expr.range().clone(),
-                        });
-                    }
-                    Some(TypedAttributeValue::Expression(typed_expr))
-                } else {
-                    None
-                }
-            }
-            Some(ParsedAttributeValue::String(s)) => {
-                let string_span = match s {
-                    Some(range) => range.to_cheap_string(),
-                    None => CheapString::new("".to_string()),
-                };
-                Some(TypedAttributeValue::String(string_span))
-            }
-            None => None,
-        };
-
-        typed_attributes.push(TypedAttribute {
-            name: attr_name.to_cheap_string(),
-            value: typed_value,
-        });
     }
 
     typed_attributes
+}
+
+/// Type-check a single HTML attribute: validate the name and require expression values to be
+/// `String`. Returns `None` if dropped on error.
+fn typecheck_html_attribute(
+    element: &HtmlElement,
+    name: &DocumentRange,
+    value: &Option<ParsedAttributeValue>,
+    var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
+    annotations: &mut Vec<TypeAnnotation>,
+    definition_links: &mut Vec<DefinitionLink>,
+    errors: &mut Vec<TypeError>,
+    type_env: &mut TypeEnv,
+    asset_references: &mut Vec<AssetReference>,
+) -> Option<TypedAttribute> {
+    if !element.is_svg() && !is_known_attribute(name.as_str()) {
+        errors.push(TypeError::UnknownAttribute {
+            attr: name.as_str().to_string(),
+            range: name.clone(),
+        });
+        return None;
+    }
+
+    let typed_value = match value {
+        Some(ParsedAttributeValue::Expression(expr)) => {
+            let typed_expr = errors.ok_or_add(typecheck_expr(
+                expr,
+                var_env,
+                type_env,
+                annotations,
+                definition_links,
+                None,
+                asset_references,
+            ))?;
+            if *typed_expr.get_type() != Type::String {
+                errors.push(TypeError::ArgumentTypeMismatch {
+                    expected: Arc::new(Type::String),
+                    found: typed_expr.get_type(),
+                    range: expr.range().clone(),
+                });
+            }
+            Some(TypedAttributeValue::Expression(typed_expr))
+        }
+        Some(ParsedAttributeValue::String(s)) => {
+            let string_span = match s {
+                Some(range) => range.to_cheap_string(),
+                None => CheapString::new("".to_string()),
+            };
+            Some(TypedAttributeValue::String(string_span))
+        }
+        None => None,
+    };
+
+    Some(TypedAttribute {
+        name: name.to_cheap_string(),
+        value: typed_value,
+    })
 }
 
 /// Convert a compiled Decision tree into a Vec<TypedNode>.
@@ -5511,7 +5535,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Attributes starting with 'on' are not allowed
+                error: Unknown HTML attribute 'onclick'
                   --> main.hop (line 2, col 11)
                 1 | component Main {
                 2 |   <button onclick="alert(1)">Click</button>
@@ -5531,17 +5555,93 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Attributes starting with 'on' are not allowed
+                error: Unknown HTML attribute 'onClick'
                   --> main.hop (line 2, col 11)
                 1 | component Main {
                 2 |   <button onClick="alert(1)">Click</button>
                   |           ^^^^^^^
 
-                error: Attributes starting with 'on' are not allowed
+                error: Unknown HTML attribute 'ONCLICK'
                   --> main.hop (line 3, col 11)
                 2 |   <button onClick="alert(1)">Click</button>
                 3 |   <button ONCLICK="alert(1)">Click</button>
                   |           ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_unknown_html_attribute() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component Main {
+                  <div flooble="x"></div>
+                }
+            "#},
+            expect![[r#"
+                error: Unknown HTML attribute 'flooble'
+                  --> main.hop (line 2, col 8)
+                1 | component Main {
+                2 |   <div flooble="x"></div>
+                  |        ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_unknown_attribute_on_custom_element() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component Main {
+                  <my-widget foo="x"></my-widget>
+                }
+            "#},
+            expect![[r#"
+                error: Unknown HTML attribute 'foo'
+                  --> main.hop (line 2, col 14)
+                1 | component Main {
+                2 |   <my-widget foo="x"></my-widget>
+                  |              ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_data_and_aria_attributes() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                component Main {
+                  <div data-x="1" aria-label="hello"></div>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                component Main {
+                  <div data-x="1" aria-label="hello"></div>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_svg_attributes_without_name_validation() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                component Main {
+                  <svg viewBox="0 0 10 10"><path d="M0 0 L10 10"></path></svg>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                component Main {
+                  <svg viewBox="0 0 10 10">
+                    <path d="M0 0 L10 10"></path>
+                  </svg>
+                }
             "#]],
         );
     }
