@@ -82,11 +82,10 @@ pub enum TypeError {
     #[error("Unexpected argument '{arg}'")]
     UnexpectedArgument { arg: String, range: DocumentRange },
 
-    #[error("Argument '{arg_name}' of type {found} is incompatible with expected type {expected}")]
-    ArgumentIsIncompatible {
+    #[error("Argument of type {found} is incompatible with expected type {expected}")]
+    ArgumentTypeMismatch {
         expected: Arc<Type>,
         found: Arc<Type>,
-        arg_name: DocumentRange,
         range: DocumentRange,
     },
 
@@ -94,12 +93,6 @@ pub enum TypeError {
     DefaultValueTypeMismatch {
         param_name: VarName,
         expected: Arc<Type>,
-        found: Arc<Type>,
-        range: DocumentRange,
-    },
-
-    #[error("Expected String attribute, got {found}")]
-    InvalidAttributeType {
         found: Arc<Type>,
         range: DocumentRange,
     },
@@ -458,9 +451,8 @@ impl TypeError {
             | TypeError::ExpectedBooleanCondition { range, .. }
             | TypeError::MissingArguments { range, .. }
             | TypeError::UnexpectedArgument { range, .. }
-            | TypeError::ArgumentIsIncompatible { range, .. }
+            | TypeError::ArgumentTypeMismatch { range, .. }
             | TypeError::DefaultValueTypeMismatch { range, .. }
-            | TypeError::InvalidAttributeType { range, .. }
             | TypeError::DisallowedEventHandlerAttribute { range, .. }
             | TypeError::CannotIterateOver { range, .. }
             | TypeError::RangeBoundTypeMismatch { range, .. }

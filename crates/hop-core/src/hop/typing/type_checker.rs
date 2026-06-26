@@ -1293,10 +1293,9 @@ fn typecheck_arguments(
         let arg_type = typed_expr.get_type();
 
         if *arg_type != **param_type {
-            errors.push(TypeError::ArgumentIsIncompatible {
+            errors.push(TypeError::ArgumentTypeMismatch {
                 expected: param_type.clone(),
                 found: arg_type,
-                arg_name: arg_name_range.clone(),
                 range: arg_expr.range().clone(),
             });
             continue;
@@ -1406,11 +1405,10 @@ fn typecheck_attributes(
                     asset_references,
                 )) {
                     // Attribute expressions must be String.
-                    let expr_type = typed_expr.get_type();
-                    let is_valid_attr_type = *expr_type == Type::String;
-                    if !is_valid_attr_type {
-                        errors.push(TypeError::InvalidAttributeType {
-                            found: expr_type,
+                    if *typed_expr.get_type() != Type::String {
+                        errors.push(TypeError::ArgumentTypeMismatch {
+                            expected: Arc::new(Type::String),
+                            found: typed_expr.get_type(),
                             range: expr.range().clone(),
                         });
                     }
@@ -1982,7 +1980,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Expected String attribute, got Fragment
+                error: Argument of type Fragment is incompatible with expected type String
                   --> main.hop (line 2, col 17)
                 1 | component Card(slot: Fragment) {
                 2 |     <div class={slot}></div>
@@ -3165,7 +3163,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Argument 'user' of type foo::User is incompatible with expected type bar::User
+                error: Argument of type foo::User is incompatible with expected type bar::User
                   --> main.hop (line 7, col 20)
                 6 |     <FooComp user={user}/>
                 7 |     <BarComp user={user}/>
@@ -3209,7 +3207,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Argument 'user' of type foo::User is incompatible with expected type bar::User
+                error: Argument of type foo::User is incompatible with expected type bar::User
                   --> main.hop (line 7, col 20)
                 6 |     <FooComp user={user}/>
                 7 |     <BarComp user={user}/>
@@ -3372,7 +3370,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Argument 'message' of type Int is incompatible with expected type String
+                error: Argument of type Int is incompatible with expected type String
                   --> main.hop (line 5, col 23)
                 4 | component Main {
                 5 |     <StringComp message={42}/>
@@ -3396,7 +3394,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Argument 'enabled' of type String is incompatible with expected type Bool
+                error: Argument of type String is incompatible with expected type Bool
                   --> main.hop (line 7, col 14)
                 6 | component Main {
                 7 |     <ToggleComp enabled="not a boolean"/>
@@ -4588,7 +4586,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Argument 'name' of type String is incompatible with expected type Option[String]
+                error: Argument of type String is incompatible with expected type Option[String]
                   --> main.hop (line 5, col 13)
                 4 | component Main {
                 5 |   <Greeting name="World" />
@@ -5378,7 +5376,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Expected String attribute, got Bool
+                error: Argument of type Bool is incompatible with expected type String
                   --> main.hop (line 2, col 20)
                 1 | component Main(is_required: Bool) {
                 2 |   <input required={is_required}>
@@ -5397,7 +5395,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Expected String attribute, got Bool
+                error: Argument of type Bool is incompatible with expected type String
                   --> main.hop (line 2, col 20)
                 1 | component Main {
                 2 |   <input required={true}>
@@ -5416,7 +5414,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Expected String attribute, got Option[String]
+                error: Argument of type Option[String] is incompatible with expected type String
                   --> main.hop (line 2, col 16)
                 1 | component Main(maybe: Option[String]) {
                 2 |   <div data-x={maybe}></div>
@@ -5435,7 +5433,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Expected String attribute, got Option[String]
+                error: Argument of type Option[String] is incompatible with expected type String
                   --> main.hop (line 2, col 16)
                 1 | component Main {
                 2 |   <div data-x={Some("hello")}></div>
@@ -5454,7 +5452,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Expected String attribute, got Option[Int]
+                error: Argument of type Option[Int] is incompatible with expected type String
                   --> main.hop (line 2, col 16)
                 1 | component Main(maybe: Option[Int]) {
                 2 |   <div data-x={maybe}></div>
@@ -5473,7 +5471,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Expected String attribute, got Option[Bool]
+                error: Argument of type Option[Bool] is incompatible with expected type String
                   --> main.hop (line 2, col 16)
                 1 | component Main(maybe: Option[Bool]) {
                 2 |   <div data-x={maybe}></div>
@@ -5492,7 +5490,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Expected String attribute, got Option[Option[String]]
+                error: Argument of type Option[Option[String]] is incompatible with expected type String
                   --> main.hop (line 2, col 16)
                 1 | component Main(maybe: Option[Option[String]]) {
                 2 |   <div data-x={maybe}></div>
@@ -5511,7 +5509,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Expected String attribute, got Int
+                error: Argument of type Int is incompatible with expected type String
                   --> main.hop (line 2, col 20)
                 1 | component Main(count: Int) {
                 2 |   <div data-count={count}></div>
