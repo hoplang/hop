@@ -1042,6 +1042,12 @@ fn construct_node(
                         imported_components.get(component_name.as_str()).cloned()
                     };
 
+                    let children = if tree.closing_tag_name.is_some() {
+                        Some(children)
+                    } else {
+                        None
+                    };
+
                     Some(ParsedNode::ComponentInvocation {
                         component_name,
                         component_name_opening_range: tag_name,
@@ -2026,8 +2032,8 @@ mod tests {
         accept(
             indoc! {"
                 component Main(p: String) {
-                    <Foo></Foo>
-                    <Foo></Foo>
+                    <Foo/>
+                    <Foo/>
                 }
             "},
             expect![[r#"
@@ -4285,7 +4291,8 @@ mod tests {
             "#},
             expect![[r#"
                 component Bar(...rest) {
-                  <Foo ...rest/>
+                  <Foo ...rest>
+                  </Foo>
                 }
             "#]],
         );

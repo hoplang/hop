@@ -933,6 +933,7 @@ fn typecheck_node(
         } => {
             let typed_children = children
                 .iter()
+                .flatten()
                 .filter_map(|child| {
                     typecheck_node(
                         child,
@@ -984,11 +985,11 @@ fn typecheck_node(
                 ParsedAttribute::Named { name, .. } => name.as_str() == "slot",
                 ParsedAttribute::Spread { .. } => false,
             });
-            let has_children = !typed_children.is_empty();
+            let has_body = children.is_some();
             let synthesize_slot_arg =
-                has_children && slot_param.is_some() && !has_explicit_slot_arg;
+                has_body && slot_param.is_some() && !has_explicit_slot_arg;
 
-            if has_children && slot_param.is_none() {
+            if has_body && slot_param.is_none() {
                 errors.push(TypeError::ComponentDoesNotAcceptChildren {
                     component: component_name.clone(),
                     range: component_name_opening_range.clone(),
@@ -1068,7 +1069,7 @@ fn typecheck_node(
                 });
             }
 
-            if has_children && has_explicit_slot_arg {
+            if has_body && has_explicit_slot_arg {
                 errors.push(TypeError::SlotContentAmbiguous {
                     range: component_name_opening_range.clone(),
                 });
@@ -1836,6 +1837,38 @@ mod tests {
     }
 
     #[test]
+    fn slotted_component_invoked_with_empty_body_supplies_empty_slot() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                component Card(slot: Fragment) {
+                    <div>{slot}</div>
+                }
+
+                component Main {
+                    <Card></Card>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                component Card(slot: Fragment) {
+                  <div>
+                    {slot}
+                  </div>
+                }
+
+                component Main {
+                  <let {
+                    v_0 = {}
+                  }>
+                    <Card slot={v_0}/>
+                  </let>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
     fn slotted_component_accepts_explicit_slot_argument() {
         accept(
             indoc! {r#"
@@ -2019,7 +2052,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 component Main {
-                	<h1>Hello, <Main></Main>!</h1>
+                	<h1>Hello, <Main/>!</h1>
                 }
             "#},
             expect![[r#"

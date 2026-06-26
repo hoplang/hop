@@ -36,7 +36,7 @@ pub enum ParsedNode {
         component_name_closing_range: Option<DocumentRange>,
         declaring_module: Option<DocumentId>,
         args: Vec<ParsedAttribute>,
-        children: Vec<ParsedNode>,
+        children: Option<Vec<ParsedNode>>,
         range: DocumentRange,
     },
 
@@ -172,7 +172,9 @@ impl ParsedNode {
     /// Get the direct children of a node.
     pub fn children(&self) -> &[Self] {
         match self {
-            ParsedNode::ComponentInvocation { children, .. } => children,
+            ParsedNode::ComponentInvocation { children, .. } => {
+                children.as_deref().unwrap_or(&[])
+            }
             ParsedNode::If { children, .. } => children,
             ParsedNode::For { children, .. } => children,
             ParsedNode::Let { children, .. } => children,
@@ -262,23 +264,26 @@ impl ParsedNode {
                         .group()
                 };
 
-                if children.is_empty() {
-                    opening_tag_doc.append(BoxDoc::text("/>"))
-                } else {
-                    opening_tag_doc
+                match children {
+                    // Self-closing invocation, `<Foo/>`.
+                    None => opening_tag_doc.append(BoxDoc::text("/>")),
+                    // Explicit closing tag, `<Foo></Foo>`, possibly with a body.
+                    Some(children) => opening_tag_doc
                         .append(BoxDoc::text(">"))
-                        .append(
+                        .append(if children.is_empty() {
+                            BoxDoc::nil()
+                        } else {
                             BoxDoc::line()
                                 .append(BoxDoc::intersperse(
                                     children.iter().map(|c| c.to_doc()),
                                     BoxDoc::line(),
                                 ))
-                                .nest(2),
-                        )
-                        .append(BoxDoc::line())
+                                .nest(2)
+                                .append(BoxDoc::line())
+                        })
                         .append(BoxDoc::text("</"))
                         .append(BoxDoc::text(component_name_str))
-                        .append(BoxDoc::text(">"))
+                        .append(BoxDoc::text(">")),
                 }
             }
             ParsedNode::If {

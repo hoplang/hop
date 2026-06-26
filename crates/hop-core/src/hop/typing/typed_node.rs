@@ -244,10 +244,14 @@ impl TypedNode {
                         ))
                         .nest(2)
                 }
-                let fragment = BoxDoc::text("{")
-                    .append(render(fragment_body))
-                    .append(BoxDoc::line())
-                    .append(BoxDoc::text("}"));
+                let fragment = if fragment_body.is_empty() {
+                    BoxDoc::text("{}")
+                } else {
+                    BoxDoc::text("{")
+                        .append(render(fragment_body))
+                        .append(BoxDoc::line())
+                        .append(BoxDoc::text("}"))
+                };
                 let binding = BoxDoc::text(var.as_str())
                     .append(BoxDoc::text(" = "))
                     .append(fragment);

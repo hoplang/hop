@@ -536,16 +536,15 @@ fn format_node<'a>(
                     .append(arena.line_())
                     .group()
             };
-            if children.is_empty() {
-                // Empty or only whitespace/newlines - use self-closing tag
-                opening_tag_doc.append(arena.text("/>"))
-            } else {
-                opening_tag_doc
+            // Preserve the authored form, `<Card/>` vs `<Card></Card>`.
+            match children {
+                None => opening_tag_doc.append(arena.text("/>")),
+                Some(children) => opening_tag_doc
                     .append(arena.text(">"))
                     .append(format_children(arena, children, comments))
                     .append(arena.text("</"))
                     .append(arena.text(component_name_str))
-                    .append(arena.text(">"))
+                    .append(arena.text(">")),
             }
         }
         ParsedNode::If {
@@ -4058,7 +4057,8 @@ mod tests {
             "},
             expect![[r#"
                 component Bar(...rest) {
-                  <Foo ...rest/>
+                  <Foo ...rest>
+                  </Foo>
                 }
             "#]],
         );

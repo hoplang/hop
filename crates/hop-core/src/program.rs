@@ -1018,8 +1018,8 @@ mod tests {
         check_definition_location(
             indoc! {r#"
                 -- hop/components.hop --
-                pub component HelloWorld {
-                  <h1>Hello World</h1>
+                pub component HelloWorld(slot: Fragment) {
+                  <h1>Hello World {slot}</h1>
                 }
 
                 -- main.hop --
@@ -1034,7 +1034,7 @@ mod tests {
             expect![[r#"
                 Definition
                   --> hop/components.hop (line 1, col 15)
-                1 | pub component HelloWorld {
+                1 | pub component HelloWorld(slot: Fragment) {
                   |               ^^^^^^^^^^
             "#]],
         );
