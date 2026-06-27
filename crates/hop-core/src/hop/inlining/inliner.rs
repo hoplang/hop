@@ -3,7 +3,7 @@ use super::inlined_node::InlinedNode;
 use crate::document_id::DocumentId;
 use crate::expr::patterns::{EnumMatchArm, Match};
 use crate::hop::typing::typed_ast::{TypedAst, TypedComponentDeclaration, TypedViewDeclaration};
-use crate::hop::typing::typed_node::{TypedArgument, TypedAttribute, TypedNode};
+use crate::hop::typing::typed_node::{TypedAttribute, TypedNode};
 use crate::symbols::type_name::TypeName;
 use std::collections::{HashMap, HashSet};
 
@@ -25,7 +25,14 @@ impl Inliner {
         Vec<InlinedComponentDeclaration>,
     ) {
         let mut state = InlinerState::new(asts);
-        let inlined_views = views.iter().map(|view| state.inline_view(view)).collect();
+        let inlined_views = views
+            .iter()
+            .map(|view| InlinedViewDeclaration {
+                name: view.name.clone(),
+                params: view.params.clone(),
+                children: state.inline_nodes(&view.children, &[]),
+            })
+            .collect();
         (inlined_views, state.component_defs)
     }
 }
@@ -34,8 +41,6 @@ impl Inliner {
 /// and emitted component definitions.
 struct InlinerState<'a> {
     asts: &'a HashMap<DocumentId, TypedAst>,
-    /// Component names that are self-referential and need function emission
-    recursive_components: HashSet<TypeName>,
     /// Component names whose definitions have already been emitted
     emitted_defs: HashSet<TypeName>,
     /// Collected component definitions for recursive components
@@ -44,42 +49,20 @@ struct InlinerState<'a> {
 
 impl<'a> InlinerState<'a> {
     fn new(asts: &'a HashMap<DocumentId, TypedAst>) -> Self {
-        let recursive_components = Self::collect_recursive_components(asts);
         Self {
             asts,
-            recursive_components,
             emitted_defs: HashSet::new(),
             component_defs: Vec::new(),
         }
     }
 
-    /// Collect component names that were marked as self-referential by the type checker.
-    fn collect_recursive_components(asts: &HashMap<DocumentId, TypedAst>) -> HashSet<TypeName> {
-        let mut recursive = HashSet::new();
-        for ast in asts.values() {
-            for component in ast.get_component_declarations() {
-                if component.is_recursive {
-                    recursive.insert(component.component_name.clone());
-                }
-            }
-        }
-        recursive
-    }
-
     /// Emit a component definition for a recursive component (if not already emitted).
-    fn emit_component_def(&mut self, module: &DocumentId, component_name: &TypeName) {
-        if self.emitted_defs.contains(component_name) {
+    fn emit_component_def(&mut self, component: &TypedComponentDeclaration) {
+        if self.emitted_defs.contains(&component.component_name) {
             return;
         }
         // Mark as emitted BEFORE processing to prevent infinite recursion
-        self.emitted_defs.insert(component_name.clone());
-
-        let component = self
-            .asts
-            .get(module)
-            .expect("Component module should exist")
-            .get_component_declaration(component_name.as_str())
-            .expect("Component declaration should exist");
+        self.emitted_defs.insert(component.component_name.clone());
 
         // Inline the component body - self-invocations will become ComponentInvocation
         let inlined_body = self.inline_nodes(&component.children, &[]);
@@ -89,40 +72,6 @@ impl<'a> InlinerState<'a> {
             params: component.params.clone(),
             children: inlined_body,
         });
-    }
-
-    fn inline_view(&mut self, view: &TypedViewDeclaration) -> InlinedViewDeclaration {
-        InlinedViewDeclaration {
-            name: view.name.clone(),
-            params: view.params.clone(),
-            children: self.inline_nodes(&view.children, &[]),
-        }
-    }
-
-    /// Inline a component invocation, pushing results to output
-    fn inline_component_invocation(
-        &mut self,
-        component: &TypedComponentDeclaration,
-        args: &[TypedArgument],
-        forwarded: &[TypedAttribute],
-        output: &mut Vec<InlinedNode>,
-    ) {
-        let inlined_children = self.inline_nodes(&component.children, forwarded);
-
-        if args.is_empty() {
-            output.extend(inlined_children);
-        } else {
-            // Nest single-binding Lets from inside out
-            let mut children = inlined_children;
-            for binding in args.iter().rev() {
-                children = vec![InlinedNode::Let {
-                    var: binding.name.clone(),
-                    value: binding.expr.clone(),
-                    children,
-                }];
-            }
-            output.extend(children);
-        }
     }
 
     /// Inline nodes, pushing results to output
@@ -153,31 +102,41 @@ impl<'a> InlinerState<'a> {
                 extra_attributes,
                 rest_spread,
             } => {
-                if self.recursive_components.contains(component_name) {
+                let component = self
+                    .asts
+                    .get(component_module)
+                    .expect("Component module should exist")
+                    .get_component_declaration(component_name.as_str())
+                    .expect("Component declaration should exist");
+
+                if component.is_recursive {
                     debug_assert!(
                         extra_attributes.is_empty() && rest_spread.is_none(),
                         "recursive components cannot carry rest spreads"
                     );
                     // Emit the component def if not yet emitted
-                    self.emit_component_def(component_module, component_name);
+                    self.emit_component_def(component);
 
                     output.push(InlinedNode::ComponentInvocation {
                         component_name: component_name.clone(),
                         args: args.clone(),
                     });
                 } else {
-                    let component = self
-                        .asts
-                        .get(component_module)
-                        .expect("Component module should exist")
-                        .get_component_declaration(component_name.as_str())
-                        .expect("Component declaration should exist");
-
                     let mut forwarded = extra_attributes.clone();
                     if rest_spread.is_some() {
                         forwarded.extend_from_slice(active_rest);
                     }
-                    self.inline_component_invocation(component, args, &forwarded, output);
+
+                    // Inline the body, then nest single-binding Lets from inside out
+                    let mut children = self.inline_nodes(&component.children, &forwarded);
+                    for binding in args.iter().rev() {
+                        children = vec![InlinedNode::Let {
+                            var: binding.name.clone(),
+                            value: binding.expr.clone(),
+                            children,
+                        }];
+                    }
+                    output.extend(children);
                 }
             }
 
@@ -374,7 +333,7 @@ mod tests {
         typed_asts
     }
 
-    fn check_view_inlining(sources: Vec<(&str, &str)>, expected: Expect) {
+    fn check(sources: Vec<(&str, &str)>, expected: Expect) {
         let typed_asts = create_typed_asts_from_sources(sources);
 
         let mut document_ids: Vec<_> = typed_asts.keys().collect();
@@ -401,7 +360,7 @@ mod tests {
 
     #[test]
     fn html_target_spread_appends_extra_attributes() {
-        check_view_inlining(
+        check(
             vec![(
                 "main.hop",
                 r#"
@@ -428,7 +387,7 @@ mod tests {
 
     #[test]
     fn forwards_rest_through_nested_component() {
-        check_view_inlining(
+        check(
             vec![(
                 "main.hop",
                 r#"
@@ -465,7 +424,7 @@ mod tests {
 
     #[test]
     fn spread_target_nested_in_control_flow() {
-        check_view_inlining(
+        check(
             vec![(
                 "main.hop",
                 r#"
@@ -494,7 +453,7 @@ mod tests {
 
     #[test]
     fn empty_rest_appends_nothing() {
-        check_view_inlining(
+        check(
             vec![(
                 "main.hop",
                 r#"
@@ -517,7 +476,7 @@ mod tests {
 
     #[test]
     fn view_without_parameters() {
-        check_view_inlining(
+        check(
             vec![(
                 "main.hop",
                 r#"
@@ -538,7 +497,7 @@ mod tests {
 
     #[test]
     fn view_with_parameters() {
-        check_view_inlining(
+        check(
             vec![(
                 "main.hop",
                 r#"
@@ -561,7 +520,7 @@ mod tests {
 
     #[test]
     fn view_referencing_component() {
-        check_view_inlining(
+        check(
             vec![(
                 "main.hop",
                 r#"
@@ -590,7 +549,7 @@ mod tests {
 
     #[test]
     fn multiple_views_in_same_module() {
-        check_view_inlining(
+        check(
             vec![(
                 "main.hop",
                 r#"
@@ -621,7 +580,7 @@ mod tests {
 
     #[test]
     fn views_across_multiple_modules() {
-        check_view_inlining(
+        check(
             vec![
                 (
                     "alpha.hop",
@@ -658,7 +617,7 @@ mod tests {
 
     #[test]
     fn view_with_component_using_slot_content() {
-        check_view_inlining(
+        check(
             vec![(
                 "main.hop",
                 r#"
@@ -697,7 +656,7 @@ mod tests {
 
     #[test]
     fn view_with_nested_component_inlining() {
-        check_view_inlining(
+        check(
             vec![(
                 "main.hop",
                 r#"
@@ -734,7 +693,7 @@ mod tests {
 
     #[test]
     fn view_with_conditional_rendering() {
-        check_view_inlining(
+        check(
             vec![(
                 "main.hop",
                 r#"
@@ -765,7 +724,7 @@ mod tests {
 
     #[test]
     fn view_with_loop() {
-        check_view_inlining(
+        check(
             vec![(
                 "main.hop",
                 r#"
@@ -795,7 +754,7 @@ mod tests {
 
     #[test]
     fn view_with_component_default_value_used() {
-        check_view_inlining(
+        check(
             vec![(
                 "main.hop",
                 r#"
@@ -826,7 +785,7 @@ mod tests {
 
     #[test]
     fn view_complex_page_layout() {
-        check_view_inlining(
+        check(
             vec![(
                 "main.hop",
                 r#"
@@ -895,7 +854,7 @@ mod tests {
 
     #[test]
     fn deterministic_output_order_with_multiple_modules() {
-        check_view_inlining(
+        check(
             vec![
                 (
                     "zeta.hop",
@@ -1016,7 +975,7 @@ mod tests {
 
     #[test]
     fn recursive_component_produces_component_def_and_call() {
-        check_view_inlining(
+        check(
             vec![(
                 "main.hop",
                 r#"
@@ -1042,7 +1001,7 @@ mod tests {
                 "#,
             )],
             expect![[r#"
-                <NodeView {node: main::Node}>
+                component NodeView(node: main::Node) {
                   <span>
                     {node.value}
                   </span>
@@ -1054,7 +1013,7 @@ mod tests {
                     </case>
                     <case {None}></case>
                   </match>
-                </NodeView>
+                }
 
                 view Test(node: main::Node) {
                   <NodeView node={node}/>
@@ -1065,7 +1024,7 @@ mod tests {
 
     #[test]
     fn recursive_component_with_non_recursive_sibling() {
-        check_view_inlining(
+        check(
             vec![(
                 "main.hop",
                 r#"
@@ -1095,7 +1054,7 @@ mod tests {
                 "#,
             )],
             expect![[r#"
-                <NodeView {node: main::Node}>
+                component NodeView(node: main::Node) {
                   <let {text = node.value}>
                     <strong>
                       {text}
@@ -1109,7 +1068,7 @@ mod tests {
                     </case>
                     <case {None}></case>
                   </match>
-                </NodeView>
+                }
 
                 view Test(node: main::Node) {
                   <NodeView node={node}/>
