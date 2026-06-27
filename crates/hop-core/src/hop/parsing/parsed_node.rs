@@ -172,9 +172,7 @@ impl ParsedNode {
     /// Get the direct children of a node.
     pub fn children(&self) -> &[Self] {
         match self {
-            ParsedNode::ComponentInvocation { children, .. } => {
-                children.as_deref().unwrap_or(&[])
-            }
+            ParsedNode::ComponentInvocation { children, .. } => children.as_deref().unwrap_or(&[]),
             ParsedNode::If { children, .. } => children,
             ParsedNode::For { children, .. } => children,
             ParsedNode::Let { children, .. } => children,

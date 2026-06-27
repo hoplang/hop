@@ -4,7 +4,9 @@ use crate::expr::parsing::token::Token;
 use crate::symbols::field_name::InvalidFieldNameError;
 use crate::symbols::module_name::InvalidModuleNameError;
 use crate::symbols::type_name::InvalidTypeNameError;
+use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::InvalidVarNameError;
+use crate::symbols::var_name::VarName;
 use thiserror::Error;
 
 #[derive(Debug, Clone, Error)]
@@ -251,6 +253,19 @@ pub enum ParseError {
 
     #[error("At most one rest parameter is allowed")]
     DuplicateRestParam { range: DocumentRange },
+
+    #[error("Component {component} declares rest parameter '{name}' but never spreads it")]
+    RestNeverSpread {
+        component: TypeName,
+        name: VarName,
+        range: DocumentRange,
+    },
+
+    #[error("Rest parameter '{name}' is spread more than once")]
+    RestSpreadMoreThanOnce { name: VarName, range: DocumentRange },
+
+    #[error("Spread '...{name}' does not refer to a declared rest parameter")]
+    SpreadNotDeclaredRest { name: VarName, range: DocumentRange },
 }
 
 impl ParseError {
@@ -314,7 +329,10 @@ impl ParseError {
             | ParseError::UnknownMacro { range, .. }
             | ParseError::UnknownHtmlElement { range, .. }
             | ParseError::RestParamMustBeLast { range }
-            | ParseError::DuplicateRestParam { range } => range,
+            | ParseError::DuplicateRestParam { range }
+            | ParseError::RestNeverSpread { range, .. }
+            | ParseError::RestSpreadMoreThanOnce { range, .. }
+            | ParseError::SpreadNotDeclaredRest { range, .. } => range,
         }
     }
 }

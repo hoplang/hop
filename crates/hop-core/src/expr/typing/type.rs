@@ -4,8 +4,10 @@ use std::sync::Arc;
 use pretty::BoxDoc;
 
 use super::typed_expr::TypedExpr;
+use crate::document::CheapString;
 use crate::document::DocumentRange;
 use crate::document_id::DocumentId;
+use crate::html::HtmlElement;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
@@ -35,7 +37,25 @@ pub enum Type {
 #[derive(Debug, Clone)]
 pub struct ComponentSignature {
     pub module: DocumentId,
-    pub parameters: Vec<(VarName, Arc<Type>, Option<TypedExpr>)>,
+    pub params: Vec<ParamEntry>,
+    pub tail: Tail,
+    pub is_recursive: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct ParamEntry {
+    pub name: VarName,
+    pub typ: Arc<Type>,
+    pub default: Option<TypedExpr>,
+}
+
+#[derive(Debug, Clone)]
+pub enum Tail {
+    Closed,
+    Html {
+        element: HtmlElement,
+        reserved: Vec<CheapString>,
+    },
 }
 
 #[derive(Debug, Clone)]

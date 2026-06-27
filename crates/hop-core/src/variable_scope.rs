@@ -125,6 +125,16 @@ impl<K: Hash + Eq + Clone, V> VariableScope<K, V> {
             None
         }
     }
+
+    pub fn replace(&mut self, key: &K, value: V) -> Result<(), ()> {
+        match self.entries.get_mut(key) {
+            Some(entry) => {
+                entry.value = value;
+                Ok(())
+            }
+            None => Err(()),
+        }
+    }
 }
 
 impl<K: Hash + Eq + Clone, V> Default for VariableScope<K, V> {

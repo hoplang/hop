@@ -34,6 +34,7 @@ pub struct TypedComponentDeclaration {
     pub component_name: TypeName,
     pub children: Vec<TypedNode>,
     pub params: Vec<TypedParameter>,
+    pub rest_param: Option<VarName>,
     pub is_recursive: bool,
 }
 
@@ -197,19 +198,26 @@ impl TypedEnumDeclaration {
 
 impl TypedComponentDeclaration {
     pub fn to_doc(&self) -> BoxDoc<'_> {
-        let params_doc = if self.params.is_empty() {
-            BoxDoc::nil()
-        } else {
-            BoxDoc::text("(")
-                .append(BoxDoc::intersperse(
-                    self.params.iter().map(|param| {
-                        BoxDoc::text(param.var_name.as_str())
-                            .append(BoxDoc::text(": "))
-                            .append(param.var_type.to_doc())
-                    }),
-                    BoxDoc::text(", "),
-                ))
-                .append(BoxDoc::text(")"))
+        let params_doc = {
+            let mut parts: Vec<BoxDoc<'_>> = self
+                .params
+                .iter()
+                .map(|param| {
+                    BoxDoc::text(param.var_name.as_str())
+                        .append(BoxDoc::text(": "))
+                        .append(param.var_type.to_doc())
+                })
+                .collect();
+            if let Some(rest) = &self.rest_param {
+                parts.push(BoxDoc::text("...").append(BoxDoc::text(rest.as_str())));
+            }
+            if parts.is_empty() {
+                BoxDoc::nil()
+            } else {
+                BoxDoc::text("(")
+                    .append(BoxDoc::intersperse(parts, BoxDoc::text(", ")))
+                    .append(BoxDoc::text(")"))
+            }
         };
 
         let header = BoxDoc::text("component")

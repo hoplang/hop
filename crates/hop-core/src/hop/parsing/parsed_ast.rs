@@ -1,9 +1,10 @@
 use super::parsed_node::ParsedNode;
-use crate::document::DocumentRange;
+use crate::document::{CheapString, DocumentRange};
 use crate::document_id::DocumentId;
 use crate::expr::ExamplesAnnotation;
 use crate::expr::ParsedExpr;
 use crate::expr::parsing::ParsedType;
+use crate::html::HtmlElement;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::module_name::ModuleName;
 use crate::symbols::type_name::TypeName;
@@ -11,6 +12,30 @@ use crate::symbols::var_name::VarName;
 use pretty::BoxDoc;
 use std::collections::VecDeque;
 use std::fmt::{self, Display};
+
+#[derive(Debug, Clone)]
+pub enum RestSpreadTarget {
+    Element {
+        element: HtmlElement,
+        supplied_attrs: Vec<CheapString>,
+        spread_range: DocumentRange,
+    },
+    Component {
+        callee: TypeName,
+        supplied_attrs: Vec<CheapString>,
+        has_children: bool,
+        spread_range: DocumentRange,
+    },
+}
+
+impl RestSpreadTarget {
+    pub fn spread_range(&self) -> &DocumentRange {
+        match self {
+            RestSpreadTarget::Element { spread_range, .. } => spread_range,
+            RestSpreadTarget::Component { spread_range, .. } => spread_range,
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct ParsedAst {
@@ -61,6 +86,7 @@ pub struct ParsedComponentDeclaration {
     pub closing_tag_name: Option<DocumentRange>,
     pub params: Option<(Vec<ParsedParameter>, DocumentRange)>,
     pub rest_param: Option<(VarName, DocumentRange)>,
+    pub rest_target: Option<RestSpreadTarget>,
     pub children: Vec<ParsedNode>,
     pub range: DocumentRange,
     pub pub_range: Option<DocumentRange>,

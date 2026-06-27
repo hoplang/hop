@@ -140,6 +140,8 @@ impl<'a> InlinerState<'a> {
                 component_name,
                 component_module,
                 args,
+                extra_attributes: _,
+                rest_spread: _,
             } => {
                 if self.recursive_components.contains(component_name) {
                     // Emit the component def if not yet emitted
@@ -164,6 +166,7 @@ impl<'a> InlinerState<'a> {
             TypedNode::Html {
                 element,
                 attributes,
+                rest_spread: _,
                 children,
             } => {
                 output.push(InlinedNode::Html {

@@ -86,6 +86,18 @@ pub enum TypeError {
         range: DocumentRange,
     },
 
+    #[error("Component {component} is recursive and cannot use rest parameters")]
+    RecursiveComponentWithRest {
+        component: TypeName,
+        range: DocumentRange,
+    },
+
+    #[error("Rest cannot be forwarded into recursive component {component}")]
+    RestForwardedIntoRecursive {
+        component: TypeName,
+        range: DocumentRange,
+    },
+
     #[error("Argument of type {found} is incompatible with expected type {expected}")]
     ArgumentTypeMismatch {
         expected: Arc<Type>,
@@ -455,6 +467,8 @@ impl TypeError {
             | TypeError::ExpectedBooleanCondition { range, .. }
             | TypeError::MissingArguments { range, .. }
             | TypeError::ComponentDoesNotAcceptAttribute { range, .. }
+            | TypeError::RecursiveComponentWithRest { range, .. }
+            | TypeError::RestForwardedIntoRecursive { range, .. }
             | TypeError::ArgumentTypeMismatch { range, .. }
             | TypeError::DefaultValueTypeMismatch { range, .. }
             | TypeError::UnknownAttribute { range, .. }

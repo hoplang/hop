@@ -73,6 +73,8 @@ pub enum TypedNode {
         component_name: TypeName,
         component_module: DocumentId,
         args: Vec<TypedArgument>,
+        extra_attributes: Vec<TypedAttribute>,
+        rest_spread: Option<VarName>,
     },
 
     If {
@@ -115,6 +117,7 @@ pub enum TypedNode {
     Html {
         element: HtmlElement,
         attributes: Vec<TypedAttribute>,
+        rest_spread: Option<VarName>,
         children: Vec<TypedNode>,
     },
 }
@@ -130,23 +133,33 @@ impl TypedNode {
             TypedNode::ComponentInvocation {
                 component_name,
                 args,
+                extra_attributes,
+                rest_spread,
                 ..
             } => {
                 let tag = BoxDoc::text("<").append(BoxDoc::text(component_name.as_str()));
-                let tag_with_args = if args.is_empty() {
+                let mut parts: Vec<BoxDoc<'_>> = args
+                    .iter()
+                    .map(|arg| {
+                        BoxDoc::text(arg.name.as_str())
+                            .append(BoxDoc::text("={"))
+                            .append(arg.expr.to_doc())
+                            .append(BoxDoc::text("}"))
+                    })
+                    .collect();
+                for attr in extra_attributes {
+                    parts.push(attr.to_doc());
+                }
+                if let Some(name) = rest_spread {
+                    parts.push(BoxDoc::text("...").append(BoxDoc::text(name.as_str())));
+                }
+                let tag_with = if parts.is_empty() {
                     tag
                 } else {
-                    tag.append(BoxDoc::space()).append(BoxDoc::intersperse(
-                        args.iter().map(|arg| {
-                            BoxDoc::text(arg.name.as_str())
-                                .append(BoxDoc::text("={"))
-                                .append(arg.expr.to_doc())
-                                .append(BoxDoc::text("}"))
-                        }),
-                        BoxDoc::space(),
-                    ))
+                    tag.append(BoxDoc::space())
+                        .append(BoxDoc::intersperse(parts, BoxDoc::space()))
                 };
-                tag_with_args.append(BoxDoc::text("/>"))
+                tag_with.append(BoxDoc::text("/>"))
             }
             TypedNode::If {
                 condition,
@@ -477,6 +490,7 @@ impl TypedNode {
             TypedNode::Html {
                 element,
                 attributes,
+                rest_spread,
                 children,
             } => {
                 let tag = BoxDoc::text("<").append(BoxDoc::text(element.as_str()));
@@ -497,6 +511,13 @@ impl TypedNode {
                             .nest(2),
                     )
                     .append(BoxDoc::line())
+                };
+                let tag_with_attrs = match rest_spread {
+                    Some(name) => tag_with_attrs
+                        .append(BoxDoc::space())
+                        .append(BoxDoc::text("..."))
+                        .append(BoxDoc::text(name.as_str())),
+                    None => tag_with_attrs,
                 };
                 if children.is_empty() {
                     tag_with_attrs

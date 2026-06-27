@@ -7,11 +7,13 @@ use crate::expr::typing::r#type::EnumVariant;
 use crate::expr::typing::type_checker::{
     extract_bindings_from_pattern, resolve_type, typecheck_expr,
 };
-use crate::expr::{self, ComponentSignature, Type, TypeBinding, TypeEnv, TypedExpr};
+use crate::expr::{
+    self, ComponentSignature, ParamEntry, Tail, Type, TypeBinding, TypeEnv, TypedExpr,
+};
 use crate::hop::parsing::parsed_ast::ParsedDeclaration;
 use crate::hop::parsing::parsed_ast::{
     ParsedAttribute, ParsedComponentDeclaration, ParsedEnumDeclaration, ParsedImportDeclaration,
-    ParsedRecordDeclaration, ParsedViewDeclaration,
+    ParsedRecordDeclaration, ParsedViewDeclaration, RestSpreadTarget,
 };
 use crate::hop::typing::definition_link::DefinitionLink;
 use crate::html::{HtmlElement, is_known_attribute};
@@ -20,7 +22,7 @@ use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use crate::type_error::TypeError;
 use crate::variable_scope::VariableScope;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use crate::document_id::DocumentId;
@@ -162,10 +164,12 @@ fn typecheck_module(
                 component_name,
                 tag_name,
                 closing_tag_name,
+                rest_param,
+                rest_target,
                 ..
             }) => {
                 let mut pushed_params = Vec::new();
-                let mut resolved_param_types = Vec::new();
+                let mut declared_params: Vec<ParamEntry> = Vec::new();
                 let mut typed_params = Vec::new();
                 if let Some((params, _)) = params {
                     for param in params {
@@ -228,11 +232,11 @@ fn typecheck_module(
                         );
 
                         pushed_params.push(param);
-                        resolved_param_types.push((
-                            param.var_name.clone(),
-                            param_type.clone(),
-                            typed_default_value,
-                        ));
+                        declared_params.push(ParamEntry {
+                            name: param.var_name.clone(),
+                            typ: param_type.clone(),
+                            default: typed_default_value,
+                        });
                         typed_params.push(TypedParameter {
                             var_name: param.var_name.clone(),
                             var_type: param_type,
@@ -245,7 +249,9 @@ fn typecheck_module(
                 // self-referential (recursive) components
                 let component_signature = ComponentSignature {
                     module: parsed_ast.document_id.clone(),
-                    parameters: resolved_param_types,
+                    params: declared_params.clone(),
+                    tail: Tail::Closed,
+                    is_recursive: false,
                 };
 
                 let _ = type_env.push(
@@ -255,6 +261,9 @@ fn typecheck_module(
                         tag_name.clone(),
                     ),
                 );
+
+                let declared_names: Vec<VarName> =
+                    declared_params.iter().map(|p| p.name.clone()).collect();
 
                 let typed_children = children
                     .iter()
@@ -267,6 +276,7 @@ fn typecheck_module(
                             errors,
                             &mut type_env,
                             asset_references,
+                            &declared_names,
                         )
                     })
                     .collect::<Vec<_>>();
@@ -297,9 +307,100 @@ fn typecheck_module(
                     });
                 }
 
+                if is_recursive && rest_param.is_some() {
+                    errors.push(TypeError::RecursiveComponentWithRest {
+                        component: component_name.clone(),
+                        range: tag_name.clone(),
+                    });
+                }
+
+                let (forwarded, tail) = match rest_target {
+                    Some(RestSpreadTarget::Element {
+                        element,
+                        supplied_attrs,
+                        ..
+                    }) => (
+                        Vec::new(),
+                        Tail::Html {
+                            element: element.clone(),
+                            reserved: supplied_attrs.clone(),
+                        },
+                    ),
+                    Some(RestSpreadTarget::Component {
+                        callee,
+                        supplied_attrs,
+                        has_children,
+                        spread_range,
+                        ..
+                    }) => match type_env.lookup(callee) {
+                        Some((TypeBinding::Component(callee_sig), _)) => {
+                            if callee_sig.is_recursive {
+                                errors.push(TypeError::RestForwardedIntoRecursive {
+                                    component: callee.clone(),
+                                    range: spread_range.clone(),
+                                });
+                                (Vec::new(), Tail::Closed)
+                            } else {
+                                let tail = match callee_sig.tail.clone() {
+                                    Tail::Html {
+                                        element,
+                                        mut reserved,
+                                    } => {
+                                        let callee_param_names: HashSet<&str> = callee_sig
+                                            .params
+                                            .iter()
+                                            .map(|p| p.name.as_str())
+                                            .collect();
+                                        for attr in supplied_attrs {
+                                            let a = attr.as_str();
+                                            if !callee_param_names.contains(a)
+                                                && !reserved.iter().any(|r| r.as_str() == a)
+                                            {
+                                                reserved.push(attr.clone());
+                                            }
+                                        }
+                                        Tail::Html { element, reserved }
+                                    }
+                                    Tail::Closed => Tail::Closed,
+                                };
+                                let covered_by_rest = |p: &ParamEntry| {
+                                    !(supplied_attrs.iter().any(|a| a.as_str() == p.name.as_str())
+                                        || (*has_children && p.name.as_str() == "slot")
+                                        || declared_names.contains(&p.name))
+                                };
+                                let forwarded = callee_sig
+                                    .params
+                                    .iter()
+                                    .filter(|p| covered_by_rest(p))
+                                    .cloned()
+                                    .collect::<Vec<_>>();
+                                (forwarded, tail)
+                            }
+                        }
+                        _ => (Vec::new(), Tail::Closed),
+                    },
+                    None => (Vec::new(), Tail::Closed),
+                };
+                let mut extended_params = declared_params.clone();
+                extended_params.extend(forwarded);
+
+                let _ = type_env.replace(
+                    component_name,
+                    (
+                        TypeBinding::Component(ComponentSignature {
+                            module: parsed_ast.document_id.clone(),
+                            params: extended_params,
+                            tail,
+                            is_recursive,
+                        }),
+                        tag_name.clone(),
+                    ),
+                );
+
                 typed_component_declarations.push(TypedComponentDeclaration {
                     component_name: component_name.clone(),
                     params: typed_params,
+                    rest_param: rest_param.as_ref().map(|(name, _)| name.clone()),
                     children: typed_children,
                     is_recursive,
                 });
@@ -503,6 +604,7 @@ fn typecheck_module(
                             errors,
                             &mut type_env,
                             asset_references,
+                            &[],
                         )
                     })
                     .collect::<Vec<_>>();
@@ -586,6 +688,7 @@ fn typecheck_node(
     errors: &mut Vec<TypeError>,
     type_env: &mut TypeEnv,
     asset_references: &mut Vec<AssetReference>,
+    caller_params: &[VarName],
 ) -> Option<TypedNode> {
     match node {
         ParsedNode::If {
@@ -604,6 +707,7 @@ fn typecheck_node(
                         errors,
                         type_env,
                         asset_references,
+                        caller_params,
                     )
                 })
                 .collect();
@@ -749,6 +853,7 @@ fn typecheck_node(
                         errors,
                         type_env,
                         asset_references,
+                        caller_params,
                     )
                 })
                 .collect();
@@ -887,6 +992,7 @@ fn typecheck_node(
                         errors,
                         type_env,
                         asset_references,
+                        caller_params,
                     )
                 })
                 .collect();
@@ -937,16 +1043,18 @@ fn typecheck_node(
                         errors,
                         type_env,
                         asset_references,
+                        caller_params,
                     )
                 })
                 .collect::<Vec<_>>();
 
             // Look up the component signature from type_env
-            let (component_module, component_params, component_def_range) =
+            let (component_module, callee_params, callee_tail, component_def_range) =
                 match type_env.lookup(component_name) {
                     Some((TypeBinding::Component(sig), def_range)) => (
                         sig.module.clone(),
-                        sig.parameters.clone(),
+                        sig.params.clone(),
+                        sig.tail.clone(),
                         def_range.clone(),
                     ),
                     _ => {
@@ -972,18 +1080,20 @@ fn typecheck_node(
                 });
             }
 
-            let (slot_var, resolved_args) = typecheck_arguments(
+            let (slot_var, resolved_args, extra_attributes, rest_spread) = typecheck_arguments(
                 args,
                 var_env,
                 annotations,
                 definition_links,
-                &component_params,
+                &callee_params,
+                callee_tail,
                 errors,
                 type_env,
                 asset_references,
                 children.is_some(),
                 component_name,
                 component_name_opening_range,
+                caller_params,
             );
 
             if let Some(var) = slot_var {
@@ -994,6 +1104,8 @@ fn typecheck_node(
                         component_name: component_name.clone(),
                         component_module: component_module.clone(),
                         args: resolved_args,
+                        extra_attributes: extra_attributes.clone(),
+                        rest_spread: rest_spread.clone(),
                     }],
                 });
             }
@@ -1002,6 +1114,8 @@ fn typecheck_node(
                 component_name: component_name.clone(),
                 component_module: component_module.clone(),
                 args: resolved_args,
+                extra_attributes,
+                rest_spread,
             })
         }
 
@@ -1035,6 +1149,7 @@ fn typecheck_node(
                         errors,
                         type_env,
                         asset_references,
+                        caller_params,
                     )
                 })
                 .collect();
@@ -1042,6 +1157,10 @@ fn typecheck_node(
             Some(TypedNode::Html {
                 element: element.clone(),
                 attributes: typed_attributes,
+                rest_spread: attributes.iter().find_map(|a| match a {
+                    ParsedAttribute::Spread { name, .. } => Some(name.clone()),
+                    ParsedAttribute::Named { .. } => None,
+                }),
                 children: typed_children,
             })
         }
@@ -1094,14 +1213,13 @@ fn typecheck_node(
                 _ => var_env.fresh_var(),
             };
 
-            let decision = errors.ok_or_add(
-                PatMatchCompiler::new(var_env.fresh_var_counter()).compile(
+            let decision =
+                errors.ok_or_add(PatMatchCompiler::new(var_env.fresh_var_counter()).compile(
                     &patterns,
                     &subject_name,
                     typed_subject.get_type(),
                     subject.range(),
-                ),
-            )?;
+                ))?;
 
             let typed_bodies = cases
                 .iter()
@@ -1144,6 +1262,7 @@ fn typecheck_node(
                                 errors,
                                 type_env,
                                 asset_references,
+                                caller_params,
                             )
                         })
                         .collect::<Vec<_>>();
@@ -1197,22 +1316,69 @@ fn typecheck_node(
     }
 }
 
+fn typecheck_attribute_value(
+    value: &Option<ParsedAttributeValue>,
+    var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
+    type_env: &mut TypeEnv,
+    annotations: &mut Vec<TypeAnnotation>,
+    definition_links: &mut Vec<DefinitionLink>,
+    errors: &mut Vec<TypeError>,
+    asset_references: &mut Vec<AssetReference>,
+) -> Option<TypedAttributeValue> {
+    match value {
+        Some(ParsedAttributeValue::Expression(expr)) => {
+            let typed_expr = errors.ok_or_add(typecheck_expr(
+                expr,
+                var_env,
+                type_env,
+                annotations,
+                definition_links,
+                None,
+                asset_references,
+            ))?;
+            if *typed_expr.get_type() != Type::String {
+                errors.push(TypeError::ArgumentTypeMismatch {
+                    expected: Arc::new(Type::String),
+                    found: typed_expr.get_type(),
+                    range: expr.range().clone(),
+                });
+            }
+            Some(TypedAttributeValue::Expression(typed_expr))
+        }
+        Some(ParsedAttributeValue::String(s)) => {
+            let string_span = match s {
+                Some(range) => range.to_cheap_string(),
+                None => CheapString::new("".to_string()),
+            };
+            Some(TypedAttributeValue::String(string_span))
+        }
+        None => None,
+    }
+}
+
 fn typecheck_arguments(
     args: &[ParsedAttribute],
     var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
     annotations: &mut Vec<TypeAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
-    component_params: &[(VarName, Arc<Type>, Option<TypedExpr>)],
+    callee_params: &[ParamEntry],
+    callee_tail: Tail,
     errors: &mut Vec<TypeError>,
     type_env: &mut TypeEnv,
     asset_references: &mut Vec<AssetReference>,
     has_body: bool,
     component_name: &TypeName,
     component_name_opening_range: &DocumentRange,
-) -> (Option<VarName>, Vec<TypedArgument>) {
-    let slot_param = component_params
+    caller_params: &[VarName],
+) -> (
+    Option<VarName>,
+    Vec<TypedArgument>,
+    Vec<TypedAttribute>,
+    Option<VarName>,
+) {
+    let slot_param = callee_params
         .iter()
-        .find(|(name, typ, _)| name.as_str() == "slot" && **typ == Type::Fragment);
+        .find(|p| p.name.as_str() == "slot" && *p.typ == Type::Fragment);
     let has_explicit_slot_arg = args.iter().any(|a| match a {
         ParsedAttribute::Named { name, .. } => name.as_str() == "slot",
         ParsedAttribute::Spread { .. } => false,
@@ -1226,7 +1392,28 @@ fn typecheck_arguments(
         });
     }
 
+    let rest_spread = args.iter().find_map(|a| match a {
+        ParsedAttribute::Spread { name, .. } => Some(name.clone()),
+        ParsedAttribute::Named { .. } => None,
+    });
+    let mut supplied_args: Vec<VarName> = args
+        .iter()
+        .filter_map(|a| match a {
+            ParsedAttribute::Named { name, .. } => VarName::new(name.as_str()).ok(),
+            ParsedAttribute::Spread { .. } => None,
+        })
+        .collect();
+    if has_body {
+        supplied_args.push(VarName::new("slot").unwrap());
+    }
+    let covered_by_rest = |param: &ParamEntry| {
+        rest_spread.is_some()
+            && !supplied_args.contains(&param.name)
+            && !caller_params.contains(&param.name)
+    };
+
     let mut typed_args = Vec::new();
+    let mut extra_attributes: Vec<TypedAttribute> = Vec::new();
     for arg in args.iter() {
         let (arg_name_range, arg_value) = match arg {
             ParsedAttribute::Named { name, value } => (name, value),
@@ -1234,20 +1421,41 @@ fn typecheck_arguments(
         };
         let arg_name = arg_name_range.as_str();
 
-        let (_, param_type, _) = match component_params
-            .iter()
-            .find(|(name, _, _)| name.as_str() == arg_name)
-        {
+        let param = match callee_params.iter().find(|p| p.name.as_str() == arg_name) {
             None => {
-                errors.push(TypeError::ComponentDoesNotAcceptAttribute {
-                    component: component_name.clone(),
-                    attr: arg_name.to_string(),
-                    range: arg_name_range.clone(),
-                });
+                let accepted = match &callee_tail {
+                    Tail::Html { element, reserved } => {
+                        (element.is_svg() || is_known_attribute(arg_name))
+                            && !reserved.iter().any(|r| r.as_str() == arg_name)
+                    }
+                    Tail::Closed => false,
+                };
+                if accepted {
+                    let value = typecheck_attribute_value(
+                        arg_value,
+                        var_env,
+                        type_env,
+                        annotations,
+                        definition_links,
+                        errors,
+                        asset_references,
+                    );
+                    extra_attributes.push(TypedAttribute {
+                        name: arg_name_range.to_cheap_string(),
+                        value,
+                    });
+                } else {
+                    errors.push(TypeError::ComponentDoesNotAcceptAttribute {
+                        component: component_name.clone(),
+                        attr: arg_name.to_string(),
+                        range: arg_name_range.clone(),
+                    });
+                }
                 continue;
             }
             Some(param) => param,
         };
+        let param_type = &param.typ;
 
         let arg_expr = match arg_value {
             Some(ParsedAttributeValue::Expression(expr)) => expr.clone(),
@@ -1315,17 +1523,20 @@ fn typecheck_arguments(
         None
     };
 
-    let missing_args: Vec<&str> = component_params
+    let missing_args: Vec<&str> = callee_params
         .iter()
-        .filter(|(name, _, default)| {
-            default.is_none()
-                && !args.iter().any(|a| match a {
-                    ParsedAttribute::Named { name: n, .. } => n.as_str() == name.as_str(),
-                    ParsedAttribute::Spread { .. } => false,
-                })
-                && !(synthesize_slot_arg && name.as_str() == "slot")
+        .filter(|p| {
+            if p.default.is_some() {
+                return false;
+            }
+            let supplied = args.iter().any(|a| match a {
+                ParsedAttribute::Named { name: n, .. } => n.as_str() == p.name.as_str(),
+                ParsedAttribute::Spread { .. } => false,
+            });
+            let is_synthesized_slot = synthesize_slot_arg && p.name.as_str() == "slot";
+            !supplied && !is_synthesized_slot && !covered_by_rest(p)
         })
-        .map(|(name, _, _)| name.as_str())
+        .map(|p| p.name.as_str())
         .collect();
     if !missing_args.is_empty() {
         errors.push(TypeError::MissingArguments {
@@ -1336,22 +1547,25 @@ fn typecheck_arguments(
 
     // Resolve the call arguments into parameter-definition order, filling
     // in default values for any omitted optional parameters.
-    let resolved_args: Vec<TypedArgument> = component_params
+    let resolved_args: Vec<TypedArgument> = callee_params
         .iter()
-        .filter_map(|(param_name, _, default_value)| {
+        .filter_map(|param| {
+            if covered_by_rest(param) {
+                return None;
+            }
             typed_args
                 .iter()
-                .find(|arg| arg.name.as_str() == param_name.as_str())
+                .find(|arg| arg.name.as_str() == param.name.as_str())
                 .map(|arg| arg.expr.clone())
-                .or_else(|| default_value.clone())
+                .or_else(|| param.default.clone())
                 .map(|expr| TypedArgument {
-                    name: param_name.clone(),
+                    name: param.name.clone(),
                     expr,
                 })
         })
         .collect();
 
-    (slot_var, resolved_args)
+    (slot_var, resolved_args, extra_attributes, rest_spread)
 }
 
 fn typecheck_attributes(
@@ -1364,7 +1578,6 @@ fn typecheck_attributes(
     type_env: &mut TypeEnv,
     asset_references: &mut Vec<AssetReference>,
 ) -> Vec<TypedAttribute> {
-
     let mut typed_attributes = Vec::new();
     for attr in attributes {
         let (attr_name, attr_value) = match attr {
@@ -1389,8 +1602,7 @@ fn typecheck_attributes(
     typed_attributes
 }
 
-/// Type-check a single HTML attribute: validate the name and require expression values to be
-/// `String`. Returns `None` if dropped on error.
+/// Type-check a single HTML attribute: validate the name; expression values must be `String`.
 fn typecheck_html_attribute(
     element: &HtmlElement,
     name: &DocumentRange,
@@ -1410,35 +1622,15 @@ fn typecheck_html_attribute(
         return None;
     }
 
-    let typed_value = match value {
-        Some(ParsedAttributeValue::Expression(expr)) => {
-            let typed_expr = errors.ok_or_add(typecheck_expr(
-                expr,
-                var_env,
-                type_env,
-                annotations,
-                definition_links,
-                None,
-                asset_references,
-            ))?;
-            if *typed_expr.get_type() != Type::String {
-                errors.push(TypeError::ArgumentTypeMismatch {
-                    expected: Arc::new(Type::String),
-                    found: typed_expr.get_type(),
-                    range: expr.range().clone(),
-                });
-            }
-            Some(TypedAttributeValue::Expression(typed_expr))
-        }
-        Some(ParsedAttributeValue::String(s)) => {
-            let string_span = match s {
-                Some(range) => range.to_cheap_string(),
-                None => CheapString::new("".to_string()),
-            };
-            Some(TypedAttributeValue::String(string_span))
-        }
-        None => None,
-    };
+    let typed_value = typecheck_attribute_value(
+        value,
+        var_env,
+        type_env,
+        annotations,
+        definition_links,
+        errors,
+        asset_references,
+    );
 
     Some(TypedAttribute {
         name: name.to_cheap_string(),
@@ -1708,8 +1900,10 @@ mod tests {
             );
 
             if !parse_errors.is_empty() {
-                error_annotator.annotate(&document_id, parse_errors.to_vec());
-                continue;
+                panic!(
+                    "unexpected parse errors in type checker test for {}: {:?}",
+                    document_id, parse_errors
+                );
             }
 
             typecheck(
@@ -6320,24 +6514,6 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_view_with_default_value() {
-        reject(
-            indoc! {r#"
-                -- main.hop --
-                view Main(name: String = "World") {
-                  <div>Hello, {name}!</div>
-                }
-            "#},
-            expect![[r#"
-                error: Default values are not allowed on view parameters
-                  --> main.hop (line 1, col 24)
-                1 | view Main(name: String = "World") {
-                  |                        ^
-            "#]],
-        );
-    }
-
-    #[test]
     fn should_accept_view_referencing_component() {
         accept(
             indoc! {r#"
@@ -6400,24 +6576,6 @@ mod tests {
                   --> main.hop (line 1, col 11)
                 1 | view Main(unused: String) {
                   |           ^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_reject_view_with_default_value_type_mismatch() {
-        reject(
-            indoc! {r#"
-                -- main.hop --
-                view Main(name: String = 42) {
-                  <div>Hello, {name}!</div>
-                }
-            "#},
-            expect![[r#"
-                error: Default values are not allowed on view parameters
-                  --> main.hop (line 1, col 24)
-                1 | view Main(name: String = 42) {
-                  |                        ^
             "#]],
         );
     }
@@ -6635,6 +6793,1159 @@ mod tests {
                 2 |   #[examples(min_len = 5, max_len = 2)]
                 3 |   tags: Array[String],
                   |   ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_rest_on_recursive_component() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component Foo(...rest) {
+                    <div ...rest><Foo/></div>
+                }
+            "#},
+            expect![[r#"
+                error: Component Foo is recursive and cannot use rest parameters
+                  --> main.hop (line 1, col 11)
+                1 | component Foo(...rest) {
+                  |           ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_unknown_attr_without_rest_param() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component Foo(class: String) {
+                    <div class={class}></div>
+                }
+                view Main {
+                    <Foo class="a" data-x="y"/>
+                }
+            "#},
+            expect![[r#"
+                error: Component `Foo` does not accept attribute `data-x`
+                  --> main.hop (line 5, col 20)
+                4 | view Main {
+                5 |     <Foo class="a" data-x="y"/>
+                  |                    ^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_extra_attrs_when_rest_reaches_html() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                component Button(class: String, slot: Fragment, ...rest) {
+                    <button class={class} ...rest>{slot}</button>
+                }
+                view Main {
+                    <Button class="p-2" data-foo="bar">Hi</Button>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                component Button(class: String, slot: Fragment, ...rest) {
+                  <button class={class} ...rest>
+                    {slot}
+                  </button>
+                }
+
+                view Main() {
+                  <let {
+                    v_0 = {
+                      Hi
+                    }
+                  }>
+                    <Button class={"p-2"} slot={v_0} data-foo="bar"/>
+                  </let>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_forwarded_attr_not_set_on_element() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                component Button(slot: Fragment, ...rest) {
+                    <button class="builtin" ...rest>{slot}</button>
+                }
+                view Main {
+                    <Button data-x="y">Hi</Button>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                component Button(slot: Fragment, ...rest) {
+                  <button class="builtin" ...rest>
+                    {slot}
+                  </button>
+                }
+
+                view Main() {
+                  <let {
+                    v_0 = {
+                      Hi
+                    }
+                  }>
+                    <Button slot={v_0} data-x="y"/>
+                  </let>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_forwarded_attr_already_set_on_element() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component Button(slot: Fragment, ...rest) {
+                    <button class="builtin" ...rest>{slot}</button>
+                }
+                view Main {
+                    <Button class="forwarded">Hi</Button>
+                }
+            "#},
+            expect![[r#"
+                error: Component `Button` does not accept attribute `class`
+                  --> main.hop (line 5, col 13)
+                4 | view Main {
+                5 |     <Button class="forwarded">Hi</Button>
+                  |             ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_unknown_html_attr_forwarded_into_open_tail() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component Button(class: String, ...rest) {
+                    <button class={class} ...rest></button>
+                }
+                view Main {
+                    <Button class="p-2" qwerty="z"/>
+                }
+            "#},
+            expect![[r#"
+                error: Component `Button` does not accept attribute `qwerty`
+                  --> main.hop (line 5, col 25)
+                4 | view Main {
+                5 |     <Button class="p-2" qwerty="z"/>
+                  |                         ^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_svg_attributes_on_forwarded_svg() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                component Svg(...rest) {
+                    <svg ...rest/>
+                }
+                view Main {
+                    <Svg viewBox="0 0 100 100"/>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                component Svg(...rest) {
+                  <svg ...rest></svg>
+                }
+
+                view Main() {
+                  <Svg viewBox="0 0 100 100"/>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_required_arg_forwarded_through_rest() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                component Card(title: String) {
+                    <div>{title}</div>
+                }
+                component Wrapper(...rest) {
+                    <Card ...rest/>
+                }
+                view Main {
+                    <Wrapper title="hi"/>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                component Card(title: String) {
+                  <div>
+                    {title}
+                  </div>
+                }
+
+                component Wrapper(...rest) {
+                  <Card ...rest/>
+                }
+
+                view Main() {
+                  <Wrapper title={"hi"}/>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_explicit_arg_supplied_alongside_rest_spread() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                component Card(title: String) {
+                    <div>{title}</div>
+                }
+                component Wrapper(...rest) {
+                    <Card title="explicit" ...rest/>
+                }
+                view Main {
+                    <Wrapper/>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                component Card(title: String) {
+                  <div>
+                    {title}
+                  </div>
+                }
+
+                component Wrapper(...rest) {
+                  <Card title={"explicit"} ...rest/>
+                }
+
+                view Main() {
+                  <Wrapper/>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_missing_required_arg_forwarded_through_rest() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component Card(title: String) {
+                    <div>{title}</div>
+                }
+                component Wrapper(...rest) {
+                    <Card ...rest/>
+                }
+                view Main {
+                    <Wrapper/>
+                }
+            "#},
+            expect![[r#"
+                error: Component requires arguments: title
+                  --> main.hop (line 8, col 6)
+                7 | view Main {
+                8 |     <Wrapper/>
+                  |      ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_type_mismatch_forwarded_through_rest() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component Card(count: Int) {
+                    <if {count > 0}>
+                        <div>positive</div>
+                    </if>
+                }
+                component Wrapper(...rest) {
+                    <Card ...rest/>
+                }
+                view Main {
+                    <Wrapper count="hi"/>
+                }
+            "#},
+            expect![[r#"
+                error: Argument of type String is incompatible with expected type Int
+                  --> main.hop (line 10, col 14)
+                 9 | view Main {
+                10 |     <Wrapper count="hi"/>
+                   |              ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_param_rest_name_collision() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component Inner(class: String, ...rest) {
+                    <span class={class} ...rest></span>
+                }
+                component Outer(class: String, ...rest) {
+                    <div class={class}>
+                        <Inner ...rest/>
+                    </div>
+                }
+                view Main {
+                    <Outer class="x"/>
+                }
+            "#},
+            expect![[r#"
+                error: Component requires arguments: class
+                  --> main.hop (line 6, col 10)
+                 5 |     <div class={class}>
+                 6 |         <Inner ...rest/>
+                   |          ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_rest_forwarded_into_recursive_component() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component Tree(x: Int) {
+                    <div>
+                        <Tree x={x}/>
+                    </div>
+                }
+                component Wrapper(...rest) {
+                    <Tree ...rest/>
+                }
+                view Main {
+                    <Wrapper/>
+                }
+            "#},
+            expect![[r#"
+                error: Rest cannot be forwarded into recursive component Tree
+                  --> main.hop (line 7, col 11)
+                 6 | component Wrapper(...rest) {
+                 7 |     <Tree ...rest/>
+                   |           ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_record_param_forwarded_through_rest() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                record User {
+                    name: String,
+                }
+                component Card(user: User) {
+                    <div>{user.name}</div>
+                }
+                component Wrapper(...rest) {
+                    <Card ...rest/>
+                }
+                component Page(user: User) {
+                    <Wrapper user={user}/>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                record User {
+                  name: String,
+                }
+
+                component Card(user: main::User) {
+                  <div>
+                    {user.name}
+                  </div>
+                }
+
+                component Wrapper(...rest) {
+                  <Card ...rest/>
+                }
+
+                component Page(user: main::User) {
+                  <Wrapper user={user}/>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_required_args_forwarded_transitively() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                component Card(title: String) {
+                    <div>{title}</div>
+                }
+                component Bar(name: String, ...rest) {
+                    <div>
+                        {name}
+                        <Card ...rest/>
+                    </div>
+                }
+                component Baz(...rest) {
+                    <Bar ...rest/>
+                }
+                view Main {
+                    <Baz name="n" title="t"/>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                component Card(title: String) {
+                  <div>
+                    {title}
+                  </div>
+                }
+
+                component Bar(name: String, ...rest) {
+                  <div>
+                    {name}
+                    <Card ...rest/>
+                  </div>
+                }
+
+                component Baz(...rest) {
+                  <Bar ...rest/>
+                }
+
+                view Main() {
+                  <Baz name={"n"} title={"t"}/>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_missing_required_arg_forwarded_transitively() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component Card(title: String) {
+                    <div>{title}</div>
+                }
+                component Bar(name: String, ...rest) {
+                    <div>
+                        {name}
+                        <Card ...rest/>
+                    </div>
+                }
+                component Baz(...rest) {
+                    <Bar ...rest/>
+                }
+                view Main {
+                    <Baz/>
+                }
+            "#},
+            expect![[r#"
+                error: Component requires arguments: name, title
+                  --> main.hop (line 14, col 6)
+                13 | view Main {
+                14 |     <Baz/>
+                   |      ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_missing_required_arg_through_any_rest() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component Box(id: String, ...rest) {
+                    <div id={id} ...rest></div>
+                }
+                component Wrapper(...rest) {
+                    <Box ...rest/>
+                }
+                view Main {
+                    <Wrapper/>
+                }
+            "#},
+            expect![[r#"
+                error: Component requires arguments: id
+                  --> main.hop (line 8, col 6)
+                7 | view Main {
+                8 |     <Wrapper/>
+                  |      ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_int_param_forwarded_through_rest() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                component Card(count: Int) {
+                    <if {count > 0}>
+                        <div>positive</div>
+                    </if>
+                }
+                component Wrapper(...rest) {
+                    <Card ...rest/>
+                }
+                view Main {
+                    <Wrapper count={3}/>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                component Card(count: Int) {
+                  <if {(count > 0)}>
+                    <div>
+                      positive
+                    </div>
+                  </if>
+                }
+
+                component Wrapper(...rest) {
+                  <Card ...rest/>
+                }
+
+                view Main() {
+                  <Wrapper count={3}/>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_typed_field_and_open_html_tail_in_one_forward() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                component Box(count: Int, ...rest) {
+                    <div ...rest>
+                        <if {count > 0}>
+                            positive
+                        </if>
+                    </div>
+                }
+                component Wrapper(...rest) {
+                    <Box ...rest/>
+                }
+                view Main {
+                    <Wrapper count={3} data-foo="bar"/>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                component Box(count: Int, ...rest) {
+                  <div ...rest>
+                    <if {(count > 0)}>
+                      positive
+                    </if>
+                  </div>
+                }
+
+                component Wrapper(...rest) {
+                  <Box ...rest/>
+                }
+
+                view Main() {
+                  <Wrapper count={3} data-foo="bar"/>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_attr_outside_propagated_accept_set() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component Foo(class: String) {
+                    <div class={class}></div>
+                }
+                component Bar(...rest) {
+                    <Foo ...rest/>
+                }
+                component Baz(...rest) {
+                    <Bar ...rest/>
+                }
+                view Main {
+                    <Baz class="a" data-x="y"/>
+                }
+            "#},
+            expect![[r#"
+                error: Component `Baz` does not accept attribute `data-x`
+                  --> main.hop (line 11, col 20)
+                10 | view Main {
+                11 |     <Baz class="a" data-x="y"/>
+                   |                    ^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_attr_not_accepted_by_forwarded_component() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component Foo(class: String) {
+                    <div class={class}></div>
+                }
+                component Bar(...rest) {
+                    <Foo ...rest/>
+                }
+                view Main {
+                    <Bar class="a" data-x="y"/>
+                }
+            "#},
+            expect![[r#"
+                error: Component `Bar` does not accept attribute `data-x`
+                  --> main.hop (line 8, col 20)
+                7 | view Main {
+                8 |     <Bar class="a" data-x="y"/>
+                  |                    ^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_missing_slot_forwarded_through_rest() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component Foo(slot: Fragment) {
+                    <div>{slot}</div>
+                }
+                component Wrapper(...rest) {
+                    <Foo ...rest/>
+                }
+                view Main {
+                    <Wrapper/>
+                }
+            "#},
+            expect![[r#"
+                error: Component requires arguments: slot
+                  --> main.hop (line 8, col 6)
+                7 | view Main {
+                8 |     <Wrapper/>
+                  |      ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_slot_forwarded_transitively_through_rest() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                component Foo(slot: Fragment) {
+                    <div>{slot}</div>
+                }
+                component Bar(...rest) {
+                    <Foo ...rest/>
+                }
+                component Baz(...rest) {
+                    <Bar ...rest/>
+                }
+                view Main {
+                    <Baz>deep</Baz>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                component Foo(slot: Fragment) {
+                  <div>
+                    {slot}
+                  </div>
+                }
+
+                component Bar(...rest) {
+                  <Foo ...rest/>
+                }
+
+                component Baz(...rest) {
+                  <Bar ...rest/>
+                }
+
+                view Main() {
+                  <let {
+                    v_0 = {
+                      deep
+                    }
+                  }>
+                    <Baz slot={v_0}/>
+                  </let>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_slot_content_when_callee_slot_consumed_by_inner_body() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component Foo(slot: Fragment, class: String, ...rest) {
+                    <div class={class} ...rest>{slot}</div>
+                }
+                component Card(...rest) {
+                    <Foo ...rest>inner</Foo>
+                }
+                view Main {
+                    <Card class="a">hi</Card>
+                }
+            "#},
+            expect![[r#"
+                error: Component Card does not accept slot content (missing `slot: Fragment` parameter)
+                  --> main.hop (line 8, col 6)
+                7 | view Main {
+                8 |     <Card class="a">hi</Card>
+                  |      ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_param_reserved_out_of_rest_when_callee_has_default() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                component Inner(class: String = "x", ...rest) {
+                    <span class={class} ...rest></span>
+                }
+                component Outer(class: String, ...rest) {
+                    <div class={class}>
+                        <Inner ...rest/>
+                    </div>
+                }
+                view Main {
+                    <Outer class="x"/>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                component Inner(class: String, ...rest) {
+                  <span class={class} ...rest></span>
+                }
+
+                component Outer(class: String, ...rest) {
+                  <div class={class}>
+                    <Inner class={"x"} ...rest/>
+                  </div>
+                }
+
+                view Main() {
+                  <Outer class={"x"}/>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_intercept_and_merge_wrapper() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                component Foo(slot: Fragment, class: String, ...rest) {
+                    <div class={class} ...rest>
+                        {slot}
+                    </div>
+                }
+                component Button(slot: Fragment, class: String = "", ...rest) {
+                    <Foo class={class} ...rest>
+                        {slot}
+                    </Foo>
+                }
+                view Main {
+                    <Button class="primary">click</Button>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                component Foo(slot: Fragment, class: String, ...rest) {
+                  <div class={class} ...rest>
+                    {slot}
+                  </div>
+                }
+
+                component Button(slot: Fragment, class: String, ...rest) {
+                  <let {
+                    v_0 = {
+                      {slot}
+                    }
+                  }>
+                    <Foo slot={v_0} class={class} ...rest/>
+                  </let>
+                }
+
+                view Main() {
+                  <let {
+                    v_1 = {
+                      click
+                    }
+                  }>
+                    <Button slot={v_1} class={"primary"}/>
+                  </let>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_optional_param_forwarded_and_overridden_through_rest() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                component Inner(class: String = "x", ...rest) {
+                    <span class={class} ...rest></span>
+                }
+                component Wrapper(...rest) {
+                    <Inner ...rest/>
+                }
+                view Main {
+                    <Wrapper class="y"/>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                component Inner(class: String, ...rest) {
+                  <span class={class} ...rest></span>
+                }
+
+                component Wrapper(...rest) {
+                  <Inner ...rest/>
+                }
+
+                view Main() {
+                  <Wrapper class={"y"}/>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_optional_default_chain_with_caller_value() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                component A(class: String = "", ...rest) {
+                    <div class={class} ...rest/>
+                }
+                component B(class: String = "", ...rest) {
+                    <A class={class} ...rest/>
+                }
+                view Main {
+                    <B class="main"/>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                component A(class: String, ...rest) {
+                  <div class={class} ...rest></div>
+                }
+
+                component B(class: String, ...rest) {
+                  <A class={class} ...rest/>
+                }
+
+                view Main() {
+                  <B class={"main"}/>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_optional_default_chain_uses_outer_default() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                component A(class: String = "a", ...rest) {
+                    <div class={class} ...rest/>
+                }
+                component B(class: String = "b", ...rest) {
+                    <A class={class} ...rest/>
+                }
+                view Main {
+                    <B/>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                component A(class: String, ...rest) {
+                  <div class={class} ...rest></div>
+                }
+
+                component B(class: String, ...rest) {
+                  <A class={class} ...rest/>
+                }
+
+                view Main() {
+                  <B class={"b"}/>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_forwarded_optional_default_through_rest() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                component A(label: String = "x", ...rest) {
+                    <span ...rest>{label}</span>
+                }
+                component B(...rest) {
+                    <A ...rest/>
+                }
+                view Main {
+                    <B/>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                component A(label: String, ...rest) {
+                  <span ...rest>
+                    {label}
+                  </span>
+                }
+
+                component B(...rest) {
+                  <A ...rest/>
+                }
+
+                view Main() {
+                  <B label={"x"}/>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_forwarded_default_materialized_once_in_chain() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                component Leaf(label: String = "x", ...rest) {
+                    <span ...rest>{label}</span>
+                }
+                component Mid(...rest) {
+                    <Leaf ...rest/>
+                }
+                component Top(...rest) {
+                    <Mid ...rest/>
+                }
+                view Main {
+                    <Top/>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                component Leaf(label: String, ...rest) {
+                  <span ...rest>
+                    {label}
+                  </span>
+                }
+
+                component Mid(...rest) {
+                  <Leaf ...rest/>
+                }
+
+                component Top(...rest) {
+                  <Mid ...rest/>
+                }
+
+                view Main() {
+                  <Top label={"x"}/>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_transitive_duplicate_forwarded_attr() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component Inner(...rest) {
+                    <span ...rest></span>
+                }
+                component Wrapper(...rest) {
+                    <Inner title="a" ...rest/>
+                }
+                view Main {
+                    <Wrapper title="b"/>
+                }
+            "#},
+            expect![[r#"
+                error: Component `Wrapper` does not accept attribute `title`
+                  --> main.hop (line 8, col 14)
+                7 | view Main {
+                8 |     <Wrapper title="b"/>
+                  |              ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_transitive_duplicate_forwarded_data_attr() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component Inner(...rest) {
+                    <span ...rest></span>
+                }
+                component Wrapper(...rest) {
+                    <Inner data-foo="a" ...rest/>
+                }
+                view Main {
+                    <Wrapper data-foo="b"/>
+                }
+            "#},
+            expect![[r#"
+                error: Component `Wrapper` does not accept attribute `data-foo`
+                  --> main.hop (line 8, col 14)
+                7 | view Main {
+                8 |     <Wrapper data-foo="b"/>
+                  |              ^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_forwarded_attr_distinct_from_pinned() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                component Inner(...rest) {
+                    <span ...rest></span>
+                }
+                component Wrapper(...rest) {
+                    <Inner title="a" ...rest/>
+                }
+                view Main {
+                    <Wrapper lang="en"/>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                component Inner(...rest) {
+                  <span ...rest></span>
+                }
+
+                component Wrapper(...rest) {
+                  <Inner title="a" ...rest/>
+                }
+
+                view Main() {
+                  <Wrapper lang="en"/>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_multihop_duplicate_forwarded_attr() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component Inner(...rest) {
+                    <span ...rest></span>
+                }
+                component Mid(...rest) {
+                    <Inner title="a" ...rest/>
+                }
+                component Outer(...rest) {
+                    <Mid ...rest/>
+                }
+                view Main {
+                    <Outer title="b"/>
+                }
+            "#},
+            expect![[r#"
+                error: Component `Outer` does not accept attribute `title`
+                  --> main.hop (line 11, col 12)
+                10 | view Main {
+                11 |     <Outer title="b"/>
+                   |            ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_param_named_like_html_attr_routed_to_param_not_tail() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component Box(tabindex: Int, ...rest) {
+                    <div ...rest>
+                        <if {tabindex > 0}>focusable</if>
+                    </div>
+                }
+                component Wrapper(...rest) {
+                    <Box ...rest/>
+                }
+                view Main {
+                    <Wrapper tabindex="nope"/>
+                }
+            "#},
+            expect![[r#"
+                error: Argument of type String is incompatible with expected type Int
+                  --> main.hop (line 10, col 14)
+                 9 | view Main {
+                10 |     <Wrapper tabindex="nope"/>
+                   |              ^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_param_named_like_html_attr_alongside_tail_attr() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                component Box(tabindex: Int, ...rest) {
+                    <div ...rest>
+                        <if {tabindex > 0}>focusable</if>
+                    </div>
+                }
+                component Wrapper(...rest) {
+                    <Box ...rest/>
+                }
+                view Main {
+                    <Wrapper tabindex={2} data-x="y"/>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                component Box(tabindex: Int, ...rest) {
+                  <div ...rest>
+                    <if {(tabindex > 0)}>
+                      focusable
+                    </if>
+                  </div>
+                }
+
+                component Wrapper(...rest) {
+                  <Box ...rest/>
+                }
+
+                view Main() {
+                  <Wrapper tabindex={2} data-x="y"/>
+                }
             "#]],
         );
     }

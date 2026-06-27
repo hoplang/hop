@@ -1,13 +1,13 @@
 use super::parsed_ast::{
-    self, ParsedAst, ParsedComponentDeclaration, ParsedDeclaration, ParsedEnumDeclaration,
-    ParsedEnumDeclarationVariant, ParsedImportDeclaration, ParsedRecordDeclaration,
-    ParsedRecordDeclarationField, ParsedViewDeclaration,
+    self, ParsedAst, ParsedAttribute, ParsedComponentDeclaration, ParsedDeclaration,
+    ParsedEnumDeclaration, ParsedEnumDeclarationVariant, ParsedImportDeclaration,
+    ParsedRecordDeclaration, ParsedRecordDeclarationField, ParsedViewDeclaration, RestSpreadTarget,
 };
 use super::parsed_node::{ParsedLetBinding, ParsedLoopSource, ParsedMatchCase, ParsedNode};
 use super::token_tree::{TokenTree, parse_tree};
 use super::tokenizer::Tokenizer;
 use super::tokenizer::{self, Token};
-use crate::document::{Document, DocumentCursor, DocumentRange};
+use crate::document::{CheapString, Document, DocumentCursor, DocumentRange};
 use crate::document_id::DocumentId;
 use crate::expr::parsing::ParsedType;
 use crate::expr::parsing::parse_type::parse_type;
@@ -20,6 +20,12 @@ use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::iter::Peekable;
+
+/// A `...name` spread attribute found in a body, with the target it lands on.
+struct SpreadOccurrence {
+    spread_name: VarName,
+    target: RestSpreadTarget,
+}
 
 /// Parse a hop document into a ParsedAst.
 pub fn parse(
@@ -589,6 +595,7 @@ fn parse_component_declaration(
 
     // Parse the body - this contains HTML/component nodes
     let mut children = Vec::new();
+    let mut spreads = Vec::new();
     let mut tokenizer = Tokenizer::new();
 
     while let Some(tree) = parse_tree(&mut tokenizer, iter, errors) {
@@ -596,6 +603,7 @@ fn parse_component_declaration(
             tree,
             comments,
             errors,
+            &mut spreads,
             document_id,
             defined_components,
             imported_components,
@@ -613,12 +621,46 @@ fn parse_component_declaration(
     )?;
     let start_range = pub_range.clone().unwrap_or_else(|| keyword_range.clone());
     let range = start_range.to(body_end);
+
+    // Validate the body's rest spreads against the declared rest parameter and select the
+    // single target the rest forwards into. Spreads are collected as nodes finish parsing,
+    // i.e. children before their parent, so order them by source position first.
+    spreads.sort_by_key(|occ| occ.target.spread_range().start());
+    let rest_name = rest_param.as_ref().map(|(n, _)| n);
+    let mut valid: Vec<SpreadOccurrence> = Vec::new();
+    for occ in spreads {
+        match rest_name {
+            Some(rn) if occ.spread_name == *rn => valid.push(occ),
+            _ => errors.push(ParseError::SpreadNotDeclaredRest {
+                name: occ.spread_name.clone(),
+                range: occ.target.spread_range().clone(),
+            }),
+        }
+    }
+    for occ in valid.iter().skip(1) {
+        errors.push(ParseError::RestSpreadMoreThanOnce {
+            name: occ.spread_name.clone(),
+            range: occ.target.spread_range().clone(),
+        });
+    }
+    if let Some((name, range)) = rest_param.as_ref() {
+        if valid.is_empty() {
+            errors.push(ParseError::RestNeverSpread {
+                component: component_name.clone(),
+                name: name.clone(),
+                range: range.clone(),
+            });
+        }
+    }
+    let rest_target = valid.into_iter().next().map(|occ| occ.target);
+
     Some(ParsedComponentDeclaration {
         component_name,
         tag_name: name_range,
         closing_tag_name: None,
         params,
         rest_param,
+        rest_target,
         range,
         children,
         pub_range,
@@ -724,6 +766,7 @@ fn parse_view_declaration(
     )?;
 
     let mut children = Vec::new();
+    let mut spreads = Vec::new();
     let mut tokenizer = Tokenizer::new();
 
     while let Some(tree) = parse_tree(&mut tokenizer, iter, errors) {
@@ -731,6 +774,7 @@ fn parse_view_declaration(
             tree,
             comments,
             errors,
+            &mut spreads,
             document_id,
             defined_components,
             imported_components,
@@ -748,6 +792,13 @@ fn parse_view_declaration(
     )?;
     let start_range = pub_range.clone().unwrap_or_else(|| keyword_range.clone());
     let range = start_range.to(body_end);
+    // Views cannot declare a rest parameter, so any spread in the body fails to name one.
+    for occ in &spreads {
+        errors.push(ParseError::SpreadNotDeclaredRest {
+            name: occ.spread_name.clone(),
+            range: occ.target.spread_range().clone(),
+        });
+    }
     Some(ParsedViewDeclaration {
         name,
         name_range,
@@ -758,10 +809,67 @@ fn parse_view_declaration(
     })
 }
 
+/// Record a spread attribute on an HTML element, if present, as the body is parsed.
+fn collect_element_spread(
+    element: &HtmlElement,
+    attributes: &[ParsedAttribute],
+    out: &mut Vec<SpreadOccurrence>,
+) {
+    for attr in attributes {
+        if let ParsedAttribute::Spread { name, range } = attr {
+            let supplied_attrs = attributes
+                .iter()
+                .filter_map(|a| match a {
+                    ParsedAttribute::Named { name, .. } => Some(name.to_cheap_string()),
+                    ParsedAttribute::Spread { .. } => None,
+                })
+                .collect();
+            out.push(SpreadOccurrence {
+                spread_name: name.clone(),
+                target: RestSpreadTarget::Element {
+                    element: element.clone(),
+                    supplied_attrs,
+                    spread_range: range.clone(),
+                },
+            });
+        }
+    }
+}
+
+/// Record a spread attribute on a component invocation, if present, as the body is parsed.
+fn collect_component_spread(
+    callee: &TypeName,
+    args: &[ParsedAttribute],
+    has_children: bool,
+    out: &mut Vec<SpreadOccurrence>,
+) {
+    for attr in args {
+        if let ParsedAttribute::Spread { name, range } = attr {
+            let supplied_attrs: Vec<CheapString> = args
+                .iter()
+                .filter_map(|a| match a {
+                    ParsedAttribute::Named { name, .. } => Some(name.to_cheap_string()),
+                    ParsedAttribute::Spread { .. } => None,
+                })
+                .collect();
+            out.push(SpreadOccurrence {
+                spread_name: name.clone(),
+                target: RestSpreadTarget::Component {
+                    callee: callee.clone(),
+                    supplied_attrs,
+                    has_children,
+                    spread_range: range.clone(),
+                },
+            });
+        }
+    }
+}
+
 fn construct_node(
     tree: TokenTree,
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut Vec<ParseError>,
+    spreads: &mut Vec<SpreadOccurrence>,
     document_id: &DocumentId,
     defined_components: &HashSet<String>,
     imported_components: &HashMap<String, DocumentId>,
@@ -808,6 +916,7 @@ fn construct_node(
                 }
             };
 
+            collect_element_spread(&element, &attributes, spreads);
             Some(ParsedNode::Html {
                 element,
                 tag_name,
@@ -843,6 +952,7 @@ fn construct_node(
                             child,
                             comments,
                             errors,
+                            spreads,
                             document_id,
                             defined_components,
                             imported_components,
@@ -896,6 +1006,7 @@ fn construct_node(
                                         c,
                                         comments,
                                         errors,
+                                        spreads,
                                         document_id,
                                         defined_components,
                                         imported_components,
@@ -931,6 +1042,7 @@ fn construct_node(
                         child,
                         comments,
                         errors,
+                        spreads,
                         document_id,
                         defined_components,
                         imported_components,
@@ -1048,6 +1160,12 @@ fn construct_node(
                         None
                     };
 
+                    collect_component_spread(
+                        &component_name,
+                        &parsed_args,
+                        children.is_some(),
+                        spreads,
+                    );
                     Some(ParsedNode::ComponentInvocation {
                         component_name,
                         component_name_opening_range: tag_name,
@@ -1077,6 +1195,7 @@ fn construct_node(
                         }
                     };
 
+                    collect_element_spread(&element, &attributes, spreads);
                     Some(ParsedNode::Html {
                         element,
                         tag_name,
@@ -4217,7 +4336,7 @@ mod tests {
         accept(
             indoc! {r#"
                 component Foo(class: String, ...rest) {
-                  <div></div>
+                  <div ...rest></div>
                 }
             "#},
             expect![[r#"
@@ -4225,7 +4344,7 @@ mod tests {
                   class: String,
                   ...rest,
                 ) {
-                  <div>
+                  <div ...rest>
                   </div>
                 }
             "#]],
@@ -4237,7 +4356,7 @@ mod tests {
         reject(
             indoc! {r#"
                 component Foo(...rest, a: String, b: String) {
-                  <div></div>
+                  <div ...rest></div>
                 }
             "#},
             expect![[r#"
@@ -4253,7 +4372,7 @@ mod tests {
         reject(
             indoc! {r#"
                 component Foo(...a, ...b) {
-                  <div></div>
+                  <div ...a></div>
                 }
             "#},
             expect![[r#"
@@ -4302,13 +4421,13 @@ mod tests {
     fn rejects_spread_attribute_with_uppercase_name() {
         reject(
             indoc! {r#"
-                component Foo(...rest) {
+                component Foo() {
                   <button ...Bar></button>
                 }
             "#},
             expect![[r#"
                 error: Invalid variable name 'Bar': Variable name must be lowercase (found uppercase: 'B')
-                1 | component Foo(...rest) {
+                1 | component Foo() {
                 2 |   <button ...Bar></button>
                   |              ^^^
             "#]],
@@ -4319,15 +4438,82 @@ mod tests {
     fn rejects_spread_attribute_with_leading_underscore() {
         reject(
             indoc! {r#"
-                component Foo(...rest) {
+                component Foo() {
                   <button ..._x></button>
                 }
             "#},
             expect![[r#"
                 error: Invalid variable name '_x': Variable name cannot start with underscore
-                1 | component Foo(...rest) {
+                1 | component Foo() {
                 2 |   <button ..._x></button>
                   |              ^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_rest_param_never_spread() {
+        reject(
+            indoc! {r#"
+                component Foo(...rest) {
+                  <div></div>
+                }
+            "#},
+            expect![[r#"
+                error: Component Foo declares rest parameter 'rest' but never spreads it
+                1 | component Foo(...rest) {
+                  |               ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_spread_without_declared_rest() {
+        reject(
+            indoc! {r#"
+                component Foo() {
+                  <div ...rest></div>
+                }
+            "#},
+            expect![[r#"
+                error: Spread '...rest' does not refer to a declared rest parameter
+                1 | component Foo() {
+                2 |   <div ...rest></div>
+                  |        ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_rest_spread_more_than_once() {
+        reject(
+            indoc! {r#"
+                component Foo(...rest) {
+                  <div ...rest><span ...rest></span></div>
+                }
+            "#},
+            expect![[r#"
+                error: Rest parameter 'rest' is spread more than once
+                1 | component Foo(...rest) {
+                2 |   <div ...rest><span ...rest></span></div>
+                  |                      ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_spread_in_view() {
+        reject(
+            indoc! {r#"
+                view Main {
+                  <div ...rest></div>
+                }
+            "#},
+            expect![[r#"
+                error: Spread '...rest' does not refer to a declared rest parameter
+                1 | view Main {
+                2 |   <div ...rest></div>
+                  |        ^^^^^^^
             "#]],
         );
     }
