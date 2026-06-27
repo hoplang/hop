@@ -177,12 +177,14 @@ fn typecheck_module(
                             continue;
                         };
 
-                        // Typecheck default value
                         let typed_default_value = {
                             if let Some(default_expr) = &param.default_value {
+                                // Use a fresh variable scope, default values
+                                // are not allowed to reference eachother.
+                                let mut fresh_var_env = VariableScope::new();
                                 if let Some(typed_default) = errors.ok_or_add(typecheck_expr(
                                     default_expr,
-                                    &mut var_env,
+                                    &mut fresh_var_env,
                                     &mut type_env,
                                     annotations,
                                     definition_links,
@@ -1768,6 +1770,48 @@ mod tests {
             panic!("expected diagnostics but got none");
         }
         expected.assert_eq(&actual);
+    }
+
+    #[test]
+    fn rejects_default_value_referencing_earlier_parameter() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component A(a: String, b: String = a) {
+                    <span>{a}{b}</span>
+                }
+                view Main {
+                    <A a="a" b="b"/>
+                }
+            "#},
+            expect![[r#"
+                error: Undefined variable: a
+                  --> main.hop (line 1, col 36)
+                1 | component A(a: String, b: String = a) {
+                  |                                    ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_default_value_referencing_later_parameter() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component A(a: String = b, b: String) {
+                    <span>{a}{b}</span>
+                }
+                view Main {
+                    <A a="a" b="b"/>
+                }
+            "#},
+            expect![[r#"
+                error: Undefined variable: b
+                  --> main.hop (line 1, col 25)
+                1 | component A(a: String = b, b: String) {
+                  |                         ^
+            "#]],
+        );
     }
 
     #[test]
