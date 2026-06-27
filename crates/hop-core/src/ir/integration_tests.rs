@@ -369,6 +369,1255 @@ mod tests {
 
     #[test]
     #[ignore]
+    fn rest_spread_forwards_attribute_to_html() {
+        check(
+            indoc! {r#"
+                component Button(
+                  label: String,
+                  ...rest,
+                ) {
+                  <button class="btn" ...rest>
+                    {label}
+                  </button>
+                }
+
+                view Test {
+                  <Button label="Hi" id="submit"/>
+                }
+            "#},
+            r#"<button class="btn" id="submit">Hi</button>"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                view Test() {
+                  let label = "Hi" in {
+                    write("<button")
+                    write(" class=\"btn\"")
+                    write(" id=\"submit\"")
+                    write(">")
+                    write_escaped(label)
+                    write("</button>")
+                  }
+                }
+                -- ir (optimized) --
+                view Test() {
+                  write("<button class=\"btn\" id=\"submit\">Hi</button>")
+                }
+                -- expected output --
+                <button class="btn" id="submit">Hi</button>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn accepts_extra_attrs_when_rest_reaches_html() {
+        check(
+            indoc! {r#"
+                component Button(
+                  class: String,
+                  slot: Fragment,
+                  ...rest,
+                ) {
+                  <button class={class} ...rest>
+                    {slot}
+                  </button>
+                }
+
+                view Test {
+                  <Button class="p-2" data-foo="bar">
+                    Hi
+                  </Button>
+                }
+            "#},
+            r#"<button class="p-2" data-foo="bar">Hi</button>"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                view Test() {
+                  let v_0 = {
+                    write("Hi")
+                  } in {
+                    let class_1 = "p-2" in {
+                      let slot = v_0 in {
+                        write("<button")
+                        write(" class=\"")
+                        write_escaped(tw_merge(class_1))
+                        write("\"")
+                        write(" data-foo=\"bar\"")
+                        write(">")
+                        write_expr(slot)
+                        write("</button>")
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                view Test() {
+                  let v_0 = {
+                    write("Hi")
+                  } in {
+                    let slot = v_0 in {
+                      write("<button class=\"p-2\" data-foo=\"bar\">")
+                      write_expr(slot)
+                      write("</button>")
+                    }
+                  }
+                }
+                -- expected output --
+                <button class="p-2" data-foo="bar">Hi</button>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn accepts_forwarded_attr_not_set_on_element() {
+        check(
+            indoc! {r#"
+                component Button(
+                  slot: Fragment,
+                  ...rest,
+                ) {
+                  <button class="builtin" ...rest>
+                    {slot}
+                  </button>
+                }
+
+                view Test {
+                  <Button data-x="y">
+                    Hi
+                  </Button>
+                }
+            "#},
+            r#"<button class="builtin" data-x="y">Hi</button>"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                view Test() {
+                  let v_0 = {
+                    write("Hi")
+                  } in {
+                    let slot = v_0 in {
+                      write("<button")
+                      write(" class=\"builtin\"")
+                      write(" data-x=\"y\"")
+                      write(">")
+                      write_expr(slot)
+                      write("</button>")
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                view Test() {
+                  let v_0 = {
+                    write("Hi")
+                  } in {
+                    let slot = v_0 in {
+                      write("<button class=\"builtin\" data-x=\"y\">")
+                      write_expr(slot)
+                      write("</button>")
+                    }
+                  }
+                }
+                -- expected output --
+                <button class="builtin" data-x="y">Hi</button>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn accepts_svg_attributes_on_forwarded_svg() {
+        check(
+            indoc! {r#"
+                component Svg(...rest) {
+                  <svg ...rest>
+                  </svg>
+                }
+
+                view Test {
+                  <Svg viewBox="0 0 100 100"/>
+                }
+            "#},
+            r#"<svg viewBox="0 0 100 100"></svg>"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                view Test() {
+                  write("<svg")
+                  write(" viewBox=\"0 0 100 100\"")
+                  write(">")
+                  write("</svg>")
+                }
+                -- ir (optimized) --
+                view Test() {
+                  write("<svg viewBox=\"0 0 100 100\"></svg>")
+                }
+                -- expected output --
+                <svg viewBox="0 0 100 100"></svg>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn accepts_required_arg_forwarded_through_rest() {
+        check(
+            indoc! {r#"
+                component Card(title: String) {
+                  <div>
+                    {title}
+                  </div>
+                }
+
+                component Wrapper(...rest) {
+                  <Card ...rest/>
+                }
+
+                view Test {
+                  <Wrapper title="hi"/>
+                }
+            "#},
+            r#"<div>hi</div>"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                view Test() {
+                  let title = "hi" in {
+                    write("<div")
+                    write(">")
+                    write_escaped(title)
+                    write("</div>")
+                  }
+                }
+                -- ir (optimized) --
+                view Test() {
+                  write("<div>hi</div>")
+                }
+                -- expected output --
+                <div>hi</div>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn accepts_explicit_arg_supplied_alongside_rest_spread() {
+        check(
+            indoc! {r#"
+                component Card(title: String) {
+                  <div>
+                    {title}
+                  </div>
+                }
+
+                component Wrapper(...rest) {
+                  <Card title="explicit" ...rest/>
+                }
+
+                view Test {
+                  <Wrapper/>
+                }
+            "#},
+            r#"<div>explicit</div>"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                view Test() {
+                  let title = "explicit" in {
+                    write("<div")
+                    write(">")
+                    write_escaped(title)
+                    write("</div>")
+                  }
+                }
+                -- ir (optimized) --
+                view Test() {
+                  write("<div>explicit</div>")
+                }
+                -- expected output --
+                <div>explicit</div>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn accepts_record_param_forwarded_through_rest() {
+        check(
+            indoc! {r#"
+                record User {
+                  name: String,
+                }
+
+                component Card(user: User) {
+                  <div>
+                    {user.name}
+                  </div>
+                }
+
+                component Wrapper(...rest) {
+                  <Card ...rest/>
+                }
+
+                view Test {
+                  <let {user: User = User {name: "Ada"}}>
+                    <Wrapper user={user}/>
+                  </let>
+                }
+            "#},
+            r#"<div>Ada</div>"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                record User {
+                  name: String,
+                }
+                view Test() {
+                  let user = User {name: "Ada"} in {
+                    let user_1 = user in {
+                      write("<div")
+                      write(">")
+                      write_escaped(user_1.name)
+                      write("</div>")
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                record User {
+                  name: String,
+                }
+                view Test() {
+                  let user = User {name: "Ada"} in {
+                    let user_1 = user in {
+                      write("<div>")
+                      write_escaped(user_1.name)
+                      write("</div>")
+                    }
+                  }
+                }
+                -- expected output --
+                <div>Ada</div>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn accepts_required_args_forwarded_transitively() {
+        check(
+            indoc! {r#"
+                component Card(title: String) {
+                  <div>
+                    {title}
+                  </div>
+                }
+
+                component Bar(
+                  name: String,
+                  ...rest,
+                ) {
+                  <div>
+                    {name}
+                    <Card ...rest/>
+                  </div>
+                }
+
+                component Baz(...rest) {
+                  <Bar ...rest/>
+                }
+
+                view Test {
+                  <Baz name="n" title="t"/>
+                }
+            "#},
+            r#"<div>n<div>t</div></div>"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                view Test() {
+                  let name = "n" in {
+                    let title = "t" in {
+                      write("<div")
+                      write(">")
+                      write_escaped(name)
+                      write("<div")
+                      write(">")
+                      write_escaped(title)
+                      write("</div>")
+                      write("</div>")
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                view Test() {
+                  write("<div>n<div>t</div></div>")
+                }
+                -- expected output --
+                <div>n<div>t</div></div>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn accepts_int_param_forwarded_through_rest() {
+        check(
+            indoc! {r#"
+                component Card(count: Int) {
+                  <if {count > 0}>
+                    <div>
+                      positive
+                    </div>
+                  </if>
+                }
+
+                component Wrapper(...rest) {
+                  <Card ...rest/>
+                }
+
+                view Test {
+                  <Wrapper count={3}/>
+                }
+            "#},
+            r#"<div>positive</div>"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                view Test() {
+                  let count = 3 in {
+                    if (0 < count) {
+                      write("<div")
+                      write(">")
+                      write("positive")
+                      write("</div>")
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                view Test() {
+                  let count = 3 in {
+                    if (0 < count) {
+                      write("<div>positive</div>")
+                    }
+                  }
+                }
+                -- expected output --
+                <div>positive</div>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn accepts_typed_field_and_open_html_tail_in_one_forward() {
+        check(
+            indoc! {r#"
+                component Box(
+                  count: Int,
+                  ...rest,
+                ) {
+                  <div ...rest>
+                    <if {count > 0}>
+                      positive
+                    </if>
+                  </div>
+                }
+
+                component Wrapper(...rest) {
+                  <Box ...rest/>
+                }
+
+                view Test {
+                  <Wrapper count={3} data-foo="bar"/>
+                }
+            "#},
+            r#"<div data-foo="bar">positive</div>"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                view Test() {
+                  let count = 3 in {
+                    write("<div")
+                    write(" data-foo=\"bar\"")
+                    write(">")
+                    if (0 < count) {
+                      write("positive")
+                    }
+                    write("</div>")
+                  }
+                }
+                -- ir (optimized) --
+                view Test() {
+                  let count = 3 in {
+                    write("<div data-foo=\"bar\">")
+                    if (0 < count) {
+                      write("positive")
+                    }
+                    write("</div>")
+                  }
+                }
+                -- expected output --
+                <div data-foo="bar">positive</div>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn accepts_slot_forwarded_transitively_through_rest() {
+        check(
+            indoc! {r#"
+                component Foo(slot: Fragment) {
+                  <div>
+                    {slot}
+                  </div>
+                }
+
+                component Bar(...rest) {
+                  <Foo ...rest/>
+                }
+
+                component Baz(...rest) {
+                  <Bar ...rest/>
+                }
+
+                view Test {
+                  <Baz>
+                    deep
+                  </Baz>
+                }
+            "#},
+            r#"<div>deep</div>"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                view Test() {
+                  let v_0 = {
+                    write("deep")
+                  } in {
+                    let slot = v_0 in {
+                      write("<div")
+                      write(">")
+                      write_expr(slot)
+                      write("</div>")
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                view Test() {
+                  let v_0 = {
+                    write("deep")
+                  } in {
+                    let slot = v_0 in {
+                      write("<div>")
+                      write_expr(slot)
+                      write("</div>")
+                    }
+                  }
+                }
+                -- expected output --
+                <div>deep</div>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn accepts_param_reserved_out_of_rest_when_callee_has_default() {
+        check(
+            indoc! {r#"
+                component Inner(
+                  class: String = "x",
+                  ...rest,
+                ) {
+                  <span class={class} ...rest>
+                  </span>
+                }
+
+                component Outer(
+                  class: String,
+                  ...rest,
+                ) {
+                  <div class={class}>
+                    <Inner ...rest/>
+                  </div>
+                }
+
+                view Test {
+                  <Outer class="x"/>
+                }
+            "#},
+            r#"<div class="x"><span class="x"></span></div>"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                view Test() {
+                  let class_1 = "x" in {
+                    write("<div")
+                    write(" class=\"")
+                    write_escaped(tw_merge(class_1))
+                    write("\"")
+                    write(">")
+                    let class_2 = "x" in {
+                      write("<span")
+                      write(" class=\"")
+                      write_escaped(tw_merge(class_2))
+                      write("\"")
+                      write(">")
+                      write("</span>")
+                    }
+                    write("</div>")
+                  }
+                }
+                -- ir (optimized) --
+                view Test() {
+                  write("<div class=\"x\"><span class=\"x\"></span></div>")
+                }
+                -- expected output --
+                <div class="x"><span class="x"></span></div>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn accepts_intercept_and_merge_wrapper() {
+        check(
+            indoc! {r#"
+                component Foo(
+                  slot: Fragment,
+                  class: String,
+                  ...rest,
+                ) {
+                  <div class={class} ...rest>
+                    {slot}
+                  </div>
+                }
+
+                component Button(
+                  slot: Fragment,
+                  class: String = "",
+                  ...rest,
+                ) {
+                  <Foo class={class} ...rest>
+                    {slot}
+                  </Foo>
+                }
+
+                view Test {
+                  <Button class="primary">
+                    click
+                  </Button>
+                }
+            "#},
+            r#"<div class="primary">click</div>"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                view Test() {
+                  let v_1 = {
+                    write("click")
+                  } in {
+                    let slot = v_1 in {
+                      let class_1 = "primary" in {
+                        let v_0 = {
+                          write_expr(slot)
+                        } in {
+                          let slot_2 = v_0 in {
+                            let class_3 = class_1 in {
+                              write("<div")
+                              write(" class=\"")
+                              write_escaped(tw_merge(class_3))
+                              write("\"")
+                              write(">")
+                              write_expr(slot_2)
+                              write("</div>")
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                view Test() {
+                  let v_1 = {
+                    write("click")
+                  } in {
+                    let slot = v_1 in {
+                      let v_0 = {
+                        write_expr(slot)
+                      } in {
+                        let slot_2 = v_0 in {
+                          write("<div class=\"primary\">")
+                          write_expr(slot_2)
+                          write("</div>")
+                        }
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                <div class="primary">click</div>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn accepts_optional_param_forwarded_and_overridden_through_rest() {
+        check(
+            indoc! {r#"
+                component Inner(
+                  class: String = "x",
+                  ...rest,
+                ) {
+                  <span class={class} ...rest>
+                  </span>
+                }
+
+                component Wrapper(...rest) {
+                  <Inner ...rest/>
+                }
+
+                view Test {
+                  <Wrapper class="y"/>
+                }
+            "#},
+            r#"<span class="y"></span>"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                view Test() {
+                  let class_1 = "y" in {
+                    write("<span")
+                    write(" class=\"")
+                    write_escaped(tw_merge(class_1))
+                    write("\"")
+                    write(">")
+                    write("</span>")
+                  }
+                }
+                -- ir (optimized) --
+                view Test() {
+                  write("<span class=\"y\"></span>")
+                }
+                -- expected output --
+                <span class="y"></span>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn accepts_optional_default_chain_with_caller_value() {
+        check(
+            indoc! {r#"
+                component A(
+                  class: String = "",
+                  ...rest,
+                ) {
+                  <div class={class} ...rest>
+                  </div>
+                }
+
+                component B(
+                  class: String = "",
+                  ...rest,
+                ) {
+                  <A class={class} ...rest/>
+                }
+
+                view Test {
+                  <B class="main"/>
+                }
+            "#},
+            r#"<div class="main"></div>"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                view Test() {
+                  let class_1 = "main" in {
+                    let class_2 = class_1 in {
+                      write("<div")
+                      write(" class=\"")
+                      write_escaped(tw_merge(class_2))
+                      write("\"")
+                      write(">")
+                      write("</div>")
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                view Test() {
+                  write("<div class=\"main\"></div>")
+                }
+                -- expected output --
+                <div class="main"></div>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn accepts_optional_default_chain_uses_outer_default() {
+        check(
+            indoc! {r#"
+                component A(
+                  class: String = "a",
+                  ...rest,
+                ) {
+                  <div class={class} ...rest>
+                  </div>
+                }
+
+                component B(
+                  class: String = "b",
+                  ...rest,
+                ) {
+                  <A class={class} ...rest/>
+                }
+
+                view Test {
+                  <B/>
+                }
+            "#},
+            r#"<div class="b"></div>"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                view Test() {
+                  let class_1 = "b" in {
+                    let class_2 = class_1 in {
+                      write("<div")
+                      write(" class=\"")
+                      write_escaped(tw_merge(class_2))
+                      write("\"")
+                      write(">")
+                      write("</div>")
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                view Test() {
+                  write("<div class=\"b\"></div>")
+                }
+                -- expected output --
+                <div class="b"></div>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn accepts_forwarded_optional_default_through_rest() {
+        check(
+            indoc! {r#"
+                component A(
+                  label: String = "x",
+                  ...rest,
+                ) {
+                  <span ...rest>
+                    {label}
+                  </span>
+                }
+
+                component B(...rest) {
+                  <A ...rest/>
+                }
+
+                view Test {
+                  <B/>
+                }
+            "#},
+            r#"<span>x</span>"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                view Test() {
+                  let label = "x" in {
+                    write("<span")
+                    write(">")
+                    write_escaped(label)
+                    write("</span>")
+                  }
+                }
+                -- ir (optimized) --
+                view Test() {
+                  write("<span>x</span>")
+                }
+                -- expected output --
+                <span>x</span>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn accepts_forwarded_default_materialized_once_in_chain() {
+        check(
+            indoc! {r#"
+                component Leaf(
+                  label: String = "x",
+                  ...rest,
+                ) {
+                  <span ...rest>
+                    {label}
+                  </span>
+                }
+
+                component Mid(...rest) {
+                  <Leaf ...rest/>
+                }
+
+                component Top(...rest) {
+                  <Mid ...rest/>
+                }
+
+                view Test {
+                  <Top/>
+                }
+            "#},
+            r#"<span>x</span>"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                view Test() {
+                  let label = "x" in {
+                    write("<span")
+                    write(">")
+                    write_escaped(label)
+                    write("</span>")
+                  }
+                }
+                -- ir (optimized) --
+                view Test() {
+                  write("<span>x</span>")
+                }
+                -- expected output --
+                <span>x</span>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn accepts_forwarded_attr_distinct_from_pinned() {
+        check(
+            indoc! {r#"
+                component Inner(...rest) {
+                  <span ...rest>
+                  </span>
+                }
+
+                component Wrapper(...rest) {
+                  <Inner title="a" ...rest/>
+                }
+
+                view Test {
+                  <Wrapper lang="en"/>
+                }
+            "#},
+            r#"<span title="a" lang="en"></span>"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                view Test() {
+                  write("<span")
+                  write(" title=\"a\"")
+                  write(" lang=\"en\"")
+                  write(">")
+                  write("</span>")
+                }
+                -- ir (optimized) --
+                view Test() {
+                  write("<span title=\"a\" lang=\"en\"></span>")
+                }
+                -- expected output --
+                <span title="a" lang="en"></span>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn accepts_param_named_like_html_attr_alongside_tail_attr() {
+        check(
+            indoc! {r#"
+                component Box(
+                  tabindex: Int,
+                  ...rest,
+                ) {
+                  <div ...rest>
+                    <if {tabindex > 0}>
+                      focusable
+                    </if>
+                  </div>
+                }
+
+                component Wrapper(...rest) {
+                  <Box ...rest/>
+                }
+
+                view Test {
+                  <Wrapper tabindex={2} data-x="y"/>
+                }
+            "#},
+            r#"<div data-x="y">focusable</div>"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                view Test() {
+                  let tabindex = 2 in {
+                    write("<div")
+                    write(" data-x=\"y\"")
+                    write(">")
+                    if (0 < tabindex) {
+                      write("focusable")
+                    }
+                    write("</div>")
+                  }
+                }
+                -- ir (optimized) --
+                view Test() {
+                  let tabindex = 2 in {
+                    write("<div data-x=\"y\">")
+                    if (0 < tabindex) {
+                      write("focusable")
+                    }
+                    write("</div>")
+                  }
+                }
+                -- expected output --
+                <div data-x="y">focusable</div>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
     fn option_match_returning_options() {
         check(
             indoc! {r#"

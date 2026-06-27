@@ -3,13 +3,13 @@ use super::inlined_node::InlinedNode;
 use crate::document_id::DocumentId;
 use crate::expr::patterns::{EnumMatchArm, Match};
 use crate::hop::typing::typed_ast::{TypedAst, TypedComponentDeclaration, TypedViewDeclaration};
-use crate::hop::typing::typed_node::{TypedArgument, TypedNode};
+use crate::hop::typing::typed_node::{TypedArgument, TypedAttribute, TypedNode};
 use crate::symbols::type_name::TypeName;
 use std::collections::{HashMap, HashSet};
 
 /// The Inliner transforms ASTs by replacing ComponentInvocation nodes with their
 /// inlined component declarations, using Let nodes for parameter binding and
-/// StringConcat for class attribute merging.
+/// resolving `...rest` spreads into concrete attributes on the spread target.
 ///
 /// Recursive components are detected and emitted as separate component definitions
 /// with ComponentInvocation nodes at their reference sites.
@@ -82,7 +82,7 @@ impl<'a> InlinerState<'a> {
             .expect("Component declaration should exist");
 
         // Inline the component body - self-invocations will become ComponentInvocation
-        let inlined_body = self.inline_nodes(&component.children);
+        let inlined_body = self.inline_nodes(&component.children, &[]);
 
         self.component_defs.push(InlinedComponentDeclaration {
             component_name: component.component_name.clone(),
@@ -95,7 +95,7 @@ impl<'a> InlinerState<'a> {
         InlinedViewDeclaration {
             name: view.name.clone(),
             params: view.params.clone(),
-            children: self.inline_nodes(&view.children),
+            children: self.inline_nodes(&view.children, &[]),
         }
     }
 
@@ -104,9 +104,10 @@ impl<'a> InlinerState<'a> {
         &mut self,
         component: &TypedComponentDeclaration,
         args: &[TypedArgument],
+        forwarded: &[TypedAttribute],
         output: &mut Vec<InlinedNode>,
     ) {
-        let inlined_children = self.inline_nodes(&component.children);
+        let inlined_children = self.inline_nodes(&component.children, forwarded);
 
         if args.is_empty() {
             output.extend(inlined_children);
@@ -125,25 +126,38 @@ impl<'a> InlinerState<'a> {
     }
 
     /// Inline nodes, pushing results to output
-    fn inline_nodes(&mut self, nodes: &[TypedNode]) -> Vec<InlinedNode> {
+    fn inline_nodes(
+        &mut self,
+        nodes: &[TypedNode],
+        active_rest: &[TypedAttribute],
+    ) -> Vec<InlinedNode> {
         let mut output = Vec::with_capacity(nodes.len());
         for node in nodes {
-            self.inline_node(node, &mut output);
+            self.inline_node(node, &mut output, active_rest);
         }
         output
     }
 
     /// Inline a single node, pushing results to output
-    fn inline_node(&mut self, node: &TypedNode, output: &mut Vec<InlinedNode>) {
+    fn inline_node(
+        &mut self,
+        node: &TypedNode,
+        output: &mut Vec<InlinedNode>,
+        active_rest: &[TypedAttribute],
+    ) {
         match node {
             TypedNode::ComponentInvocation {
                 component_name,
                 component_module,
                 args,
-                extra_attributes: _,
-                rest_spread: _,
+                extra_attributes,
+                rest_spread,
             } => {
                 if self.recursive_components.contains(component_name) {
+                    debug_assert!(
+                        extra_attributes.is_empty() && rest_spread.is_none(),
+                        "recursive components cannot carry rest spreads"
+                    );
                     // Emit the component def if not yet emitted
                     self.emit_component_def(component_module, component_name);
 
@@ -159,20 +173,28 @@ impl<'a> InlinerState<'a> {
                         .get_component_declaration(component_name.as_str())
                         .expect("Component declaration should exist");
 
-                    self.inline_component_invocation(component, args, output);
+                    let mut forwarded = extra_attributes.clone();
+                    if rest_spread.is_some() {
+                        forwarded.extend_from_slice(active_rest);
+                    }
+                    self.inline_component_invocation(component, args, &forwarded, output);
                 }
             }
 
             TypedNode::Html {
                 element,
                 attributes,
-                rest_spread: _,
+                rest_spread,
                 children,
             } => {
+                let mut attributes = attributes.clone();
+                if rest_spread.is_some() {
+                    attributes.extend_from_slice(active_rest);
+                }
                 output.push(InlinedNode::Html {
                     element: element.clone(),
-                    attributes: attributes.clone(),
-                    children: self.inline_nodes(children),
+                    attributes,
+                    children: self.inline_nodes(children, active_rest),
                 });
             }
 
@@ -182,7 +204,7 @@ impl<'a> InlinerState<'a> {
             } => {
                 output.push(InlinedNode::If {
                     condition: condition.clone(),
-                    children: self.inline_nodes(children),
+                    children: self.inline_nodes(children, active_rest),
                 });
             }
 
@@ -194,7 +216,7 @@ impl<'a> InlinerState<'a> {
                 output.push(InlinedNode::For {
                     var_name: var_name.clone(),
                     source: source.clone(),
-                    children: self.inline_nodes(children),
+                    children: self.inline_nodes(children, active_rest),
                 });
             }
 
@@ -223,8 +245,8 @@ impl<'a> InlinerState<'a> {
                         true_body,
                         false_body,
                     } => {
-                        let true_output = self.inline_nodes(true_body);
-                        let false_output = self.inline_nodes(false_body);
+                        let true_output = self.inline_nodes(true_body, active_rest);
+                        let false_output = self.inline_nodes(false_body, active_rest);
                         Match::Bool {
                             subject: subject.clone(),
                             true_body: Box::new(true_output),
@@ -239,8 +261,8 @@ impl<'a> InlinerState<'a> {
                     } => Match::Option {
                         subject: subject.clone(),
                         some_arm_binding: some_arm_binding.clone(),
-                        some_arm_body: Box::new(self.inline_nodes(some_arm_body)),
-                        none_arm_body: Box::new(self.inline_nodes(none_arm_body)),
+                        some_arm_body: Box::new(self.inline_nodes(some_arm_body, active_rest)),
+                        none_arm_body: Box::new(self.inline_nodes(none_arm_body, active_rest)),
                     },
                     Match::Enum { subject, arms } => Match::Enum {
                         subject: subject.clone(),
@@ -249,7 +271,7 @@ impl<'a> InlinerState<'a> {
                             .map(|arm| EnumMatchArm {
                                 pattern: arm.pattern.clone(),
                                 bindings: arm.bindings.clone(),
-                                body: self.inline_nodes(&arm.body),
+                                body: self.inline_nodes(&arm.body, active_rest),
                             })
                             .collect(),
                     },
@@ -267,7 +289,7 @@ impl<'a> InlinerState<'a> {
                 output.push(InlinedNode::Let {
                     var: var.clone(),
                     value: value.clone(),
-                    children: self.inline_nodes(children),
+                    children: self.inline_nodes(children, active_rest),
                 });
             }
 
@@ -278,8 +300,8 @@ impl<'a> InlinerState<'a> {
             } => {
                 output.push(InlinedNode::LetFragment {
                     var: var.clone(),
-                    fragment_body: self.inline_nodes(fragment_body),
-                    body: self.inline_nodes(body),
+                    fragment_body: self.inline_nodes(fragment_body, active_rest),
+                    body: self.inline_nodes(body, active_rest),
                 });
             }
 
@@ -291,7 +313,7 @@ impl<'a> InlinerState<'a> {
                 output.push(InlinedNode::LetRecordDestructure {
                     subject: subject.clone(),
                     bindings: bindings.clone(),
-                    children: self.inline_nodes(children),
+                    children: self.inline_nodes(children, active_rest),
                 });
             }
         }
@@ -375,6 +397,122 @@ mod tests {
         let output = parts.join("\n");
 
         expected.assert_eq(&output);
+    }
+
+    #[test]
+    fn html_target_spread_appends_extra_attributes() {
+        check_view_inlining(
+            vec![(
+                "main.hop",
+                r#"
+                    component Button(label: String, ...rest) {
+                        <button class="btn" ...rest>{label}</button>
+                    }
+
+                    view Main() {
+                        <Button label="Hi" id="submit" type="button"/>
+                    }
+                "#,
+            )],
+            expect![[r#"
+                view Main() {
+                  <let {label = "Hi"}>
+                    <button class="btn" id="submit" type="button">
+                      {label}
+                    </button>
+                  </let>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn forwards_rest_through_nested_component() {
+        check_view_inlining(
+            vec![(
+                "main.hop",
+                r#"
+                    component Base(...rest) {
+                        <div ...rest></div>
+                    }
+
+                    component Card(title: String, ...rest) {
+                        <div>
+                            <h1>{title}</h1>
+                            <Base ...rest/>
+                        </div>
+                    }
+
+                    view Main() {
+                        <Card title="Hi" id="x"/>
+                    }
+                "#,
+            )],
+            expect![[r#"
+                view Main() {
+                  <let {title = "Hi"}>
+                    <div>
+                      <h1>
+                        {title}
+                      </h1>
+                      <div id="x"></div>
+                    </div>
+                  </let>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn spread_target_nested_in_control_flow() {
+        check_view_inlining(
+            vec![(
+                "main.hop",
+                r#"
+                    component Wrapper(show: Bool, ...rest) {
+                        <if {show}>
+                            <div ...rest></div>
+                        </if>
+                    }
+
+                    view Main() {
+                        <Wrapper show={true} id="x"/>
+                    }
+                "#,
+            )],
+            expect![[r#"
+                view Main() {
+                  <let {show = true}>
+                    <if {show}>
+                      <div id="x"></div>
+                    </if>
+                  </let>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn empty_rest_appends_nothing() {
+        check_view_inlining(
+            vec![(
+                "main.hop",
+                r#"
+                    component Box(...rest) {
+                        <div ...rest></div>
+                    }
+
+                    view Main() {
+                        <Box/>
+                    }
+                "#,
+            )],
+            expect![[r#"
+                view Main() {
+                  <div></div>
+                }
+            "#]],
+        );
     }
 
     #[test]
