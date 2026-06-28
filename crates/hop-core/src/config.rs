@@ -174,7 +174,7 @@ mod tests {
     use indoc::indoc;
 
     #[test]
-    fn should_accept_config_with_typescript_target() {
+    fn accepts_config_with_typescript_target() {
         let toml_str = indoc! {r#"
             [compile]
             target = "ts"
@@ -186,7 +186,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_and_resolve_config_with_validated_fields() {
+    fn accepts_and_resolve_config_with_validated_fields() {
         let toml_str = indoc! {r#"
             [compile]
             target = "ts"
@@ -199,7 +199,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_config_with_css_block() {
+    fn accepts_config_with_css_block() {
         let toml_str = indoc! {r#"
             [css]
             bundler = "tailwind_4"
@@ -216,7 +216,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_unknown_css_bundler() {
+    fn rejects_unknown_css_bundler() {
         let toml_str = indoc! {r#"
             [css]
             bundler = "tailwind_3"
@@ -227,7 +227,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_css_block_missing_bundler() {
+    fn rejects_css_block_missing_bundler() {
         let toml_str = indoc! {r#"
             [css]
             input_path = "styles/input.css"
@@ -237,7 +237,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_css_block_missing_input_path() {
+    fn rejects_css_block_missing_input_path() {
         let toml_str = indoc! {r#"
             [css]
             bundler = "tailwind_4"
@@ -247,7 +247,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_config_with_js_block() {
+    fn accepts_config_with_js_block() {
         let toml_str = indoc! {r#"
             [js]
             bundler = "esbuild"
@@ -264,7 +264,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_unknown_js_bundler() {
+    fn rejects_unknown_js_bundler() {
         let toml_str = indoc! {r#"
             [js]
             bundler = "webpack"
@@ -275,7 +275,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_js_block_missing_bundler() {
+    fn rejects_js_block_missing_bundler() {
         let toml_str = indoc! {r#"
             [js]
             input_path = "src/app.ts"
@@ -285,7 +285,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_js_block_missing_input_path() {
+    fn rejects_js_block_missing_input_path() {
         let toml_str = indoc! {r#"
             [js]
             bundler = "esbuild"
@@ -295,7 +295,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_config_with_unknown_field() {
+    fn rejects_config_with_unknown_field() {
         let toml_str = indoc! {r#"
             [compile]
             target = "ts"
@@ -309,7 +309,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_config_with_invalid_target() {
+    fn rejects_config_with_invalid_target() {
         let toml_str = indoc! {r#"
             [compile]
             target = "invalid"
@@ -320,7 +320,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_all_valid_target_values() {
+    fn accepts_all_valid_target_values() {
         // Test "ts"
         let toml_str = indoc! {r#"
             [compile]
@@ -341,7 +341,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_full_target_names() {
+    fn rejects_full_target_names() {
         // "typescript" should be rejected (only "ts" is valid)
         let toml_str = indoc! {r#"
             [compile]
@@ -452,7 +452,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_unknown_fields_in_assets_section() {
+    fn rejects_unknown_fields_in_assets_section() {
         let toml_str = indoc! {r#"
             [assets]
             production_prefix = "static/v1"
@@ -466,7 +466,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_empty_production_prefix() {
+    fn rejects_empty_production_prefix() {
         let toml_str = indoc! {r#"
             [assets]
             production_prefix = ""
@@ -490,7 +490,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_missing_output_dir() {
+    fn rejects_missing_output_dir() {
         let toml_str = indoc! {r#"
             [assets]
             production_prefix = "static/v1"
@@ -514,7 +514,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_absolute_output_dir() {
+    fn rejects_absolute_output_dir() {
         let toml_str = indoc! {r#"
             [assets]
             output_dir = "/absolute/path"
@@ -526,7 +526,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_nested_output_dir() {
+    fn accepts_nested_output_dir() {
         let toml_str = indoc! {r#"
             [assets]
             output_dir = "a/b/c"
@@ -537,7 +537,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_dot_prefixed_output_dir() {
+    fn accepts_dot_prefixed_output_dir() {
         let toml_str = indoc! {r#"
             [assets]
             output_dir = "./dist"

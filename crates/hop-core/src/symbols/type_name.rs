@@ -150,81 +150,71 @@ impl TryFrom<String> for TypeName {
 mod tests {
     use super::*;
 
-    #[test]
-    fn should_accept_simple_type_name() {
-        assert!(TypeName::new("User").is_ok());
+    fn accept(input: &str) {
+        assert!(TypeName::new(input).is_ok());
+    }
+
+    fn reject(input: &str, expected: InvalidTypeNameError) {
+        assert_eq!(TypeName::new(input), Err(expected));
     }
 
     #[test]
-    fn should_accept_pascal_case_type_name() {
-        assert!(TypeName::new("UserProfile").is_ok());
+    fn accepts_simple_type_name() {
+        accept("User");
     }
 
     #[test]
-    fn should_accept_single_letter_type_name() {
-        assert!(TypeName::new("X").is_ok());
+    fn accepts_pascal_case_type_name() {
+        accept("UserProfile");
     }
 
     #[test]
-    fn should_accept_type_name_with_digits() {
-        assert!(TypeName::new("User123").is_ok());
+    fn accepts_single_letter_type_name() {
+        accept("X");
     }
 
     #[test]
-    fn should_accept_all_uppercase_type_name() {
-        assert!(TypeName::new("ABC").is_ok());
+    fn accepts_type_name_with_digits() {
+        accept("User123");
     }
 
     #[test]
-    fn should_reject_lowercase_type_name() {
-        assert_eq!(
-            TypeName::new("user"),
-            Err(InvalidTypeNameError::DoesNotStartWithUppercase)
-        );
+    fn accepts_all_uppercase_type_name() {
+        accept("ABC");
     }
 
     #[test]
-    fn should_reject_type_name_starting_with_digit() {
-        assert_eq!(
-            TypeName::new("123User"),
-            Err(InvalidTypeNameError::DoesNotStartWithUppercase)
-        );
+    fn rejects_lowercase_type_name() {
+        reject("user", InvalidTypeNameError::DoesNotStartWithUppercase);
     }
 
     #[test]
-    fn should_reject_type_name_starting_with_underscore() {
-        assert_eq!(
-            TypeName::new("_User"),
-            Err(InvalidTypeNameError::DoesNotStartWithUppercase)
-        );
+    fn rejects_type_name_starting_with_digit() {
+        reject("123User", InvalidTypeNameError::DoesNotStartWithUppercase);
     }
 
     #[test]
-    fn should_reject_type_name_with_underscore() {
-        assert_eq!(
-            TypeName::new("User_Profile"),
-            Err(InvalidTypeNameError::InvalidCharacter('_'))
-        );
+    fn rejects_type_name_starting_with_underscore() {
+        reject("_User", InvalidTypeNameError::DoesNotStartWithUppercase);
     }
 
     #[test]
-    fn should_reject_type_name_with_hyphen() {
-        assert_eq!(
-            TypeName::new("User-Profile"),
-            Err(InvalidTypeNameError::InvalidCharacter('-'))
-        );
+    fn rejects_type_name_with_underscore() {
+        reject("User_Profile", InvalidTypeNameError::InvalidCharacter('_'));
     }
 
     #[test]
-    fn should_reject_type_name_with_space() {
-        assert_eq!(
-            TypeName::new("User Profile"),
-            Err(InvalidTypeNameError::InvalidCharacter(' '))
-        );
+    fn rejects_type_name_with_hyphen() {
+        reject("User-Profile", InvalidTypeNameError::InvalidCharacter('-'));
     }
 
     #[test]
-    fn should_reject_empty_type_name() {
-        assert_eq!(TypeName::new(""), Err(InvalidTypeNameError::Empty));
+    fn rejects_type_name_with_space() {
+        reject("User Profile", InvalidTypeNameError::InvalidCharacter(' '));
+    }
+
+    #[test]
+    fn rejects_empty_type_name() {
+        reject("", InvalidTypeNameError::Empty);
     }
 }

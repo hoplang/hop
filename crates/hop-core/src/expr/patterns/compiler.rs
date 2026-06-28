@@ -974,7 +974,7 @@ mod tests {
     use indoc::indoc;
     use std::collections::VecDeque;
 
-    fn check(subject_type: Type, expr_str: &str, expected: Expect) {
+    fn run_check(subject_type: Type, expr_str: &str) -> (String, bool) {
         let cursor =
             DocumentCursor::new(DocumentId::new("test.hop").unwrap(), expr_str.to_string());
         let range = cursor.range();
@@ -1007,16 +1007,33 @@ mod tests {
             &subject_range,
         );
 
-        let actual = match result {
-            Ok(decision) => format_decision(&decision, 0),
-            Err(e) => DocumentAnnotator::new()
-                .with_label("error")
-                .without_location()
-                .without_line_numbers()
-                .annotate(&DocumentId::new("test.hop").unwrap(), [e])
-                .render(),
-        };
+        match result {
+            Ok(decision) => (format_decision(&decision, 0), true),
+            Err(e) => (
+                DocumentAnnotator::new()
+                    .with_label("error")
+                    .without_location()
+                    .without_line_numbers()
+                    .annotate(&DocumentId::new("test.hop").unwrap(), [e])
+                    .render(),
+                false,
+            ),
+        }
+    }
 
+    fn accept(subject_type: Type, expr_str: &str, expected: Expect) {
+        let (actual, ok) = run_check(subject_type, expr_str);
+        if !ok {
+            panic!("expected patterns to compile, got error:\n{actual}");
+        }
+        expected.assert_eq(&actual);
+    }
+
+    fn reject(subject_type: Type, expr_str: &str, expected: Expect) {
+        let (actual, ok) = run_check(subject_type, expr_str);
+        if ok {
+            panic!("expected a compile error, but patterns compiled to:\n{actual}");
+        }
         expected.assert_eq(&actual);
     }
 
@@ -1118,8 +1135,8 @@ mod tests {
     // Bool tests
 
     #[test]
-    fn bool_exhaustive() {
-        check(
+    fn accepts_bool_exhaustive() {
+        accept(
             Type::Bool,
             indoc! {"
                 match x {
@@ -1137,8 +1154,8 @@ mod tests {
     }
 
     #[test]
-    fn bool_missing_false() {
-        check(
+    fn rejects_bool_missing_false() {
+        reject(
             Type::Bool,
             indoc! {"
                 match x {
@@ -1154,8 +1171,8 @@ mod tests {
     }
 
     #[test]
-    fn bool_missing_true() {
-        check(
+    fn rejects_bool_missing_true() {
+        reject(
             Type::Bool,
             indoc! {"
                 match x {
@@ -1171,8 +1188,8 @@ mod tests {
     }
 
     #[test]
-    fn bool_unreachable_arm() {
-        check(
+    fn rejects_bool_unreachable_arm() {
+        reject(
             Type::Bool,
             indoc! {"
                 match x {
@@ -1190,8 +1207,8 @@ mod tests {
     }
 
     #[test]
-    fn bool_wildcard_covers_all() {
-        check(
+    fn rejects_bool_wildcard_covers_all() {
+        reject(
             Type::Bool,
             indoc! {"
                 match x {
@@ -1207,8 +1224,8 @@ mod tests {
     }
 
     #[test]
-    fn bool_binding_covers_all() {
-        check(
+    fn accepts_bool_binding_covers_all() {
+        accept(
             Type::Bool,
             indoc! {"
                 match x {
@@ -1225,8 +1242,8 @@ mod tests {
     // Option tests
 
     #[test]
-    fn option_exhaustive() {
-        check(
+    fn accepts_option_exhaustive() {
+        accept(
             Type::Option(Arc::new(Type::String)),
             indoc! {"
                 match x {
@@ -1245,8 +1262,8 @@ mod tests {
     }
 
     #[test]
-    fn option_missing_none() {
-        check(
+    fn rejects_option_missing_none() {
+        reject(
             Type::Option(Arc::new(Type::String)),
             indoc! {"
                 match x {
@@ -1262,8 +1279,8 @@ mod tests {
     }
 
     #[test]
-    fn option_missing_some() {
-        check(
+    fn rejects_option_missing_some() {
+        reject(
             Type::Option(Arc::new(Type::String)),
             indoc! {"
                 match x {
@@ -1279,8 +1296,8 @@ mod tests {
     }
 
     #[test]
-    fn nested_option_exhaustive() {
-        check(
+    fn accepts_nested_option_exhaustive() {
+        accept(
             Type::Option(Arc::new(Type::Option(Arc::new(Type::String)))),
             indoc! {"
                 match x {
@@ -1305,8 +1322,8 @@ mod tests {
     // Enum tests
 
     #[test]
-    fn enum_exhaustive() {
-        check(
+    fn accepts_enum_exhaustive() {
+        accept(
             Type::Enum {
                 module: DocumentId::new("test.hop").unwrap(),
                 name: TypeName::new("Color").unwrap(),
@@ -1344,8 +1361,8 @@ mod tests {
     }
 
     #[test]
-    fn enum_missing_variant() {
-        check(
+    fn rejects_enum_missing_variant() {
+        reject(
             Type::Enum {
                 module: DocumentId::new("test.hop").unwrap(),
                 name: TypeName::new("Color").unwrap(),
@@ -1379,8 +1396,8 @@ mod tests {
     }
 
     #[test]
-    fn enum_wildcard_covers_remaining() {
-        check(
+    fn accepts_enum_wildcard_covers_remaining() {
+        accept(
             Type::Enum {
                 module: DocumentId::new("test.hop").unwrap(),
                 name: TypeName::new("Color").unwrap(),
@@ -1417,8 +1434,8 @@ mod tests {
     }
 
     #[test]
-    fn enum_unreachable_after_wildcard() {
-        check(
+    fn rejects_enum_unreachable_after_wildcard() {
+        reject(
             Type::Enum {
                 module: DocumentId::new("test.hop").unwrap(),
                 name: TypeName::new("Color").unwrap(),
@@ -1454,8 +1471,8 @@ mod tests {
     // Enum with fields tests
 
     #[test]
-    fn enum_variant_with_fields_exhaustive() {
-        check(
+    fn accepts_enum_variant_with_fields_exhaustive() {
+        accept(
             Type::Enum {
                 module: DocumentId::new("test.hop").unwrap(),
                 name: TypeName::new("Outcome").unwrap(),
@@ -1492,8 +1509,8 @@ mod tests {
     }
 
     #[test]
-    fn enum_variant_mixed_fields_and_unit() {
-        check(
+    fn accepts_enum_variant_mixed_fields_and_unit() {
+        accept(
             Type::Enum {
                 module: DocumentId::new("test.hop").unwrap(),
                 name: TypeName::new("Maybe").unwrap(),
@@ -1525,8 +1542,8 @@ mod tests {
     }
 
     #[test]
-    fn enum_variant_with_wildcard_field() {
-        check(
+    fn accepts_enum_variant_with_wildcard_field() {
+        accept(
             Type::Enum {
                 module: DocumentId::new("test.hop").unwrap(),
                 name: TypeName::new("Outcome").unwrap(),
@@ -1561,8 +1578,8 @@ mod tests {
     }
 
     #[test]
-    fn enum_three_variants_with_fields() {
-        check(
+    fn accepts_enum_three_variants_with_fields() {
+        accept(
             Type::Enum {
                 module: DocumentId::new("test.hop").unwrap(),
                 name: TypeName::new("Status").unwrap(),
@@ -1610,8 +1627,8 @@ mod tests {
     }
 
     #[test]
-    fn enum_variant_with_three_fields() {
-        check(
+    fn accepts_enum_variant_with_three_fields() {
+        accept(
             Type::Enum {
                 module: DocumentId::new("test.hop").unwrap(),
                 name: TypeName::new("Point3D").unwrap(),
@@ -1640,8 +1657,8 @@ mod tests {
     }
 
     #[test]
-    fn enum_variant_all_fields_wildcard() {
-        check(
+    fn accepts_enum_variant_all_fields_wildcard() {
+        accept(
             Type::Enum {
                 module: DocumentId::new("test.hop").unwrap(),
                 name: TypeName::new("Point3D").unwrap(),
@@ -1667,8 +1684,8 @@ mod tests {
     }
 
     #[test]
-    fn enum_variant_mixed_bindings_and_wildcards() {
-        check(
+    fn accepts_enum_variant_mixed_bindings_and_wildcards() {
+        accept(
             Type::Enum {
                 module: DocumentId::new("test.hop").unwrap(),
                 name: TypeName::new("Point3D").unwrap(),
@@ -1696,8 +1713,8 @@ mod tests {
     }
 
     #[test]
-    fn enum_variant_wildcard_covers_all_variants() {
-        check(
+    fn rejects_enum_variant_wildcard_covers_all_variants() {
+        reject(
             Type::Enum {
                 module: DocumentId::new("test.hop").unwrap(),
                 name: TypeName::new("Result").unwrap(),
@@ -1730,8 +1747,8 @@ mod tests {
     }
 
     #[test]
-    fn enum_variant_binding_covers_all_variants() {
-        check(
+    fn accepts_enum_variant_binding_covers_all_variants() {
+        accept(
             Type::Enum {
                 module: DocumentId::new("test.hop").unwrap(),
                 name: TypeName::new("Result").unwrap(),
@@ -1763,8 +1780,8 @@ mod tests {
     }
 
     #[test]
-    fn enum_variant_partial_coverage_with_wildcard() {
-        check(
+    fn accepts_enum_variant_partial_coverage_with_wildcard() {
+        accept(
             Type::Enum {
                 module: DocumentId::new("test.hop").unwrap(),
                 name: TypeName::new("Status").unwrap(),
@@ -1802,8 +1819,8 @@ mod tests {
     }
 
     #[test]
-    fn enum_variant_missing_variant_error() {
-        check(
+    fn rejects_enum_variant_missing_variant() {
+        reject(
             Type::Enum {
                 module: DocumentId::new("test.hop").unwrap(),
                 name: TypeName::new("Outcome").unwrap(),
@@ -1836,8 +1853,8 @@ mod tests {
     }
 
     #[test]
-    fn enum_variant_missing_multiple_variants_error() {
-        check(
+    fn rejects_enum_variant_missing_multiple_variants() {
+        reject(
             Type::Enum {
                 module: DocumentId::new("test.hop").unwrap(),
                 name: TypeName::new("Status").unwrap(),
@@ -1870,8 +1887,8 @@ mod tests {
     }
 
     #[test]
-    fn enum_variant_duplicate_pattern_error() {
-        check(
+    fn rejects_enum_variant_duplicate_pattern() {
+        reject(
             Type::Enum {
                 module: DocumentId::new("test.hop").unwrap(),
                 name: TypeName::new("Outcome").unwrap(),
@@ -1906,8 +1923,8 @@ mod tests {
     }
 
     #[test]
-    fn enum_variant_unreachable_after_wildcard_error() {
-        check(
+    fn rejects_enum_variant_unreachable_after_wildcard() {
+        reject(
             Type::Enum {
                 module: DocumentId::new("test.hop").unwrap(),
                 name: TypeName::new("Outcome").unwrap(),
@@ -1941,8 +1958,8 @@ mod tests {
     }
 
     #[test]
-    fn enum_variant_unknown_field_error() {
-        check(
+    fn rejects_enum_variant_unknown_field() {
+        reject(
             Type::Enum {
                 module: DocumentId::new("test.hop").unwrap(),
                 name: TypeName::new("Outcome").unwrap(),
@@ -1976,8 +1993,8 @@ mod tests {
     }
 
     #[test]
-    fn enum_variant_unknown_field_after_valid_field_error() {
-        check(
+    fn rejects_enum_variant_unknown_field_after_valid_field() {
+        reject(
             Type::Enum {
                 module: DocumentId::new("test.hop").unwrap(),
                 name: TypeName::new("Point").unwrap(),
@@ -2003,8 +2020,8 @@ mod tests {
     }
 
     #[test]
-    fn enum_variant_two_unknown_fields_error() {
-        check(
+    fn rejects_enum_variant_two_unknown_fields() {
+        reject(
             Type::Enum {
                 module: DocumentId::new("test.hop").unwrap(),
                 name: TypeName::new("Point").unwrap(),
@@ -2030,8 +2047,8 @@ mod tests {
     }
 
     #[test]
-    fn enum_variant_missing_field_in_pattern_error() {
-        check(
+    fn rejects_enum_variant_missing_field_in_pattern() {
+        reject(
             Type::Enum {
                 module: DocumentId::new("test.hop").unwrap(),
                 name: TypeName::new("Point").unwrap(),
@@ -2057,8 +2074,8 @@ mod tests {
     }
 
     #[test]
-    fn enum_variant_missing_two_fields_in_pattern_error() {
-        check(
+    fn rejects_enum_variant_missing_two_fields_in_pattern() {
+        reject(
             Type::Enum {
                 module: DocumentId::new("test.hop").unwrap(),
                 name: TypeName::new("Point").unwrap(),
@@ -2085,8 +2102,8 @@ mod tests {
     }
 
     #[test]
-    fn enum_variant_no_parens_when_fields_expected_error() {
-        check(
+    fn rejects_enum_variant_no_parens_when_fields_expected() {
+        reject(
             Type::Enum {
                 module: DocumentId::new("test.hop").unwrap(),
                 name: TypeName::new("Point").unwrap(),
@@ -2112,8 +2129,8 @@ mod tests {
     }
 
     #[test]
-    fn enum_variant_fields_provided_to_unit_variant_error() {
-        check(
+    fn rejects_enum_variant_fields_provided_to_unit_variant() {
+        reject(
             Type::Enum {
                 module: DocumentId::new("test.hop").unwrap(),
                 name: TypeName::new("Maybe").unwrap(),
@@ -2143,8 +2160,8 @@ mod tests {
     }
 
     #[test]
-    fn enum_variant_nested_option_field() {
-        check(
+    fn accepts_enum_variant_nested_option_field() {
+        accept(
             Type::Enum {
                 module: DocumentId::new("test.hop").unwrap(),
                 name: TypeName::new("Container").unwrap(),
@@ -2175,8 +2192,8 @@ mod tests {
     }
 
     #[test]
-    fn enum_variant_nested_option_field_missing_none() {
-        check(
+    fn rejects_enum_variant_nested_option_field_missing_none() {
+        reject(
             Type::Enum {
                 module: DocumentId::new("test.hop").unwrap(),
                 name: TypeName::new("Container").unwrap(),
@@ -2203,8 +2220,8 @@ mod tests {
     }
 
     #[test]
-    fn enum_variant_nested_bool_field() {
-        check(
+    fn accepts_enum_variant_nested_bool_field() {
+        accept(
             Type::Enum {
                 module: DocumentId::new("test.hop").unwrap(),
                 name: TypeName::new("Flag").unwrap(),
@@ -2234,8 +2251,8 @@ mod tests {
     }
 
     #[test]
-    fn enum_variant_nested_bool_field_missing_case() {
-        check(
+    fn rejects_enum_variant_nested_bool_field_missing_case() {
+        reject(
             Type::Enum {
                 module: DocumentId::new("test.hop").unwrap(),
                 name: TypeName::new("Flag").unwrap(),
@@ -2262,8 +2279,8 @@ mod tests {
     }
 
     #[test]
-    fn enum_variant_four_fields() {
-        check(
+    fn accepts_enum_variant_four_fields() {
+        accept(
             Type::Enum {
                 module: DocumentId::new("test.hop").unwrap(),
                 name: TypeName::new("Rectangle").unwrap(),
@@ -2294,8 +2311,8 @@ mod tests {
     }
 
     #[test]
-    fn enum_variant_four_variants_mixed() {
-        check(
+    fn accepts_enum_variant_four_variants_mixed() {
+        accept(
             Type::Enum {
                 module: DocumentId::new("test.hop").unwrap(),
                 name: TypeName::new("Event").unwrap(),
@@ -2352,8 +2369,8 @@ mod tests {
     // Record tests
 
     #[test]
-    fn record_match() {
-        check(
+    fn accepts_record_match() {
+        accept(
             Type::Record {
                 module: DocumentId::new("test.hop").unwrap(),
                 name: TypeName::new("User").unwrap(),
@@ -2381,8 +2398,8 @@ mod tests {
     }
 
     #[test]
-    fn record_with_bool_fields_exhaustive() {
-        check(
+    fn accepts_record_with_bool_fields_exhaustive() {
+        accept(
             Type::Record {
                 module: DocumentId::new("test.hop").unwrap(),
                 name: TypeName::new("Foo").unwrap(),
@@ -2418,8 +2435,8 @@ mod tests {
     // Additional Bool tests
 
     #[test]
-    fn bool_true_with_wildcard() {
-        check(
+    fn accepts_bool_true_with_wildcard() {
+        accept(
             Type::Bool,
             indoc! {"
                 match x {
@@ -2437,8 +2454,8 @@ mod tests {
     }
 
     #[test]
-    fn bool_duplicate_false() {
-        check(
+    fn rejects_bool_duplicate_false() {
+        reject(
             Type::Bool,
             indoc! {"
                 match x {
@@ -2456,8 +2473,8 @@ mod tests {
     }
 
     #[test]
-    fn bool_unreachable_after_wildcard() {
-        check(
+    fn rejects_bool_unreachable_after_wildcard() {
+        reject(
             Type::Bool,
             indoc! {"
                 match x {
@@ -2474,8 +2491,8 @@ mod tests {
     }
 
     #[test]
-    fn bool_unreachable_after_binding() {
-        check(
+    fn rejects_bool_unreachable_after_binding() {
+        reject(
             Type::Bool,
             indoc! {"
                 match x {
@@ -2494,8 +2511,8 @@ mod tests {
     // Additional Option tests
 
     #[test]
-    fn option_wildcard_covers_all() {
-        check(
+    fn rejects_option_wildcard_covers_all() {
+        reject(
             Type::Option(Arc::new(Type::String)),
             indoc! {"
                 match x {
@@ -2511,8 +2528,8 @@ mod tests {
     }
 
     #[test]
-    fn option_some_with_wildcard() {
-        check(
+    fn accepts_option_some_with_wildcard() {
+        accept(
             Type::Option(Arc::new(Type::String)),
             indoc! {"
                 match x {
@@ -2531,8 +2548,8 @@ mod tests {
     }
 
     #[test]
-    fn option_duplicate_some() {
-        check(
+    fn rejects_option_duplicate_some() {
+        reject(
             Type::Option(Arc::new(Type::String)),
             indoc! {"
                 match x {
@@ -2550,8 +2567,8 @@ mod tests {
     }
 
     #[test]
-    fn option_duplicate_none() {
-        check(
+    fn rejects_option_duplicate_none() {
+        reject(
             Type::Option(Arc::new(Type::String)),
             indoc! {"
                 match x {
@@ -2569,8 +2586,8 @@ mod tests {
     }
 
     #[test]
-    fn nested_option_missing_some_none() {
-        check(
+    fn rejects_nested_option_missing_some_none() {
+        reject(
             Type::Option(Arc::new(Type::Option(Arc::new(Type::Int)))),
             indoc! {"
                 match x {
@@ -2587,8 +2604,8 @@ mod tests {
     }
 
     #[test]
-    fn nested_option_with_bool_missing() {
-        check(
+    fn rejects_nested_option_with_bool_missing() {
+        reject(
             Type::Option(Arc::new(Type::Option(Arc::new(Type::Bool)))),
             indoc! {"
                 match x {
@@ -2606,8 +2623,8 @@ mod tests {
     }
 
     #[test]
-    fn nested_option_with_bool_exhaustive() {
-        check(
+    fn accepts_nested_option_with_bool_exhaustive() {
+        accept(
             Type::Option(Arc::new(Type::Option(Arc::new(Type::Bool)))),
             indoc! {"
                 match x {
@@ -2633,8 +2650,8 @@ mod tests {
     }
 
     #[test]
-    fn nested_option_with_bool_missing_multiple() {
-        check(
+    fn rejects_nested_option_with_bool_missing_multiple() {
+        reject(
             Type::Option(Arc::new(Type::Option(Arc::new(Type::Bool)))),
             indoc! {"
                 match x {
@@ -2653,8 +2670,8 @@ mod tests {
     // Additional Enum tests
 
     #[test]
-    fn enum_binding_covers_all() {
-        check(
+    fn accepts_enum_binding_covers_all() {
+        accept(
             Type::Enum {
                 module: DocumentId::new("test.hop").unwrap(),
                 name: TypeName::new("Color").unwrap(),
@@ -2686,8 +2703,8 @@ mod tests {
     }
 
     #[test]
-    fn enum_duplicate_variant() {
-        check(
+    fn rejects_enum_duplicate_variant() {
+        reject(
             Type::Enum {
                 module: DocumentId::new("test.hop").unwrap(),
                 name: TypeName::new("Color").unwrap(),
@@ -2718,8 +2735,8 @@ mod tests {
     }
 
     #[test]
-    fn enum_multiple_wildcards() {
-        check(
+    fn rejects_enum_multiple_wildcards() {
+        reject(
             Type::Enum {
                 module: DocumentId::new("test.hop").unwrap(),
                 name: TypeName::new("Color").unwrap(),
@@ -2749,8 +2766,8 @@ mod tests {
     }
 
     #[test]
-    fn enum_missing_multiple_variants() {
-        check(
+    fn rejects_enum_missing_multiple_variants() {
+        reject(
             Type::Enum {
                 module: DocumentId::new("test.hop").unwrap(),
                 name: TypeName::new("Color").unwrap(),
@@ -2785,8 +2802,8 @@ mod tests {
     // Additional Record tests
 
     #[test]
-    fn record_with_wildcard_fields() {
-        check(
+    fn rejects_record_with_wildcard_fields() {
+        reject(
             Type::Record {
                 module: DocumentId::new("test.hop").unwrap(),
                 name: TypeName::new("User").unwrap(),
@@ -2813,8 +2830,8 @@ mod tests {
     }
 
     #[test]
-    fn record_with_nested_option() {
-        check(
+    fn accepts_record_with_nested_option() {
+        accept(
             Type::Record {
                 module: DocumentId::new("test.hop").unwrap(),
                 name: TypeName::new("User").unwrap(),
@@ -2851,8 +2868,8 @@ mod tests {
     }
 
     #[test]
-    fn record_with_option_field_missing_none() {
-        check(
+    fn rejects_record_with_option_field_missing_none() {
+        reject(
             Type::Record {
                 module: DocumentId::new("test.hop").unwrap(),
                 name: TypeName::new("User").unwrap(),
@@ -2883,8 +2900,8 @@ mod tests {
     }
 
     #[test]
-    fn record_with_bool_fields_missing() {
-        check(
+    fn rejects_record_with_bool_fields_missing() {
+        reject(
             Type::Record {
                 module: DocumentId::new("test.hop").unwrap(),
                 name: TypeName::new("Foo").unwrap(),
@@ -2909,8 +2926,8 @@ mod tests {
     }
 
     #[test]
-    fn record_with_bool_fields_missing_multiple() {
-        check(
+    fn rejects_record_with_bool_fields_missing_multiple() {
+        reject(
             Type::Record {
                 module: DocumentId::new("test.hop").unwrap(),
                 name: TypeName::new("Foo").unwrap(),
@@ -2934,8 +2951,8 @@ mod tests {
     }
 
     #[test]
-    fn option_of_record_exhaustive() {
-        check(
+    fn accepts_option_of_record_exhaustive() {
+        accept(
             Type::Option(Arc::new(Type::Record {
                 module: DocumentId::new("test.hop").unwrap(),
                 name: TypeName::new("User").unwrap(),
@@ -2967,8 +2984,8 @@ mod tests {
     }
 
     #[test]
-    fn option_of_record_with_wildcard_fields() {
-        check(
+    fn accepts_option_of_record_with_wildcard_fields() {
+        accept(
             Type::Option(Arc::new(Type::Record {
                 module: DocumentId::new("test.hop").unwrap(),
                 name: TypeName::new("User").unwrap(),
@@ -2997,7 +3014,7 @@ mod tests {
     }
 
     #[test]
-    fn option_of_nested_records_with_wildcard_fields() {
+    fn accepts_option_of_nested_records_with_wildcard_fields() {
         // Role is a nested record inside User
         let role_type = Arc::new(Type::Record {
             module: DocumentId::new("test.hop").unwrap(),
@@ -3011,7 +3028,7 @@ mod tests {
                 (FieldName::new("salary").unwrap(), Arc::new(Type::Int), None),
             ],
         });
-        check(
+        accept(
             Type::Option(Arc::new(Type::Record {
                 module: DocumentId::new("test.hop").unwrap(),
                 name: TypeName::new("User").unwrap(),
@@ -3040,7 +3057,7 @@ mod tests {
     }
 
     #[test]
-    fn record_with_all_effectively_wildcard_fields() {
+    fn rejects_record_with_all_effectively_wildcard_fields() {
         // All fields are effectively wildcards (one literal, one nested record)
         let address_type = Arc::new(Type::Record {
             module: DocumentId::new("test.hop").unwrap(),
@@ -3058,7 +3075,7 @@ mod tests {
                 ),
             ],
         });
-        check(
+        reject(
             Type::Record {
                 module: DocumentId::new("test.hop").unwrap(),
                 name: TypeName::new("User").unwrap(),
@@ -3085,7 +3102,7 @@ mod tests {
     }
 
     #[test]
-    fn record_with_nested_wildcard_fields_followed_by_wildcard() {
+    fn rejects_record_with_nested_wildcard_fields_followed_by_wildcard() {
         // First arm has all wildcard fields (effectively a wildcard), second arm is unreachable
         let role_type = Arc::new(Type::Record {
             module: DocumentId::new("test.hop").unwrap(),
@@ -3099,7 +3116,7 @@ mod tests {
                 (FieldName::new("salary").unwrap(), Arc::new(Type::Int), None),
             ],
         });
-        check(
+        reject(
             Type::Record {
                 module: DocumentId::new("test.hop").unwrap(),
                 name: TypeName::new("User").unwrap(),
@@ -3127,7 +3144,7 @@ mod tests {
     }
 
     #[test]
-    fn record_with_binding_and_nested_wildcard_record() {
+    fn accepts_record_with_binding_and_nested_wildcard_record() {
         // User has a binding for `name` but `address` is an effectively-wildcard record
         let address_type = Arc::new(Type::Record {
             module: DocumentId::new("test.hop").unwrap(),
@@ -3145,7 +3162,7 @@ mod tests {
                 ),
             ],
         });
-        check(
+        accept(
             Type::Record {
                 module: DocumentId::new("test.hop").unwrap(),
                 name: TypeName::new("User").unwrap(),
@@ -3172,7 +3189,7 @@ mod tests {
     }
 
     #[test]
-    fn enum_variant_with_binding_and_nested_wildcard_record() {
+    fn accepts_enum_variant_with_binding_and_nested_wildcard_record() {
         // Outcome::Success has a binding for `value` but `metadata` is an effectively-wildcard record
         let metadata_type = Arc::new(Type::Record {
             module: DocumentId::new("test.hop").unwrap(),
@@ -3190,7 +3207,7 @@ mod tests {
                 ),
             ],
         });
-        check(
+        accept(
             Type::Enum {
                 module: DocumentId::new("test.hop").unwrap(),
                 name: TypeName::new("Outcome").unwrap(),
@@ -3233,7 +3250,7 @@ mod tests {
     }
 
     #[test]
-    fn three_level_nested_records_with_middle_binding() {
+    fn accepts_three_level_nested_records_with_middle_binding() {
         // Outer -> Middle (has binding) -> Inner (all wildcards)
         let inner_type = Type::Record {
             module: DocumentId::new("test.hop").unwrap(),
@@ -3255,7 +3272,7 @@ mod tests {
                 (FieldName::new("inner").unwrap(), Arc::new(inner_type), None),
             ],
         };
-        check(
+        accept(
             Type::Record {
                 module: DocumentId::new("test.hop").unwrap(),
                 name: TypeName::new("Outer").unwrap(),
@@ -3282,8 +3299,8 @@ mod tests {
     // Pattern validation tests
 
     #[test]
-    fn validation_undefined_enum_variant() {
-        check(
+    fn rejects_validation_undefined_enum_variant() {
+        reject(
             Type::Enum {
                 module: DocumentId::new("test.hop").unwrap(),
                 name: TypeName::new("Color").unwrap(),
@@ -3313,8 +3330,8 @@ mod tests {
     }
 
     #[test]
-    fn validation_record_missing_fields() {
-        check(
+    fn rejects_validation_record_missing_fields() {
+        reject(
             Type::Record {
                 module: DocumentId::new("test.hop").unwrap(),
                 name: TypeName::new("User").unwrap(),
@@ -3341,8 +3358,8 @@ mod tests {
     }
 
     #[test]
-    fn validation_record_unknown_field() {
-        check(
+    fn rejects_validation_record_unknown_field() {
+        reject(
             Type::Record {
                 module: DocumentId::new("test.hop").unwrap(),
                 name: TypeName::new("User").unwrap(),
@@ -3366,8 +3383,8 @@ mod tests {
     }
 
     #[test]
-    fn validation_boolean_pattern_on_enum() {
-        check(
+    fn rejects_validation_boolean_pattern_on_enum() {
+        reject(
             Type::Enum {
                 module: DocumentId::new("test.hop").unwrap(),
                 name: TypeName::new("Color").unwrap(),
@@ -3397,8 +3414,8 @@ mod tests {
     }
 
     #[test]
-    fn validation_option_pattern_on_enum() {
-        check(
+    fn rejects_validation_option_pattern_on_enum() {
+        reject(
             Type::Enum {
                 module: DocumentId::new("test.hop").unwrap(),
                 name: TypeName::new("Color").unwrap(),
@@ -3428,8 +3445,8 @@ mod tests {
     }
 
     #[test]
-    fn validation_nested_option_wrong_inner_type() {
-        check(
+    fn rejects_validation_nested_option_wrong_inner_type() {
+        reject(
             Type::Option(Arc::new(Type::Bool)),
             indoc! {"
                 match x {
@@ -3448,8 +3465,8 @@ mod tests {
     // Subject type validation tests
 
     #[test]
-    fn match_not_implemented_for_int() {
-        check(
+    fn rejects_match_not_implemented_for_int() {
+        reject(
             Type::Int,
             indoc! {"
                 match x {
@@ -3465,8 +3482,8 @@ mod tests {
     }
 
     #[test]
-    fn match_not_implemented_for_string() {
-        check(
+    fn rejects_match_not_implemented_for_string() {
+        reject(
             Type::String,
             indoc! {"
                 match x {
@@ -3482,8 +3499,8 @@ mod tests {
     }
 
     #[test]
-    fn match_not_implemented_for_float() {
-        check(
+    fn rejects_match_not_implemented_for_float() {
+        reject(
             Type::Float,
             indoc! {"
                 match x {
@@ -3499,8 +3516,8 @@ mod tests {
     }
 
     #[test]
-    fn match_no_arms() {
-        check(
+    fn rejects_match_no_arms() {
+        reject(
             Type::Bool,
             "match x {}",
             expect![[r#"

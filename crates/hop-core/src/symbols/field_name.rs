@@ -166,59 +166,100 @@ impl TryFrom<String> for FieldName {
 mod tests {
     use super::*;
 
-    #[test]
-    fn valid_field_names() {
-        assert!(FieldName::new("valid_name").is_ok());
-        assert!(FieldName::new("x").is_ok());
-        assert!(FieldName::new("name_with_underscores").is_ok());
-        assert!(FieldName::new("name123").is_ok());
-        assert!(FieldName::new("foo_bar").is_ok());
-        assert!(FieldName::new("foo_bar_123").is_ok());
-        assert!(FieldName::new("a1_b2_c3").is_ok());
+    fn accept(input: &str) {
+        assert!(FieldName::new(input).is_ok());
+    }
+
+    fn reject(input: &str, expected: InvalidFieldNameError) {
+        assert_eq!(FieldName::new(input), Err(expected));
     }
 
     #[test]
-    fn invalid_field_names() {
-        // Original invalid cases
-        assert_eq!(
-            FieldName::new("123invalid"),
-            Err(InvalidFieldNameError::StartsWithDigit)
-        );
-        assert_eq!(
-            FieldName::new("_starts_with_underscore"),
-            Err(InvalidFieldNameError::StartsWithUnderscore)
-        );
-        assert_eq!(
-            FieldName::new("has-dash"),
-            Err(InvalidFieldNameError::InvalidCharacter('-'))
-        );
-        assert_eq!(
-            FieldName::new("has space"),
-            Err(InvalidFieldNameError::InvalidCharacter(' '))
-        );
-        assert_eq!(FieldName::new(""), Err(InvalidFieldNameError::Empty));
+    fn accepts_simple_field_name() {
+        accept("valid_name");
+    }
 
-        // Snake_case validation tests
-        assert_eq!(
-            FieldName::new("foo_bar_"),
-            Err(InvalidFieldNameError::EndsWithUnderscore)
+    #[test]
+    fn accepts_single_letter_field_name() {
+        accept("x");
+    }
+
+    #[test]
+    fn accepts_field_name_with_underscores() {
+        accept("name_with_underscores");
+    }
+
+    #[test]
+    fn accepts_field_name_with_trailing_digits() {
+        accept("name123");
+    }
+
+    #[test]
+    fn accepts_snake_case_field_name() {
+        accept("foo_bar");
+    }
+
+    #[test]
+    fn accepts_snake_case_field_name_with_digits() {
+        accept("foo_bar_123");
+    }
+
+    #[test]
+    fn accepts_alphanumeric_snake_case_field_name() {
+        accept("a1_b2_c3");
+    }
+
+    #[test]
+    fn rejects_field_name_starting_with_digit() {
+        reject("123invalid", InvalidFieldNameError::StartsWithDigit);
+    }
+
+    #[test]
+    fn rejects_field_name_starting_with_underscore() {
+        reject(
+            "_starts_with_underscore",
+            InvalidFieldNameError::StartsWithUnderscore,
         );
-        assert_eq!(
-            FieldName::new("foo__bar"),
-            Err(InvalidFieldNameError::ConsecutiveUnderscores)
-        );
-        assert_eq!(
-            FieldName::new("FooBar"),
-            Err(InvalidFieldNameError::NotSnakeCase('F'))
-        );
-        assert_eq!(
-            FieldName::new("foo_Bar"),
-            Err(InvalidFieldNameError::NotSnakeCase('B'))
-        );
-        assert_eq!(
-            FieldName::new("validName"),
-            Err(InvalidFieldNameError::NotSnakeCase('N'))
-        );
+    }
+
+    #[test]
+    fn rejects_field_name_with_dash() {
+        reject("has-dash", InvalidFieldNameError::InvalidCharacter('-'));
+    }
+
+    #[test]
+    fn rejects_field_name_with_space() {
+        reject("has space", InvalidFieldNameError::InvalidCharacter(' '));
+    }
+
+    #[test]
+    fn rejects_empty_field_name() {
+        reject("", InvalidFieldNameError::Empty);
+    }
+
+    #[test]
+    fn rejects_field_name_ending_with_underscore() {
+        reject("foo_bar_", InvalidFieldNameError::EndsWithUnderscore);
+    }
+
+    #[test]
+    fn rejects_field_name_with_consecutive_underscores() {
+        reject("foo__bar", InvalidFieldNameError::ConsecutiveUnderscores);
+    }
+
+    #[test]
+    fn rejects_pascal_case_field_name() {
+        reject("FooBar", InvalidFieldNameError::NotSnakeCase('F'));
+    }
+
+    #[test]
+    fn rejects_field_name_with_uppercase_after_underscore() {
+        reject("foo_Bar", InvalidFieldNameError::NotSnakeCase('B'));
+    }
+
+    #[test]
+    fn rejects_camel_case_field_name() {
+        reject("validName", InvalidFieldNameError::NotSnakeCase('N'));
     }
 
     #[test]

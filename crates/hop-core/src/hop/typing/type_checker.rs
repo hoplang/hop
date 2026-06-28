@@ -2009,7 +2009,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_empty_file() {
+    fn accepts_empty_file() {
         accept(
             "-- main.hop --",
             expect![[r#"
@@ -2063,7 +2063,7 @@ mod tests {
     }
 
     #[test]
-    fn slot_accepted_in_slotted_component() {
+    fn accepts_slot_in_slotted_component() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -2085,7 +2085,7 @@ mod tests {
     }
 
     #[test]
-    fn slotted_component_invoked_without_slot_reports_missing_required_argument() {
+    fn rejects_slotted_component_invoked_without_slot() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -2108,7 +2108,7 @@ mod tests {
     }
 
     #[test]
-    fn slotted_component_invoked_with_empty_body_supplies_empty_slot() {
+    fn accepts_empty_body_supplies_empty_slot() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -2140,7 +2140,7 @@ mod tests {
     }
 
     #[test]
-    fn slotted_component_accepts_explicit_slot_argument() {
+    fn accepts_explicit_slot_argument() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -2168,7 +2168,7 @@ mod tests {
     }
 
     #[test]
-    fn slot_rejected_in_view() {
+    fn rejects_slot_in_view() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -2189,7 +2189,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_recursive_component_with_slot() {
+    fn accepts_recursive_component_with_slot() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -2217,7 +2217,7 @@ mod tests {
     }
 
     #[test]
-    fn slot_rejected_in_expression_position() {
+    fn rejects_slot_in_expression_position() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -2236,7 +2236,7 @@ mod tests {
     }
 
     #[test]
-    fn slot_can_be_bound_as_a_fragment_value_in_let() {
+    fn rejects_unused_let_binding_bound_from_slot() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -2257,7 +2257,7 @@ mod tests {
     }
 
     #[test]
-    fn explicit_slot_arg_combined_with_element_children_is_rejected() {
+    fn rejects_explicit_slot_arg_combined_with_element_children() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -2280,7 +2280,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_component_declaration_without_parameters() {
+    fn accepts_component_declaration_without_parameters() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -2295,7 +2295,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_an_undefined_component_is_referenced() {
+    fn rejects_when_an_undefined_component_is_referenced() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -2318,7 +2318,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_when_a_component_invokes_itself() {
+    fn accepts_when_a_component_invokes_itself() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -2340,7 +2340,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_an_import_references_a_module_that_does_not_exist() {
+    fn rejects_when_an_import_references_a_module_that_does_not_exist() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -2359,7 +2359,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_an_import_references_a_component_that_does_not_exist() {
+    fn rejects_when_an_import_references_a_component_that_does_not_exist() {
         reject(
             indoc! {r#"
                 -- other.hop --
@@ -2381,7 +2381,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_an_import_references_a_component_from_an_empty_module() {
+    fn rejects_when_an_import_references_a_component_from_an_empty_module() {
         reject(
             indoc! {r#"
                 -- other.hop --
@@ -2401,7 +2401,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_import_of_non_pub_component() {
+    fn rejects_import_of_non_pub_component() {
         reject(
             indoc! {r#"
                 -- other.hop --
@@ -2430,7 +2430,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_import_of_non_pub_record() {
+    fn rejects_import_of_non_pub_record() {
         reject(
             indoc! {r#"
                 -- other.hop --
@@ -2466,7 +2466,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_import_of_non_pub_enum() {
+    fn rejects_import_of_non_pub_enum() {
         reject(
             indoc! {r#"
                 -- other.hop --
@@ -2506,7 +2506,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_import_of_pub_component() {
+    fn accepts_import_of_pub_component() {
         accept(
             indoc! {r#"
                 -- other.hop --
@@ -2537,7 +2537,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_import_of_pub_record() {
+    fn accepts_import_of_pub_record() {
         accept(
             indoc! {r#"
                 -- other.hop --
@@ -2568,7 +2568,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_import_of_pub_enum() {
+    fn accepts_import_of_pub_enum() {
         accept(
             indoc! {r#"
                 -- other.hop --
@@ -2604,7 +2604,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_a_component_is_imported_without_being_used() {
+    fn rejects_when_a_component_is_imported_without_being_used() {
         reject(
             indoc! {r#"
                 -- other.hop --
@@ -2627,7 +2627,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_components_in_different_modules_to_have_same_name() {
+    fn accepts_components_in_different_modules_to_have_same_name() {
         accept(
             indoc! {r#"
                 -- other.hop --
@@ -2649,7 +2649,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_children_are_passed_to_component_that_does_not_accept_them() {
+    fn rejects_when_children_are_passed_to_component_that_does_not_accept_them() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -2674,7 +2674,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_children_are_passed_to_an_imported_component_that_does_not_accept_them() {
+    fn rejects_when_children_are_passed_to_an_imported_component_that_does_not_accept_them() {
         reject(
             indoc! {r#"
                 -- other.hop --
@@ -2701,7 +2701,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_a_variable_shadows_a_parameter() {
+    fn rejects_when_a_variable_shadows_a_parameter() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -2725,7 +2725,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_a_variable_shadows_another_variable() {
+    fn rejects_when_a_variable_shadows_another_variable() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -2753,7 +2753,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_an_undefined_variable_is_referenced() {
+    fn rejects_when_an_undefined_variable_is_referenced() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -2781,7 +2781,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_a_loop_variable_is_unused() {
+    fn rejects_when_a_loop_variable_is_unused() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -2839,7 +2839,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_a_component_parameter_is_unused() {
+    fn rejects_when_a_component_parameter_is_unused() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -2874,7 +2874,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_component_arguments_to_be_passed_in_any_order() {
+    fn accepts_component_arguments_to_be_passed_in_any_order() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -2905,7 +2905,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_a_component_is_missing_an_argument() {
+    fn rejects_when_a_component_is_missing_an_argument() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -2929,7 +2929,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_a_component_is_passed_an_extra_argument() {
+    fn rejects_when_a_component_is_passed_an_extra_argument() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -2951,7 +2951,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_no_arguments_are_passed_to_component_that_requires_them() {
+    fn rejects_when_no_arguments_are_passed_to_component_that_requires_them() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -2975,7 +2975,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_arguments_are_passed_to_component_that_does_not_accept_them() {
+    fn rejects_when_arguments_are_passed_to_component_that_does_not_accept_them() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -2997,7 +2997,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_iterating_over_a_boolean() {
+    fn rejects_when_iterating_over_a_boolean() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -3028,7 +3028,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_component_declaration_with_string_parameter() {
+    fn accepts_component_declaration_with_string_parameter() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -3048,7 +3048,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_component_declaration_with_bool_parameter() {
+    fn accepts_component_declaration_with_bool_parameter() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -3072,7 +3072,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_component_declaration_with_float_parameter() {
+    fn accepts_component_declaration_with_float_parameter() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -3096,7 +3096,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_component_declaration_with_record_parameter() {
+    fn accepts_component_declaration_with_record_parameter() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -3139,7 +3139,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_component_declaration_with_array_parameter() {
+    fn accepts_component_declaration_with_array_parameter() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -3163,7 +3163,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_strings_to_be_used_in_equals_expression() {
+    fn accepts_strings_to_be_used_in_equals_expression() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -3197,7 +3197,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_multiple_loops_to_use_same_variable_name() {
+    fn accepts_multiple_loops_to_use_same_variable_name() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -3237,7 +3237,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_iteration_over_array() {
+    fn accepts_iteration_over_array() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -3260,7 +3260,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_iteration_over_nested_array() {
+    fn accepts_iteration_over_nested_array() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -3290,7 +3290,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_components_to_call_each_other_in_a_chain() {
+    fn accepts_components_to_call_each_other_in_a_chain() {
         accept(
             indoc! {r#"
                 -- a/bar.hop --
@@ -3377,7 +3377,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_different_types_with_same_name_are_used_in_place_of_eachother() {
+    fn rejects_when_different_types_with_same_name_are_used_in_place_of_eachother() {
         reject(
             indoc! {r#"
                 -- foo.hop --
@@ -3419,7 +3419,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_identical_types_in_different_modules_are_used_in_place_of_eachother() {
+    fn rejects_when_identical_types_in_different_modules_are_used_in_place_of_eachother() {
         reject(
             indoc! {r#"
                 -- foo.hop --
@@ -3463,7 +3463,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expressions_to_be_used_as_attributes() {
+    fn accepts_expressions_to_be_used_as_attributes() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -3489,7 +3489,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_children_to_be_passed_to_component() {
+    fn accepts_children_to_be_passed_to_component() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -3527,7 +3527,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_field_access_is_performed_on_array() {
+    fn rejects_when_field_access_is_performed_on_array() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -3551,7 +3551,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_if_statement() {
+    fn accepts_if_statement() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -3580,7 +3580,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_records_are_used_in_equals_expression() {
+    fn rejects_when_records_are_used_in_equals_expression() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -3604,7 +3604,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_an_int_is_passed_to_component_that_accepts_string() {
+    fn rejects_when_an_int_is_passed_to_component_that_accepts_string() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -3626,7 +3626,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_a_string_is_passed_to_component_that_accepts_bool() {
+    fn rejects_when_a_string_is_passed_to_component_that_accepts_bool() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -3650,7 +3650,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_non_bool_is_used_as_if_condition() {
+    fn rejects_when_non_bool_is_used_as_if_condition() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -3671,7 +3671,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_a_type_error_occurs_in_an_argument_list() {
+    fn rejects_when_a_type_error_occurs_in_an_argument_list() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -3699,7 +3699,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_iterating_over_empty_array() {
+    fn rejects_when_iterating_over_empty_array() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -3720,7 +3720,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_empty_array_with_type_inferred_from_component_argument() {
+    fn accepts_empty_array_with_type_inferred_from_component_argument() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -3751,7 +3751,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_using_bool_in_text_expression() {
+    fn rejects_when_using_bool_in_text_expression() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -3770,7 +3770,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_an_undefined_type_is_used_in_parameter_type() {
+    fn rejects_when_an_undefined_type_is_used_in_parameter_type() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -3788,7 +3788,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_an_undefined_type_is_used_in_nested_parameter_type() {
+    fn rejects_when_an_undefined_type_is_used_in_nested_parameter_type() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -3806,7 +3806,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_when_a_record_references_itself() {
+    fn accepts_when_a_record_references_itself() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -3830,7 +3830,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_referencing_a_record_defined_below() {
+    fn rejects_when_referencing_a_record_defined_below() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -3854,7 +3854,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_accessing_a_record_field() {
+    fn accepts_accessing_a_record_field() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -3879,7 +3879,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_accessing_a_nested_record_field() {
+    fn accepts_accessing_a_nested_record_field() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -3910,7 +3910,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_accessing_a_deeply_nested_record_field() {
+    fn accepts_accessing_a_deeply_nested_record_field() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -3991,7 +3991,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_a_nonexistent_field_is_accessed_on_record() {
+    fn rejects_when_a_nonexistent_field_is_accessed_on_record() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -4011,7 +4011,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_trying_to_import_from_wrong_module() {
+    fn rejects_when_trying_to_import_from_wrong_module() {
         reject(
             indoc! {r#"
                 -- foo.hop --
@@ -4041,7 +4041,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_import_and_use_of_records_declared_in_other_modules() {
+    fn accepts_import_and_use_of_records_declared_in_other_modules() {
         accept(
             indoc! {r#"
                 -- foo.hop --
@@ -4098,7 +4098,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_import_and_use_of_enums_declared_in_other_modules() {
+    fn accepts_import_and_use_of_enums_declared_in_other_modules() {
         accept(
             indoc! {r#"
                 -- colors.hop --
@@ -4151,7 +4151,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_type_in_record_declaration_is_not_defined() {
+    fn rejects_when_type_in_record_declaration_is_not_defined() {
         reject(
             indoc! {r#"
                 -- hop/button.hop --
@@ -4188,7 +4188,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_component_declaration_with_enum_equality() {
+    fn rejects_component_declaration_with_enum_equality() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -4210,7 +4210,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_match_expression_in_text_interpolation() {
+    fn accepts_match_expression_in_text_interpolation() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -4250,7 +4250,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_match_expression_with_non_enum_subject() {
+    fn rejects_match_expression_with_non_enum_subject() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -4269,7 +4269,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_match_expression_with_mismatched_arm_types() {
+    fn rejects_match_expression_with_mismatched_arm_types() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -4296,7 +4296,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_match_expression_with_missing_variant() {
+    fn rejects_match_expression_with_missing_variant() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -4324,7 +4324,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_match_expression_with_wrong_enum_pattern() {
+    fn rejects_match_expression_with_wrong_enum_pattern() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -4356,7 +4356,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_match_expression_with_enum_equality() {
+    fn rejects_match_expression_with_enum_equality() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -4387,7 +4387,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_enum_as_record_field_type() {
+    fn accepts_enum_as_record_field_type() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -4433,7 +4433,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_enum_field_in_conditional() {
+    fn rejects_enum_field_in_conditional() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -4465,7 +4465,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_component_with_default_parameter_when_argument_omitted() {
+    fn accepts_component_with_default_parameter_when_argument_omitted() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -4492,7 +4492,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_component_with_default_parameter_when_argument_provided() {
+    fn accepts_component_with_default_parameter_when_argument_provided() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -4519,7 +4519,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_component_with_mixed_required_and_default_parameters() {
+    fn accepts_component_with_mixed_required_and_default_parameters() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -4547,7 +4547,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_required_param_is_missing_but_default_param_is_provided() {
+    fn rejects_when_required_param_is_missing_but_default_param_is_provided() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -4569,7 +4569,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_default_value_type_does_not_match_parameter_type() {
+    fn rejects_when_default_value_type_does_not_match_parameter_type() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -4596,7 +4596,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_default_params_are_unused() {
+    fn rejects_when_default_params_are_unused() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -4621,7 +4621,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_default_empty_array_parameter() {
+    fn accepts_default_empty_array_parameter() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -4650,7 +4650,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_default_record_parameter() {
+    fn accepts_default_record_parameter() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -4681,7 +4681,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_default_enum_parameter() {
+    fn accepts_default_enum_parameter() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -4720,7 +4720,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_option_parameter_with_some_argument() {
+    fn accepts_option_parameter_with_some_argument() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -4745,7 +4745,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_option_parameter_with_none_argument() {
+    fn accepts_option_parameter_with_none_argument() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -4770,7 +4770,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_option_parameter_with_default_none() {
+    fn accepts_option_parameter_with_default_none() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -4795,7 +4795,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_option_parameter_with_default_some() {
+    fn accepts_option_parameter_with_default_some() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -4820,7 +4820,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_non_option_argument_for_option_parameter() {
+    fn rejects_non_option_argument_for_option_parameter() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -4842,7 +4842,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_match_node_with_option() {
+    fn accepts_match_node_with_option() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -4877,7 +4877,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_match_node_with_enum() {
+    fn accepts_match_node_with_enum() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -4916,7 +4916,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_match_node_on_enum_literal_with_fields() {
+    fn accepts_match_node_on_enum_literal_with_fields() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -4956,7 +4956,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_match_node_with_bool() {
+    fn accepts_match_node_with_bool() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -4984,7 +4984,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_match_node_with_pattern_type_mismatch() {
+    fn rejects_match_node_with_pattern_type_mismatch() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -5005,7 +5005,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_binding_in_match_case_children() {
+    fn accepts_binding_in_match_case_children() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -5039,7 +5039,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_match_node_with_non_matchable_type() {
+    fn rejects_match_node_with_non_matchable_type() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -5060,7 +5060,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_match_node_with_missing_enum_variants() {
+    fn rejects_match_node_with_missing_enum_variants() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -5082,7 +5082,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_match_node_with_missing_option_arm() {
+    fn rejects_match_node_with_missing_option_arm() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -5103,7 +5103,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_match_node_with_missing_bool_arm() {
+    fn rejects_match_node_with_missing_bool_arm() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -5124,7 +5124,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_match_node_with_wrong_enum_pattern() {
+    fn rejects_match_node_with_wrong_enum_pattern() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -5148,7 +5148,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_on_unused_binding_in_match_case() {
+    fn rejects_on_unused_binding_in_match_case() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -5174,7 +5174,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_binding_that_shadows_parameter() {
+    fn rejects_binding_that_shadows_parameter() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -5206,7 +5206,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_shorthand_binding_that_shadows_parameter() {
+    fn rejects_shorthand_binding_that_shadows_parameter() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -5230,7 +5230,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_match_node_with_only_wildcard() {
+    fn rejects_match_node_with_only_wildcard() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -5252,7 +5252,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_match_node_with_nested_wildcard_record_followed_by_wildcard() {
+    fn rejects_match_node_with_nested_wildcard_record_followed_by_wildcard() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -5276,7 +5276,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_match_node_with_nested_wildcard_record() {
+    fn rejects_match_node_with_nested_wildcard_record() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -5299,7 +5299,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_nested_match_nodes() {
+    fn accepts_nested_match_nodes() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -5345,7 +5345,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_match_node_inside_for_loop() {
+    fn accepts_match_node_inside_for_loop() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -5379,7 +5379,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_match_node_with_wildcard_binding() {
+    fn accepts_match_node_with_wildcard_binding() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -5411,7 +5411,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_multiple_bindings_with_same_name_in_different_cases() {
+    fn accepts_multiple_bindings_with_same_name_in_different_cases() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -5457,7 +5457,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_match_node_with_record_field_subject() {
+    fn accepts_match_node_with_record_field_subject() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -5492,7 +5492,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_match_node_with_int_type() {
+    fn rejects_match_node_with_int_type() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -5513,7 +5513,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_match_node_inside_if_condition() {
+    fn accepts_match_node_inside_if_condition() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -5547,7 +5547,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_match_node_in_html_element() {
+    fn accepts_match_node_in_html_element() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -5585,7 +5585,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_shadowed_variable_in_nested_match_expression() {
+    fn rejects_shadowed_variable_in_nested_match_expression() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -5613,7 +5613,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_boolean_expression_attribute() {
+    fn rejects_boolean_expression_attribute() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -5632,7 +5632,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_boolean_literal_attribute() {
+    fn rejects_boolean_literal_attribute() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -5651,7 +5651,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_option_string_attribute() {
+    fn rejects_option_string_attribute() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -5670,7 +5670,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_some_literal_attribute() {
+    fn rejects_some_literal_attribute() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -5689,7 +5689,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_option_non_string_attribute() {
+    fn rejects_option_non_string_attribute() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -5708,7 +5708,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_option_bool_attribute() {
+    fn rejects_option_bool_attribute() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -5727,7 +5727,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_nested_option_string_attribute() {
+    fn rejects_nested_option_string_attribute() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -5746,7 +5746,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_non_string_attribute_expression() {
+    fn rejects_non_string_attribute_expression() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -5765,7 +5765,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_event_handler_attributes() {
+    fn rejects_event_handler_attributes() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -5784,7 +5784,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_event_handler_attributes_case_insensitively() {
+    fn rejects_event_handler_attributes_case_insensitively() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -5810,7 +5810,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_unknown_html_attribute() {
+    fn rejects_unknown_html_attribute() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -5829,7 +5829,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_unknown_attribute_on_custom_element() {
+    fn rejects_unknown_attribute_on_custom_element() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -5848,7 +5848,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_data_and_aria_attributes() {
+    fn accepts_data_and_aria_attributes() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -5866,7 +5866,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_svg_attributes_without_name_validation() {
+    fn accepts_svg_attributes_without_name_validation() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -5886,7 +5886,7 @@ mod tests {
     }
 
     #[test]
-    fn slot_named_param_with_non_fragment_type_is_an_ordinary_param() {
+    fn rejects_unused_slot_named_param_with_non_fragment_type() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -5907,7 +5907,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_let_binding_used_in_children() {
+    fn accepts_let_binding_used_in_children() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -5932,7 +5932,7 @@ mod tests {
     }
 
     #[test]
-    fn should_infer_string_let_binding() {
+    fn accepts_inferred_string_let_binding() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -5956,7 +5956,7 @@ mod tests {
     }
 
     #[test]
-    fn should_infer_int_let_binding() {
+    fn accepts_inferred_int_let_binding() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -5980,7 +5980,7 @@ mod tests {
     }
 
     #[test]
-    fn should_infer_float_let_binding() {
+    fn accepts_inferred_float_let_binding() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -6004,7 +6004,7 @@ mod tests {
     }
 
     #[test]
-    fn should_infer_nonempty_array_let_binding() {
+    fn accepts_inferred_nonempty_array_let_binding() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -6028,7 +6028,7 @@ mod tests {
     }
 
     #[test]
-    fn should_infer_record_literal_let_binding() {
+    fn accepts_inferred_record_literal_let_binding() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -6058,7 +6058,7 @@ mod tests {
     }
 
     #[test]
-    fn should_infer_mixed_annotated_and_inferred_bindings() {
+    fn accepts_mixed_annotated_and_inferred_bindings() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -6085,7 +6085,7 @@ mod tests {
     }
 
     #[test]
-    fn should_infer_binding_referencing_earlier_inferred_binding() {
+    fn accepts_binding_referencing_earlier_inferred_binding() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -6111,7 +6111,7 @@ mod tests {
     }
 
     #[test]
-    fn should_warn_on_unused_inferred_let_binding() {
+    fn rejects_unused_inferred_let_binding() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -6132,7 +6132,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_inferring_empty_array_let_binding() {
+    fn rejects_inferring_empty_array_let_binding() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -6153,7 +6153,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_inferring_none_let_binding() {
+    fn rejects_inferring_none_let_binding() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -6174,7 +6174,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_on_let_with_unused_variable() {
+    fn rejects_on_let_with_unused_variable() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -6195,7 +6195,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_let_shadowing_parameter() {
+    fn rejects_let_shadowing_parameter() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -6216,7 +6216,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_let_shadowing_another_let() {
+    fn rejects_let_shadowing_another_let() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -6239,7 +6239,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_let_with_same_name_in_sibling_scope() {
+    fn accepts_let_with_same_name_in_sibling_scope() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -6271,7 +6271,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_let_with_type_mismatch() {
+    fn rejects_let_with_type_mismatch() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -6292,7 +6292,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_let_with_multiple_bindings() {
+    fn accepts_let_with_multiple_bindings() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -6319,7 +6319,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_let_with_duplicate_bindings() {
+    fn rejects_let_with_duplicate_bindings() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -6340,7 +6340,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_let_with_unused_second_binding() {
+    fn rejects_let_with_unused_second_binding() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -6361,7 +6361,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_later_binding_to_reference_earlier_binding() {
+    fn accepts_later_binding_to_reference_earlier_binding() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -6387,7 +6387,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_chained_bindings_with_arithmetic() {
+    fn accepts_chained_bindings_with_arithmetic() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -6419,7 +6419,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_binding_that_references_later_binding() {
+    fn rejects_binding_that_references_later_binding() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -6448,7 +6448,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_view_without_parameters() {
+    fn accepts_view_without_parameters() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -6468,7 +6468,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_view_with_string_parameter() {
+    fn accepts_view_with_string_parameter() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -6490,7 +6490,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_view_with_multiple_parameters() {
+    fn accepts_view_with_multiple_parameters() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -6514,7 +6514,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_view_referencing_component() {
+    fn accepts_view_referencing_component() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -6544,7 +6544,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_view_with_undefined_component() {
+    fn rejects_view_with_undefined_component() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -6563,7 +6563,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_view_with_unused_parameter() {
+    fn rejects_view_with_unused_parameter() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -6581,7 +6581,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_view_with_undefined_parameter_type() {
+    fn rejects_view_with_undefined_parameter_type() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -6599,7 +6599,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_self_referential_record_in_list() {
+    fn accepts_self_referential_record_in_list() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -6624,7 +6624,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_self_referential_enum() {
+    fn accepts_self_referential_enum() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -6649,7 +6649,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_examples_min_max_on_int_field() {
+    fn accepts_examples_min_max_on_int_field() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -6671,7 +6671,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_min_max_on_string_field() {
+    fn rejects_min_max_on_string_field() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -6692,7 +6692,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_min_greater_than_max() {
+    fn rejects_min_greater_than_max() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -6713,7 +6713,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_examples_min_len_max_len_on_array_field() {
+    fn accepts_examples_min_len_max_len_on_array_field() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -6735,7 +6735,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_min_len_max_len_on_non_array_field() {
+    fn rejects_min_len_max_len_on_non_array_field() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -6756,7 +6756,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_negative_min_len() {
+    fn rejects_negative_min_len() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -6777,7 +6777,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_min_len_greater_than_max_len() {
+    fn rejects_min_len_greater_than_max_len() {
         reject(
             indoc! {r#"
                 -- main.hop --

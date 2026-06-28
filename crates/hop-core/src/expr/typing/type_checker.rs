@@ -1824,7 +1824,7 @@ mod tests {
         (typ, range)
     }
 
-    fn check(decls: &[Decl<'_>], env_vars: &[(&str, &str)], expr_str: &str, expected: Expect) {
+    fn run_check(decls: &[Decl<'_>], env_vars: &[(&str, &str)], expr_str: &str) -> (String, bool) {
         let mut env: VariableScope<VarName, (Arc<Type>, DocumentRange)> = VariableScope::new();
         let mut type_env: TypeEnv = VariableScope::new();
         let mut definition_links = Vec::new();
@@ -1965,7 +1965,7 @@ mod tests {
         let mut annotations = Vec::new();
         let mut definition_links = Vec::new();
 
-        let actual = match typecheck_expr(
+        match typecheck_expr(
             &expr,
             &mut env,
             &mut type_env,
@@ -1974,21 +1974,38 @@ mod tests {
             None,
             &mut asset_references,
         ) {
-            Ok(typed_expr) => typed_expr.as_type().to_string(),
-            Err(e) => DocumentAnnotator::new()
-                .with_label("error")
-                .without_location()
-                .without_line_numbers()
-                .annotate(&DocumentId::new("test.hop").unwrap(), [e])
-                .render(),
-        };
+            Ok(typed_expr) => (typed_expr.as_type().to_string(), true),
+            Err(e) => (
+                DocumentAnnotator::new()
+                    .with_label("error")
+                    .without_location()
+                    .without_line_numbers()
+                    .annotate(&DocumentId::new("test.hop").unwrap(), [e])
+                    .render(),
+                false,
+            ),
+        }
+    }
 
+    fn accept(decls: &[Decl<'_>], env_vars: &[(&str, &str)], expr_str: &str, expected: Expect) {
+        let (actual, ok) = run_check(decls, env_vars, expr_str);
+        if !ok {
+            panic!("expected expression to typecheck, got error:\n{actual}");
+        }
+        expected.assert_eq(&actual);
+    }
+
+    fn reject(decls: &[Decl<'_>], env_vars: &[(&str, &str)], expr_str: &str, expected: Expect) {
+        let (actual, ok) = run_check(decls, env_vars, expr_str);
+        if ok {
+            panic!("expected a type error, but expression typechecked to: {actual}");
+        }
         expected.assert_eq(&actual);
     }
 
     #[test]
-    fn should_reject_equality_between_string_and_number() {
-        check(
+    fn rejects_equality_between_string_and_number() {
+        reject(
             &[],
             &[("name", "String"), ("count", "Float")],
             "name == count",
@@ -2001,8 +2018,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_equality_between_boolean_and_string() {
-        check(
+    fn rejects_equality_between_boolean_and_string() {
+        reject(
             &[],
             &[("enabled", "Bool"), ("name", "String")],
             "enabled == name",
@@ -2015,8 +2032,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_undefined_variable() {
-        check(
+    fn rejects_undefined_variable() {
+        reject(
             &[],
             &[],
             "undefined_var",
@@ -2029,8 +2046,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_field_access_on_undefined_variable() {
-        check(
+    fn rejects_field_access_on_undefined_variable() {
+        reject(
             &[],
             &[],
             "notdefined.foo.bar",
@@ -2043,8 +2060,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_negation_of_string() {
-        check(
+    fn rejects_negation_of_string() {
+        reject(
             &[],
             &[("name", "String")],
             "!name",
@@ -2057,8 +2074,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_negation_of_number() {
-        check(
+    fn rejects_negation_of_number() {
+        reject(
             &[],
             &[("count", "Float")],
             "!count",
@@ -2071,28 +2088,28 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_numeric_negation_of_int() {
-        check(&[], &[("x", "Int")], "-x", expect!["Int"]);
+    fn accepts_numeric_negation_of_int() {
+        accept(&[], &[("x", "Int")], "-x", expect!["Int"]);
     }
 
     #[test]
-    fn should_accept_numeric_negation_of_float() {
-        check(&[], &[("x", "Float")], "-x", expect!["Float"]);
+    fn accepts_numeric_negation_of_float() {
+        accept(&[], &[("x", "Float")], "-x", expect!["Float"]);
     }
 
     #[test]
-    fn should_accept_numeric_negation_of_int_literal() {
-        check(&[], &[], "-42", expect!["Int"]);
+    fn accepts_numeric_negation_of_int_literal() {
+        accept(&[], &[], "-42", expect!["Int"]);
     }
 
     #[test]
-    fn should_accept_numeric_negation_of_float_literal() {
-        check(&[], &[], "-3.14", expect!["Float"]);
+    fn accepts_numeric_negation_of_float_literal() {
+        accept(&[], &[], "-3.14", expect!["Float"]);
     }
 
     #[test]
-    fn should_reject_numeric_negation_of_string() {
-        check(
+    fn rejects_numeric_negation_of_string() {
+        reject(
             &[],
             &[("name", "String")],
             "-name",
@@ -2105,8 +2122,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_numeric_negation_of_bool() {
-        check(
+    fn rejects_numeric_negation_of_bool() {
+        reject(
             &[],
             &[("flag", "Bool")],
             "-flag",
@@ -2119,38 +2136,38 @@ mod tests {
     }
 
     #[test]
-    fn should_resolve_basic_variable_lookup() {
-        check(&[], &[("name", "String")], "name", expect!["String"]);
+    fn accepts_basic_variable_lookup() {
+        accept(&[], &[("name", "String")], "name", expect!["String"]);
     }
 
     #[test]
-    fn should_accept_string_literal() {
-        check(&[], &[], r#""hello world""#, expect!["String"]);
+    fn accepts_string_literal() {
+        accept(&[], &[], r#""hello world""#, expect!["String"]);
     }
 
     #[test]
-    fn should_accept_boolean_literal_true() {
-        check(&[], &[], "true", expect!["Bool"]);
+    fn accepts_boolean_literal_true() {
+        accept(&[], &[], "true", expect!["Bool"]);
     }
 
     #[test]
-    fn should_accept_boolean_literal_false() {
-        check(&[], &[], "false", expect!["Bool"]);
+    fn accepts_boolean_literal_false() {
+        accept(&[], &[], "false", expect!["Bool"]);
     }
 
     #[test]
-    fn should_accept_int_literal() {
-        check(&[], &[], "42", expect!["Int"]);
+    fn accepts_int_literal() {
+        accept(&[], &[], "42", expect!["Int"]);
     }
 
     #[test]
-    fn should_accept_float_literal() {
-        check(&[], &[], "3.14", expect!["Float"]);
+    fn accepts_float_literal() {
+        accept(&[], &[], "3.14", expect!["Float"]);
     }
 
     #[test]
-    fn should_accept_string_equality() {
-        check(
+    fn accepts_string_equality() {
+        accept(
             &[],
             &[("name", "String")],
             r#"name == "alice""#,
@@ -2159,8 +2176,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_equality_between_float_and_int() {
-        check(
+    fn rejects_equality_between_float_and_int() {
+        reject(
             &[],
             &[("count", "Float")],
             "count == 42",
@@ -2173,8 +2190,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_boolean_equality() {
-        check(
+    fn accepts_boolean_equality() {
+        accept(
             &[],
             &[("enabled", "Bool")],
             "enabled == true",
@@ -2183,8 +2200,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_chained_equality() {
-        check(
+    fn accepts_chained_equality() {
+        accept(
             &[],
             &[("a", "Bool"), ("b", "Bool")],
             "a == b == true",
@@ -2193,28 +2210,28 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_negation_of_variable() {
-        check(&[], &[("enabled", "Bool")], "!enabled", expect!["Bool"]);
+    fn accepts_negation_of_variable() {
+        accept(&[], &[("enabled", "Bool")], "!enabled", expect!["Bool"]);
     }
 
     #[test]
-    fn should_accept_negation_of_true() {
-        check(&[], &[], "!true", expect!["Bool"]);
+    fn accepts_negation_of_true() {
+        accept(&[], &[], "!true", expect!["Bool"]);
     }
 
     #[test]
-    fn should_accept_negation_of_false() {
-        check(&[], &[], "!false", expect!["Bool"]);
+    fn accepts_negation_of_false() {
+        accept(&[], &[], "!false", expect!["Bool"]);
     }
 
     #[test]
-    fn should_accept_greater_than_with_ints() {
-        check(&[], &[("x", "Int"), ("y", "Int")], "x > y", expect!["Bool"]);
+    fn accepts_greater_than_with_ints() {
+        accept(&[], &[("x", "Int"), ("y", "Int")], "x > y", expect!["Bool"]);
     }
 
     #[test]
-    fn should_accept_greater_than_with_floats() {
-        check(
+    fn accepts_greater_than_with_floats() {
+        accept(
             &[],
             &[("x", "Float"), ("y", "Float")],
             "x > y",
@@ -2223,8 +2240,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_greater_than_with_mixed_types() {
-        check(
+    fn rejects_greater_than_with_mixed_types() {
+        reject(
             &[],
             &[("x", "Int"), ("y", "Float")],
             "x > y",
@@ -2237,8 +2254,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_less_than_or_equal_with_ints() {
-        check(
+    fn accepts_less_than_or_equal_with_ints() {
+        accept(
             &[],
             &[("x", "Int"), ("y", "Int")],
             "x <= y",
@@ -2247,8 +2264,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_less_than_or_equal_with_floats() {
-        check(
+    fn accepts_less_than_or_equal_with_floats() {
+        accept(
             &[],
             &[("x", "Float"), ("y", "Float")],
             "x <= y",
@@ -2257,8 +2274,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_less_than_or_equal_with_mixed_types() {
-        check(
+    fn rejects_less_than_or_equal_with_mixed_types() {
+        reject(
             &[],
             &[("x", "Int"), ("y", "Float")],
             "x <= y",
@@ -2271,8 +2288,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_greater_than_or_equal_with_ints() {
-        check(
+    fn accepts_greater_than_or_equal_with_ints() {
+        accept(
             &[],
             &[("x", "Int"), ("y", "Int")],
             "x >= y",
@@ -2281,8 +2298,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_greater_than_or_equal_with_floats() {
-        check(
+    fn accepts_greater_than_or_equal_with_floats() {
+        accept(
             &[],
             &[("x", "Float"), ("y", "Float")],
             "x >= y",
@@ -2291,8 +2308,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_greater_than_or_equal_with_mixed_types() {
-        check(
+    fn rejects_greater_than_or_equal_with_mixed_types() {
+        reject(
             &[],
             &[("x", "Int"), ("y", "Float")],
             "x >= y",
@@ -2305,8 +2322,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_negation_with_equality() {
-        check(
+    fn accepts_negation_with_equality() {
+        accept(
             &[record("User", &[("active", "Bool")])],
             &[("user", "User")],
             "!user.active == false",
@@ -2315,8 +2332,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_parenthesized_negation() {
-        check(
+    fn accepts_parenthesized_negation() {
+        accept(
             &[
                 record("Status", &[("enabled", "Bool")]),
                 record("Config", &[("active", "Bool")]),
@@ -2328,18 +2345,18 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_string_concatenation() {
-        check(&[], &[], r#""hello" + "world""#, expect!["String"]);
+    fn accepts_string_concatenation() {
+        accept(&[], &[], r#""hello" + "world""#, expect!["String"]);
     }
 
     #[test]
-    fn should_accept_multiple_string_concatenation() {
-        check(&[], &[], r#""hello" + " " + "world""#, expect!["String"]);
+    fn accepts_multiple_string_concatenation() {
+        accept(&[], &[], r#""hello" + " " + "world""#, expect!["String"]);
     }
 
     #[test]
-    fn should_accept_string_concatenation_with_variables() {
-        check(
+    fn accepts_string_concatenation_with_variables() {
+        accept(
             &[],
             &[("greeting", "String"), ("name", "String")],
             r#"greeting + " " + name"#,
@@ -2348,8 +2365,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_concatenation_with_left_number() {
-        check(
+    fn rejects_concatenation_with_left_number() {
+        reject(
             &[],
             &[],
             r#"42 + "hello""#,
@@ -2362,8 +2379,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_concatenation_with_right_boolean() {
-        check(
+    fn rejects_concatenation_with_right_boolean() {
+        reject(
             &[],
             &[],
             r#""hello" + true"#,
@@ -2376,13 +2393,13 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_int_addition() {
-        check(&[], &[], r#"42 + 58"#, expect!["Int"]);
+    fn accepts_int_addition() {
+        accept(&[], &[], r#"42 + 58"#, expect!["Int"]);
     }
 
     #[test]
-    fn should_accept_string_concatenation_with_field_access() {
-        check(
+    fn accepts_string_concatenation_with_field_access() {
+        accept(
             &[record(
                 "User",
                 &[("first_name", "String"), ("last_name", "String")],
@@ -2394,13 +2411,13 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_concatenation_result_comparison() {
-        check(&[], &[], r#""a" + "b" == "ab""#, expect!["Bool"]);
+    fn accepts_concatenation_result_comparison() {
+        accept(&[], &[], r#""a" + "b" == "ab""#, expect!["Bool"]);
     }
 
     #[test]
-    fn should_accept_logical_and_with_boolean_variables() {
-        check(
+    fn accepts_logical_and_with_boolean_variables() {
+        accept(
             &[],
             &[("a", "Bool"), ("b", "Bool")],
             "a && b",
@@ -2409,13 +2426,13 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_logical_and_with_boolean_literals() {
-        check(&[], &[], "true && false", expect!["Bool"]);
+    fn accepts_logical_and_with_boolean_literals() {
+        accept(&[], &[], "true && false", expect!["Bool"]);
     }
 
     #[test]
-    fn should_accept_logical_and_with_field_access() {
-        check(
+    fn accepts_logical_and_with_field_access() {
+        accept(
             &[record("User", &[("enabled", "Bool"), ("active", "Bool")])],
             &[("user", "User")],
             "user.enabled && user.active",
@@ -2424,8 +2441,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_logical_and_with_comparison() {
-        check(
+    fn accepts_logical_and_with_comparison() {
+        accept(
             &[],
             &[("x", "Int"), ("y", "Int"), ("enabled", "Bool")],
             "x > y && enabled",
@@ -2434,8 +2451,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_logical_and_with_left_string() {
-        check(
+    fn rejects_logical_and_with_left_string() {
+        reject(
             &[],
             &[("name", "String"), ("enabled", "Bool")],
             "name && enabled",
@@ -2448,8 +2465,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_logical_and_with_right_int() {
-        check(
+    fn rejects_logical_and_with_right_int() {
+        reject(
             &[],
             &[("enabled", "Bool"), ("count", "Int")],
             "enabled && count",
@@ -2462,8 +2479,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_logical_and_with_both_strings() {
-        check(
+    fn rejects_logical_and_with_both_strings() {
+        reject(
             &[],
             &[("a", "String"), ("b", "String")],
             "a && b",
@@ -2476,8 +2493,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_and_handle_logical_and_precedence() {
-        check(
+    fn accepts_and_handle_logical_and_precedence() {
+        accept(
             &[],
             &[("a", "Bool"), ("b", "Bool"), ("c", "Bool")],
             "a && b == c",
@@ -2486,8 +2503,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_logical_or_with_boolean_variables() {
-        check(
+    fn accepts_logical_or_with_boolean_variables() {
+        accept(
             &[],
             &[("a", "Bool"), ("b", "Bool")],
             "a || b",
@@ -2496,13 +2513,13 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_logical_or_with_boolean_literals() {
-        check(&[], &[], "true || false", expect!["Bool"]);
+    fn accepts_logical_or_with_boolean_literals() {
+        accept(&[], &[], "true || false", expect!["Bool"]);
     }
 
     #[test]
-    fn should_accept_logical_or_with_field_access() {
-        check(
+    fn accepts_logical_or_with_field_access() {
+        accept(
             &[record("User", &[("enabled", "Bool"), ("active", "Bool")])],
             &[("user", "User")],
             "user.enabled || user.active",
@@ -2511,8 +2528,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_logical_or_with_comparison() {
-        check(
+    fn accepts_logical_or_with_comparison() {
+        accept(
             &[],
             &[("x", "Int"), ("y", "Int"), ("enabled", "Bool")],
             "x > y || enabled",
@@ -2521,8 +2538,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_logical_or_with_left_string() {
-        check(
+    fn rejects_logical_or_with_left_string() {
+        reject(
             &[],
             &[("name", "String"), ("enabled", "Bool")],
             "name || enabled",
@@ -2535,8 +2552,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_logical_or_with_right_int() {
-        check(
+    fn rejects_logical_or_with_right_int() {
+        reject(
             &[],
             &[("enabled", "Bool"), ("count", "Int")],
             "enabled || count",
@@ -2549,8 +2566,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_logical_or_with_both_strings() {
-        check(
+    fn rejects_logical_or_with_both_strings() {
+        reject(
             &[],
             &[("a", "String"), ("b", "String")],
             "a || b",
@@ -2563,8 +2580,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_and_handle_logical_or_precedence() {
-        check(
+    fn accepts_and_handle_logical_or_precedence() {
+        accept(
             &[],
             &[("a", "Bool"), ("b", "Bool"), ("c", "Bool")],
             "a || b == c",
@@ -2573,8 +2590,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_mixed_logical_operators() {
-        check(
+    fn accepts_mixed_logical_operators() {
+        accept(
             &[],
             &[("a", "Bool"), ("b", "Bool"), ("c", "Bool")],
             "a && b || c",
@@ -2583,8 +2600,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_and_handle_complex_logical_operator_precedence() {
-        check(
+    fn accepts_and_handle_complex_logical_operator_precedence() {
+        accept(
             &[],
             &[("a", "Bool"), ("b", "Bool"), ("c", "Bool"), ("d", "Bool")],
             "a || b && c || d",
@@ -2593,13 +2610,13 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_int_addition_with_variables() {
-        check(&[], &[("x", "Int"), ("y", "Int")], "x + y", expect!["Int"]);
+    fn accepts_int_addition_with_variables() {
+        accept(&[], &[("x", "Int"), ("y", "Int")], "x + y", expect!["Int"]);
     }
 
     #[test]
-    fn should_accept_float_addition_with_variables() {
-        check(
+    fn accepts_float_addition_with_variables() {
+        accept(
             &[],
             &[("x", "Float"), ("y", "Float")],
             "x + y",
@@ -2608,8 +2625,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_string_addition_with_variables() {
-        check(
+    fn accepts_string_addition_with_variables() {
+        accept(
             &[],
             &[("s1", "String"), ("s2", "String")],
             "s1 + s2",
@@ -2618,23 +2635,23 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_int_literal_addition() {
-        check(&[], &[], "42 + 17", expect!["Int"]);
+    fn accepts_int_literal_addition() {
+        accept(&[], &[], "42 + 17", expect!["Int"]);
     }
 
     #[test]
-    fn should_accept_float_literal_addition() {
-        check(&[], &[], "3.14 + 2.71", expect!["Float"]);
+    fn accepts_float_literal_addition() {
+        accept(&[], &[], "3.14 + 2.71", expect!["Float"]);
     }
 
     #[test]
-    fn should_accept_string_literal_concatenation() {
-        check(&[], &[], r#""hello" + " world""#, expect!["String"]);
+    fn accepts_string_literal_concatenation() {
+        accept(&[], &[], r#""hello" + " world""#, expect!["String"]);
     }
 
     #[test]
-    fn should_reject_addition_of_int_and_float() {
-        check(
+    fn rejects_addition_of_int_and_float() {
+        reject(
             &[],
             &[("x", "Int"), ("y", "Float")],
             "x + y",
@@ -2647,8 +2664,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_addition_of_string_and_int() {
-        check(
+    fn rejects_addition_of_string_and_int() {
+        reject(
             &[],
             &[("name", "String"), ("count", "Int")],
             "name + count",
@@ -2661,8 +2678,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_addition_of_boolean_and_int() {
-        check(
+    fn rejects_addition_of_boolean_and_int() {
+        reject(
             &[],
             &[("flag", "Bool"), ("count", "Int")],
             "flag + count",
@@ -2675,8 +2692,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_mixed_addition_and_comparison() {
-        check(
+    fn accepts_mixed_addition_and_comparison() {
+        accept(
             &[],
             &[("a", "Int"), ("b", "Int"), ("c", "Int")],
             "a + b > c",
@@ -2689,8 +2706,8 @@ mod tests {
     ///////////////////////////////////////////////////////////////////////////
 
     #[test]
-    fn should_reject_array_with_different_element_types() {
-        check(
+    fn rejects_array_with_different_element_types() {
+        reject(
             &[],
             &[],
             "[1, true]",
@@ -2703,13 +2720,13 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_array_with_trailing_comma() {
-        check(&[], &[], "[\n\t1,\n\t2,\n\t3,\n]", expect!["Array[Int]"]);
+    fn accepts_array_with_trailing_comma() {
+        accept(&[], &[], "[\n\t1,\n\t2,\n\t3,\n]", expect!["Array[Int]"]);
     }
 
     #[test]
-    fn should_accept_single_element_array_with_trailing_comma() {
-        check(
+    fn accepts_single_element_array_with_trailing_comma() {
+        accept(
             &[],
             &[],
             indoc! {r#"
@@ -2722,8 +2739,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_field_access_on_nested_array() {
-        check(
+    fn rejects_field_access_on_nested_array() {
+        reject(
             &[
                 record("Profile", &[("name", "String"), ("active", "Bool")]),
                 record("UserInfo", &[("profile", "Profile")]),
@@ -2740,8 +2757,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_field_access_on_array() {
-        check(
+    fn rejects_field_access_on_array() {
+        reject(
             &[record("User", &[("name", "String")])],
             &[("users", "Array[User]")],
             "users.name",
@@ -2754,8 +2771,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_array_of_some_and_none() {
-        check(
+    fn accepts_array_of_some_and_none() {
+        accept(
             &[],
             &[],
             "[Some(1), Some(2), None]",
@@ -2764,13 +2781,13 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_array_of_arrays_with_empty_array() {
-        check(&[], &[], "[[1,2],[2,3],[]]", expect!["Array[Array[Int]]"]);
+    fn accepts_array_of_arrays_with_empty_array() {
+        accept(&[], &[], "[[1,2],[2,3],[]]", expect!["Array[Array[Int]]"]);
     }
 
     #[test]
-    fn should_reject_array_with_mismatched_option_types() {
-        check(
+    fn rejects_array_with_mismatched_option_types() {
+        reject(
             &[],
             &[],
             r#"[Some(1), Some("1")]"#,
@@ -2787,8 +2804,8 @@ mod tests {
     ///////////////////////////////////////////////////////////////////////////
 
     #[test]
-    fn should_accept_simple_record_literal() {
-        check(
+    fn accepts_simple_record_literal() {
+        accept(
             &[record("User", &[("name", "String"), ("age", "Int")])],
             &[],
             r#"User {name: "John", age: 30}"#,
@@ -2797,8 +2814,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_record_literal_with_variables() {
-        check(
+    fn accepts_record_literal_with_variables() {
+        accept(
             &[record("User", &[("name", "String"), ("age", "Int")])],
             &[("user_name", "String"), ("user_age", "Int")],
             "User {name: user_name, age: user_age}",
@@ -2807,8 +2824,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_literal_of_undefined_record() {
-        check(
+    fn rejects_literal_of_undefined_record() {
+        reject(
             &[],
             &[],
             r#"User {name: "John"}"#,
@@ -2821,8 +2838,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_unknown_field_access() {
-        check(
+    fn rejects_unknown_field_access() {
+        reject(
             &[record("Data", &[("field", "String")])],
             &[("data", "Data")],
             "data.unknown",
@@ -2835,8 +2852,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_equality_of_same_field_types() {
-        check(
+    fn accepts_equality_of_same_field_types() {
+        accept(
             &[
                 record("User", &[("name", "String")]),
                 record("Admin", &[("name", "String")]),
@@ -2848,8 +2865,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_field_access_on_non_record() {
-        check(
+    fn rejects_field_access_on_non_record() {
+        reject(
             &[],
             &[("count", "Float")],
             "count.value",
@@ -2862,8 +2879,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_deep_field_access() {
-        check(
+    fn accepts_deep_field_access() {
+        accept(
             &[
                 record("Connection", &[("host", "String")]),
                 record("Database", &[("connection", "Connection")]),
@@ -2877,8 +2894,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_multiple_field_accesses() {
-        check(
+    fn accepts_multiple_field_accesses() {
+        accept(
             &[record("Obj", &[("name", "String"), ("title", "String")])],
             &[("obj", "Obj")],
             "obj.name == obj.title",
@@ -2887,8 +2904,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_record_literal_with_missing_field() {
-        check(
+    fn rejects_record_literal_with_missing_field() {
+        reject(
             &[record("User", &[("name", "String"), ("age", "Int")])],
             &[],
             r#"User {name: "John"}"#,
@@ -2901,8 +2918,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_field_access() {
-        check(
+    fn accepts_field_access() {
+        accept(
             &[record("User", &[("name", "String")])],
             &[("user", "User")],
             "user.name",
@@ -2911,8 +2928,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_nested_field_access() {
-        check(
+    fn accepts_nested_field_access() {
+        accept(
             &[
                 record("Profile", &[("name", "String")]),
                 record("User", &[("profile", "Profile")]),
@@ -2925,8 +2942,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_record_literal_with_unknown_field() {
-        check(
+    fn rejects_record_literal_with_unknown_field() {
+        reject(
             &[record("User", &[("name", "String")])],
             &[],
             r#"User {name: "John", email: "john@example.com"}"#,
@@ -2939,8 +2956,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_record_literal_with_type_mismatch() {
-        check(
+    fn rejects_record_literal_with_type_mismatch() {
+        reject(
             &[record("User", &[("name", "String"), ("age", "Int")])],
             &[],
             r#"User {name: "John", age: "thirty"}"#,
@@ -2953,8 +2970,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_nested_record_literal() {
-        check(
+    fn accepts_nested_record_literal() {
+        accept(
             &[
                 record("Address", &[("city", "String")]),
                 record("User", &[("name", "String"), ("address", "Address")]),
@@ -2966,8 +2983,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_record_with_array_field() {
-        check(
+    fn accepts_record_with_array_field() {
+        accept(
             &[record("Data", &[("items", "Array[String]")])],
             &[("data", "Data")],
             "data.items",
@@ -2980,8 +2997,8 @@ mod tests {
     ///////////////////////////////////////////////////////////////////////////
 
     #[test]
-    fn should_reject_enum_equality() {
-        check(
+    fn rejects_enum_equality() {
+        reject(
             &[enum_unit("Color", &["Red", "Green", "Blue"])],
             &[("a", "Color"), ("b", "Color")],
             "a == b",
@@ -2994,8 +3011,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_enum_inequality() {
-        check(
+    fn rejects_enum_inequality() {
+        reject(
             &[enum_unit("Color", &["Red", "Green", "Blue"])],
             &[("a", "Color"), ("b", "Color")],
             "a != b",
@@ -3008,8 +3025,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_equality_between_different_enum_types() {
-        check(
+    fn rejects_equality_between_different_enum_types() {
+        reject(
             &[
                 enum_unit("Color", &["Red", "Green", "Blue"]),
                 enum_unit("Size", &["Small", "Medium", "Large"]),
@@ -3025,8 +3042,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_inequality_between_different_enum_types() {
-        check(
+    fn rejects_inequality_between_different_enum_types() {
+        reject(
             &[
                 enum_unit("Color", &["Red", "Green", "Blue"]),
                 enum_unit("Size", &["Small", "Medium", "Large"]),
@@ -3042,8 +3059,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_equality_between_enum_and_string() {
-        check(
+    fn rejects_equality_between_enum_and_string() {
+        reject(
             &[enum_unit("Color", &["Red", "Green", "Blue"])],
             &[("color", "Color"), ("name", "String")],
             "color == name",
@@ -3056,8 +3073,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_equality_between_enum_and_int() {
-        check(
+    fn rejects_equality_between_enum_and_int() {
+        reject(
             &[enum_unit("Color", &["Red", "Green", "Blue"])],
             &[("color", "Color"), ("count", "Int")],
             "color == count",
@@ -3070,8 +3087,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_equality_between_enum_and_bool() {
-        check(
+    fn rejects_equality_between_enum_and_bool() {
+        reject(
             &[enum_unit("Color", &["Red", "Green", "Blue"])],
             &[("color", "Color"), ("flag", "Bool")],
             "color == flag",
@@ -3084,8 +3101,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_less_than_comparison_on_enums() {
-        check(
+    fn rejects_less_than_comparison_on_enums() {
+        reject(
             &[enum_unit("Color", &["Red", "Green", "Blue"])],
             &[("a", "Color"), ("b", "Color")],
             "a < b",
@@ -3098,8 +3115,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_greater_than_comparison_on_enums() {
-        check(
+    fn rejects_greater_than_comparison_on_enums() {
+        reject(
             &[enum_unit("Color", &["Red", "Green", "Blue"])],
             &[("a", "Color"), ("b", "Color")],
             "a > b",
@@ -3112,8 +3129,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_enum_in_record_field_equality() {
-        check(
+    fn rejects_enum_in_record_field_equality() {
+        reject(
             &[
                 enum_unit("Status", &["Active", "Inactive", "Pending"]),
                 record("User", &[("name", "String"), ("status", "Status")]),
@@ -3129,8 +3146,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_enum_equality_with_field_access() {
-        check(
+    fn rejects_enum_equality_with_field_access() {
+        reject(
             &[
                 enum_unit("Status", &["Active", "Inactive"]),
                 record("User", &[("status", "Status")]),
@@ -3147,8 +3164,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_enum_literal() {
-        check(
+    fn accepts_enum_literal() {
+        accept(
             &[enum_unit("Color", &["Red", "Green", "Blue"])],
             &[],
             "Color::Red",
@@ -3157,8 +3174,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_undefined_enum_variant() {
-        check(
+    fn rejects_undefined_enum_variant() {
+        reject(
             &[enum_unit("Color", &["Red", "Green", "Blue"])],
             &[],
             "Color::Yellow",
@@ -3171,8 +3188,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_undefined_enum() {
-        check(
+    fn rejects_undefined_enum() {
+        reject(
             &[],
             &[],
             "Missing::Red",
@@ -3185,8 +3202,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_enum_variant_with_fields() {
-        check(
+    fn accepts_enum_variant_with_fields() {
+        accept(
             &[enum_(
                 "Outcome",
                 &[
@@ -3201,8 +3218,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_enum_variant_with_multiple_fields() {
-        check(
+    fn accepts_enum_variant_with_multiple_fields() {
+        accept(
             &[enum_(
                 "Point",
                 &[("XY", &[("x", "Int"), ("y", "Int")]), ("Origin", &[])],
@@ -3214,8 +3231,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_enum_variant_missing_field() {
-        check(
+    fn rejects_enum_variant_missing_field() {
+        reject(
             &[enum_(
                 "Outcome",
                 &[
@@ -3234,8 +3251,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_enum_variant_missing_two_fields() {
-        check(
+    fn rejects_enum_variant_missing_two_fields() {
+        reject(
             &[enum_("Point", &[("XY", &[("x", "Int"), ("y", "Int")])])],
             &[],
             "Point::XY {}",
@@ -3248,8 +3265,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_enum_variant_unknown_field() {
-        check(
+    fn rejects_enum_variant_unknown_field() {
+        reject(
             &[enum_(
                 "Outcome",
                 &[
@@ -3268,8 +3285,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_enum_variant_field_type_mismatch() {
-        check(
+    fn rejects_enum_variant_field_type_mismatch() {
+        reject(
             &[enum_(
                 "Outcome",
                 &[
@@ -3288,8 +3305,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_fields_on_unit_variant() {
-        check(
+    fn rejects_fields_on_unit_variant() {
+        reject(
             &[enum_(
                 "Maybe",
                 &[("Just", &[("value", "Int")]), ("Nothing", &[])],
@@ -3305,8 +3322,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_enum_variant_in_equality() {
-        check(
+    fn rejects_enum_variant_in_equality() {
+        reject(
             &[enum_unit("Color", &["Red", "Green", "Blue"])],
             &[("color", "Color")],
             "Color::Red == color",
@@ -3319,8 +3336,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_enum_variant_in_record_field_assignment() {
-        check(
+    fn accepts_enum_variant_in_record_field_assignment() {
+        accept(
             &[
                 enum_unit("Status", &["Active", "Inactive"]),
                 record("User", &[("name", "String"), ("status", "Status")]),
@@ -3332,8 +3349,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_two_enum_variants_in_equality() {
-        check(
+    fn rejects_two_enum_variants_in_equality() {
+        reject(
             &[enum_unit("Color", &["Red", "Green", "Blue"])],
             &[],
             "Color::Red == Color::Green",
@@ -3346,8 +3363,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_equality_between_different_enums_with_same_variants() {
-        check(
+    fn rejects_equality_between_different_enums_with_same_variants() {
+        reject(
             &[
                 enum_unit("Color", &["Red", "Green", "Blue"]),
                 enum_unit("Shade", &["Red", "Green", "Blue"]),
@@ -3367,28 +3384,28 @@ mod tests {
     ///////////////////////////////////////////////////////////////////////////
 
     #[test]
-    fn should_accept_some_with_integer_literal() {
-        check(&[], &[], "Some(42)", expect!["Option[Int]"]);
+    fn accepts_some_with_integer_literal() {
+        accept(&[], &[], "Some(42)", expect!["Option[Int]"]);
     }
 
     #[test]
-    fn should_accept_some_with_string_literal() {
-        check(&[], &[], r#"Some("hello")"#, expect!["Option[String]"]);
+    fn accepts_some_with_string_literal() {
+        accept(&[], &[], r#"Some("hello")"#, expect!["Option[String]"]);
     }
 
     #[test]
-    fn should_accept_some_with_boolean_literal() {
-        check(&[], &[], "Some(true)", expect!["Option[Bool]"]);
+    fn accepts_some_with_boolean_literal() {
+        accept(&[], &[], "Some(true)", expect!["Option[Bool]"]);
     }
 
     #[test]
-    fn should_accept_some_with_float_literal() {
-        check(&[], &[], "Some(3.14)", expect!["Option[Float]"]);
+    fn accepts_some_with_float_literal() {
+        accept(&[], &[], "Some(3.14)", expect!["Option[Float]"]);
     }
 
     #[test]
-    fn should_accept_some_with_variable() {
-        check(
+    fn accepts_some_with_variable() {
+        accept(
             &[],
             &[("name", "String")],
             "Some(name)",
@@ -3397,8 +3414,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_some_with_field_access() {
-        check(
+    fn accepts_some_with_field_access() {
+        accept(
             &[record("User", &[("name", "String")])],
             &[("user", "User")],
             "Some(user.name)",
@@ -3407,18 +3424,18 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_nested_some() {
-        check(&[], &[], "Some(Some(42))", expect!["Option[Option[Int]]"]);
+    fn accepts_nested_some() {
+        accept(&[], &[], "Some(Some(42))", expect!["Option[Option[Int]]"]);
     }
 
     #[test]
-    fn should_accept_some_with_array() {
-        check(&[], &[], "Some([1, 2, 3])", expect!["Option[Array[Int]]"]);
+    fn accepts_some_with_array() {
+        accept(&[], &[], "Some([1, 2, 3])", expect!["Option[Array[Int]]"]);
     }
 
     #[test]
-    fn should_accept_some_with_record_literal() {
-        check(
+    fn accepts_some_with_record_literal() {
+        accept(
             &[record("Point", &[("x", "Int"), ("y", "Int")])],
             &[],
             "Some(Point{x: 1, y: 2})",
@@ -3427,8 +3444,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_some_with_enum_literal() {
-        check(
+    fn accepts_some_with_enum_literal() {
+        accept(
             &[enum_unit("Color", &["Red", "Green", "Blue"])],
             &[],
             "Some(Color::Red)",
@@ -3437,8 +3454,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_option_variable() {
-        check(
+    fn accepts_option_variable() {
+        accept(
             &[],
             &[("maybe_count", "Option[Int]")],
             "maybe_count",
@@ -3447,8 +3464,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_option_in_record_field() {
-        check(
+    fn accepts_option_in_record_field() {
+        accept(
             &[record(
                 "User",
                 &[("name", "String"), ("age", "Option[Int]")],
@@ -3460,8 +3477,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_none_in_record_field_assignment() {
-        check(
+    fn accepts_none_in_record_field_assignment() {
+        accept(
             &[record(
                 "User",
                 &[("name", "String"), ("nickname", "Option[String]")],
@@ -3473,8 +3490,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_some_in_record_field_assignment() {
-        check(
+    fn accepts_some_in_record_field_assignment() {
+        accept(
             &[record(
                 "User",
                 &[("name", "String"), ("nickname", "Option[String]")],
@@ -3486,8 +3503,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_nested_option_in_record_field() {
-        check(
+    fn accepts_nested_option_in_record_field() {
+        accept(
             &[record("Config", &[("value", "Option[Option[Int]]")])],
             &[],
             "Config {value: Some(Some(42))}",
@@ -3496,8 +3513,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_none_for_nested_option_field() {
-        check(
+    fn accepts_none_for_nested_option_field() {
+        accept(
             &[record("Config", &[("value", "Option[Option[Int]]")])],
             &[],
             "Config {value: None}",
@@ -3506,8 +3523,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_array_of_options() {
-        check(
+    fn accepts_array_of_options() {
+        accept(
             &[],
             &[("items", "Array[Option[Int]]")],
             "items",
@@ -3516,8 +3533,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_option_of_array() {
-        check(
+    fn accepts_option_of_array() {
+        accept(
             &[],
             &[("maybe_items", "Option[Array[Int]]")],
             "maybe_items",
@@ -3526,8 +3543,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_none_without_context() {
-        check(
+    fn rejects_none_without_context() {
+        reject(
             &[],
             &[],
             "None",
@@ -3540,8 +3557,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_type_mismatch_in_option_field() {
-        check(
+    fn rejects_type_mismatch_in_option_field() {
+        reject(
             &[record(
                 "User",
                 &[("name", "String"), ("age", "Option[Int]")],
@@ -3557,8 +3574,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_non_option_for_option_field() {
-        check(
+    fn rejects_non_option_for_option_field() {
+        reject(
             &[record(
                 "User",
                 &[("name", "String"), ("age", "Option[Int]")],
@@ -3574,13 +3591,13 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_option_equality() {
-        check(&[], &[], "Some(1) == Some(2)", expect!["Bool"]);
+    fn accepts_option_equality() {
+        accept(&[], &[], "Some(1) == Some(2)", expect!["Bool"]);
     }
 
     #[test]
-    fn should_reject_option_of_array_equality() {
-        check(
+    fn rejects_option_of_array_equality() {
+        reject(
             &[],
             &[],
             "Some([1]) == Some([1])",
@@ -3593,28 +3610,28 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_some_equals_none() {
-        check(&[], &[], "Some(1) == None", expect!["Bool"]);
+    fn accepts_some_equals_none() {
+        accept(&[], &[], "Some(1) == None", expect!["Bool"]);
     }
 
     #[test]
-    fn should_accept_none_equals_some() {
-        check(&[], &[], "None == Some(1)", expect!["Bool"]);
+    fn accepts_none_equals_some() {
+        accept(&[], &[], "None == Some(1)", expect!["Bool"]);
     }
 
     #[test]
-    fn should_accept_nested_some_equals_some_none() {
-        check(&[], &[], "Some(Some(1)) == Some(None)", expect!["Bool"]);
+    fn accepts_nested_some_equals_some_none() {
+        accept(&[], &[], "Some(Some(1)) == Some(None)", expect!["Bool"]);
     }
 
     #[test]
-    fn should_accept_nested_some_equals_none() {
-        check(&[], &[], "Some(Some(1)) == None", expect!["Bool"]);
+    fn accepts_nested_some_equals_none() {
+        accept(&[], &[], "Some(Some(1)) == None", expect!["Bool"]);
     }
 
     #[test]
-    fn should_reject_nested_some_with_different_inner_types() {
-        check(
+    fn rejects_nested_some_with_different_inner_types() {
+        reject(
             &[],
             &[],
             r#"Some(Some(1)) == Some(Some("2"))"#,
@@ -3631,8 +3648,8 @@ mod tests {
     ///////////////////////////////////////////////////////////////////////////
 
     #[test]
-    fn should_reject_match_with_no_arms() {
-        check(
+    fn rejects_match_with_no_arms() {
+        reject(
             &[],
             &[("flag", "Bool")],
             indoc! {r#"
@@ -3652,8 +3669,8 @@ mod tests {
     ///////////////////////////////////////////////////////////////////////////
 
     #[test]
-    fn should_accept_match_expression_with_all_variants() {
-        check(
+    fn accepts_match_expression_with_all_variants() {
+        accept(
             &[enum_unit("Color", &["Red", "Green", "Blue"])],
             &[("color", "Color")],
             indoc! {r#"
@@ -3668,8 +3685,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_match_expression_returning_int() {
-        check(
+    fn accepts_match_expression_returning_int() {
+        accept(
             &[enum_unit("Size", &["Small", "Medium", "Large"])],
             &[("size", "Size")],
             indoc! {"
@@ -3684,8 +3701,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_match_expression_returning_bool() {
-        check(
+    fn accepts_match_expression_returning_bool() {
+        accept(
             &[enum_unit("Status", &["Active", "Inactive"])],
             &[("status", "Status")],
             indoc! {"
@@ -3699,8 +3716,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_match_on_non_enum() {
-        check(
+    fn rejects_match_on_non_enum() {
+        reject(
             &[],
             &[("name", "String")],
             indoc! {r#"
@@ -3717,8 +3734,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_match_with_mismatched_arm_types() {
-        check(
+    fn rejects_match_with_mismatched_arm_types() {
+        reject(
             &[enum_unit("Color", &["Red", "Green"])],
             &[("color", "Color")],
             indoc! {r#"
@@ -3736,8 +3753,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_match_with_wrong_enum_in_pattern() {
-        check(
+    fn rejects_match_with_wrong_enum_in_pattern() {
+        reject(
             &[
                 enum_unit("Color", &["Red", "Green"]),
                 enum_unit("Size", &["Small", "Large"]),
@@ -3758,8 +3775,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_match_with_undefined_variant_in_pattern() {
-        check(
+    fn rejects_match_with_undefined_variant_in_pattern() {
+        reject(
             &[enum_unit("Color", &["Red", "Green"])],
             &[("color", "Color")],
             indoc! {r#"
@@ -3777,8 +3794,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_match_with_field_access_subject() {
-        check(
+    fn accepts_match_with_field_access_subject() {
+        accept(
             &[
                 enum_unit("Status", &["Active", "Inactive"]),
                 record("User", &[("status", "Status")]),
@@ -3795,8 +3812,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_match_with_complex_arm_bodies() {
-        check(
+    fn accepts_match_with_complex_arm_bodies() {
+        accept(
             &[
                 enum_unit("Status", &["Active", "Inactive"]),
                 record("User", &[("name", "String"), ("status", "Status")]),
@@ -3813,8 +3830,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_match_with_single_variant_enum() {
-        check(
+    fn accepts_match_with_single_variant_enum() {
+        accept(
             &[enum_unit("Unit", &["Value"])],
             &[("unit", "Unit")],
             indoc! {r#"
@@ -3827,8 +3844,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_match_with_wildcard_pattern() {
-        check(
+    fn accepts_match_with_wildcard_pattern() {
+        accept(
             &[enum_unit("Color", &["Red", "Green", "Blue"])],
             &[("color", "Color")],
             indoc! {r#"
@@ -3842,8 +3859,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_match_with_only_wildcard() {
-        check(
+    fn rejects_match_with_only_wildcard() {
+        reject(
             &[enum_unit("Color", &["Red", "Green", "Blue"])],
             &[("color", "Color")],
             indoc! {r#"
@@ -3860,8 +3877,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_match_with_wildcard_at_end() {
-        check(
+    fn accepts_match_with_wildcard_at_end() {
+        accept(
             &[enum_unit(
                 "Status",
                 &["Active", "Inactive", "Pending", "Archived"],
@@ -3883,8 +3900,8 @@ mod tests {
     ///////////////////////////////////////////////////////////////////////////
 
     #[test]
-    fn should_accept_boolean_match_with_both_values() {
-        check(
+    fn accepts_boolean_match_with_both_values() {
+        accept(
             &[],
             &[("flag", "Bool")],
             indoc! {r#"
@@ -3898,8 +3915,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_boolean_match_with_wildcard() {
-        check(
+    fn accepts_boolean_match_with_wildcard() {
+        accept(
             &[],
             &[("flag", "Bool")],
             indoc! {r#"
@@ -3913,8 +3930,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_boolean_match_with_only_wildcard() {
-        check(
+    fn rejects_boolean_match_with_only_wildcard() {
+        reject(
             &[],
             &[("flag", "Bool")],
             indoc! {r#"
@@ -3931,8 +3948,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_enum_pattern_in_boolean_match() {
-        check(
+    fn rejects_enum_pattern_in_boolean_match() {
+        reject(
             &[enum_unit("Color", &["Red"])],
             &[("flag", "Bool")],
             indoc! {r#"
@@ -3950,8 +3967,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_boolean_pattern_in_enum_match() {
-        check(
+    fn rejects_boolean_pattern_in_enum_match() {
+        reject(
             &[enum_unit("Color", &["Red", "Green"])],
             &[("color", "Color")],
             indoc! {r#"
@@ -3973,8 +3990,8 @@ mod tests {
     ///////////////////////////////////////////////////////////////////////////
 
     #[test]
-    fn should_accept_option_match_with_some_and_none() {
-        check(
+    fn accepts_option_match_with_some_and_none() {
+        accept(
             &[],
             &[("opt", "Option[Int]")],
             indoc! {r#"
@@ -3988,8 +4005,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_option_match_returning_int() {
-        check(
+    fn accepts_option_match_returning_int() {
+        accept(
             &[],
             &[("opt", "Option[String]")],
             indoc! {"
@@ -4003,8 +4020,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_option_match_with_wildcard() {
-        check(
+    fn accepts_option_match_with_wildcard() {
+        accept(
             &[],
             &[("opt", "Option[Bool]")],
             indoc! {r#"
@@ -4018,8 +4035,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_option_match_with_only_wildcard() {
-        check(
+    fn rejects_option_match_with_only_wildcard() {
+        reject(
             &[],
             &[("opt", "Option[Int]")],
             indoc! {r#"
@@ -4036,8 +4053,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_option_match_with_specific_some_and_wildcard() {
-        check(
+    fn accepts_option_match_with_specific_some_and_wildcard() {
+        accept(
             &[],
             &[("opt", "Option[Bool]")],
             indoc! {"
@@ -4051,8 +4068,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_exhaustive_nested_option_match() {
-        check(
+    fn accepts_exhaustive_nested_option_match() {
+        accept(
             &[],
             &[("opt", "Option[Option[Int]]")],
             indoc! {r#"
@@ -4067,8 +4084,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_exhaustive_nested_option_match_with_literal_subject() {
-        check(
+    fn accepts_exhaustive_nested_option_match_with_literal_subject() {
+        accept(
             &[],
             &[],
             indoc! {r#"
@@ -4083,8 +4100,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_option_match_with_mismatched_arm_types() {
-        check(
+    fn rejects_option_match_with_mismatched_arm_types() {
+        reject(
             &[],
             &[("opt", "Option[Int]")],
             indoc! {"
@@ -4102,8 +4119,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_enum_pattern_in_option_match() {
-        check(
+    fn rejects_enum_pattern_in_option_match() {
+        reject(
             &[enum_unit("Color", &["Red", "Green"])],
             &[("opt", "Option[Int]")],
             indoc! {r#"
@@ -4121,8 +4138,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_boolean_pattern_in_option_match() {
-        check(
+    fn rejects_boolean_pattern_in_option_match() {
+        reject(
             &[],
             &[("opt", "Option[Int]")],
             indoc! {r#"
@@ -4140,8 +4157,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_option_pattern_in_enum_match() {
-        check(
+    fn rejects_option_pattern_in_enum_match() {
+        reject(
             &[enum_unit("Color", &["Red", "Green"])],
             &[("color", "Color")],
             indoc! {r#"
@@ -4159,8 +4176,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_option_pattern_in_bool_match() {
-        check(
+    fn rejects_option_pattern_in_bool_match() {
+        reject(
             &[],
             &[("flag", "Bool")],
             indoc! {r#"
@@ -4178,8 +4195,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_nested_option_pattern_when_inner_type_is_bool() {
-        check(
+    fn rejects_nested_option_pattern_when_inner_type_is_bool() {
+        reject(
             &[],
             &[("opt", "Option[Bool]")],
             indoc! {r#"
@@ -4197,8 +4214,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_option_match_with_nested_enum() {
-        check(
+    fn accepts_option_match_with_nested_enum() {
+        accept(
             &[enum_unit("Color", &["Red", "Green", "Blue"])],
             &[("opt", "Option[Color]")],
             indoc! {r#"
@@ -4214,8 +4231,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_deeply_nested_option_pattern_when_inner_type_is_bool() {
-        check(
+    fn rejects_deeply_nested_option_pattern_when_inner_type_is_bool() {
+        reject(
             &[],
             &[("opt", "Option[Bool]")],
             indoc! {r#"
@@ -4237,8 +4254,8 @@ mod tests {
     ///////////////////////////////////////////////////////////////////////////
 
     #[test]
-    fn should_accept_binding_pattern_in_bool_match() {
-        check(
+    fn accepts_binding_pattern_in_bool_match() {
+        accept(
             &[],
             &[("flag", "Bool")],
             indoc! {r#"
@@ -4251,8 +4268,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_binding_pattern_in_enum_match() {
-        check(
+    fn accepts_binding_pattern_in_enum_match() {
+        accept(
             &[enum_unit("Color", &["Red", "Green", "Blue"])],
             &[("color", "Color")],
             indoc! {r#"
@@ -4265,8 +4282,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_binding_pattern_in_option_match() {
-        check(
+    fn accepts_binding_pattern_in_option_match() {
+        accept(
             &[],
             &[("opt", "Option[Int]")],
             indoc! {r#"
@@ -4279,8 +4296,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_binding_pattern_inside_some() {
-        check(
+    fn accepts_binding_pattern_inside_some() {
+        accept(
             &[],
             &[("opt", "Option[Int]")],
             indoc! {r#"
@@ -4294,8 +4311,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_binding_pattern_in_arithmetic() {
-        check(
+    fn accepts_binding_pattern_in_arithmetic() {
+        accept(
             &[],
             &[("opt", "Option[Int]")],
             indoc! {r#"
@@ -4309,8 +4326,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_binding_pattern_returning_option() {
-        check(
+    fn accepts_binding_pattern_returning_option() {
+        accept(
             &[],
             &[("opt", "Option[Int]")],
             indoc! {r#"
@@ -4324,8 +4341,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_binding_pattern_as_catchall() {
-        check(
+    fn accepts_binding_pattern_as_catchall() {
+        accept(
             &[],
             &[("flag", "Bool")],
             indoc! {r#"
@@ -4339,8 +4356,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_unused_binding() {
-        check(
+    fn rejects_unused_binding() {
+        reject(
             &[],
             &[("flag", "Bool")],
             indoc! {r#"
@@ -4357,8 +4374,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_unused_binding_inside_some() {
-        check(
+    fn rejects_unused_binding_inside_some() {
+        reject(
             &[],
             &[("opt", "Option[Int]")],
             indoc! {r#"
@@ -4376,8 +4393,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_binding_inside_nested_some() {
-        check(
+    fn accepts_binding_inside_nested_some() {
+        accept(
             &[],
             &[("opt", "Option[Option[Int]]")],
             indoc! {r#"
@@ -4392,8 +4409,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_unused_binding_inside_nested_some() {
-        check(
+    fn rejects_unused_binding_inside_nested_some() {
+        reject(
             &[],
             &[("opt", "Option[Option[Int]]")],
             indoc! {r#"
@@ -4416,8 +4433,8 @@ mod tests {
     ///////////////////////////////////////////////////////////////////////////
 
     #[test]
-    fn should_accept_record_match_with_all_fields() {
-        check(
+    fn accepts_record_match_with_all_fields() {
+        accept(
             &[record("User", &[("name", "String"), ("age", "Int")])],
             &[("user", "User")],
             indoc! {r#"
@@ -4430,8 +4447,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_record_match_with_wildcard_fields() {
-        check(
+    fn rejects_record_match_with_wildcard_fields() {
+        reject(
             &[record("User", &[("name", "String"), ("age", "Int")])],
             &[("user", "User")],
             indoc! {r#"
@@ -4448,8 +4465,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_record_match_with_nested_wildcard_fields() {
-        check(
+    fn rejects_record_match_with_nested_wildcard_fields() {
+        reject(
             &[
                 record("Role", &[("title", "String"), ("salary", "Int")]),
                 record("User", &[("role", "Role"), ("created_at", "Int")]),
@@ -4469,8 +4486,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_record_match_with_nested_wildcard_fields_followed_by_wildcard() {
-        check(
+    fn rejects_record_match_with_nested_wildcard_fields_followed_by_wildcard() {
+        reject(
             &[
                 record("Role", &[("title", "String"), ("salary", "Int")]),
                 record("User", &[("role", "Role"), ("created_at", "Int")]),
@@ -4491,8 +4508,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_record_match_with_nested_enum_pattern() {
-        check(
+    fn accepts_record_match_with_nested_enum_pattern() {
+        accept(
             &[
                 enum_unit("Status", &["Active", "Inactive"]),
                 record("User", &[("name", "String"), ("status", "Status")]),
@@ -4509,8 +4526,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_record_match_with_missing_fields() {
-        check(
+    fn rejects_record_match_with_missing_fields() {
+        reject(
             &[record("User", &[("name", "String"), ("age", "Int")])],
             &[("user", "User")],
             indoc! {r#"
@@ -4527,8 +4544,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_record_match_with_unknown_field() {
-        check(
+    fn rejects_record_match_with_unknown_field() {
+        reject(
             &[record("User", &[("name", "String"), ("age", "Int")])],
             &[("user", "User")],
             indoc! {r#"
@@ -4545,8 +4562,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_record_match_with_wrong_record_type() {
-        check(
+    fn rejects_record_match_with_wrong_record_type() {
+        reject(
             &[
                 record("User", &[("name", "String")]),
                 record("Admin", &[("name", "String")]),
@@ -4566,8 +4583,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_unused_binding_in_record_pattern() {
-        check(
+    fn rejects_unused_binding_in_record_pattern() {
+        reject(
             &[record("User", &[("name", "String"), ("age", "Int")])],
             &[("user", "User")],
             indoc! {r#"
@@ -4584,8 +4601,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_record_match_with_nested_option_pattern() {
-        check(
+    fn accepts_record_match_with_nested_option_pattern() {
+        accept(
             &[record(
                 "User",
                 &[("name", "String"), ("email", "Option[String]")],
@@ -4602,8 +4619,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_option_match_with_nested_record_pattern() {
-        check(
+    fn accepts_option_match_with_nested_record_pattern() {
+        accept(
             &[record("User", &[("name", "String"), ("age", "Int")])],
             &[("maybe_user", "Option[User]")],
             indoc! {r#"
@@ -4617,8 +4634,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_option_of_record_match_with_some_and_none() {
-        check(
+    fn accepts_option_of_record_match_with_some_and_none() {
+        accept(
             &[record("User", &[("name", "String"), ("age", "Int")])],
             &[("maybe_user", "Option[User]")],
             indoc! {r#"
@@ -4636,8 +4653,8 @@ mod tests {
     ///////////////////////////////////////////////////////////////////////////
 
     #[test]
-    fn should_accept_join_macro_with_string_args() {
-        check(
+    fn accepts_join_macro_with_string_args() {
+        accept(
             &[],
             &[("first", "String"), ("last", "String")],
             "join!(first, last)",
@@ -4646,18 +4663,18 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_join_macro_with_no_args() {
-        check(&[], &[], "join!()", expect!["String"]);
+    fn accepts_join_macro_with_no_args() {
+        accept(&[], &[], "join!()", expect!["String"]);
     }
 
     #[test]
-    fn should_accept_join_macro_with_string_literals() {
-        check(&[], &[], r#"join!("hello", "world")"#, expect!["String"]);
+    fn accepts_join_macro_with_string_literals() {
+        accept(&[], &[], r#"join!("hello", "world")"#, expect!["String"]);
     }
 
     #[test]
-    fn should_reject_join_macro_with_non_string_arg() {
-        check(
+    fn rejects_join_macro_with_non_string_arg() {
+        reject(
             &[],
             &[("count", "Int")],
             "join!(count)",
@@ -4672,18 +4689,18 @@ mod tests {
     // Asset macro tests
 
     #[test]
-    fn should_accept_asset_macro_with_string_literal() {
-        check(&[], &[], r#"asset!("/logo.svg")"#, expect!["String"]);
+    fn accepts_asset_macro_with_string_literal() {
+        accept(&[], &[], r#"asset!("/logo.svg")"#, expect!["String"]);
     }
 
     #[test]
-    fn should_accept_asset_macro_with_nested_path() {
-        check(&[], &[], r#"asset!("/icons/star.svg")"#, expect!["String"]);
+    fn accepts_asset_macro_with_nested_path() {
+        accept(&[], &[], r#"asset!("/icons/star.svg")"#, expect!["String"]);
     }
 
     #[test]
-    fn should_reject_asset_macro_with_no_args() {
-        check(
+    fn rejects_asset_macro_with_no_args() {
+        reject(
             &[],
             &[],
             "asset!()",
@@ -4696,8 +4713,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_asset_macro_with_two_args() {
-        check(
+    fn rejects_asset_macro_with_two_args() {
+        reject(
             &[],
             &[],
             r#"asset!("/a", "/b")"#,
@@ -4710,8 +4727,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_asset_macro_with_variable_arg() {
-        check(
+    fn rejects_asset_macro_with_variable_arg() {
+        reject(
             &[],
             &[("path", "String")],
             "asset!(path)",
@@ -4724,8 +4741,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_asset_macro_with_concat_arg() {
-        check(
+    fn rejects_asset_macro_with_concat_arg() {
+        reject(
             &[],
             &[],
             r#"asset!("/a" + "/b")"#,
@@ -4738,8 +4755,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_asset_macro_with_relative_path() {
-        check(
+    fn rejects_asset_macro_with_relative_path() {
+        reject(
             &[],
             &[],
             r#"asset!("logo.svg")"#,
@@ -4752,8 +4769,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_asset_macro_with_empty_string() {
-        check(
+    fn rejects_asset_macro_with_empty_string() {
+        reject(
             &[],
             &[],
             r#"asset!("")"#,
@@ -4768,8 +4785,8 @@ mod tests {
     // Method call tests
 
     #[test]
-    fn should_accept_len_on_array() {
-        check(
+    fn accepts_len_on_array() {
+        accept(
             &[],
             &[("items", "Array[String]")],
             "items.len()",
@@ -4778,8 +4795,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_len_on_int_array() {
-        check(
+    fn accepts_len_on_int_array() {
+        accept(
             &[],
             &[("numbers", "Array[Int]")],
             "numbers.len()",
@@ -4788,8 +4805,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_len_in_comparison() {
-        check(
+    fn accepts_len_in_comparison() {
+        accept(
             &[],
             &[("items", "Array[String]")],
             "items.len() == 0",
@@ -4798,8 +4815,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_len_on_non_array() {
-        check(
+    fn rejects_len_on_non_array() {
+        reject(
             &[],
             &[("name", "String")],
             "name.len()",
@@ -4812,8 +4829,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_unknown_method_on_array() {
-        check(
+    fn rejects_unknown_method_on_array() {
+        reject(
             &[],
             &[("items", "Array[String]")],
             "items.foo()",
@@ -4828,8 +4845,8 @@ mod tests {
     // Int to_string tests
 
     #[test]
-    fn should_accept_to_string_on_int() {
-        check(
+    fn accepts_to_string_on_int() {
+        accept(
             &[],
             &[("count", "Int")],
             "count.to_string()",
@@ -4838,8 +4855,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_to_string_in_concat() {
-        check(
+    fn accepts_to_string_in_concat() {
+        accept(
             &[],
             &[("n", "Int")],
             r#""Value: " + n.to_string()"#,
@@ -4848,8 +4865,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_to_string_on_string() {
-        check(
+    fn rejects_to_string_on_string() {
+        reject(
             &[],
             &[("name", "String")],
             "name.to_string()",
@@ -4862,8 +4879,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_to_string_on_array() {
-        check(
+    fn rejects_to_string_on_array() {
+        reject(
             &[],
             &[("items", "Array[Int]")],
             "items.to_string()",
@@ -4878,13 +4895,13 @@ mod tests {
     // Float to_int tests
 
     #[test]
-    fn should_accept_to_int_on_float() {
-        check(&[], &[("price", "Float")], "price.to_int()", expect!["Int"]);
+    fn accepts_to_int_on_float() {
+        accept(&[], &[("price", "Float")], "price.to_int()", expect!["Int"]);
     }
 
     #[test]
-    fn should_accept_to_int_in_comparison() {
-        check(
+    fn accepts_to_int_in_comparison() {
+        accept(
             &[],
             &[("price", "Float")],
             "price.to_int() == 5",
@@ -4893,8 +4910,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_to_int_on_int() {
-        check(
+    fn rejects_to_int_on_int() {
+        reject(
             &[],
             &[("count", "Int")],
             "count.to_int()",
@@ -4907,8 +4924,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_to_int_on_string() {
-        check(
+    fn rejects_to_int_on_string() {
+        reject(
             &[],
             &[("name", "String")],
             "name.to_int()",
@@ -4923,8 +4940,8 @@ mod tests {
     // Int to_float tests
 
     #[test]
-    fn should_accept_to_float_on_int() {
-        check(
+    fn accepts_to_float_on_int() {
+        accept(
             &[],
             &[("count", "Int")],
             "count.to_float()",
@@ -4933,8 +4950,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_to_float_in_arithmetic() {
-        check(
+    fn accepts_to_float_in_arithmetic() {
+        accept(
             &[],
             &[("count", "Int"), ("rate", "Float")],
             "count.to_float() + rate",
@@ -4943,8 +4960,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_to_float_on_float() {
-        check(
+    fn rejects_to_float_on_float() {
+        reject(
             &[],
             &[("price", "Float")],
             "price.to_float()",
@@ -4957,8 +4974,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_to_float_on_string() {
-        check(
+    fn rejects_to_float_on_string() {
+        reject(
             &[],
             &[("name", "String")],
             "name.to_float()",
@@ -4973,27 +4990,27 @@ mod tests {
     // Method calls on literals
 
     #[test]
-    fn should_accept_to_string_on_int_literal() {
-        check(&[], &[], "42.to_string()", expect!["String"]);
+    fn accepts_to_string_on_int_literal() {
+        accept(&[], &[], "42.to_string()", expect!["String"]);
     }
 
     #[test]
-    fn should_accept_to_float_on_int_literal() {
-        check(&[], &[], "42.to_float()", expect!["Float"]);
+    fn accepts_to_float_on_int_literal() {
+        accept(&[], &[], "42.to_float()", expect!["Float"]);
     }
 
     #[test]
-    fn should_accept_to_int_on_float_literal() {
-        check(&[], &[], "3.14.to_int()", expect!["Int"]);
+    fn accepts_to_int_on_float_literal() {
+        accept(&[], &[], "3.14.to_int()", expect!["Int"]);
     }
 
     #[test]
-    fn should_accept_len_on_array_literal() {
-        check(&[], &[], "[1, 2, 3].len()", expect!["Int"]);
+    fn accepts_len_on_array_literal() {
+        accept(&[], &[], "[1, 2, 3].len()", expect!["Int"]);
     }
 
     #[test]
-    fn should_accept_method_call_on_parenthesized_arithmetic() {
-        check(&[], &[], "(1 + 2).to_string()", expect!["String"]);
+    fn accepts_method_call_on_parenthesized_arithmetic() {
+        accept(&[], &[], "(1 + 2).to_string()", expect!["String"]);
     }
 }

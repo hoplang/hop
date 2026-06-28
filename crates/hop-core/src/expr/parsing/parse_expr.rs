@@ -772,7 +772,7 @@ mod tests {
     ///////////////////////////////////////////////////////////////////////////
 
     #[test]
-    fn should_accept_record_literal_with_single_field() {
+    fn accepts_record_literal_with_single_field() {
         accept(
             r#"User {name: "John"}"#,
             expect![[r#"
@@ -782,7 +782,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_record_literal_with_multiple_fields() {
+    fn accepts_record_literal_with_multiple_fields() {
         accept(
             r#"User {name: "John", age: 30, active: true}"#,
             expect![[r#"
@@ -792,7 +792,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_record_literal_with_no_fields() {
+    fn accepts_record_literal_with_no_fields() {
         accept(
             "Empty {}",
             expect![[r#"
@@ -802,7 +802,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_record_literal_with_trailing_comma() {
+    fn accepts_record_literal_with_trailing_comma() {
         accept(
             r#"User {name: "John", age: 30,}"#,
             expect![[r#"
@@ -812,7 +812,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_record_literal_with_multiline_fields() {
+    fn accepts_record_literal_with_multiline_fields() {
         accept(
             indoc! {r#"
                 User {
@@ -826,7 +826,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_record_literal_with_nested_records() {
+    fn accepts_record_literal_with_nested_records() {
         accept(
             r#"Wrapper {inner: Inner {value: 42}}"#,
             expect![[r#"
@@ -836,7 +836,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_record_literal_with_expression_values() {
+    fn accepts_record_literal_with_expression_values() {
         accept(
             "Point {x: a + b, y: c * 2}",
             expect![[r#"
@@ -846,7 +846,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_record_literal_when_closing_brace_is_missing() {
+    fn rejects_record_literal_when_closing_brace_is_missing() {
         reject(
             r#"User {name: "John""#,
             expect![[r#"
@@ -858,7 +858,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_record_literal_when_colon_is_missing() {
+    fn rejects_record_literal_when_colon_is_missing() {
         reject(
             r#"User {name "John"}"#,
             expect![[r#"
@@ -870,7 +870,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_record_literal_with_braces_single_field() {
+    fn accepts_record_literal_with_braces_single_field() {
         accept(
             r#"User {name: "John"}"#,
             expect![[r#"
@@ -880,7 +880,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_record_literal_with_braces_multiple_fields() {
+    fn accepts_record_literal_with_braces_multiple_fields() {
         accept(
             r#"User {name: "John", age: 30}"#,
             expect![[r#"
@@ -890,7 +890,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_record_literal_with_braces_no_fields() {
+    fn accepts_record_literal_with_braces_no_fields() {
         accept(
             "Empty {}",
             expect![[r#"
@@ -900,7 +900,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_empty_fragment_literal() {
+    fn accepts_empty_fragment_literal() {
         accept(
             "Fragment::empty()",
             expect![[r#"
@@ -910,7 +910,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_fragment_literal_with_unknown_method() {
+    fn rejects_fragment_literal_with_unknown_method() {
         reject(
             "Fragment::nonempty()",
             expect![[r#"
@@ -922,7 +922,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_empty_fragment_literal_without_parentheses() {
+    fn rejects_empty_fragment_literal_without_parentheses() {
         reject(
             "Fragment::empty",
             expect![[r#"
@@ -934,7 +934,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_record_literal_with_braces_trailing_comma() {
+    fn accepts_record_literal_with_braces_trailing_comma() {
         accept(
             r#"User {name: "John",}"#,
             expect![[r#"
@@ -944,7 +944,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_record_literal_with_mismatched_brace_paren() {
+    fn rejects_record_literal_with_mismatched_brace_paren() {
         reject(
             r#"Foo {bar: "baz")"#,
             expect![[r#"
@@ -960,7 +960,7 @@ mod tests {
     ///////////////////////////////////////////////////////////////////////////
 
     #[test]
-    fn should_accept_comments_in_expression() {
+    fn accepts_comments_in_expression() {
         accept(
             "x // this is a comment\n== y",
             expect![[r#"
@@ -970,7 +970,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_comments_between_tokens() {
+    fn accepts_comments_between_tokens() {
         accept(
             "// leading comment\nx + // middle\ny // trailing",
             expect![[r#"
@@ -980,7 +980,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_comments_in_array() {
+    fn accepts_comments_in_array() {
         accept(
             "[1, // comment\n2, 3]",
             expect![[r#"
@@ -994,7 +994,7 @@ mod tests {
     ///////////////////////////////////////////////////////////////////////////
 
     #[test]
-    fn should_reject_expr_when_trailing_tokens_are_present() {
+    fn rejects_expr_when_trailing_tokens_are_present() {
         reject(
             "x y",
             expect![[r#"
@@ -1006,7 +1006,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_expr_when_array_bracket_is_unmatched() {
+    fn rejects_expr_when_array_bracket_is_unmatched() {
         reject(
             "[foo, bar == [foo, bar]",
             expect![[r#"
@@ -1018,7 +1018,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_expr_when_array_has_invalid_token_after_comma() {
+    fn rejects_expr_when_array_has_invalid_token_after_comma() {
         reject(
             "[foo, bar, == [foo, bar]",
             expect![[r#"
@@ -1030,7 +1030,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_expr_when_array_closing_bracket_is_missing() {
+    fn rejects_expr_when_array_closing_bracket_is_missing() {
         reject(
             "[1,2",
             expect![[r#"
@@ -1042,7 +1042,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_expr_when_array_has_unexpected_token_instead_of_bracket() {
+    fn rejects_expr_when_array_has_unexpected_token_instead_of_bracket() {
         reject(
             "[1,2 id",
             expect![[r#"
@@ -1054,7 +1054,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_expr_when_field_access_ends_with_dot() {
+    fn rejects_expr_when_field_access_ends_with_dot() {
         reject(
             "user == user.",
             expect![[r#"
@@ -1066,7 +1066,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_expr_when_field_name_is_number() {
+    fn rejects_expr_when_field_name_is_number() {
         reject(
             "user.123",
             expect![[r#"
@@ -1078,7 +1078,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_expr_when_starting_with_operator() {
+    fn rejects_expr_when_starting_with_operator() {
         reject(
             "== x",
             expect![[r#"
@@ -1090,7 +1090,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_expr_when_closing_paren_is_missing() {
+    fn rejects_expr_when_closing_paren_is_missing() {
         reject(
             "(x == y",
             expect![[r#"
@@ -1102,7 +1102,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_expr_when_closing_paren_has_no_opening() {
+    fn rejects_expr_when_closing_paren_has_no_opening() {
         reject(
             "x == y)",
             expect![[r#"
@@ -1114,7 +1114,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_expr_when_parens_are_empty() {
+    fn rejects_expr_when_parens_are_empty() {
         reject(
             "()",
             expect![[r#"
@@ -1126,7 +1126,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_expr_when_right_operand_is_invalid() {
+    fn rejects_expr_when_right_operand_is_invalid() {
         reject(
             "x == )",
             expect![[r#"
@@ -1138,7 +1138,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_expr_when_starting_with_dot() {
+    fn rejects_expr_when_starting_with_dot() {
         reject(
             ".field",
             expect![[r#"
@@ -1150,7 +1150,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_expr_when_containing_double_dot() {
+    fn rejects_expr_when_containing_double_dot() {
         reject(
             "user..name",
             expect![[r#"
@@ -1162,7 +1162,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_expr_when_ending_with_operator() {
+    fn rejects_expr_when_ending_with_operator() {
         reject(
             "x ==",
             expect![[r#"
@@ -1174,7 +1174,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_expr_when_not_operator_has_no_operand() {
+    fn rejects_expr_when_not_operator_has_no_operand() {
         reject(
             "!",
             expect![[r#"
@@ -1186,8 +1186,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_expr_when_not_operator_is_trailing() {
-        // Note: `x !` is now interpreted as a macro invocation `x!`
+    fn rejects_expr_when_not_operator_is_trailing() {
         reject(
             "x !",
             expect![[r#"
@@ -1199,7 +1198,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_with_chained_equality_operators() {
+    fn accepts_expr_with_chained_equality_operators() {
         accept(
             "a == b == c",
             expect![[r#"
@@ -1209,7 +1208,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_comparing_field_accesses() {
+    fn accepts_expr_comparing_field_accesses() {
         accept(
             "user.name == admin.name",
             expect![[r#"
@@ -1219,7 +1218,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_with_less_than_or_equal_operator() {
+    fn accepts_expr_with_less_than_or_equal_operator() {
         accept(
             "x <= y",
             expect![[r#"
@@ -1229,7 +1228,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_with_chained_less_than_or_equal_operators() {
+    fn accepts_expr_with_chained_less_than_or_equal_operators() {
         accept(
             "a <= b <= c",
             expect![[r#"
@@ -1239,7 +1238,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_with_greater_than_or_equal_operator() {
+    fn accepts_expr_with_greater_than_or_equal_operator() {
         accept(
             "x >= y",
             expect![[r#"
@@ -1249,7 +1248,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_with_chained_greater_than_or_equal_operators() {
+    fn accepts_expr_with_chained_greater_than_or_equal_operators() {
         accept(
             "a >= b >= c",
             expect![[r#"
@@ -1259,7 +1258,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_with_deeply_nested_field_access() {
+    fn accepts_expr_with_deeply_nested_field_access() {
         accept(
             "app.user.profile.settings.theme",
             expect![[r#"
@@ -1273,7 +1272,7 @@ mod tests {
     ///////////////////////////////////////////////////////////////////////////
 
     #[test]
-    fn should_accept_simple_method_call() {
+    fn accepts_simple_method_call() {
         accept(
             "x.foo()",
             expect![[r#"
@@ -1283,7 +1282,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_chained_method_calls() {
+    fn accepts_chained_method_calls() {
         accept(
             "x.foo().bar()",
             expect![[r#"
@@ -1293,7 +1292,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_triple_chained_method_calls() {
+    fn accepts_triple_chained_method_calls() {
         accept(
             "x.foo().bar().baz()",
             expect![[r#"
@@ -1303,7 +1302,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_field_access_then_method_call() {
+    fn accepts_field_access_then_method_call() {
         accept(
             "x.field.method()",
             expect![[r#"
@@ -1313,7 +1312,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_method_call_then_field_access() {
+    fn accepts_method_call_then_field_access() {
         accept(
             "x.method().field",
             expect![[r#"
@@ -1323,7 +1322,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_mixed_field_and_method_chain() {
+    fn accepts_mixed_field_and_method_chain() {
         accept(
             "x.a.b().c.d()",
             expect![[r#"
@@ -1333,7 +1332,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_method_call_in_equality() {
+    fn accepts_method_call_in_equality() {
         accept(
             "x.foo() == y.bar()",
             expect![[r#"
@@ -1343,7 +1342,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_method_call_in_logical_expression() {
+    fn accepts_method_call_in_logical_expression() {
         accept(
             "x.valid() && y.ready()",
             expect![[r#"
@@ -1353,7 +1352,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_method_call_with_missing_closing_paren() {
+    fn rejects_method_call_with_missing_closing_paren() {
         reject(
             "x.foo(",
             expect![[r#"
@@ -1365,7 +1364,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_with_empty_string_literal() {
+    fn accepts_expr_with_empty_string_literal() {
         accept(
             r#""""#,
             expect![[r#"
@@ -1375,7 +1374,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_with_integer_literal() {
+    fn accepts_expr_with_integer_literal() {
         accept(
             "99",
             expect![[r#"
@@ -1385,7 +1384,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_with_float_literal() {
+    fn accepts_expr_with_float_literal() {
         accept(
             "3.14",
             expect![[r#"
@@ -1395,7 +1394,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_with_mixed_int_and_float_operands() {
+    fn accepts_expr_with_mixed_int_and_float_operands() {
         accept(
             "42 + 3.14",
             expect![[r#"
@@ -1405,7 +1404,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_with_parenthesized_expression() {
+    fn accepts_expr_with_parenthesized_expression() {
         accept(
             "(x == y)",
             expect![[r#"
@@ -1415,7 +1414,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_with_simple_field_access() {
+    fn accepts_expr_with_simple_field_access() {
         accept(
             "user.name",
             expect![[r#"
@@ -1425,7 +1424,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_comparing_string_literal_to_field() {
+    fn accepts_expr_comparing_string_literal_to_field() {
         accept(
             r#""guest" == user.role"#,
             expect![[r#"
@@ -1435,7 +1434,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_comparing_two_variables() {
+    fn accepts_expr_comparing_two_variables() {
         accept(
             "x == y",
             expect![[r#"
@@ -1445,7 +1444,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_with_string_literal() {
+    fn accepts_expr_with_string_literal() {
         accept(
             r#""hello""#,
             expect![[r#"
@@ -1455,7 +1454,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_with_single_variable() {
+    fn accepts_expr_with_single_variable() {
         accept(
             "x",
             expect![[r#"
@@ -1465,7 +1464,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_comparing_two_string_literals() {
+    fn accepts_expr_comparing_two_string_literals() {
         accept(
             r#""apple" == "orange""#,
             expect![[r#"
@@ -1475,7 +1474,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_comparing_field_to_string_literal() {
+    fn accepts_expr_comparing_field_to_string_literal() {
         accept(
             r#"user.name == "admin""#,
             expect![[r#"
@@ -1485,7 +1484,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_with_string_containing_space() {
+    fn accepts_expr_with_string_containing_space() {
         accept(
             r#""hello world""#,
             expect![[r#"
@@ -1495,7 +1494,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_ignoring_surrounding_whitespace() {
+    fn accepts_expr_ignoring_surrounding_whitespace() {
         accept(
             "  user . name   ==   admin . name  ",
             expect![[r#"
@@ -1505,7 +1504,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_with_empty_array() {
+    fn accepts_expr_with_empty_array() {
         accept(
             "[]",
             expect![[r#"
@@ -1515,7 +1514,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_with_array_of_integers() {
+    fn accepts_expr_with_array_of_integers() {
         accept(
             "[1, 2, 3]",
             expect![[r#"
@@ -1525,7 +1524,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_with_array_of_mixed_types() {
+    fn accepts_expr_with_array_of_mixed_types() {
         accept(
             r#"[1, "hello", true]"#,
             expect![[r#"
@@ -1535,7 +1534,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_with_nested_arrays() {
+    fn accepts_expr_with_nested_arrays() {
         accept(
             "[[1, 2], [3, 4]]",
             expect![[r#"
@@ -1545,7 +1544,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_with_nested_arrays_containing_expressions() {
+    fn accepts_expr_with_nested_arrays_containing_expressions() {
         accept(
             "[[1 == [1 == 2], [] == []], [3, 4]]",
             expect![[r#"
@@ -1555,7 +1554,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_with_array_containing_variables() {
+    fn accepts_expr_with_array_containing_variables() {
         accept(
             "[x, user.name]",
             expect![[r#"
@@ -1565,7 +1564,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_with_multiline_array_and_trailing_comma() {
+    fn accepts_expr_with_multiline_array_and_trailing_comma() {
         accept(
             "[\n\t1,\n\t2,\n\t3,\n]",
             expect![[r#"
@@ -1575,7 +1574,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_with_single_element_array_and_trailing_comma() {
+    fn accepts_expr_with_single_element_array_and_trailing_comma() {
         accept(
             "[\n\t1,\n]",
             expect![[r#"
@@ -1585,7 +1584,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_with_array_containing_complex_expressions() {
+    fn accepts_expr_with_array_containing_complex_expressions() {
         accept(
             "[\n\tuser.name,\n\t!user.disabled,\n]",
             expect![[r#"
@@ -1595,7 +1594,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_with_string_concatenation() {
+    fn accepts_expr_with_string_concatenation() {
         accept(
             r#""hello" + "world""#,
             expect![[r#"
@@ -1605,7 +1604,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_with_multiple_string_concatenations() {
+    fn accepts_expr_with_multiple_string_concatenations() {
         accept(
             r#""hello" + " " + "world""#,
             expect![[r#"
@@ -1615,7 +1614,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_with_string_concatenation_using_variables() {
+    fn accepts_expr_with_string_concatenation_using_variables() {
         accept(
             r#"greeting + " " + name"#,
             expect![[r#"
@@ -1625,7 +1624,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_with_concatenation_having_lower_precedence_than_equality() {
+    fn accepts_expr_with_concatenation_having_lower_precedence_than_equality() {
         accept(
             r#""a" + "b" == "ab""#,
             expect![[r#"
@@ -1635,7 +1634,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_with_string_concatenation_using_field_access() {
+    fn accepts_expr_with_string_concatenation_using_field_access() {
         accept(
             r#"user.first_name + " " + user.last_name"#,
             expect![[r#"
@@ -1645,7 +1644,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_with_not_equals_operator() {
+    fn accepts_expr_with_not_equals_operator() {
         accept(
             "x != y",
             expect![[r#"
@@ -1655,7 +1654,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_with_not_equals_comparing_strings() {
+    fn accepts_expr_with_not_equals_comparing_strings() {
         accept(
             r#""hello" != "world""#,
             expect![[r#"
@@ -1665,7 +1664,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_with_chained_not_equals_operators() {
+    fn accepts_expr_with_chained_not_equals_operators() {
         accept(
             "a != b != c",
             expect![[r#"
@@ -1675,7 +1674,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_with_mixed_equals_and_not_equals() {
+    fn accepts_expr_with_mixed_equals_and_not_equals() {
         accept(
             "a == b != c",
             expect![[r#"
@@ -1685,7 +1684,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_with_logical_and_operator() {
+    fn accepts_expr_with_logical_and_operator() {
         accept(
             "a && b",
             expect![[r#"
@@ -1695,7 +1694,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_with_chained_logical_and_operators() {
+    fn accepts_expr_with_chained_logical_and_operators() {
         accept(
             "a && b && c",
             expect![[r#"
@@ -1705,7 +1704,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_with_logical_and_having_lower_precedence_than_equality() {
+    fn accepts_expr_with_logical_and_having_lower_precedence_than_equality() {
         accept(
             "a && b == c",
             expect![[r#"
@@ -1715,7 +1714,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_with_equality_having_higher_precedence_than_logical_and() {
+    fn accepts_expr_with_equality_having_higher_precedence_than_logical_and() {
         accept(
             "a == b && c != d",
             expect![[r#"
@@ -1725,7 +1724,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_with_logical_and_combining_comparisons() {
+    fn accepts_expr_with_logical_and_combining_comparisons() {
         accept(
             "x > y && a <= b",
             expect![[r#"
@@ -1735,7 +1734,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_with_logical_and_combining_negations() {
+    fn accepts_expr_with_logical_and_combining_negations() {
         accept(
             "!a && !b",
             expect![[r#"
@@ -1745,7 +1744,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_with_logical_or_operator() {
+    fn accepts_expr_with_logical_or_operator() {
         accept(
             "a || b",
             expect![[r#"
@@ -1755,7 +1754,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_with_chained_logical_or_operators() {
+    fn accepts_expr_with_chained_logical_or_operators() {
         accept(
             "a || b || c",
             expect![[r#"
@@ -1765,7 +1764,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_with_logical_or_having_lower_precedence_than_equality() {
+    fn accepts_expr_with_logical_or_having_lower_precedence_than_equality() {
         accept(
             "a || b == c",
             expect![[r#"
@@ -1775,7 +1774,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_with_logical_and_having_higher_precedence_than_or() {
+    fn accepts_expr_with_logical_and_having_higher_precedence_than_or() {
         accept(
             "a && b || c",
             expect![[r#"
@@ -1785,7 +1784,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_with_mixed_logical_operators_respecting_precedence() {
+    fn accepts_expr_with_mixed_logical_operators_respecting_precedence() {
         accept(
             "a || b && c || d",
             expect![[r#"
@@ -1795,7 +1794,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_with_logical_operators_and_comparisons_respecting_precedence() {
+    fn accepts_expr_with_logical_operators_and_comparisons_respecting_precedence() {
         accept(
             "x > y && a || b < c",
             expect![[r#"
@@ -1805,7 +1804,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_with_logical_or_combining_negations() {
+    fn accepts_expr_with_logical_or_combining_negations() {
         accept(
             "!a || !b",
             expect![[r#"
@@ -1815,7 +1814,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_with_addition_having_higher_precedence_than_equality() {
+    fn accepts_expr_with_addition_having_higher_precedence_than_equality() {
         accept(
             "x + y == z",
             expect![[r#"
@@ -1825,7 +1824,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_with_addition_and_comparison_and_logical_and() {
+    fn accepts_expr_with_addition_and_comparison_and_logical_and() {
         accept(
             "x + y > z && enabled",
             expect![[r#"
@@ -1835,7 +1834,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_with_chained_addition_operators() {
+    fn accepts_expr_with_chained_addition_operators() {
         accept(
             "x + y + z",
             expect![[r#"
@@ -1849,7 +1848,7 @@ mod tests {
     ///////////////////////////////////////////////////////////////////////////
 
     #[test]
-    fn should_accept_negative_integer_literal() {
+    fn accepts_negative_integer_literal() {
         accept(
             "-5",
             expect![[r#"
@@ -1859,7 +1858,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_negative_float_literal() {
+    fn accepts_negative_float_literal() {
         accept(
             "-3.14",
             expect![[r#"
@@ -1869,7 +1868,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_negative_variable() {
+    fn accepts_negative_variable() {
         accept(
             "-x",
             expect![[r#"
@@ -1879,7 +1878,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_double_negative() {
+    fn accepts_double_negative() {
         accept(
             "--5",
             expect![[r#"
@@ -1889,7 +1888,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_negative_parenthesized_expression() {
+    fn accepts_negative_parenthesized_expression() {
         accept(
             "-(a + b)",
             expect![[r#"
@@ -1899,7 +1898,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_negative_in_addition() {
+    fn accepts_negative_in_addition() {
         accept(
             "x + -y",
             expect![[r#"
@@ -1909,7 +1908,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_subtraction_of_negative() {
+    fn accepts_subtraction_of_negative() {
         accept(
             "x - -y",
             expect![[r#"
@@ -1919,7 +1918,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_negative_in_comparison() {
+    fn accepts_negative_in_comparison() {
         accept(
             "-5 < x",
             expect![[r#"
@@ -1929,7 +1928,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_negative_in_array() {
+    fn accepts_negative_in_array() {
         accept(
             "[-1, -2, -3]",
             expect![[r#"
@@ -1943,7 +1942,7 @@ mod tests {
     ///////////////////////////////////////////////////////////////////////////
 
     #[test]
-    fn should_accept_enum_literal() {
+    fn accepts_enum_literal() {
         accept(
             "Color::Red",
             expect![[r#"
@@ -1953,7 +1952,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_enum_literal_in_equality() {
+    fn accepts_enum_literal_in_equality() {
         accept(
             "Color::Red == Color::Green",
             expect![[r#"
@@ -1963,7 +1962,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_enum_literal_in_record_field() {
+    fn accepts_enum_literal_in_record_field() {
         accept(
             r#"User {name: "Alice", status: Status::Active}"#,
             expect![[r#"
@@ -1973,7 +1972,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_enum_literal_with_lowercase_variant() {
+    fn rejects_enum_literal_with_lowercase_variant() {
         reject(
             "Color::red",
             expect![[r#"
@@ -1985,7 +1984,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_enum_literal_missing_variant() {
+    fn rejects_enum_literal_missing_variant() {
         reject(
             "Color::",
             expect![[r#"
@@ -1997,7 +1996,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_enum_literal_with_single_field() {
+    fn accepts_enum_literal_with_single_field() {
         accept(
             "Outcome::Success {value: 42}",
             expect![[r#"
@@ -2007,7 +2006,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_enum_literal_with_multiple_fields() {
+    fn accepts_enum_literal_with_multiple_fields() {
         accept(
             r#"Event::Click {x: 10, y: 20}"#,
             expect![[r#"
@@ -2017,7 +2016,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_enum_literal_with_string_field() {
+    fn accepts_enum_literal_with_string_field() {
         accept(
             r#"Outcome::Failure {message: "something went wrong"}"#,
             expect![[r#"
@@ -2027,7 +2026,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_enum_literal_with_nested_expression() {
+    fn accepts_enum_literal_with_nested_expression() {
         accept(
             r#"Outcome::Success {value: x + 1}"#,
             expect![[r#"
@@ -2037,7 +2036,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_enum_literal_with_trailing_comma() {
+    fn accepts_enum_literal_with_trailing_comma() {
         accept(
             "Outcome::Success {value: 42,}",
             expect![[r#"
@@ -2051,7 +2050,7 @@ mod tests {
     ///////////////////////////////////////////////////////////////////////////
 
     #[test]
-    fn should_accept_enum_literal_with_braces_single_field() {
+    fn accepts_enum_literal_with_braces_single_field() {
         accept(
             "Outcome::Success {value: 42}",
             expect![[r#"
@@ -2061,7 +2060,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_enum_literal_with_braces_multiple_fields() {
+    fn accepts_enum_literal_with_braces_multiple_fields() {
         accept(
             "Event::Click {x: 10, y: 20}",
             expect![[r#"
@@ -2071,7 +2070,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_enum_literal_with_braces_containing_record_with_braces() {
+    fn accepts_enum_literal_with_braces_containing_record_with_braces() {
         accept(
             r#"Outcome::Success {value: Inner {x: 1}}"#,
             expect![[r#"
@@ -2085,7 +2084,7 @@ mod tests {
     ///////////////////////////////////////////////////////////////////////////
 
     #[test]
-    fn should_accept_some_with_string_literal() {
+    fn accepts_some_with_string_literal() {
         accept(
             r#"Some("hello")"#,
             expect![[r#"
@@ -2095,7 +2094,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_some_with_integer_literal() {
+    fn accepts_some_with_integer_literal() {
         accept(
             "Some(42)",
             expect![[r#"
@@ -2105,7 +2104,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_some_with_variable() {
+    fn accepts_some_with_variable() {
         accept(
             "Some(x)",
             expect![[r#"
@@ -2115,7 +2114,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_some_with_expression() {
+    fn accepts_some_with_expression() {
         accept(
             "Some(a + b)",
             expect![[r#"
@@ -2125,7 +2124,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_none() {
+    fn accepts_none() {
         accept(
             "None",
             expect![[r#"
@@ -2135,7 +2134,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_some_with_nested_some() {
+    fn accepts_some_with_nested_some() {
         accept(
             "Some(Some(1))",
             expect![[r#"
@@ -2145,7 +2144,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_some_with_none() {
+    fn accepts_some_with_none() {
         accept(
             "Some(None)",
             expect![[r#"
@@ -2155,7 +2154,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_option_in_array() {
+    fn accepts_option_in_array() {
         accept(
             "[Some(1), None, Some(2)]",
             expect![[r#"
@@ -2165,7 +2164,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_some_without_parentheses() {
+    fn rejects_some_without_parentheses() {
         reject(
             "Some",
             expect![[r#"
@@ -2177,7 +2176,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_some_with_empty_parentheses() {
+    fn rejects_some_with_empty_parentheses() {
         reject(
             "Some()",
             expect![[r#"
@@ -2193,7 +2192,7 @@ mod tests {
     ///////////////////////////////////////////////////////////////////////////
 
     #[test]
-    fn should_accept_match_expression_with_single_arm() {
+    fn accepts_match_expression_with_single_arm() {
         accept(
             indoc! {r#"
                 match color {Color::Red => "red"}
@@ -2205,7 +2204,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_match_expression_with_multiple_arms() {
+    fn accepts_match_expression_with_multiple_arms() {
         accept(
             indoc! {r#"
                 match color {
@@ -2225,7 +2224,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_match_expression_with_trailing_comma() {
+    fn accepts_match_expression_with_trailing_comma() {
         accept(
             indoc! {r#"
                 match color {
@@ -2240,7 +2239,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_match_expression_with_complex_body() {
+    fn accepts_match_expression_with_complex_body() {
         accept(
             indoc! {r#"
                 match status {
@@ -2258,7 +2257,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_nested_match_expression() {
+    fn accepts_nested_match_expression() {
         accept(
             indoc! {r#"
                 match outer {
@@ -2276,7 +2275,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_empty_match_expression() {
+    fn accepts_empty_match_expression() {
         accept(
             "match color {}",
             expect![[r#"
@@ -2286,7 +2285,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_match_with_enum_field_pattern() {
+    fn accepts_match_with_enum_field_pattern() {
         accept(
             "match result { Outcome::Success{value: v} => v, Outcome::Failure{message: m} => m }",
             expect![[r#"
@@ -2299,7 +2298,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_match_with_enum_multiple_field_pattern() {
+    fn accepts_match_with_enum_multiple_field_pattern() {
         accept(
             "match event { Event::Click{x: a, y: b} => a + b }",
             expect![[r#"
@@ -2309,7 +2308,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_match_with_mixed_enum_patterns() {
+    fn accepts_match_with_mixed_enum_patterns() {
         accept(
             "match maybe { Maybe::Just{value: v} => v, Maybe::Nothing => 0 }",
             expect![[r#"
@@ -2322,7 +2321,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_match_with_nested_enum_field_pattern() {
+    fn accepts_match_with_nested_enum_field_pattern() {
         accept(
             "match result { Outcome::Success{data: Some(x)} => x, _ => 0 }",
             expect![[r#"
@@ -2332,7 +2331,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_match_with_wildcard_field_pattern() {
+    fn accepts_match_with_wildcard_field_pattern() {
         accept(
             "match result { Outcome::Success{value: _} => 1, Outcome::Failure{message: _} => 0 }",
             expect![[r#"
@@ -2345,7 +2344,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_match_with_empty_braces_pattern() {
+    fn accepts_match_with_empty_braces_pattern() {
         // Empty braces are accepted but normalized away
         accept(
             "match point { Point::XY{} => 0 }",
@@ -2356,7 +2355,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_match_with_binary_expr_subject() {
+    fn accepts_match_with_binary_expr_subject() {
         accept(
             r#"match path == "" { true => git_ref, _ => git_ref + " - " + path }"#,
             expect![[r#"
@@ -2369,7 +2368,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_match_with_shorthand_enum_field_pattern() {
+    fn accepts_match_with_shorthand_enum_field_pattern() {
         accept(
             "match result { Outcome::Success{value} => value, Outcome::Failure{message} => message }",
             expect![[r#"
@@ -2382,7 +2381,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_match_with_shorthand_record_field_pattern() {
+    fn accepts_match_with_shorthand_record_field_pattern() {
         accept(
             "match user { User{name, age} => name }",
             expect![[r#"
@@ -2392,7 +2391,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_match_with_mixed_shorthand_and_explicit_field_pattern() {
+    fn accepts_match_with_mixed_shorthand_and_explicit_field_pattern() {
         accept(
             "match event { Event::Click{x, y: b} => x + b }",
             expect![[r#"
@@ -2406,7 +2405,7 @@ mod tests {
     ///////////////////////////////////////////////////////////////////////////
 
     #[test]
-    fn should_accept_join_macro_with_no_args() {
+    fn accepts_join_macro_with_no_args() {
         accept(
             "join!()",
             expect![[r#"
@@ -2416,7 +2415,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_join_macro_with_single_arg() {
+    fn accepts_join_macro_with_single_arg() {
         accept(
             r#"join!("hello")"#,
             expect![[r#"
@@ -2426,7 +2425,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_join_macro_with_multiple_args() {
+    fn accepts_join_macro_with_multiple_args() {
         accept(
             r#"join!("foo", "bar", "baz")"#,
             expect![[r#"
@@ -2436,7 +2435,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_unknown_macro() {
+    fn rejects_unknown_macro() {
         reject(
             "unknown!(x)",
             expect![[r#"
@@ -2448,7 +2447,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_asset_macro_with_string_literal() {
+    fn accepts_asset_macro_with_string_literal() {
         accept(
             r#"asset!("/logo.svg")"#,
             expect![[r#"
@@ -2458,7 +2457,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_array_with_trailing_comma_and_missing_closing_bracket() {
+    fn rejects_array_with_trailing_comma_and_missing_closing_bracket() {
         reject(
             "[1, 2,",
             expect![[r#"
@@ -2470,7 +2469,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_record_with_trailing_comma_and_missing_closing_brace() {
+    fn rejects_record_with_trailing_comma_and_missing_closing_brace() {
         reject(
             r#"User {name: "John","#,
             expect![[r#"
@@ -2486,7 +2485,7 @@ mod tests {
     ///////////////////////////////////////////////////////////////////////////
 
     #[test]
-    fn should_accept_method_call_on_integer_literal() {
+    fn accepts_method_call_on_integer_literal() {
         accept(
             "42.to_string()",
             expect![[r#"
@@ -2496,7 +2495,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_method_call_on_float_literal() {
+    fn accepts_method_call_on_float_literal() {
         accept(
             "3.14.to_string()",
             expect![[r#"
@@ -2506,7 +2505,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_method_call_on_string_literal() {
+    fn accepts_method_call_on_string_literal() {
         accept(
             r#""hello".length()"#,
             expect![[r#"
@@ -2516,7 +2515,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_method_call_on_boolean_literal() {
+    fn accepts_method_call_on_boolean_literal() {
         accept(
             "true.to_string()",
             expect![[r#"
@@ -2526,7 +2525,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_method_call_on_parenthesized_expression() {
+    fn accepts_method_call_on_parenthesized_expression() {
         accept(
             "(x + y).to_string()",
             expect![[r#"
@@ -2536,7 +2535,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_chained_method_calls_on_parenthesized_expression() {
+    fn accepts_chained_method_calls_on_parenthesized_expression() {
         accept(
             "(x.to_float() + 0.5).to_string().length()",
             expect![[r#"
@@ -2546,7 +2545,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_field_access_on_parenthesized_expression() {
+    fn accepts_field_access_on_parenthesized_expression() {
         accept(
             "(rec).field",
             expect![[r#"
@@ -2556,7 +2555,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_method_call_on_array_literal() {
+    fn accepts_method_call_on_array_literal() {
         accept(
             "[1, 2, 3].length()",
             expect![[r#"
@@ -2569,7 +2568,7 @@ mod tests {
     // type checker will reject invalid combinations
 
     #[test]
-    fn should_accept_field_access_on_int_literal() {
+    fn accepts_field_access_on_int_literal() {
         accept(
             "42.field",
             expect![[r#"
@@ -2579,7 +2578,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_field_access_on_string_literal() {
+    fn accepts_field_access_on_string_literal() {
         accept(
             r#""hello".length"#,
             expect![[r#"
@@ -2589,7 +2588,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_chained_field_access_on_literal() {
+    fn accepts_chained_field_access_on_literal() {
         accept(
             "42.foo.bar",
             expect![[r#"
@@ -2601,7 +2600,7 @@ mod tests {
     // Record and enum literals with postfix access
 
     #[test]
-    fn should_accept_field_access_on_record_literal() {
+    fn accepts_field_access_on_record_literal() {
         accept(
             r#"User {name: "John"}.name"#,
             expect![[r#"
@@ -2611,7 +2610,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_method_call_on_record_literal() {
+    fn accepts_method_call_on_record_literal() {
         accept(
             r#"User {name: "John"}.to_string()"#,
             expect![[r#"
@@ -2621,7 +2620,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_field_access_on_enum_literal() {
+    fn accepts_field_access_on_enum_literal() {
         accept(
             "Status::Active.value",
             expect![[r#"
@@ -2633,7 +2632,7 @@ mod tests {
     // Option literals with postfix access
 
     #[test]
-    fn should_accept_method_call_on_some_literal() {
+    fn accepts_method_call_on_some_literal() {
         accept(
             "Some(42).unwrap()",
             expect![[r#"
@@ -2643,7 +2642,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_method_call_on_none_literal() {
+    fn accepts_method_call_on_none_literal() {
         accept(
             "None.is_none()",
             expect![[r#"
@@ -2653,7 +2652,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_field_access_on_some_literal() {
+    fn accepts_field_access_on_some_literal() {
         accept(
             "Some(42).value",
             expect![[r#"
@@ -2665,7 +2664,7 @@ mod tests {
     // Precedence verification - method calls bind tighter than binary ops
 
     #[test]
-    fn should_accept_method_call_with_higher_precedence_than_addition() {
+    fn accepts_method_call_with_higher_precedence_than_addition() {
         accept(
             "1 + 2.to_string()",
             expect![[r#"
@@ -2675,7 +2674,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_field_access_with_higher_precedence_than_multiplication() {
+    fn accepts_field_access_with_higher_precedence_than_multiplication() {
         accept(
             "x * y.field",
             expect![[r#"

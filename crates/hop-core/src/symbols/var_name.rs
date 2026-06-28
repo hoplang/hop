@@ -123,58 +123,99 @@ impl TryFrom<String> for VarName {
 mod tests {
     use super::*;
 
-    #[test]
-    fn valid_var_names() {
-        assert!(VarName::new("valid_name").is_ok());
-        assert!(VarName::new("x").is_ok());
-        assert!(VarName::new("name_with_underscores").is_ok());
-        assert!(VarName::new("name123").is_ok());
-        assert!(VarName::new("foo_bar").is_ok());
-        assert!(VarName::new("foo_bar_123").is_ok());
-        assert!(VarName::new("a1_b2_c3").is_ok());
+    fn accept(input: &str) {
+        assert!(VarName::new(input).is_ok());
+    }
+
+    fn reject(input: &str, expected: InvalidVarNameError) {
+        assert_eq!(VarName::new(input), Err(expected));
     }
 
     #[test]
-    fn invalid_var_names() {
-        // Original invalid cases
-        assert_eq!(
-            VarName::new("123invalid"),
-            Err(InvalidVarNameError::StartsWithDigit)
-        );
-        assert_eq!(
-            VarName::new("_starts_with_underscore"),
-            Err(InvalidVarNameError::StartsWithUnderscore)
-        );
-        assert_eq!(
-            VarName::new("has-dash"),
-            Err(InvalidVarNameError::InvalidCharacter('-'))
-        );
-        assert_eq!(
-            VarName::new("has space"),
-            Err(InvalidVarNameError::InvalidCharacter(' '))
-        );
-        assert_eq!(VarName::new(""), Err(InvalidVarNameError::Empty));
+    fn accepts_simple_var_name() {
+        accept("valid_name");
+    }
 
-        // New snake_case validation tests
-        assert_eq!(
-            VarName::new("foo_bar_"),
-            Err(InvalidVarNameError::EndsWithUnderscore)
+    #[test]
+    fn accepts_single_letter_var_name() {
+        accept("x");
+    }
+
+    #[test]
+    fn accepts_var_name_with_underscores() {
+        accept("name_with_underscores");
+    }
+
+    #[test]
+    fn accepts_var_name_with_trailing_digits() {
+        accept("name123");
+    }
+
+    #[test]
+    fn accepts_snake_case_var_name() {
+        accept("foo_bar");
+    }
+
+    #[test]
+    fn accepts_snake_case_var_name_with_digits() {
+        accept("foo_bar_123");
+    }
+
+    #[test]
+    fn accepts_alphanumeric_snake_case_var_name() {
+        accept("a1_b2_c3");
+    }
+
+    #[test]
+    fn rejects_var_name_starting_with_digit() {
+        reject("123invalid", InvalidVarNameError::StartsWithDigit);
+    }
+
+    #[test]
+    fn rejects_var_name_starting_with_underscore() {
+        reject(
+            "_starts_with_underscore",
+            InvalidVarNameError::StartsWithUnderscore,
         );
-        assert_eq!(
-            VarName::new("foo__bar"),
-            Err(InvalidVarNameError::ConsecutiveUnderscores)
-        );
-        assert_eq!(
-            VarName::new("FooBar"),
-            Err(InvalidVarNameError::NotSnakeCase('F'))
-        );
-        assert_eq!(
-            VarName::new("foo_Bar"),
-            Err(InvalidVarNameError::NotSnakeCase('B'))
-        );
-        assert_eq!(
-            VarName::new("validName"),
-            Err(InvalidVarNameError::NotSnakeCase('N'))
-        );
+    }
+
+    #[test]
+    fn rejects_var_name_with_dash() {
+        reject("has-dash", InvalidVarNameError::InvalidCharacter('-'));
+    }
+
+    #[test]
+    fn rejects_var_name_with_space() {
+        reject("has space", InvalidVarNameError::InvalidCharacter(' '));
+    }
+
+    #[test]
+    fn rejects_empty_var_name() {
+        reject("", InvalidVarNameError::Empty);
+    }
+
+    #[test]
+    fn rejects_var_name_ending_with_underscore() {
+        reject("foo_bar_", InvalidVarNameError::EndsWithUnderscore);
+    }
+
+    #[test]
+    fn rejects_var_name_with_consecutive_underscores() {
+        reject("foo__bar", InvalidVarNameError::ConsecutiveUnderscores);
+    }
+
+    #[test]
+    fn rejects_pascal_case_var_name() {
+        reject("FooBar", InvalidVarNameError::NotSnakeCase('F'));
+    }
+
+    #[test]
+    fn rejects_var_name_with_uppercase_after_underscore() {
+        reject("foo_Bar", InvalidVarNameError::NotSnakeCase('B'));
+    }
+
+    #[test]
+    fn rejects_camel_case_var_name() {
+        reject("validName", InvalidVarNameError::NotSnakeCase('N'));
     }
 }

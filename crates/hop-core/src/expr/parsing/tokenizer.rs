@@ -621,7 +621,7 @@ mod tests {
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
-    fn check(input: &str, expected: Expect) {
+    fn run_tokenizer(input: &str) -> (String, bool) {
         let mut cursor =
             DocumentCursor::new(DocumentId::new("test.hop").unwrap(), input.to_string()).peekable();
         let mut errors = Vec::new();
@@ -638,17 +638,32 @@ mod tests {
                 range: err.range().clone(),
             });
         }
-        expected.assert_eq(
-            &DocumentAnnotator::new()
-                .without_line_numbers()
-                .annotate(&DocumentId::new("test.hop").unwrap(), &annotations)
-                .render(),
-        );
+        let actual = DocumentAnnotator::new()
+            .without_line_numbers()
+            .annotate(&DocumentId::new("test.hop").unwrap(), &annotations)
+            .render();
+        (actual, !errors.is_empty())
+    }
+
+    fn accept(input: &str, expected: Expect) {
+        let (actual, has_errors) = run_tokenizer(input);
+        if has_errors {
+            panic!("expected no tokenizer errors, got:\n{actual}");
+        }
+        expected.assert_eq(&actual);
+    }
+
+    fn reject(input: &str, expected: Expect) {
+        let (actual, has_errors) = run_tokenizer(input);
+        if !has_errors {
+            panic!("expected tokenizer errors but got none");
+        }
+        expected.assert_eq(&actual);
     }
 
     #[test]
-    fn should_skip_whitespace_between_tokens() {
-        check(
+    fn accepts_whitespace_between_tokens() {
+        accept(
             "  foo   bar  ",
             expect![[r#"
                 token: Identifier("foo")
@@ -663,8 +678,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_multiline_input() {
-        check(
+    fn accepts_multiline_input() {
+        accept(
             "foo\nbar",
             expect![[r#"
                 token: Identifier("foo")
@@ -679,8 +694,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_valid_float_numbers() {
-        check(
+    fn accepts_valid_float_numbers() {
+        accept(
             "1.0 0.0 0.0000 1000000 0.0000 0.1010",
             expect![[r#"
                 token: FloatLiteral(1.0)
@@ -711,9 +726,9 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_for_invalid_number_formats() {
+    fn rejects_for_invalid_number_formats() {
         // Numbers with leading zeros are invalid
-        check(
+        reject(
             "000 0123 01010",
             expect![[r#"
                 error: Invalid number format
@@ -732,10 +747,10 @@ mod tests {
     }
 
     #[test]
-    fn should_parse_trailing_dot_as_separate_token() {
+    fn accepts_trailing_dot_as_separate_token() {
         // `1.` is parsed as integer `1` followed by `.` (not an invalid float)
         // This allows range expressions like `0..=10`
-        check(
+        accept(
             "1. 1000.",
             expect![[r#"
                 token: IntLiteral(1)
@@ -758,8 +773,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_single_equals_as_assign_token() {
-        check(
+    fn accepts_single_equals_as_assign_token() {
+        accept(
             "=foo",
             expect![[r#"
                 token: Assign
@@ -774,8 +789,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_unexpected_character() {
-        check(
+    fn rejects_unexpected_character() {
+        reject(
             "~ ~ ~@ #",
             expect![[r#"
                 error: Unexpected character: '~'
@@ -802,8 +817,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_integer_literals() {
-        check(
+    fn accepts_integer_literals() {
+        accept(
             "42 0 123 999",
             expect![[r#"
                 token: IntLiteral(42)
@@ -826,8 +841,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_mixed_integers_and_floats() {
-        check(
+    fn accepts_mixed_integers_and_floats() {
+        accept(
             "42 3.14 0 0.0 123 99.99",
             expect![[r#"
                 token: IntLiteral(42)
@@ -858,8 +873,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_simple_punctuation() {
-        check(
+    fn accepts_simple_punctuation() {
+        accept(
             "( ) . ! == < >",
             expect![[r#"
                 token: LeftParen
@@ -894,8 +909,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_not_equals_operator() {
-        check(
+    fn accepts_not_equals_operator() {
+        accept(
             "!=",
             expect![[r#"
                 token: NotEq
@@ -906,8 +921,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_not_equals_in_expression() {
-        check(
+    fn accepts_not_equals_in_expression() {
+        accept(
             "x != y",
             expect![[r#"
                 token: Identifier("x")
@@ -926,8 +941,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_less_than_or_equal_operator() {
-        check(
+    fn accepts_less_than_or_equal_operator() {
+        accept(
             "<=",
             expect![[r#"
                 token: LessThanOrEqual
@@ -938,8 +953,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_less_than_or_equal_in_expression() {
-        check(
+    fn accepts_less_than_or_equal_in_expression() {
+        accept(
             "x <= y",
             expect![[r#"
                 token: Identifier("x")
@@ -958,8 +973,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_greater_than_or_equal_operator() {
-        check(
+    fn accepts_greater_than_or_equal_operator() {
+        accept(
             ">=",
             expect![[r#"
                 token: GreaterThanOrEqual
@@ -970,8 +985,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_greater_than_or_equal_in_expression() {
-        check(
+    fn accepts_greater_than_or_equal_in_expression() {
+        accept(
             "x >= y",
             expect![[r#"
                 token: Identifier("x")
@@ -990,8 +1005,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_identifiers_and_keywords() {
-        check(
+    fn accepts_identifiers_and_keywords() {
+        accept(
             "foo in true false _test var123",
             expect![[r#"
                 token: Identifier("foo")
@@ -1022,8 +1037,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_type_keywords() {
-        check(
+    fn accepts_type_keywords() {
+        accept(
             "String Int Float Bool Fragment Array",
             expect![[r#"
                 token: TypeString
@@ -1054,8 +1069,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_custom_type_names() {
-        check(
+    fn accepts_custom_type_names() {
+        accept(
             "User Person MyType CustomRecord",
             expect![[r#"
                 token: TypeName("User")
@@ -1078,8 +1093,8 @@ mod tests {
     }
 
     #[test]
-    fn should_distinguish_identifiers_from_type_names() {
-        check(
+    fn accepts_identifiers_distinct_from_type_names() {
+        accept(
             "foo Foo bar Bar _test Test",
             expect![[r#"
                 token: Identifier("foo")
@@ -1110,8 +1125,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_string_literals() {
-        check(
+    fn accepts_string_literals() {
+        accept(
             r#""hello" "world with spaces" """#,
             expect![[r#"
                 token: StringLiteral("hello")
@@ -1130,8 +1145,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_field_access_expression() {
-        check(
+    fn accepts_field_access_expression() {
+        accept(
             "user.name",
             expect![[r#"
                 token: Identifier("user")
@@ -1150,8 +1165,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_complex_expression() {
-        check(
+    fn accepts_complex_expression() {
+        accept(
             r#"user.name == "admin""#,
             expect![[r#"
                 token: Identifier("user")
@@ -1178,8 +1193,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_parenthesized_expression() {
-        check(
+    fn accepts_parenthesized_expression() {
+        accept(
             "!(foo == true)",
             expect![[r#"
                 token: Not
@@ -1210,8 +1225,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_array_with_brackets() {
-        check(
+    fn accepts_array_with_brackets() {
+        accept(
             "[1, 2, 3]",
             expect![[r#"
                 token: LeftBracket
@@ -1246,8 +1261,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_array_of_floats() {
-        check(
+    fn accepts_array_of_floats() {
+        accept(
             "[1.0, 12.0, 343.0]",
             expect![[r#"
                 token: LeftBracket
@@ -1282,8 +1297,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_empty_array() {
-        check(
+    fn accepts_empty_array() {
+        accept(
             "[]",
             expect![[r#"
                 token: LeftBracket
@@ -1298,8 +1313,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_import_statement() {
-        check(
+    fn accepts_import_statement() {
+        accept(
             r#"import user_list::UserList"#,
             expect![[r#"
                 token: Import
@@ -1322,8 +1337,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_record_statement() {
-        check(
+    fn accepts_record_statement() {
+        accept(
             "record User {name: String, age: Int}",
             expect![[r#"
                 token: Record
@@ -1374,8 +1389,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_record_with_array_field() {
-        check(
+    fn accepts_record_with_array_field() {
+        accept(
             "record UserList {users: Array[User]}",
             expect![[r#"
                 token: Record
@@ -1422,8 +1437,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_multiline_record() {
-        check(
+    fn accepts_multiline_record() {
+        accept(
             "record User {\n    name: String,\n    age: Int,\n}",
             expect![[r#"
                 token: Record
@@ -1478,8 +1493,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_multiple_import_declarations() {
-        check(
+    fn accepts_multiple_import_declarations() {
+        accept(
             "import foo::Foo\nimport bar::Bar",
             expect![[r#"
                 token: Import
@@ -1518,8 +1533,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_import_followed_by_record() {
-        check(
+    fn accepts_import_followed_by_record() {
+        accept(
             "import foo::Foo\nrecord Bar {name: String}",
             expect![[r#"
                 token: Import
@@ -1570,8 +1585,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_varying_whitespace_between_tokens() {
-        check(
+    fn accepts_varying_whitespace_between_tokens() {
+        accept(
             "record  User  {  name :  String  }",
             expect![[r#"
                 token: Record
@@ -1606,8 +1621,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_record_with_nested_array_types() {
-        check(
+    fn accepts_record_with_nested_array_types() {
+        accept(
             "record Data {matrix: Array[Array[Int]]}",
             expect![[r#"
                 token: Record
@@ -1666,8 +1681,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_identifiers_containing_underscores() {
-        check(
+    fn accepts_identifiers_containing_underscores() {
+        accept(
             "record my_record {field_name: String}",
             expect![[r#"
                 token: Record
@@ -1702,8 +1717,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_match_keyword() {
-        check(
+    fn accepts_match_keyword() {
+        accept(
             "match foo",
             expect![[r#"
                 token: Match
@@ -1718,8 +1733,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_enum_keyword() {
-        check(
+    fn accepts_enum_keyword() {
+        accept(
             "enum Color",
             expect![[r#"
                 token: Enum
@@ -1734,8 +1749,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_some_keyword() {
-        check(
+    fn accepts_some_keyword() {
+        accept(
             "Some(x)",
             expect![[r#"
                 token: Some
@@ -1758,8 +1773,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_none_keyword() {
-        check(
+    fn accepts_none_keyword() {
+        accept(
             "None",
             expect![[r#"
                 token: None
@@ -1770,8 +1785,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_option_type() {
-        check(
+    fn accepts_option_type() {
+        accept(
             "Option[String]",
             expect![[r#"
                 token: TypeOption
@@ -1794,8 +1809,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_colon_colon_operator() {
-        check(
+    fn accepts_colon_colon_operator() {
+        accept(
             "foo::bar::Baz",
             expect![[r#"
                 token: Identifier("foo")
@@ -1822,8 +1837,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_import_keyword() {
-        check(
+    fn accepts_import_keyword() {
+        accept(
             "import foo",
             expect![[r#"
                 token: Import
@@ -1838,8 +1853,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_arrow_operator() {
-        check(
+    fn accepts_arrow_operator() {
+        accept(
             "->",
             expect![[r#"
                 token: Arrow
@@ -1850,8 +1865,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_fat_arrow_operator() {
-        check(
+    fn accepts_fat_arrow_operator() {
+        accept(
             "=>",
             expect![[r#"
                 token: FatArrow
@@ -1862,8 +1877,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_fat_arrow_in_expression() {
-        check(
+    fn accepts_fat_arrow_in_expression() {
+        accept(
             "x => y",
             expect![[r#"
                 token: Identifier("x")
@@ -1882,8 +1897,8 @@ mod tests {
     }
 
     #[test]
-    fn should_distinguish_minus_from_arrow() {
-        check(
+    fn accepts_minus_distinct_from_arrow() {
+        accept(
             "x - y x -> y",
             expect![[r#"
                 token: Identifier("x")
@@ -1914,8 +1929,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_underscore_as_wildcard() {
-        check(
+    fn accepts_underscore_as_wildcard() {
+        accept(
             "_ _test __",
             expect![[r#"
                 token: Underscore
@@ -1934,8 +1949,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_line_comment() {
-        check(
+    fn accepts_line_comment() {
+        accept(
             "// this is a comment",
             expect![[r#"
                 token: Comment("// this is a comment")
@@ -1946,8 +1961,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_comment_after_code() {
-        check(
+    fn accepts_comment_after_code() {
+        accept(
             "foo // comment",
             expect![[r#"
                 token: Identifier("foo")
@@ -1962,8 +1977,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_code_after_comment_on_next_line() {
-        check(
+    fn accepts_code_after_comment_on_next_line() {
+        accept(
             "// comment\nfoo",
             expect![[r#"
                 token: Comment("// comment")
@@ -1978,8 +1993,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_empty_comment() {
-        check(
+    fn accepts_empty_comment() {
+        accept(
             "//",
             expect![[r#"
                 token: Comment("//")
@@ -1990,8 +2005,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_multiple_comments() {
-        check(
+    fn accepts_multiple_comments() {
+        accept(
             "// first\n// second",
             expect![[r#"
                 token: Comment("// first")
@@ -2006,8 +2021,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_single_slash() {
-        check(
+    fn rejects_single_slash() {
+        reject(
             "foo / bar",
             expect![[r#"
                 token: Identifier("foo")
@@ -2026,8 +2041,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_inclusive_range_operator() {
-        check(
+    fn accepts_inclusive_range_operator() {
+        accept(
             "..=",
             expect![[r#"
                 token: DotDotEq
@@ -2038,8 +2053,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_inclusive_range_in_expression() {
-        check(
+    fn accepts_inclusive_range_in_expression() {
+        accept(
             "0..=10",
             expect![[r#"
                 token: IntLiteral(0)
@@ -2058,8 +2073,8 @@ mod tests {
     }
 
     #[test]
-    fn should_tokenize_double_dot_as_two_dots() {
-        check(
+    fn accepts_double_dot_as_two_dots() {
+        accept(
             "..",
             expect![[r#"
                 token: Dot
@@ -2074,8 +2089,8 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_reserved_keywords() {
-        check(
+    fn accepts_reserved_keywords() {
+        accept(
             indoc! {"
                 alias
                 and
@@ -2433,9 +2448,9 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_valid_escape_sequences_in_strings() {
+    fn accepts_valid_escape_sequences_in_strings() {
         // Note: The expected output uses Debug format, so backslashes appear doubled
-        check(
+        accept(
             r#""hello\nworld" "tab\there" "quote\"here" "back\\slash" "cr\rhere""#,
             expect![[r#"
                 token: StringLiteral("hello\\nworld")
@@ -2462,9 +2477,9 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_invalid_escape_sequences_in_strings() {
+    fn rejects_invalid_escape_sequences_in_strings() {
         // Note: tokens appear first, then errors at the end
-        check(
+        reject(
             r#""invalid\q" "also\xinvalid""#,
             expect![[r#"
                 token: StringLiteral("invalid\\q")
@@ -2487,8 +2502,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_trailing_backslash_in_string() {
-        check(
+    fn rejects_trailing_backslash_in_string() {
+        reject(
             r#""trailing\"#,
             expect![[r#"
                 error: Unterminated string literal
@@ -2503,8 +2518,8 @@ mod tests {
     }
 
     #[test]
-    fn tokenizes_triple_dot() {
-        check(
+    fn accepts_triple_dot() {
+        accept(
             "...rest",
             expect![[r#"
                 token: DotDotDot

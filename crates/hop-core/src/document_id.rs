@@ -90,66 +90,62 @@ pub enum DocumentIdError {
 mod tests {
     use super::*;
 
-    #[test]
-    fn should_accept_simple_document_id() {
-        assert!(DocumentId::new("utils.hop").is_ok());
+    fn accept(input: &str) {
+        assert!(DocumentId::new(input).is_ok());
+    }
+
+    fn reject(input: &str, expected: DocumentIdError) {
+        assert_eq!(DocumentId::new(input), Err(expected));
     }
 
     #[test]
-    fn should_accept_document_id_with_path() {
-        assert!(DocumentId::new("components/button.hop").is_ok());
-        assert!(DocumentId::new("hop/ui.hop").is_ok());
+    fn accepts_simple_document_id() {
+        accept("utils.hop");
     }
 
     #[test]
-    fn should_accept_document_id_with_hyphen() {
-        assert!(DocumentId::new("my-component.hop").is_ok());
+    fn accepts_document_id_with_path() {
+        accept("components/button.hop");
+        accept("hop/ui.hop");
     }
 
     #[test]
-    fn should_accept_document_id_with_underscore() {
-        assert!(DocumentId::new("my_component.hop").is_ok());
+    fn accepts_document_id_with_hyphen() {
+        accept("my-component.hop");
     }
 
     #[test]
-    fn should_accept_deeply_nested_document_id() {
-        assert!(DocumentId::new("a/b/c/d.hop").is_ok());
+    fn accepts_document_id_with_underscore() {
+        accept("my_component.hop");
     }
 
     #[test]
-    fn should_reject_empty_document_id() {
-        assert_eq!(DocumentId::new(""), Err(DocumentIdError::Empty));
+    fn accepts_deeply_nested_document_id() {
+        accept("a/b/c/d.hop");
     }
 
     #[test]
-    fn should_reject_document_id_starting_with_separator() {
-        assert_eq!(
-            DocumentId::new("/utils.hop"),
-            Err(DocumentIdError::StartsWithSeparator)
-        );
+    fn rejects_empty_document_id() {
+        reject("", DocumentIdError::Empty);
     }
 
     #[test]
-    fn should_reject_document_id_with_empty_component() {
-        assert_eq!(
-            DocumentId::new("utils//components.hop"),
-            Err(DocumentIdError::EmptyComponent)
-        );
+    fn rejects_document_id_starting_with_separator() {
+        reject("/utils.hop", DocumentIdError::StartsWithSeparator);
     }
 
     #[test]
-    fn should_reject_document_id_with_space() {
-        assert_eq!(
-            DocumentId::new("my component.hop"),
-            Err(DocumentIdError::InvalidCharacter(' '))
-        );
+    fn rejects_document_id_with_empty_component() {
+        reject("utils//components.hop", DocumentIdError::EmptyComponent);
     }
 
     #[test]
-    fn should_reject_document_id_with_colon_separator() {
-        assert_eq!(
-            DocumentId::new("my::component.hop"),
-            Err(DocumentIdError::InvalidCharacter(':'))
-        );
+    fn rejects_document_id_with_space() {
+        reject("my component.hop", DocumentIdError::InvalidCharacter(' '));
+    }
+
+    #[test]
+    fn rejects_document_id_with_colon_separator() {
+        reject("my::component.hop", DocumentIdError::InvalidCharacter(':'));
     }
 }

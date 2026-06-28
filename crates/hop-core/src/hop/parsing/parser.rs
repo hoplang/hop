@@ -1491,12 +1491,12 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_empty_file() {
+    fn accepts_empty_file() {
         accept("", expect![[""]]);
     }
 
     #[test]
-    fn should_accept_pub_on_record() {
+    fn accepts_pub_on_record() {
         accept(
             indoc! {"
                 pub record User {
@@ -1512,7 +1512,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_pub_on_enum() {
+    fn accepts_pub_on_enum() {
         accept(
             indoc! {"
                 pub enum Status {
@@ -1530,7 +1530,7 @@ mod tests {
     }
 
     #[test]
-    fn slot_round_trips() {
+    fn accepts_slot_round_trip() {
         accept(
             indoc! {"
                 component Card(slot: Fragment) {
@@ -1548,7 +1548,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_pub_on_component() {
+    fn accepts_pub_on_component() {
         accept(
             indoc! {"
                 pub component Button(label: String) {
@@ -1566,7 +1566,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_pub_on_view() {
+    fn accepts_pub_on_view() {
         accept(
             indoc! {"
                 pub view Home {
@@ -1584,7 +1584,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_pub_on_import() {
+    fn rejects_pub_on_import() {
         reject(
             indoc! {"
                 pub import other::Foo
@@ -1602,7 +1602,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_pub_at_end_of_file() {
+    fn rejects_pub_at_end_of_file() {
         reject(
             "pub",
             expect![[r#"
@@ -1614,7 +1614,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_comment_between_components() {
+    fn accepts_comment_between_components() {
         accept(
             indoc! {"
                 component First {}
@@ -1633,7 +1633,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_keyword_component_syntax() {
+    fn accepts_keyword_component_syntax() {
         accept(
             indoc! {"
                 component Foo {
@@ -1651,7 +1651,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_keyword_component_with_params() {
+    fn accepts_keyword_component_with_params() {
         accept(
             indoc! {"
                 component Foo(name: String, count: Int) {
@@ -1672,7 +1672,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_keyword_component_with_trailing_comment() {
+    fn accepts_keyword_component_with_trailing_comment() {
         accept(
             indoc! {r#"
                 component Button(
@@ -1700,7 +1700,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_nested_for_loops() {
+    fn accepts_nested_for_loops() {
         accept(
             indoc! {"
                 record T {
@@ -1752,7 +1752,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_form_with_inputs() {
+    fn accepts_form_with_inputs() {
         accept(
             indoc! {r#"
                 component Main {
@@ -1776,7 +1776,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_tags_are_not_closed() {
+    fn rejects_when_tags_are_not_closed() {
         reject(
             indoc! {"
                 component Main {
@@ -1799,7 +1799,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_void_tag_is_closed_with_closing_tag() {
+    fn rejects_when_void_tag_is_closed_with_closing_tag() {
         reject(
             indoc! {"
                 component Main {
@@ -1828,7 +1828,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_void_tags_to_be_self_closing() {
+    fn accepts_void_tags_to_be_self_closing() {
         accept(
             indoc! {r#"
                 import bar::Bar
@@ -1856,7 +1856,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_doctype_tags_inside_components() {
+    fn accepts_doctype_tags_inside_components() {
         accept(
             indoc! {"
                 component Main(foo: String) {
@@ -1884,7 +1884,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_expression_is_missing_in_if_tag() {
+    fn rejects_when_expression_is_missing_in_if_tag() {
         reject(
             indoc! {"
                 component Main {
@@ -1903,7 +1903,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_expression_is_missing_in_for_tag() {
+    fn rejects_when_expression_is_missing_in_for_tag() {
         reject(
             indoc! {"
                 component Main {
@@ -1922,7 +1922,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_for_tag_has_invalid_expression() {
+    fn rejects_when_for_tag_has_invalid_expression() {
         reject(
             indoc! {"
                 component Main {
@@ -1941,7 +1941,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_if_tag_has_invalid_expression() {
+    fn rejects_when_if_tag_has_invalid_expression() {
         reject(
             indoc! {"
                 component Main {
@@ -1965,7 +1965,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_component_parameter_has_parse_error_in_type_name() {
+    fn rejects_when_component_parameter_has_parse_error_in_type_name() {
         reject(
             indoc! {"
                 component Main(data: Array[) {
@@ -1985,7 +1985,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_field_access_on_record() {
+    fn accepts_field_access_on_record() {
         accept(
             indoc! {r#"
                 record User {
@@ -2012,7 +2012,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_multiple_expressions_in_attribute() {
+    fn rejects_multiple_expressions_in_attribute() {
         reject(
             indoc! {r#"
                 component Main(style1: String, style2: String, style3: String) {
@@ -2029,7 +2029,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_an_import_is_imported_twice() {
+    fn rejects_when_an_import_is_imported_twice() {
         reject(
             indoc! {r#"
                 import other::Foo
@@ -2049,7 +2049,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_a_component_is_defined_twice() {
+    fn rejects_when_a_component_is_defined_twice() {
         reject(
             indoc! {r#"
                 component Foo {
@@ -2068,7 +2068,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_a_component_is_defined_with_the_same_name_as_an_import() {
+    fn rejects_when_a_component_is_defined_with_the_same_name_as_an_import() {
         reject(
             indoc! {r#"
                 import other::Foo
@@ -2090,7 +2090,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_a_component_is_defined_with_the_same_name_as_a_record() {
+    fn rejects_when_a_component_is_defined_with_the_same_name_as_a_record() {
         reject(
             indoc! {r#"
                 record User {
@@ -2110,7 +2110,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_a_record_is_defined_with_the_same_name_as_an_import() {
+    fn rejects_when_a_record_is_defined_with_the_same_name_as_an_import() {
         reject(
             indoc! {r#"
                 import other::User
@@ -2129,7 +2129,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_import_has_only_one_segment() {
+    fn rejects_when_import_has_only_one_segment() {
         reject(
             indoc! {r#"
                 import Foo
@@ -2147,7 +2147,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_component_invocations() {
+    fn accepts_component_invocations() {
         accept(
             indoc! {"
                 component Main(p: String) {
@@ -2165,7 +2165,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_component_invocations_with_params() {
+    fn accepts_component_invocations_with_params() {
         accept(
             indoc! {r#"
                 import foo::Foo
@@ -2195,7 +2195,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_for_loop() {
+    fn accepts_for_loop() {
         accept(
             indoc! {"
                 component Main(item: Array[String]) {
@@ -2217,7 +2217,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_for_loop_with_text_expression() {
+    fn accepts_for_loop_with_text_expression() {
         accept(
             indoc! {"
                 component Main(foo: Array[String]) {
@@ -2239,7 +2239,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_for_loop_with_inclusive_range() {
+    fn accepts_for_loop_with_inclusive_range() {
         accept(
             indoc! {"
                 component Main {
@@ -2259,7 +2259,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_for_loop_with_variable_range_bounds() {
+    fn accepts_for_loop_with_variable_range_bounds() {
         accept(
             indoc! {"
                 component Main(start: Int, end: Int) {
@@ -2282,7 +2282,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_for_loop_with_expression_range_bounds() {
+    fn accepts_for_loop_with_expression_range_bounds() {
         accept(
             indoc! {"
                 component Main(count: Int) {
@@ -2302,7 +2302,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_for_loop_with_underscore_binding() {
+    fn accepts_for_loop_with_underscore_binding() {
         accept(
             indoc! {"
                 component Main(items: Array[String]) {
@@ -2322,7 +2322,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_for_loop_with_underscore_and_range() {
+    fn accepts_for_loop_with_underscore_and_range() {
         accept(
             indoc! {"
                 component Main {
@@ -2342,7 +2342,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_for_loop_with_underscore_and_variable_range() {
+    fn accepts_for_loop_with_underscore_and_variable_range() {
         accept(
             indoc! {"
                 component Main(start: Int, end: Int) {
@@ -2365,7 +2365,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_if_statement() {
+    fn accepts_if_statement() {
         accept(
             indoc! {"
                 component Main(x: Int, y: Int) {
@@ -2390,7 +2390,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_if_statement_with_nested_for_loop() {
+    fn accepts_if_statement_with_nested_for_loop() {
         accept(
             indoc! {"
                 component Main(x: Bool, data: Array[String]) {
@@ -2417,7 +2417,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_unknown_html_element() {
+    fn rejects_unknown_html_element() {
         reject(
             indoc! {r#"
                 component Main {
@@ -2434,7 +2434,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_mathml_element() {
+    fn rejects_mathml_element() {
         reject(
             indoc! {r#"
                 component Main {
@@ -2451,7 +2451,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_custom_hyphenated_element() {
+    fn accepts_custom_hyphenated_element() {
         accept(
             indoc! {r#"
                 component Main {
@@ -2469,7 +2469,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_complex_svg_structure() {
+    fn accepts_complex_svg_structure() {
         accept(
             indoc! {r#"
                 component Main {
@@ -2521,7 +2521,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_component_parameter_with_string_type() {
+    fn accepts_component_parameter_with_string_type() {
         accept(
             indoc! {"
                 component Main(data: String) {
@@ -2539,7 +2539,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_component_parameter_with_record_type() {
+    fn accepts_component_parameter_with_record_type() {
         accept(
             indoc! {"
                 record Data {
@@ -2569,7 +2569,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_component_parameter_with_array_type() {
+    fn accepts_component_parameter_with_array_type() {
         accept(
             indoc! {"
                 component Main(items: Array[String]) {
@@ -2591,7 +2591,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_component_parameter_with_array_of_record_type() {
+    fn accepts_component_parameter_with_array_of_record_type() {
         accept(
             indoc! {"
                 record Section {
@@ -2631,7 +2631,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_text_with_single_expression() {
+    fn accepts_text_with_single_expression() {
         accept(
             "component Main {<h1>Hello {name}!</h1>}",
             expect![[r#"
@@ -2645,7 +2645,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_text_with_multiple_expressions() {
+    fn accepts_text_with_multiple_expressions() {
         accept(
             "component Main {<p>User {user.name} has {user.count} items</p>}",
             expect![[r#"
@@ -2659,7 +2659,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_text_with_expression_at_start() {
+    fn accepts_text_with_expression_at_start() {
         accept(
             "component Main {<span>{greeting} world!</span>}",
             expect![[r#"
@@ -2673,7 +2673,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_text_with_expression_at_end() {
+    fn accepts_text_with_expression_at_end() {
         accept(
             "component Main {<div>Price: {price}</div>}",
             expect![[r#"
@@ -2687,7 +2687,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_text_with_only_expression() {
+    fn accepts_text_with_only_expression() {
         accept(
             "component Main {<h2>{title}</h2>}",
             expect![[r#"
@@ -2701,7 +2701,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_empty_expression_in_text() {
+    fn rejects_empty_expression_in_text() {
         reject(
             "component Main {<div>Empty: {}</div>}",
             expect![[r#"
@@ -2713,7 +2713,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_complex_expression_in_text() {
+    fn accepts_complex_expression_in_text() {
         accept(
             r#"component Main {<p>Status: {user.profile.status == "active"}</p>}"#,
             expect![[r#"
@@ -2727,7 +2727,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_adjacent_expressions_in_text() {
+    fn accepts_adjacent_expressions_in_text() {
         accept(
             "component Main {<span>{first}{second}</span>}",
             expect![[r#"
@@ -2741,7 +2741,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_text_expression_with_string_containing_html() {
+    fn accepts_text_expression_with_string_containing_html() {
         accept(
             r#"component Main {<div>{"<div></div>"}</div>}"#,
             expect![[r#"
@@ -2755,7 +2755,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_incomplete_record_declaration() {
+    fn rejects_incomplete_record_declaration() {
         reject(
             indoc! {"
                 record
@@ -2777,7 +2777,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_unknown_text_before_component() {
+    fn rejects_unknown_text_before_component() {
         reject(
             indoc! {"
                 foo
@@ -2793,7 +2793,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_enum_is_defined_with_the_same_name_as_a_record() {
+    fn rejects_when_enum_is_defined_with_the_same_name_as_a_record() {
         reject(
             indoc! {"
                 record Color {
@@ -2812,7 +2812,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_record_is_defined_with_the_same_name_as_an_enum() {
+    fn rejects_when_record_is_defined_with_the_same_name_as_an_enum() {
         reject(
             indoc! {"
                 enum Color {Red, Green, Blue}
@@ -2831,7 +2831,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_component_is_defined_with_the_same_name_as_an_enum() {
+    fn rejects_when_component_is_defined_with_the_same_name_as_an_enum() {
         reject(
             indoc! {"
                 enum Color {Red, Green, Blue}
@@ -2849,7 +2849,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_enum_is_defined_with_the_same_name_as_an_import() {
+    fn rejects_when_enum_is_defined_with_the_same_name_as_an_import() {
         reject(
             indoc! {"
                 import other::Color
@@ -2866,7 +2866,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_match_expression_in_template() {
+    fn accepts_match_expression_in_template() {
         accept(
             indoc! {r#"
                 enum Color {Red, Green, Blue}
@@ -2890,7 +2890,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_match_expression_in_attribute() {
+    fn accepts_match_expression_in_attribute() {
         accept(
             indoc! {r#"
                 enum Color {Red, Green, Blue}
@@ -2920,7 +2920,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_match_expression_with_multiline_arms() {
+    fn accepts_match_expression_with_multiline_arms() {
         accept(
             indoc! {r#"
                 enum Status {Active, Inactive, Pending}
@@ -2952,7 +2952,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_parameter_with_default_string_value() {
+    fn accepts_parameter_with_default_string_value() {
         accept(
             indoc! {r#"
                 component Main(name: String = "World") {
@@ -2970,7 +2970,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_parameter_with_default_int_value() {
+    fn accepts_parameter_with_default_int_value() {
         accept(
             indoc! {"
                 component Main(count: Int = 42) {
@@ -2988,7 +2988,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_parameter_with_default_bool_value() {
+    fn accepts_parameter_with_default_bool_value() {
         accept(
             indoc! {"
                 component Main(enabled: Bool = true) {
@@ -3005,7 +3005,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_mixed_required_and_default_parameters() {
+    fn accepts_mixed_required_and_default_parameters() {
         accept(
             indoc! {r#"
                 component Main(name: String, role: String = "user", active: Bool = true) {
@@ -3027,7 +3027,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_parameter_with_default_array_value() {
+    fn accepts_parameter_with_default_array_value() {
         accept(
             indoc! {r#"
                 component Main(items: Array[String] = ["a", "b"]) {
@@ -3047,7 +3047,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_parameter_with_default_record_value() {
+    fn accepts_parameter_with_default_record_value() {
         accept(
             indoc! {r#"
                 record Config { debug: Bool, timeout: Int }
@@ -3072,7 +3072,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_parameter_with_default_enum_value() {
+    fn accepts_parameter_with_default_enum_value() {
         accept(
             indoc! {"
                 enum Status { Active, Inactive, Pending }
@@ -3096,7 +3096,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_parameter_with_option_type() {
+    fn accepts_parameter_with_option_type() {
         accept(
             indoc! {"
                 component Main(name: Option[String]) {
@@ -3113,7 +3113,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_parameter_with_default_none_value() {
+    fn accepts_parameter_with_default_none_value() {
         accept(
             indoc! {"
                 component Main(name: Option[String] = None) {
@@ -3130,7 +3130,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_parameter_with_default_some_value() {
+    fn accepts_parameter_with_default_some_value() {
         accept(
             indoc! {r#"
                 component Main(name: Option[String] = Some("default")) {
@@ -3147,7 +3147,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_match_with_option_cases() {
+    fn accepts_match_with_option_cases() {
         accept(
             indoc! {r#"
                 component Main(x: Option[String]) {
@@ -3177,7 +3177,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_match_with_enum_cases() {
+    fn accepts_match_with_enum_cases() {
         accept(
             indoc! {r#"
                 enum Color { Red, Green, Blue }
@@ -3214,7 +3214,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_match_with_enum_variant_fields() {
+    fn accepts_match_with_enum_variant_fields() {
         accept(
             indoc! {r#"
                 enum Outcome { Success {value: Int}, Failure {message: String} }
@@ -3254,7 +3254,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_match_on_enum_literal_expression() {
+    fn accepts_match_on_enum_literal_expression() {
         accept(
             indoc! {r#"
                 enum Status { Active {name: String}, Inactive }
@@ -3292,7 +3292,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_match_with_boolean_cases() {
+    fn accepts_match_with_boolean_cases() {
         accept(
             indoc! {r#"
                 component Main(flag: Bool) {
@@ -3318,7 +3318,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_on_match_without_expression() {
+    fn rejects_on_match_without_expression() {
         reject(
             indoc! {r#"
                 component Main {
@@ -3337,7 +3337,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_on_case_without_pattern() {
+    fn rejects_on_case_without_pattern() {
         reject(
             indoc! {r#"
                 component Main(flag: Bool) {
@@ -3356,7 +3356,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_on_non_case_children_in_match() {
+    fn rejects_on_non_case_children_in_match() {
         reject(
             indoc! {r#"
                 component Main(flag: Bool) {
@@ -3375,7 +3375,7 @@ mod tests {
     }
 
     #[test]
-    fn should_treat_case_outside_match_as_html() {
+    fn accepts_case_outside_match_as_html() {
         accept(
             indoc! {r#"
                 component Main {
@@ -3393,7 +3393,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_let_with_string_value() {
+    fn accepts_let_with_string_value() {
         accept(
             indoc! {r#"
                 component Main {
@@ -3415,7 +3415,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_let_with_int_value() {
+    fn accepts_let_with_int_value() {
         accept(
             indoc! {"
                 component Main {
@@ -3437,7 +3437,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_let_with_expression_value() {
+    fn accepts_let_with_expression_value() {
         accept(
             indoc! {r#"
                 record User { name: String }
@@ -3464,7 +3464,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_nested_let_tags() {
+    fn accepts_nested_let_tags() {
         accept(
             indoc! {r#"
                 component Main {
@@ -3490,7 +3490,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_let_without_binding() {
+    fn rejects_let_without_binding() {
         reject(
             indoc! {"
                 component Main {
@@ -3509,7 +3509,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_let_with_omitted_type() {
+    fn accepts_let_with_omitted_type() {
         accept(
             indoc! {"
                 component Main {
@@ -3531,7 +3531,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_let_with_missing_value() {
+    fn rejects_let_with_missing_value() {
         reject(
             indoc! {"
                 component Main {
@@ -3550,7 +3550,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_let_with_multiple_bindings() {
+    fn accepts_let_with_multiple_bindings() {
         accept(
             indoc! {r#"
                 component Main {
@@ -3572,7 +3572,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_let_with_three_bindings() {
+    fn accepts_let_with_three_bindings() {
         accept(
             indoc! {r#"
                 component Main {
@@ -3594,7 +3594,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_let_with_trailing_comma() {
+    fn accepts_let_with_trailing_comma() {
         accept(
             indoc! {r#"
                 component Main {
@@ -3616,7 +3616,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_let_with_multiple_bindings_and_trailing_comma() {
+    fn accepts_let_with_multiple_bindings_and_trailing_comma() {
         accept(
             indoc! {r#"
                 component Main {
@@ -3638,7 +3638,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_let_with_field_access_value() {
+    fn accepts_let_with_field_access_value() {
         accept(
             indoc! {r#"
                 record User { name: String }
@@ -3665,7 +3665,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_let_with_missing_comma_between_bindings() {
+    fn rejects_let_with_missing_comma_between_bindings() {
         reject(
             indoc! {r#"
                 component Main {
@@ -3684,7 +3684,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_multiple_sibling_let_tags() {
+    fn accepts_multiple_sibling_let_tags() {
         accept(
             indoc! {r#"
                 component Main {
@@ -3710,7 +3710,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_let_after_html_element() {
+    fn accepts_let_after_html_element() {
         accept(
             indoc! {r#"
                 component Main {
@@ -3736,7 +3736,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_let_before_html_element() {
+    fn accepts_let_before_html_element() {
         accept(
             indoc! {r#"
                 component Main {
@@ -3762,7 +3762,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_top_level_html_element() {
+    fn rejects_top_level_html_element() {
         reject(
             "<div></div>",
             expect![[r#"
@@ -3774,7 +3774,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_view_declaration() {
+    fn accepts_view_declaration() {
         accept(
             indoc! {"
                 view Index() {
@@ -3792,7 +3792,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_view_without_parentheses() {
+    fn accepts_view_without_parentheses() {
         accept(
             indoc! {"
                 view Index {
@@ -3810,7 +3810,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_view_with_parameters() {
+    fn accepts_view_with_parameters() {
         accept(
             indoc! {"
                 view Index(name: String, count: Int) {
@@ -3831,7 +3831,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_view_with_component_invocation() {
+    fn accepts_view_with_component_invocation() {
         accept(
             indoc! {"
                 component Header(title: String) {
@@ -3857,7 +3857,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_multiple_views() {
+    fn accepts_multiple_views() {
         accept(
             indoc! {"
                 view Index() {
@@ -3885,7 +3885,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_duplicate_view_names() {
+    fn rejects_duplicate_view_names() {
         reject(
             indoc! {"
                 view Index() {
@@ -3906,7 +3906,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_view_with_same_name_as_component() {
+    fn rejects_view_with_same_name_as_component() {
         reject(
             indoc! {"
                 component Index {
@@ -3927,7 +3927,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_view_with_reserved_name() {
+    fn rejects_view_with_reserved_name() {
         reject(
             indoc! {"
                 view Error() {
@@ -3947,7 +3947,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_view_with_lowercase_name() {
+    fn rejects_view_with_lowercase_name() {
         reject(
             indoc! {"
                 view index() {
@@ -3967,7 +3967,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_view_with_default_parameter() {
+    fn rejects_view_with_default_parameter() {
         reject(
             indoc! {r#"
                 view Index(name: String = "World") {
@@ -3983,7 +3983,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_view_with_empty_body() {
+    fn accepts_view_with_empty_body() {
         accept(
             indoc! {"
                 view Index() {
@@ -3997,7 +3997,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_view_with_if_statement() {
+    fn accepts_view_with_if_statement() {
         accept(
             indoc! {"
                 view Index(show: Bool) {
@@ -4019,7 +4019,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_view_with_for_loop() {
+    fn accepts_view_with_for_loop() {
         accept(
             indoc! {"
                 view Index(items: Array[String]) {
@@ -4041,7 +4041,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_view_with_let_binding() {
+    fn accepts_view_with_let_binding() {
         accept(
             indoc! {r#"
                 view Index() {
@@ -4063,7 +4063,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_view_with_void_elements() {
+    fn accepts_view_with_void_elements() {
         accept(
             indoc! {"
                 view Index() {
@@ -4087,7 +4087,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_view_with_trailing_comma_in_params() {
+    fn accepts_view_with_trailing_comma_in_params() {
         accept(
             indoc! {"
                 view Index(name: String,) {
@@ -4105,7 +4105,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_view_with_same_name_as_record() {
+    fn rejects_view_with_same_name_as_record() {
         reject(
             indoc! {"
                 record Index {
@@ -4126,7 +4126,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_view_with_same_name_as_enum() {
+    fn rejects_view_with_same_name_as_enum() {
         reject(
             indoc! {"
                 enum Index {
@@ -4148,7 +4148,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_view_with_match_expression() {
+    fn accepts_view_with_match_expression() {
         accept(
             indoc! {"
                 view Index(value: Option[String]) {
@@ -4182,7 +4182,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_view_with_nested_components() {
+    fn accepts_view_with_nested_components() {
         accept(
             indoc! {"
                 component Header(title: String) {
@@ -4228,7 +4228,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_view_between_components() {
+    fn accepts_view_between_components() {
         accept(
             indoc! {"
                 component Header {
@@ -4266,7 +4266,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_view_with_multiple_params_mixed_defaults() {
+    fn rejects_view_with_multiple_params_mixed_defaults() {
         reject(
             indoc! {r#"
                 view Index(required: String, optional: Int = 42) {
@@ -4282,7 +4282,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_view_with_top_level_text() {
+    fn accepts_view_with_top_level_text() {
         accept(
             indoc! {"
                 view Test {
@@ -4298,7 +4298,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_escape_sequences_in_strings() {
+    fn accepts_escape_sequences_in_strings() {
         accept(
             indoc! {r#"
                 component Test {
@@ -4320,7 +4320,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_invalid_escape_sequences_in_strings() {
+    fn rejects_invalid_escape_sequences_in_strings() {
         reject(
             r#"component Test {{"invalid\q"}}"#,
             expect![[r#"

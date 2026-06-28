@@ -97,82 +97,75 @@ impl fmt::Display for ModuleName {
 mod tests {
     use super::*;
 
-    #[test]
-    fn should_accept_simple_module_id() {
-        assert!(ModuleName::new("utils").is_ok());
+    fn accept(input: &str) {
+        assert!(ModuleName::new(input).is_ok());
+    }
+
+    fn reject(input: &str, expected: InvalidModuleNameError) {
+        assert_eq!(ModuleName::new(input), Err(expected));
     }
 
     #[test]
-    fn should_accept_module_id_with_path() {
-        assert!(ModuleName::new("components::button").is_ok());
-        assert!(ModuleName::new("hop::ui").is_ok());
+    fn accepts_simple_module_id() {
+        accept("utils");
     }
 
     #[test]
-    fn should_accept_module_id_with_hyphen() {
-        assert!(ModuleName::new("my-component").is_ok());
+    fn accepts_module_id_with_path() {
+        accept("components::button");
+        accept("hop::ui");
     }
 
     #[test]
-    fn should_accept_module_id_with_underscore() {
-        assert!(ModuleName::new("my_component").is_ok());
+    fn accepts_module_id_with_hyphen() {
+        accept("my-component");
     }
 
     #[test]
-    fn should_accept_deeply_nested_module_id() {
-        assert!(ModuleName::new("a::b::c::d").is_ok());
+    fn accepts_module_id_with_underscore() {
+        accept("my_component");
     }
 
     #[test]
-    fn should_reject_empty_module_id() {
-        assert_eq!(ModuleName::new(""), Err(InvalidModuleNameError::Empty));
+    fn accepts_deeply_nested_module_id() {
+        accept("a::b::c::d");
     }
 
     #[test]
-    fn should_reject_module_id_starting_with_separator() {
-        assert_eq!(
-            ModuleName::new("::utils"),
-            Err(InvalidModuleNameError::StartsWithSeparator)
+    fn rejects_empty_module_id() {
+        reject("", InvalidModuleNameError::Empty);
+    }
+
+    #[test]
+    fn rejects_module_id_starting_with_separator() {
+        reject("::utils", InvalidModuleNameError::StartsWithSeparator);
+    }
+
+    #[test]
+    fn rejects_module_id_ending_with_separator() {
+        reject("utils::", InvalidModuleNameError::EndsWithSeparator);
+    }
+
+    #[test]
+    fn rejects_module_id_with_empty_component() {
+        reject(
+            "utils::::components",
+            InvalidModuleNameError::EmptyComponent,
         );
     }
 
     #[test]
-    fn should_reject_module_id_ending_with_separator() {
-        assert_eq!(
-            ModuleName::new("utils::"),
-            Err(InvalidModuleNameError::EndsWithSeparator)
-        );
+    fn rejects_module_id_with_space() {
+        reject("my component", InvalidModuleNameError::InvalidCharacter(' '));
     }
 
     #[test]
-    fn should_reject_module_id_with_empty_component() {
-        assert_eq!(
-            ModuleName::new("utils::::components"),
-            Err(InvalidModuleNameError::EmptyComponent)
-        );
+    fn rejects_module_id_with_slash() {
+        reject("my/component", InvalidModuleNameError::InvalidCharacter('/'));
     }
 
     #[test]
-    fn should_reject_module_id_with_space() {
-        assert_eq!(
-            ModuleName::new("my component"),
-            Err(InvalidModuleNameError::InvalidCharacter(' '))
-        );
-    }
-
-    #[test]
-    fn should_reject_module_id_with_slash() {
-        assert_eq!(
-            ModuleName::new("my/component"),
-            Err(InvalidModuleNameError::InvalidCharacter('/'))
-        );
-    }
-
-    #[test]
-    fn should_reject_module_id_with_dot() {
-        assert_eq!(
-            ModuleName::new("my.component"),
-            Err(InvalidModuleNameError::InvalidCharacter('.'))
-        );
+    fn rejects_module_id_with_dot() {
+        reject("my.component", InvalidModuleNameError::InvalidCharacter('.'));
     }
 }

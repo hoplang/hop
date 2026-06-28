@@ -1176,12 +1176,12 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_empty_input() {
+    fn accepts_empty_input() {
         accept("", expect![""]);
     }
 
     #[test]
-    fn should_accept_text_on_separate_line() {
+    fn accepts_text_on_separate_line() {
         accept(
             indoc! {"
                 <div>
@@ -1213,7 +1213,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_text_on_multiple_lines() {
+    fn accepts_text_on_multiple_lines() {
         accept(
             indoc! {"
                 <div>
@@ -1254,7 +1254,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_inline_text_with_links() {
+    fn accepts_inline_text_with_links() {
         accept(
             indoc! {r##"
                 <div>
@@ -1336,7 +1336,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_if_with_expression() {
+    fn accepts_if_with_expression() {
         accept(
             "<if {foo}>",
             expect![[r#"
@@ -1354,7 +1354,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expression_in_attribute() {
+    fn accepts_expression_in_attribute() {
         accept(
             r#"<div class={user.theme}>"#,
             expect![[r#"
@@ -1374,7 +1374,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_mixed_attributes() {
+    fn accepts_mixed_attributes() {
         accept(
             r#"<a href={user.url} target="_blank">"#,
             expect![[r#"
@@ -1395,7 +1395,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_input_with_attributes() {
+    fn accepts_input_with_attributes() {
         accept(
             r#"<input type="" value="" disabled="">"#,
             expect![[r#"
@@ -1417,7 +1417,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_attributes_without_spaces() {
+    fn accepts_attributes_without_spaces() {
         accept(
             r#"<h1 foo="bar"x="y">"#,
             expect![[r#"
@@ -1438,7 +1438,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_text_over_multiple_lines() {
+    fn accepts_text_over_multiple_lines() {
         accept(
             "this\ntext\nspans\nmultiple lines",
             expect![[r#"
@@ -1475,7 +1475,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_invalid_char_in_middle_of_tag() {
+    fn rejects_invalid_char_in_middle_of_tag() {
         reject(
             "<div!>",
             expect![[r#"
@@ -1492,7 +1492,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_script_with_src() {
+    fn accepts_script_with_src() {
         accept(
             r#"<script src="https://example.com/script.js"></script>"#,
             expect![[r#"
@@ -1512,7 +1512,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_self_closing_tag() {
+    fn accepts_self_closing_tag() {
         accept(
             "<h1 />",
             expect![[r#"
@@ -1530,7 +1530,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_self_closing_tag_with_attributes() {
+    fn accepts_self_closing_tag_with_attributes() {
         accept(
             "<h1 foo bar/>",
             expect![[r#"
@@ -1551,7 +1551,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_before_attributes() {
+    fn accepts_expr_before_attributes() {
         accept(
             "<h1 {foo: String} foo bar/>",
             expect![[r#"
@@ -1572,7 +1572,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_simple_comment() {
+    fn accepts_simple_comment() {
         accept(
             "<p><!-- --></p>",
             expect![[r#"
@@ -1600,7 +1600,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_succeeded_by_text() {
+    fn accepts_succeeded_by_text() {
         accept(
             indoc! {"
                 <p><!-- -->
@@ -1631,7 +1631,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_comment_with_dashes_inside() {
+    fn accepts_comment_with_dashes_inside() {
         accept(
             "<!-- Comment with -- dashes -- inside -->",
             expect![[r#"
@@ -1644,7 +1644,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_multiline_comment() {
+    fn accepts_multiline_comment() {
         accept(
             indoc! {"
                 <p><!--
@@ -1686,7 +1686,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_comment_with_quotes() {
+    fn accepts_comment_with_quotes() {
         accept(
             r#"<!-- This comment has <tags> and "quotes" and 'apostrophes' -->"#,
             expect![[r#"
@@ -1699,7 +1699,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_tricky_comments() {
+    fn accepts_tricky_comments() {
         accept(
             indoc! {"
                 <!-- ---><!-- ----><!----><!-----><!-- ---->
@@ -1730,7 +1730,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_textarea_with_content() {
+    fn accepts_textarea_with_content() {
         accept(
             indoc! {"
                 <textarea>
@@ -1773,7 +1773,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_doctype() {
+    fn accepts_doctype() {
         accept(
             "<!DOCTYPE   html>",
             expect![[r#"
@@ -1786,7 +1786,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_end_tag_with_space() {
+    fn accepts_end_tag_with_space() {
         accept(
             "</div >",
             expect![[r#"
@@ -1801,7 +1801,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_simple_self_closing_tag() {
+    fn accepts_simple_self_closing_tag() {
         accept(
             "<h1/>",
             expect![[r#"
@@ -1819,7 +1819,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_self_closing_tag_with_space() {
+    fn accepts_self_closing_tag_with_space() {
         accept(
             "<h1 />",
             expect![[r#"
@@ -1837,7 +1837,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_style_with_content() {
+    fn accepts_style_with_content() {
         accept(
             indoc! {"
                 <style>
@@ -1866,7 +1866,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_attributes_on_multiple_lines() {
+    fn accepts_attributes_on_multiple_lines() {
         accept(
             indoc! {r#"
                 <div
@@ -1899,7 +1899,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_script_with_html_content() {
+    fn accepts_script_with_html_content() {
         accept(
             indoc! {r#"
                 <script>
@@ -1928,7 +1928,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_script_with_whitespace_in_closing_tag() {
+    fn accepts_script_with_whitespace_in_closing_tag() {
         accept(
             indoc! {r#"
                 <script>
@@ -1988,7 +1988,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_svg_with_many_attributes() {
+    fn accepts_svg_with_many_attributes() {
         accept(
             indoc! {r#"
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -2103,7 +2103,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_div_with_class_and_expression() {
+    fn accepts_div_with_class_and_expression() {
         accept(
             indoc! {r#"
                 <div class="test" {bar}>
@@ -2125,7 +2125,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_text_with_single_expression() {
+    fn accepts_text_with_single_expression() {
         accept(
             "<h1>Hello {name}!</h1>",
             expect![[r#"
@@ -2161,7 +2161,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_text_with_multiple_expressions() {
+    fn accepts_text_with_multiple_expressions() {
         accept(
             "<p>User {user.name} has {user.count} items</p>",
             expect![[r#"
@@ -2205,7 +2205,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_text_with_expression_at_start() {
+    fn accepts_text_with_expression_at_start() {
         accept(
             "<span>{greeting} world!</span>",
             expect![[r#"
@@ -2237,7 +2237,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_text_with_expression_at_end() {
+    fn accepts_text_with_expression_at_end() {
         accept(
             "<div>Price: {price}</div>",
             expect![[r#"
@@ -2269,7 +2269,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_text_with_expression_containing_braces() {
+    fn accepts_text_with_expression_containing_braces() {
         accept(
             "<div>Price: {{k: v}}</div>",
             expect![[r#"
@@ -2301,7 +2301,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_text_with_only_expression() {
+    fn accepts_text_with_only_expression() {
         accept(
             "<h2>{title}</h2>",
             expect![[r#"
@@ -2329,7 +2329,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_duplicate_attribute() {
+    fn rejects_duplicate_attribute() {
         reject(
             r#"<div class="foo" class="bar"></div>"#,
             expect![[r#"
@@ -2359,7 +2359,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_single_quoted_attribute_value() {
+    fn rejects_single_quoted_attribute_value() {
         reject(
             r#"<input type='number'/>"#,
             expect![[r#"
@@ -2381,7 +2381,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_duplicate_attribute_without_value() {
+    fn rejects_duplicate_attribute_without_value() {
         reject(
             r#"<input required required />"#,
             expect![[r#"
@@ -2405,7 +2405,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_attributes_with_colons_and_dots() {
+    fn accepts_attributes_with_colons_and_dots() {
         accept(
             r#"<button x-on:click={handler} x-bind:aria-selected={selected} x-on:click.prevent={other}>"#,
             expect![[r#"
@@ -2427,7 +2427,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_unterminated_comments() {
+    fn rejects_unterminated_comments() {
         reject(
             r#"<!--"#,
             expect![[r#"
@@ -2449,7 +2449,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_unterminated_opening_tags() {
+    fn rejects_unterminated_opening_tags() {
         reject(
             r#"<div <div>"#,
             expect![[r#"
@@ -2555,7 +2555,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_unterminated_closing_tags() {
+    fn rejects_unterminated_closing_tags() {
         reject(
             r#"</div </div>"#,
             expect![[r#"
@@ -2668,7 +2668,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_raw_text_with_tricky_content() {
+    fn accepts_raw_text_with_tricky_content() {
         accept(
             r#"<script></scri</<<</div></div><</scrip</scrip></cript></script</script</script><div>works!<div>"#,
             expect![[r#"
