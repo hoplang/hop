@@ -113,8 +113,12 @@ pub enum TypeError {
         range: DocumentRange,
     },
 
-    #[error("Unknown HTML attribute '{attr}'")]
-    UnknownAttribute { attr: String, range: DocumentRange },
+    #[error("`<{element}>` does not accept attribute `{attr}`")]
+    ElementDoesNotAcceptAttribute {
+        element: String,
+        attr: String,
+        range: DocumentRange,
+    },
 
     #[error("Can not iterate over {typ}")]
     CannotIterateOver {
@@ -471,7 +475,7 @@ impl TypeError {
             | TypeError::RestForwardedIntoRecursive { range, .. }
             | TypeError::ArgumentTypeMismatch { range, .. }
             | TypeError::DefaultValueTypeMismatch { range, .. }
-            | TypeError::UnknownAttribute { range, .. }
+            | TypeError::ElementDoesNotAcceptAttribute { range, .. }
             | TypeError::CannotIterateOver { range, .. }
             | TypeError::RangeBoundTypeMismatch { range, .. }
             | TypeError::LetBindingTypeMismatch { range, .. }

@@ -156,16 +156,25 @@ mod tests {
 
     #[test]
     fn rejects_module_id_with_space() {
-        reject("my component", InvalidModuleNameError::InvalidCharacter(' '));
+        reject(
+            "my component",
+            InvalidModuleNameError::InvalidCharacter(' '),
+        );
     }
 
     #[test]
     fn rejects_module_id_with_slash() {
-        reject("my/component", InvalidModuleNameError::InvalidCharacter('/'));
+        reject(
+            "my/component",
+            InvalidModuleNameError::InvalidCharacter('/'),
+        );
     }
 
     #[test]
     fn rejects_module_id_with_dot() {
-        reject("my.component", InvalidModuleNameError::InvalidCharacter('.'));
+        reject(
+            "my.component",
+            InvalidModuleNameError::InvalidCharacter('.'),
+        );
     }
 }

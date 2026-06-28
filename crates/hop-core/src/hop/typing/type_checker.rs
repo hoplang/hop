@@ -16,7 +16,7 @@ use crate::hop::parsing::parsed_ast::{
     ParsedRecordDeclaration, ParsedViewDeclaration, RestSpreadTarget,
 };
 use crate::hop::typing::definition_link::DefinitionLink;
-use crate::html::{HtmlElement, is_known_attribute};
+use crate::html::HtmlElement;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
@@ -1425,7 +1425,7 @@ fn typecheck_arguments(
             None => {
                 let accepted = match &callee_tail {
                     Tail::Html { element, reserved } => {
-                        (element.is_svg() || is_known_attribute(arg_name))
+                        element.accepts_attribute(arg_name)
                             && !reserved.iter().any(|r| r.as_str() == arg_name)
                     }
                     Tail::Closed => false,
@@ -1614,8 +1614,9 @@ fn typecheck_html_attribute(
     type_env: &mut TypeEnv,
     asset_references: &mut Vec<AssetReference>,
 ) -> Option<TypedAttribute> {
-    if !element.is_svg() && !is_known_attribute(name.as_str()) {
-        errors.push(TypeError::UnknownAttribute {
+    if !element.accepts_attribute(name.as_str()) {
+        errors.push(TypeError::ElementDoesNotAcceptAttribute {
+            element: element.as_str().to_string(),
             attr: name.as_str().to_string(),
             range: name.clone(),
         });
@@ -5774,7 +5775,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Unknown HTML attribute 'onclick'
+                error: `<button>` does not accept attribute `onclick`
                   --> main.hop (line 2, col 11)
                 1 | component Main {
                 2 |   <button onclick="alert(1)">Click</button>
@@ -5794,13 +5795,13 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Unknown HTML attribute 'onClick'
+                error: `<button>` does not accept attribute `onClick`
                   --> main.hop (line 2, col 11)
                 1 | component Main {
                 2 |   <button onClick="alert(1)">Click</button>
                   |           ^^^^^^^
 
-                error: Unknown HTML attribute 'ONCLICK'
+                error: `<button>` does not accept attribute `ONCLICK`
                   --> main.hop (line 3, col 11)
                 2 |   <button onClick="alert(1)">Click</button>
                 3 |   <button ONCLICK="alert(1)">Click</button>
@@ -5819,7 +5820,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Unknown HTML attribute 'flooble'
+                error: `<div>` does not accept attribute `flooble`
                   --> main.hop (line 2, col 8)
                 1 | component Main {
                 2 |   <div flooble="x"></div>
@@ -5829,8 +5830,8 @@ mod tests {
     }
 
     #[test]
-    fn rejects_unknown_attribute_on_custom_element() {
-        reject(
+    fn accepts_arbitrary_attribute_on_custom_element() {
+        accept(
             indoc! {r#"
                 -- main.hop --
                 component Main {
@@ -5838,11 +5839,106 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Unknown HTML attribute 'foo'
-                  --> main.hop (line 2, col 14)
+                -- main.hop --
+                component Main {
+                  <my-widget foo="x"></my-widget>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_attribute_on_wrong_element() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component Main {
+                  <button href="/"></button>
+                }
+            "#},
+            expect![[r#"
+                error: `<button>` does not accept attribute `href`
+                  --> main.hop (line 2, col 11)
                 1 | component Main {
-                2 |   <my-widget foo="x"></my-widget>
-                  |              ^^^
+                2 |   <button href="/"></button>
+                  |           ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_attribute_on_correct_element() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                component Main {
+                  <a href="/">link</a>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                component Main {
+                  <a href="/">
+                    link
+                  </a>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_forwarded_attribute_invalid_on_component_root_element() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component Btn(slot: Fragment, ...rest) {
+                  <button ...rest>{slot}</button>
+                }
+
+                component Main {
+                  <Btn href="/">click</Btn>
+                }
+            "#},
+            expect![[r#"
+                error: Component `Btn` does not accept attribute `href`
+                  --> main.hop (line 6, col 8)
+                5 | component Main {
+                6 |   <Btn href="/">click</Btn>
+                  |        ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_forwarded_attribute_valid_on_component_root_element() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                component Btn(slot: Fragment, ...rest) {
+                  <button ...rest>{slot}</button>
+                }
+
+                component Main {
+                  <Btn disabled>click</Btn>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                component Btn(slot: Fragment, ...rest) {
+                  <button ...rest>
+                    {slot}
+                  </button>
+                }
+
+                component Main {
+                  <let {
+                    v_0 = {
+                      click
+                    }
+                  }>
+                    <Btn slot={v_0} disabled/>
+                  </let>
+                }
             "#]],
         );
     }
