@@ -427,11 +427,11 @@ mod tests {
             indoc! {r#"
                 component Button(
                   class: String,
-                  slot: Fragment,
+                  children: Fragment,
                   ...rest,
                 ) {
                   <button class={class} ...rest>
-                    {slot}
+                    {children}
                   </button>
                 }
 
@@ -449,14 +449,14 @@ mod tests {
                     write("Hi")
                   } in {
                     let class_1 = "p-2" in {
-                      let slot = v_0 in {
+                      let children = v_0 in {
                         write("<button")
                         write(" class=\"")
                         write_escaped(tw_merge(class_1))
                         write("\"")
                         write(" data-foo=\"bar\"")
                         write(">")
-                        write_expr(slot)
+                        write_expr(children)
                         write("</button>")
                       }
                     }
@@ -467,9 +467,9 @@ mod tests {
                   let v_0 = {
                     write("Hi")
                   } in {
-                    let slot = v_0 in {
+                    let children = v_0 in {
                       write("<button class=\"p-2\" data-foo=\"bar\">")
-                      write_expr(slot)
+                      write_expr(children)
                       write("</button>")
                     }
                   }
@@ -498,11 +498,11 @@ mod tests {
         check(
             indoc! {r#"
                 component Button(
-                  slot: Fragment,
+                  children: Fragment,
                   ...rest,
                 ) {
                   <button class="builtin" ...rest>
-                    {slot}
+                    {children}
                   </button>
                 }
 
@@ -519,12 +519,12 @@ mod tests {
                   let v_0 = {
                     write("Hi")
                   } in {
-                    let slot = v_0 in {
+                    let children = v_0 in {
                       write("<button")
                       write(" class=\"builtin\"")
                       write(" data-x=\"y\"")
                       write(">")
-                      write_expr(slot)
+                      write_expr(children)
                       write("</button>")
                     }
                   }
@@ -534,9 +534,9 @@ mod tests {
                   let v_0 = {
                     write("Hi")
                   } in {
-                    let slot = v_0 in {
+                    let children = v_0 in {
                       write("<button class=\"builtin\" data-x=\"y\">")
-                      write_expr(slot)
+                      write_expr(children)
                       write("</button>")
                     }
                   }
@@ -976,12 +976,12 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn accepts_slot_forwarded_transitively_through_rest() {
+    fn accepts_children_forwarded_transitively_through_rest() {
         check(
             indoc! {r#"
-                component Foo(slot: Fragment) {
+                component Foo(children: Fragment) {
                   <div>
-                    {slot}
+                    {children}
                   </div>
                 }
 
@@ -1006,10 +1006,10 @@ mod tests {
                   let v_0 = {
                     write("deep")
                   } in {
-                    let slot = v_0 in {
+                    let children = v_0 in {
                       write("<div")
                       write(">")
-                      write_expr(slot)
+                      write_expr(children)
                       write("</div>")
                     }
                   }
@@ -1019,9 +1019,9 @@ mod tests {
                   let v_0 = {
                     write("deep")
                   } in {
-                    let slot = v_0 in {
+                    let children = v_0 in {
                       write("<div>")
-                      write_expr(slot)
+                      write_expr(children)
                       write("</div>")
                     }
                   }
@@ -1119,22 +1119,22 @@ mod tests {
         check(
             indoc! {r#"
                 component Foo(
-                  slot: Fragment,
+                  children: Fragment,
                   class: String,
                   ...rest,
                 ) {
                   <div class={class} ...rest>
-                    {slot}
+                    {children}
                   </div>
                 }
 
                 component Button(
-                  slot: Fragment,
+                  children: Fragment,
                   class: String = "",
                   ...rest,
                 ) {
                   <Foo class={class} ...rest>
-                    {slot}
+                    {children}
                   </Foo>
                 }
 
@@ -1151,19 +1151,19 @@ mod tests {
                   let v_1 = {
                     write("click")
                   } in {
-                    let slot = v_1 in {
+                    let children = v_1 in {
                       let class_1 = "primary" in {
                         let v_0 = {
-                          write_expr(slot)
+                          write_expr(children)
                         } in {
-                          let slot_2 = v_0 in {
+                          let children_2 = v_0 in {
                             let class_3 = class_1 in {
                               write("<div")
                               write(" class=\"")
                               write_escaped(tw_merge(class_3))
                               write("\"")
                               write(">")
-                              write_expr(slot_2)
+                              write_expr(children_2)
                               write("</div>")
                             }
                           }
@@ -1177,13 +1177,13 @@ mod tests {
                   let v_1 = {
                     write("click")
                   } in {
-                    let slot = v_1 in {
+                    let children = v_1 in {
                       let v_0 = {
-                        write_expr(slot)
+                        write_expr(children)
                       } in {
-                        let slot_2 = v_0 in {
+                        let children_2 = v_0 in {
                           write("<div class=\"primary\">")
-                          write_expr(slot_2)
+                          write_expr(children_2)
                           write("</div>")
                         }
                       }
@@ -8125,13 +8125,13 @@ mod tests {
             indoc! {r#"
                 component Card(
                   title: String,
-                  slot: Fragment,
+                  children: Fragment,
                 ) {
                   <div class="card">
                     <h2>
                       {title}
                     </h2>
-                    {slot}
+                    {children}
                   </div>
                 }
 
@@ -8154,7 +8154,7 @@ mod tests {
                     write("</p>")
                   } in {
                     let title = "Hello" in {
-                      let slot = v_0 in {
+                      let children = v_0 in {
                         write("<div")
                         write(" class=\"card\"")
                         write(">")
@@ -8162,7 +8162,7 @@ mod tests {
                         write(">")
                         write_escaped(title)
                         write("</h2>")
-                        write_expr(slot)
+                        write_expr(children)
                         write("</div>")
                       }
                     }
@@ -8173,9 +8173,9 @@ mod tests {
                   let v_0 = {
                     write("<p>world</p>")
                   } in {
-                    let slot = v_0 in {
+                    let children = v_0 in {
                       write("<div class=\"card\"><h2>Hello</h2>")
-                      write_expr(slot)
+                      write_expr(children)
                       write("</div>")
                     }
                   }
@@ -8203,16 +8203,16 @@ mod tests {
     fn component_children_forwarded_to_another_component() {
         check(
             indoc! {r#"
-                component Inner(slot: Fragment) {
+                component Inner(children: Fragment) {
                   <div class="inner">
-                    {slot}
+                    {children}
                   </div>
                 }
 
-                component Outer(slot: Fragment) {
+                component Outer(children: Fragment) {
                   <div class="outer">
                     <Inner>
-                      {slot}
+                      {children}
                     </Inner>
                   </div>
                 }
@@ -8235,18 +8235,18 @@ mod tests {
                     write("hello")
                     write("</p>")
                   } in {
-                    let slot = v_1 in {
+                    let children = v_1 in {
                       write("<div")
                       write(" class=\"outer\"")
                       write(">")
                       let v_0 = {
-                        write_expr(slot)
+                        write_expr(children)
                       } in {
-                        let slot_1 = v_0 in {
+                        let children_1 = v_0 in {
                           write("<div")
                           write(" class=\"inner\"")
                           write(">")
-                          write_expr(slot_1)
+                          write_expr(children_1)
                           write("</div>")
                         }
                       }
@@ -8259,14 +8259,14 @@ mod tests {
                   let v_1 = {
                     write("<p>hello</p>")
                   } in {
-                    let slot = v_1 in {
+                    let children = v_1 in {
                       write("<div class=\"outer\">")
                       let v_0 = {
-                        write_expr(slot)
+                        write_expr(children)
                       } in {
-                        let slot_1 = v_0 in {
+                        let children_1 = v_0 in {
                           write("<div class=\"inner\">")
-                          write_expr(slot_1)
+                          write_expr(children_1)
                           write("</div>")
                         }
                       }
@@ -8313,9 +8313,9 @@ mod tests {
                   </footer>
                 }
 
-                component Layout(slot: Fragment) {
+                component Layout(children: Fragment) {
                   <div class="layout">
-                    {slot}
+                    {children}
                   </div>
                 }
 
@@ -8360,11 +8360,11 @@ mod tests {
                     write("</p>")
                     write("</footer>")
                   } in {
-                    let slot = v_0 in {
+                    let children = v_0 in {
                       write("<div")
                       write(" class=\"layout\"")
                       write(">")
-                      write_expr(slot)
+                      write_expr(children)
                       write("</div>")
                     }
                   }
@@ -8375,9 +8375,9 @@ mod tests {
                     write("<header><h1>Welcome</h1></header><main><p>Hello world</p>")
                     write("</main><footer><p>Copyright 2024</p></footer>")
                   } in {
-                    let slot = v_0 in {
+                    let children = v_0 in {
                       write("<div class=\"layout\">")
-                      write_expr(slot)
+                      write_expr(children)
                       write("</div>")
                     }
                   }
@@ -8405,12 +8405,12 @@ mod tests {
     fn component_children_used_twice() {
         check(
             indoc! {r#"
-                component Repeat(slot: Fragment) {
+                component Repeat(children: Fragment) {
                   <div class="first">
-                    {slot}
+                    {children}
                   </div>
                   <div class="second">
-                    {slot}
+                    {children}
                   </div>
                 }
 
@@ -8432,16 +8432,16 @@ mod tests {
                     write("hi")
                     write("</span>")
                   } in {
-                    let slot = v_0 in {
+                    let children = v_0 in {
                       write("<div")
                       write(" class=\"first\"")
                       write(">")
-                      write_expr(slot)
+                      write_expr(children)
                       write("</div>")
                       write("<div")
                       write(" class=\"second\"")
                       write(">")
-                      write_expr(slot)
+                      write_expr(children)
                       write("</div>")
                     }
                   }
@@ -8451,11 +8451,11 @@ mod tests {
                   let v_0 = {
                     write("<span>hi</span>")
                   } in {
-                    let slot = v_0 in {
+                    let children = v_0 in {
                       write("<div class=\"first\">")
-                      write_expr(slot)
+                      write_expr(children)
                       write("</div><div class=\"second\">")
-                      write_expr(slot)
+                      write_expr(children)
                       write("</div>")
                     }
                   }
@@ -9000,13 +9000,13 @@ mod tests {
             indoc! {r#"
                 component Card(
                   title: String,
-                  slot: Fragment = Fragment::empty(),
+                  children: Fragment = Fragment::empty(),
                 ) {
                   <div class="card">
                     <h2>
                       {title}
                     </h2>
-                    {slot}
+                    {children}
                   </div>
                 }
 
@@ -9019,7 +9019,7 @@ mod tests {
                 -- ir (unoptimized) --
                 view Test() {
                   let title = "Hello" in {
-                    let slot = Fragment::empty() in {
+                    let children = Fragment::empty() in {
                       write("<div")
                       write(" class=\"card\"")
                       write(">")
@@ -9027,16 +9027,16 @@ mod tests {
                       write(">")
                       write_escaped(title)
                       write("</h2>")
-                      write_expr(slot)
+                      write_expr(children)
                       write("</div>")
                     }
                   }
                 }
                 -- ir (optimized) --
                 view Test() {
-                  let slot = Fragment::empty() in {
+                  let children = Fragment::empty() in {
                     write("<div class=\"card\"><h2>Hello</h2>")
-                    write_expr(slot)
+                    write_expr(children)
                     write("</div>")
                   }
                 }
@@ -9065,13 +9065,13 @@ mod tests {
             indoc! {r#"
                 component Card(
                   title: String,
-                  slot: Fragment = Fragment::empty(),
+                  children: Fragment = Fragment::empty(),
                 ) {
                   <div class="card">
                     <h2>
                       {title}
                     </h2>
-                    {slot}
+                    {children}
                   </div>
                 }
 
@@ -9095,7 +9095,7 @@ mod tests {
                     write("</p>")
                   } in {
                     let title = "With" in {
-                      let slot = v_0 in {
+                      let children = v_0 in {
                         write("<div")
                         write(" class=\"card\"")
                         write(">")
@@ -9103,13 +9103,13 @@ mod tests {
                         write(">")
                         write_escaped(title)
                         write("</h2>")
-                        write_expr(slot)
+                        write_expr(children)
                         write("</div>")
                       }
                     }
                   }
                   let title_1 = "Without" in {
-                    let slot_2 = Fragment::empty() in {
+                    let children_2 = Fragment::empty() in {
                       write("<div")
                       write(" class=\"card\"")
                       write(">")
@@ -9117,7 +9117,7 @@ mod tests {
                       write(">")
                       write_escaped(title_1)
                       write("</h2>")
-                      write_expr(slot_2)
+                      write_expr(children_2)
                       write("</div>")
                     }
                   }
@@ -9127,15 +9127,15 @@ mod tests {
                   let v_0 = {
                     write("<p>body</p>")
                   } in {
-                    let slot = v_0 in {
+                    let children = v_0 in {
                       write("<div class=\"card\"><h2>With</h2>")
-                      write_expr(slot)
+                      write_expr(children)
                       write("</div>")
                     }
                   }
-                  let slot_2 = Fragment::empty() in {
+                  let children_2 = Fragment::empty() in {
                     write("<div class=\"card\"><h2>Without</h2>")
-                    write_expr(slot_2)
+                    write_expr(children_2)
                     write("</div>")
                   }
                 }
@@ -10367,23 +10367,23 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn recursive_component_with_slot_renders() {
+    fn recursive_component_with_children_renders() {
         check(
             indoc! {r#"
                 component Nest(
                   depth: Int,
-                  slot: Fragment,
+                  children: Fragment,
                 ) {
                   <match {depth > 0}>
                     <case {true}>
                       <div>
                         <Nest depth={depth - 1}>
-                          {slot}
+                          {children}
                         </Nest>
                       </div>
                     </case>
                     <case {false}>
-                      {slot}
+                      {children}
                     </case>
                   </match>
                 }
@@ -10399,20 +10399,20 @@ mod tests {
             "<div><div><b>x</b></div></div>",
             expect![[r#"
                 -- ir (unoptimized) --
-                component Nest(depth: Int, slot: Fragment) {
+                component Nest(depth: Int, children: Fragment) {
                   match (0 < depth) {
                     true => {
                       write("<div")
                       write(">")
                       let v_1 = {
-                        write_expr(slot)
+                        write_expr(children)
                       } in {
-                        call Nest(depth = (depth - 1), slot = v_1)
+                        call Nest(depth = (depth - 1), children = v_1)
                       }
                       write("</div>")
                     }
                     false => {
-                      write_expr(slot)
+                      write_expr(children)
                     }
                   }
                 }
@@ -10423,23 +10423,23 @@ mod tests {
                     write("x")
                     write("</b>")
                   } in {
-                    call Nest(depth = 2, slot = v_2)
+                    call Nest(depth = 2, children = v_2)
                   }
                 }
                 -- ir (optimized) --
-                component Nest(depth: Int, slot: Fragment) {
+                component Nest(depth: Int, children: Fragment) {
                   match (0 < depth) {
                     true => {
                       write("<div>")
                       let v_1 = {
-                        write_expr(slot)
+                        write_expr(children)
                       } in {
-                        call Nest(depth = (depth - 1), slot = v_1)
+                        call Nest(depth = (depth - 1), children = v_1)
                       }
                       write("</div>")
                     }
                     false => {
-                      write_expr(slot)
+                      write_expr(children)
                     }
                   }
                 }
@@ -10447,7 +10447,7 @@ mod tests {
                   let v_2 = {
                     write("<b>x</b>")
                   } in {
-                    call Nest(depth = 2, slot = v_2)
+                    call Nest(depth = 2, children = v_2)
                   }
                 }
                 -- expected output --
@@ -10470,11 +10470,11 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn slot_can_be_bound_to_a_variable() {
+    fn children_can_be_bound_to_a_variable() {
         check(
             indoc! {r#"
-                component Foo(slot: Fragment) {
-                  <let {x = slot}>
+                component Foo(children: Fragment) {
+                  <let {x = children}>
                     <div>
                       {x}
                     </div>
@@ -10499,8 +10499,8 @@ mod tests {
                     write("hi")
                     write("</b>")
                   } in {
-                    let slot = v_0 in {
-                      let x = slot in {
+                    let children = v_0 in {
+                      let x = children in {
                         write("<div")
                         write(">")
                         write_expr(x)
@@ -10514,8 +10514,8 @@ mod tests {
                   let v_0 = {
                     write("<b>hi</b>")
                   } in {
-                    let slot = v_0 in {
-                      let x = slot in {
+                    let children = v_0 in {
+                      let x = children in {
                         write("<div>")
                         write_expr(x)
                         write("</div>")
@@ -10543,19 +10543,19 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn nested_slot_forwarding() {
+    fn nested_children_forwarding() {
         check(
             indoc! {r#"
-                component Inner(slot: Fragment) {
+                component Inner(children: Fragment) {
                   <em>
-                    {slot}
+                    {children}
                   </em>
                 }
 
-                component Outer(slot: Fragment) {
+                component Outer(children: Fragment) {
                   <section>
                     <Inner>
-                      {slot}
+                      {children}
                     </Inner>
                   </section>
                 }
@@ -10573,16 +10573,16 @@ mod tests {
                   let v_1 = {
                     write("z")
                   } in {
-                    let slot = v_1 in {
+                    let children = v_1 in {
                       write("<section")
                       write(">")
                       let v_0 = {
-                        write_expr(slot)
+                        write_expr(children)
                       } in {
-                        let slot_1 = v_0 in {
+                        let children_1 = v_0 in {
                           write("<em")
                           write(">")
-                          write_expr(slot_1)
+                          write_expr(children_1)
                           write("</em>")
                         }
                       }
@@ -10595,14 +10595,14 @@ mod tests {
                   let v_1 = {
                     write("z")
                   } in {
-                    let slot = v_1 in {
+                    let children = v_1 in {
                       write("<section>")
                       let v_0 = {
-                        write_expr(slot)
+                        write_expr(children)
                       } in {
-                        let slot_1 = v_0 in {
+                        let children_1 = v_0 in {
                           write("<em>")
-                          write_expr(slot_1)
+                          write_expr(children_1)
                           write("</em>")
                         }
                       }

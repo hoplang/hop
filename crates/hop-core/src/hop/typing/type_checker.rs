@@ -365,7 +365,7 @@ fn typecheck_module(
                                 };
                                 let covered_by_rest = |p: &ParamEntry| {
                                     !(supplied_attrs.iter().any(|a| a.as_str() == p.name.as_str())
-                                        || (*has_children && p.name.as_str() == "slot")
+                                        || (*has_children && p.name.as_str() == "children")
                                         || declared_names.contains(&p.name))
                                 };
                                 let forwarded = callee_sig
@@ -1080,7 +1080,7 @@ fn typecheck_node(
                 });
             }
 
-            let (slot_var, resolved_args, extra_attributes, rest_spread) = typecheck_arguments(
+            let (children_var, resolved_args, extra_attributes, rest_spread) = typecheck_arguments(
                 args,
                 var_env,
                 annotations,
@@ -1096,7 +1096,7 @@ fn typecheck_node(
                 caller_params,
             );
 
-            if let Some(var) = slot_var {
+            if let Some(var) = children_var {
                 return Some(TypedNode::LetFragment {
                     var,
                     fragment_body: typed_children,
@@ -1376,16 +1376,16 @@ fn typecheck_arguments(
     Vec<TypedAttribute>,
     Option<VarName>,
 ) {
-    let slot_param = callee_params
+    let children_param = callee_params
         .iter()
-        .find(|p| p.name.as_str() == "slot" && *p.typ == Type::Fragment);
-    let has_explicit_slot_arg = args.iter().any(|a| match a {
-        ParsedAttribute::Named { name, .. } => name.as_str() == "slot",
+        .find(|p| p.name.as_str() == "children" && *p.typ == Type::Fragment);
+    let has_explicit_children_arg = args.iter().any(|a| match a {
+        ParsedAttribute::Named { name, .. } => name.as_str() == "children",
         ParsedAttribute::Spread { .. } => false,
     });
-    let synthesize_slot_arg = has_body && slot_param.is_some() && !has_explicit_slot_arg;
+    let synthesize_children_arg = has_body && children_param.is_some() && !has_explicit_children_arg;
 
-    if has_body && slot_param.is_none() {
+    if has_body && children_param.is_none() {
         errors.push(TypeError::ComponentDoesNotAcceptChildren {
             component: component_name.clone(),
             range: component_name_opening_range.clone(),
@@ -1404,7 +1404,7 @@ fn typecheck_arguments(
         })
         .collect();
     if has_body {
-        supplied_args.push(VarName::new("slot").unwrap());
+        supplied_args.push(VarName::new("children").unwrap());
     }
     let covered_by_rest = |param: &ParamEntry| {
         rest_spread.is_some()
@@ -1506,16 +1506,16 @@ fn typecheck_arguments(
         });
     }
 
-    if has_body && has_explicit_slot_arg {
-        errors.push(TypeError::SlotContentAmbiguous {
+    if has_body && has_explicit_children_arg {
+        errors.push(TypeError::ChildContentAmbiguous {
             range: component_name_opening_range.clone(),
         });
     }
 
-    let slot_var = if synthesize_slot_arg {
+    let children_var = if synthesize_children_arg {
         let fresh = var_env.fresh_var();
         typed_args.push(TypedArgument {
-            name: VarName::new("slot").unwrap(),
+            name: VarName::new("children").unwrap(),
             expr: TypedExpr::Var {
                 value: fresh.clone(),
                 kind: Arc::new(Type::Fragment),
@@ -1536,8 +1536,8 @@ fn typecheck_arguments(
                 ParsedAttribute::Named { name: n, .. } => n.as_str() == p.name.as_str(),
                 ParsedAttribute::Spread { .. } => false,
             });
-            let is_synthesized_slot = synthesize_slot_arg && p.name.as_str() == "slot";
-            !supplied && !is_synthesized_slot && !covered_by_rest(p)
+            let is_synthesized_children = synthesize_children_arg && p.name.as_str() == "children";
+            !supplied && !is_synthesized_children && !covered_by_rest(p)
         })
         .map(|p| p.name.as_str())
         .collect();
@@ -1568,7 +1568,7 @@ fn typecheck_arguments(
         })
         .collect();
 
-    (slot_var, resolved_args, extra_attributes, rest_spread)
+    (children_var, resolved_args, extra_attributes, rest_spread)
 }
 
 fn typecheck_attributes(
@@ -2067,21 +2067,21 @@ mod tests {
     }
 
     #[test]
-    fn accepts_slot_in_slotted_component() {
+    fn accepts_children_in_component() {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Card(slot: Fragment) {
+                component Card(children: Fragment) {
                     <div>
-                        {slot}
+                        {children}
                     </div>
                 }
             "#},
             expect![[r#"
                 -- main.hop --
-                component Card(slot: Fragment) {
+                component Card(children: Fragment) {
                   <div>
-                    {slot}
+                    {children}
                   </div>
                 }
             "#]],
@@ -2089,12 +2089,44 @@ mod tests {
     }
 
     #[test]
-    fn rejects_slotted_component_invoked_without_slot() {
+    fn accepts_children_named_param_receives_body_content() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                component Card(children: Fragment) {
+                    <div>{children}</div>
+                }
+
+                component Main {
+                    <Card></Card>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                component Card(children: Fragment) {
+                  <div>
+                    {children}
+                  </div>
+                }
+
+                component Main {
+                  <let {
+                    v_0 = {}
+                  }>
+                    <Card children={v_0}/>
+                  </let>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_component_invoked_without_children() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Card(slot: Fragment) {
-                    <div>{slot}</div>
+                component Card(children: Fragment) {
+                    <div>{children}</div>
                 }
 
                 component Main {
@@ -2102,7 +2134,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Component requires arguments: slot
+                error: Component requires arguments: children
                   --> main.hop (line 6, col 6)
                 5 | component Main {
                 6 |     <Card />
@@ -2112,12 +2144,12 @@ mod tests {
     }
 
     #[test]
-    fn accepts_empty_body_supplies_empty_slot() {
+    fn accepts_empty_body_supplies_empty_children() {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Card(slot: Fragment) {
-                    <div>{slot}</div>
+                component Card(children: Fragment) {
+                    <div>{children}</div>
                 }
 
                 component Main {
@@ -2126,9 +2158,9 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Card(slot: Fragment) {
+                component Card(children: Fragment) {
                   <div>
-                    {slot}
+                    {children}
                   </div>
                 }
 
@@ -2136,7 +2168,7 @@ mod tests {
                   <let {
                     v_0 = {}
                   }>
-                    <Card slot={v_0}/>
+                    <Card children={v_0}/>
                   </let>
                 }
             "#]],
@@ -2144,75 +2176,75 @@ mod tests {
     }
 
     #[test]
-    fn accepts_explicit_slot_argument() {
+    fn accepts_explicit_children_argument() {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Card(slot: Fragment) {
-                    <div>{slot}</div>
+                component Card(children: Fragment) {
+                    <div>{children}</div>
                 }
 
-                component Main(slot: Fragment) {
-                    <Card slot={slot} />
+                component Main(children: Fragment) {
+                    <Card children={children} />
                 }
             "#},
             expect![[r#"
                 -- main.hop --
-                component Card(slot: Fragment) {
+                component Card(children: Fragment) {
                   <div>
-                    {slot}
+                    {children}
                   </div>
                 }
 
-                component Main(slot: Fragment) {
-                  <Card slot={slot}/>
+                component Main(children: Fragment) {
+                  <Card children={children}/>
                 }
             "#]],
         );
     }
 
     #[test]
-    fn rejects_slot_in_view() {
+    fn rejects_children_in_view() {
         reject(
             indoc! {r#"
                 -- main.hop --
                 view Main {
                     <div>
-                        {slot}
+                        {children}
                     </div>
                 }
             "#},
             expect![[r#"
-                error: Undefined variable: slot
+                error: Undefined variable: children
                   --> main.hop (line 3, col 10)
                 2 |     <div>
-                3 |         {slot}
-                  |          ^^^^
+                3 |         {children}
+                  |          ^^^^^^^^
             "#]],
         );
     }
 
     #[test]
-    fn accepts_recursive_component_with_slot() {
+    fn accepts_recursive_component_with_children() {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Tree(slot: Fragment) {
+                component Tree(children: Fragment) {
                 	<div>
-                		<Tree>{slot}</Tree>
+                		<Tree>{children}</Tree>
                 	</div>
                 }
             "#},
             expect![[r#"
                 -- main.hop --
-                component Tree(slot: Fragment) {
+                component Tree(children: Fragment) {
                   <div>
                     <let {
                       v_0 = {
-                        {slot}
+                        {children}
                       }
                     }>
-                      <Tree slot={v_0}/>
+                      <Tree children={v_0}/>
                     </let>
                   </div>
                 }
@@ -2221,31 +2253,31 @@ mod tests {
     }
 
     #[test]
-    fn rejects_slot_in_expression_position() {
+    fn rejects_children_in_expression_position() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Card(slot: Fragment) {
-                    <div class={slot}></div>
+                component Card(children: Fragment) {
+                    <div class={children}></div>
                 }
             "#},
             expect![[r#"
                 error: Mismatched type: expected `String` got `Fragment`
                   --> main.hop (line 2, col 17)
-                1 | component Card(slot: Fragment) {
-                2 |     <div class={slot}></div>
-                  |                 ^^^^
+                1 | component Card(children: Fragment) {
+                2 |     <div class={children}></div>
+                  |                 ^^^^^^^^
             "#]],
         );
     }
 
     #[test]
-    fn rejects_unused_let_binding_bound_from_slot() {
+    fn rejects_unused_let_binding_bound_from_children() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Card(slot: Fragment) {
-                    <let {content: Fragment = slot}>
+                component Card(children: Fragment) {
+                    <let {content: Fragment = children}>
                         <div></div>
                     </let>
                 }
@@ -2253,31 +2285,31 @@ mod tests {
             expect![[r#"
                 warning: Unused variable content
                   --> main.hop (line 2, col 11)
-                1 | component Card(slot: Fragment) {
-                2 |     <let {content: Fragment = slot}>
+                1 | component Card(children: Fragment) {
+                2 |     <let {content: Fragment = children}>
                   |           ^^^^^^^
             "#]],
         );
     }
 
     #[test]
-    fn rejects_explicit_slot_arg_combined_with_element_children() {
+    fn rejects_explicit_children_arg_combined_with_element_children() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Card(slot: Fragment) {
-                    <div>{slot}</div>
+                component Card(children: Fragment) {
+                    <div>{children}</div>
                 }
 
-                component Main(slot: Fragment) {
-                    <Card slot={slot}>children</Card>
+                component Main(children: Fragment) {
+                    <Card children={children}>children</Card>
                 }
             "#},
             expect![[r#"
-                error: slot content provided both as an explicit `slot` argument and as element children
+                error: Content provided both as an explicit `children` argument and as element children
                   --> main.hop (line 6, col 6)
-                5 | component Main(slot: Fragment) {
-                6 |     <Card slot={slot}>children</Card>
+                5 | component Main(children: Fragment) {
+                6 |     <Card children={children}>children</Card>
                   |      ^^^^
             "#]],
         );
@@ -2668,7 +2700,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Component Main does not accept slot content (missing `slot: Fragment` parameter)
+                error: Component Main does not accept content (missing `children: Fragment` parameter)
                   --> main.hop (line 6, col 6)
                 5 | component Bar {
                 6 |     <Main>
@@ -2695,7 +2727,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Component Foo does not accept slot content (missing `slot: Fragment` parameter)
+                error: Component Foo does not accept content (missing `children: Fragment` parameter)
                   --> main.hop (line 4, col 6)
                 3 | component Bar {
                 4 |     <Foo>
@@ -3497,9 +3529,9 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Main(slot: Fragment) {
+                component Main(children: Fragment) {
                     <strong>
-                        {slot}
+                        {children}
                     </strong>
                 }
 
@@ -3511,9 +3543,9 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Main(slot: Fragment) {
+                component Main(children: Fragment) {
                   <strong>
-                    {slot}
+                    {children}
                   </strong>
                 }
 
@@ -3523,7 +3555,7 @@ mod tests {
                       Here's the content for the children
                     }
                   }>
-                    <Main slot={v_0}/>
+                    <Main children={v_0}/>
                   </let>
                 }
             "#]],
@@ -5918,8 +5950,8 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Btn(slot: Fragment, ...rest) {
-                  <button ...rest>{slot}</button>
+                component Btn(children: Fragment, ...rest) {
+                  <button ...rest>{children}</button>
                 }
 
                 component Main {
@@ -5941,8 +5973,8 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Btn(slot: Fragment, ...rest) {
-                  <button ...rest>{slot}</button>
+                component Btn(children: Fragment, ...rest) {
+                  <button ...rest>{children}</button>
                 }
 
                 component Main {
@@ -5951,9 +5983,9 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Btn(slot: Fragment, ...rest) {
+                component Btn(children: Fragment, ...rest) {
                   <button ...rest>
-                    {slot}
+                    {children}
                   </button>
                 }
 
@@ -5963,7 +5995,7 @@ mod tests {
                       click
                     }
                   }>
-                    <Btn slot={v_0} disabled/>
+                    <Btn children={v_0} disabled/>
                   </let>
                 }
             "#]],
@@ -6009,11 +6041,11 @@ mod tests {
     }
 
     #[test]
-    fn rejects_unused_slot_named_param_with_non_fragment_type() {
+    fn rejects_unused_children_named_param_with_non_fragment_type() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Separator(slot: Option[Fragment] = None) {
+                component Separator(children: Option[Fragment] = None) {
                   <li>separator</li>
                 }
                 component Main {
@@ -6021,10 +6053,10 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                warning: Unused variable slot
+                warning: Unused variable children
                   --> main.hop (line 1, col 21)
-                1 | component Separator(slot: Option[Fragment] = None) {
-                  |                     ^^^^
+                1 | component Separator(children: Option[Fragment] = None) {
+                  |                     ^^^^^^^^
             "#]],
         );
     }
@@ -6965,8 +6997,8 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Button(class: String, slot: Fragment, ...rest) {
-                    <button class={class} ...rest>{slot}</button>
+                component Button(class: String, children: Fragment, ...rest) {
+                    <button class={class} ...rest>{children}</button>
                 }
                 view Main {
                     <Button class="p-2" data-foo="bar">Hi</Button>
@@ -6974,9 +7006,9 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Button(class: String, slot: Fragment, ...rest) {
+                component Button(class: String, children: Fragment, ...rest) {
                   <button class={class} ...rest>
-                    {slot}
+                    {children}
                   </button>
                 }
 
@@ -6986,7 +7018,7 @@ mod tests {
                       Hi
                     }
                   }>
-                    <Button class={"p-2"} slot={v_0} data-foo="bar"/>
+                    <Button class={"p-2"} children={v_0} data-foo="bar"/>
                   </let>
                 }
             "#]],
@@ -6998,8 +7030,8 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Button(slot: Fragment, ...rest) {
-                    <button class="builtin" ...rest>{slot}</button>
+                component Button(children: Fragment, ...rest) {
+                    <button class="builtin" ...rest>{children}</button>
                 }
                 view Main {
                     <Button data-x="y">Hi</Button>
@@ -7007,9 +7039,9 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Button(slot: Fragment, ...rest) {
+                component Button(children: Fragment, ...rest) {
                   <button class="builtin" ...rest>
-                    {slot}
+                    {children}
                   </button>
                 }
 
@@ -7019,7 +7051,7 @@ mod tests {
                       Hi
                     }
                   }>
-                    <Button slot={v_0} data-x="y"/>
+                    <Button children={v_0} data-x="y"/>
                   </let>
                 }
             "#]],
@@ -7031,8 +7063,8 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Button(slot: Fragment, ...rest) {
-                    <button class="builtin" ...rest>{slot}</button>
+                component Button(children: Fragment, ...rest) {
+                    <button class="builtin" ...rest>{children}</button>
                 }
                 view Main {
                     <Button class="forwarded">Hi</Button>
@@ -7545,12 +7577,12 @@ mod tests {
     }
 
     #[test]
-    fn rejects_missing_slot_forwarded_through_rest() {
+    fn rejects_missing_children_forwarded_through_rest() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Foo(slot: Fragment) {
-                    <div>{slot}</div>
+                component Foo(children: Fragment) {
+                    <div>{children}</div>
                 }
                 component Wrapper(...rest) {
                     <Foo ...rest/>
@@ -7560,7 +7592,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Component requires arguments: slot
+                error: Component requires arguments: children
                   --> main.hop (line 8, col 6)
                 7 | view Main {
                 8 |     <Wrapper/>
@@ -7570,12 +7602,12 @@ mod tests {
     }
 
     #[test]
-    fn accepts_slot_forwarded_transitively_through_rest() {
+    fn accepts_children_forwarded_transitively_through_rest() {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Foo(slot: Fragment) {
-                    <div>{slot}</div>
+                component Foo(children: Fragment) {
+                    <div>{children}</div>
                 }
                 component Bar(...rest) {
                     <Foo ...rest/>
@@ -7589,9 +7621,9 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Foo(slot: Fragment) {
+                component Foo(children: Fragment) {
                   <div>
-                    {slot}
+                    {children}
                   </div>
                 }
 
@@ -7609,7 +7641,7 @@ mod tests {
                       deep
                     }
                   }>
-                    <Baz slot={v_0}/>
+                    <Baz children={v_0}/>
                   </let>
                 }
             "#]],
@@ -7617,12 +7649,12 @@ mod tests {
     }
 
     #[test]
-    fn rejects_slot_content_when_callee_slot_consumed_by_inner_body() {
+    fn rejects_children_content_when_callee_children_consumed_by_inner_body() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Foo(slot: Fragment, class: String, ...rest) {
-                    <div class={class} ...rest>{slot}</div>
+                component Foo(children: Fragment, class: String, ...rest) {
+                    <div class={class} ...rest>{children}</div>
                 }
                 component Card(...rest) {
                     <Foo ...rest>inner</Foo>
@@ -7632,7 +7664,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Component Card does not accept slot content (missing `slot: Fragment` parameter)
+                error: Component Card does not accept content (missing `children: Fragment` parameter)
                   --> main.hop (line 8, col 6)
                 7 | view Main {
                 8 |     <Card class="a">hi</Card>
@@ -7682,14 +7714,14 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Foo(slot: Fragment, class: String, ...rest) {
+                component Foo(children: Fragment, class: String, ...rest) {
                     <div class={class} ...rest>
-                        {slot}
+                        {children}
                     </div>
                 }
-                component Button(slot: Fragment, class: String = "", ...rest) {
+                component Button(children: Fragment, class: String = "", ...rest) {
                     <Foo class={class} ...rest>
-                        {slot}
+                        {children}
                     </Foo>
                 }
                 view Main {
@@ -7698,19 +7730,19 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Foo(slot: Fragment, class: String, ...rest) {
+                component Foo(children: Fragment, class: String, ...rest) {
                   <div class={class} ...rest>
-                    {slot}
+                    {children}
                   </div>
                 }
 
-                component Button(slot: Fragment, class: String, ...rest) {
+                component Button(children: Fragment, class: String, ...rest) {
                   <let {
                     v_0 = {
-                      {slot}
+                      {children}
                     }
                   }>
-                    <Foo slot={v_0} class={class} ...rest/>
+                    <Foo children={v_0} class={class} ...rest/>
                   </let>
                 }
 
@@ -7720,7 +7752,7 @@ mod tests {
                       click
                     }
                   }>
-                    <Button slot={v_1} class={"primary"}/>
+                    <Button children={v_1} class={"primary"}/>
                   </let>
                 }
             "#]],

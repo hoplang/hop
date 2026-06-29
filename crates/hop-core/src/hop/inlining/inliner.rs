@@ -616,20 +616,20 @@ mod tests {
     }
 
     #[test]
-    fn view_with_component_using_slot_content() {
+    fn view_with_component_using_child_content() {
         check(
             vec![(
                 "main.hop",
                 r#"
-                    component Card(slot: Fragment) {
+                    component Card(children: Fragment) {
                         <div class="card">
-                            {slot}
+                            {children}
                         </div>
                     }
 
                     view Main() {
                         <Card>
-                            <p>This is slot content</p>
+                            <p>content</p>
                         </Card>
                     }
                 "#,
@@ -639,13 +639,13 @@ mod tests {
                   <let {
                     v_0 = {
                       <p>
-                        This is slot content
+                        content
                       </p>
                     }
                   }>
-                    <let {slot = v_0}>
+                    <let {children = v_0}>
                       <div class="card">
-                        {slot}
+                        {children}
                       </div>
                     </let>
                   </let>
@@ -801,9 +801,9 @@ mod tests {
                         </footer>
                     }
 
-                    component Layout(slot: Fragment) {
+                    component Layout(children: Fragment) {
                         <div class="layout">
-                            {slot}
+                            {children}
                         </div>
                     }
 
@@ -841,9 +841,9 @@ mod tests {
                       </footer>
                     }
                   }>
-                    <let {slot = v_0}>
+                    <let {children = v_0}>
                       <div class="layout">
-                        {slot}
+                        {children}
                       </div>
                     </let>
                   </let>

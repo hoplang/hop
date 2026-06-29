@@ -51,15 +51,15 @@ pub enum TypeError {
     },
 
     #[error(
-        "Component {component} does not accept slot content (missing `slot: Fragment` parameter)"
+        "Component {component} does not accept content (missing `children: Fragment` parameter)"
     )]
     ComponentDoesNotAcceptChildren {
         component: TypeName,
         range: DocumentRange,
     },
 
-    #[error("slot content provided both as an explicit `slot` argument and as element children")]
-    SlotContentAmbiguous { range: DocumentRange },
+    #[error("Content provided both as an explicit `children` argument and as element children")]
+    ChildContentAmbiguous { range: DocumentRange },
 
     #[error(
         "Import cycle: {importer_module} imports from {imported_component} which creates a dependency cycle: {cycle_display}"
@@ -472,7 +472,7 @@ impl TypeError {
             | TypeError::UnusedImport { range, .. }
             | TypeError::ModuleNotFound { range, .. }
             | TypeError::ComponentDoesNotAcceptChildren { range, .. }
-            | TypeError::SlotContentAmbiguous { range, .. }
+            | TypeError::ChildContentAmbiguous { range, .. }
             | TypeError::ImportCycle { range, .. }
             | TypeError::ConditionTypeMismatch { range, .. }
             | TypeError::MissingArguments { range, .. }

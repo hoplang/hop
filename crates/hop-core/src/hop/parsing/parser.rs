@@ -1534,17 +1534,17 @@ mod tests {
     }
 
     #[test]
-    fn accepts_slot_round_trip() {
+    fn accepts_children_round_trip() {
         accept(
             indoc! {"
-                component Card(slot: Fragment) {
-                  <div>{slot}</div>
+                component Card(children: Fragment) {
+                  <div>{children}</div>
                 }
             "},
             expect![[r#"
-                component Card(slot: Fragment) {
+                component Card(children: Fragment) {
                   <div>
-                    {slot}
+                    {children}
                   </div>
                 }
             "#]],
