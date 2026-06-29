@@ -724,7 +724,7 @@ fn typecheck_node(
 
             let condition_type = typed_condition.get_type();
             if *condition_type != Type::Bool {
-                errors.push(TypeError::ExpectedBooleanCondition {
+                errors.push(TypeError::ConditionTypeMismatch {
                     found: condition_type,
                     range: condition.range().clone(),
                 })
@@ -759,8 +759,8 @@ fn typecheck_node(
                     let element_type = match array_type.as_ref() {
                         Type::Array(inner) => inner.clone(),
                         _ => {
-                            errors.push(TypeError::CannotIterateOver {
-                                typ: array_type,
+                            errors.push(TypeError::IterateeTypeMismatch {
+                                found: array_type,
                                 range: array_expr.range().clone(),
                             });
                             return None;
@@ -1180,7 +1180,7 @@ fn typecheck_node(
             )) {
                 let expr_type = typed_expr.get_type();
                 if *expr_type != Type::String && *expr_type != Type::Fragment {
-                    errors.push(TypeError::ExpectedStringForTextExpression {
+                    errors.push(TypeError::TextExpressionTypeMismatch {
                         found: expr_type,
                         range: expression.range().clone(),
                     });
@@ -1345,8 +1345,8 @@ fn typecheck_attribute_value(
             }
             Some(TypedAttributeValue::Expression(typed_expr))
         }
-        Some(ParsedAttributeValue::String(s)) => {
-            let string_span = match s {
+        Some(ParsedAttributeValue::String { content, .. }) => {
+            let string_span = match content {
                 Some(range) => range.to_cheap_string(),
                 None => CheapString::new("".to_string()),
             };
@@ -1459,14 +1459,17 @@ fn typecheck_arguments(
 
         let arg_expr = match arg_value {
             Some(ParsedAttributeValue::Expression(expr)) => expr.clone(),
-            Some(ParsedAttributeValue::String(content)) => {
+            Some(ParsedAttributeValue::String {
+                content,
+                quoted_range,
+            }) => {
                 let value = content
                     .as_ref()
                     .map(|r| r.to_cheap_string())
                     .unwrap_or_else(|| CheapString::new(String::new()));
                 expr::ParsedExpr::StringLiteral {
                     value,
-                    range: arg_name_range.clone(),
+                    range: quoted_range.clone(),
                 }
             }
             None => expr::ParsedExpr::BooleanLiteral {
@@ -2227,7 +2230,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Argument of type Fragment is incompatible with expected type String
+                error: Mismatched type: expected `String` got `Fragment`
                   --> main.hop (line 2, col 17)
                 1 | component Card(slot: Fragment) {
                 2 |     <div class={slot}></div>
@@ -3019,7 +3022,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Can not iterate over Bool
+                error: Mismatched type: expected `Array[...]` got `Bool`
                   --> main.hop (line 11, col 18)
                 10 |     <for {item in params}>
                 11 |         <for {inner in item.k}>
@@ -3410,7 +3413,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Argument of type foo::User is incompatible with expected type bar::User
+                error: Mismatched type: expected `bar::User` got `foo::User`
                   --> main.hop (line 7, col 20)
                 6 |     <FooComp user={user}/>
                 7 |     <BarComp user={user}/>
@@ -3454,7 +3457,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Argument of type foo::User is incompatible with expected type bar::User
+                error: Mismatched type: expected `bar::User` got `foo::User`
                   --> main.hop (line 7, col 20)
                 6 |     <FooComp user={user}/>
                 7 |     <BarComp user={user}/>
@@ -3617,11 +3620,35 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Argument of type Int is incompatible with expected type String
+                error: Mismatched type: expected `String` got `Int`
                   --> main.hop (line 5, col 23)
                 4 | component Main {
                 5 |     <StringComp message={42}/>
                   |                          ^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_when_an_empty_string_is_passed_to_component_that_accepts_bool() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component ToggleComp(enabled: Bool) {
+                	<if {enabled}>
+                		<div>Enabled</div>
+                	</if>
+                }
+                component Main {
+                	<ToggleComp enabled=""/>
+                }
+            "#},
+            expect![[r#"
+                error: Mismatched type: expected `Bool` got `String`
+                  --> main.hop (line 7, col 22)
+                6 | component Main {
+                7 |     <ToggleComp enabled=""/>
+                  |                         ^^
             "#]],
         );
     }
@@ -3641,11 +3668,11 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Argument of type String is incompatible with expected type Bool
-                  --> main.hop (line 7, col 14)
+                error: Mismatched type: expected `Bool` got `String`
+                  --> main.hop (line 7, col 22)
                 6 | component Main {
                 7 |     <ToggleComp enabled="not a boolean"/>
-                  |                 ^^^^^^^
+                  |                         ^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -3662,7 +3689,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Expected boolean condition, got String
+                error: Mismatched type for condition: expected `Bool` got `String`
                   --> main.hop (line 2, col 10)
                 1 | component Main {
                 2 |     <if {"str"}>
@@ -3684,13 +3711,13 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Can not compare Int to String
+                error: Cannot compare Int to String
                   --> main.hop (line 5, col 14)
                 4 | component Foo {
                 5 |     <Main a={1 == ""} b={1 == ""}/>
                   |              ^^^^^^^
 
-                error: Can not compare Int to String
+                error: Cannot compare Int to String
                   --> main.hop (line 5, col 26)
                 4 | component Foo {
                 5 |     <Main a={1 == ""} b={1 == ""}/>
@@ -3761,7 +3788,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Expected string for text expression, got Bool
+                error: Mismatched type for text expression: expected `String` got Bool
                   --> main.hop (line 2, col 6)
                 1 | component Main {
                 2 |     {false}
@@ -4287,7 +4314,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Match arms must all have the same type, expected String but found Int
+                error: Mismatched type: expected `String` got `Int`
                   --> main.hop (line 9, col 25)
                  8 |         Color::Red => "red",
                  9 |         Color::Green => 42,
@@ -4582,7 +4609,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Default value for parameter 'name' has type Int, expected String
+                error: Mismatched type: expected `String` got `Int`
                   --> main.hop (line 1, col 35)
                 1 | component Greeting(name: String = 42) {
                   |                                   ^^
@@ -4833,11 +4860,11 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Argument of type String is incompatible with expected type Option[String]
-                  --> main.hop (line 5, col 13)
+                error: Mismatched type: expected `Option[String]` got `String`
+                  --> main.hop (line 5, col 18)
                 4 | component Main {
                 5 |   <Greeting name="World" />
-                  |             ^^^^
+                  |                  ^^^^^^^
             "#]],
         );
     }
@@ -4996,7 +5023,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Match pattern type mismatch: expected boolean, found Some(x)
+                error: Mismatched pattern type: expected `Bool` got `Some(x)`
                   --> main.hop (line 3, col 16)
                 2 |     <match {flag}>
                 3 |         <case {Some(x)}>yes</case>
@@ -5197,7 +5224,7 @@ mod tests {
                  3 |         <case {Some(x)}>
                    |                     ^
 
-                error: Expected string for text expression, got Option[String]
+                error: Mismatched type for text expression: expected `String` got Option[String]
                   --> main.hop (line 4, col 14)
                  3 |         <case {Some(x)}>
                  4 |             {x}
@@ -5267,7 +5294,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Unreachable match arm for variant '_'
+                error: Unreachable match arm for pattern '_'
                   --> main.hop (line 6, col 16)
                 5 |         <case {User{role: Role{title: _, salary: _}, created_at: _}}>matched</case>
                 6 |         <case {_}>fallback</case>
@@ -5623,7 +5650,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Argument of type Bool is incompatible with expected type String
+                error: Mismatched type: expected `String` got `Bool`
                   --> main.hop (line 2, col 20)
                 1 | component Main(is_required: Bool) {
                 2 |   <input required={is_required}>
@@ -5642,7 +5669,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Argument of type Bool is incompatible with expected type String
+                error: Mismatched type: expected `String` got `Bool`
                   --> main.hop (line 2, col 20)
                 1 | component Main {
                 2 |   <input required={true}>
@@ -5661,7 +5688,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Argument of type Option[String] is incompatible with expected type String
+                error: Mismatched type: expected `String` got `Option[String]`
                   --> main.hop (line 2, col 16)
                 1 | component Main(maybe: Option[String]) {
                 2 |   <div data-x={maybe}></div>
@@ -5680,7 +5707,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Argument of type Option[String] is incompatible with expected type String
+                error: Mismatched type: expected `String` got `Option[String]`
                   --> main.hop (line 2, col 16)
                 1 | component Main {
                 2 |   <div data-x={Some("hello")}></div>
@@ -5699,7 +5726,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Argument of type Option[Int] is incompatible with expected type String
+                error: Mismatched type: expected `String` got `Option[Int]`
                   --> main.hop (line 2, col 16)
                 1 | component Main(maybe: Option[Int]) {
                 2 |   <div data-x={maybe}></div>
@@ -5718,7 +5745,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Argument of type Option[Bool] is incompatible with expected type String
+                error: Mismatched type: expected `String` got `Option[Bool]`
                   --> main.hop (line 2, col 16)
                 1 | component Main(maybe: Option[Bool]) {
                 2 |   <div data-x={maybe}></div>
@@ -5737,7 +5764,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Argument of type Option[Option[String]] is incompatible with expected type String
+                error: Mismatched type: expected `String` got `Option[Option[String]]`
                   --> main.hop (line 2, col 16)
                 1 | component Main(maybe: Option[Option[String]]) {
                 2 |   <div data-x={maybe}></div>
@@ -5756,7 +5783,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Argument of type Int is incompatible with expected type String
+                error: Mismatched type: expected `String` got `Int`
                   --> main.hop (line 2, col 20)
                 1 | component Main(count: Int) {
                 2 |   <div data-count={count}></div>
@@ -6378,7 +6405,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Let binding has type Int, expected String
+                error: Mismatched type: expected `String` got `Int`
                   --> main.hop (line 2, col 24)
                 1 | component Main {
                 2 |   <let {name: String = 42}>
@@ -7179,11 +7206,11 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Argument of type String is incompatible with expected type Int
-                  --> main.hop (line 10, col 14)
+                error: Mismatched type: expected `Int` got `String`
+                  --> main.hop (line 10, col 20)
                  9 | view Main {
                 10 |     <Wrapper count="hi"/>
-                   |              ^^^^^
+                   |                    ^^^^
             "#]],
         );
     }
@@ -7999,11 +8026,11 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Argument of type String is incompatible with expected type Int
-                  --> main.hop (line 10, col 14)
+                error: Mismatched type: expected `Int` got `String`
+                  --> main.hop (line 10, col 23)
                  9 | view Main {
                 10 |     <Wrapper tabindex="nope"/>
-                   |              ^^^^^^^^
+                   |                       ^^^^^^
             "#]],
         );
     }

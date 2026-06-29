@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use crate::annotation::Annotation;
 use crate::document::DocumentRange;
+use crate::expr::parsing::parsed_expr::ParsedMatchPattern;
 use crate::expr::typing::r#type::Type;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::module_name::ModuleName;
@@ -70,8 +71,8 @@ pub enum TypeError {
         range: DocumentRange,
     },
 
-    #[error("Expected boolean condition, got {found}")]
-    ExpectedBooleanCondition {
+    #[error("Mismatched type for condition: expected `Bool` got `{found}`")]
+    ConditionTypeMismatch {
         found: Arc<Type>,
         range: DocumentRange,
     },
@@ -98,14 +99,14 @@ pub enum TypeError {
         range: DocumentRange,
     },
 
-    #[error("Argument of type {found} is incompatible with expected type {expected}")]
+    #[error("Mismatched type: expected `{expected}` got `{found}`")]
     ArgumentTypeMismatch {
         expected: Arc<Type>,
         found: Arc<Type>,
         range: DocumentRange,
     },
 
-    #[error("Default value for parameter '{param_name}' has type {found}, expected {expected}")]
+    #[error("Mismatched type: expected `{expected}` got `{found}`")]
     DefaultValueTypeMismatch {
         param_name: VarName,
         expected: Arc<Type>,
@@ -120,27 +121,27 @@ pub enum TypeError {
         range: DocumentRange,
     },
 
-    #[error("Can not iterate over {typ}")]
-    CannotIterateOver {
-        typ: Arc<Type>,
+    #[error("Mismatched type: expected `Array[...]` got `{found}`")]
+    IterateeTypeMismatch {
+        found: Arc<Type>,
         range: DocumentRange,
     },
 
-    #[error("Range bound must be Int, got {found}")]
+    #[error("Mismatched type for range bound: expected `Int` got `{found}`")]
     RangeBoundTypeMismatch {
         found: Arc<Type>,
         range: DocumentRange,
     },
 
-    #[error("Let binding has type {found}, expected {expected}")]
+    #[error("Mismatched type: expected `{expected}` got `{found}`")]
     LetBindingTypeMismatch {
         expected: Arc<Type>,
         found: Arc<Type>,
         range: DocumentRange,
     },
 
-    #[error("Expected string for text expression, got {found}")]
-    ExpectedStringForTextExpression {
+    #[error("Mismatched type for text expression: expected `String` got {found}")]
+    TextExpressionTypeMismatch {
         found: Arc<Type>,
         range: DocumentRange,
     },
@@ -161,21 +162,27 @@ pub enum TypeError {
         range: DocumentRange,
     },
 
-    #[error("Can not compare {left} to {right}")]
+    #[error("Cannot compare {left} to {right}")]
     CannotCompareTypes {
         left: Arc<Type>,
         right: Arc<Type>,
         range: DocumentRange,
     },
 
-    #[error("Negation operator can only be applied to Bool values")]
-    NegationRequiresBoolean { range: DocumentRange },
+    #[error("Mismatched type for negation: expected `Bool` got `{found}`")]
+    BooleanNegationTypeMismatch {
+        found: Arc<Type>,
+        range: DocumentRange,
+    },
 
-    #[error("Numeric negation operator can only be applied to Int or Float values")]
-    NumericNegationRequiresNumber { range: DocumentRange },
+    #[error("Mismatched type for negation: expected `Int` or `Float` got {found}")]
+    NumericNegationTypeMismatch {
+        found: Arc<Type>,
+        range: DocumentRange,
+    },
 
-    #[error("Array elements must all have the same type, found {expected} and {found}")]
-    ArrayTypeMismatch {
+    #[error("Mismatched type for array element: expected `{expected}` got `{found}`")]
+    ArrayElementTypeMismatch {
         expected: Arc<Type>,
         found: Arc<Type>,
         range: DocumentRange,
@@ -191,10 +198,10 @@ pub enum TypeError {
     TypeIsNotComparable { t: Arc<Type>, range: DocumentRange },
 
     #[error("&& operator can only be applied to Bool values")]
-    LogicalAndRequiresBoolean { range: DocumentRange },
+    LogicalAndTypeMismatch { range: DocumentRange },
 
     #[error("|| operator can only be applied to Bool values")]
-    LogicalOrRequiresBoolean { range: DocumentRange },
+    LogicalOrTypeMismatch { range: DocumentRange },
 
     #[error("Cannot add values of incompatible types: {left_type} + {right_type}")]
     IncompatibleTypesForAddition {
@@ -249,7 +256,7 @@ pub enum TypeError {
         range: DocumentRange,
     },
 
-    #[error("Field '{field_name}' expects type {expected}, but got {found}")]
+    #[error("Mismatched type for `{field_name}`: expected `{expected}` got `{found}`")]
     RecordLiteralFieldTypeMismatch {
         field_name: FieldName,
         expected: Arc<Type>,
@@ -286,9 +293,7 @@ pub enum TypeError {
         range: DocumentRange,
     },
 
-    #[error(
-        "Field '{field_name}' in '{enum_name}::{variant_name}' expects type {expected}, but got {found}"
-    )]
+    #[error("Mismatched type for `{field_name}`: expected `{expected}` got `{found}`")]
     EnumVariantFieldTypeMismatch {
         enum_name: TypeName,
         variant_name: TypeName,
@@ -320,7 +325,7 @@ pub enum TypeError {
         range: DocumentRange,
     },
 
-    #[error("Match arms must all have the same type, expected {expected} but found {found}")]
+    #[error("Mismatched type: expected `{expected}` got `{found}`")]
     MatchArmTypeMismatch {
         expected: Arc<Type>,
         found: Arc<Type>,
@@ -333,15 +338,16 @@ pub enum TypeError {
         range: DocumentRange,
     },
 
-    #[error("Unreachable match arm for variant '{variant}'")]
+    #[error("Unreachable match arm for pattern '{pattern}'")]
     MatchUnreachableArm {
-        variant: String,
+        pattern: Box<ParsedMatchPattern>,
         range: DocumentRange,
     },
 
-    #[error("Match pattern type mismatch: expected {expected}, found {found}")]
+    #[error("Mismatched pattern type: expected `{expected}` got `{found}`")]
     MatchPatternTypeMismatch {
-        expected: String,
+        expected: Arc<Type>,
+        // TODO: Make into Arc<Type>
         found: String,
         range: DocumentRange,
     },
@@ -358,11 +364,11 @@ pub enum TypeError {
     #[error("Variable {name} is already defined")]
     VariableAlreadyDefined { name: VarName, range: DocumentRange },
 
-    #[error("Macro '{macro_name}' expects {expected} arguments, but got {actual}")]
+    #[error("Mismatched type for '{macro_name}': expected `{expected}` got `{found}`")]
     MacroArgumentTypeMismatch {
         macro_name: String,
-        expected: String,
-        actual: Arc<Type>,
+        expected: Arc<Type>,
+        found: Arc<Type>,
         range: DocumentRange,
     },
 
@@ -468,7 +474,7 @@ impl TypeError {
             | TypeError::ComponentDoesNotAcceptChildren { range, .. }
             | TypeError::SlotContentAmbiguous { range, .. }
             | TypeError::ImportCycle { range, .. }
-            | TypeError::ExpectedBooleanCondition { range, .. }
+            | TypeError::ConditionTypeMismatch { range, .. }
             | TypeError::MissingArguments { range, .. }
             | TypeError::ComponentDoesNotAcceptAttribute { range, .. }
             | TypeError::RecursiveComponentWithRest { range, .. }
@@ -476,22 +482,22 @@ impl TypeError {
             | TypeError::ArgumentTypeMismatch { range, .. }
             | TypeError::DefaultValueTypeMismatch { range, .. }
             | TypeError::ElementDoesNotAcceptAttribute { range, .. }
-            | TypeError::CannotIterateOver { range, .. }
+            | TypeError::IterateeTypeMismatch { range, .. }
             | TypeError::RangeBoundTypeMismatch { range, .. }
             | TypeError::LetBindingTypeMismatch { range, .. }
-            | TypeError::ExpectedStringForTextExpression { range, .. }
+            | TypeError::TextExpressionTypeMismatch { range, .. }
             | TypeError::UndefinedVariable { range, .. }
             | TypeError::FieldNotFoundInRecord { range, .. }
             | TypeError::CannotUseAsRecord { range, .. }
             | TypeError::CannotCompareTypes { range, .. }
-            | TypeError::NegationRequiresBoolean { range, .. }
-            | TypeError::NumericNegationRequiresNumber { range, .. }
-            | TypeError::ArrayTypeMismatch { range, .. }
+            | TypeError::BooleanNegationTypeMismatch { range, .. }
+            | TypeError::NumericNegationTypeMismatch { range, .. }
+            | TypeError::ArrayElementTypeMismatch { range, .. }
             | TypeError::CannotInferEmptyArrayType { range, .. }
             | TypeError::CannotInferNoneType { range, .. }
             | TypeError::TypeIsNotComparable { range, .. }
-            | TypeError::LogicalAndRequiresBoolean { range, .. }
-            | TypeError::LogicalOrRequiresBoolean { range, .. }
+            | TypeError::LogicalAndTypeMismatch { range, .. }
+            | TypeError::LogicalOrTypeMismatch { range, .. }
             | TypeError::IncompatibleTypesForAddition { range, .. }
             | TypeError::IncompatibleTypesForSubtraction { range, .. }
             | TypeError::IncompatibleTypesForMultiplication { range, .. }
@@ -539,5 +545,152 @@ impl Annotation for TypeError {
     }
     fn range(&self) -> &DocumentRange {
         self.range()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::document::DocumentCursor;
+    use crate::document_annotator::DocumentAnnotator;
+    use crate::document_id::DocumentId;
+    use expect_test::expect;
+
+    #[test]
+    fn type_mismatch_errors_use_consistent_wording() {
+        let document_id = DocumentId::new("test.hop").unwrap();
+        let range = DocumentCursor::new(document_id.clone(), "value".to_string()).range();
+
+        let expected = || Arc::new(Type::String);
+        let found = || Arc::new(Type::Int);
+
+        let errors = vec![
+            TypeError::ArgumentTypeMismatch {
+                expected: expected(),
+                found: found(),
+                range: range.clone(),
+            },
+            TypeError::DefaultValueTypeMismatch {
+                param_name: VarName::new("x").unwrap(),
+                expected: expected(),
+                found: found(),
+                range: range.clone(),
+            },
+            TypeError::LetBindingTypeMismatch {
+                expected: expected(),
+                found: found(),
+                range: range.clone(),
+            },
+            TypeError::ArrayElementTypeMismatch {
+                expected: expected(),
+                found: found(),
+                range: range.clone(),
+            },
+            TypeError::RecordLiteralFieldTypeMismatch {
+                field_name: FieldName::new("field").unwrap(),
+                expected: expected(),
+                found: found(),
+                range: range.clone(),
+            },
+            TypeError::EnumVariantFieldTypeMismatch {
+                enum_name: TypeName::new("Shape").unwrap(),
+                variant_name: TypeName::new("Circle").unwrap(),
+                field_name: FieldName::new("field").unwrap(),
+                expected: expected(),
+                found: found(),
+                range: range.clone(),
+            },
+            TypeError::MatchArmTypeMismatch {
+                expected: expected(),
+                found: found(),
+                range: range.clone(),
+            },
+            TypeError::ConditionTypeMismatch {
+                found: found(),
+                range: range.clone(),
+            },
+            TypeError::BooleanNegationTypeMismatch {
+                found: found(),
+                range: range.clone(),
+            },
+            TypeError::RangeBoundTypeMismatch {
+                found: found(),
+                range: range.clone(),
+            },
+            TypeError::TextExpressionTypeMismatch {
+                found: found(),
+                range: range.clone(),
+            },
+            TypeError::MacroArgumentTypeMismatch {
+                macro_name: String::from("join!"),
+                expected: expected(),
+                found: found(),
+                range: range.clone(),
+            },
+            TypeError::IterateeTypeMismatch {
+                found: found(),
+                range: range.clone(),
+            },
+        ];
+
+        let actual = DocumentAnnotator::new()
+            .with_label("error")
+            .annotate(&document_id, &errors)
+            .render();
+
+        expect![[r#"
+            error: Mismatched type: expected `String` got `Int`
+            1 | value
+              | ^^^^^
+
+            error: Mismatched type: expected `String` got `Int`
+            1 | value
+              | ^^^^^
+
+            error: Mismatched type: expected `String` got `Int`
+            1 | value
+              | ^^^^^
+
+            error: Mismatched type for array element: expected `String` got `Int`
+            1 | value
+              | ^^^^^
+
+            error: Mismatched type for `field`: expected `String` got `Int`
+            1 | value
+              | ^^^^^
+
+            error: Mismatched type for `field`: expected `String` got `Int`
+            1 | value
+              | ^^^^^
+
+            error: Mismatched type: expected `String` got `Int`
+            1 | value
+              | ^^^^^
+
+            error: Mismatched type for condition: expected `Bool` got `Int`
+            1 | value
+              | ^^^^^
+
+            error: Mismatched type for negation: expected `Bool` got `Int`
+            1 | value
+              | ^^^^^
+
+            error: Mismatched type for range bound: expected `Int` got `Int`
+            1 | value
+              | ^^^^^
+
+            error: Mismatched type for text expression: expected `String` got Int
+            1 | value
+              | ^^^^^
+
+            error: Mismatched type for 'join!': expected `String` got `Int`
+            1 | value
+              | ^^^^^
+
+            error: Mismatched type: expected `Array[...]` got `Int`
+            1 | value
+              | ^^^^^
+        "#]]
+        .assert_eq(&actual);
     }
 }

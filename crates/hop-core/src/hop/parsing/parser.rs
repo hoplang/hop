@@ -1385,9 +1385,13 @@ fn parse_attribute(
     match item {
         tokenizer::TokenizedAttribute::Named { name, value, .. } => {
             let value = match value {
-                Some(tokenizer::TokenizedAttributeValue::String { content }) => {
-                    Some(parsed_ast::ParsedAttributeValue::String(content.clone()))
-                }
+                Some(tokenizer::TokenizedAttributeValue::String {
+                    content,
+                    quoted_range,
+                }) => Some(parsed_ast::ParsedAttributeValue::String {
+                    content: content.clone(),
+                    quoted_range: quoted_range.clone(),
+                }),
                 Some(tokenizer::TokenizedAttributeValue::Expression(range)) => {
                     let mut iter = range.cursor().peekable();
                     let result = expr::parse_expr::parse_expr(&mut iter, comments, errors, range);

@@ -556,13 +556,13 @@ pub fn typecheck_expr(
 
             // LogicalAnd only works with Bool expressions
             if *left_type != Type::Bool {
-                return Err(TypeError::LogicalAndRequiresBoolean {
+                return Err(TypeError::LogicalAndTypeMismatch {
                     range: left.range().clone(),
                 });
             }
 
             if *right_type != Type::Bool {
-                return Err(TypeError::LogicalAndRequiresBoolean {
+                return Err(TypeError::LogicalAndTypeMismatch {
                     range: right.range().clone(),
                 });
             }
@@ -600,13 +600,13 @@ pub fn typecheck_expr(
             let right_type = typed_right.as_type();
 
             if *left_type != Type::Bool {
-                return Err(TypeError::LogicalOrRequiresBoolean {
+                return Err(TypeError::LogicalOrTypeMismatch {
                     range: left.range().clone(),
                 });
             }
 
             if *right_type != Type::Bool {
-                return Err(TypeError::LogicalOrRequiresBoolean {
+                return Err(TypeError::LogicalOrTypeMismatch {
                     range: right.range().clone(),
                 });
             }
@@ -777,7 +777,8 @@ pub fn typecheck_expr(
             let operand_type = typed_operand.as_type();
 
             if *operand_type != Type::Bool {
-                return Err(TypeError::NegationRequiresBoolean {
+                return Err(TypeError::BooleanNegationTypeMismatch {
+                    found: typed_operand.get_type(),
                     range: operand.range().clone(),
                 });
             }
@@ -807,7 +808,8 @@ pub fn typecheck_expr(
                     operand: Box::new(typed_operand),
                     operand_type: NumericType::Float,
                 }),
-                _ => Err(TypeError::NumericNegationRequiresNumber {
+                _ => Err(TypeError::NumericNegationTypeMismatch {
+                    found: typed_operand.get_type(),
                     range: operand.range().clone(),
                 }),
             }
@@ -865,7 +867,7 @@ pub fn typecheck_expr(
                     )?;
                     let element_type = typed_element.get_type();
                     if *element_type != *first_type {
-                        return Err(TypeError::ArrayTypeMismatch {
+                        return Err(TypeError::ArrayElementTypeMismatch {
                             expected: first_type.clone(),
                             found: element_type,
                             range: element.range().clone(),
@@ -1210,8 +1212,8 @@ pub fn typecheck_expr(
                     if typed.as_type() != &Type::String {
                         return Err(TypeError::MacroArgumentTypeMismatch {
                             macro_name: "join".to_string(),
-                            expected: "String".to_string(),
-                            actual: typed.get_type(),
+                            expected: Arc::new(Type::String),
+                            found: typed.get_type(),
                             range: arg.range().clone(),
                         });
                     }
@@ -2010,7 +2012,7 @@ mod tests {
             &[("name", "String"), ("count", "Float")],
             "name == count",
             expect![[r#"
-                error: Can not compare String to Float
+                error: Cannot compare String to Float
                 name == count
                 ^^^^^^^^^^^^^
             "#]],
@@ -2024,7 +2026,7 @@ mod tests {
             &[("enabled", "Bool"), ("name", "String")],
             "enabled == name",
             expect![[r#"
-                error: Can not compare Bool to String
+                error: Cannot compare Bool to String
                 enabled == name
                 ^^^^^^^^^^^^^^^
             "#]],
@@ -2066,7 +2068,7 @@ mod tests {
             &[("name", "String")],
             "!name",
             expect![[r#"
-                error: Negation operator can only be applied to Bool values
+                error: Mismatched type for negation: expected `Bool` got `String`
                 !name
                  ^^^^
             "#]],
@@ -2080,7 +2082,7 @@ mod tests {
             &[("count", "Float")],
             "!count",
             expect![[r#"
-                error: Negation operator can only be applied to Bool values
+                error: Mismatched type for negation: expected `Bool` got `Float`
                 !count
                  ^^^^^
             "#]],
@@ -2114,7 +2116,7 @@ mod tests {
             &[("name", "String")],
             "-name",
             expect![[r#"
-                error: Numeric negation operator can only be applied to Int or Float values
+                error: Mismatched type for negation: expected `Int` or `Float` got String
                 -name
                  ^^^^
             "#]],
@@ -2128,7 +2130,7 @@ mod tests {
             &[("flag", "Bool")],
             "-flag",
             expect![[r#"
-                error: Numeric negation operator can only be applied to Int or Float values
+                error: Mismatched type for negation: expected `Int` or `Float` got Bool
                 -flag
                  ^^^^
             "#]],
@@ -2182,7 +2184,7 @@ mod tests {
             &[("count", "Float")],
             "count == 42",
             expect![[r#"
-                error: Can not compare Float to Int
+                error: Cannot compare Float to Int
                 count == 42
                 ^^^^^^^^^^^
             "#]],
@@ -2246,7 +2248,7 @@ mod tests {
             &[("x", "Int"), ("y", "Float")],
             "x > y",
             expect![[r#"
-                error: Can not compare Int to Float
+                error: Cannot compare Int to Float
                 x > y
                 ^^^^^
             "#]],
@@ -2280,7 +2282,7 @@ mod tests {
             &[("x", "Int"), ("y", "Float")],
             "x <= y",
             expect![[r#"
-                error: Can not compare Int to Float
+                error: Cannot compare Int to Float
                 x <= y
                 ^^^^^^
             "#]],
@@ -2314,7 +2316,7 @@ mod tests {
             &[("x", "Int"), ("y", "Float")],
             "x >= y",
             expect![[r#"
-                error: Can not compare Int to Float
+                error: Cannot compare Int to Float
                 x >= y
                 ^^^^^^
             "#]],
@@ -2712,7 +2714,7 @@ mod tests {
             &[],
             "[1, true]",
             expect![[r#"
-                error: Array elements must all have the same type, found Int and Bool
+                error: Mismatched type for array element: expected `Int` got `Bool`
                 [1, true]
                     ^^^^
             "#]],
@@ -2792,7 +2794,7 @@ mod tests {
             &[],
             r#"[Some(1), Some("1")]"#,
             expect![[r#"
-                error: Array elements must all have the same type, found Option[Int] and Option[String]
+                error: Mismatched type for array element: expected `Option[Int]` got `Option[String]`
                 [Some(1), Some("1")]
                           ^^^^^^^^^
             "#]],
@@ -2962,7 +2964,7 @@ mod tests {
             &[],
             r#"User {name: "John", age: "thirty"}"#,
             expect![[r#"
-                error: Field 'age' expects type Int, but got String
+                error: Mismatched type for `age`: expected `Int` got `String`
                 User {name: "John", age: "thirty"}
                                          ^^^^^^^^
             "#]],
@@ -3297,7 +3299,7 @@ mod tests {
             &[],
             r#"Outcome::Success {value: "hello"}"#,
             expect![[r#"
-                error: Field 'value' in 'Outcome::Success' expects type Int, but got String
+                error: Mismatched type for `value`: expected `Int` got `String`
                 Outcome::Success {value: "hello"}
                                          ^^^^^^^
             "#]],
@@ -3566,7 +3568,7 @@ mod tests {
             &[],
             r#"User {name: "Alice", age: Some("thirty")}"#,
             expect![[r#"
-                error: Field 'age' expects type Option[Int], but got Option[String]
+                error: Mismatched type for `age`: expected `Option[Int]` got `Option[String]`
                 User {name: "Alice", age: Some("thirty")}
                                           ^^^^^^^^^^^^^^
             "#]],
@@ -3583,7 +3585,7 @@ mod tests {
             &[],
             r#"User {name: "Alice", age: 30}"#,
             expect![[r#"
-                error: Field 'age' expects type Option[Int], but got Int
+                error: Mismatched type for `age`: expected `Option[Int]` got `Int`
                 User {name: "Alice", age: 30}
                                           ^^
             "#]],
@@ -3636,7 +3638,7 @@ mod tests {
             &[],
             r#"Some(Some(1)) == Some(Some("2"))"#,
             expect![[r#"
-                error: Can not compare Option[Option[Int]] to Option[Option[String]]
+                error: Cannot compare Option[Option[Int]] to Option[Option[String]]
                 Some(Some(1)) == Some(Some("2"))
                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
@@ -3745,7 +3747,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Match arms must all have the same type, expected String but found Int
+                error: Mismatched type: expected `String` got `Int`
                     Color::Green => 42,
                                     ^^
             "#]],
@@ -3959,7 +3961,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Match pattern type mismatch: expected boolean, found Color::Red
+                error: Mismatched pattern type: expected `Bool` got `Color::Red`
                     Color::Red => "red",
                     ^^^^^^^^^^
             "#]],
@@ -3978,7 +3980,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Match pattern type mismatch: expected enum, found true
+                error: Mismatched pattern type: expected `test::Color` got `true`
                     true => 0,
                     ^^^^
             "#]],
@@ -4111,7 +4113,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Match arms must all have the same type, expected Int but found Bool
+                error: Mismatched type: expected `Int` got `Bool`
                     None    => true,
                                ^^^^
             "#]],
@@ -4130,7 +4132,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Match pattern type mismatch: expected option, found Color::Red
+                error: Mismatched pattern type: expected `Option[Int]` got `Color::Red`
                     Color::Red => 0,
                     ^^^^^^^^^^
             "#]],
@@ -4149,7 +4151,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Match pattern type mismatch: expected option, found true
+                error: Mismatched pattern type: expected `Option[Int]` got `true`
                     true => 0,
                     ^^^^
             "#]],
@@ -4168,7 +4170,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Match pattern type mismatch: expected enum, found Some(_)
+                error: Mismatched pattern type: expected `test::Color` got `Some(_)`
                     Some(_)      => 0,
                     ^^^^^^^
             "#]],
@@ -4187,7 +4189,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Match pattern type mismatch: expected boolean, found Some(_)
+                error: Mismatched pattern type: expected `Bool` got `Some(_)`
                     Some(_) => 0,
                     ^^^^^^^
             "#]],
@@ -4206,7 +4208,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Match pattern type mismatch: expected boolean, found None
+                error: Mismatched pattern type: expected `Bool` got `None`
                     Some(None) => 0,
                          ^^^^
             "#]],
@@ -4242,7 +4244,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Match pattern type mismatch: expected boolean, found Some(_)
+                error: Mismatched pattern type: expected `Bool` got `Some(_)`
                     Some(Some(_)) => 0,
                          ^^^^^^^
             "#]],
@@ -4500,7 +4502,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Unreachable match arm for variant '_'
+                error: Unreachable match arm for pattern '_'
                     _ => 1,
                     ^
             "#]],
@@ -4679,7 +4681,7 @@ mod tests {
             &[("count", "Int")],
             "join!(count)",
             expect![[r#"
-                error: Macro 'join' expects String arguments, but got Int
+                error: Mismatched type for 'join': expected `String` got `Int`
                 join!(count)
                       ^^^^^
             "#]],

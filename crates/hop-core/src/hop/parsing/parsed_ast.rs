@@ -162,8 +162,13 @@ pub enum ParsedAttribute {
 #[derive(Debug, Clone)]
 pub enum ParsedAttributeValue {
     Expression(ParsedExpr),
-    /// A quoted string value. None means empty string like `attr=""`
-    String(Option<DocumentRange>),
+    /// A quoted string value.
+    String {
+        /// The inner content range, excluding quotes. None for empty strings like `attr=""`.
+        content: Option<DocumentRange>,
+        /// Range of the whole value including the surrounding quotes, e.g. `"bar"`.
+        quoted_range: DocumentRange,
+    },
 }
 
 impl Display for ParsedParameter {
@@ -198,8 +203,8 @@ impl ParsedAttributeValue {
                 .append(BoxDoc::line_())
                 .append(BoxDoc::text("}"))
                 .group(),
-            ParsedAttributeValue::String(range) => {
-                let content = range.as_ref().map(|r| r.as_str()).unwrap_or("");
+            ParsedAttributeValue::String { content, .. } => {
+                let content = content.as_ref().map(|r| r.as_str()).unwrap_or("");
                 BoxDoc::text(format!("\"{}\"", content))
             }
         }

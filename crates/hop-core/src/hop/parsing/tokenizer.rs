@@ -13,6 +13,8 @@ pub enum TokenizedAttributeValue {
     /// A quoted string attribute value. Content is None for empty strings like `a=""`
     String {
         content: Option<DocumentRange>,
+        /// Range of the whole value including the surrounding quotes, e.g. `"bar"`.
+        quoted_range: DocumentRange,
     },
     Expression(DocumentRange),
 }
@@ -150,7 +152,7 @@ impl Display for Token {
                         match item {
                             TokenizedAttribute::Named { name, value, .. } => {
                                 let value_str = match value {
-                                    Some(TokenizedAttributeValue::String { content }) => {
+                                    Some(TokenizedAttributeValue::String { content, .. }) => {
                                         let val = content
                                             .as_ref()
                                             .map(|r| r.to_string())
@@ -203,7 +205,7 @@ impl Display for Token {
                         match item {
                             TokenizedAttribute::Named { name, value, .. } => {
                                 let value_str = match value {
-                                    Some(TokenizedAttributeValue::String { content }) => {
+                                    Some(TokenizedAttributeValue::String { content, .. }) => {
                                         let val = content
                                             .as_ref()
                                             .map(|r| r.to_string())
@@ -509,6 +511,7 @@ fn parse_attribute(
     // to distinguish from valueless attributes like `disabled`
     let value = Some(TokenizedAttributeValue::String {
         content: attr_value,
+        quoted_range: open_quote.to(close_quote.clone()),
     });
 
     Some(TokenizedAttribute::Named {

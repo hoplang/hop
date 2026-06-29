@@ -309,9 +309,8 @@ impl<'a> Compiler<'a> {
             });
         }
 
-        // Validate all patterns against the subject type
         for pattern in patterns {
-            Self::validate_pattern(pattern, subject_type.clone())?;
+            Self::typecheck_pattern(pattern, subject_type.clone())?;
         }
 
         let subject_var = Variable::new(subject_name.clone(), subject_type.clone());
@@ -336,7 +335,7 @@ impl<'a> Compiler<'a> {
         if let Some(&first_unreachable) = unreachable.first() {
             let pattern = &patterns[first_unreachable];
             return Err(TypeError::MatchUnreachableArm {
-                variant: pattern.to_string(),
+                pattern: Box::new(pattern.clone()),
                 range: pattern.range().clone(),
             });
         }
@@ -777,7 +776,7 @@ impl<'a> Compiler<'a> {
     }
 
     /// Validates that a pattern is compatible with a given type.
-    fn validate_pattern(
+    fn typecheck_pattern(
         pattern: &ParsedMatchPattern,
         subject_type: Arc<Type>,
     ) -> Result<(), TypeError> {
@@ -796,7 +795,7 @@ impl<'a> Compiler<'a> {
 
                 (Constructor::OptionSome, Type::Option(inner_type)) => {
                     if let Some(inner_pattern) = args.first() {
-                        Self::validate_pattern(inner_pattern, inner_type.clone())?;
+                        Self::typecheck_pattern(inner_pattern, inner_type.clone())?;
                     }
                     Ok(())
                 }
@@ -846,7 +845,7 @@ impl<'a> Compiler<'a> {
                             .map(|(_, typ, _)| typ);
 
                         match field_type {
-                            Some(typ) => Self::validate_pattern(field_pattern, typ.clone())?,
+                            Some(typ) => Self::typecheck_pattern(field_pattern, typ.clone())?,
                             None => {
                                 return Err(TypeError::EnumVariantUnknownField {
                                     enum_name: pattern_enum_name.clone(),
@@ -905,7 +904,7 @@ impl<'a> Compiler<'a> {
                             .map(|(_, typ, _)| typ);
 
                         match field_type {
-                            Some(typ) => Self::validate_pattern(field_pattern, typ.clone())?,
+                            Some(typ) => Self::typecheck_pattern(field_pattern, typ.clone())?,
                             None => {
                                 return Err(TypeError::RecordUnknownField {
                                     field_name: field_name.clone(),
@@ -935,25 +934,11 @@ impl<'a> Compiler<'a> {
                     Ok(())
                 }
 
-                _ => {
-                    let expected = match subject_type.as_ref() {
-                        Type::Enum { .. } => "enum",
-                        Type::Bool => "boolean",
-                        Type::Option(_) => "option",
-                        Type::Record { .. } => "record",
-                        _ => {
-                            return Err(TypeError::MatchNotImplementedForType {
-                                found: subject_type.clone(),
-                                range: range.clone(),
-                            });
-                        }
-                    };
-                    Err(TypeError::MatchPatternTypeMismatch {
-                        expected: expected.to_string(),
-                        found: pattern.to_string(),
-                        range: range.clone(),
-                    })
-                }
+                _ => Err(TypeError::MatchPatternTypeMismatch {
+                    expected: subject_type.clone(),
+                    found: pattern.to_string(),
+                    range: range.clone(),
+                }),
             },
         }
     }
@@ -1199,7 +1184,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Unreachable match arm for variant 'true'
+                error: Unreachable match arm for pattern 'true'
                     true => 2,
                     ^^^^
             "#]],
@@ -1461,7 +1446,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Unreachable match arm for variant 'Color::Red'
+                error: Unreachable match arm for pattern 'Color::Red'
                     Color::Red => 1,
                     ^^^^^^^^^^
             "#]],
@@ -1915,7 +1900,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Unreachable match arm for variant 'Outcome::Success{value: w}'
+                error: Unreachable match arm for pattern 'Outcome::Success{value: w}'
                     Outcome::Success{value: w} => 1,
                     ^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
@@ -1950,7 +1935,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Unreachable match arm for variant 'Outcome::Success{value: v}'
+                error: Unreachable match arm for pattern 'Outcome::Success{value: v}'
                     Outcome::Success{value: v} => 1,
                     ^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
@@ -2465,7 +2450,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Unreachable match arm for variant 'false'
+                error: Unreachable match arm for pattern 'false'
                     false => 2,
                     ^^^^^
             "#]],
@@ -2483,7 +2468,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Unreachable match arm for variant 'true'
+                error: Unreachable match arm for pattern 'true'
                     true => 1,
                     ^^^^
             "#]],
@@ -2501,7 +2486,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Unreachable match arm for variant 'true'
+                error: Unreachable match arm for pattern 'true'
                     true => 1,
                     ^^^^
             "#]],
@@ -2559,7 +2544,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Unreachable match arm for variant 'Some(_)'
+                error: Unreachable match arm for pattern 'Some(_)'
                     Some(_) => 1,
                     ^^^^^^^
             "#]],
@@ -2578,7 +2563,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Unreachable match arm for variant 'None'
+                error: Unreachable match arm for pattern 'None'
                     None => 2,
                     ^^^^
             "#]],
@@ -2727,7 +2712,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Unreachable match arm for variant 'Color::Red'
+                error: Unreachable match arm for pattern 'Color::Red'
                     Color::Red => 1,
                     ^^^^^^^^^^
             "#]],
@@ -2758,7 +2743,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Unreachable match arm for variant '_'
+                error: Unreachable match arm for pattern '_'
                     _ => 1,
                     ^
             "#]],
@@ -3136,7 +3121,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Unreachable match arm for variant '_'
+                error: Unreachable match arm for pattern '_'
                     _ => 1,
                     ^
             "#]],
@@ -3406,7 +3391,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Match pattern type mismatch: expected enum, found true
+                error: Mismatched pattern type: expected `test::Color` got `true`
                     true => 0,
                     ^^^^
             "#]],
@@ -3437,7 +3422,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Match pattern type mismatch: expected enum, found Some(v)
+                error: Mismatched pattern type: expected `test::Color` got `Some(v)`
                     Some(v) => 0,
                     ^^^^^^^
             "#]],
@@ -3455,7 +3440,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Match pattern type mismatch: expected boolean, found Some(v)
+                error: Mismatched pattern type: expected `Bool` got `Some(v)`
                     Some(Some(v)) => 0,
                          ^^^^^^^
             "#]],

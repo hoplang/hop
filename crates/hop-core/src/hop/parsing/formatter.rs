@@ -481,8 +481,8 @@ fn format_attribute_value<'a>(
             .append(arena.line_())
             .append(arena.text("}"))
             .group(),
-        ParsedAttributeValue::String(range) => {
-            let content = range.as_ref().map(|r| r.as_str()).unwrap_or("");
+        ParsedAttributeValue::String { content, .. } => {
+            let content = content.as_ref().map(|r| r.as_str()).unwrap_or("");
             arena
                 .text("\"")
                 .append(arena.text(content))
