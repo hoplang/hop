@@ -15,9 +15,9 @@
         packages = {
           default = pkgs.rustPlatform.buildRustPackage {
             pname = "hop";
-            version = "0.3.0";
+            version = "0.2.0";
             src = ./.;
-            cargoHash = "sha256-g9Pi2IWSKXgV43YllW4NduBs7Wsl8eikYq++ahf+MjE=";
+            cargoHash = "sha256-pWlv6ndNddwQLgw2WSGtEqVprJZAoDL+34PtWyDdG6I=";
             buildAndTestSubdir = "crates/hop-cli";
           };
         };
