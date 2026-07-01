@@ -654,9 +654,8 @@ impl<'a> Compiler<'a> {
                 let cases = compiled_cases
                     .into_iter()
                     .map(|(cons, vars, body)| {
-                        let variant_name = match cons {
-                            Constructor::EnumVariant { variant_name, .. } => variant_name,
-                            _ => unreachable!("Expected EnumVariant constructor"),
+                        let Constructor::EnumVariant { variant_name, .. } = cons else {
+                            unreachable!("Expected EnumVariant constructor")
                         };
                         // Get the field names from the type definition
                         let empty_fields = vec![];
@@ -834,17 +833,14 @@ impl<'a> Compiler<'a> {
                         .find(|v| pattern_variant_name == &v.name)
                         .map(|v| &v.fields);
 
-                    let variant_fields = match variant_fields {
-                        Some(f) => f,
-                        None => {
-                            return Err(TypeError::new(
-                                TypeErrorKind::UndefinedEnumVariant {
-                                    enum_name: pattern_enum_name.clone(),
-                                    variant_name: pattern_variant_name.clone(),
-                                },
-                                range.clone(),
-                            ));
-                        }
+                    let Some(variant_fields) = variant_fields else {
+                        return Err(TypeError::new(
+                            TypeErrorKind::UndefinedEnumVariant {
+                                enum_name: pattern_enum_name.clone(),
+                                variant_name: pattern_variant_name.clone(),
+                            },
+                            range.clone(),
+                        ));
                     };
 
                     // Validate each field pattern (also catches unknown fields on unit variants)
@@ -993,9 +989,13 @@ mod tests {
 
         let (subject_name, subject_range, patterns) = match expr {
             ParsedExpr::Match { subject, arms, .. } => {
-                let (name, subject_range) = match *subject {
-                    ParsedExpr::Var { value, range, .. } => (value, range),
-                    _ => panic!("Expected variable as match subject"),
+                let ParsedExpr::Var {
+                    value: name,
+                    range: subject_range,
+                    ..
+                } = *subject
+                else {
+                    panic!("Expected variable as match subject")
                 };
                 (
                     name,

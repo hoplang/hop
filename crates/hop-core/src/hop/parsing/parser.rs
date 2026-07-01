@@ -761,15 +761,12 @@ fn parse_view_declaration(
             }
         };
 
-    let name = match TypeName::new(&name_str) {
-        Ok(n) => n,
-        Err(_) => {
-            errors.push(ParseError::new(
-                ParseErrorKind::InvalidViewName {},
-                name_range,
-            ));
-            return None;
-        }
+    let Ok(name) = TypeName::new(&name_str) else {
+        errors.push(ParseError::new(
+            ParseErrorKind::InvalidViewName {},
+            name_range,
+        ));
+        return None;
     };
 
     // Parse parameters (parentheses are optional if no parameters)
@@ -962,17 +959,14 @@ fn construct_node(
                 .map(|c| vec![ParsedNode::Text { range: c }])
                 .unwrap_or_default();
 
-            let element = match HtmlElement::parse(tag_name.as_str()) {
-                Some(element) => element,
-                None => {
-                    errors.push(ParseError::new(
-                        ParseErrorKind::UnknownHtmlElement {
-                            tag: tag_name.to_cheap_string(),
-                        },
-                        tag_name.clone(),
-                    ));
-                    return None;
-                }
+            let Some(element) = HtmlElement::parse(tag_name.as_str()) else {
+                errors.push(ParseError::new(
+                    ParseErrorKind::UnknownHtmlElement {
+                        tag: tag_name.to_cheap_string(),
+                    },
+                    tag_name,
+                ));
+                return None;
             };
 
             collect_element_spread(&element, &attributes, spreads);

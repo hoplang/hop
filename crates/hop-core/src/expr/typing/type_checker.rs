@@ -975,16 +975,17 @@ pub fn typecheck_expr(
             });
 
             // Extract fields from the record type
-            let record_fields = match record_type.as_ref() {
-                Type::Record { fields, .. } => fields,
-                _ => {
-                    return Err(TypeError::new(
-                        TypeErrorKind::UndefinedRecord {
-                            record_name: record_name.clone(),
-                        },
-                        range.clone(),
-                    ));
-                }
+            let Type::Record {
+                fields: record_fields,
+                ..
+            } = record_type.as_ref()
+            else {
+                return Err(TypeError::new(
+                    TypeErrorKind::UndefinedRecord {
+                        record_name: record_name.clone(),
+                    },
+                    range.clone(),
+                ));
             };
 
             // Build a map of expected fields from the record type

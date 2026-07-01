@@ -869,9 +869,8 @@ impl Transpiler for RustTranspiler {
             Match::Enum { subject, arms } => {
                 // Extract variant information from the subject's type
                 let subject_type = subject.get_type();
-                let variants = match subject_type.as_ref() {
-                    Type::Enum { variants, .. } => variants,
-                    _ => unreachable!("Enum match subject must have Enum type"),
+                let Type::Enum { variants, .. } = subject_type.as_ref() else {
+                    unreachable!("Enum match subject must have Enum type")
                 };
 
                 let arms_doc = arena.intersperse(
@@ -1470,9 +1469,8 @@ impl Transpiler for RustTranspiler {
             Match::Enum { subject, arms } => {
                 // Extract variant information from the subject's type
                 let subject_type = subject.get_type();
-                let variants = match subject_type.as_ref() {
-                    Type::Enum { variants, .. } => variants,
-                    _ => unreachable!("Enum match subject must have Enum type"),
+                let Type::Enum { variants, .. } = subject_type.as_ref() else {
+                    unreachable!("Enum match subject must have Enum type")
                 };
 
                 let mut doc = arena

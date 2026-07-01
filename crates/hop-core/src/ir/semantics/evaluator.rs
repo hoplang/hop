@@ -336,12 +336,12 @@ fn eval_statement(
             Match::Enum { subject, arms } => {
                 let subject_value = evaluate_expr(subject, env)?;
 
-                let (variant_name, fields) = match &subject_value {
-                    Value::Enum {
-                        variant_name,
-                        fields,
-                    } => (variant_name, fields),
-                    _ => return Err(anyhow!("Expected Enum value in match")),
+                let Value::Enum {
+                    variant_name,
+                    fields,
+                } = &subject_value
+                else {
+                    return Err(anyhow!("Expected Enum value in match"));
                 };
 
                 for arm in arms {
@@ -690,12 +690,12 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value> {
             Match::Enum { subject, arms } => {
                 let subject_val = evaluate_expr(subject, env)?;
 
-                let (variant_name, fields) = match &subject_val {
-                    Value::Enum {
-                        variant_name,
-                        fields,
-                    } => (variant_name, fields),
-                    _ => return Err(anyhow!("Expected Enum value in match expression")),
+                let Value::Enum {
+                    variant_name,
+                    fields,
+                } = &subject_val
+                else {
+                    return Err(anyhow!("Expected Enum value in match expression"));
                 };
 
                 for arm in arms {

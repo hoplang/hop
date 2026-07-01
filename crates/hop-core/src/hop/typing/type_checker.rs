@@ -1451,41 +1451,38 @@ fn typecheck_arguments(
         };
         let arg_name = arg_name_range.as_str();
 
-        let param = match callee_params.iter().find(|p| p.name.as_str() == arg_name) {
-            None => {
-                let accepted = match &callee_tail {
-                    Tail::Html { element, reserved } => {
-                        element.accepts_attribute(arg_name)
-                            && !reserved.iter().any(|r| r.as_str() == arg_name)
-                    }
-                    Tail::Closed => false,
-                };
-                if accepted {
-                    let value = typecheck_attribute_value(
-                        arg_value,
-                        errors,
-                        var_env,
-                        type_env,
-                        annotations,
-                        definition_links,
-                        asset_references,
-                    );
-                    extra_attributes.push(TypedAttribute {
-                        name: arg_name_range.to_cheap_string(),
-                        value,
-                    });
-                } else {
-                    errors.push(TypeError::new(
-                        TypeErrorKind::ComponentDoesNotAcceptAttribute {
-                            component: component_name.clone(),
-                            attr: arg_name.to_string(),
-                        },
-                        arg_name_range.clone(),
-                    ));
+        let Some(param) = callee_params.iter().find(|p| p.name.as_str() == arg_name) else {
+            let accepted = match &callee_tail {
+                Tail::Html { element, reserved } => {
+                    element.accepts_attribute(arg_name)
+                        && !reserved.iter().any(|r| r.as_str() == arg_name)
                 }
-                continue;
+                Tail::Closed => false,
+            };
+            if accepted {
+                let value = typecheck_attribute_value(
+                    arg_value,
+                    errors,
+                    var_env,
+                    type_env,
+                    annotations,
+                    definition_links,
+                    asset_references,
+                );
+                extra_attributes.push(TypedAttribute {
+                    name: arg_name_range.to_cheap_string(),
+                    value,
+                });
+            } else {
+                errors.push(TypeError::new(
+                    TypeErrorKind::ComponentDoesNotAcceptAttribute {
+                        component: component_name.clone(),
+                        attr: arg_name.to_string(),
+                    },
+                    arg_name_range.clone(),
+                ));
             }
-            Some(param) => param,
+            continue;
         };
         let param_type = &param.typ;
 
