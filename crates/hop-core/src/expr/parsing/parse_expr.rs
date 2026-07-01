@@ -909,40 +909,6 @@ mod tests {
     }
 
     #[test]
-    fn accepts_empty_fragment_literal() {
-        accept(
-            "Fragment::empty()",
-            expect![[r#"
-                Fragment::empty()
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_fragment_literal_with_unknown_method() {
-        reject(
-            "Fragment::nonempty()",
-            expect![[r#"
-                error: Unexpected token 'nonempty'
-                Fragment::nonempty()
-                          ^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_empty_fragment_literal_without_parentheses() {
-        reject(
-            "Fragment::empty",
-            expect![[r#"
-                error: Expected token '(' but got end of file
-                Fragment::empty
-                ^^^^^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
     fn accepts_record_literal_with_braces_trailing_comma() {
         accept(
             r#"User {name: "John",}"#,
@@ -961,6 +927,44 @@ mod tests {
                 Foo {bar: "baz")
                                ^
             "#]],
+        );
+    }
+
+    ///////////////////////////////////////////////////////////////////////////
+    // FRAGMENT                                                              //
+    ///////////////////////////////////////////////////////////////////////////
+
+    #[test]
+    fn accepts_empty_fragment_literal() {
+        accept(
+            "Fragment::empty()",
+            expect![[r#"
+                    Fragment::empty()
+                "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_fragment_literal_with_unknown_method() {
+        reject(
+            "Fragment::nonempty()",
+            expect![[r#"
+                    error: Unexpected token 'nonempty'
+                    Fragment::nonempty()
+                              ^^^^^^^^
+                "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_empty_fragment_literal_without_parentheses() {
+        reject(
+            "Fragment::empty",
+            expect![[r#"
+                    error: Expected token '(' but got end of file
+                    Fragment::empty
+                    ^^^^^^^^^^^^^^^
+                "#]],
         );
     }
 
