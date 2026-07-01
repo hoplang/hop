@@ -14,7 +14,8 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use crate::document::DocumentRange;
-use crate::expr::parsing::parsed_expr::{Constructor, ParsedMatchPattern};
+use crate::expr::parsing::parsed_expr::Constructor;
+use crate::expr::patterns::typed::TypedMatchPattern;
 
 use crate::expr::typing::r#type::Type;
 use crate::symbols::field_name::FieldName;
@@ -109,11 +110,11 @@ impl Row {
 #[derive(Clone, Debug)]
 struct Column {
     variable: Variable,
-    pattern: ParsedMatchPattern,
+    pattern: TypedMatchPattern,
 }
 
 impl Column {
-    fn new(variable: Variable, pattern: ParsedMatchPattern) -> Self {
+    fn new(variable: Variable, pattern: TypedMatchPattern) -> Self {
         Self { variable, pattern }
     }
 }
@@ -214,27 +215,16 @@ struct VarInfo {
 /// Checks if a pattern introduces no bindings and requires no runtime discrimination.
 /// This is true for wildcards and for record patterns where all fields are free from bindings
 /// (since records have only one constructor).
-fn is_free_from_bindings(pattern: &ParsedMatchPattern, typ: &Type) -> bool {
+fn is_free_from_bindings(pattern: &TypedMatchPattern) -> bool {
     match pattern {
-        ParsedMatchPattern::Wildcard { .. } => true,
-        ParsedMatchPattern::Binding { .. } => false,
-        ParsedMatchPattern::Constructor { fields, .. } => {
+        TypedMatchPattern::Wildcard { .. } => true,
+        TypedMatchPattern::Binding { .. } => false,
+        TypedMatchPattern::Constructor { typ, fields, .. } => {
             // Only records can be free from bindings since they have one constructor
-            if let Type::Record {
-                fields: type_fields,
-                ..
-            } = typ
-            {
-                fields.iter().all(|(field_name, _, field_pattern)| {
-                    type_fields
-                        .iter()
-                        .find(|(n, _, _)| n == field_name)
-                        .map(|(_, field_type, _)| is_free_from_bindings(field_pattern, field_type))
-                        .unwrap_or(false)
-                })
-            } else {
-                false
-            }
+            matches!(typ.as_ref(), Type::Record { .. })
+                && fields
+                    .iter()
+                    .all(|field| is_free_from_bindings(&field.pattern))
         }
     }
 }
@@ -286,24 +276,10 @@ impl<'a> Compiler<'a> {
     /// Compile a collection of patterns into a decision tree.
     pub fn compile(
         mut self,
-        patterns: &[ParsedMatchPattern],
-        subject_name: &VarName,
+        patterns: &[TypedMatchPattern],
         subject_type: Arc<Type>,
         subject_range: &DocumentRange,
     ) -> Result<Decision, TypeError> {
-        // Validate subject type is matchable
-        if !matches!(
-            *subject_type,
-            Type::Enum { .. } | Type::Bool | Type::Option(_) | Type::Record { .. }
-        ) {
-            return Err(TypeError::new(
-                TypeErrorKind::MatchNotImplementedForType {
-                    found: subject_type,
-                },
-                subject_range.clone(),
-            ));
-        }
-
         // Check for empty arms
         if patterns.is_empty() {
             return Err(TypeError::new(
@@ -312,11 +288,7 @@ impl<'a> Compiler<'a> {
             ));
         }
 
-        for pattern in patterns {
-            Self::typecheck_pattern(pattern, subject_type.clone())?;
-        }
-
-        let subject_var = Variable::new(subject_name.clone(), subject_type);
+        let subject_var = self.fresh_var(subject_type);
 
         let rows: Vec<Row> = patterns
             .iter()
@@ -381,8 +353,8 @@ impl<'a> Compiler<'a> {
         for row in &mut rows {
             // Remove wildcards and move binding patterns into the body
             row.columns.retain(|col| match &col.pattern {
-                ParsedMatchPattern::Wildcard { .. } => false,
-                ParsedMatchPattern::Binding { name, .. } => {
+                TypedMatchPattern::Wildcard { .. } => false,
+                TypedMatchPattern::Binding { name, .. } => {
                     row.body.bindings.push(Binding::new(
                         name.clone(),
                         col.variable.name.clone(),
@@ -390,9 +362,7 @@ impl<'a> Compiler<'a> {
                     ));
                     false
                 }
-                ParsedMatchPattern::Constructor { .. } => {
-                    !is_free_from_bindings(&col.pattern, col.variable.typ.as_ref())
-                }
+                TypedMatchPattern::Constructor { .. } => !is_free_from_bindings(&col.pattern),
             });
         }
 
@@ -480,7 +450,7 @@ impl<'a> Compiler<'a> {
         // assign the correct sub matches to these constructors.
         for mut row in rows {
             if let Some(col) = row.remove_column(&branch_var) {
-                if let ParsedMatchPattern::Constructor {
+                if let TypedMatchPattern::Constructor {
                     constructor: cons,
                     args,
                     fields,
@@ -491,50 +461,18 @@ impl<'a> Compiler<'a> {
                     let mut cols = row.columns;
 
                     if !fields.is_empty() {
-                        // Field patterns: match fields by name for records and enum variants
-                        if let Type::Record {
-                            fields: type_fields,
-                            ..
-                        } = branch_var.typ.as_ref()
-                        {
-                            for (field_name, _, field_pattern) in fields {
-                                // Find the index of this field in the record type
-                                let field_idx = type_fields
-                                    .iter()
-                                    .position(|(name, _, _)| name == &field_name)
-                                    .expect("field not found in record type");
-                                let var = &mut cases[idx].1[field_idx];
-                                if is_free_from_bindings(&field_pattern, var.typ.as_ref()) {
-                                    var.is_free_from_bindings = true;
-                                }
-                                cols.push(Column::new(var.clone(), field_pattern));
+                        // Field patterns: index is resolved on the typed field.
+                        for field in fields {
+                            let var = &mut cases[idx].1[field.index];
+                            if is_free_from_bindings(&field.pattern) {
+                                var.is_free_from_bindings = true;
                             }
-                        } else if let Type::Enum { variants, .. } = branch_var.typ.as_ref() {
-                            // Get the variant fields for the matched constructor
-                            if let Constructor::EnumVariant { variant_name, .. } = &cons {
-                                let variant_fields = variants
-                                    .iter()
-                                    .find(|variant| &variant.name == variant_name)
-                                    .map(|variant| &variant.fields)
-                                    .expect("variant not found in enum type");
-                                for (field_name, _, field_pattern) in fields {
-                                    // Find the index of this field in the variant
-                                    let field_idx = variant_fields
-                                        .iter()
-                                        .position(|(name, _, _)| name == &field_name)
-                                        .expect("field not found in variant");
-                                    let var = &mut cases[idx].1[field_idx];
-                                    if is_free_from_bindings(&field_pattern, var.typ.as_ref()) {
-                                        var.is_free_from_bindings = true;
-                                    }
-                                    cols.push(Column::new(var.clone(), field_pattern));
-                                }
-                            }
+                            cols.push(Column::new(var.clone(), field.pattern));
                         }
                     } else {
                         // Positional args (Option Some, etc.)
                         for (var, pat) in cases[idx].1.iter_mut().zip(args) {
-                            if is_free_from_bindings(&pat, var.typ.as_ref()) {
+                            if is_free_from_bindings(&pat) {
                                 var.is_free_from_bindings = true;
                             }
                             cols.push(Column::new(var.clone(), pat));
@@ -779,187 +717,6 @@ impl<'a> Compiler<'a> {
             format!("{}({})", info.constructor, args)
         }
     }
-
-    /// Validates that a pattern is compatible with a given type.
-    fn typecheck_pattern(
-        pattern: &ParsedMatchPattern,
-        subject_type: Arc<Type>,
-    ) -> Result<(), TypeError> {
-        match pattern {
-            ParsedMatchPattern::Wildcard { .. } => Ok(()),
-            ParsedMatchPattern::Binding { .. } => Ok(()),
-            ParsedMatchPattern::Constructor {
-                constructor,
-                args,
-                fields,
-                constructor_range,
-                range,
-                ..
-            } => match (constructor, subject_type.as_ref()) {
-                (Constructor::BooleanTrue | Constructor::BooleanFalse, Type::Bool) => Ok(()),
-
-                (Constructor::OptionSome, Type::Option(inner_type)) => {
-                    if let Some(inner_pattern) = args.first() {
-                        Self::typecheck_pattern(inner_pattern, inner_type.clone())?;
-                    }
-                    Ok(())
-                }
-
-                (Constructor::OptionNone, Type::Option(_)) => Ok(()),
-
-                (
-                    Constructor::EnumVariant {
-                        enum_name: pattern_enum_name,
-                        variant_name: pattern_variant_name,
-                    },
-                    Type::Enum {
-                        name: subject_enum_name,
-                        variants,
-                        ..
-                    },
-                ) => {
-                    if pattern_enum_name != subject_enum_name {
-                        return Err(TypeError::new(
-                            TypeErrorKind::MatchPatternEnumMismatch {
-                                pattern_enum: pattern_enum_name.clone(),
-                                subject_enum: subject_enum_name.clone(),
-                            },
-                            range.clone(),
-                        ));
-                    }
-
-                    let variant_fields = variants
-                        .iter()
-                        .find(|v| pattern_variant_name == &v.name)
-                        .map(|v| &v.fields);
-
-                    let Some(variant_fields) = variant_fields else {
-                        return Err(TypeError::new(
-                            TypeErrorKind::UndefinedEnumVariant {
-                                enum_name: pattern_enum_name.clone(),
-                                variant_name: pattern_variant_name.clone(),
-                            },
-                            range.clone(),
-                        ));
-                    };
-
-                    // Validate each field pattern (also catches unknown fields on unit variants)
-                    for (field_name, field_name_range, field_pattern) in fields {
-                        let field_type = variant_fields
-                            .iter()
-                            .find(|(name, _, _)| name == field_name)
-                            .map(|(_, typ, _)| typ);
-
-                        match field_type {
-                            Some(typ) => Self::typecheck_pattern(field_pattern, typ.clone())?,
-                            None => {
-                                return Err(TypeError::new(
-                                    TypeErrorKind::EnumVariantUnknownField {
-                                        enum_name: pattern_enum_name.clone(),
-                                        variant_name: pattern_variant_name.clone(),
-                                        field_name: field_name.clone(),
-                                    },
-                                    field_name_range.clone(),
-                                ));
-                            }
-                        }
-                    }
-
-                    // Check all fields are specified (no partial matching)
-                    if fields.len() < variant_fields.len() {
-                        let pattern_field_names: Vec<_> =
-                            fields.iter().map(|(name, _, _)| name).collect();
-                        let missing_fields = variant_fields
-                            .iter()
-                            .filter(|(name, _, _)| !pattern_field_names.contains(&name))
-                            .map(|(name, _, _)| name.clone())
-                            .collect::<Vec<_>>();
-                        return Err(TypeError::new(
-                            TypeErrorKind::EnumVariantMissingFields {
-                                enum_name: pattern_enum_name.clone(),
-                                variant_name: pattern_variant_name.clone(),
-                                missing_fields,
-                            },
-                            constructor_range.clone(),
-                        ));
-                    }
-
-                    Ok(())
-                }
-
-                (
-                    Constructor::Record {
-                        type_name: pattern_type_name,
-                    },
-                    Type::Record {
-                        name: subject_type_name,
-                        fields: subject_fields,
-                        ..
-                    },
-                ) => {
-                    // Check record type matches
-                    if pattern_type_name != subject_type_name {
-                        return Err(TypeError::new(
-                            TypeErrorKind::MatchPatternRecordMismatch {
-                                pattern_record: pattern_type_name.clone(),
-                                subject_record: subject_type_name.clone(),
-                            },
-                            range.clone(),
-                        ));
-                    }
-
-                    // Validate each field pattern (also catches unknown fields)
-                    for (field_name, field_name_range, field_pattern) in fields {
-                        let field_type = subject_fields
-                            .iter()
-                            .find(|(name, _, _)| name == field_name)
-                            .map(|(_, typ, _)| typ);
-
-                        match field_type {
-                            Some(typ) => Self::typecheck_pattern(field_pattern, typ.clone())?,
-                            None => {
-                                return Err(TypeError::new(
-                                    TypeErrorKind::RecordUnknownField {
-                                        field_name: field_name.clone(),
-                                        record_name: pattern_type_name.clone(),
-                                    },
-                                    field_name_range.clone(),
-                                ));
-                            }
-                        }
-                    }
-
-                    // Check all fields are specified (no partial matching)
-                    if fields.len() < subject_fields.len() {
-                        let pattern_field_names =
-                            fields.iter().map(|(name, _, _)| name).collect::<Vec<_>>();
-                        let missing_fields = subject_fields
-                            .iter()
-                            .filter(|(name, _, _)| !pattern_field_names.contains(&name))
-                            .map(|(name, _, _)| name.clone())
-                            .collect::<Vec<_>>();
-                        return Err(TypeError::new(
-                            TypeErrorKind::RecordMissingFields {
-                                record_name: pattern_type_name.clone(),
-                                missing_fields,
-                            },
-                            constructor_range.clone(),
-                        ));
-                    }
-
-                    Ok(())
-                }
-
-                _ => Err(TypeError::new(
-                    TypeErrorKind::MatchPatternTypeMismatch {
-                        expected: subject_type.clone(),
-                        found: pattern.to_string(),
-                    },
-                    range.clone(),
-                )),
-            },
-        }
-    }
 }
 
 #[cfg(test)]
@@ -970,6 +727,7 @@ mod tests {
     use crate::document_id::DocumentId;
     use crate::expr::parse_expr;
     use crate::expr::parsing::parsed_expr::ParsedExpr;
+    use crate::expr::patterns::typed::typecheck_pattern;
     use crate::expr::typing::r#type::EnumVariant;
     use crate::symbols::field_name::FieldName;
     use crate::symbols::type_name::TypeName;
@@ -987,10 +745,9 @@ mod tests {
         let expr = parse_expr::parse_expr(&mut iter, &mut comments, &mut errors, &range)
             .expect("Failed to parse expression");
 
-        let (subject_name, subject_range, patterns) = match expr {
+        let (subject_range, patterns) = match expr {
             ParsedExpr::Match { subject, arms, .. } => {
                 let ParsedExpr::Var {
-                    value: name,
                     range: subject_range,
                     ..
                 } = *subject
@@ -998,7 +755,6 @@ mod tests {
                     panic!("Expected variable as match subject")
                 };
                 (
-                    name,
                     subject_range,
                     arms.into_iter().map(|a| a.pattern).collect::<Vec<_>>(),
                 )
@@ -1006,13 +762,23 @@ mod tests {
             _ => panic!("Expected match expression"),
         };
 
-        let mut fresh_vars = crate::variable_scope::FreshVarCounter::new();
-        let result = Compiler::new(&mut fresh_vars).compile(
-            &patterns,
-            &subject_name,
-            Arc::new(subject_type),
-            &subject_range,
+        let subject_type = Arc::new(subject_type);
+        assert!(
+            subject_type.is_matchable(),
+            "match is not implemented for subject type {subject_type:?}"
         );
+        // Pattern typechecking is covered by the `typed` module tests. Any error
+        // here means the test uses a pattern that does not typecheck, so panic
+        // rather than exercise the compiler with invalid input.
+        let typed_patterns = patterns
+            .iter()
+            .map(|p| typecheck_pattern(p, subject_type.clone()))
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap_or_else(|e| panic!("pattern failed to typecheck: {e:?}"));
+
+        let mut fresh_vars = crate::variable_scope::FreshVarCounter::new();
+        let result =
+            Compiler::new(&mut fresh_vars).compile(&typed_patterns, subject_type, &subject_range);
 
         match result {
             Ok(decision) => (format_decision(&decision, 0), true),
@@ -1152,9 +918,9 @@ mod tests {
                 }
             "},
             expect![[r#"
-                x is false
+                v_0 is false
                   branch 1
-                x is true
+                v_0 is true
                   branch 0
             "#]],
         );
@@ -1240,7 +1006,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                let b = x
+                let b = v_0
                 branch 0
             "#]],
         );
@@ -1259,10 +1025,10 @@ mod tests {
                 }
             "},
             expect![[r#"
-                x is Some(v_0)
-                  let item = v_0
+                v_0 is Some(v_1)
+                  let item = v_1
                   branch 0
-                x is None
+                v_0 is None
                   branch 1
             "#]],
         );
@@ -1314,13 +1080,13 @@ mod tests {
                 }
             "},
             expect![[r#"
-                x is Some(v_0)
-                  v_0 is Some(v_1)
-                    let item = v_1
+                v_0 is Some(v_1)
+                  v_1 is Some(v_2)
+                    let item = v_2
                     branch 0
-                  v_0 is None
+                  v_1 is None
                     branch 1
-                x is None
+                v_0 is None
                   branch 2
             "#]],
         );
@@ -1357,11 +1123,11 @@ mod tests {
                 }
             "},
             expect![[r#"
-                x is Color::Red
+                v_0 is Color::Red
                   branch 0
-                x is Color::Green
+                v_0 is Color::Green
                   branch 1
-                x is Color::Blue
+                v_0 is Color::Blue
                   branch 2
             "#]],
         );
@@ -1430,11 +1196,11 @@ mod tests {
                 }
             "},
             expect![[r#"
-                x is Color::Red
+                v_0 is Color::Red
                   branch 0
-                x is Color::Green
+                v_0 is Color::Green
                   branch 1
-                x is Color::Blue
+                v_0 is Color::Blue
                   branch 1
             "#]],
         );
@@ -1505,11 +1271,11 @@ mod tests {
                 }
             "},
             expect![[r#"
-                x is Outcome::Success{value: v_0}
-                  let v = v_0
+                v_0 is Outcome::Success{value: v_1}
+                  let v = v_1
                   branch 0
-                x is Outcome::Failure{message: v_1}
-                  let m = v_1
+                v_0 is Outcome::Failure{message: v_2}
+                  let m = v_2
                   branch 1
             "#]],
         );
@@ -1539,10 +1305,10 @@ mod tests {
                 }
             "},
             expect![[r#"
-                x is Maybe::Just{value: v_0}
-                  let v = v_0
+                v_0 is Maybe::Just{value: v_1}
+                  let v = v_1
                   branch 0
-                x is Maybe::Nothing
+                v_0 is Maybe::Nothing
                   branch 1
             "#]],
         );
@@ -1576,9 +1342,9 @@ mod tests {
                 }
             "},
             expect![[r#"
-                x is Outcome::Success{value: _}
+                v_0 is Outcome::Success{value: _}
                   branch 0
-                x is Outcome::Failure{message: _}
+                v_0 is Outcome::Failure{message: _}
                   branch 1
             "#]],
         );
@@ -1620,14 +1386,14 @@ mod tests {
                 }
             "},
             expect![[r#"
-                x is Status::Pending{since: v_0}
-                  let s = v_0
+                v_0 is Status::Pending{since: v_1}
+                  let s = v_1
                   branch 0
-                x is Status::Active{id: v_1, name: v_2}
-                  let i = v_1
-                  let n = v_2
+                v_0 is Status::Active{id: v_2, name: v_3}
+                  let i = v_2
+                  let n = v_3
                   branch 1
-                x is Status::Inactive
+                v_0 is Status::Inactive
                   branch 2
             "#]],
         );
@@ -1654,10 +1420,10 @@ mod tests {
                 }
             "},
             expect![[r#"
-                x is Point3D::Coords{x: v_0, y: v_1, z: v_2}
-                  let a = v_0
-                  let b = v_1
-                  let c = v_2
+                v_0 is Point3D::Coords{x: v_1, y: v_2, z: v_3}
+                  let a = v_1
+                  let b = v_2
+                  let c = v_3
                   branch 0
             "#]],
         );
@@ -1684,7 +1450,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                x is Point3D::Coords{x: _, y: _, z: _}
+                v_0 is Point3D::Coords{x: _, y: _, z: _}
                   branch 0
             "#]],
         );
@@ -1711,9 +1477,9 @@ mod tests {
                 }
             "},
             expect![[r#"
-                x is Point3D::Coords{x: v_0, y: _, z: v_2}
-                  let a = v_0
-                  let c = v_2
+                v_0 is Point3D::Coords{x: v_1, y: _, z: v_3}
+                  let a = v_1
+                  let c = v_3
                   branch 0
             "#]],
         );
@@ -1780,7 +1546,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                let r = x
+                let r = v_0
                 branch 0
             "#]],
         );
@@ -1814,12 +1580,12 @@ mod tests {
                 }
             "},
             expect![[r#"
-                x is Status::Pending{since: v_0}
-                  let s = v_0
+                v_0 is Status::Pending{since: v_1}
+                  let s = v_1
                   branch 0
-                x is Status::Active{id: v_1}
+                v_0 is Status::Active{id: v_2}
                   branch 1
-                x is Status::Inactive
+                v_0 is Status::Inactive
                   branch 1
             "#]],
         );
@@ -1965,208 +1731,6 @@ mod tests {
     }
 
     #[test]
-    fn rejects_enum_variant_unknown_field() {
-        reject(
-            Type::Enum {
-                module: DocumentId::new("test.hop").unwrap(),
-                name: TypeName::new("Outcome").unwrap(),
-                variants: vec![
-                    EnumVariant {
-                        name: TypeName::new("Success").unwrap(),
-                        fields: vec![(FieldName::new("value").unwrap(), Arc::new(Type::Int), None)],
-                    },
-                    EnumVariant {
-                        name: TypeName::new("Failure").unwrap(),
-                        fields: vec![(
-                            FieldName::new("message").unwrap(),
-                            Arc::new(Type::String),
-                            None,
-                        )],
-                    },
-                ],
-            },
-            indoc! {"
-                match x {
-                    Outcome::Success{unknown: v} => 0,
-                    Outcome::Failure{message: _} => 1,
-                }
-            "},
-            expect![[r#"
-                error: Unknown field 'unknown' in enum variant 'Outcome::Success'
-                    Outcome::Success{unknown: v} => 0,
-                                     ^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_enum_variant_unknown_field_after_valid_field() {
-        reject(
-            Type::Enum {
-                module: DocumentId::new("test.hop").unwrap(),
-                name: TypeName::new("Point").unwrap(),
-                variants: vec![EnumVariant {
-                    name: TypeName::new("XY").unwrap(),
-                    fields: vec![
-                        (FieldName::new("x").unwrap(), Arc::new(Type::Int), None),
-                        (FieldName::new("y").unwrap(), Arc::new(Type::Int), None),
-                    ],
-                }],
-            },
-            indoc! {"
-                match x {
-                    Point::XY{x: a, unknown: b} => 0,
-                }
-            "},
-            expect![[r#"
-                error: Unknown field 'unknown' in enum variant 'Point::XY'
-                    Point::XY{x: a, unknown: b} => 0,
-                                    ^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_enum_variant_two_unknown_fields() {
-        reject(
-            Type::Enum {
-                module: DocumentId::new("test.hop").unwrap(),
-                name: TypeName::new("Point").unwrap(),
-                variants: vec![EnumVariant {
-                    name: TypeName::new("XY").unwrap(),
-                    fields: vec![
-                        (FieldName::new("x").unwrap(), Arc::new(Type::Int), None),
-                        (FieldName::new("y").unwrap(), Arc::new(Type::Int), None),
-                    ],
-                }],
-            },
-            indoc! {"
-                match x {
-                    Point::XY{foo: a, bar: b} => 0,
-                }
-            "},
-            expect![[r#"
-                error: Unknown field 'foo' in enum variant 'Point::XY'
-                    Point::XY{foo: a, bar: b} => 0,
-                              ^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_enum_variant_missing_field_in_pattern() {
-        reject(
-            Type::Enum {
-                module: DocumentId::new("test.hop").unwrap(),
-                name: TypeName::new("Point").unwrap(),
-                variants: vec![EnumVariant {
-                    name: TypeName::new("XY").unwrap(),
-                    fields: vec![
-                        (FieldName::new("x").unwrap(), Arc::new(Type::Int), None),
-                        (FieldName::new("y").unwrap(), Arc::new(Type::Int), None),
-                    ],
-                }],
-            },
-            indoc! {"
-                match x {
-                    Point::XY{x: a} => 0,
-                }
-            "},
-            expect![[r#"
-                error: Enum variant 'Point::XY' is missing fields: y
-                    Point::XY{x: a} => 0,
-                    ^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_enum_variant_missing_two_fields_in_pattern() {
-        reject(
-            Type::Enum {
-                module: DocumentId::new("test.hop").unwrap(),
-                name: TypeName::new("Point").unwrap(),
-                variants: vec![EnumVariant {
-                    name: TypeName::new("XYZ").unwrap(),
-                    fields: vec![
-                        (FieldName::new("x").unwrap(), Arc::new(Type::Int), None),
-                        (FieldName::new("y").unwrap(), Arc::new(Type::Int), None),
-                        (FieldName::new("z").unwrap(), Arc::new(Type::Int), None),
-                    ],
-                }],
-            },
-            indoc! {"
-                match x {
-                    Point::XYZ{x: a} => 0,
-                }
-            "},
-            expect![[r#"
-                error: Enum variant 'Point::XYZ' is missing fields: y, z
-                    Point::XYZ{x: a} => 0,
-                    ^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_enum_variant_no_parens_when_fields_expected() {
-        reject(
-            Type::Enum {
-                module: DocumentId::new("test.hop").unwrap(),
-                name: TypeName::new("Point").unwrap(),
-                variants: vec![EnumVariant {
-                    name: TypeName::new("XY").unwrap(),
-                    fields: vec![
-                        (FieldName::new("x").unwrap(), Arc::new(Type::Int), None),
-                        (FieldName::new("y").unwrap(), Arc::new(Type::Int), None),
-                    ],
-                }],
-            },
-            indoc! {"
-                match x {
-                    Point::XY => 0,
-                }
-            "},
-            expect![[r#"
-                error: Enum variant 'Point::XY' is missing fields: x, y
-                    Point::XY => 0,
-                    ^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_enum_variant_fields_provided_to_unit_variant() {
-        reject(
-            Type::Enum {
-                module: DocumentId::new("test.hop").unwrap(),
-                name: TypeName::new("Maybe").unwrap(),
-                variants: vec![
-                    EnumVariant {
-                        name: TypeName::new("Just").unwrap(),
-                        fields: vec![(FieldName::new("value").unwrap(), Arc::new(Type::Int), None)],
-                    },
-                    EnumVariant {
-                        name: TypeName::new("Nothing").unwrap(),
-                        fields: vec![],
-                    },
-                ],
-            },
-            indoc! {"
-                match x {
-                    Maybe::Just{value: v} => 0,
-                    Maybe::Nothing{value: v} => 1,
-                }
-            "},
-            expect![[r#"
-                error: Unknown field 'value' in enum variant 'Maybe::Nothing'
-                    Maybe::Nothing{value: v} => 1,
-                                   ^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
     fn accepts_enum_variant_nested_option_field() {
         accept(
             Type::Enum {
@@ -2188,11 +1752,11 @@ mod tests {
                 }
             "},
             expect![[r#"
-                x is Container::Wrapped{inner: v_0}
-                  v_0 is Some(v_1)
-                    let v = v_1
+                v_0 is Container::Wrapped{inner: v_1}
+                  v_1 is Some(v_2)
+                    let v = v_2
                     branch 0
-                  v_0 is None
+                  v_1 is None
                     branch 1
             "#]],
         );
@@ -2248,10 +1812,10 @@ mod tests {
                 }
             "},
             expect![[r#"
-                x is Flag::Active{enabled: v_0}
-                  v_0 is false
+                v_0 is Flag::Active{enabled: v_1}
+                  v_1 is false
                     branch 1
-                  v_0 is true
+                  v_1 is true
                     branch 0
             "#]],
         );
@@ -2307,11 +1871,11 @@ mod tests {
                 }
             "},
             expect![[r#"
-                x is Rectangle::Bounds{x: v_0, y: v_1, width: v_2, height: v_3}
-                  let a = v_0
-                  let b = v_1
-                  let w = v_2
-                  let h = v_3
+                v_0 is Rectangle::Bounds{x: v_1, y: v_2, width: v_3, height: v_4}
+                  let a = v_1
+                  let b = v_2
+                  let w = v_3
+                  let h = v_4
                   branch 0
             "#]],
         );
@@ -2358,16 +1922,16 @@ mod tests {
                 }
             "},
             expect![[r#"
-                x is Event::Click{x: v_0, y: v_1}
-                  let a = v_0
-                  let b = v_1
+                v_0 is Event::Click{x: v_1, y: v_2}
+                  let a = v_1
+                  let b = v_2
                   branch 0
-                x is Event::KeyPress{key: v_2}
-                  let k = v_2
+                v_0 is Event::KeyPress{key: v_3}
+                  let k = v_3
                   branch 1
-                x is Event::Focus
+                v_0 is Event::Focus
                   branch 2
-                x is Event::Blur
+                v_0 is Event::Blur
                   branch 3
             "#]],
         );
@@ -2396,9 +1960,9 @@ mod tests {
                 }
             "},
             expect![[r#"
-                x is User{name: v_0, age: v_1}
-                  let n = v_0
-                  let a = v_1
+                v_0 is User{name: v_1, age: v_2}
+                  let n = v_1
+                  let a = v_2
                   branch 0
             "#]],
         );
@@ -2424,16 +1988,16 @@ mod tests {
                 }
             "},
             expect![[r#"
-                x is Foo{a: v_0, b: v_1}
-                  v_1 is false
-                    v_0 is false
+                v_0 is Foo{a: v_1, b: v_2}
+                  v_2 is false
+                    v_1 is false
                       branch 3
-                    v_0 is true
+                    v_1 is true
                       branch 1
-                  v_1 is true
-                    v_0 is false
+                  v_2 is true
+                    v_1 is false
                       branch 2
-                    v_0 is true
+                    v_1 is true
                       branch 0
             "#]],
         );
@@ -2452,9 +2016,9 @@ mod tests {
                 }
             "},
             expect![[r#"
-                x is false
+                v_0 is false
                   branch 1
-                x is true
+                v_0 is true
                   branch 0
             "#]],
         );
@@ -2545,10 +2109,10 @@ mod tests {
                 }
             "},
             expect![[r#"
-                x is Some(v_0)
-                  let v = v_0
+                v_0 is Some(v_1)
+                  let v = v_1
                   branch 0
-                x is None
+                v_0 is None
                   branch 1
             "#]],
         );
@@ -2642,15 +2206,15 @@ mod tests {
                 }
             "},
             expect![[r#"
-                x is Some(v_0)
-                  v_0 is Some(v_1)
-                    v_1 is false
+                v_0 is Some(v_1)
+                  v_1 is Some(v_2)
+                    v_2 is false
                       branch 1
-                    v_1 is true
+                    v_2 is true
                       branch 0
-                  v_0 is None
+                  v_1 is None
                     branch 2
-                x is None
+                v_0 is None
                   branch 3
             "#]],
         );
@@ -2703,7 +2267,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                let c = x
+                let c = v_0
                 branch 0
             "#]],
         );
@@ -2862,13 +2426,13 @@ mod tests {
                 }
             "},
             expect![[r#"
-                x is User{name: v_0, email: v_1}
-                  v_1 is Some(v_2)
-                    let n = v_0
-                    let e = v_2
+                v_0 is User{name: v_1, email: v_2}
+                  v_2 is Some(v_3)
+                    let n = v_1
+                    let e = v_3
                     branch 0
-                  v_1 is None
-                    let n = v_0
+                  v_2 is None
+                    let n = v_1
                     branch 1
             "#]],
         );
@@ -2979,12 +2543,12 @@ mod tests {
                 }
             "},
             expect![[r#"
-                x is Some(v_0)
-                  v_0 is User{name: v_1, age: v_2}
-                    let n = v_1
-                    let a = v_2
+                v_0 is Some(v_1)
+                  v_1 is User{name: v_2, age: v_3}
+                    let n = v_2
+                    let a = v_3
                     branch 0
-                x is None
+                v_0 is None
                   branch 1
             "#]],
         );
@@ -3012,9 +2576,9 @@ mod tests {
                 }
             "},
             expect![[r#"
-                x is Some(_)
+                v_0 is Some(_)
                   branch 0
-                x is None
+                v_0 is None
                   branch 1
             "#]],
         );
@@ -3055,9 +2619,9 @@ mod tests {
                 }
             "},
             expect![[r#"
-                x is Some(_)
+                v_0 is Some(_)
                   branch 0
-                x is None
+                v_0 is None
                   branch 1
             "#]],
         );
@@ -3188,8 +2752,8 @@ mod tests {
                 }
             "},
             expect![[r#"
-                x is User{name: v_0, address: _}
-                  let n = v_0
+                v_0 is User{name: v_1, address: _}
+                  let n = v_1
                   branch 0
             "#]],
         );
@@ -3247,10 +2811,10 @@ mod tests {
                 }
             "},
             expect![[r#"
-                x is Outcome::Success{value: v_0, metadata: _}
-                  let v = v_0
+                v_0 is Outcome::Success{value: v_1, metadata: _}
+                  let v = v_1
                   branch 0
-                x is Outcome::Failure{message: _}
+                v_0 is Outcome::Failure{message: _}
                   branch 1
             "#]],
         );
@@ -3295,232 +2859,15 @@ mod tests {
                 }
             "},
             expect![[r#"
-                x is Outer{middle: v_0}
-                  v_0 is Middle{name: v_1, inner: _}
-                    let n = v_1
+                v_0 is Outer{middle: v_1}
+                  v_1 is Middle{name: v_2, inner: _}
+                    let n = v_2
                     branch 0
             "#]],
         );
     }
 
     // Pattern validation tests
-
-    #[test]
-    fn rejects_validation_undefined_enum_variant() {
-        reject(
-            Type::Enum {
-                module: DocumentId::new("test.hop").unwrap(),
-                name: TypeName::new("Color").unwrap(),
-                variants: vec![
-                    EnumVariant {
-                        name: TypeName::new("Red").unwrap(),
-                        fields: vec![],
-                    },
-                    EnumVariant {
-                        name: TypeName::new("Green").unwrap(),
-                        fields: vec![],
-                    },
-                ],
-            },
-            indoc! {"
-                match x {
-                    Color::Blue => 0,
-                    _ => 1,
-                }
-            "},
-            expect![[r#"
-                error: Variant 'Blue' is not defined in enum 'Color'
-                    Color::Blue => 0,
-                    ^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_validation_record_missing_fields() {
-        reject(
-            Type::Record {
-                module: DocumentId::new("test.hop").unwrap(),
-                name: TypeName::new("User").unwrap(),
-                fields: vec![
-                    (
-                        FieldName::new("name").unwrap(),
-                        Arc::new(Type::String),
-                        None,
-                    ),
-                    (FieldName::new("age").unwrap(), Arc::new(Type::Int), None),
-                ],
-            },
-            indoc! {"
-                match x {
-                    User{name: n} => 0,
-                }
-            "},
-            expect![[r#"
-                error: Record 'User' is missing fields: age
-                    User{name: n} => 0,
-                    ^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_validation_record_unknown_field() {
-        reject(
-            Type::Record {
-                module: DocumentId::new("test.hop").unwrap(),
-                name: TypeName::new("User").unwrap(),
-                fields: vec![(
-                    FieldName::new("name").unwrap(),
-                    Arc::new(Type::String),
-                    None,
-                )],
-            },
-            indoc! {"
-                match x {
-                    User{email: e} => 0,
-                }
-            "},
-            expect![[r#"
-                error: Unknown field 'email' in record 'User'
-                    User{email: e} => 0,
-                         ^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_validation_boolean_pattern_on_enum() {
-        reject(
-            Type::Enum {
-                module: DocumentId::new("test.hop").unwrap(),
-                name: TypeName::new("Color").unwrap(),
-                variants: vec![
-                    EnumVariant {
-                        name: TypeName::new("Red").unwrap(),
-                        fields: vec![],
-                    },
-                    EnumVariant {
-                        name: TypeName::new("Green").unwrap(),
-                        fields: vec![],
-                    },
-                ],
-            },
-            indoc! {"
-                match x {
-                    true => 0,
-                    _ => 1,
-                }
-            "},
-            expect![[r#"
-                error: Mismatched pattern type: expected `test::Color` got `true`
-                    true => 0,
-                    ^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_validation_option_pattern_on_enum() {
-        reject(
-            Type::Enum {
-                module: DocumentId::new("test.hop").unwrap(),
-                name: TypeName::new("Color").unwrap(),
-                variants: vec![
-                    EnumVariant {
-                        name: TypeName::new("Red").unwrap(),
-                        fields: vec![],
-                    },
-                    EnumVariant {
-                        name: TypeName::new("Green").unwrap(),
-                        fields: vec![],
-                    },
-                ],
-            },
-            indoc! {"
-                match x {
-                    Some(v) => 0,
-                    None => 1,
-                }
-            "},
-            expect![[r#"
-                error: Mismatched pattern type: expected `test::Color` got `Some(v)`
-                    Some(v) => 0,
-                    ^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_validation_nested_option_wrong_inner_type() {
-        reject(
-            Type::Option(Arc::new(Type::Bool)),
-            indoc! {"
-                match x {
-                    Some(Some(v)) => 0,
-                    _ => 1,
-                }
-            "},
-            expect![[r#"
-                error: Mismatched pattern type: expected `Bool` got `Some(v)`
-                    Some(Some(v)) => 0,
-                         ^^^^^^^
-            "#]],
-        );
-    }
-
-    // Subject type validation tests
-
-    #[test]
-    fn rejects_match_not_implemented_for_int() {
-        reject(
-            Type::Int,
-            indoc! {"
-                match x {
-                    _ => 0,
-                }
-            "},
-            expect![[r#"
-                error: Match is not implemented for type Int
-                match x {
-                      ^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_match_not_implemented_for_string() {
-        reject(
-            Type::String,
-            indoc! {"
-                match x {
-                    _ => 0,
-                }
-            "},
-            expect![[r#"
-                error: Match is not implemented for type String
-                match x {
-                      ^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_match_not_implemented_for_float() {
-        reject(
-            Type::Float,
-            indoc! {"
-                match x {
-                    _ => 0,
-                }
-            "},
-            expect![[r#"
-                error: Match is not implemented for type Float
-                match x {
-                      ^
-            "#]],
-        );
-    }
 
     #[test]
     fn rejects_match_no_arms() {

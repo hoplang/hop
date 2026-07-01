@@ -12,6 +12,7 @@ use crate::expr::parsing::parsed_expr::{
     Constructor, ParsedBinaryOp, ParsedExpr, ParsedMatchArm, ParsedMatchPattern,
 };
 use crate::expr::patterns::compiler::{Compiler, Decision};
+use crate::expr::patterns::typed::{TypedMatchPattern, typecheck_pattern};
 use crate::expr::patterns::{EnumMatchArm, EnumPattern, Match};
 use crate::hop::typing::definition_link::DefinitionLink;
 use crate::hop::typing::type_annotation::TypeAnnotation;
@@ -1258,15 +1259,53 @@ pub fn typecheck_expr(
             }
         }
         ParsedExpr::FragmentEmpty { .. } => Ok(TypedExpr::FragmentEmpty),
-        ParsedExpr::Match { subject, arms, .. } => typecheck_match(
-            subject,
-            arms,
-            var_env,
-            type_env,
-            annotations,
-            definition_links,
-            asset_references,
-        ),
+        ParsedExpr::Match { subject, arms, .. } => {
+            let typed_subject = typecheck_expr(
+                subject,
+                None,
+                var_env,
+                type_env,
+                annotations,
+                definition_links,
+                asset_references,
+            )?;
+
+            let subject_type = typed_subject.get_type();
+            if !subject_type.is_matchable() {
+                return Err(TypeError::new(
+                    TypeErrorKind::MatchNotImplementedForType {
+                        found: subject_type,
+                    },
+                    subject.range().clone(),
+                ));
+            }
+            let typed_patterns = arms
+                .iter()
+                .map(|arm| typecheck_pattern(&arm.pattern, subject_type.clone()))
+                .collect::<Result<Vec<_>, _>>()?;
+            let tree = Compiler::new(var_env.fresh_var_counter()).compile(
+                &typed_patterns,
+                subject_type,
+                subject.range(),
+            )?;
+
+            let (typed_bodies, result_type) = typecheck_arm_bodies(
+                arms,
+                &typed_patterns,
+                var_env,
+                type_env,
+                annotations,
+                definition_links,
+                asset_references,
+            )?;
+
+            Ok(decision_to_typed_expr(
+                &tree,
+                &typed_bodies,
+                result_type,
+                Some(typed_subject),
+            ))
+        }
         ParsedExpr::MacroInvocation {
             name,
             subject_range,
@@ -1450,128 +1489,6 @@ pub fn typecheck_expr(
 }
 
 // Typecheck a match expression and compile it to a TypedExpr.
-fn typecheck_match(
-    subject: &ParsedExpr,
-    arms: &[ParsedMatchArm],
-    var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
-    type_env: &mut VariableScope<TypeName, (TypeBinding, DocumentRange)>,
-    annotations: &mut Vec<TypeAnnotation>,
-    definition_links: &mut Vec<DefinitionLink>,
-    asset_references: &mut Vec<AssetReference>,
-) -> Result<TypedExpr, TypeError> {
-    let typed_subject = typecheck_expr(
-        subject,
-        None,
-        var_env,
-        type_env,
-        annotations,
-        definition_links,
-        asset_references,
-    )?;
-
-    let subject_name = match &typed_subject {
-        TypedExpr::Var { value, .. } => value.clone(),
-        _ => var_env.fresh_var(),
-    };
-
-    let patterns: Vec<_> = arms.iter().map(|arm| arm.pattern.clone()).collect();
-    let tree = Compiler::new(var_env.fresh_var_counter()).compile(
-        &patterns,
-        &subject_name,
-        typed_subject.get_type(),
-        subject.range(),
-    )?;
-
-    let (typed_bodies, result_type) = typecheck_arm_bodies(
-        arms,
-        typed_subject.get_type(),
-        var_env,
-        type_env,
-        annotations,
-        definition_links,
-        asset_references,
-    )?;
-
-    let result = decision_to_typed_expr(&tree, &typed_bodies, result_type, Some(typed_subject));
-
-    Ok(result)
-}
-
-/// Extract binding variables from a pattern and return them with their types and ranges.
-/// The type is derived from the subject type and the position in the pattern.
-pub fn extract_bindings_from_pattern(
-    pattern: &ParsedMatchPattern,
-    subject_type: Arc<Type>,
-) -> Vec<(VarName, Arc<Type>, DocumentRange)> {
-    match pattern {
-        ParsedMatchPattern::Binding { name, range } => {
-            vec![(name.clone(), subject_type, range.clone())]
-        }
-        ParsedMatchPattern::Wildcard { .. } => vec![],
-        ParsedMatchPattern::Constructor {
-            constructor,
-            args,
-            fields,
-            ..
-        } => match constructor {
-            Constructor::OptionSome => {
-                let Type::Option(inner_type) = &*subject_type else {
-                    unreachable!("OptionSome pattern requires Option type")
-                };
-                let Some(inner_pattern) = args.first() else {
-                    unreachable!("OptionSome pattern requires an argument")
-                };
-                extract_bindings_from_pattern(inner_pattern, inner_type.clone())
-            }
-            Constructor::Record { .. } => {
-                let Type::Record {
-                    fields: type_fields,
-                    ..
-                } = &*subject_type
-                else {
-                    unreachable!("Record pattern requires Record type")
-                };
-
-                let mut bindings = Vec::new();
-                for (field_name, _, field_pattern) in fields {
-                    let field_type = type_fields
-                        .iter()
-                        .find(|(name, _, _)| name == field_name)
-                        .map(|(_, typ, _)| typ.clone())
-                        .expect("field type not found");
-                    bindings.extend(extract_bindings_from_pattern(field_pattern, field_type));
-                }
-                bindings
-            }
-            Constructor::EnumVariant { variant_name, .. } => {
-                let Type::Enum { variants, .. } = &*subject_type else {
-                    unreachable!("EnumVariant pattern requires Enum type")
-                };
-
-                let variant_fields = variants
-                    .iter()
-                    .find(|variant| &variant.name == variant_name)
-                    .map(|variant| variant.fields.clone())
-                    .expect("variant not found in enum type");
-
-                let mut bindings = Vec::new();
-                for (field_name, _, field_pattern) in fields {
-                    let field_type = variant_fields
-                        .iter()
-                        .find(|(name, _, _)| name == field_name)
-                        .map(|(_, typ, _)| typ.clone())
-                        .expect("field type not found");
-                    bindings.extend(extract_bindings_from_pattern(field_pattern, field_type));
-                }
-                bindings
-            }
-            Constructor::OptionNone | Constructor::BooleanTrue | Constructor::BooleanFalse => {
-                vec![]
-            }
-        },
-    }
-}
-
 /// Collect definition links for enum variant references in match patterns.
 fn collect_pattern_definition_links(
     pattern: &ParsedMatchPattern,
@@ -1615,7 +1532,7 @@ fn collect_pattern_definition_links(
 /// Returns the typed bodies and the common result type.
 fn typecheck_arm_bodies(
     arms: &[ParsedMatchArm],
-    subject_type: Arc<Type>,
+    typed_patterns: &[TypedMatchPattern],
     var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
     type_env: &mut VariableScope<TypeName, (TypeBinding, DocumentRange)>,
     annotations: &mut Vec<TypeAnnotation>,
@@ -1625,12 +1542,12 @@ fn typecheck_arm_bodies(
     let mut typed_bodies = Vec::new();
     let mut result_type: Option<Arc<Type>> = None;
 
-    for arm in arms {
+    for (arm, typed_pattern) in arms.iter().zip(typed_patterns) {
         // Collect definition links for enum variant references in patterns
         collect_pattern_definition_links(&arm.pattern, type_env, definition_links);
 
         // Extract binding variables from the pattern and add them to the environment
-        let bindings = extract_bindings_from_pattern(&arm.pattern, subject_type.clone());
+        let bindings = typed_pattern.bindings();
         let mut pushed_count = 0;
         for (name, typ, range) in &bindings {
             match var_env.push(name.clone(), (typ.clone(), range.clone())) {

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::annotation::Annotation;
 use crate::document::DocumentRange;
-use crate::expr::parsing::parsed_expr::ParsedMatchPattern;
+use crate::expr::patterns::typed::TypedMatchPattern;
 use crate::expr::typing::r#type::Type;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::module_name::ModuleName;
@@ -297,7 +297,7 @@ pub(crate) enum TypeErrorKind {
     MatchMissingVariants { variants: Vec<String> },
 
     #[error("Unreachable match arm for pattern '{pattern}'")]
-    MatchUnreachableArm { pattern: Box<ParsedMatchPattern> },
+    MatchUnreachableArm { pattern: Box<TypedMatchPattern> },
 
     #[error("Mismatched pattern type: expected `{expected}` got `{found}`")]
     MatchPatternTypeMismatch {

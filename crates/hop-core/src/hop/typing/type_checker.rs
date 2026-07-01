@@ -2,11 +2,9 @@ use super::type_annotation::TypeAnnotation;
 use crate::asset_reference::AssetReference;
 use crate::document::{CheapString, DocumentRange};
 use crate::error_collection::ErrorCollectionExt;
-use crate::expr::patterns::compiler::Compiler as PatMatchCompiler;
+use crate::expr::patterns::compiler::Compiler;
 use crate::expr::typing::r#type::EnumVariant;
-use crate::expr::typing::type_checker::{
-    extract_bindings_from_pattern, resolve_type, typecheck_expr,
-};
+use crate::expr::typing::type_checker::{resolve_type, typecheck_expr};
 use crate::expr::{self, ComponentSignature, ParamEntry, Tail, Type, TypeBinding, TypedExpr};
 use crate::hop::parsing::parsed_ast::ParsedDeclaration;
 use crate::hop::parsing::parsed_ast::{
@@ -25,6 +23,7 @@ use std::sync::Arc;
 
 use crate::document_id::DocumentId;
 use crate::expr::patterns::compiler::Decision;
+use crate::expr::patterns::typed::typecheck_pattern;
 use crate::expr::patterns::{EnumMatchArm, EnumPattern, Match};
 use crate::hop::parsing::parsed_ast::{ParsedAst, ParsedAttributeValue};
 use crate::hop::parsing::parsed_node::{ParsedLetBinding, ParsedLoopSource, ParsedNode};
@@ -1226,30 +1225,36 @@ fn typecheck_node(
                 definition_links,
                 asset_references,
             ))?;
-            let patterns = cases
-                .iter()
-                .map(|case| case.pattern.clone())
-                .collect::<Vec<_>>();
 
-            let subject_name = match &typed_subject {
-                TypedExpr::Var { value, .. } => value.clone(),
-                _ => var_env.fresh_var(),
-            };
+            let subject_type = typed_subject.get_type();
+            if !subject_type.is_matchable() {
+                errors.push(TypeError::new(
+                    TypeErrorKind::MatchNotImplementedForType {
+                        found: subject_type,
+                    },
+                    subject.range().clone(),
+                ));
+                return None;
+            }
 
-            let decision =
-                errors.ok_or_add(PatMatchCompiler::new(var_env.fresh_var_counter()).compile(
-                    &patterns,
-                    &subject_name,
-                    typed_subject.get_type(),
-                    subject.range(),
-                ))?;
+            let typed_patterns = errors.ok_or_add(
+                cases
+                    .iter()
+                    .map(|case| typecheck_pattern(&case.pattern, subject_type.clone()))
+                    .collect::<Result<Vec<_>, _>>(),
+            )?;
+
+            let decision = errors.ok_or_add(Compiler::new(var_env.fresh_var_counter()).compile(
+                &typed_patterns,
+                subject_type,
+                subject.range(),
+            ))?;
 
             let typed_bodies = cases
                 .iter()
-                .map(|case| {
-                    // Extract bindings from pattern
-                    let bindings =
-                        extract_bindings_from_pattern(&case.pattern, typed_subject.get_type());
+                .zip(&typed_patterns)
+                .map(|(case, typed_pattern)| {
+                    let bindings = typed_pattern.bindings();
 
                     // Push bindings into scope
                     let mut pushed_count = 0;
@@ -1686,7 +1691,7 @@ fn typecheck_html_attribute(
 fn decision_to_typed_nodes(
     decision: &Decision,
     typed_bodies: &[Vec<TypedNode>],
-    root_subject: Option<expr::TypedExpr>,
+    root_subject: Option<TypedExpr>,
 ) -> Vec<TypedNode> {
     match decision {
         Decision::Success(body) => {
@@ -4963,8 +4968,8 @@ mod tests {
                 -- main.hop --
                 component Main(x: Option[String]) {
                   <match {x}>
-                    <case {Some(v_0)}>
-                      <let {y = v_0}>
+                    <case {Some(v_1)}>
+                      <let {y = v_1}>
                         found 
                         {y}
                       </let>
@@ -5126,8 +5131,8 @@ mod tests {
                 -- main.hop --
                 component Main(x: Option[String]) {
                   <match {x}>
-                    <case {Some(v_0)}>
-                      <let {name = v_0}>
+                    <case {Some(v_1)}>
+                      <let {name = v_1}>
                         <div class={name}></div>
                       </let>
                     </case>
@@ -5423,11 +5428,11 @@ mod tests {
                 -- main.hop --
                 component Main(x: Option[Option[String]]) {
                   <match {x}>
-                    <case {Some(v_0)}>
-                      <let {inner = v_0}>
+                    <case {Some(v_1)}>
+                      <let {inner = v_1}>
                         <match {inner}>
-                          <case {Some(v_1)}>
-                            <let {s = v_1}>
+                          <case {Some(v_3)}>
+                            <let {s = v_3}>
                               {s}
                             </let>
                           </case>
@@ -5465,8 +5470,8 @@ mod tests {
                 component Main(items: Array[Option[String]]) {
                   <for {item in items}>
                     <match {item}>
-                      <case {Some(v_0)}>
-                        <let {s = v_0}>
+                      <case {Some(v_1)}>
+                        <let {s = v_1}>
                           {s}
                         </let>
                       </case>
@@ -5533,15 +5538,15 @@ mod tests {
                 -- main.hop --
                 component Main(r1: Option[String], r2: Option[Bool]) {
                   <match {r1}>
-                    <case {Some(v_0)}>
-                      <let {bound = v_0}>
+                    <case {Some(v_1)}>
+                      <let {bound = v_1}>
                         {bound}
                       </let>
                     </case>
                     <case {None}>
                       <match {r2}>
-                        <case {Some(v_1)}>
-                          <let {bound = v_1}>
+                        <case {Some(v_3)}>
+                          <let {bound = v_3}>
                             <if {bound}>
                               yes
                             </if>
@@ -5633,8 +5638,8 @@ mod tests {
                 component Main(show: Bool, x: Option[String]) {
                   <if {show}>
                     <match {x}>
-                      <case {Some(v_0)}>
-                        <let {v = v_0}>
+                      <case {Some(v_1)}>
+                        <let {v = v_1}>
                           {v}
                         </let>
                       </case>
@@ -5667,8 +5672,8 @@ mod tests {
                 component Main(x: Option[String]) {
                   <div>
                     <match {x}>
-                      <case {Some(v_0)}>
-                        <let {v = v_0}>
+                      <case {Some(v_1)}>
+                        <let {v = v_1}>
                           <span>
                             {v}
                           </span>

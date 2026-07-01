@@ -161,6 +161,14 @@ impl Type {
             | Type::Enum { .. } => None,
         }
     }
+
+    /// Whether values of this type can be destructured by a `match` expression.
+    pub fn is_matchable(&self) -> bool {
+        match self {
+            Type::Bool | Type::Option(_) | Type::Record { .. } | Type::Enum { .. } => true,
+            Type::String | Type::Int | Type::Float | Type::Fragment | Type::Array(_) => false,
+        }
+    }
 }
 
 impl PartialEq for Type {
