@@ -1,5 +1,3 @@
-mod annotation;
-mod asset_error;
 mod css;
 mod error_collection;
 mod expr;
@@ -18,9 +16,12 @@ mod simple_annotation;
 #[cfg(test)]
 mod extract_position;
 
+pub mod annotation;
+pub mod asset_error;
 pub mod asset_reference;
 pub mod asset_rewriter;
 pub mod config;
+pub mod css_error;
 pub mod document;
 pub mod document_annotator;
 pub mod document_id;

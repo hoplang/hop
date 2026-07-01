@@ -9,7 +9,7 @@ use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 
 use super::token::Token;
-use crate::parse_error::ParseError;
+use crate::parse_error::{ParseError, ParseErrorKind};
 
 pub fn next(
     iter: &mut Peekable<DocumentCursor>,
@@ -54,10 +54,10 @@ pub fn next(
         '#' => match iter.next_if(|s| s.ch() == '[') {
             Some(end) => (Token::HashBracket, start.to(end)),
             None => {
-                errors.push(ParseError::UnexpectedCharacter {
-                    ch: '#',
-                    range: start.clone(),
-                });
+                errors.push(ParseError::new(
+                    ParseErrorKind::UnexpectedCharacter { ch: '#' },
+                    start.clone(),
+                ));
                 return next(iter, errors);
             }
         },
@@ -70,20 +70,20 @@ pub fn next(
         '&' => match iter.next_if(|s| s.ch() == '&') {
             Some(end) => (Token::LogicalAnd, start.to(end)),
             None => {
-                errors.push(ParseError::UnexpectedCharacter {
-                    ch: '&',
-                    range: start,
-                });
+                errors.push(ParseError::new(
+                    ParseErrorKind::UnexpectedCharacter { ch: '&' },
+                    start,
+                ));
                 return next(iter, errors); // Continue tokenization after error
             }
         },
         '|' => match iter.next_if(|s| s.ch() == '|') {
             Some(end) => (Token::LogicalOr, start.to(end)),
             None => {
-                errors.push(ParseError::UnexpectedCharacter {
-                    ch: '|',
-                    range: start,
-                });
+                errors.push(ParseError::new(
+                    ParseErrorKind::UnexpectedCharacter { ch: '|' },
+                    start,
+                ));
                 return next(iter, errors); // Continue tokenization after error
             }
         },
@@ -96,10 +96,10 @@ pub fn next(
                 (Token::Comment(text), comment)
             }
             None => {
-                errors.push(ParseError::UnexpectedCharacter {
-                    ch: '/',
-                    range: start,
-                });
+                errors.push(ParseError::new(
+                    ParseErrorKind::UnexpectedCharacter { ch: '/' },
+                    start,
+                ));
                 return next(iter, errors); // Continue tokenization after error
             }
         },
@@ -133,11 +133,12 @@ pub fn next(
                 match iter.peek().map(|s| s.ch()) {
                     None => {
                         // Unterminated string
-                        errors.push(ParseError::UnterminatedStringLiteral {
-                            range: content
+                        errors.push(ParseError::new(
+                            ParseErrorKind::UnterminatedStringLiteral {},
+                            content
                                 .map(|c| start.clone().to(c))
                                 .unwrap_or(start.clone()),
-                        });
+                        ));
                         return None;
                     }
                     Some('"') => {
@@ -161,12 +162,14 @@ pub fn next(
                         match iter.peek().map(|s| s.ch()) {
                             None => {
                                 // Backslash at end of input
-                                errors.push(ParseError::InvalidEscapeSequenceAtEndOfString {
-                                    range: backslash.clone(),
-                                });
-                                errors.push(ParseError::UnterminatedStringLiteral {
-                                    range: start.clone().to(backslash),
-                                });
+                                errors.push(ParseError::new(
+                                    ParseErrorKind::InvalidEscapeSequenceAtEndOfString {},
+                                    backslash.clone(),
+                                ));
+                                errors.push(ParseError::new(
+                                    ParseErrorKind::UnterminatedStringLiteral {},
+                                    start.clone().to(backslash),
+                                ));
                                 return None;
                             }
                             Some(ch @ ('n' | 't' | 'r' | '\\' | '"')) => {
@@ -183,10 +186,10 @@ pub fn next(
                             Some(ch) => {
                                 // Invalid escape sequence - report error but continue
                                 let escape_char = iter.next().unwrap();
-                                errors.push(ParseError::InvalidEscapeSequence {
-                                    ch,
-                                    range: backslash.to(escape_char.clone()),
-                                });
+                                errors.push(ParseError::new(
+                                    ParseErrorKind::InvalidEscapeSequence { ch },
+                                    backslash.to(escape_char.clone()),
+                                ));
                                 content = Some(
                                     content
                                         .map(|c| c.to(escape_char.clone()))
@@ -287,17 +290,19 @@ pub fn next(
             let has_leading_zero = s.starts_with('0') && s.len() > 1 && !s.starts_with("0.");
 
             if has_leading_zero {
-                errors.push(ParseError::InvalidNumberFormat {
-                    range: number_string,
-                });
+                errors.push(ParseError::new(
+                    ParseErrorKind::InvalidNumberFormat {},
+                    number_string,
+                ));
                 return next(iter, errors);
             } else if has_decimal {
                 match number_string.as_str().parse::<f64>() {
                     Ok(f) => (Token::FloatLiteral(f), number_string),
                     Err(_) => {
-                        errors.push(ParseError::InvalidNumberFormat {
-                            range: number_string,
-                        });
+                        errors.push(ParseError::new(
+                            ParseErrorKind::InvalidNumberFormat {},
+                            number_string,
+                        ));
                         return next(iter, errors);
                     }
                 }
@@ -307,9 +312,10 @@ pub fn next(
                     Err(_) => match number_string.as_str().parse::<f64>() {
                         Ok(f) => (Token::FloatLiteral(f), number_string),
                         Err(_) => {
-                            errors.push(ParseError::InvalidNumberFormat {
-                                range: number_string,
-                            });
+                            errors.push(ParseError::new(
+                                ParseErrorKind::InvalidNumberFormat {},
+                                number_string,
+                            ));
                             return next(iter, errors);
                         }
                     },
@@ -317,7 +323,10 @@ pub fn next(
             }
         }
         ch => {
-            errors.push(ParseError::UnexpectedCharacter { ch, range: start });
+            errors.push(ParseError::new(
+                ParseErrorKind::UnexpectedCharacter { ch },
+                start,
+            ));
             return next(iter, errors); // Continue tokenization after error
         }
     };
@@ -391,18 +400,22 @@ pub fn expect_token(
     match next_collecting_comments(iter, comments, errors) {
         Some((token, token_range)) if token == *expected => Some(token_range),
         Some((actual, token_range)) => {
-            errors.push(ParseError::ExpectedTokenButGot {
-                expected: expected.clone(),
-                actual,
-                range: token_range,
-            });
+            errors.push(ParseError::new(
+                ParseErrorKind::ExpectedTokenButGot {
+                    expected: expected.clone(),
+                    actual,
+                },
+                token_range,
+            ));
             None
         }
         None => {
-            errors.push(ParseError::ExpectedTokenButGotEof {
-                expected: expected.clone(),
-                range: range.clone(),
-            });
+            errors.push(ParseError::new(
+                ParseErrorKind::ExpectedTokenButGotEof {
+                    expected: expected.clone(),
+                },
+                range.clone(),
+            ));
             None
         }
     }
@@ -419,18 +432,19 @@ pub fn expect_opposite(
     match next_collecting_comments(iter, comments, errors) {
         Some((actual, actual_range)) if actual == expected => Some(actual_range),
         Some((actual, actual_range)) => {
-            errors.push(ParseError::ExpectedTokenButGot {
-                expected,
-                actual,
-                range: actual_range,
-            });
+            errors.push(ParseError::new(
+                ParseErrorKind::ExpectedTokenButGot { expected, actual },
+                actual_range,
+            ));
             None
         }
         None => {
-            errors.push(ParseError::UnmatchedToken {
-                token: token.clone(),
-                range: token_range.clone(),
-            });
+            errors.push(ParseError::new(
+                ParseErrorKind::UnmatchedToken {
+                    token: token.clone(),
+                },
+                token_range.clone(),
+            ));
             None
         }
     }
@@ -447,26 +461,26 @@ pub fn expect_variable_name(
             match VarName::from_cheap_string(name.clone()) {
                 Ok(var_name) => Some((var_name, name_range)),
                 Err(error) => {
-                    errors.push(ParseError::InvalidVariableName {
-                        name,
-                        error,
-                        range: name_range,
-                    });
+                    errors.push(ParseError::new(
+                        ParseErrorKind::InvalidVariableName { name, error },
+                        name_range,
+                    ));
                     None
                 }
             }
         }
         Some((actual, actual_range)) => {
-            errors.push(ParseError::ExpectedVariableNameButGot {
-                actual,
-                range: actual_range,
-            });
+            errors.push(ParseError::new(
+                ParseErrorKind::ExpectedVariableNameButGot { actual },
+                actual_range,
+            ));
             None
         }
         None => {
-            errors.push(ParseError::UnexpectedEof {
-                range: range.clone(),
-            });
+            errors.push(ParseError::new(
+                ParseErrorKind::UnexpectedEof {},
+                range.clone(),
+            ));
             None
         }
     }
@@ -483,26 +497,26 @@ pub fn expect_field_name(
             match FieldName::from_cheap_string(name.clone()) {
                 Ok(prop_name) => Some((prop_name, name_range)),
                 Err(error) => {
-                    errors.push(ParseError::InvalidFieldName {
-                        name,
-                        error,
-                        range: name_range,
-                    });
+                    errors.push(ParseError::new(
+                        ParseErrorKind::InvalidFieldName { name, error },
+                        name_range,
+                    ));
                     None
                 }
             }
         }
         Some((token, token_range)) => {
-            errors.push(ParseError::ExpectedFieldNameButGot {
-                actual: token,
-                range: token_range,
-            });
+            errors.push(ParseError::new(
+                ParseErrorKind::ExpectedFieldNameButGot { actual: token },
+                token_range,
+            ));
             None
         }
         None => {
-            errors.push(ParseError::UnexpectedEof {
-                range: range.clone(),
-            });
+            errors.push(ParseError::new(
+                ParseErrorKind::UnexpectedEof {},
+                range.clone(),
+            ));
             None
         }
     }
@@ -518,24 +532,25 @@ pub fn expect_type_name(
         Some((Token::TypeName(name), name_range)) => match TypeName::from_cheap_string(name) {
             Ok(type_name) => Some((type_name, name_range)),
             Err(error) => {
-                errors.push(ParseError::InvalidTypeName {
-                    error,
-                    range: name_range,
-                });
+                errors.push(ParseError::new(
+                    ParseErrorKind::InvalidTypeName { error },
+                    name_range,
+                ));
                 None
             }
         },
         Some((actual, actual_range)) => {
-            errors.push(ParseError::ExpectedTypeNameButGot {
-                actual,
-                range: actual_range,
-            });
+            errors.push(ParseError::new(
+                ParseErrorKind::ExpectedTypeNameButGot { actual },
+                actual_range,
+            ));
             None
         }
         None => {
-            errors.push(ParseError::ExpectedTypeNameButGotEof {
-                range: range.clone(),
-            });
+            errors.push(ParseError::new(
+                ParseErrorKind::ExpectedTypeNameButGotEof {},
+                range.clone(),
+            ));
             None
         }
     }
@@ -549,10 +564,10 @@ pub fn expect_eof(
     match next_collecting_comments(iter, comments, errors) {
         None => Some(()),
         Some((token, token_range)) => {
-            errors.push(ParseError::UnexpectedToken {
-                token,
-                range: token_range,
-            });
+            errors.push(ParseError::new(
+                ParseErrorKind::UnexpectedToken { token },
+                token_range,
+            ));
             None
         }
     }
@@ -616,6 +631,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::annotation::Annotation;
     use crate::simple_annotation::SimpleAnnotation;
     use crate::{document_annotator::DocumentAnnotator, document_id::DocumentId};
     use expect_test::{Expect, expect};
@@ -634,7 +650,7 @@ mod tests {
         }
         for err in &errors {
             annotations.push(SimpleAnnotation {
-                message: format!("error: {err}"),
+                message: format!("error: {}", err.message()),
                 range: err.range().clone(),
             });
         }

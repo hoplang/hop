@@ -1,4 +1,4 @@
-use crate::asset_error::AssetError;
+use crate::asset_error::{AssetError, AssetErrorKind};
 use crate::document::DocumentRange;
 use crate::document_id::DocumentId;
 use crate::project::Project;
@@ -22,10 +22,12 @@ pub fn validate_asset_existence(
     for asset_ref in asset_references {
         let res = project.document_exists(&asset_ref.document_id);
         if !res.is_ok_and(|b| b) {
-            errors.push(AssetError::MissingAsset {
-                document_id: asset_ref.document_id.clone(),
-                range: asset_ref.range.clone(),
-            });
+            errors.push(AssetError::new(
+                AssetErrorKind::MissingAsset {
+                    document_id: asset_ref.document_id.clone(),
+                },
+                asset_ref.range.clone(),
+            ));
         }
     }
     errors

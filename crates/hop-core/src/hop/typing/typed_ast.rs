@@ -73,11 +73,6 @@ impl TypedAst {
             .find(|&n| n.component_name.as_str() == name)
     }
 
-    /// Returns a reference to all component declarations in the AST.
-    pub fn get_component_declarations(&self) -> &[TypedComponentDeclaration] {
-        &self.component_declarations
-    }
-
     /// Returns a reference to all record declarations in the AST.
     pub fn get_records(&self) -> &[TypedRecordDeclaration] {
         &self.record_declarations
@@ -91,16 +86,6 @@ impl TypedAst {
     /// Returns a reference to all view declarations in the AST.
     pub fn get_view_declarations(&self) -> &[TypedViewDeclaration] {
         &self.view_declarations
-    }
-
-    /// Takes ownership of all view declarations, leaving the AST with an empty list.
-    pub fn take_view_declarations(&mut self) -> Vec<TypedViewDeclaration> {
-        std::mem::take(&mut self.view_declarations)
-    }
-
-    /// Takes ownership of all component declarations, leaving the AST with an empty list.
-    pub fn take_component_declarations(&mut self) -> Vec<TypedComponentDeclaration> {
-        std::mem::take(&mut self.component_declarations)
     }
 
     pub fn to_doc(&self) -> BoxDoc<'_> {

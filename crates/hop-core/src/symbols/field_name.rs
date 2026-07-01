@@ -101,25 +101,6 @@ impl FieldName {
     pub fn as_str(&self) -> &str {
         self.value.as_str()
     }
-
-    /// Convert the field name to PascalCase
-    pub fn to_pascal_case(&self) -> String {
-        self.value
-            .as_str()
-            .split('_')
-            .map(|segment| {
-                let mut chars = segment.chars();
-                match chars.next() {
-                    Some(first) => {
-                        let mut result = first.to_uppercase().to_string();
-                        result.push_str(chars.as_str());
-                        result
-                    }
-                    None => String::new(),
-                }
-            })
-            .collect()
-    }
 }
 
 impl Display for FieldName {
@@ -260,22 +241,5 @@ mod tests {
     #[test]
     fn rejects_camel_case_field_name() {
         reject("validName", InvalidFieldNameError::NotSnakeCase('N'));
-    }
-
-    #[test]
-    fn to_pascal_case() {
-        assert_eq!(
-            FieldName::new("foo_bar").unwrap().to_pascal_case(),
-            "FooBar"
-        );
-        assert_eq!(
-            FieldName::new("hello_world").unwrap().to_pascal_case(),
-            "HelloWorld"
-        );
-        assert_eq!(FieldName::new("x").unwrap().to_pascal_case(), "X");
-        assert_eq!(
-            FieldName::new("foo_bar_baz").unwrap().to_pascal_case(),
-            "FooBarBaz"
-        );
     }
 }

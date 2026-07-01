@@ -13,7 +13,7 @@ use crate::expr::parsing::ParsedType;
 use crate::expr::parsing::parse_type::parse_type;
 use crate::expr::{self, ExamplesAnnotation};
 use crate::html::HtmlElement;
-use crate::parse_error::ParseError;
+use crate::parse_error::{ParseError, ParseErrorKind};
 use crate::symbols::field_name::FieldName;
 use crate::symbols::module_name::ModuleName;
 use crate::symbols::type_name::TypeName;
@@ -52,17 +52,22 @@ pub fn parse(
         match expr::tokenizer::peek_past_comments(&iter) {
             Some((expr::Token::Import, _)) => {
                 if let Some(pub_r) = pub_range {
-                    errors.push(ParseError::UnexpectedPubKeyword { range: pub_r });
+                    errors.push(ParseError::new(
+                        ParseErrorKind::UnexpectedPubKeyword {},
+                        pub_r,
+                    ));
                 }
                 if let Some(import) =
                     parse_import_declaration(&mut iter, &mut comments, errors, &document_range)
                 {
                     let name_str = import.type_name.as_str();
                     if imported_components.contains_key(name_str) {
-                        errors.push(ParseError::TypeNameIsAlreadyDefined {
-                            name: import.type_name_range.to_cheap_string(),
-                            range: import.type_name_range.clone(),
-                        });
+                        errors.push(ParseError::new(
+                            ParseErrorKind::TypeNameIsAlreadyDefined {
+                                name: import.type_name_range.to_cheap_string(),
+                            },
+                            import.type_name_range.clone(),
+                        ));
                     } else {
                         imported_components
                             .insert(name_str.to_string(), import.module_name.to_document_id());
@@ -84,10 +89,12 @@ pub fn parse(
                         || defined_components.contains(name)
                         || imported_components.contains_key(name)
                     {
-                        errors.push(ParseError::TypeNameIsAlreadyDefined {
-                            name: record.name_range.to_cheap_string(),
-                            range: record.name_range.clone(),
-                        });
+                        errors.push(ParseError::new(
+                            ParseErrorKind::TypeNameIsAlreadyDefined {
+                                name: record.name_range.to_cheap_string(),
+                            },
+                            record.name_range.clone(),
+                        ));
                     } else {
                         defined_records.insert(name.to_string());
                     }
@@ -108,10 +115,12 @@ pub fn parse(
                         || defined_components.contains(name)
                         || imported_components.contains_key(name)
                     {
-                        errors.push(ParseError::TypeNameIsAlreadyDefined {
-                            name: enum_decl.name_range.to_cheap_string(),
-                            range: enum_decl.name_range.clone(),
-                        });
+                        errors.push(ParseError::new(
+                            ParseErrorKind::TypeNameIsAlreadyDefined {
+                                name: enum_decl.name_range.to_cheap_string(),
+                            },
+                            enum_decl.name_range.clone(),
+                        ));
                     } else {
                         defined_enums.insert(name.to_string());
                     }
@@ -134,10 +143,12 @@ pub fn parse(
                         || defined_records.contains(name)
                         || defined_enums.contains(name)
                     {
-                        errors.push(ParseError::TypeNameIsAlreadyDefined {
-                            name: component.tag_name.to_cheap_string(),
-                            range: component.tag_name.clone(),
-                        });
+                        errors.push(ParseError::new(
+                            ParseErrorKind::TypeNameIsAlreadyDefined {
+                                name: component.tag_name.to_cheap_string(),
+                            },
+                            component.tag_name.clone(),
+                        ));
                     } else {
                         defined_components.insert(name.to_string());
                     }
@@ -161,10 +172,12 @@ pub fn parse(
                         || defined_records.contains(name)
                         || defined_enums.contains(name)
                     {
-                        errors.push(ParseError::TypeNameIsAlreadyDefined {
-                            name: view.name_range.to_cheap_string(),
-                            range: view.name_range.clone(),
-                        });
+                        errors.push(ParseError::new(
+                            ParseErrorKind::TypeNameIsAlreadyDefined {
+                                name: view.name_range.to_cheap_string(),
+                            },
+                            view.name_range.clone(),
+                        ));
                     } else {
                         defined_views.insert(name.to_string());
                     }
@@ -173,15 +186,24 @@ pub fn parse(
             }
             Some((_, token_range)) => {
                 if let Some(pub_r) = pub_range {
-                    errors.push(ParseError::UnexpectedPubKeyword { range: pub_r });
+                    errors.push(ParseError::new(
+                        ParseErrorKind::UnexpectedPubKeyword {},
+                        pub_r,
+                    ));
                 }
                 // Unexpected token at top level
-                errors.push(ParseError::UnexpectedTopLevelText { range: token_range });
+                errors.push(ParseError::new(
+                    ParseErrorKind::UnexpectedTopLevelText {},
+                    token_range,
+                ));
                 break;
             }
             None => {
                 if let Some(pub_r) = pub_range {
-                    errors.push(ParseError::UnexpectedPubKeyword { range: pub_r });
+                    errors.push(ParseError::new(
+                        ParseErrorKind::UnexpectedPubKeyword {},
+                        pub_r,
+                    ));
                 }
                 break; // EOF
             }
@@ -204,13 +226,17 @@ fn parse_import_declaration(
         Some((expr::Token::Identifier(_), seg_range))
         | Some((expr::Token::TypeName(_), seg_range)) => seg_range,
         Some((_, seg_range)) => {
-            errors.push(ParseError::ExpectedModulePath { range: seg_range });
+            errors.push(ParseError::new(
+                ParseErrorKind::ExpectedModulePath {},
+                seg_range,
+            ));
             return None;
         }
         None => {
-            errors.push(ParseError::ExpectedModulePath {
-                range: range.clone(),
-            });
+            errors.push(ParseError::new(
+                ParseErrorKind::ExpectedModulePath {},
+                range.clone(),
+            ));
             return None;
         }
     };
@@ -220,32 +246,37 @@ fn parse_import_declaration(
             Some((expr::Token::Identifier(_), seg_range))
             | Some((expr::Token::TypeName(_), seg_range)) => seg_range,
             Some((_, seg_range)) => {
-                errors.push(ParseError::ExpectedIdentifierAfterColonColon { range: seg_range });
+                errors.push(ParseError::new(
+                    ParseErrorKind::ExpectedIdentifierAfterColonColon {},
+                    seg_range,
+                ));
                 return None;
             }
             None => {
-                errors.push(ParseError::ExpectedIdentifierAfterColonColon {
-                    range: range.clone(),
-                });
+                errors.push(ParseError::new(
+                    ParseErrorKind::ExpectedIdentifierAfterColonColon {},
+                    range.clone(),
+                ));
                 return None;
             }
         };
         path_segments.push(segment);
     }
     if path_segments.len() < 2 {
-        errors.push(ParseError::ImportPathTooShort {
-            range: path_segments[0].clone(),
-        });
+        errors.push(ParseError::new(
+            ParseErrorKind::ImportPathTooShort {},
+            path_segments[0].clone(),
+        ));
         return None;
     }
     let type_name_range = path_segments.pop().unwrap();
     let type_name = match TypeName::from_cheap_string(type_name_range.to_cheap_string()) {
         Ok(name) => name,
         Err(e) => {
-            errors.push(ParseError::InvalidTypeName {
-                error: e,
-                range: type_name_range.clone(),
-            });
+            errors.push(ParseError::new(
+                ParseErrorKind::InvalidTypeName { error: e },
+                type_name_range.clone(),
+            ));
             return None;
         }
     };
@@ -257,10 +288,10 @@ fn parse_import_declaration(
     let module_name = match ModuleName::new(module_path_range.as_str()) {
         Ok(name) => name,
         Err(e) => {
-            errors.push(ParseError::InvalidModuleName {
-                error: e,
-                range: module_path_range.clone(),
-            });
+            errors.push(ParseError::new(
+                ParseErrorKind::InvalidModuleName { error: e },
+                module_path_range.clone(),
+            ));
             return None;
         }
     };
@@ -303,10 +334,12 @@ fn parse_record_declaration(
             expr::tokenizer::expect_token(iter, comments, errors, range, &expr::Token::Colon)?;
             let field_type = parse_type(iter, comments, errors, range)?;
             if !seen_names.insert(field_name_range.to_cheap_string()) {
-                errors.push(ParseError::DuplicateField {
-                    name: field_name_range.to_cheap_string(),
-                    range: field_name_range.clone(),
-                });
+                errors.push(ParseError::new(
+                    ParseErrorKind::DuplicateField {
+                        name: field_name_range.to_cheap_string(),
+                    },
+                    field_name_range.clone(),
+                ));
                 return None;
             }
             Some(ParsedRecordDeclarationField {
@@ -352,10 +385,12 @@ fn parse_enum_declaration(
             let (variant_name, variant_range) =
                 expr::tokenizer::expect_type_name(iter, comments, errors, range)?;
             if !seen_names.insert(variant_range.to_cheap_string()) {
-                errors.push(ParseError::DuplicateVariant {
-                    name: variant_range.to_cheap_string(),
-                    range: variant_range.clone(),
-                });
+                errors.push(ParseError::new(
+                    ParseErrorKind::DuplicateVariant {
+                        name: variant_range.to_cheap_string(),
+                    },
+                    variant_range.clone(),
+                ));
                 return None;
             }
             let fields =
@@ -415,10 +450,12 @@ fn parse_enum_variant_fields(
         expr::tokenizer::expect_token(iter, comments, errors, range, &expr::Token::Colon)?;
         let field_type = parse_type(iter, comments, errors, range)?;
         if !seen_names.insert(field_name_range.to_cheap_string()) {
-            errors.push(ParseError::DuplicateField {
-                name: field_name_range.to_cheap_string(),
-                range: field_name_range.clone(),
-            });
+            errors.push(ParseError::new(
+                ParseErrorKind::DuplicateField {
+                    name: field_name_range.to_cheap_string(),
+                },
+                field_name_range.clone(),
+            ));
             return None;
         }
         fields.push((field_name, field_name_range, field_type, examples));
@@ -460,19 +497,23 @@ fn parse_component_declaration(
         match expr::tokenizer::next_collecting_comments(iter, comments, errors) {
             Some((expr::Token::TypeName(name_str), range)) => (name_str, range),
             Some((_, range)) => {
-                errors.push(ParseError::InvalidComponentName {
+                errors.push(ParseError::new(
+                ParseErrorKind::InvalidComponentName {
                     error:
                         crate::symbols::type_name::InvalidTypeNameError::DoesNotStartWithUppercase,
-                    range,
-                });
+                },
+                range,
+            ));
                 return None;
             }
             None => {
-                errors.push(ParseError::InvalidComponentName {
+                errors.push(ParseError::new(
+                ParseErrorKind::InvalidComponentName {
                     error:
                         crate::symbols::type_name::InvalidTypeNameError::DoesNotStartWithUppercase,
-                    range: keyword_range,
-                });
+                },
+                keyword_range,
+            ));
                 return None;
             }
         };
@@ -480,10 +521,10 @@ fn parse_component_declaration(
     let component_name = match TypeName::new(&name_str) {
         Ok(n) => n,
         Err(error) => {
-            errors.push(ParseError::InvalidComponentName {
-                error,
-                range: name_range,
-            });
+            errors.push(ParseError::new(
+                ParseErrorKind::InvalidComponentName { error },
+                name_range,
+            ));
             return None;
         }
     };
@@ -557,16 +598,18 @@ fn parse_component_declaration(
             let after_rest = &items[first + 1..];
             for item in after_rest {
                 if let ParamItem::Rest { range, .. } = item {
-                    errors.push(ParseError::DuplicateRestParam {
-                        range: range.clone(),
-                    });
+                    errors.push(ParseError::new(
+                        ParseErrorKind::DuplicateRestParam {},
+                        range.clone(),
+                    ));
                 }
             }
             if after_rest.iter().any(|i| matches!(i, ParamItem::Param(_))) {
                 if let ParamItem::Rest { range, .. } = &items[first] {
-                    errors.push(ParseError::RestParamMustBeLast {
-                        range: range.clone(),
-                    });
+                    errors.push(ParseError::new(
+                        ParseErrorKind::RestParamMustBeLast {},
+                        range.clone(),
+                    ));
                 }
             }
         }
@@ -631,25 +674,31 @@ fn parse_component_declaration(
     for occ in spreads {
         match rest_name {
             Some(rn) if occ.spread_name == *rn => valid.push(occ),
-            _ => errors.push(ParseError::SpreadNotDeclaredRest {
-                name: occ.spread_name.clone(),
-                range: occ.target.spread_range().clone(),
-            }),
+            _ => errors.push(ParseError::new(
+                ParseErrorKind::SpreadNotDeclaredRest {
+                    name: occ.spread_name.clone(),
+                },
+                occ.target.spread_range().clone(),
+            )),
         }
     }
     for occ in valid.iter().skip(1) {
-        errors.push(ParseError::RestSpreadMoreThanOnce {
-            name: occ.spread_name.clone(),
-            range: occ.target.spread_range().clone(),
-        });
+        errors.push(ParseError::new(
+            ParseErrorKind::RestSpreadMoreThanOnce {
+                name: occ.spread_name.clone(),
+            },
+            occ.target.spread_range().clone(),
+        ));
     }
     if let Some((name, range)) = rest_param.as_ref() {
         if valid.is_empty() {
-            errors.push(ParseError::RestNeverSpread {
-                component: component_name.clone(),
-                name: name.clone(),
-                range: range.clone(),
-            });
+            errors.push(ParseError::new(
+                ParseErrorKind::RestNeverSpread {
+                    component: component_name.clone(),
+                    name: name.clone(),
+                },
+                range.clone(),
+            ));
         }
     }
     let rest_target = valid.into_iter().next().map(|occ| occ.target);
@@ -693,17 +742,21 @@ fn parse_view_declaration(
         match expr::tokenizer::next_collecting_comments(iter, comments, errors) {
             Some((expr::Token::TypeName(name_str), range)) => (name_str, range),
             Some((expr::Token::Reserved(name), range)) => {
-                errors.push(ParseError::ReservedViewName { name, range });
+                errors.push(ParseError::new(
+                    ParseErrorKind::ReservedViewName { name },
+                    range,
+                ));
                 return None;
             }
             Some((_, range)) => {
-                errors.push(ParseError::InvalidViewName { range });
+                errors.push(ParseError::new(ParseErrorKind::InvalidViewName {}, range));
                 return None;
             }
             None => {
-                errors.push(ParseError::InvalidViewName {
-                    range: keyword_range,
-                });
+                errors.push(ParseError::new(
+                    ParseErrorKind::InvalidViewName {},
+                    keyword_range,
+                ));
                 return None;
             }
         };
@@ -711,9 +764,10 @@ fn parse_view_declaration(
     let name = match TypeName::new(&name_str) {
         Ok(n) => n,
         Err(_) => {
-            errors.push(ParseError::InvalidViewName {
-                range: name_range.clone(),
-            });
+            errors.push(ParseError::new(
+                ParseErrorKind::InvalidViewName {},
+                name_range.clone(),
+            ));
             return None;
         }
     };
@@ -738,9 +792,10 @@ fn parse_view_declaration(
                 if let Some(assign_range) =
                     expr::tokenizer::advance_if(iter, comments, errors, expr::Token::Assign)
                 {
-                    errors.push(ParseError::DefaultValueNotAllowedOnView {
-                        range: assign_range,
-                    });
+                    errors.push(ParseError::new(
+                        ParseErrorKind::DefaultValueNotAllowedOnView {},
+                        assign_range,
+                    ));
                     expr::parse_expr::parse_primary(iter, comments, errors, range);
                 }
                 Some(parsed_ast::ParsedParameter {
@@ -794,10 +849,12 @@ fn parse_view_declaration(
     let range = start_range.to(body_end);
     // Views cannot declare a rest parameter, so any spread in the body fails to name one.
     for occ in &spreads {
-        errors.push(ParseError::SpreadNotDeclaredRest {
-            name: occ.spread_name.clone(),
-            range: occ.target.spread_range().clone(),
-        });
+        errors.push(ParseError::new(
+            ParseErrorKind::SpreadNotDeclaredRest {
+                name: occ.spread_name.clone(),
+            },
+            occ.target.spread_range().clone(),
+        ));
     }
     Some(ParsedViewDeclaration {
         name,
@@ -908,10 +965,12 @@ fn construct_node(
             let element = match HtmlElement::parse(tag_name.as_str()) {
                 Some(element) => element,
                 None => {
-                    errors.push(ParseError::UnknownHtmlElement {
-                        tag: tag_name.to_cheap_string(),
-                        range: tag_name.clone(),
-                    });
+                    errors.push(ParseError::new(
+                        ParseErrorKind::UnknownHtmlElement {
+                            tag: tag_name.to_cheap_string(),
+                        },
+                        tag_name.clone(),
+                    ));
                     return None;
                 }
             };
@@ -940,9 +999,10 @@ fn construct_node(
                     let mut iter = e.cursor().peekable();
                     expr::parse_expr::parse_expr(&mut iter, comments, errors, &e)
                 } else {
-                    errors.push(ParseError::MissingMatchExpression {
-                        range: opening_tag_range.clone(),
-                    });
+                    errors.push(ParseError::new(
+                        ParseErrorKind::MissingMatchExpression {},
+                        opening_tag_range.clone(),
+                    ));
                     None
                 };
                 let Some(subject) = subject else {
@@ -980,9 +1040,10 @@ fn construct_node(
                             ..
                         } if case_tag_name.as_str() == "case" => {
                             let Some(pattern_range) = case_expression.clone() else {
-                                errors.push(ParseError::MissingCasePattern {
-                                    range: case_opening_range.clone(),
-                                });
+                                errors.push(ParseError::new(
+                                    ParseErrorKind::MissingCasePattern {},
+                                    case_opening_range.clone(),
+                                ));
                                 continue;
                             };
                             let pattern = {
@@ -1020,9 +1081,10 @@ fn construct_node(
                         }
                         // Error on other nodes
                         _ => {
-                            errors.push(ParseError::InvalidMatchChild {
-                                range: child_tree.range.clone(),
-                            });
+                            errors.push(ParseError::new(
+                                ParseErrorKind::InvalidMatchChild {},
+                                child_tree.range.clone(),
+                            ));
                         }
                     }
                 }
@@ -1058,9 +1120,10 @@ fn construct_node(
                         let mut iter = e.cursor().peekable();
                         expr::parse_expr::parse_expr(&mut iter, comments, errors, &e)
                     } else {
-                        errors.push(ParseError::MissingIfExpression {
-                            range: opening_tag_range.clone(),
-                        });
+                        errors.push(ParseError::new(
+                            ParseErrorKind::MissingIfExpression {},
+                            opening_tag_range.clone(),
+                        ));
                         None
                     }?;
                     Some(ParsedNode::If {
@@ -1077,9 +1140,10 @@ fn construct_node(
                         let mut iter = e.cursor().peekable();
                         parse_loop_header(&mut iter, comments, errors, &e)
                     } else {
-                        errors.push(ParseError::MissingForExpression {
-                            range: opening_tag_range.clone(),
-                        });
+                        errors.push(ParseError::new(
+                            ParseErrorKind::MissingForExpression {},
+                            opening_tag_range.clone(),
+                        ));
                         None
                     };
                     let loop_header = parse_result?;
@@ -1096,9 +1160,10 @@ fn construct_node(
                 "let" => {
                     errors.extend(disallow_attributes(&attributes, &tag_name));
                     let Some(bindings_range) = expression else {
-                        errors.push(ParseError::MissingLetBinding {
-                            range: opening_tag_range.clone(),
-                        });
+                        errors.push(ParseError::new(
+                            ParseErrorKind::MissingLetBinding {},
+                            opening_tag_range.clone(),
+                        ));
                         return None;
                     };
                     let parse_result = {
@@ -1130,20 +1195,22 @@ fn construct_node(
                     let component_name = match TypeName::new(name) {
                         Ok(name) => name,
                         Err(error) => {
-                            errors.push(ParseError::InvalidComponentName {
-                                error,
-                                range: tag_name.clone(),
-                            });
+                            errors.push(ParseError::new(
+                                ParseErrorKind::InvalidComponentName { error },
+                                tag_name.clone(),
+                            ));
                             return None;
                         }
                     };
 
                     // Error if bare expression {..} is present on component invocation
                     if let Some(expr_range) = &expression {
-                        errors.push(ParseError::UnexpectedComponentExpression {
-                            tag_name: tag_name.to_cheap_string(),
-                            range: expr_range.clone(),
-                        });
+                        errors.push(ParseError::new(
+                            ParseErrorKind::UnexpectedComponentExpression {
+                                tag_name: tag_name.to_cheap_string(),
+                            },
+                            expr_range.clone(),
+                        ));
                     }
 
                     let parsed_args = parse_attributes(&attributes, comments, errors);
@@ -1187,10 +1254,12 @@ fn construct_node(
                             HtmlElement::Custom(tag_name.to_cheap_string())
                         }
                         None => {
-                            errors.push(ParseError::UnknownHtmlElement {
-                                tag: tag_name.to_cheap_string(),
-                                range: tag_name.clone(),
-                            });
+                            errors.push(ParseError::new(
+                                ParseErrorKind::UnknownHtmlElement {
+                                    tag: tag_name.to_cheap_string(),
+                                },
+                                tag_name.clone(),
+                            ));
                             return None;
                         }
                     };
@@ -1411,11 +1480,13 @@ fn parse_attribute(
                     range: range.clone(),
                 }),
                 Err(error) => {
-                    errors.push(ParseError::InvalidVariableName {
-                        name: name.to_cheap_string(),
-                        error,
-                        range: name.clone(),
-                    });
+                    errors.push(ParseError::new(
+                        ParseErrorKind::InvalidVariableName {
+                            name: name.to_cheap_string(),
+                            error,
+                        },
+                        name.clone(),
+                    ));
                     None
                 }
             }
@@ -1440,11 +1511,13 @@ fn disallow_attributes<'a>(
 ) -> impl Iterator<Item = ParseError> + 'a {
     attributes.iter().map(move |item| {
         let (name, range) = (item.name().to_cheap_string(), item.range().clone());
-        ParseError::UnrecognizedAttribute {
-            tag_name: tag_name.to_cheap_string(),
-            attr_name: name,
+        ParseError::new(
+            ParseErrorKind::UnrecognizedAttribute {
+                tag_name: tag_name.to_cheap_string(),
+                attr_name: name,
+            },
             range,
-        }
+        )
     })
 }
 

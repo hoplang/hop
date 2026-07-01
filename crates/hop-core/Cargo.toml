@@ -23,6 +23,9 @@ tempfile = "3.8"
 expect-test = "1.5"
 indoc = "2.0"
 
+[lints.rust]
+unnameable_types = "warn"
+
 [lints.clippy]
 too_many_arguments = "allow"
 collapsible_if = "allow"

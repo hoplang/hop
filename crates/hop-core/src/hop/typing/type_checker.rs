@@ -18,7 +18,7 @@ use crate::html::HtmlElement;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
-use crate::type_error::TypeError;
+use crate::type_error::{TypeError, TypeErrorKind};
 use crate::variable_scope::VariableScope;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -46,7 +46,7 @@ pub fn typecheck(
     asset_references: &mut HashMap<DocumentId, Vec<AssetReference>>,
 ) {
     for module in modules {
-        let module_errors = errors.entry(module.document_id.clone()).or_default();
+        let mut module_errors: Vec<TypeError> = Vec::new();
         let module_annotations = annotations.entry(module.document_id.clone()).or_default();
         let module_definition_links = definition_links
             .entry(module.document_id.clone())
@@ -55,7 +55,6 @@ pub fn typecheck(
             .entry(module.document_id.clone())
             .or_default();
 
-        module_errors.clear();
         module_annotations.clear();
         module_definition_links.clear();
         module_asset_references.clear();
@@ -63,7 +62,7 @@ pub fn typecheck(
         let typed_ast = typecheck_module(
             module,
             state,
-            module_errors,
+            &mut module_errors,
             module_annotations,
             module_definition_links,
             module_asset_references,
@@ -85,6 +84,8 @@ pub fn typecheck(
                 ));
             }
         }
+
+        errors.insert(module.document_id.clone(), module_errors);
     }
 }
 
@@ -119,29 +120,35 @@ fn typecheck_module(
             }) => {
                 let Some(imported_module_type_info) = state.get(&imported_module.to_document_id())
                 else {
-                    errors.push(TypeError::ModuleNotFound {
-                        module: imported_module.clone(),
-                        range: import_path.clone(),
-                    });
+                    errors.push(TypeError::new(
+                        TypeErrorKind::ModuleNotFound {
+                            module: imported_module.clone(),
+                        },
+                        import_path.clone(),
+                    ));
                     continue;
                 };
 
                 let Some((typ, def_range, is_pub)) = imported_module_type_info.get(imported_name)
                 else {
-                    errors.push(TypeError::UndeclaredType {
-                        module: imported_module.clone(),
-                        type_name: imported_name.clone(),
-                        range: imported_name_range.clone(),
-                    });
+                    errors.push(TypeError::new(
+                        TypeErrorKind::UndeclaredType {
+                            module: imported_module.clone(),
+                            type_name: imported_name.clone(),
+                        },
+                        imported_name_range.clone(),
+                    ));
                     continue;
                 };
 
                 if !is_pub {
-                    errors.push(TypeError::NotPublic {
-                        module: imported_module.clone(),
-                        type_name: imported_name.clone(),
-                        range: imported_name_range.clone(),
-                    });
+                    errors.push(TypeError::new(
+                        TypeErrorKind::NotPublic {
+                            module: imported_module.clone(),
+                            type_name: imported_name.clone(),
+                        },
+                        imported_name_range.clone(),
+                    ));
                     continue;
                 }
 
@@ -193,12 +200,14 @@ fn typecheck_module(
                                 )) {
                                     let default_type = typed_default.get_type();
                                     if *default_type != *param_type {
-                                        errors.push(TypeError::DefaultValueTypeMismatch {
-                                            param_name: param.var_name.clone(),
-                                            expected: param_type.clone(),
-                                            found: default_type,
-                                            range: default_expr.range().clone(),
-                                        });
+                                        errors.push(TypeError::new(
+                                            TypeErrorKind::DefaultValueTypeMismatch {
+                                                param_name: param.var_name.clone(),
+                                                expected: param_type.clone(),
+                                                found: default_type,
+                                            },
+                                            default_expr.range().clone(),
+                                        ));
                                         None
                                     } else {
                                         Some(typed_default)
@@ -282,10 +291,10 @@ fn typecheck_module(
                 for param in pushed_params.iter().rev() {
                     let (name, _, accessed) = var_env.pop();
                     if !accessed {
-                        errors.push(TypeError::UnusedVariable {
-                            var_name: name,
-                            range: param.var_name_range.clone(),
-                        })
+                        errors.push(TypeError::new(
+                            TypeErrorKind::UnusedVariable { var_name: name },
+                            param.var_name_range.clone(),
+                        ))
                     }
                 }
 
@@ -304,10 +313,12 @@ fn typecheck_module(
                 }
 
                 if is_recursive && rest_param.is_some() {
-                    errors.push(TypeError::RecursiveComponentWithRest {
-                        component: component_name.clone(),
-                        range: tag_name.clone(),
-                    });
+                    errors.push(TypeError::new(
+                        TypeErrorKind::RecursiveComponentWithRest {
+                            component: component_name.clone(),
+                        },
+                        tag_name.clone(),
+                    ));
                 }
 
                 let (forwarded, tail) = match rest_target {
@@ -331,10 +342,12 @@ fn typecheck_module(
                     }) => match type_env.lookup(callee) {
                         Some((TypeBinding::Component(callee_sig), _)) => {
                             if callee_sig.is_recursive {
-                                errors.push(TypeError::RestForwardedIntoRecursive {
-                                    component: callee.clone(),
-                                    range: spread_range.clone(),
-                                });
+                                errors.push(TypeError::new(
+                                    TypeErrorKind::RestForwardedIntoRecursive {
+                                        component: callee.clone(),
+                                    },
+                                    spread_range.clone(),
+                                ));
                                 (Vec::new(), Tail::Closed)
                             } else {
                                 let tail = match callee_sig.tail.clone() {
@@ -608,10 +621,10 @@ fn typecheck_module(
                 for param in pushed_params.iter().rev() {
                     let (name, _, accessed) = var_env.pop();
                     if !accessed {
-                        errors.push(TypeError::UnusedVariable {
-                            var_name: name,
-                            range: param.var_name_range.clone(),
-                        })
+                        errors.push(TypeError::new(
+                            TypeErrorKind::UnusedVariable { var_name: name },
+                            param.var_name_range.clone(),
+                        ))
                     }
                 }
 
@@ -661,10 +674,12 @@ fn typecheck_module(
     // Detect unused imports
     for (imported_name, import_range) in &imported_names {
         if !type_env.has_been_accessed(imported_name) {
-            errors.push(TypeError::UnusedImport {
-                import_name: imported_name.clone(),
-                range: import_range.clone(),
-            });
+            errors.push(TypeError::new(
+                TypeErrorKind::UnusedImport {
+                    import_name: imported_name.clone(),
+                },
+                import_range.clone(),
+            ));
         }
     }
 
@@ -720,10 +735,12 @@ fn typecheck_node(
 
             let condition_type = typed_condition.get_type();
             if *condition_type != Type::Bool {
-                errors.push(TypeError::ConditionTypeMismatch {
-                    found: condition_type,
-                    range: condition.range().clone(),
-                })
+                errors.push(TypeError::new(
+                    TypeErrorKind::ConditionTypeMismatch {
+                        found: condition_type,
+                    },
+                    condition.range().clone(),
+                ))
             }
 
             Some(TypedNode::If {
@@ -755,10 +772,10 @@ fn typecheck_node(
                     let element_type = match array_type.as_ref() {
                         Type::Array(inner) => inner.clone(),
                         _ => {
-                            errors.push(TypeError::IterateeTypeMismatch {
-                                found: array_type,
-                                range: array_expr.range().clone(),
-                            });
+                            errors.push(TypeError::new(
+                                TypeErrorKind::IterateeTypeMismatch { found: array_type },
+                                array_expr.range().clone(),
+                            ));
                             return None;
                         }
                     };
@@ -787,17 +804,17 @@ fn typecheck_node(
                     // Both bounds must be Int
                     let start_type = typed_start.get_type();
                     if *start_type != Type::Int {
-                        errors.push(TypeError::RangeBoundTypeMismatch {
-                            found: start_type,
-                            range: start.range().clone(),
-                        });
+                        errors.push(TypeError::new(
+                            TypeErrorKind::RangeBoundTypeMismatch { found: start_type },
+                            start.range().clone(),
+                        ));
                     }
                     let end_type = typed_end.get_type();
                     if *end_type != Type::Int {
-                        errors.push(TypeError::RangeBoundTypeMismatch {
-                            found: end_type,
-                            range: end.range().clone(),
-                        });
+                        errors.push(TypeError::new(
+                            TypeErrorKind::RangeBoundTypeMismatch { found: end_type },
+                            end.range().clone(),
+                        ));
                     }
 
                     (
@@ -826,10 +843,12 @@ fn typecheck_node(
                         true
                     }
                     Err(_) => {
-                        errors.push(TypeError::VariableAlreadyDefined {
-                            name: var_name.clone(),
-                            range: var_name_range.clone(),
-                        });
+                        errors.push(TypeError::new(
+                            TypeErrorKind::VariableAlreadyDefined {
+                                name: var_name.clone(),
+                            },
+                            var_name_range.clone(),
+                        ));
                         false
                     }
                 }
@@ -858,10 +877,10 @@ fn typecheck_node(
                 let (name, _, accessed) = var_env.pop();
                 if !accessed {
                     if let Some(var_name_range) = var_name_range {
-                        errors.push(TypeError::UnusedVariable {
-                            var_name: name,
-                            range: var_name_range.clone(),
-                        })
+                        errors.push(TypeError::new(
+                            TypeErrorKind::UnusedVariable { var_name: name },
+                            var_name_range.clone(),
+                        ))
                     }
                 }
             }
@@ -912,10 +931,12 @@ fn typecheck_node(
                             pushed_bindings.push(binding);
                         }
                         Err(_) => {
-                            errors.push(TypeError::VariableAlreadyDefined {
-                                name: binding.var_name.clone(),
-                                range: binding.var_name_range.clone(),
-                            });
+                            errors.push(TypeError::new(
+                                TypeErrorKind::VariableAlreadyDefined {
+                                    name: binding.var_name.clone(),
+                                },
+                                binding.var_name_range.clone(),
+                            ));
                         }
                     }
                 }
@@ -940,11 +961,13 @@ fn typecheck_node(
                         // Validate that the value type matches the declared type.
                         let value_type = typed_value.get_type();
                         if *value_type != **declared {
-                            errors.push(TypeError::LetBindingTypeMismatch {
-                                expected: declared.clone(),
-                                found: value_type,
-                                range: binding.value_expr.range().clone(),
-                            });
+                            errors.push(TypeError::new(
+                                TypeErrorKind::LetBindingTypeMismatch {
+                                    expected: declared.clone(),
+                                    found: value_type,
+                                },
+                                binding.value_expr.range().clone(),
+                            ));
                         }
                     }
                     None => {
@@ -964,10 +987,12 @@ fn typecheck_node(
                                 pushed_bindings.push(binding);
                             }
                             Err(_) => {
-                                errors.push(TypeError::VariableAlreadyDefined {
-                                    name: binding.var_name.clone(),
-                                    range: binding.var_name_range.clone(),
-                                });
+                                errors.push(TypeError::new(
+                                    TypeErrorKind::VariableAlreadyDefined {
+                                        name: binding.var_name.clone(),
+                                    },
+                                    binding.var_name_range.clone(),
+                                ));
                             }
                         }
                     }
@@ -997,10 +1022,10 @@ fn typecheck_node(
             for binding in pushed_bindings.iter().rev() {
                 let (name, _, accessed) = var_env.pop();
                 if !accessed {
-                    errors.push(TypeError::UnusedVariable {
-                        var_name: name,
-                        range: binding.var_name_range.clone(),
-                    })
+                    errors.push(TypeError::new(
+                        TypeErrorKind::UnusedVariable { var_name: name },
+                        binding.var_name_range.clone(),
+                    ))
                 }
             }
 
@@ -1054,10 +1079,12 @@ fn typecheck_node(
                         def_range.clone(),
                     ),
                     _ => {
-                        errors.push(TypeError::UndefinedComponent {
-                            tag_name: component_name.clone(),
-                            range: component_name_opening_range.clone(),
-                        });
+                        errors.push(TypeError::new(
+                            TypeErrorKind::UndefinedComponent {
+                                tag_name: component_name.clone(),
+                            },
+                            component_name_opening_range.clone(),
+                        ));
                         return None;
                     }
                 };
@@ -1176,10 +1203,10 @@ fn typecheck_node(
             )) {
                 let expr_type = typed_expr.get_type();
                 if *expr_type != Type::String && *expr_type != Type::Fragment {
-                    errors.push(TypeError::TextExpressionTypeMismatch {
-                        found: expr_type,
-                        range: expression.range().clone(),
-                    });
+                    errors.push(TypeError::new(
+                        TypeErrorKind::TextExpressionTypeMismatch { found: expr_type },
+                        expression.range().clone(),
+                    ));
                 }
                 Some(TypedNode::TextExpression {
                     expression: typed_expr,
@@ -1237,10 +1264,10 @@ fn typecheck_node(
                                 pushed_count += 1;
                             }
                             Err(_) => {
-                                errors.push(TypeError::VariableAlreadyDefined {
-                                    name: name.clone(),
-                                    range: bind_range.clone(),
-                                });
+                                errors.push(TypeError::new(
+                                    TypeErrorKind::VariableAlreadyDefined { name: name.clone() },
+                                    bind_range.clone(),
+                                ));
                             }
                         }
                     }
@@ -1270,10 +1297,12 @@ fn typecheck_node(
                             if let Some((_, _, bind_range)) =
                                 bindings.iter().find(|(n, _, _)| n == &name)
                             {
-                                errors.push(TypeError::UnusedVariable {
-                                    var_name: name.clone(),
-                                    range: bind_range.clone(),
-                                });
+                                errors.push(TypeError::new(
+                                    TypeErrorKind::UnusedVariable {
+                                        var_name: name.clone(),
+                                    },
+                                    bind_range.clone(),
+                                ));
                             }
                         }
                     }
@@ -1333,11 +1362,13 @@ fn typecheck_attribute_value(
                 asset_references,
             ))?;
             if *typed_expr.get_type() != Type::String {
-                errors.push(TypeError::ArgumentTypeMismatch {
-                    expected: Arc::new(Type::String),
-                    found: typed_expr.get_type(),
-                    range: expr.range().clone(),
-                });
+                errors.push(TypeError::new(
+                    TypeErrorKind::ArgumentTypeMismatch {
+                        expected: Arc::new(Type::String),
+                        found: typed_expr.get_type(),
+                    },
+                    expr.range().clone(),
+                ));
             }
             Some(TypedAttributeValue::Expression(typed_expr))
         }
@@ -1383,10 +1414,12 @@ fn typecheck_arguments(
         has_body && children_param.is_some() && !has_explicit_children_arg;
 
     if has_body && children_param.is_none() {
-        errors.push(TypeError::ComponentDoesNotAcceptChildren {
-            component: component_name.clone(),
-            range: component_name_opening_range.clone(),
-        });
+        errors.push(TypeError::new(
+            TypeErrorKind::ComponentDoesNotAcceptChildren {
+                component: component_name.clone(),
+            },
+            component_name_opening_range.clone(),
+        ));
     }
 
     let rest_spread = args.iter().find_map(|a| match a {
@@ -1442,11 +1475,13 @@ fn typecheck_arguments(
                         value,
                     });
                 } else {
-                    errors.push(TypeError::ComponentDoesNotAcceptAttribute {
-                        component: component_name.clone(),
-                        attr: arg_name.to_string(),
-                        range: arg_name_range.clone(),
-                    });
+                    errors.push(TypeError::new(
+                        TypeErrorKind::ComponentDoesNotAcceptAttribute {
+                            component: component_name.clone(),
+                            attr: arg_name.to_string(),
+                        },
+                        arg_name_range.clone(),
+                    ));
                 }
                 continue;
             }
@@ -1489,11 +1524,13 @@ fn typecheck_arguments(
         let arg_type = typed_expr.get_type();
 
         if *arg_type != **param_type {
-            errors.push(TypeError::ArgumentTypeMismatch {
-                expected: param_type.clone(),
-                found: arg_type,
-                range: arg_expr.range().clone(),
-            });
+            errors.push(TypeError::new(
+                TypeErrorKind::ArgumentTypeMismatch {
+                    expected: param_type.clone(),
+                    found: arg_type,
+                },
+                arg_expr.range().clone(),
+            ));
             continue;
         }
 
@@ -1504,9 +1541,10 @@ fn typecheck_arguments(
     }
 
     if has_body && has_explicit_children_arg {
-        errors.push(TypeError::ChildContentAmbiguous {
-            range: component_name_opening_range.clone(),
-        });
+        errors.push(TypeError::new(
+            TypeErrorKind::ChildContentAmbiguous {},
+            component_name_opening_range.clone(),
+        ));
     }
 
     let children_var = if synthesize_children_arg {
@@ -1539,10 +1577,12 @@ fn typecheck_arguments(
         .map(|p| p.name.as_str())
         .collect();
     if !missing_args.is_empty() {
-        errors.push(TypeError::MissingArguments {
-            args: missing_args.join(", "),
-            range: component_name_opening_range.clone(),
-        });
+        errors.push(TypeError::new(
+            TypeErrorKind::MissingArguments {
+                args: missing_args.join(", "),
+            },
+            component_name_opening_range.clone(),
+        ));
     }
 
     // Resolve the call arguments into parameter-definition order, filling
@@ -1615,11 +1655,13 @@ fn typecheck_html_attribute(
     asset_references: &mut Vec<AssetReference>,
 ) -> Option<TypedAttribute> {
     if !element.accepts_attribute(name.as_str()) {
-        errors.push(TypeError::ElementDoesNotAcceptAttribute {
-            element: element.as_str().to_string(),
-            attr: name.as_str().to_string(),
-            range: name.clone(),
-        });
+        errors.push(TypeError::new(
+            TypeErrorKind::ElementDoesNotAcceptAttribute {
+                element: element.as_str().to_string(),
+                attr: name.as_str().to_string(),
+            },
+            name.clone(),
+        ));
         return None;
     }
 
@@ -1800,56 +1842,62 @@ fn validate_examples_annotation(
     let Some(examples) = examples else { return };
     if let Some(pattern) = &examples.pattern {
         if **resolved_type != Type::String {
-            errors.push(TypeError::PatternOnNonString {
-                found: resolved_type.clone(),
-                range: range.clone(),
-            });
+            errors.push(TypeError::new(
+                TypeErrorKind::PatternOnNonString {
+                    found: resolved_type.clone(),
+                },
+                range.clone(),
+            ));
         } else if let Err(e) = regex_syntax::parse(pattern) {
-            errors.push(TypeError::InvalidPatternRegex {
-                message: e.to_string(),
-                range: range.clone(),
-            });
+            errors.push(TypeError::new(
+                TypeErrorKind::InvalidPatternRegex {
+                    message: e.to_string(),
+                },
+                range.clone(),
+            ));
         }
     }
     if examples.min.is_some() || examples.max.is_some() {
         if **resolved_type != Type::Int {
-            errors.push(TypeError::MinMaxOnNonInt {
-                found: resolved_type.clone(),
-                range: range.clone(),
-            });
+            errors.push(TypeError::new(
+                TypeErrorKind::MinMaxOnNonInt {
+                    found: resolved_type.clone(),
+                },
+                range.clone(),
+            ));
         }
         if let (Some(min), Some(max)) = (examples.min, examples.max) {
             if min > max {
-                errors.push(TypeError::MinGreaterThanMax {
-                    min,
-                    max,
-                    range: range.clone(),
-                });
+                errors.push(TypeError::new(
+                    TypeErrorKind::MinGreaterThanMax { min, max },
+                    range.clone(),
+                ));
             }
         }
     }
     if examples.min_len.is_some() || examples.max_len.is_some() {
         if !matches!(**resolved_type, Type::Array(_)) {
-            errors.push(TypeError::MinMaxLenOnNonArray {
-                found: resolved_type.clone(),
-                range: range.clone(),
-            });
+            errors.push(TypeError::new(
+                TypeErrorKind::MinMaxLenOnNonArray {
+                    found: resolved_type.clone(),
+                },
+                range.clone(),
+            ));
         }
         for value in [examples.min_len, examples.max_len].into_iter().flatten() {
             if value < 0 {
-                errors.push(TypeError::NegativeLen {
-                    value,
-                    range: range.clone(),
-                });
+                errors.push(TypeError::new(
+                    TypeErrorKind::NegativeLen { value },
+                    range.clone(),
+                ));
             }
         }
         if let (Some(min_len), Some(max_len)) = (examples.min_len, examples.max_len) {
             if min_len > max_len {
-                errors.push(TypeError::MinLenGreaterThanMaxLen {
-                    min_len,
-                    max_len,
-                    range: range.clone(),
-                });
+                errors.push(TypeError::new(
+                    TypeErrorKind::MinLenGreaterThanMaxLen { min_len, max_len },
+                    range.clone(),
+                ));
             }
         }
     }

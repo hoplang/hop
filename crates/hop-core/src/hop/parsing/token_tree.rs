@@ -4,7 +4,7 @@ use std::iter::Peekable;
 use super::tokenizer::{Token, Tokenizer};
 use crate::document::{DocumentCursor, DocumentRange};
 use crate::html::is_void_element;
-use crate::parse_error::ParseError;
+use crate::parse_error::{ParseError, ParseErrorKind};
 
 /// A TokenTree represents a tree of tokens.
 ///
@@ -97,15 +97,19 @@ pub fn parse_tree(
             Token::ClosingTag { ref tag_name, .. } => {
                 // Top-level closing tag is always an error - report and continue loop
                 if is_void_element(tag_name.as_str()) {
-                    errors.push(ParseError::ClosedVoidTag {
-                        tag: tag_name.to_cheap_string(),
-                        range: token.range().clone(),
-                    });
+                    errors.push(ParseError::new(
+                        ParseErrorKind::ClosedVoidTag {
+                            tag: tag_name.to_cheap_string(),
+                        },
+                        token.range().clone(),
+                    ));
                 } else {
-                    errors.push(ParseError::UnmatchedClosingTag {
-                        tag: tag_name.to_cheap_string(),
-                        range: token.range().clone(),
-                    });
+                    errors.push(ParseError::new(
+                        ParseErrorKind::UnmatchedClosingTag {
+                            tag: tag_name.to_cheap_string(),
+                        },
+                        token.range().clone(),
+                    ));
                 }
             }
         }
@@ -161,26 +165,32 @@ fn parse_nested_tree(
 
             Token::ClosingTag { ref tag_name, .. } => {
                 if is_void_element(tag_name.as_str()) {
-                    errors.push(ParseError::ClosedVoidTag {
-                        tag: tag_name.to_cheap_string(),
-                        range: token.range().clone(),
-                    });
+                    errors.push(ParseError::new(
+                        ParseErrorKind::ClosedVoidTag {
+                            tag: tag_name.to_cheap_string(),
+                        },
+                        token.range().clone(),
+                    ));
                 } else if !stack
                     .iter()
                     .any(|el| el.tag_name.as_str() == tag_name.as_str())
                 {
-                    errors.push(ParseError::UnmatchedClosingTag {
-                        tag: tag_name.to_cheap_string(),
-                        range: token.range().clone(),
-                    });
+                    errors.push(ParseError::new(
+                        ParseErrorKind::UnmatchedClosingTag {
+                            tag: tag_name.to_cheap_string(),
+                        },
+                        token.range().clone(),
+                    ));
                 } else {
                     // Pop until we find the matching tag
                     while stack.last().unwrap().tag_name.as_str() != tag_name.as_str() {
                         let unclosed = stack.pop().unwrap();
-                        errors.push(ParseError::UnclosedTag {
-                            tag: unclosed.tag_name.to_cheap_string(),
-                            range: unclosed.tag_name.clone(),
-                        });
+                        errors.push(ParseError::new(
+                            ParseErrorKind::UnclosedTag {
+                                tag: unclosed.tag_name.to_cheap_string(),
+                            },
+                            unclosed.tag_name.clone(),
+                        ));
                         stack.last_mut().unwrap().tree.append_tree(unclosed.tree);
                     }
 
@@ -200,18 +210,22 @@ fn parse_nested_tree(
     // EOF with unclosed tags - collapse everything onto the root
     while stack.len() > 1 {
         let unclosed = stack.pop().unwrap();
-        errors.push(ParseError::UnclosedTag {
-            tag: unclosed.tag_name.to_cheap_string(),
-            range: unclosed.tag_name.clone(),
-        });
+        errors.push(ParseError::new(
+            ParseErrorKind::UnclosedTag {
+                tag: unclosed.tag_name.to_cheap_string(),
+            },
+            unclosed.tag_name.clone(),
+        ));
         stack.last_mut().unwrap().tree.append_tree(unclosed.tree);
     }
 
     let unclosed = stack.pop().unwrap();
-    errors.push(ParseError::UnclosedTag {
-        tag: unclosed.tag_name.to_cheap_string(),
-        range: unclosed.tag_name.clone(),
-    });
+    errors.push(ParseError::new(
+        ParseErrorKind::UnclosedTag {
+            tag: unclosed.tag_name.to_cheap_string(),
+        },
+        unclosed.tag_name.clone(),
+    ));
     unclosed.tree
 }
 

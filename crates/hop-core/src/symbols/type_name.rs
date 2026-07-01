@@ -65,11 +65,6 @@ impl TypeName {
     pub fn as_str(&self) -> &str {
         self.value.as_str()
     }
-
-    /// Get a clone of the inner CheapString
-    pub fn to_cheap_string(&self) -> CheapString {
-        self.value.clone()
-    }
 }
 
 impl Display for TypeName {
@@ -97,19 +92,6 @@ impl AsRef<str> for TypeName {
 }
 
 impl TypeName {
-    /// Convert the type name to PascalCase
-    ///
-    /// Since TypeName is already in PascalCase, this just returns a copy of the string.
-    /// This method exists for clarity and consistency with other case conversion methods.
-    ///
-    /// Examples:
-    /// - "UserProfile" -> "UserProfile"
-    /// - "Button" -> "Button"
-    /// - "NavBar" -> "NavBar"
-    pub fn to_pascal_case(&self) -> String {
-        self.value.as_str().to_string()
-    }
-
     /// Convert the type name to snake_case
     ///
     /// Examples:

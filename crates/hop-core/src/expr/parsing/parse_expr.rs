@@ -15,7 +15,7 @@ use super::tokenizer::{
     expect_variable_name, next_collecting_comments as next, next_if, parse_delimited_list,
     peek_past_comments as peek,
 };
-use crate::parse_error::ParseError;
+use crate::parse_error::{ParseError, ParseErrorKind};
 
 pub fn parse_expr(
     iter: &mut Peekable<DocumentCursor>,
@@ -263,11 +263,10 @@ pub fn parse_primary(
                     value: var_name,
                 },
                 Err(error) => {
-                    errors.push(ParseError::InvalidVariableName {
-                        name,
-                        error,
-                        range: name_range,
-                    });
+                    errors.push(ParseError::new(
+                        ParseErrorKind::InvalidVariableName { name, error },
+                        name_range,
+                    ));
                     return None;
                 }
             }
@@ -276,10 +275,10 @@ pub fn parse_primary(
             let type_name = match TypeName::from_cheap_string(name) {
                 Ok(type_name) => type_name,
                 Err(error) => {
-                    errors.push(ParseError::InvalidTypeName {
-                        error,
-                        range: name_range,
-                    });
+                    errors.push(ParseError::new(
+                        ParseErrorKind::InvalidTypeName { error },
+                        name_range,
+                    ));
                     return None;
                 }
             };
@@ -340,24 +339,27 @@ pub fn parse_primary(
             let (method_name, method_range) = match next(iter, comments, errors) {
                 Some((Token::Identifier(name), name_range)) => (name, name_range),
                 Some((token, token_range)) => {
-                    errors.push(ParseError::UnexpectedToken {
-                        token,
-                        range: token_range,
-                    });
+                    errors.push(ParseError::new(
+                        ParseErrorKind::UnexpectedToken { token },
+                        token_range,
+                    ));
                     return None;
                 }
                 None => {
-                    errors.push(ParseError::UnexpectedEof {
-                        range: range.clone(),
-                    });
+                    errors.push(ParseError::new(
+                        ParseErrorKind::UnexpectedEof {},
+                        range.clone(),
+                    ));
                     return None;
                 }
             };
             if method_name.as_str() != "empty" {
-                errors.push(ParseError::UnexpectedToken {
-                    token: Token::Identifier(method_name),
-                    range: method_range,
-                });
+                errors.push(ParseError::new(
+                    ParseErrorKind::UnexpectedToken {
+                        token: Token::Identifier(method_name),
+                    },
+                    method_range,
+                ));
                 return None;
             }
             let left_paren = expect_token(iter, comments, errors, range, &Token::LeftParen)?;
@@ -368,16 +370,17 @@ pub fn parse_primary(
             }
         }
         Some((token, token_range)) => {
-            errors.push(ParseError::UnexpectedToken {
-                token,
-                range: token_range,
-            });
+            errors.push(ParseError::new(
+                ParseErrorKind::UnexpectedToken { token },
+                token_range,
+            ));
             return None;
         }
         None => {
-            errors.push(ParseError::UnexpectedEof {
-                range: range.clone(),
-            });
+            errors.push(ParseError::new(
+                ParseErrorKind::UnexpectedEof {},
+                range.clone(),
+            ));
             return None;
         }
     };
@@ -387,11 +390,13 @@ pub fn parse_primary(
                 let field_name = match FieldName::from_cheap_string(field_ident.clone()) {
                     Ok(name) => name,
                     Err(error) => {
-                        errors.push(ParseError::InvalidFieldName {
-                            name: field_ident,
-                            error,
-                            range: field_range,
-                        });
+                        errors.push(ParseError::new(
+                            ParseErrorKind::InvalidFieldName {
+                                name: field_ident,
+                                error,
+                            },
+                            field_range,
+                        ));
                         return None;
                     }
                 };
@@ -415,13 +420,17 @@ pub fn parse_primary(
                 }
             }
             Some((_, token_range)) => {
-                errors.push(ParseError::ExpectedIdentifierAfterDot { range: token_range });
+                errors.push(ParseError::new(
+                    ParseErrorKind::ExpectedIdentifierAfterDot {},
+                    token_range,
+                ));
                 return None;
             }
             None => {
-                errors.push(ParseError::UnexpectedEndOfFieldAccess {
-                    range: expr.range().clone().to(dot),
-                });
+                errors.push(ParseError::new(
+                    ParseErrorKind::UnexpectedEndOfFieldAccess {},
+                    expr.range().clone().to(dot),
+                ));
                 return None;
             }
         }
@@ -439,10 +448,10 @@ fn parse_macro_invocation(
 ) -> Option<ParsedExpr> {
     let name_str = macro_name.as_str();
     if name_str != "join" && name_str != "asset" {
-        errors.push(ParseError::UnknownMacro {
-            name: macro_name,
-            range: subject_range,
-        });
+        errors.push(ParseError::new(
+            ParseErrorKind::UnknownMacro { name: macro_name },
+            subject_range,
+        ));
         return None;
     }
     let left_paren = expect_token(iter, comments, errors, range, &Token::LeftParen)?;
@@ -629,10 +638,10 @@ pub fn parse_match_pattern(
         let type_name = match TypeName::from_cheap_string(type_name_str) {
             Ok(name) => name,
             Err(error) => {
-                errors.push(ParseError::InvalidTypeName {
-                    error,
-                    range: type_name_range.clone(),
-                });
+                errors.push(ParseError::new(
+                    ParseErrorKind::InvalidTypeName { error },
+                    type_name_range.clone(),
+                ));
                 return None;
             }
         };
@@ -722,9 +731,9 @@ pub fn parse_match_pattern(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::document_annotator::DocumentAnnotator;
     use crate::document_id::DocumentId;
     use crate::simple_annotation::SimpleAnnotation;
+    use crate::{annotation::Annotation, document_annotator::DocumentAnnotator};
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
@@ -759,7 +768,7 @@ mod tests {
             .annotate(
                 &document_id,
                 [SimpleAnnotation {
-                    message: err.to_string(),
+                    message: err.message(),
                     range: err.range().clone(),
                 }],
             )

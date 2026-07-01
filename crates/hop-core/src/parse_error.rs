@@ -9,339 +9,221 @@ use crate::symbols::var_name::InvalidVarNameError;
 use crate::symbols::var_name::VarName;
 use thiserror::Error;
 
+#[derive(Debug, Clone)]
+pub struct ParseError {
+    kind: ParseErrorKind,
+    range: DocumentRange,
+}
+
+impl ParseError {
+    pub(crate) fn new(kind: ParseErrorKind, range: DocumentRange) -> Self {
+        ParseError { kind, range }
+    }
+
+    pub(crate) fn range(&self) -> &DocumentRange {
+        &self.range
+    }
+}
+
+impl Annotation for ParseError {
+    fn message(&self) -> String {
+        self.kind.to_string()
+    }
+    fn range(&self) -> &DocumentRange {
+        &self.range
+    }
+}
+
 #[derive(Debug, Clone, Error)]
-pub enum ParseError {
+pub(crate) enum ParseErrorKind {
     #[error("Unmatched </{tag}>")]
-    UnmatchedClosingTag {
-        tag: CheapString,
-        range: DocumentRange,
-    },
+    UnmatchedClosingTag { tag: CheapString },
 
     #[error("Unclosed <{tag}>")]
-    UnclosedTag {
-        tag: CheapString,
-        range: DocumentRange,
-    },
+    UnclosedTag { tag: CheapString },
 
     #[error("<{tag}> should not be closed using a closing tag")]
-    ClosedVoidTag {
-        tag: CheapString,
-        range: DocumentRange,
-    },
+    ClosedVoidTag { tag: CheapString },
 
     #[error("{error}")]
-    InvalidComponentName {
-        error: InvalidTypeNameError,
-        range: DocumentRange,
-    },
+    InvalidComponentName { error: InvalidTypeNameError },
 
     #[error("View name must start with an uppercase letter")]
-    InvalidViewName { range: DocumentRange },
+    InvalidViewName,
 
     #[error("'{name}' is a reserved word and cannot be used as a view name")]
-    ReservedViewName {
-        name: CheapString,
-        range: DocumentRange,
-    },
+    ReservedViewName { name: CheapString },
 
     #[error("{name} is already defined")]
-    TypeNameIsAlreadyDefined {
-        name: CheapString,
-        range: DocumentRange,
-    },
+    TypeNameIsAlreadyDefined { name: CheapString },
 
     #[error("Duplicate attribute '{name}'")]
-    DuplicateAttribute {
-        name: CheapString,
-        range: DocumentRange,
-    },
+    DuplicateAttribute { name: CheapString },
 
     #[error("Unmatched {ch}")]
-    UnmatchedCharacter { ch: char, range: DocumentRange },
+    UnmatchedCharacter { ch: char },
 
     #[error("Unrecognized attribute '{attr_name}' on <{tag_name}>")]
     UnrecognizedAttribute {
         tag_name: CheapString,
         attr_name: CheapString,
-        range: DocumentRange,
     },
 
     #[error("Empty expression")]
-    EmptyExpression { range: DocumentRange },
+    EmptyExpression,
 
     #[error("Missing expression in <match> tag")]
-    MissingMatchExpression { range: DocumentRange },
+    MissingMatchExpression,
 
     #[error("Missing pattern in <case> tag")]
-    MissingCasePattern { range: DocumentRange },
+    MissingCasePattern,
 
     #[error("Only <case> tags are allowed inside <match>")]
-    InvalidMatchChild { range: DocumentRange },
+    InvalidMatchChild,
 
     #[error("Missing expression in <if> tag")]
-    MissingIfExpression { range: DocumentRange },
+    MissingIfExpression,
 
     #[error("Missing loop generator expression in <for> tag")]
-    MissingForExpression { range: DocumentRange },
+    MissingForExpression,
 
     #[error("Missing binding in <let> tag")]
-    MissingLetBinding { range: DocumentRange },
+    MissingLetBinding,
 
     #[error("Invalid markup declaration")]
-    InvalidMarkupDeclaration { range: DocumentRange },
+    InvalidMarkupDeclaration,
 
     #[error("Unterminated comment")]
-    UnterminatedComment { range: DocumentRange },
+    UnterminatedComment,
 
     #[error("Expected quoted attribute value or expression")]
-    ExpectedQuotedAttributeValue { range: DocumentRange },
+    ExpectedQuotedAttributeValue,
 
     #[error("Single-quoted attribute values are not supported; use double quotes")]
-    SingleQuotedAttributeValue { range: DocumentRange },
+    SingleQuotedAttributeValue,
 
     #[error("Unterminated opening tag")]
-    UnterminatedOpeningTag { range: DocumentRange },
+    UnterminatedOpeningTag,
 
     #[error("Unterminated closing tag")]
-    UnterminatedClosingTag { range: DocumentRange },
+    UnterminatedClosingTag,
 
     #[error("Unterminated tag start")]
-    UnterminatedTagStart { range: DocumentRange },
+    UnterminatedTagStart,
 
     #[error(
         "Unexpected expression on <{tag_name}>: use attribute syntax instead (e.g. attr={{value}})"
     )]
-    UnexpectedComponentExpression {
-        tag_name: CheapString,
-        range: DocumentRange,
-    },
+    UnexpectedComponentExpression { tag_name: CheapString },
 
     #[error("Unexpected text at top level")]
-    UnexpectedTopLevelText { range: DocumentRange },
+    UnexpectedTopLevelText,
 
     #[error("'pub' is not allowed here")]
-    UnexpectedPubKeyword { range: DocumentRange },
+    UnexpectedPubKeyword,
 
     #[error("Unexpected end of expression")]
-    UnexpectedEof { range: DocumentRange },
+    UnexpectedEof,
 
     #[error("Unexpected end of field access")]
-    UnexpectedEndOfFieldAccess { range: DocumentRange },
+    UnexpectedEndOfFieldAccess,
 
     #[error("Unterminated string literal")]
-    UnterminatedStringLiteral { range: DocumentRange },
+    UnterminatedStringLiteral,
 
     #[error("Invalid escape sequence '\\{ch}'")]
-    InvalidEscapeSequence { ch: char, range: DocumentRange },
+    InvalidEscapeSequence { ch: char },
 
     #[error("Invalid escape sequence at end of string")]
-    InvalidEscapeSequenceAtEndOfString { range: DocumentRange },
+    InvalidEscapeSequenceAtEndOfString,
 
     #[error("Unmatched '{token}'")]
-    UnmatchedToken { token: Token, range: DocumentRange },
+    UnmatchedToken { token: Token },
 
     #[error("Invalid variable name '{name}': {error}")]
     InvalidVariableName {
         name: CheapString,
         error: InvalidVarNameError,
-        range: DocumentRange,
     },
 
     #[error("Invalid field name '{name}': {error}")]
     InvalidFieldName {
         name: CheapString,
         error: InvalidFieldNameError,
-        range: DocumentRange,
     },
 
     #[error("Expected token '{expected}' but got '{actual}'")]
-    ExpectedTokenButGot {
-        expected: Token,
-        actual: Token,
-        range: DocumentRange,
-    },
+    ExpectedTokenButGot { expected: Token, actual: Token },
 
     #[error("Expected token '{expected}' but got end of file")]
-    ExpectedTokenButGotEof {
-        expected: Token,
-        range: DocumentRange,
-    },
+    ExpectedTokenButGotEof { expected: Token },
 
     #[error("Unexpected token '{token}'")]
-    UnexpectedToken { token: Token, range: DocumentRange },
+    UnexpectedToken { token: Token },
 
     #[error("Unexpected character: '{ch}'")]
-    UnexpectedCharacter { ch: char, range: DocumentRange },
+    UnexpectedCharacter { ch: char },
 
     #[error("Expected variable name but got {actual}")]
-    ExpectedVariableNameButGot { actual: Token, range: DocumentRange },
+    ExpectedVariableNameButGot { actual: Token },
 
     #[error("Expected field name but got {actual}")]
-    ExpectedFieldNameButGot { actual: Token, range: DocumentRange },
+    ExpectedFieldNameButGot { actual: Token },
 
     #[error("Expected identifier after '.'")]
-    ExpectedIdentifierAfterDot { range: DocumentRange },
-
-    #[error("Duplicate parameter '{name}'")]
-    DuplicateParameter {
-        name: CheapString,
-        range: DocumentRange,
-    },
+    ExpectedIdentifierAfterDot,
 
     #[error("Duplicate field '{name}'")]
-    DuplicateField {
-        name: CheapString,
-        range: DocumentRange,
-    },
+    DuplicateField { name: CheapString },
 
     #[error("Duplicate variant '{name}'")]
-    DuplicateVariant {
-        name: CheapString,
-        range: DocumentRange,
-    },
+    DuplicateVariant { name: CheapString },
 
     #[error("Expected type name but got {actual}")]
-    ExpectedTypeNameButGot { actual: Token, range: DocumentRange },
+    ExpectedTypeNameButGot { actual: Token },
 
     #[error("Expected type name but got end of file")]
-    ExpectedTypeNameButGotEof { range: DocumentRange },
+    ExpectedTypeNameButGotEof,
 
     #[error("Invalid number format")]
-    InvalidNumberFormat { range: DocumentRange },
+    InvalidNumberFormat,
 
     #[error("{error}")]
-    InvalidTypeName {
-        error: InvalidTypeNameError,
-        range: DocumentRange,
-    },
+    InvalidTypeName { error: InvalidTypeNameError },
 
     #[error("{error}")]
-    InvalidModuleName {
-        error: InvalidModuleNameError,
-        range: DocumentRange,
-    },
+    InvalidModuleName { error: InvalidModuleNameError },
 
     #[error("Expected identifier after '::'")]
-    ExpectedIdentifierAfterColonColon { range: DocumentRange },
+    ExpectedIdentifierAfterColonColon,
 
     #[error("Expected module path after 'import'")]
-    ExpectedModulePath { range: DocumentRange },
+    ExpectedModulePath,
 
     #[error("Import path must have at least two segments: module::Component")]
-    ImportPathTooShort { range: DocumentRange },
-
-    #[error("Expected declaration (import, record, or enum)")]
-    ExpectedDeclaration { range: DocumentRange },
+    ImportPathTooShort,
 
     #[error("Default values are not allowed on view parameters")]
-    DefaultValueNotAllowedOnView { range: DocumentRange },
+    DefaultValueNotAllowedOnView,
 
     #[error("Unknown macro '{name}'")]
-    UnknownMacro {
-        name: CheapString,
-        range: DocumentRange,
-    },
+    UnknownMacro { name: CheapString },
 
     #[error("Unknown HTML element <{tag}>")]
-    UnknownHtmlElement {
-        tag: CheapString,
-        range: DocumentRange,
-    },
+    UnknownHtmlElement { tag: CheapString },
 
     #[error("Rest parameter must be the last parameter")]
-    RestParamMustBeLast { range: DocumentRange },
+    RestParamMustBeLast,
 
     #[error("At most one rest parameter is allowed")]
-    DuplicateRestParam { range: DocumentRange },
+    DuplicateRestParam,
 
     #[error("Component {component} declares rest parameter '{name}' but never spreads it")]
-    RestNeverSpread {
-        component: TypeName,
-        name: VarName,
-        range: DocumentRange,
-    },
+    RestNeverSpread { component: TypeName, name: VarName },
 
     #[error("Rest parameter '{name}' is spread more than once")]
-    RestSpreadMoreThanOnce { name: VarName, range: DocumentRange },
+    RestSpreadMoreThanOnce { name: VarName },
 
     #[error("Spread '...{name}' does not refer to a declared rest parameter")]
-    SpreadNotDeclaredRest { name: VarName, range: DocumentRange },
-}
-
-impl ParseError {
-    pub fn range(&self) -> &DocumentRange {
-        match self {
-            ParseError::UnmatchedClosingTag { range, .. }
-            | ParseError::UnmatchedCharacter { range, .. }
-            | ParseError::UnclosedTag { range, .. }
-            | ParseError::ClosedVoidTag { range, .. }
-            | ParseError::InvalidComponentName { range, .. }
-            | ParseError::InvalidViewName { range }
-            | ParseError::ReservedViewName { range, .. }
-            | ParseError::TypeNameIsAlreadyDefined { range, .. }
-            | ParseError::DuplicateAttribute { range, .. }
-            | ParseError::UnrecognizedAttribute { range, .. }
-            | ParseError::UnexpectedComponentExpression { range, .. }
-            | ParseError::EmptyExpression { range }
-            | ParseError::MissingMatchExpression { range }
-            | ParseError::MissingCasePattern { range }
-            | ParseError::InvalidMatchChild { range }
-            | ParseError::MissingIfExpression { range }
-            | ParseError::MissingForExpression { range }
-            | ParseError::MissingLetBinding { range }
-            | ParseError::InvalidMarkupDeclaration { range }
-            | ParseError::UnterminatedComment { range }
-            | ParseError::ExpectedQuotedAttributeValue { range }
-            | ParseError::SingleQuotedAttributeValue { range }
-            | ParseError::UnterminatedOpeningTag { range }
-            | ParseError::UnterminatedClosingTag { range }
-            | ParseError::UnterminatedTagStart { range }
-            | ParseError::UnexpectedTopLevelText { range }
-            | ParseError::UnexpectedPubKeyword { range }
-            | ParseError::UnexpectedEof { range, .. }
-            | ParseError::UnterminatedStringLiteral { range }
-            | ParseError::InvalidEscapeSequence { range, .. }
-            | ParseError::InvalidEscapeSequenceAtEndOfString { range }
-            | ParseError::UnmatchedToken { range, .. }
-            | ParseError::UnexpectedCharacter { range, .. }
-            | ParseError::InvalidNumberFormat { range, .. }
-            | ParseError::ExpectedTokenButGot { range, .. }
-            | ParseError::ExpectedTokenButGotEof { range, .. }
-            | ParseError::UnexpectedToken { range, .. }
-            | ParseError::ExpectedVariableNameButGot { range, .. }
-            | ParseError::ExpectedFieldNameButGot { range, .. }
-            | ParseError::InvalidVariableName { range, .. }
-            | ParseError::InvalidFieldName { range, .. }
-            | ParseError::ExpectedTypeNameButGot { range, .. }
-            | ParseError::ExpectedTypeNameButGotEof { range }
-            | ParseError::UnexpectedEndOfFieldAccess { range, .. }
-            | ParseError::DuplicateParameter { range, .. }
-            | ParseError::DuplicateField { range, .. }
-            | ParseError::DuplicateVariant { range, .. }
-            | ParseError::ExpectedIdentifierAfterDot { range }
-            | ParseError::InvalidTypeName { range, .. }
-            | ParseError::InvalidModuleName { range, .. }
-            | ParseError::ExpectedIdentifierAfterColonColon { range }
-            | ParseError::ExpectedModulePath { range }
-            | ParseError::ImportPathTooShort { range }
-            | ParseError::ExpectedDeclaration { range }
-            | ParseError::DefaultValueNotAllowedOnView { range }
-            | ParseError::UnknownMacro { range, .. }
-            | ParseError::UnknownHtmlElement { range, .. }
-            | ParseError::RestParamMustBeLast { range }
-            | ParseError::DuplicateRestParam { range }
-            | ParseError::RestNeverSpread { range, .. }
-            | ParseError::RestSpreadMoreThanOnce { range, .. }
-            | ParseError::SpreadNotDeclaredRest { range, .. } => range,
-        }
-    }
-}
-
-impl Annotation for ParseError {
-    fn message(&self) -> String {
-        self.to_string()
-    }
-    fn range(&self) -> &DocumentRange {
-        self.range()
-    }
+    SpreadNotDeclaredRest { name: VarName },
 }

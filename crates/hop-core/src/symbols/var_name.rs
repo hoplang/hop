@@ -99,10 +99,6 @@ impl VarName {
     pub fn as_str(&self) -> &str {
         self.value.as_str()
     }
-
-    pub fn as_cheap_string(&self) -> &CheapString {
-        &self.value
-    }
 }
 
 impl Display for VarName {

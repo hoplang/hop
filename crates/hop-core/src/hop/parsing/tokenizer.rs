@@ -6,7 +6,7 @@ use crate::itertools::PeekingExt as _;
 use crate::document::{DocumentCursor, DocumentRange};
 use crate::expr;
 use crate::html::is_void_element;
-use crate::parse_error::ParseError;
+use crate::parse_error::{ParseError, ParseErrorKind};
 
 #[derive(Debug, Clone)]
 pub enum TokenizedAttributeValue {
@@ -327,9 +327,10 @@ fn parse_comment(
         );
     };
     let Some(second_dash) = iter.next_if(|s| s.ch() == '-') else {
-        errors.push(ParseError::InvalidMarkupDeclaration {
-            range: left_angle_to_bang.to(first_dash),
-        });
+        errors.push(ParseError::new(
+            ParseErrorKind::InvalidMarkupDeclaration {},
+            left_angle_to_bang.to(first_dash),
+        ));
         return None;
     };
     // Count the number of seen '-' to find the end of the comment
@@ -352,9 +353,10 @@ fn parse_comment(
                 count = 0;
             }
             None => {
-                errors.push(ParseError::UnterminatedComment {
-                    range: left_angle_to_bang.to(second_dash),
-                });
+                errors.push(ParseError::new(
+                    ParseErrorKind::UnterminatedComment {},
+                    left_angle_to_bang.to(second_dash),
+                ));
                 return None;
             }
         }
@@ -373,16 +375,18 @@ fn parse_doctype(
         .collect::<String>()
         .to_lowercase();
     if doctype != "doctype" {
-        errors.push(ParseError::InvalidMarkupDeclaration {
-            range: left_angle_to_bang,
-        });
+        errors.push(ParseError::new(
+            ParseErrorKind::InvalidMarkupDeclaration {},
+            left_angle_to_bang,
+        ));
         return None;
     }
     while iter.next_if(|s| s.ch() != '>').is_some() {}
     let Some(right_angle) = iter.next_if(|s| s.ch() == '>') else {
-        errors.push(ParseError::InvalidMarkupDeclaration {
-            range: left_angle_to_bang,
-        });
+        errors.push(ParseError::new(
+            ParseErrorKind::InvalidMarkupDeclaration {},
+            left_angle_to_bang,
+        ));
         return None;
     };
     Some(Token::Doctype {
@@ -411,9 +415,10 @@ fn parse_markup_declaration(
         Some('-') => parse_comment(iter, errors, left_angle.to(bang)),
         Some('D' | 'd') => parse_doctype(iter, errors, left_angle.to(bang)),
         _ => {
-            errors.push(ParseError::InvalidMarkupDeclaration {
-                range: left_angle.to(bang),
-            });
+            errors.push(ParseError::new(
+                ParseErrorKind::InvalidMarkupDeclaration {},
+                left_angle.to(bang),
+            ));
             None
         }
     }
@@ -483,13 +488,17 @@ fn parse_attribute(
             Some(single_close) => single_open.to(single_close),
             None => single_open,
         };
-        errors.push(ParseError::SingleQuotedAttributeValue { range });
+        errors.push(ParseError::new(
+            ParseErrorKind::SingleQuotedAttributeValue {},
+            range,
+        ));
         return None;
     }
     let Some(open_quote) = iter.next_if(|s| s.ch() == '"') else {
-        errors.push(ParseError::ExpectedQuotedAttributeValue {
-            range: attr_name.to(eq),
-        });
+        errors.push(ParseError::new(
+            ParseErrorKind::ExpectedQuotedAttributeValue {},
+            attr_name.to(eq),
+        ));
         return None;
     };
 
@@ -500,10 +509,12 @@ fn parse_attribute(
 
     // consume: " or '
     let Some(close_quote) = iter.next_if(|s| s.ch() == open_quote.ch()) else {
-        errors.push(ParseError::UnmatchedCharacter {
-            ch: open_quote.ch(),
-            range: open_quote,
-        });
+        errors.push(ParseError::new(
+            ParseErrorKind::UnmatchedCharacter {
+                ch: open_quote.ch(),
+            },
+            open_quote,
+        ));
         return None;
     };
 
@@ -544,10 +555,12 @@ fn parse_expression(
     };
     let clone = iter.clone();
     let Some(found_right_brace) = find_expression_end(clone) else {
-        errors.push(ParseError::UnmatchedCharacter {
-            ch: left_brace.ch(),
-            range: left_brace,
-        });
+        errors.push(ParseError::new(
+            ParseErrorKind::UnmatchedCharacter {
+                ch: left_brace.ch(),
+            },
+            left_brace,
+        ));
         return None;
     };
     // handle empty expression
@@ -558,9 +571,10 @@ fn parse_expression(
                 iter.next().map(|s| s.ch())
             );
         };
-        errors.push(ParseError::EmptyExpression {
-            range: left_brace.to(right_brace),
-        });
+        errors.push(ParseError::new(
+            ParseErrorKind::EmptyExpression {},
+            left_brace.to(right_brace),
+        ));
         return None;
     }
     let mut expr = iter.next().unwrap();
@@ -619,7 +633,10 @@ fn parse_tag_content(
             // consume identifier
             let Some(initial) = iter.next_if(|s| s.ch().is_ascii_alphabetic() || s.ch() == '_')
             else {
-                errors.push(ParseError::UnterminatedOpeningTag { range: dots_range });
+                errors.push(ParseError::new(
+                    ParseErrorKind::UnterminatedOpeningTag {},
+                    dots_range,
+                ));
                 continue;
             };
             let name = initial.extend(
@@ -648,10 +665,12 @@ fn parse_tag_content(
                     TokenizedAttribute::Named { name, .. } => name.as_str() == attr_name,
                     TokenizedAttribute::Spread { .. } => false,
                 }) {
-                    errors.push(ParseError::DuplicateAttribute {
-                        name: attr.name().to_cheap_string(),
-                        range: attr.name().clone(),
-                    });
+                    errors.push(ParseError::new(
+                        ParseErrorKind::DuplicateAttribute {
+                            name: attr.name().to_cheap_string(),
+                        },
+                        attr.name().clone(),
+                    ));
                 } else {
                     attributes.push(attr);
                 }
@@ -696,9 +715,10 @@ fn parse_opening_tag(
 
     // consume: '>'
     let Some(right_angle) = iter.next_if(|s| s.ch() == '>') else {
-        errors.push(ParseError::UnterminatedOpeningTag {
-            range: tag_name.clone(),
-        });
+        errors.push(ParseError::new(
+            ParseErrorKind::UnterminatedOpeningTag {},
+            tag_name.clone(),
+        ));
         return None;
     };
 
@@ -739,9 +759,10 @@ fn parse_closing_tag(
 
     // consume: [a-zA-Z]
     let Some(initial) = iter.next_if(|s| s.ch().is_ascii_alphabetic()) else {
-        errors.push(ParseError::UnterminatedClosingTag {
-            range: left_angle.to(slash),
-        });
+        errors.push(ParseError::new(
+            ParseErrorKind::UnterminatedClosingTag {},
+            left_angle.to(slash),
+        ));
         return None;
     };
     // consume: ('-' | [a-zA-Z0-9])*
@@ -753,7 +774,10 @@ fn parse_closing_tag(
 
     // consume: '>'
     let Some(right_angle) = iter.next_if(|s| s.ch() == '>') else {
-        errors.push(ParseError::UnterminatedClosingTag { range: tag_name });
+        errors.push(ParseError::new(
+            ParseErrorKind::UnterminatedClosingTag {},
+            tag_name,
+        ));
         return None;
     };
     Some(Token::ClosingTag {
@@ -863,9 +887,10 @@ fn parse_raw_text_element(
 
     // Check for EOF
     if iter.peek().is_none() {
-        errors.push(ParseError::UnterminatedOpeningTag {
-            range: tag_name.clone(),
-        });
+        errors.push(ParseError::new(
+            ParseErrorKind::UnterminatedOpeningTag {},
+            tag_name.clone(),
+        ));
         return None;
     }
 
@@ -1093,7 +1118,10 @@ fn parse_tag(iter: &mut Peekable<DocumentCursor>, errors: &mut Vec<ParseError>) 
         Some('/') => parse_closing_tag(iter, errors, left_angle),
         Some(ch) if ch.is_ascii_alphabetic() => parse_opening_tag(iter, errors, left_angle),
         _ => {
-            errors.push(ParseError::UnterminatedTagStart { range: left_angle });
+            errors.push(ParseError::new(
+                ParseErrorKind::UnterminatedTagStart {},
+                left_angle,
+            ));
             None
         }
     }
@@ -1105,6 +1133,7 @@ fn is_tag_name_with_raw_content(name: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use crate::annotation::Annotation;
     use crate::document_id::DocumentId;
     use crate::{document_annotator::DocumentAnnotator, simple_annotation::SimpleAnnotation};
 
@@ -1127,7 +1156,7 @@ mod tests {
             });
             for err in &errors {
                 error_annotations.push(SimpleAnnotation {
-                    message: err.to_string(),
+                    message: err.message(),
                     range: err.range().clone(),
                 });
             }
@@ -1135,7 +1164,7 @@ mod tests {
         }
         for err in &errors {
             error_annotations.push(SimpleAnnotation {
-                message: err.to_string(),
+                message: err.message(),
                 range: err.range().clone(),
             });
         }

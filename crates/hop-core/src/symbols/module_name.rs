@@ -44,11 +44,6 @@ impl ModuleName {
         Ok(ModuleName(Arc::new(name.to_string())))
     }
 
-    /// Create a test ModuleName without validation (for use in tests only).
-    pub fn test() -> Self {
-        ModuleName(Arc::new("test".to_string()))
-    }
-
     pub fn to_document_id(&self) -> DocumentId {
         DocumentId::new(&format!("{}.hop", self.0.replace("::", "/"))).unwrap()
     }
@@ -79,11 +74,6 @@ impl ModuleName {
         }
 
         Ok(())
-    }
-
-    /// Get the module ID as a path string with '/' separator
-    pub fn to_path(&self) -> String {
-        self.0.replace("::", "/")
     }
 }
 

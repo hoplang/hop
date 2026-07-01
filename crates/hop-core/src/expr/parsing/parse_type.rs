@@ -4,7 +4,7 @@ use super::tokenizer::{expect_opposite, expect_token, next_collecting_comments a
 
 use crate::document::{DocumentCursor, DocumentRange};
 use crate::expr::{Token, parsing::ParsedType};
-use crate::parse_error::ParseError;
+use crate::parse_error::{ParseError, ParseErrorKind};
 use crate::symbols::type_name::TypeName;
 
 pub fn parse_type(
@@ -45,24 +45,25 @@ pub fn parse_type(
                 range: type_range,
             }),
             Err(error) => {
-                errors.push(ParseError::InvalidTypeName {
-                    error,
-                    range: type_range,
-                });
+                errors.push(ParseError::new(
+                    ParseErrorKind::InvalidTypeName { error },
+                    type_range,
+                ));
                 None
             }
         },
         Some((actual, actual_range)) => {
-            errors.push(ParseError::ExpectedTypeNameButGot {
-                actual,
-                range: actual_range,
-            });
+            errors.push(ParseError::new(
+                ParseErrorKind::ExpectedTypeNameButGot { actual },
+                actual_range,
+            ));
             None
         }
         None => {
-            errors.push(ParseError::ExpectedTypeNameButGotEof {
-                range: range.clone(),
-            });
+            errors.push(ParseError::new(
+                ParseErrorKind::ExpectedTypeNameButGotEof {},
+                range.clone(),
+            ));
             None
         }
     }

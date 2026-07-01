@@ -20,7 +20,7 @@ use crate::expr::typing::r#type::Type;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
-use crate::type_error::TypeError;
+use crate::type_error::{TypeError, TypeErrorKind};
 
 /// A binding introduced by a pattern match (i.e. `name = source_name`).
 #[derive(Clone, Debug)]
@@ -296,17 +296,20 @@ impl<'a> Compiler<'a> {
             *subject_type,
             Type::Enum { .. } | Type::Bool | Type::Option(_) | Type::Record { .. }
         ) {
-            return Err(TypeError::MatchNotImplementedForType {
-                found: subject_type.clone(),
-                range: subject_range.clone(),
-            });
+            return Err(TypeError::new(
+                TypeErrorKind::MatchNotImplementedForType {
+                    found: subject_type.clone(),
+                },
+                subject_range.clone(),
+            ));
         }
 
         // Check for empty arms
         if patterns.is_empty() {
-            return Err(TypeError::MatchNoArms {
-                range: subject_range.clone(),
-            });
+            return Err(TypeError::new(
+                TypeErrorKind::MatchNoArms {},
+                subject_range.clone(),
+            ));
         }
 
         for pattern in patterns {
@@ -334,20 +337,22 @@ impl<'a> Compiler<'a> {
             .collect();
         if let Some(&first_unreachable) = unreachable.first() {
             let pattern = &patterns[first_unreachable];
-            return Err(TypeError::MatchUnreachableArm {
-                pattern: Box::new(pattern.clone()),
-                range: pattern.range().clone(),
-            });
+            return Err(TypeError::new(
+                TypeErrorKind::MatchUnreachableArm {
+                    pattern: Box::new(pattern.clone()),
+                },
+                pattern.range().clone(),
+            ));
         }
 
         // Check for missing patterns
         if !self.missing_patterns.is_empty() {
             let mut missing: Vec<String> = self.missing_patterns.into_iter().collect();
             missing.sort();
-            return Err(TypeError::MatchMissingVariants {
-                variants: missing,
-                range: subject_range.clone(),
-            });
+            return Err(TypeError::new(
+                TypeErrorKind::MatchMissingVariants { variants: missing },
+                subject_range.clone(),
+            ));
         }
 
         // Tree is guaranteed to be Some if there are no missing patterns
@@ -356,9 +361,10 @@ impl<'a> Compiler<'a> {
         // Check for useless match (Success with no bindings)
         if let Decision::Success(body) = &tree {
             if body.bindings.is_empty() {
-                return Err(TypeError::MatchUseless {
-                    range: subject_range.clone(),
-                });
+                return Err(TypeError::new(
+                    TypeErrorKind::MatchUseless {},
+                    subject_range.clone(),
+                ));
             }
         }
 
@@ -814,11 +820,13 @@ impl<'a> Compiler<'a> {
                     },
                 ) => {
                     if pattern_enum_name != subject_enum_name {
-                        return Err(TypeError::MatchPatternEnumMismatch {
-                            pattern_enum: pattern_enum_name.clone(),
-                            subject_enum: subject_enum_name.clone(),
-                            range: range.clone(),
-                        });
+                        return Err(TypeError::new(
+                            TypeErrorKind::MatchPatternEnumMismatch {
+                                pattern_enum: pattern_enum_name.clone(),
+                                subject_enum: subject_enum_name.clone(),
+                            },
+                            range.clone(),
+                        ));
                     }
 
                     let variant_fields = variants
@@ -829,11 +837,13 @@ impl<'a> Compiler<'a> {
                     let variant_fields = match variant_fields {
                         Some(f) => f,
                         None => {
-                            return Err(TypeError::UndefinedEnumVariant {
-                                enum_name: pattern_enum_name.clone(),
-                                variant_name: pattern_variant_name.clone(),
-                                range: range.clone(),
-                            });
+                            return Err(TypeError::new(
+                                TypeErrorKind::UndefinedEnumVariant {
+                                    enum_name: pattern_enum_name.clone(),
+                                    variant_name: pattern_variant_name.clone(),
+                                },
+                                range.clone(),
+                            ));
                         }
                     };
 
@@ -847,12 +857,14 @@ impl<'a> Compiler<'a> {
                         match field_type {
                             Some(typ) => Self::typecheck_pattern(field_pattern, typ.clone())?,
                             None => {
-                                return Err(TypeError::EnumVariantUnknownField {
-                                    enum_name: pattern_enum_name.clone(),
-                                    variant_name: pattern_variant_name.clone(),
-                                    field_name: field_name.clone(),
-                                    range: field_name_range.clone(),
-                                });
+                                return Err(TypeError::new(
+                                    TypeErrorKind::EnumVariantUnknownField {
+                                        enum_name: pattern_enum_name.clone(),
+                                        variant_name: pattern_variant_name.clone(),
+                                        field_name: field_name.clone(),
+                                    },
+                                    field_name_range.clone(),
+                                ));
                             }
                         }
                     }
@@ -866,12 +878,14 @@ impl<'a> Compiler<'a> {
                             .filter(|(name, _, _)| !pattern_field_names.contains(&name))
                             .map(|(name, _, _)| name.clone())
                             .collect::<Vec<_>>();
-                        return Err(TypeError::EnumVariantMissingFields {
-                            enum_name: pattern_enum_name.clone(),
-                            variant_name: pattern_variant_name.clone(),
-                            missing_fields,
-                            range: constructor_range.clone(),
-                        });
+                        return Err(TypeError::new(
+                            TypeErrorKind::EnumVariantMissingFields {
+                                enum_name: pattern_enum_name.clone(),
+                                variant_name: pattern_variant_name.clone(),
+                                missing_fields,
+                            },
+                            constructor_range.clone(),
+                        ));
                     }
 
                     Ok(())
@@ -889,11 +903,13 @@ impl<'a> Compiler<'a> {
                 ) => {
                     // Check record type matches
                     if pattern_type_name != subject_type_name {
-                        return Err(TypeError::MatchPatternRecordMismatch {
-                            pattern_record: pattern_type_name.clone(),
-                            subject_record: subject_type_name.clone(),
-                            range: range.clone(),
-                        });
+                        return Err(TypeError::new(
+                            TypeErrorKind::MatchPatternRecordMismatch {
+                                pattern_record: pattern_type_name.clone(),
+                                subject_record: subject_type_name.clone(),
+                            },
+                            range.clone(),
+                        ));
                     }
 
                     // Validate each field pattern (also catches unknown fields)
@@ -906,11 +922,13 @@ impl<'a> Compiler<'a> {
                         match field_type {
                             Some(typ) => Self::typecheck_pattern(field_pattern, typ.clone())?,
                             None => {
-                                return Err(TypeError::RecordUnknownField {
-                                    field_name: field_name.clone(),
-                                    record_name: pattern_type_name.clone(),
-                                    range: field_name_range.clone(),
-                                });
+                                return Err(TypeError::new(
+                                    TypeErrorKind::RecordUnknownField {
+                                        field_name: field_name.clone(),
+                                        record_name: pattern_type_name.clone(),
+                                    },
+                                    field_name_range.clone(),
+                                ));
                             }
                         }
                     }
@@ -924,21 +942,25 @@ impl<'a> Compiler<'a> {
                             .filter(|(name, _, _)| !pattern_field_names.contains(&name))
                             .map(|(name, _, _)| name.clone())
                             .collect::<Vec<_>>();
-                        return Err(TypeError::RecordMissingFields {
-                            record_name: pattern_type_name.clone(),
-                            missing_fields,
-                            range: constructor_range.clone(),
-                        });
+                        return Err(TypeError::new(
+                            TypeErrorKind::RecordMissingFields {
+                                record_name: pattern_type_name.clone(),
+                                missing_fields,
+                            },
+                            constructor_range.clone(),
+                        ));
                     }
 
                     Ok(())
                 }
 
-                _ => Err(TypeError::MatchPatternTypeMismatch {
-                    expected: subject_type.clone(),
-                    found: pattern.to_string(),
-                    range: range.clone(),
-                }),
+                _ => Err(TypeError::new(
+                    TypeErrorKind::MatchPatternTypeMismatch {
+                        expected: subject_type.clone(),
+                        found: pattern.to_string(),
+                    },
+                    range.clone(),
+                )),
             },
         }
     }

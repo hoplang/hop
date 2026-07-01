@@ -18,7 +18,7 @@ use crate::hop::typing::type_annotation::TypeAnnotation;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
-use crate::type_error::TypeError;
+use crate::type_error::{TypeError, TypeErrorKind};
 use crate::variable_scope::VariableScope;
 
 /// Resolve a parsed Type to a semantic Type.
@@ -42,13 +42,14 @@ pub fn resolve_type(
             (Arc::new(Type::Array(elem_type)), range)
         }
         ParsedType::Named { name, range } => {
-            let (binding, def_range) =
-                type_env
-                    .lookup(name)
-                    .ok_or_else(|| TypeError::UndefinedType {
+            let (binding, def_range) = type_env.lookup(name).ok_or_else(|| {
+                TypeError::new(
+                    TypeErrorKind::UndefinedType {
                         type_name: name.clone(),
-                        range: range.clone(),
-                    })?;
+                    },
+                    range.clone(),
+                )
+            })?;
             match binding {
                 TypeBinding::Value(typ) => {
                     let typ = typ.clone();
@@ -59,10 +60,10 @@ pub fn resolve_type(
                     (typ, range)
                 }
                 TypeBinding::Component(_) => {
-                    return Err(TypeError::ComponentUsedAsType {
-                        name: name.clone(),
-                        range: range.clone(),
-                    });
+                    return Err(TypeError::new(
+                        TypeErrorKind::ComponentUsedAsType { name: name.clone() },
+                        range.clone(),
+                    ));
                 }
             }
         }
@@ -102,10 +103,12 @@ pub fn typecheck_expr(
                     kind: var_type.clone(),
                 })
             } else {
-                Err(TypeError::UndefinedVariable {
-                    name: var_name.clone(),
-                    range: parsed_expr.range().clone(),
-                })
+                Err(TypeError::new(
+                    TypeErrorKind::UndefinedVariable {
+                        name: var_name.clone(),
+                    },
+                    parsed_expr.range().clone(),
+                ))
             }
         }
         ParsedExpr::BooleanLiteral { value, .. } => Ok(TypedExpr::BooleanLiteral { value: *value }),
@@ -146,17 +149,21 @@ pub fn typecheck_expr(
                             field: field.clone(),
                         })
                     } else {
-                        Err(TypeError::FieldNotFoundInRecord {
-                            field: field.clone(),
-                            record_name: record_name.clone(),
-                            range: range.clone(),
-                        })
+                        Err(TypeError::new(
+                            TypeErrorKind::FieldNotFoundInRecord {
+                                field: field.clone(),
+                                record_name: record_name.clone(),
+                            },
+                            range.clone(),
+                        ))
                     }
                 }
-                _ => Err(TypeError::CannotUseAsRecord {
-                    typ: typed_base.get_type(),
-                    range: record.range().clone(),
-                }),
+                _ => Err(TypeError::new(
+                    TypeErrorKind::CannotUseAsRecord {
+                        typ: typed_base.get_type(),
+                    },
+                    record.range().clone(),
+                )),
             }
         }
         ParsedExpr::BinaryOp {
@@ -212,25 +219,31 @@ pub fn typecheck_expr(
             let right_type = typed_right.as_type();
 
             let Some(left_comparable) = left_type.as_equatable_type() else {
-                return Err(TypeError::TypeIsNotComparable {
-                    t: typed_left.get_type(),
-                    range: left.range().clone(),
-                });
+                return Err(TypeError::new(
+                    TypeErrorKind::TypeIsNotComparable {
+                        t: typed_left.get_type(),
+                    },
+                    left.range().clone(),
+                ));
             };
 
             let Some(right_comparable) = right_type.as_equatable_type() else {
-                return Err(TypeError::TypeIsNotComparable {
-                    t: typed_right.get_type(),
-                    range: right.range().clone(),
-                });
+                return Err(TypeError::new(
+                    TypeErrorKind::TypeIsNotComparable {
+                        t: typed_right.get_type(),
+                    },
+                    right.range().clone(),
+                ));
             };
 
             if left_comparable != right_comparable {
-                return Err(TypeError::CannotCompareTypes {
-                    left: typed_left.get_type(),
-                    right: typed_right.get_type(),
-                    range: parsed_expr.range().clone(),
-                });
+                return Err(TypeError::new(
+                    TypeErrorKind::CannotCompareTypes {
+                        left: typed_left.get_type(),
+                        right: typed_right.get_type(),
+                    },
+                    parsed_expr.range().clone(),
+                ));
             }
 
             Ok(TypedExpr::Equals {
@@ -267,25 +280,31 @@ pub fn typecheck_expr(
             let right_type = typed_right.as_type();
 
             let Some(left_comparable) = left_type.as_equatable_type() else {
-                return Err(TypeError::TypeIsNotComparable {
-                    t: typed_left.get_type(),
-                    range: left.range().clone(),
-                });
+                return Err(TypeError::new(
+                    TypeErrorKind::TypeIsNotComparable {
+                        t: typed_left.get_type(),
+                    },
+                    left.range().clone(),
+                ));
             };
 
             let Some(right_comparable) = right_type.as_equatable_type() else {
-                return Err(TypeError::TypeIsNotComparable {
-                    t: typed_right.get_type(),
-                    range: right.range().clone(),
-                });
+                return Err(TypeError::new(
+                    TypeErrorKind::TypeIsNotComparable {
+                        t: typed_right.get_type(),
+                    },
+                    right.range().clone(),
+                ));
             };
 
             if left_comparable != right_comparable {
-                return Err(TypeError::CannotCompareTypes {
-                    left: typed_left.get_type(),
-                    right: typed_right.get_type(),
-                    range: parsed_expr.range().clone(),
-                });
+                return Err(TypeError::new(
+                    TypeErrorKind::CannotCompareTypes {
+                        left: typed_left.get_type(),
+                        right: typed_right.get_type(),
+                    },
+                    parsed_expr.range().clone(),
+                ));
             }
 
             Ok(TypedExpr::NotEquals {
@@ -321,29 +340,33 @@ pub fn typecheck_expr(
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
-            let left_comparable =
-                left_type
-                    .as_comparable_type()
-                    .ok_or_else(|| TypeError::TypeIsNotComparable {
+            let left_comparable = left_type.as_comparable_type().ok_or_else(|| {
+                TypeError::new(
+                    TypeErrorKind::TypeIsNotComparable {
                         t: typed_left.get_type(),
-                        range: left.range().clone(),
-                    })?;
+                    },
+                    left.range().clone(),
+                )
+            })?;
 
-            let right_comparable =
-                right_type
-                    .as_comparable_type()
-                    .ok_or_else(|| TypeError::TypeIsNotComparable {
+            let right_comparable = right_type.as_comparable_type().ok_or_else(|| {
+                TypeError::new(
+                    TypeErrorKind::TypeIsNotComparable {
                         t: typed_right.get_type(),
-                        range: right.range().clone(),
-                    })?;
+                    },
+                    right.range().clone(),
+                )
+            })?;
 
             // Both operands must be the same comparable type
             if left_comparable != right_comparable {
-                return Err(TypeError::CannotCompareTypes {
-                    left: typed_left.get_type(),
-                    right: typed_right.get_type(),
-                    range: parsed_expr.range().clone(),
-                });
+                return Err(TypeError::new(
+                    TypeErrorKind::CannotCompareTypes {
+                        left: typed_left.get_type(),
+                        right: typed_right.get_type(),
+                    },
+                    parsed_expr.range().clone(),
+                ));
             }
 
             Ok(TypedExpr::LessThan {
@@ -380,29 +403,33 @@ pub fn typecheck_expr(
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
-            let left_comparable =
-                left_type
-                    .as_comparable_type()
-                    .ok_or_else(|| TypeError::TypeIsNotComparable {
+            let left_comparable = left_type.as_comparable_type().ok_or_else(|| {
+                TypeError::new(
+                    TypeErrorKind::TypeIsNotComparable {
                         t: typed_left.get_type(),
-                        range: left.range().clone(),
-                    })?;
+                    },
+                    left.range().clone(),
+                )
+            })?;
 
-            let right_comparable =
-                right_type
-                    .as_comparable_type()
-                    .ok_or_else(|| TypeError::TypeIsNotComparable {
+            let right_comparable = right_type.as_comparable_type().ok_or_else(|| {
+                TypeError::new(
+                    TypeErrorKind::TypeIsNotComparable {
                         t: typed_right.get_type(),
-                        range: right.range().clone(),
-                    })?;
+                    },
+                    right.range().clone(),
+                )
+            })?;
 
             // Both operands must be the same comparable type
             if left_comparable != right_comparable {
-                return Err(TypeError::CannotCompareTypes {
-                    left: typed_left.get_type(),
-                    right: typed_right.get_type(),
-                    range: parsed_expr.range().clone(),
-                });
+                return Err(TypeError::new(
+                    TypeErrorKind::CannotCompareTypes {
+                        left: typed_left.get_type(),
+                        right: typed_right.get_type(),
+                    },
+                    parsed_expr.range().clone(),
+                ));
             }
 
             Ok(TypedExpr::GreaterThan {
@@ -439,29 +466,33 @@ pub fn typecheck_expr(
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
-            let left_comparable =
-                left_type
-                    .as_comparable_type()
-                    .ok_or_else(|| TypeError::TypeIsNotComparable {
+            let left_comparable = left_type.as_comparable_type().ok_or_else(|| {
+                TypeError::new(
+                    TypeErrorKind::TypeIsNotComparable {
                         t: typed_left.get_type(),
-                        range: left.range().clone(),
-                    })?;
+                    },
+                    left.range().clone(),
+                )
+            })?;
 
-            let right_comparable =
-                right_type
-                    .as_comparable_type()
-                    .ok_or_else(|| TypeError::TypeIsNotComparable {
+            let right_comparable = right_type.as_comparable_type().ok_or_else(|| {
+                TypeError::new(
+                    TypeErrorKind::TypeIsNotComparable {
                         t: typed_right.get_type(),
-                        range: right.range().clone(),
-                    })?;
+                    },
+                    right.range().clone(),
+                )
+            })?;
 
             // Both operands must be the same comparable type
             if left_comparable != right_comparable {
-                return Err(TypeError::CannotCompareTypes {
-                    left: typed_left.get_type(),
-                    right: typed_right.get_type(),
-                    range: parsed_expr.range().clone(),
-                });
+                return Err(TypeError::new(
+                    TypeErrorKind::CannotCompareTypes {
+                        left: typed_left.get_type(),
+                        right: typed_right.get_type(),
+                    },
+                    parsed_expr.range().clone(),
+                ));
             }
 
             Ok(TypedExpr::LessThanOrEqual {
@@ -497,29 +528,33 @@ pub fn typecheck_expr(
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
-            let left_comparable =
-                left_type
-                    .as_comparable_type()
-                    .ok_or_else(|| TypeError::TypeIsNotComparable {
+            let left_comparable = left_type.as_comparable_type().ok_or_else(|| {
+                TypeError::new(
+                    TypeErrorKind::TypeIsNotComparable {
                         t: typed_left.get_type(),
-                        range: left.range().clone(),
-                    })?;
+                    },
+                    left.range().clone(),
+                )
+            })?;
 
-            let right_comparable =
-                right_type
-                    .as_comparable_type()
-                    .ok_or_else(|| TypeError::TypeIsNotComparable {
+            let right_comparable = right_type.as_comparable_type().ok_or_else(|| {
+                TypeError::new(
+                    TypeErrorKind::TypeIsNotComparable {
                         t: typed_right.get_type(),
-                        range: right.range().clone(),
-                    })?;
+                    },
+                    right.range().clone(),
+                )
+            })?;
 
             // Both operands must be the same comparable type
             if left_comparable != right_comparable {
-                return Err(TypeError::CannotCompareTypes {
-                    left: typed_left.get_type(),
-                    right: typed_right.get_type(),
-                    range: parsed_expr.range().clone(),
-                });
+                return Err(TypeError::new(
+                    TypeErrorKind::CannotCompareTypes {
+                        left: typed_left.get_type(),
+                        right: typed_right.get_type(),
+                    },
+                    parsed_expr.range().clone(),
+                ));
             }
 
             Ok(TypedExpr::GreaterThanOrEqual {
@@ -557,15 +592,17 @@ pub fn typecheck_expr(
 
             // LogicalAnd only works with Bool expressions
             if *left_type != Type::Bool {
-                return Err(TypeError::LogicalAndTypeMismatch {
-                    range: left.range().clone(),
-                });
+                return Err(TypeError::new(
+                    TypeErrorKind::LogicalAndTypeMismatch {},
+                    left.range().clone(),
+                ));
             }
 
             if *right_type != Type::Bool {
-                return Err(TypeError::LogicalAndTypeMismatch {
-                    range: right.range().clone(),
-                });
+                return Err(TypeError::new(
+                    TypeErrorKind::LogicalAndTypeMismatch {},
+                    right.range().clone(),
+                ));
             }
 
             Ok(TypedExpr::BooleanLogicalAnd {
@@ -601,15 +638,17 @@ pub fn typecheck_expr(
             let right_type = typed_right.as_type();
 
             if *left_type != Type::Bool {
-                return Err(TypeError::LogicalOrTypeMismatch {
-                    range: left.range().clone(),
-                });
+                return Err(TypeError::new(
+                    TypeErrorKind::LogicalOrTypeMismatch {},
+                    left.range().clone(),
+                ));
             }
 
             if *right_type != Type::Bool {
-                return Err(TypeError::LogicalOrTypeMismatch {
-                    range: right.range().clone(),
-                });
+                return Err(TypeError::new(
+                    TypeErrorKind::LogicalOrTypeMismatch {},
+                    right.range().clone(),
+                ));
             }
 
             Ok(TypedExpr::BooleanLogicalOr {
@@ -661,11 +700,13 @@ pub fn typecheck_expr(
                 }),
                 _ => {
                     // Incompatible types for addition
-                    Err(TypeError::IncompatibleTypesForAddition {
-                        left_type: typed_left.get_type(),
-                        right_type: typed_right.get_type(),
-                        range: left.range().clone().to(right.range().clone()),
-                    })
+                    Err(TypeError::new(
+                        TypeErrorKind::IncompatibleTypesForAddition {
+                            left_type: typed_left.get_type(),
+                            right_type: typed_right.get_type(),
+                        },
+                        left.range().clone().to(right.range().clone()),
+                    ))
                 }
             }
         }
@@ -709,11 +750,13 @@ pub fn typecheck_expr(
                 }),
                 _ => {
                     // Incompatible types for subtraction
-                    Err(TypeError::IncompatibleTypesForSubtraction {
-                        left_type: typed_left.get_type(),
-                        right_type: typed_right.get_type(),
-                        range: left.range().clone().to(right.range().clone()),
-                    })
+                    Err(TypeError::new(
+                        TypeErrorKind::IncompatibleTypesForSubtraction {
+                            left_type: typed_left.get_type(),
+                            right_type: typed_right.get_type(),
+                        },
+                        left.range().clone().to(right.range().clone()),
+                    ))
                 }
             }
         }
@@ -757,11 +800,13 @@ pub fn typecheck_expr(
                 }),
                 _ => {
                     // Incompatible types for multiplication
-                    Err(TypeError::IncompatibleTypesForMultiplication {
-                        left_type: typed_left.get_type(),
-                        right_type: typed_right.get_type(),
-                        range: left.range().clone().to(right.range().clone()),
-                    })
+                    Err(TypeError::new(
+                        TypeErrorKind::IncompatibleTypesForMultiplication {
+                            left_type: typed_left.get_type(),
+                            right_type: typed_right.get_type(),
+                        },
+                        left.range().clone().to(right.range().clone()),
+                    ))
                 }
             }
         }
@@ -778,10 +823,12 @@ pub fn typecheck_expr(
             let operand_type = typed_operand.as_type();
 
             if *operand_type != Type::Bool {
-                return Err(TypeError::BooleanNegationTypeMismatch {
-                    found: typed_operand.get_type(),
-                    range: operand.range().clone(),
-                });
+                return Err(TypeError::new(
+                    TypeErrorKind::BooleanNegationTypeMismatch {
+                        found: typed_operand.get_type(),
+                    },
+                    operand.range().clone(),
+                ));
             }
 
             Ok(TypedExpr::BooleanNegation {
@@ -809,10 +856,12 @@ pub fn typecheck_expr(
                     operand: Box::new(typed_operand),
                     operand_type: NumericType::Float,
                 }),
-                _ => Err(TypeError::NumericNegationTypeMismatch {
-                    found: typed_operand.get_type(),
-                    range: operand.range().clone(),
-                }),
+                _ => Err(TypeError::new(
+                    TypeErrorKind::NumericNegationTypeMismatch {
+                        found: typed_operand.get_type(),
+                    },
+                    operand.range().clone(),
+                )),
             }
         }
         ParsedExpr::ArrayLiteral { elements, range } => {
@@ -821,9 +870,10 @@ pub fn typecheck_expr(
                 let elem_type = match inferred_type.map(|t| t.as_ref()) {
                     Some(Type::Array(elem)) => elem.clone(),
                     _ => {
-                        return Err(TypeError::CannotInferEmptyArrayType {
-                            range: range.clone(),
-                        });
+                        return Err(TypeError::new(
+                            TypeErrorKind::CannotInferEmptyArrayType {},
+                            range.clone(),
+                        ));
                     }
                 };
                 Ok(TypedExpr::ArrayLiteral {
@@ -868,11 +918,13 @@ pub fn typecheck_expr(
                     )?;
                     let element_type = typed_element.get_type();
                     if *element_type != *first_type {
-                        return Err(TypeError::ArrayElementTypeMismatch {
-                            expected: first_type.clone(),
-                            found: element_type,
-                            range: element.range().clone(),
-                        });
+                        return Err(TypeError::new(
+                            TypeErrorKind::ArrayElementTypeMismatch {
+                                expected: first_type.clone(),
+                                found: element_type,
+                            },
+                            element.range().clone(),
+                        ));
                     }
                     typed_elements.push(typed_element);
                 }
@@ -890,21 +942,24 @@ pub fn typecheck_expr(
             range,
         } => {
             // Check if the record type is defined
-            let (binding, def_range) =
-                type_env
-                    .lookup(record_name)
-                    .ok_or_else(|| TypeError::UndefinedRecord {
+            let (binding, def_range) = type_env.lookup(record_name).ok_or_else(|| {
+                TypeError::new(
+                    TypeErrorKind::UndefinedRecord {
                         record_name: record_name.clone(),
-                        range: range.clone(),
-                    })?;
+                    },
+                    range.clone(),
+                )
+            })?;
             let def_range = def_range.clone();
             let record_type = match binding {
                 TypeBinding::Value(typ) => typ.clone(),
                 TypeBinding::Component(_) => {
-                    return Err(TypeError::UndefinedRecord {
-                        record_name: record_name.clone(),
-                        range: range.clone(),
-                    });
+                    return Err(TypeError::new(
+                        TypeErrorKind::UndefinedRecord {
+                            record_name: record_name.clone(),
+                        },
+                        range.clone(),
+                    ));
                 }
             };
 
@@ -923,10 +978,12 @@ pub fn typecheck_expr(
             let record_fields = match record_type.as_ref() {
                 Type::Record { fields, .. } => fields,
                 _ => {
-                    return Err(TypeError::UndefinedRecord {
-                        record_name: record_name.clone(),
-                        range: range.clone(),
-                    });
+                    return Err(TypeError::new(
+                        TypeErrorKind::UndefinedRecord {
+                            record_name: record_name.clone(),
+                        },
+                        range.clone(),
+                    ));
                 }
             };
 
@@ -943,11 +1000,13 @@ pub fn typecheck_expr(
             for (field_name, field_value) in fields {
                 // Check if this field exists in the record
                 let expected_type = expected_fields.get(field_name).ok_or_else(|| {
-                    TypeError::RecordUnknownField {
-                        field_name: field_name.clone(),
-                        record_name: record_name.clone(),
-                        range: field_value.range().clone(),
-                    }
+                    TypeError::new(
+                        TypeErrorKind::RecordUnknownField {
+                            field_name: field_name.clone(),
+                            record_name: record_name.clone(),
+                        },
+                        field_value.range().clone(),
+                    )
                 })?;
 
                 // Type check the field value with expected type for bidirectional checking
@@ -964,12 +1023,14 @@ pub fn typecheck_expr(
 
                 // Check that the types match
                 if *actual_type != **expected_type {
-                    return Err(TypeError::RecordLiteralFieldTypeMismatch {
-                        field_name: field_name.clone(),
-                        expected: expected_type.clone(),
-                        found: actual_type,
-                        range: field_value.range().clone(),
-                    });
+                    return Err(TypeError::new(
+                        TypeErrorKind::RecordLiteralFieldTypeMismatch {
+                            field_name: field_name.clone(),
+                            expected: expected_type.clone(),
+                            found: actual_type,
+                        },
+                        field_value.range().clone(),
+                    ));
                 }
 
                 provided_fields.insert(field_name.clone());
@@ -983,11 +1044,13 @@ pub fn typecheck_expr(
                 .cloned()
                 .collect::<Vec<_>>();
             if !missing_fields.is_empty() {
-                return Err(TypeError::RecordMissingFields {
-                    record_name: record_name.clone(),
-                    missing_fields,
-                    range: range.clone(),
-                });
+                return Err(TypeError::new(
+                    TypeErrorKind::RecordMissingFields {
+                        record_name: record_name.clone(),
+                        missing_fields,
+                    },
+                    range.clone(),
+                ));
             }
 
             Ok(TypedExpr::RecordLiteral {
@@ -1005,21 +1068,24 @@ pub fn typecheck_expr(
             range,
         } => {
             // Look up the enum type in the type environment
-            let (binding, def_range) =
-                type_env
-                    .lookup(enum_name)
-                    .ok_or_else(|| TypeError::UndefinedEnum {
+            let (binding, def_range) = type_env.lookup(enum_name).ok_or_else(|| {
+                TypeError::new(
+                    TypeErrorKind::UndefinedEnum {
                         enum_name: enum_name.clone(),
-                        range: range.clone(),
-                    })?;
+                    },
+                    range.clone(),
+                )
+            })?;
             let def_range = def_range.clone();
             let enum_type = match binding {
                 TypeBinding::Value(typ) => typ.clone(),
                 TypeBinding::Component(_) => {
-                    return Err(TypeError::UndefinedEnum {
-                        enum_name: enum_name.clone(),
-                        range: range.clone(),
-                    });
+                    return Err(TypeError::new(
+                        TypeErrorKind::UndefinedEnum {
+                            enum_name: enum_name.clone(),
+                        },
+                        range.clone(),
+                    ));
                 }
             };
 
@@ -1043,19 +1109,23 @@ pub fn typecheck_expr(
                     match variant {
                         Some(variant) => variant.fields.clone(),
                         None => {
-                            return Err(TypeError::UndefinedEnumVariant {
-                                enum_name: enum_name.clone(),
-                                variant_name: variant_name.clone(),
-                                range: range.clone(),
-                            });
+                            return Err(TypeError::new(
+                                TypeErrorKind::UndefinedEnumVariant {
+                                    enum_name: enum_name.clone(),
+                                    variant_name: variant_name.clone(),
+                                },
+                                range.clone(),
+                            ));
                         }
                     }
                 }
                 _ => {
-                    return Err(TypeError::UndefinedEnum {
-                        enum_name: enum_name.clone(),
-                        range: range.clone(),
-                    });
+                    return Err(TypeError::new(
+                        TypeErrorKind::UndefinedEnum {
+                            enum_name: enum_name.clone(),
+                        },
+                        range.clone(),
+                    ));
                 }
             };
 
@@ -1087,26 +1157,30 @@ pub fn typecheck_expr(
                             // Verify type matches
                             let actual_type = typed_field_expr.get_type();
                             if *actual_type != **expected_type {
-                                return Err(TypeError::EnumVariantFieldTypeMismatch {
-                                    enum_name: enum_name.clone(),
-                                    variant_name: variant_name.clone(),
-                                    field_name: field_name.clone(),
-                                    expected: expected_type.clone(),
-                                    found: actual_type,
-                                    range: field_expr.range().clone(),
-                                });
+                                return Err(TypeError::new(
+                                    TypeErrorKind::EnumVariantFieldTypeMismatch {
+                                        enum_name: enum_name.clone(),
+                                        variant_name: variant_name.clone(),
+                                        field_name: field_name.clone(),
+                                        expected: expected_type.clone(),
+                                        found: actual_type,
+                                    },
+                                    field_expr.range().clone(),
+                                ));
                             }
 
                             provided_field_names.insert(field_name.clone());
                             typed_fields.push((field_name.clone(), typed_field_expr));
                         }
                         None => {
-                            return Err(TypeError::EnumVariantUnknownField {
-                                enum_name: enum_name.clone(),
-                                variant_name: variant_name.clone(),
-                                field_name: field_name.clone(),
-                                range: field_name_range.clone(),
-                            });
+                            return Err(TypeError::new(
+                                TypeErrorKind::EnumVariantUnknownField {
+                                    enum_name: enum_name.clone(),
+                                    variant_name: variant_name.clone(),
+                                    field_name: field_name.clone(),
+                                },
+                                field_name_range.clone(),
+                            ));
                         }
                     }
                 }
@@ -1118,12 +1192,14 @@ pub fn typecheck_expr(
                     .map(|(name, _, _)| name.clone())
                     .collect();
                 if !missing_fields.is_empty() {
-                    return Err(TypeError::EnumVariantMissingFields {
-                        enum_name: enum_name.clone(),
-                        variant_name: variant_name.clone(),
-                        missing_fields,
-                        range: constructor_range.clone(),
-                    });
+                    return Err(TypeError::new(
+                        TypeErrorKind::EnumVariantMissingFields {
+                            enum_name: enum_name.clone(),
+                            variant_name: variant_name.clone(),
+                            missing_fields,
+                        },
+                        constructor_range.clone(),
+                    ));
                 }
 
                 typed_fields
@@ -1167,9 +1243,10 @@ pub fn typecheck_expr(
                     let elem_type = match inferred_type.map(|t| t.as_ref()) {
                         Some(Type::Option(elem)) => elem.clone(),
                         _ => {
-                            return Err(TypeError::CannotInferNoneType {
-                                range: range.clone(),
-                            });
+                            return Err(TypeError::new(
+                                TypeErrorKind::CannotInferNoneType {},
+                                range.clone(),
+                            ));
                         }
                     };
                     Ok(TypedExpr::OptionLiteral {
@@ -1211,12 +1288,14 @@ pub fn typecheck_expr(
                         asset_references,
                     )?;
                     if typed.as_type() != &Type::String {
-                        return Err(TypeError::MacroArgumentTypeMismatch {
-                            macro_name: "join".to_string(),
-                            expected: Arc::new(Type::String),
-                            found: typed.get_type(),
-                            range: arg.range().clone(),
-                        });
+                        return Err(TypeError::new(
+                            TypeErrorKind::MacroArgumentTypeMismatch {
+                                macro_name: "join".to_string(),
+                                expected: Arc::new(Type::String),
+                                found: typed.get_type(),
+                            },
+                            arg.range().clone(),
+                        ));
                     }
                     typed_args.push(typed);
                 }
@@ -1238,23 +1317,27 @@ pub fn typecheck_expr(
             "asset" => {
                 // Exactly one argument
                 if args.len() != 1 {
-                    return Err(TypeError::AssetMacroArity {
-                        actual: args.len(),
-                        range: range.clone(),
-                    });
+                    return Err(TypeError::new(
+                        TypeErrorKind::AssetMacroArity { actual: args.len() },
+                        range.clone(),
+                    ));
                 }
                 // Must be a string literal
                 let (path, path_range) = match &args[0] {
                     ParsedExpr::StringLiteral { value, range } => (value.clone(), range.clone()),
                     other => {
-                        return Err(TypeError::AssetMacroNonLiteralArg {
-                            range: other.range().clone(),
-                        });
+                        return Err(TypeError::new(
+                            TypeErrorKind::AssetMacroNonLiteralArg {},
+                            other.range().clone(),
+                        ));
                     }
                 };
                 // Must start with `/`
                 if !path.as_str().starts_with('/') {
-                    return Err(TypeError::AssetPathMustBeAbsolute { range: path_range });
+                    return Err(TypeError::new(
+                        TypeErrorKind::AssetPathMustBeAbsolute {},
+                        path_range,
+                    ));
                 }
 
                 let document_id = DocumentId::new(path.trim_start_matches('/')).unwrap();
@@ -1353,11 +1436,13 @@ pub fn typecheck_expr(
                         option: Box::new(typed_receiver),
                     })
                 }
-                _ => Err(TypeError::MethodNotAvailable {
-                    method: method.as_str().to_string(),
-                    typ: receiver_type,
-                    range: range.clone(),
-                }),
+                _ => Err(TypeError::new(
+                    TypeErrorKind::MethodNotAvailable {
+                        method: method.as_str().to_string(),
+                        typ: receiver_type,
+                    },
+                    range.clone(),
+                )),
             }
         }
     }
@@ -1552,10 +1637,10 @@ fn typecheck_arm_bodies(
                     pushed_count += 1;
                 }
                 Err(_) => {
-                    return Err(TypeError::VariableAlreadyDefined {
-                        name: name.clone(),
-                        range: range.clone(),
-                    });
+                    return Err(TypeError::new(
+                        TypeErrorKind::VariableAlreadyDefined { name: name.clone() },
+                        range.clone(),
+                    ));
                 }
             }
         }
@@ -1576,10 +1661,10 @@ fn typecheck_arm_bodies(
         for (_, _, range) in bindings.iter().rev().take(pushed_count) {
             let (name, _, accessed) = var_env.pop();
             if !accessed {
-                return Err(TypeError::MatchUnusedBinding {
-                    name,
-                    range: range.clone(),
-                });
+                return Err(TypeError::new(
+                    TypeErrorKind::MatchUnusedBinding { name },
+                    range.clone(),
+                ));
             }
         }
 
@@ -1589,11 +1674,13 @@ fn typecheck_arm_bodies(
             }
             Some(expected) => {
                 if *body_type != **expected {
-                    return Err(TypeError::MatchArmTypeMismatch {
-                        expected: expected.clone(),
-                        found: body_type.clone(),
-                        range: arm.body.range().clone(),
-                    });
+                    return Err(TypeError::new(
+                        TypeErrorKind::MatchArmTypeMismatch {
+                            expected: expected.clone(),
+                            found: body_type.clone(),
+                        },
+                        arm.body.range().clone(),
+                    ));
                 }
             }
         }

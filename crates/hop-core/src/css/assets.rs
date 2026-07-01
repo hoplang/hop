@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use crate::asset_reference::AssetReference;
 use crate::asset_rewriter::AssetRewriter;
-use crate::css::error::CssError;
+use crate::css_error::{CssError, CssErrorKind};
 use crate::document::{Document, DocumentCursor, DocumentRange};
 use crate::document_id::DocumentId;
 
@@ -26,9 +26,10 @@ pub fn scan_for_asset_references(
                 match parse_argument(&mut iter, marker_range.clone()) {
                     ArgumentParseResult::StringLiteral { path, close_paren } => {
                         if !path.starts_with("/") {
-                            errors.push(CssError::UnclosedAssetCall {
-                                range: marker_range.to(close_paren),
-                            })
+                            errors.push(CssError::new(
+                                CssErrorKind::UnclosedAssetCall,
+                                marker_range.to(close_paren),
+                            ))
                         } else {
                             let document_id =
                                 DocumentId::new(path.trim_start_matches('/')).unwrap();
@@ -40,15 +41,14 @@ pub fn scan_for_asset_references(
                     }
                     ArgumentParseResult::Error { kind, last_range } => {
                         let error = match kind {
-                            ArgumentErrorKind::NonStringLiteral { argument } => {
-                                CssError::NonStringLiteralArgument {
-                                    range: marker_range.to(last_range),
-                                    argument,
-                                }
-                            }
-                            ArgumentErrorKind::Unclosed => CssError::UnclosedAssetCall {
-                                range: marker_range.to(last_range),
-                            },
+                            ArgumentErrorKind::NonStringLiteral { argument } => CssError::new(
+                                CssErrorKind::NonStringLiteralArgument { argument },
+                                marker_range.to(last_range),
+                            ),
+                            ArgumentErrorKind::Unclosed => CssError::new(
+                                CssErrorKind::UnclosedAssetCall,
+                                marker_range.to(last_range),
+                            ),
                         };
                         errors.push(error);
                     }
@@ -373,6 +373,7 @@ pub fn rewrite_asset_paths(css: &Document, asset_rewriter: Arc<dyn AssetRewriter
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::annotation::Annotation;
     use crate::document_id::DocumentId;
     use crate::{document_annotator::DocumentAnnotator, simple_annotation::SimpleAnnotation};
     use expect_test::{Expect, expect};

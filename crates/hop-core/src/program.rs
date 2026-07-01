@@ -1,7 +1,9 @@
+use crate::annotation::Annotation;
 use crate::asset_reference::AssetReference;
 use crate::asset_rewriter::AssetRewriter;
 use crate::config::{ResolvedConfig, TargetLanguage};
-use crate::css::{self, CssError};
+use crate::css;
+use crate::css_error::CssError;
 use crate::document::{Document, DocumentRange};
 use crate::document_id::DocumentId;
 use crate::document_position::DocumentPosition;
@@ -510,7 +512,7 @@ impl Program {
         if let Some(errors) = self.parse_errors.get(&document_id) {
             for error in errors {
                 diagnostics.push(Diagnostic {
-                    message: error.to_string(),
+                    message: error.message(),
                     range: error.range().clone(),
                     severity: Severity::Error,
                 });
@@ -524,7 +526,7 @@ impl Program {
             if let Some(errors) = self.type_errors.get(&document_id) {
                 for error in errors {
                     diagnostics.push(Diagnostic {
-                        message: error.to_string(),
+                        message: error.message(),
                         range: error.range().clone(),
                         severity: error.severity(),
                     });
@@ -536,7 +538,7 @@ impl Program {
     }
 
     /// Evaluate an view given module and view name.
-    pub fn evaluate_view_with_values(
+    fn evaluate_view_with_values(
         &self,
         document_id: &DocumentId,
         view_name: &TypeName,
@@ -693,7 +695,7 @@ impl Program {
     }
 
     /// Get all typed modules for compilation
-    pub fn get_typed_modules(&self) -> &HashMap<DocumentId, TypedAst> {
+    pub(crate) fn get_typed_modules(&self) -> &HashMap<DocumentId, TypedAst> {
         &self.typed_asts
     }
 
