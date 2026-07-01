@@ -5,13 +5,11 @@ use pretty::BoxDoc;
 
 use super::typed_expr::TypedExpr;
 use crate::document::CheapString;
-use crate::document::DocumentRange;
 use crate::document_id::DocumentId;
 use crate::html::HtmlElement;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
-use crate::variable_scope::VariableScope;
 
 #[derive(Debug)]
 pub enum Type {
@@ -63,8 +61,6 @@ pub enum TypeBinding {
     Value(Arc<Type>),
     Component(ComponentSignature),
 }
-
-pub type TypeEnv = VariableScope<TypeName, (TypeBinding, DocumentRange)>;
 
 /// Metadata from `#[examples(...)]` annotations on fields/parameters.
 #[derive(Debug, Clone, Default)]

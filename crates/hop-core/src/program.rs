@@ -129,10 +129,10 @@ impl Program {
             typecheck(
                 &modules,
                 &mut self.typechecker_state,
+                &mut self.typed_asts,
                 &mut self.type_errors,
                 &mut self.type_annotations,
                 &mut self.definition_links,
-                &mut self.typed_asts,
                 &mut self.asset_references,
             );
         }
@@ -173,10 +173,10 @@ impl Program {
                 typecheck(
                     &modules,
                     &mut self.typechecker_state,
+                    &mut self.typed_asts,
                     &mut self.type_errors,
                     &mut self.type_annotations,
                     &mut self.definition_links,
-                    &mut self.typed_asts,
                     &mut self.asset_references,
                 );
             }

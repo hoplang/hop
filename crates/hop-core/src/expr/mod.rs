@@ -5,5 +5,5 @@ pub mod typing;
 
 pub use parsing::{ParsedExpr, Token, parse_expr, tokenizer};
 pub use typing::{
-    ComponentSignature, ExamplesAnnotation, ParamEntry, Tail, Type, TypeBinding, TypeEnv, TypedExpr,
+    ComponentSignature, ExamplesAnnotation, ParamEntry, Tail, Type, TypeBinding, TypedExpr,
 };

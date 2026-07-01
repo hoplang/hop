@@ -3,7 +3,5 @@ pub mod r#type;
 pub mod type_checker;
 pub mod typed_expr;
 
-pub use r#type::{
-    ComponentSignature, ExamplesAnnotation, ParamEntry, Tail, Type, TypeBinding, TypeEnv,
-};
+pub use r#type::{ComponentSignature, ExamplesAnnotation, ParamEntry, Tail, Type, TypeBinding};
 pub use typed_expr::TypedExpr;

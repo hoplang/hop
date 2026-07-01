@@ -314,10 +314,10 @@ mod tests {
         typecheck(
             &untyped_asts_refs,
             &mut state,
+            &mut typed_asts,
             &mut type_errors,
             &mut type_annotations,
             &mut definition_links,
-            &mut typed_asts,
             &mut asset_references,
         );
 

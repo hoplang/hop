@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use super::join_macro::build_balanced_join;
-use super::r#type::{NumericType, Type, TypeBinding, TypeEnv};
+use super::r#type::{NumericType, Type, TypeBinding};
 use crate::asset_reference::AssetReference;
 use crate::document::{CheapString, DocumentRange};
 use crate::document_id::DocumentId;
@@ -16,6 +16,7 @@ use crate::expr::patterns::{EnumMatchArm, EnumPattern, Match};
 use crate::hop::typing::definition_link::DefinitionLink;
 use crate::hop::typing::type_annotation::TypeAnnotation;
 use crate::symbols::field_name::FieldName;
+use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use crate::type_error::TypeError;
 use crate::variable_scope::VariableScope;
@@ -23,7 +24,7 @@ use crate::variable_scope::VariableScope;
 /// Resolve a parsed Type to a semantic Type.
 pub fn resolve_type(
     parsed_type: &ParsedType,
-    type_env: &mut TypeEnv,
+    type_env: &mut VariableScope<TypeName, (TypeBinding, DocumentRange)>,
     definition_links: &mut Vec<DefinitionLink>,
 ) -> Result<Arc<Type>, TypeError> {
     let (typ, _) = match parsed_type {
@@ -71,15 +72,15 @@ pub fn resolve_type(
 
 /// Resolve a parsed Expr to a typed Expr.
 ///
-/// The optional `expected_type` is used for bidirectional type checking, allowing
+/// The optional `inferred_type` is used for bidirectional type checking, allowing
 /// empty array literals to infer their element type from context.
 pub fn typecheck_expr(
     parsed_expr: &ParsedExpr,
+    inferred_type: Option<&Arc<Type>>,
     var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
-    type_env: &mut TypeEnv,
+    type_env: &mut VariableScope<TypeName, (TypeBinding, DocumentRange)>,
     annotations: &mut Vec<TypeAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
-    expected_type: Option<&Arc<Type>>,
     asset_references: &mut Vec<AssetReference>,
 ) -> Result<TypedExpr, TypeError> {
     match parsed_expr {
@@ -121,11 +122,11 @@ pub fn typecheck_expr(
         } => {
             let typed_base = typecheck_expr(
                 record,
+                None,
                 var_env,
                 type_env,
                 annotations,
                 definition_links,
-                None,
                 asset_references,
             )?;
             let base_type = typed_base.as_type();
@@ -168,30 +169,30 @@ pub fn typecheck_expr(
             // to infer left's type from right
             let typed_left = typecheck_expr(
                 left,
+                None,
                 var_env,
                 type_env,
                 annotations,
                 definition_links,
-                None,
                 asset_references,
             )
             .or_else(|left_err| {
                 let typed_right = typecheck_expr(
                     right,
+                    None,
                     var_env,
                     type_env,
                     annotations,
                     definition_links,
-                    None,
                     asset_references,
                 )?;
                 typecheck_expr(
                     left,
+                    Some(&typed_right.get_type()),
                     var_env,
                     type_env,
                     annotations,
                     definition_links,
-                    Some(&typed_right.get_type()),
                     asset_references,
                 )
                 .map_err(|_| left_err)
@@ -199,11 +200,11 @@ pub fn typecheck_expr(
             // Use left's type as context for right (allows Some(1) == None)
             let typed_right = typecheck_expr(
                 right,
+                Some(&typed_left.get_type()),
                 var_env,
                 type_env,
                 annotations,
                 definition_links,
-                Some(&typed_left.get_type()),
                 asset_references,
             )?;
 
@@ -246,20 +247,20 @@ pub fn typecheck_expr(
         } => {
             let typed_left = typecheck_expr(
                 left,
+                None,
                 var_env,
                 type_env,
                 annotations,
                 definition_links,
-                None,
                 asset_references,
             )?;
             let typed_right = typecheck_expr(
                 right,
+                None,
                 var_env,
                 type_env,
                 annotations,
                 definition_links,
-                None,
                 asset_references,
             )?;
             let left_type = typed_left.as_type();
@@ -301,20 +302,20 @@ pub fn typecheck_expr(
         } => {
             let typed_left = typecheck_expr(
                 left,
+                None,
                 var_env,
                 type_env,
                 annotations,
                 definition_links,
-                None,
                 asset_references,
             )?;
             let typed_right = typecheck_expr(
                 right,
+                None,
                 var_env,
                 type_env,
                 annotations,
                 definition_links,
-                None,
                 asset_references,
             )?;
             let left_type = typed_left.as_type();
@@ -360,20 +361,20 @@ pub fn typecheck_expr(
         } => {
             let typed_left = typecheck_expr(
                 left,
+                None,
                 var_env,
                 type_env,
                 annotations,
                 definition_links,
-                None,
                 asset_references,
             )?;
             let typed_right = typecheck_expr(
                 right,
+                None,
                 var_env,
                 type_env,
                 annotations,
                 definition_links,
-                None,
                 asset_references,
             )?;
             let left_type = typed_left.as_type();
@@ -419,20 +420,20 @@ pub fn typecheck_expr(
         } => {
             let typed_left = typecheck_expr(
                 left,
+                None,
                 var_env,
                 type_env,
                 annotations,
                 definition_links,
-                None,
                 asset_references,
             )?;
             let typed_right = typecheck_expr(
                 right,
+                None,
                 var_env,
                 type_env,
                 annotations,
                 definition_links,
-                None,
                 asset_references,
             )?;
             let left_type = typed_left.as_type();
@@ -477,20 +478,20 @@ pub fn typecheck_expr(
         } => {
             let typed_left = typecheck_expr(
                 left,
+                None,
                 var_env,
                 type_env,
                 annotations,
                 definition_links,
-                None,
                 asset_references,
             )?;
             let typed_right = typecheck_expr(
                 right,
+                None,
                 var_env,
                 type_env,
                 annotations,
                 definition_links,
-                None,
                 asset_references,
             )?;
             let left_type = typed_left.as_type();
@@ -535,20 +536,20 @@ pub fn typecheck_expr(
         } => {
             let typed_left = typecheck_expr(
                 left,
+                None,
                 var_env,
                 type_env,
                 annotations,
                 definition_links,
-                None,
                 asset_references,
             )?;
             let typed_right = typecheck_expr(
                 right,
+                None,
                 var_env,
                 type_env,
                 annotations,
                 definition_links,
-                None,
                 asset_references,
             )?;
             let left_type = typed_left.as_type();
@@ -580,20 +581,20 @@ pub fn typecheck_expr(
         } => {
             let typed_left = typecheck_expr(
                 left,
+                None,
                 var_env,
                 type_env,
                 annotations,
                 definition_links,
-                None,
                 asset_references,
             )?;
             let typed_right = typecheck_expr(
                 right,
+                None,
                 var_env,
                 type_env,
                 annotations,
                 definition_links,
-                None,
                 asset_references,
             )?;
             let left_type = typed_left.as_type();
@@ -624,20 +625,20 @@ pub fn typecheck_expr(
         } => {
             let typed_left = typecheck_expr(
                 left,
+                None,
                 var_env,
                 type_env,
                 annotations,
                 definition_links,
-                None,
                 asset_references,
             )?;
             let typed_right = typecheck_expr(
                 right,
+                None,
                 var_env,
                 type_env,
                 annotations,
                 definition_links,
-                None,
                 asset_references,
             )?;
             let left_type = typed_left.as_type();
@@ -676,20 +677,20 @@ pub fn typecheck_expr(
         } => {
             let typed_left = typecheck_expr(
                 left,
+                None,
                 var_env,
                 type_env,
                 annotations,
                 definition_links,
-                None,
                 asset_references,
             )?;
             let typed_right = typecheck_expr(
                 right,
+                None,
                 var_env,
                 type_env,
                 annotations,
                 definition_links,
-                None,
                 asset_references,
             )?;
             let left_type = typed_left.as_type();
@@ -724,20 +725,20 @@ pub fn typecheck_expr(
         } => {
             let typed_left = typecheck_expr(
                 left,
+                None,
                 var_env,
                 type_env,
                 annotations,
                 definition_links,
-                None,
                 asset_references,
             )?;
             let typed_right = typecheck_expr(
                 right,
+                None,
                 var_env,
                 type_env,
                 annotations,
                 definition_links,
-                None,
                 asset_references,
             )?;
             let left_type = typed_left.as_type();
@@ -767,11 +768,11 @@ pub fn typecheck_expr(
         ParsedExpr::BooleanNegation { operand, .. } => {
             let typed_operand = typecheck_expr(
                 operand,
+                None,
                 var_env,
                 type_env,
                 annotations,
                 definition_links,
-                None,
                 asset_references,
             )?;
             let operand_type = typed_operand.as_type();
@@ -790,11 +791,11 @@ pub fn typecheck_expr(
         ParsedExpr::NumericNegation { operand, .. } => {
             let typed_operand = typecheck_expr(
                 operand,
+                None,
                 var_env,
                 type_env,
                 annotations,
                 definition_links,
-                None,
                 asset_references,
             )?;
             let operand_type = typed_operand.as_type();
@@ -817,7 +818,7 @@ pub fn typecheck_expr(
         ParsedExpr::ArrayLiteral { elements, range } => {
             if elements.is_empty() {
                 // Empty array: infer element type from expected type
-                let elem_type = match expected_type.map(|t| t.as_ref()) {
+                let elem_type = match inferred_type.map(|t| t.as_ref()) {
                     Some(Type::Array(elem)) => elem.clone(),
                     _ => {
                         return Err(TypeError::CannotInferEmptyArrayType {
@@ -831,7 +832,7 @@ pub fn typecheck_expr(
                 })
             } else {
                 // Determine expected element type from context if available
-                let expected_elem_type: Option<Arc<Type>> = match expected_type.map(|t| t.as_ref())
+                let expected_elem_type: Option<Arc<Type>> = match inferred_type.map(|t| t.as_ref())
                 {
                     Some(Type::Array(elem)) => Some(elem.clone()),
                     _ => None,
@@ -842,11 +843,11 @@ pub fn typecheck_expr(
                 // Check the type of the first element
                 let first_typed = typecheck_expr(
                     &elements[0],
+                    expected_elem_type.as_ref(),
                     var_env,
                     type_env,
                     annotations,
                     definition_links,
-                    expected_elem_type.as_ref(),
                     asset_references,
                 )?;
                 let first_type = first_typed.get_type();
@@ -858,11 +859,11 @@ pub fn typecheck_expr(
                 for element in elements.iter().skip(1) {
                     let typed_element = typecheck_expr(
                         element,
+                        Some(elem_context),
                         var_env,
                         type_env,
                         annotations,
                         definition_links,
-                        Some(elem_context),
                         asset_references,
                     )?;
                     let element_type = typed_element.get_type();
@@ -952,11 +953,11 @@ pub fn typecheck_expr(
                 // Type check the field value with expected type for bidirectional checking
                 let typed_value = typecheck_expr(
                     field_value,
+                    Some(expected_type),
                     var_env,
                     type_env,
                     annotations,
                     definition_links,
-                    Some(expected_type),
                     asset_references,
                 )?;
                 let actual_type = typed_value.get_type();
@@ -1075,11 +1076,11 @@ pub fn typecheck_expr(
                             // Type check the field expression
                             let typed_field_expr = typecheck_expr(
                                 field_expr,
+                                Some(expected_type),
                                 var_env,
                                 type_env,
                                 annotations,
                                 definition_links,
-                                Some(expected_type),
                                 asset_references,
                             )?;
 
@@ -1140,7 +1141,7 @@ pub fn typecheck_expr(
                 Some(inner_expr) => {
                     // Some(value): determine expected inner type from context if available
                     let expected_inner_type: Option<Arc<Type>> =
-                        match expected_type.map(|t| t.as_ref()) {
+                        match inferred_type.map(|t| t.as_ref()) {
                             Some(Type::Option(elem)) => Some(elem.clone()),
                             _ => None,
                         };
@@ -1148,11 +1149,11 @@ pub fn typecheck_expr(
                     // Type check the inner value
                     let typed_inner = typecheck_expr(
                         inner_expr,
+                        expected_inner_type.as_ref(),
                         var_env,
                         type_env,
                         annotations,
                         definition_links,
-                        expected_inner_type.as_ref(),
                         asset_references,
                     )?;
                     let inner_type = typed_inner.get_type();
@@ -1163,7 +1164,7 @@ pub fn typecheck_expr(
                 }
                 None => {
                     // None: infer element type from expected type
-                    let elem_type = match expected_type.map(|t| t.as_ref()) {
+                    let elem_type = match inferred_type.map(|t| t.as_ref()) {
                         Some(Type::Option(elem)) => elem.clone(),
                         _ => {
                             return Err(TypeError::CannotInferNoneType {
@@ -1202,11 +1203,11 @@ pub fn typecheck_expr(
                 for arg in args {
                     let typed = typecheck_expr(
                         arg,
+                        Some(&string_type),
                         var_env,
                         type_env,
                         annotations,
                         definition_links,
-                        Some(&string_type),
                         asset_references,
                     )?;
                     if typed.as_type() != &Type::String {
@@ -1283,11 +1284,11 @@ pub fn typecheck_expr(
         } => {
             let typed_receiver = typecheck_expr(
                 receiver,
+                None,
                 var_env,
                 type_env,
                 annotations,
                 definition_links,
-                None,
                 asset_references,
             )?;
             let receiver_type = typed_receiver.get_type();
@@ -1367,18 +1368,18 @@ fn typecheck_match(
     subject: &ParsedExpr,
     arms: &[ParsedMatchArm],
     var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
-    type_env: &mut TypeEnv,
+    type_env: &mut VariableScope<TypeName, (TypeBinding, DocumentRange)>,
     annotations: &mut Vec<TypeAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
     asset_references: &mut Vec<AssetReference>,
 ) -> Result<TypedExpr, TypeError> {
     let typed_subject = typecheck_expr(
         subject,
+        None,
         var_env,
         type_env,
         annotations,
         definition_links,
-        None,
         asset_references,
     )?;
 
@@ -1488,7 +1489,7 @@ pub fn extract_bindings_from_pattern(
 /// Collect definition links for enum variant references in match patterns.
 fn collect_pattern_definition_links(
     pattern: &ParsedMatchPattern,
-    type_env: &mut TypeEnv,
+    type_env: &mut VariableScope<TypeName, (TypeBinding, DocumentRange)>,
     definition_links: &mut Vec<DefinitionLink>,
 ) {
     match pattern {
@@ -1529,8 +1530,8 @@ fn collect_pattern_definition_links(
 fn typecheck_arm_bodies(
     arms: &[ParsedMatchArm],
     subject_type: Arc<Type>,
-    env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
-    type_env: &mut TypeEnv,
+    var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
+    type_env: &mut VariableScope<TypeName, (TypeBinding, DocumentRange)>,
     annotations: &mut Vec<TypeAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
     asset_references: &mut Vec<AssetReference>,
@@ -1546,7 +1547,7 @@ fn typecheck_arm_bodies(
         let bindings = extract_bindings_from_pattern(&arm.pattern, subject_type.clone());
         let mut pushed_count = 0;
         for (name, typ, range) in &bindings {
-            match env.push(name.clone(), (typ.clone(), range.clone())) {
+            match var_env.push(name.clone(), (typ.clone(), range.clone())) {
                 Ok(_) => {
                     pushed_count += 1;
                 }
@@ -1562,18 +1563,18 @@ fn typecheck_arm_bodies(
         // Use the first arm's type as context for subsequent arms
         let typed_body = typecheck_expr(
             &arm.body,
-            env,
+            result_type.as_ref(),
+            var_env,
             type_env,
             annotations,
             definition_links,
-            result_type.as_ref(),
             asset_references,
         )?;
         let body_type = typed_body.get_type();
 
         // Remove bindings from environment and check for unused bindings
         for (_, _, range) in bindings.iter().rev().take(pushed_count) {
-            let (name, _, accessed) = env.pop();
+            let (name, _, accessed) = var_env.pop();
             if !accessed {
                 return Err(TypeError::MatchUnusedBinding {
                     name,
@@ -1810,7 +1811,7 @@ mod tests {
 
     fn parse_type_str(
         type_str: &str,
-        type_env: &mut TypeEnv,
+        type_env: &mut VariableScope<TypeName, (TypeBinding, DocumentRange)>,
         definition_links: &mut Vec<DefinitionLink>,
     ) -> (Arc<Type>, DocumentRange) {
         let cursor =
@@ -1828,7 +1829,8 @@ mod tests {
 
     fn run_check(decls: &[Decl<'_>], env_vars: &[(&str, &str)], expr_str: &str) -> (String, bool) {
         let mut env: VariableScope<VarName, (Arc<Type>, DocumentRange)> = VariableScope::new();
-        let mut type_env: TypeEnv = VariableScope::new();
+        let mut type_env: VariableScope<TypeName, (TypeBinding, DocumentRange)> =
+            VariableScope::new();
         let mut definition_links = Vec::new();
         let mut asset_references = Vec::new();
         let test_module = DocumentId::new("test.hop").unwrap();
@@ -1969,11 +1971,11 @@ mod tests {
 
         match typecheck_expr(
             &expr,
+            None,
             &mut env,
             &mut type_env,
             &mut annotations,
             &mut definition_links,
-            None,
             &mut asset_references,
         ) {
             Ok(typed_expr) => (typed_expr.as_type().to_string(), true),

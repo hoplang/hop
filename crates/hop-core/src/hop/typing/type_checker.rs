@@ -7,9 +7,7 @@ use crate::expr::typing::r#type::EnumVariant;
 use crate::expr::typing::type_checker::{
     extract_bindings_from_pattern, resolve_type, typecheck_expr,
 };
-use crate::expr::{
-    self, ComponentSignature, ParamEntry, Tail, Type, TypeBinding, TypeEnv, TypedExpr,
-};
+use crate::expr::{self, ComponentSignature, ParamEntry, Tail, Type, TypeBinding, TypedExpr};
 use crate::hop::parsing::parsed_ast::ParsedDeclaration;
 use crate::hop::parsing::parsed_ast::{
     ParsedAttribute, ParsedComponentDeclaration, ParsedEnumDeclaration, ParsedImportDeclaration,
@@ -41,17 +39,15 @@ use crate::hop::typing::typed_node::{
 pub fn typecheck(
     modules: &[&ParsedAst],
     state: &mut HashMap<DocumentId, HashMap<TypeName, (TypeBinding, DocumentRange, bool)>>,
-    type_errors: &mut HashMap<DocumentId, Vec<TypeError>>,
-    type_annotations: &mut HashMap<DocumentId, Vec<TypeAnnotation>>,
-    definition_links: &mut HashMap<DocumentId, Vec<DefinitionLink>>,
     typed_asts: &mut HashMap<DocumentId, TypedAst>,
+    errors: &mut HashMap<DocumentId, Vec<TypeError>>,
+    annotations: &mut HashMap<DocumentId, Vec<TypeAnnotation>>,
+    definition_links: &mut HashMap<DocumentId, Vec<DefinitionLink>>,
     asset_references: &mut HashMap<DocumentId, Vec<AssetReference>>,
 ) {
     for module in modules {
-        let module_type_errors = type_errors.entry(module.document_id.clone()).or_default();
-        let module_type_annotations = type_annotations
-            .entry(module.document_id.clone())
-            .or_default();
+        let module_errors = errors.entry(module.document_id.clone()).or_default();
+        let module_annotations = annotations.entry(module.document_id.clone()).or_default();
         let module_definition_links = definition_links
             .entry(module.document_id.clone())
             .or_default();
@@ -59,26 +55,26 @@ pub fn typecheck(
             .entry(module.document_id.clone())
             .or_default();
 
-        module_type_errors.clear();
-        module_type_annotations.clear();
+        module_errors.clear();
+        module_annotations.clear();
         module_definition_links.clear();
         module_asset_references.clear();
 
         let typed_ast = typecheck_module(
             module,
             state,
-            module_type_errors,
-            module_type_annotations,
+            module_errors,
+            module_annotations,
             module_definition_links,
             module_asset_references,
         );
         typed_asts.insert(module.document_id.clone(), typed_ast);
 
         if modules.len() > 1 {
-            module_type_errors.clear();
+            module_errors.clear();
             for import_node in module.get_import_declarations() {
                 let imported_module = import_node.imported_module();
-                module_type_errors.push(TypeError::import_cycle(
+                module_errors.push(TypeError::import_cycle(
                     &module.document_id.to_string(),
                     &imported_module.to_string(),
                     &modules
@@ -100,7 +96,7 @@ fn typecheck_module(
     definition_links: &mut Vec<DefinitionLink>,
     asset_references: &mut Vec<AssetReference>,
 ) -> TypedAst {
-    let mut type_env: TypeEnv = VariableScope::new();
+    let mut type_env: VariableScope<TypeName, (TypeBinding, DocumentRange)> = VariableScope::new();
     let mut var_env: VariableScope<VarName, (Arc<Type>, DocumentRange)> = VariableScope::new();
 
     let mut typed_records = Vec::new();
@@ -188,11 +184,11 @@ fn typecheck_module(
                                 let mut fresh_var_env = VariableScope::new();
                                 if let Some(typed_default) = errors.ok_or_add(typecheck_expr(
                                     default_expr,
+                                    Some(&param_type),
                                     &mut fresh_var_env,
                                     &mut type_env,
                                     annotations,
                                     definition_links,
-                                    Some(&param_type),
                                     asset_references,
                                 )) {
                                     let default_type = typed_default.get_type();
@@ -270,13 +266,13 @@ fn typecheck_module(
                     .filter_map(|child| {
                         typecheck_node(
                             child,
+                            &declared_names,
+                            errors,
                             &mut var_env,
+                            &mut type_env,
                             annotations,
                             definition_links,
-                            errors,
-                            &mut type_env,
                             asset_references,
-                            &declared_names,
                         )
                     })
                     .collect::<Vec<_>>();
@@ -598,13 +594,13 @@ fn typecheck_module(
                     .filter_map(|child| {
                         typecheck_node(
                             child,
+                            &[],
+                            errors,
                             &mut var_env,
+                            &mut type_env,
                             annotations,
                             definition_links,
-                            errors,
-                            &mut type_env,
                             asset_references,
-                            &[],
                         )
                     })
                     .collect::<Vec<_>>();
@@ -682,13 +678,13 @@ fn typecheck_module(
 
 fn typecheck_node(
     node: &ParsedNode,
+    caller_params: &[VarName],
+    errors: &mut Vec<TypeError>,
     var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
+    type_env: &mut VariableScope<TypeName, (TypeBinding, DocumentRange)>,
     annotations: &mut Vec<TypeAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
-    errors: &mut Vec<TypeError>,
-    type_env: &mut TypeEnv,
     asset_references: &mut Vec<AssetReference>,
-    caller_params: &[VarName],
 ) -> Option<TypedNode> {
     match node {
         ParsedNode::If {
@@ -701,24 +697,24 @@ fn typecheck_node(
                 .filter_map(|child| {
                     typecheck_node(
                         child,
+                        caller_params,
+                        errors,
                         var_env,
+                        type_env,
                         annotations,
                         definition_links,
-                        errors,
-                        type_env,
                         asset_references,
-                        caller_params,
                     )
                 })
                 .collect();
 
             let typed_condition = errors.ok_or_add(typecheck_expr(
                 condition,
+                None,
                 var_env,
                 type_env,
                 annotations,
                 definition_links,
-                None,
                 asset_references,
             ))?;
 
@@ -748,11 +744,11 @@ fn typecheck_node(
                 ParsedLoopSource::Array(array_expr) => {
                     let typed_array = errors.ok_or_add(typecheck_expr(
                         array_expr,
+                        None,
                         var_env,
                         type_env,
                         annotations,
                         definition_links,
-                        None,
                         asset_references,
                     ))?;
                     let array_type = typed_array.get_type();
@@ -771,20 +767,20 @@ fn typecheck_node(
                 ParsedLoopSource::RangeInclusive { start, end } => {
                     let typed_start = errors.ok_or_add(typecheck_expr(
                         start,
+                        None,
                         var_env,
                         type_env,
                         annotations,
                         definition_links,
-                        None,
                         asset_references,
                     ))?;
                     let typed_end = errors.ok_or_add(typecheck_expr(
                         end,
+                        None,
                         var_env,
                         type_env,
                         annotations,
                         definition_links,
-                        None,
                         asset_references,
                     ))?;
 
@@ -847,13 +843,13 @@ fn typecheck_node(
                 .filter_map(|child| {
                     typecheck_node(
                         child,
+                        caller_params,
+                        errors,
                         var_env,
+                        type_env,
                         annotations,
                         definition_links,
-                        errors,
-                        type_env,
                         asset_references,
-                        caller_params,
                     )
                 })
                 .collect();
@@ -929,11 +925,11 @@ fn typecheck_node(
                 // inferred type becomes the binding's type.
                 let Some(typed_value) = errors.ok_or_add(typecheck_expr(
                     &binding.value_expr,
+                    declared_type.as_ref(),
                     var_env,
                     type_env,
                     annotations,
                     definition_links,
-                    declared_type.as_ref(),
                     asset_references,
                 )) else {
                     continue;
@@ -986,13 +982,13 @@ fn typecheck_node(
                 .filter_map(|child| {
                     typecheck_node(
                         child,
+                        caller_params,
+                        errors,
                         var_env,
+                        type_env,
                         annotations,
                         definition_links,
-                        errors,
-                        type_env,
                         asset_references,
-                        caller_params,
                     )
                 })
                 .collect();
@@ -1037,13 +1033,13 @@ fn typecheck_node(
                 .filter_map(|child| {
                     typecheck_node(
                         child,
+                        caller_params,
+                        errors,
                         var_env,
+                        type_env,
                         annotations,
                         definition_links,
-                        errors,
-                        type_env,
                         asset_references,
-                        caller_params,
                     )
                 })
                 .collect::<Vec<_>>();
@@ -1082,18 +1078,18 @@ fn typecheck_node(
 
             let (children_var, resolved_args, extra_attributes, rest_spread) = typecheck_arguments(
                 args,
-                var_env,
-                annotations,
-                definition_links,
                 &callee_params,
                 callee_tail,
-                errors,
-                type_env,
-                asset_references,
                 children.is_some(),
                 component_name,
                 component_name_opening_range,
                 caller_params,
+                errors,
+                var_env,
+                type_env,
+                annotations,
+                definition_links,
+                asset_references,
             );
 
             if let Some(var) = children_var {
@@ -1130,11 +1126,11 @@ fn typecheck_node(
             let typed_attributes = typecheck_attributes(
                 attributes,
                 element,
+                errors,
                 var_env,
+                type_env,
                 annotations,
                 definition_links,
-                errors,
-                type_env,
                 asset_references,
             );
 
@@ -1143,13 +1139,13 @@ fn typecheck_node(
                 .filter_map(|child| {
                     typecheck_node(
                         child,
+                        caller_params,
+                        errors,
                         var_env,
+                        type_env,
                         annotations,
                         definition_links,
-                        errors,
-                        type_env,
                         asset_references,
-                        caller_params,
                     )
                 })
                 .collect();
@@ -1171,11 +1167,11 @@ fn typecheck_node(
         } => {
             if let Some(typed_expr) = errors.ok_or_add(typecheck_expr(
                 expression,
+                None,
                 var_env,
                 type_env,
                 annotations,
                 definition_links,
-                None,
                 asset_references,
             )) {
                 let expr_type = typed_expr.get_type();
@@ -1196,11 +1192,11 @@ fn typecheck_node(
         ParsedNode::Match { subject, cases, .. } => {
             let typed_subject = errors.ok_or_add(typecheck_expr(
                 subject,
+                None,
                 var_env,
                 type_env,
                 annotations,
                 definition_links,
-                None,
                 asset_references,
             ))?;
             let patterns = cases
@@ -1256,13 +1252,13 @@ fn typecheck_node(
                         .filter_map(|child| {
                             typecheck_node(
                                 child,
+                                caller_params,
+                                errors,
                                 var_env,
+                                type_env,
                                 annotations,
                                 definition_links,
-                                errors,
-                                type_env,
                                 asset_references,
-                                caller_params,
                             )
                         })
                         .collect::<Vec<_>>();
@@ -1318,22 +1314,22 @@ fn typecheck_node(
 
 fn typecheck_attribute_value(
     value: &Option<ParsedAttributeValue>,
+    errors: &mut Vec<TypeError>,
     var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
-    type_env: &mut TypeEnv,
+    type_env: &mut VariableScope<TypeName, (TypeBinding, DocumentRange)>,
     annotations: &mut Vec<TypeAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
-    errors: &mut Vec<TypeError>,
     asset_references: &mut Vec<AssetReference>,
 ) -> Option<TypedAttributeValue> {
     match value {
         Some(ParsedAttributeValue::Expression(expr)) => {
             let typed_expr = errors.ok_or_add(typecheck_expr(
                 expr,
+                None,
                 var_env,
                 type_env,
                 annotations,
                 definition_links,
-                None,
                 asset_references,
             ))?;
             if *typed_expr.get_type() != Type::String {
@@ -1358,18 +1354,18 @@ fn typecheck_attribute_value(
 
 fn typecheck_arguments(
     args: &[ParsedAttribute],
-    var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
-    annotations: &mut Vec<TypeAnnotation>,
-    definition_links: &mut Vec<DefinitionLink>,
     callee_params: &[ParamEntry],
     callee_tail: Tail,
-    errors: &mut Vec<TypeError>,
-    type_env: &mut TypeEnv,
-    asset_references: &mut Vec<AssetReference>,
     has_body: bool,
     component_name: &TypeName,
     component_name_opening_range: &DocumentRange,
     caller_params: &[VarName],
+    errors: &mut Vec<TypeError>,
+    var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
+    type_env: &mut VariableScope<TypeName, (TypeBinding, DocumentRange)>,
+    annotations: &mut Vec<TypeAnnotation>,
+    definition_links: &mut Vec<DefinitionLink>,
+    asset_references: &mut Vec<AssetReference>,
 ) -> (
     Option<VarName>,
     Vec<TypedArgument>,
@@ -1383,7 +1379,8 @@ fn typecheck_arguments(
         ParsedAttribute::Named { name, .. } => name.as_str() == "children",
         ParsedAttribute::Spread { .. } => false,
     });
-    let synthesize_children_arg = has_body && children_param.is_some() && !has_explicit_children_arg;
+    let synthesize_children_arg =
+        has_body && children_param.is_some() && !has_explicit_children_arg;
 
     if has_body && children_param.is_none() {
         errors.push(TypeError::ComponentDoesNotAcceptChildren {
@@ -1433,11 +1430,11 @@ fn typecheck_arguments(
                 if accepted {
                     let value = typecheck_attribute_value(
                         arg_value,
+                        errors,
                         var_env,
                         type_env,
                         annotations,
                         definition_links,
-                        errors,
                         asset_references,
                     );
                     extra_attributes.push(TypedAttribute {
@@ -1480,11 +1477,11 @@ fn typecheck_arguments(
 
         let Some(typed_expr) = errors.ok_or_add(typecheck_expr(
             &arg_expr,
+            Some(param_type),
             var_env,
             type_env,
             annotations,
             definition_links,
-            Some(param_type),
             asset_references,
         )) else {
             continue;
@@ -1574,11 +1571,11 @@ fn typecheck_arguments(
 fn typecheck_attributes(
     attributes: &[ParsedAttribute],
     element: &HtmlElement,
+    errors: &mut Vec<TypeError>,
     var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
+    type_env: &mut VariableScope<TypeName, (TypeBinding, DocumentRange)>,
     annotations: &mut Vec<TypeAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
-    errors: &mut Vec<TypeError>,
-    type_env: &mut TypeEnv,
     asset_references: &mut Vec<AssetReference>,
 ) -> Vec<TypedAttribute> {
     let mut typed_attributes = Vec::new();
@@ -1591,11 +1588,11 @@ fn typecheck_attributes(
             element,
             attr_name,
             attr_value,
+            errors,
             var_env,
+            type_env,
             annotations,
             definition_links,
-            errors,
-            type_env,
             asset_references,
         ) {
             typed_attributes.push(typed);
@@ -1610,11 +1607,11 @@ fn typecheck_html_attribute(
     element: &HtmlElement,
     name: &DocumentRange,
     value: &Option<ParsedAttributeValue>,
+    errors: &mut Vec<TypeError>,
     var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
+    type_env: &mut VariableScope<TypeName, (TypeBinding, DocumentRange)>,
     annotations: &mut Vec<TypeAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
-    errors: &mut Vec<TypeError>,
-    type_env: &mut TypeEnv,
     asset_references: &mut Vec<AssetReference>,
 ) -> Option<TypedAttribute> {
     if !element.accepts_attribute(name.as_str()) {
@@ -1628,11 +1625,11 @@ fn typecheck_html_attribute(
 
     let typed_value = typecheck_attribute_value(
         value,
+        errors,
         var_env,
         type_env,
         annotations,
         definition_links,
-        errors,
         asset_references,
     );
 
@@ -1913,10 +1910,10 @@ mod tests {
             typecheck(
                 &[&ast],
                 &mut state,
+                &mut typed_asts,
                 &mut type_errors,
                 &mut type_annotations,
                 &mut definition_links,
-                &mut typed_asts,
                 &mut asset_references,
             );
 
