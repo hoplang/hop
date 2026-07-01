@@ -15,9 +15,9 @@ use crate::html::HtmlElement;
 use pretty::{Arena, DocAllocator, DocBuilder};
 use std::collections::VecDeque;
 
-pub fn format(ast: ParsedAst) -> String {
+pub fn format(ast: &ParsedAst) -> String {
     let arena = Arena::new();
-    format_ast(&ast, &arena).pretty(60).to_string()
+    format_ast(ast, &arena).pretty(60).to_string()
 }
 
 /// Wraps items in a grouped body with trailing comma that disappear
@@ -1257,12 +1257,12 @@ mod tests {
         if !errors.is_empty() {
             panic!("Parse errors: {:?}", errors);
         }
-        let formatted = super::format(ast);
+        let formatted = super::format(&ast);
         expected.assert_eq(&formatted);
 
         // Check idempotency: formatting the output should give the same result
         let document_id = DocumentId::new("test.hop").unwrap();
-        let formatted_twice = super::format(parser::parse(
+        let formatted_twice = super::format(&parser::parse(
             document_id.clone(),
             Document::new(document_id, formatted.clone()),
             &mut errors,

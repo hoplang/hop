@@ -253,7 +253,7 @@ impl Program {
             }
         }
 
-        Ok(format(ast.clone()))
+        Ok(format(ast))
     }
 
     /// Returns all hop module sources concatenated into a single string.

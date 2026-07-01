@@ -1106,7 +1106,7 @@ fn typecheck_node(
             let (children_var, resolved_args, extra_attributes, rest_spread) = typecheck_arguments(
                 args,
                 &callee_params,
-                callee_tail,
+                &callee_tail,
                 children.is_some(),
                 component_name,
                 component_name_opening_range,
@@ -1386,7 +1386,7 @@ fn typecheck_attribute_value(
 fn typecheck_arguments(
     args: &[ParsedAttribute],
     callee_params: &[ParamEntry],
-    callee_tail: Tail,
+    callee_tail: &Tail,
     has_body: bool,
     component_name: &TypeName,
     component_name_opening_range: &DocumentRange,

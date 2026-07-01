@@ -1545,7 +1545,7 @@ mod tests {
                 .render();
             panic!("expected no parse errors, got:\n{rendered}");
         }
-        expected.assert_eq(&formatter::format(module));
+        expected.assert_eq(&formatter::format(&module));
     }
 
     fn reject(input: &str, expected: Expect) {
