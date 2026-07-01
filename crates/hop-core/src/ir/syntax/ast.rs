@@ -1555,7 +1555,7 @@ impl fmt::Display for IrViewDeclaration {
 impl fmt::Display for IrEnumDeclaration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "enum {} {{", self.name)?;
-        for variant in self.variants.iter() {
+        for variant in &self.variants {
             if variant.fields.is_empty() {
                 writeln!(f, "  {},", variant.name.as_str())?;
             } else {
@@ -1589,7 +1589,7 @@ impl IrRecordDeclaration {
 impl fmt::Display for IrRecordDeclaration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "record {} {{", self.name)?;
-        for (field_name, field_type, _) in self.fields.iter() {
+        for (field_name, field_type, _) in &self.fields {
             writeln!(
                 f,
                 "  {}: {},",

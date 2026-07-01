@@ -1054,7 +1054,7 @@ fn format_expr<'a>(
         ParsedExpr::MacroInvocation { name, args, .. } => {
             let mut expanded_docs: Vec<DocBuilder<'a, Arena<'a>>> = Vec::new();
             if name == "join" {
-                for e in args.iter() {
+                for e in args {
                     let leading_comments =
                         drain_comments_before(arena, comments, e.range().start());
                     match e {
@@ -1077,7 +1077,7 @@ fn format_expr<'a>(
                     }
                 }
             } else {
-                for e in args.iter() {
+                for e in args {
                     let leading_comments =
                         drain_comments_before(arena, comments, e.range().start());
                     expanded_docs.push(leading_comments.append(format_expr(arena, e, comments)));

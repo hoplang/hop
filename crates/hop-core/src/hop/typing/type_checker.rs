@@ -1444,7 +1444,7 @@ fn typecheck_arguments(
 
     let mut typed_args = Vec::new();
     let mut extra_attributes: Vec<TypedAttribute> = Vec::new();
-    for arg in args.iter() {
+    for arg in args {
         let (arg_name_range, arg_value) = match arg {
             ParsedAttribute::Named { name, value } => (name, value),
             ParsedAttribute::Spread { .. } => continue,

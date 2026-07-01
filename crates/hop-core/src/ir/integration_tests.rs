@@ -180,8 +180,8 @@ fn check_with_asset_rewriter(
     let parse_errors = program.get_parse_errors();
     let has_parse_errors = parse_errors.values().any(|e| !e.is_empty());
     if has_parse_errors {
-        for (module, errors) in parse_errors.iter() {
-            for error in errors.iter() {
+        for (module, errors) in parse_errors {
+            for error in errors {
                 eprintln!("Parse Error in {:?}: {:?}", module, error);
             }
         }
@@ -202,8 +202,8 @@ fn check_with_asset_rewriter(
     let type_errors = program.get_type_errors();
     let has_type_errors = type_errors.values().any(|e| !e.is_empty());
     if has_type_errors {
-        for (module, errors) in type_errors.iter() {
-            for error in errors.iter() {
+        for (module, errors) in type_errors {
+            for error in errors {
                 eprintln!("Type Error in {:?}: {:?}", module, error);
             }
         }
