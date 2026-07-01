@@ -66,7 +66,7 @@ impl Project {
                     "Failed to locate hop.toml file in {:?} or any parent directory",
                     &start_path
                 )
-            })?
+            })?;
         }
     }
 

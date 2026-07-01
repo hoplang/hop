@@ -731,7 +731,7 @@ impl<'a> Compiler<'a> {
         let mut counts: HashMap<&VarName, usize> = HashMap::new();
         for row in rows {
             for col in &row.columns {
-                *counts.entry(&col.variable.name).or_insert(0_usize) += 1
+                *counts.entry(&col.variable.name).or_insert(0_usize) += 1;
             }
         }
         rows[0]

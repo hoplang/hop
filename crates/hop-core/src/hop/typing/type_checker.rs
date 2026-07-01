@@ -294,7 +294,7 @@ fn typecheck_module(
                         errors.push(TypeError::new(
                             TypeErrorKind::UnusedVariable { var_name: name },
                             param.var_name_range.clone(),
-                        ))
+                        ));
                     }
                 }
 
@@ -624,7 +624,7 @@ fn typecheck_module(
                         errors.push(TypeError::new(
                             TypeErrorKind::UnusedVariable { var_name: name },
                             param.var_name_range.clone(),
-                        ))
+                        ));
                     }
                 }
 
@@ -740,7 +740,7 @@ fn typecheck_node(
                         found: condition_type,
                     },
                     condition.range().clone(),
-                ))
+                ));
             }
 
             Some(TypedNode::If {
@@ -880,7 +880,7 @@ fn typecheck_node(
                         errors.push(TypeError::new(
                             TypeErrorKind::UnusedVariable { var_name: name },
                             var_name_range.clone(),
-                        ))
+                        ));
                     }
                 }
             }
@@ -1025,7 +1025,7 @@ fn typecheck_node(
                     errors.push(TypeError::new(
                         TypeErrorKind::UnusedVariable { var_name: name },
                         binding.var_name_range.clone(),
-                    ))
+                    ));
                 }
             }
 

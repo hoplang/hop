@@ -29,7 +29,7 @@ pub fn scan_for_asset_references(
                             errors.push(CssError::new(
                                 CssErrorKind::UnclosedAssetCall,
                                 marker_range.to(close_paren),
-                            ))
+                            ));
                         } else {
                             let document_id =
                                 DocumentId::new(path.trim_start_matches('/')).unwrap();

@@ -209,11 +209,11 @@ impl PartialEvaluationPass {
                         // Unary ops
                         IrExpr::BooleanNegation { operand, .. } => {
                             unary_operands.push((operand.id(), expr.id()));
-                            unary_ops.push((expr.id(), UnaryOp::BooleanNegation))
+                            unary_ops.push((expr.id(), UnaryOp::BooleanNegation));
                         }
                         IrExpr::TwMerge { operand, .. } => {
                             unary_operands.push((operand.id(), expr.id()));
-                            unary_ops.push((expr.id(), UnaryOp::TwMerge))
+                            unary_ops.push((expr.id(), UnaryOp::TwMerge));
                         }
                         // Binary ops
                         IrExpr::BooleanLogicalOr { left, right, .. } => {
