@@ -1677,7 +1677,7 @@ fn typecheck_arm_bodies(
                     return Err(TypeError::new(
                         TypeErrorKind::MatchArmTypeMismatch {
                             expected: expected.clone(),
-                            found: body_type.clone(),
+                            found: body_type,
                         },
                         arm.body.range().clone(),
                     ));

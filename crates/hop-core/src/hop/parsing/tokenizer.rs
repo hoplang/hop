@@ -717,7 +717,7 @@ fn parse_opening_tag(
     let Some(right_angle) = iter.next_if(|s| s.ch() == '>') else {
         errors.push(ParseError::new(
             ParseErrorKind::UnterminatedOpeningTag {},
-            tag_name.clone(),
+            tag_name,
         ));
         return None;
     };

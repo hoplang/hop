@@ -56,7 +56,7 @@ pub fn next(
             None => {
                 errors.push(ParseError::new(
                     ParseErrorKind::UnexpectedCharacter { ch: '#' },
-                    start.clone(),
+                    start,
                 ));
                 return next(iter, errors);
             }
@@ -135,9 +135,7 @@ pub fn next(
                         // Unterminated string
                         errors.push(ParseError::new(
                             ParseErrorKind::UnterminatedStringLiteral {},
-                            content
-                                .map(|c| start.clone().to(c))
-                                .unwrap_or(start.clone()),
+                            content.map(|c| start.clone().to(c)).unwrap_or(start),
                         ));
                         return None;
                     }
@@ -168,7 +166,7 @@ pub fn next(
                                 ));
                                 errors.push(ParseError::new(
                                     ParseErrorKind::UnterminatedStringLiteral {},
-                                    start.clone().to(backslash),
+                                    start.to(backslash),
                                 ));
                                 return None;
                             }

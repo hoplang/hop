@@ -275,7 +275,7 @@ fn parse_import_declaration(
         Err(e) => {
             errors.push(ParseError::new(
                 ParseErrorKind::InvalidTypeName { error: e },
-                type_name_range.clone(),
+                type_name_range,
             ));
             return None;
         }
@@ -338,7 +338,7 @@ fn parse_record_declaration(
                     ParseErrorKind::DuplicateField {
                         name: field_name_range.to_cheap_string(),
                     },
-                    field_name_range.clone(),
+                    field_name_range,
                 ));
                 return None;
             }
@@ -389,7 +389,7 @@ fn parse_enum_declaration(
                     ParseErrorKind::DuplicateVariant {
                         name: variant_range.to_cheap_string(),
                     },
-                    variant_range.clone(),
+                    variant_range,
                 ));
                 return None;
             }
@@ -454,7 +454,7 @@ fn parse_enum_variant_fields(
                 ParseErrorKind::DuplicateField {
                     name: field_name_range.to_cheap_string(),
                 },
-                field_name_range.clone(),
+                field_name_range,
             ));
             return None;
         }
@@ -766,7 +766,7 @@ fn parse_view_declaration(
         Err(_) => {
             errors.push(ParseError::new(
                 ParseErrorKind::InvalidViewName {},
-                name_range.clone(),
+                name_range,
             ));
             return None;
         }
@@ -1001,7 +1001,7 @@ fn construct_node(
                 } else {
                     errors.push(ParseError::new(
                         ParseErrorKind::MissingMatchExpression {},
-                        opening_tag_range.clone(),
+                        opening_tag_range,
                     ));
                     None
                 };
@@ -1122,7 +1122,7 @@ fn construct_node(
                     } else {
                         errors.push(ParseError::new(
                             ParseErrorKind::MissingIfExpression {},
-                            opening_tag_range.clone(),
+                            opening_tag_range,
                         ));
                         None
                     }?;
@@ -1142,7 +1142,7 @@ fn construct_node(
                     } else {
                         errors.push(ParseError::new(
                             ParseErrorKind::MissingForExpression {},
-                            opening_tag_range.clone(),
+                            opening_tag_range,
                         ));
                         None
                     };
@@ -1162,7 +1162,7 @@ fn construct_node(
                     let Some(bindings_range) = expression else {
                         errors.push(ParseError::new(
                             ParseErrorKind::MissingLetBinding {},
-                            opening_tag_range.clone(),
+                            opening_tag_range,
                         ));
                         return None;
                     };

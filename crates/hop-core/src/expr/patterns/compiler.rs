@@ -298,7 +298,7 @@ impl<'a> Compiler<'a> {
         ) {
             return Err(TypeError::new(
                 TypeErrorKind::MatchNotImplementedForType {
-                    found: subject_type.clone(),
+                    found: subject_type,
                 },
                 subject_range.clone(),
             ));
@@ -316,7 +316,7 @@ impl<'a> Compiler<'a> {
             Self::typecheck_pattern(pattern, subject_type.clone())?;
         }
 
-        let subject_var = Variable::new(subject_name.clone(), subject_type.clone());
+        let subject_var = Variable::new(subject_name.clone(), subject_type);
 
         let rows: Vec<Row> = patterns
             .iter()
@@ -994,7 +994,7 @@ mod tests {
         let (subject_name, subject_range, patterns) = match expr {
             ParsedExpr::Match { subject, arms, .. } => {
                 let (name, subject_range) = match *subject {
-                    ParsedExpr::Var { value, range, .. } => (value, range.clone()),
+                    ParsedExpr::Var { value, range, .. } => (value, range),
                     _ => panic!("Expected variable as match subject"),
                 };
                 (

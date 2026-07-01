@@ -640,7 +640,7 @@ pub fn parse_match_pattern(
             Err(error) => {
                 errors.push(ParseError::new(
                     ParseErrorKind::InvalidTypeName { error },
-                    type_name_range.clone(),
+                    type_name_range,
                 ));
                 return None;
             }
@@ -680,7 +680,7 @@ pub fn parse_match_pattern(
             return Some(ParsedMatchPattern::Constructor {
                 constructor: Constructor::EnumVariant {
                     enum_name: type_name,
-                    variant_name: variant_name.clone(),
+                    variant_name,
                 },
                 args: Vec::new(),
                 fields,
@@ -739,7 +739,7 @@ mod tests {
 
     fn accept(input: &str, expected: Expect) {
         let document_id = DocumentId::new("test.hop").unwrap();
-        let cursor = DocumentCursor::new(document_id.clone(), input.to_string());
+        let cursor = DocumentCursor::new(document_id, input.to_string());
         let range = cursor.range();
         let mut iter = cursor.peekable();
         let mut comments = VecDeque::new();

@@ -2202,7 +2202,7 @@ mod tests {
                     match_: Match::Enum {
                         subject: Box::new(IrExpr::Var {
                             value: VarName::new("color").unwrap(),
-                            kind: color_type.clone(),
+                            kind: color_type,
                             id: 0,
                         }),
                         arms: vec![
@@ -2230,7 +2230,7 @@ mod tests {
                             },
                             EnumMatchArm {
                                 pattern: EnumPattern::Variant {
-                                    enum_name: color_typename.clone(),
+                                    enum_name: color_typename,
                                     variant_name: TypeName::new("Blue").unwrap(),
                                 },
                                 bindings: vec![],

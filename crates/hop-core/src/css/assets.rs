@@ -174,7 +174,7 @@ fn parse_quoted_argument(
 ) -> ArgumentParseResult {
     let quote = open_quote.ch();
     let mut content_range: Option<DocumentRange> = None;
-    let mut last_consumed = open_quote.clone();
+    let mut last_consumed = open_quote;
 
     loop {
         match iter.next() {
@@ -187,7 +187,7 @@ fn parse_quoted_argument(
             }
             Some(r) if r.ch() == quote => {
                 // Found closing quote
-                last_consumed = r.clone();
+                last_consumed = r;
                 // Skip trailing whitespace and expect `)`
                 skip_css_whitespace(iter);
 
@@ -204,7 +204,7 @@ fn parse_quoted_argument(
                         // Something after the quoted string that isn't `)`, multi-arg or malformed
                         let other_clone = other.clone();
                         let collected = collect_raw_from_cursor(iter, Some(other));
-                        let content_str = path.to_string();
+                        let content_str = path.as_str();
                         let full_arg =
                             format!("{}{}{}{}", quote, content_str, quote, collected.text);
                         let last_range = collected

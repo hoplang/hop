@@ -37,7 +37,7 @@ impl Project {
             anyhow::bail!("Expected to find hop.toml in {:?}", &path)
         }
         Ok(Project {
-            project_root: canonicalized.clone(),
+            project_root: canonicalized,
         })
     }
 
@@ -76,7 +76,7 @@ impl Project {
             .canonicalize()
             .with_context(|| format!("Failed to canonicalize path {:?}", &start_path))?;
 
-        let mut paths: Vec<PathBuf> = vec![canonicalized.clone()];
+        let mut paths: Vec<PathBuf> = vec![canonicalized];
 
         while let Some(path) = paths.pop() {
             if path.is_dir() {

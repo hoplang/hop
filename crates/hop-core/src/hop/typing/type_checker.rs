@@ -837,7 +837,7 @@ fn typecheck_node(
                     Ok(_) => {
                         annotations.push(TypeAnnotation::TypeForVarName {
                             range: var_name_range.clone(),
-                            typ: element_type.clone(),
+                            typ: element_type,
                             var_name: var_name.clone(),
                         });
                         true
@@ -1125,17 +1125,17 @@ fn typecheck_node(
                     fragment_body: typed_children,
                     body: vec![TypedNode::ComponentInvocation {
                         component_name: component_name.clone(),
-                        component_module: component_module.clone(),
+                        component_module,
                         args: resolved_args,
-                        extra_attributes: extra_attributes.clone(),
-                        rest_spread: rest_spread.clone(),
+                        extra_attributes,
+                        rest_spread,
                     }],
                 });
             }
 
             Some(TypedNode::ComponentInvocation {
                 component_name: component_name.clone(),
-                component_module: component_module.clone(),
+                component_module,
                 args: resolved_args,
                 extra_attributes,
                 rest_spread,

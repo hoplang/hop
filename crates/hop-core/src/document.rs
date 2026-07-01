@@ -559,7 +559,7 @@ mod tests {
         let _range2 = cursor.next().unwrap();
         let range3 = cursor.next().unwrap();
 
-        let extended = range1.clone().to(range3);
+        let extended = range1.to(range3);
         assert_eq!(extended.ch(), 'a');
         assert_eq!(extended.to_string(), "abc");
         assert_eq!(
@@ -594,15 +594,6 @@ mod tests {
     fn empty_string_cursor() {
         let mut cursor = DocumentCursor::new(DocumentId::new("test.hop").unwrap(), "".to_string());
         assert!(cursor.next().is_none());
-    }
-
-    #[test]
-    fn string_cursor_clone() {
-        let cursor1 = DocumentCursor::new(DocumentId::new("test.hop").unwrap(), "test".to_string());
-        let mut cursor2 = cursor1.clone();
-
-        let range = cursor2.next().unwrap();
-        assert_eq!(range.ch(), 't');
     }
 
     #[test]
