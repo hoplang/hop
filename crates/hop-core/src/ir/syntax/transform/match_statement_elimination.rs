@@ -89,7 +89,7 @@ impl MatchStatementEliminationPass {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::expr::Type;
+
     use crate::ir::ast::IrViewDeclaration;
     use crate::ir::syntax::builder::{build_ir, build_ir_no_params};
     use expect_test::{Expect, expect};
@@ -272,7 +272,7 @@ mod tests {
         check(
             build_ir_no_params("Test", |t| {
                 t.option_match_stmt(
-                    t.none(Type::String),
+                    t.none("String"),
                     Some("x"),
                     |t| {
                         t.write("some branch");
@@ -430,7 +430,7 @@ mod tests {
                     |t| {
                         t.write("outer some");
                         t.option_match_stmt(
-                            t.none(Type::String),
+                            t.none("String"),
                             None,
                             |t| {
                                 t.write("inner some - gone");

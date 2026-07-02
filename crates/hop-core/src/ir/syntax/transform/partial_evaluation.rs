@@ -1823,11 +1823,9 @@ mod tests {
 
     #[test]
     fn should_evaluate_option_match_with_none() {
-        use crate::expr::Type;
-
         check(
             build_ir_no_params("Test", |t| {
-                t.let_stmt("opt", t.none(Type::String), |t| {
+                t.let_stmt("opt", t.none("String"), |t| {
                     t.write_expr_escaped(t.option_match_expr(
                         t.var("opt"),
                         t.str("got some"),
@@ -2036,7 +2034,7 @@ mod tests {
                             "inner_opt",
                             Type::Option(Arc::new(Type::String)),
                             |t| t.var("inner_opt"),
-                            t.none(Type::String),
+                            t.none("String"),
                         ),
                         |t| {
                             // Second match extracts value from inner_result

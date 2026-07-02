@@ -458,11 +458,12 @@ impl IrBuilder {
         }
     }
 
-    /// Create a None option literal
-    pub fn none(&self, inner_type: Type) -> IrExpr {
+    /// Create a None option literal, the inner type is given in source
+    /// syntax, e.g. "String" or "Array[Node]"
+    pub fn none(&self, inner_type: &str) -> IrExpr {
         IrExpr::OptionLiteral {
             value: None,
-            kind: Arc::new(Type::Option(Arc::new(inner_type))),
+            kind: Arc::new(Type::Option(self.types.resolve(inner_type))),
             id: self.next_expr_id(),
         }
     }
