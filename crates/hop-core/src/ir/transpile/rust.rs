@@ -2,7 +2,8 @@ use pretty::{Arena, DocAllocator};
 
 use super::{Doc, Transpiler};
 use crate::expr::patterns::{EnumPattern, Match};
-use crate::expr::typing::r#type::Type;
+use crate::expr::typing::r#type::{NamedKind, Type};
+use crate::expr::typing::type_registry::TypeRegistry;
 use crate::ir::ast::{
     IrArgument, IrComponentDeclaration, IrExpr, IrForSource, IrModule, IrStatement,
     IrViewDeclaration,
@@ -18,6 +19,8 @@ pub struct RustTranspiler {
     needs_fragment: bool,
     /// Set of type names that are self-referential and need Box indirection
     recursive_types: std::collections::HashSet<TypeName>,
+    /// Registry used to resolve named type structure.
+    registry: TypeRegistry,
 }
 
 impl RustTranspiler {
@@ -26,6 +29,7 @@ impl RustTranspiler {
             needs_escape_html: false,
             needs_fragment: false,
             recursive_types: std::collections::HashSet::new(),
+            registry: TypeRegistry::default(),
         }
     }
 
@@ -54,7 +58,11 @@ impl RustTranspiler {
         bindings: &'a [(FieldName, VarName)],
     ) -> Doc<'a> {
         let record_name = match subject.get_type().as_ref() {
-            Type::Record { name, .. } => name.as_str().to_string(),
+            Type::Named {
+                name,
+                kind: NamedKind::Record,
+                ..
+            } => name.as_str().to_string(),
             _ => unreachable!("LetRecordDestructure subject must have Record type"),
         };
         let bindings_doc = arena.intersperse(
@@ -131,7 +139,7 @@ impl RustTranspiler {
     /// Check if a field type contains a reference to the containing type (through Option)
     fn type_needs_box(t: &Type, containing_type: &str) -> bool {
         match t {
-            Type::Record { name, .. } | Type::Enum { name, .. } => name.as_str() == containing_type,
+            Type::Named { name, .. } => name.as_str() == containing_type,
             Type::Option(inner) => Self::type_needs_box(inner, containing_type),
             _ => false,
         }
@@ -145,14 +153,10 @@ impl RustTranspiler {
         containing_type: &str,
     ) -> Doc<'a> {
         match t {
-            Type::Record { name, .. } | Type::Enum { name, .. }
-                if name.as_str() == containing_type =>
-            {
-                arena
-                    .text("Box<")
-                    .append(arena.text(name.as_str()))
-                    .append(arena.text(">"))
-            }
+            Type::Named { name, .. } if name.as_str() == containing_type => arena
+                .text("Box<")
+                .append(arena.text(name.as_str()))
+                .append(arena.text(">")),
             Type::Option(inner) if Self::type_needs_box(inner, containing_type) => arena
                 .text("Option<")
                 .append(self.transpile_type_with_box(arena, inner, containing_type))
@@ -172,9 +176,7 @@ impl RustTranspiler {
         let expr_type = expr.as_type();
         // Direct recursive type → Box::new(...)
         match expr_type {
-            Type::Record { name, .. } | Type::Enum { name, .. }
-                if name.as_str() == recursive_type =>
-            {
+            Type::Named { name, .. } if name.as_str() == recursive_type => {
                 return arena
                     .text("Box::new(")
                     .append(self.transpile_expr_owned(arena, expr))
@@ -189,7 +191,7 @@ impl RustTranspiler {
                 _ => unreachable!(),
             };
             if matches!(inner_type,
-                Type::Record { name, .. } | Type::Enum { name, .. }
+                Type::Named { name, .. }
                 if name.as_str() == recursive_type)
             {
                 return match value {
@@ -210,11 +212,7 @@ impl RustTranspiler {
     fn passed_by_ref(t: &Type) -> bool {
         match t {
             Type::Bool | Type::Int | Type::Float | Type::Option(_) => false,
-            Type::String
-            | Type::Fragment
-            | Type::Array(_)
-            | Type::Record { .. }
-            | Type::Enum { .. } => true,
+            Type::String | Type::Fragment | Type::Array(_) | Type::Named { .. } => true,
         }
     }
 
@@ -237,8 +235,7 @@ impl RustTranspiler {
                 .text("Option<")
                 .append(self.transpile_type(arena, inner))
                 .append(arena.text(">")),
-            Type::Record { name, .. } => arena.text("&").append(arena.text(name.as_str())),
-            Type::Enum { name, .. } => arena.text("&").append(arena.text(name.as_str())),
+            Type::Named { name, .. } => arena.text("&").append(arena.text(name.as_str())),
         }
     }
 }
@@ -250,11 +247,12 @@ impl Default for RustTranspiler {
 }
 
 impl Transpiler for RustTranspiler {
-    fn transpile_module(&mut self, module: &IrModule) -> String {
+    fn transpile_module(&mut self, module: &IrModule, registry: &TypeRegistry) -> String {
         // Reset tracking flags for this module
         self.needs_escape_html = false;
         self.needs_fragment = false;
         self.recursive_types = Self::compute_recursive_types(module);
+        self.registry = registry.clone();
 
         let arena = &Arena::new();
 
@@ -869,9 +867,20 @@ impl Transpiler for RustTranspiler {
             Match::Enum { subject, arms } => {
                 // Extract variant information from the subject's type
                 let subject_type = subject.get_type();
-                let Type::Enum { variants, .. } = subject_type.as_ref() else {
-                    unreachable!("Enum match subject must have Enum type")
+                let Type::Named {
+                    module,
+                    name,
+                    kind: NamedKind::Enum,
+                    ..
+                } = subject_type.as_ref()
+                else {
+                    unreachable!("Enum match subject must have Named enum type")
                 };
+                let variants = self
+                    .registry
+                    .enum_variants(module, name)
+                    .expect("enum must be registered for transpile")
+                    .to_vec();
 
                 let arms_doc = arena.intersperse(
                     arms.iter().map(|arm| {
@@ -1469,9 +1478,20 @@ impl Transpiler for RustTranspiler {
             Match::Enum { subject, arms } => {
                 // Extract variant information from the subject's type
                 let subject_type = subject.get_type();
-                let Type::Enum { variants, .. } = subject_type.as_ref() else {
-                    unreachable!("Enum match subject must have Enum type")
+                let Type::Named {
+                    module,
+                    name,
+                    kind: NamedKind::Enum,
+                    ..
+                } = subject_type.as_ref()
+                else {
+                    unreachable!("Enum match subject must have Named enum type")
                 };
+                let variants = self
+                    .registry
+                    .enum_variants(module, name)
+                    .expect("enum must be registered for transpile")
+                    .to_vec();
 
                 let mut doc = arena
                     .text("match &")
@@ -1642,12 +1662,14 @@ mod tests {
 
     use super::*;
     use crate::expr::typing::r#type::EnumVariant;
+    use crate::expr::typing::type_registry::TypeDef;
     use crate::ir::syntax::builder::IrModuleBuilder;
     use expect_test::{Expect, expect};
 
-    fn check(module: IrModule, expected: Expect) {
+    fn check(builder: IrModuleBuilder, expected: Expect) {
+        let (module, registry) = builder.build_with_registry();
         let before = module.to_string();
-        let after = RustTranspiler::new().transpile_module(&module);
+        let after = RustTranspiler::new().transpile_module(&module, &registry);
         let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
         expected.assert_eq(&output);
     }
@@ -1655,11 +1677,9 @@ mod tests {
     #[test]
     fn simple_component() {
         check(
-            IrModuleBuilder::new()
-                .component_no_params("Test", |t| {
-                    t.write("<h1>Hello, World!</h1>\n");
-                })
-                .build(),
+            IrModuleBuilder::new().component_no_params("Test", |t| {
+                t.write("<h1>Hello, World!</h1>\n");
+            }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -1691,13 +1711,11 @@ mod tests {
     #[test]
     fn conditional_display() {
         check(
-            IrModuleBuilder::new()
-                .component("Test", [("show", Type::Bool)], |t| {
-                    t.if_stmt(t.var("show"), |t| {
-                        t.write("<h1>Visible</h1>");
-                    });
-                })
-                .build(),
+            IrModuleBuilder::new().component("Test", [("show", Type::Bool)], |t| {
+                t.if_stmt(t.var("show"), |t| {
+                    t.write("<h1>Visible</h1>");
+                });
+            }),
             expect![[r#"
                 -- before --
                 view Test(show: Bool) {
@@ -1736,13 +1754,11 @@ mod tests {
     #[test]
     fn for_loop_with_range() {
         check(
-            IrModuleBuilder::new()
-                .component_no_params("Test", |t| {
-                    t.for_range("i", t.int(1), t.int(3), |t| {
-                        t.write_expr(t.int_to_string(t.var("i")), false);
-                    });
-                })
-                .build(),
+            IrModuleBuilder::new().component_no_params("Test", |t| {
+                t.for_range("i", t.int(1), t.int(3), |t| {
+                    t.write_expr(t.int_to_string(t.var("i")), false);
+                });
+            }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -1778,21 +1794,19 @@ mod tests {
     #[test]
     fn option_match_statement_on_expression_subject() {
         check(
-            IrModuleBuilder::new()
-                .component_no_params("Test", |t| {
-                    t.option_match_stmt(
-                        t.some(t.str("x")),
-                        Some("value"),
-                        |t| {
-                            t.write("some: ");
-                            t.write_expr(t.var("value"), false);
-                        },
-                        |t| {
-                            t.write("none");
-                        },
-                    );
-                })
-                .build(),
+            IrModuleBuilder::new().component_no_params("Test", |t| {
+                t.option_match_stmt(
+                    t.some(t.str("x")),
+                    Some("value"),
+                    |t| {
+                        t.write("some: ");
+                        t.write_expr(t.var("value"), false);
+                    },
+                    |t| {
+                        t.write("none");
+                    },
+                );
+            }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -1840,25 +1854,23 @@ mod tests {
     #[test]
     fn option_match_statement() {
         check(
-            IrModuleBuilder::new()
-                .component(
-                    "Test",
-                    [("opt", Type::Option(Arc::new(Type::String)))],
-                    |t| {
-                        t.option_match_stmt(
-                            t.var("opt"),
-                            Some("value"),
-                            |t| {
-                                t.write("some: ");
-                                t.write_expr(t.var("value"), false);
-                            },
-                            |t| {
-                                t.write("none");
-                            },
-                        );
-                    },
-                )
-                .build(),
+            IrModuleBuilder::new().component(
+                "Test",
+                [("opt", Type::Option(Arc::new(Type::String)))],
+                |t| {
+                    t.option_match_stmt(
+                        t.var("opt"),
+                        Some("value"),
+                        |t| {
+                            t.write("some: ");
+                            t.write_expr(t.var("value"), false);
+                        },
+                        |t| {
+                            t.write("none");
+                        },
+                    );
+                },
+            ),
             expect![[r#"
                 -- before --
                 view Test(opt: Option[String]) {
@@ -1917,14 +1929,10 @@ mod tests {
                     r.field("name", Type::String);
                     r.field(
                         "address",
-                        Type::Record {
+                        Type::Named {
                             module: crate::document_id::DocumentId::new("test.hop").unwrap(),
                             name: crate::symbols::type_name::TypeName::new("Address").unwrap(),
-                            fields: vec![(
-                                crate::symbols::field_name::FieldName::new("street").unwrap(),
-                                Arc::new(Type::String),
-                                None,
-                            )],
+                            kind: NamedKind::Record,
                         },
                     );
                 })
@@ -1932,39 +1940,16 @@ mod tests {
                     "Test",
                     [(
                         "person",
-                        Type::Record {
+                        Type::Named {
                             module: crate::document_id::DocumentId::new("test.hop").unwrap(),
                             name: crate::symbols::type_name::TypeName::new("Person").unwrap(),
-                            fields: vec![
-                                (
-                                    crate::symbols::field_name::FieldName::new("name").unwrap(),
-                                    Arc::new(Type::String),
-                                    None,
-                                ),
-                                (
-                                    crate::symbols::field_name::FieldName::new("address").unwrap(),
-                                    Arc::new(Type::Record {
-                                        module: crate::document_id::DocumentId::new("test.hop")
-                                            .unwrap(),
-                                        name: crate::symbols::type_name::TypeName::new("Address")
-                                            .unwrap(),
-                                        fields: vec![(
-                                            crate::symbols::field_name::FieldName::new("street")
-                                                .unwrap(),
-                                            Arc::new(Type::String),
-                                            None,
-                                        )],
-                                    }),
-                                    None,
-                                ),
-                            ],
+                            kind: NamedKind::Record,
                         },
                     )],
                     |t| {
                         t.write_expr(t.field_access(t.var("person"), "name"), false);
                     },
-                )
-                .build(),
+                ),
             expect![[r#"
                 -- before --
                 record Address {
@@ -2026,14 +2011,10 @@ mod tests {
                         "Located",
                         vec![(
                             "location",
-                            Type::Record {
+                            Type::Named {
                                 module: crate::document_id::DocumentId::new("test.hop").unwrap(),
                                 name: crate::symbols::type_name::TypeName::new("Address").unwrap(),
-                                fields: vec![(
-                                    crate::symbols::field_name::FieldName::new("street").unwrap(),
-                                    Arc::new(Type::String),
-                                    None,
-                                )],
+                                kind: NamedKind::Record,
                             },
                         )],
                     );
@@ -2041,8 +2022,7 @@ mod tests {
                 })
                 .component_no_params("Test", |t| {
                     t.write("hello");
-                })
-                .build(),
+                }),
             expect![[r#"
                 -- before --
                 enum Shape {
@@ -2099,8 +2079,7 @@ mod tests {
                 })
                 .component_no_params("Test", |t| {
                     t.write("hello");
-                })
-                .build(),
+                }),
             expect![[r#"
                 -- before --
                 record Point {
@@ -2149,23 +2128,10 @@ mod tests {
         };
         use crate::symbols::type_name::TypeName;
 
-        let color_type = Arc::new(Type::Enum {
+        let color_type = Arc::new(Type::Named {
             module: crate::document_id::DocumentId::new("test.hop").unwrap(),
             name: TypeName::new("Color").unwrap(),
-            variants: vec![
-                EnumVariant {
-                    name: TypeName::new("Red").unwrap(),
-                    fields: vec![],
-                },
-                EnumVariant {
-                    name: TypeName::new("Green").unwrap(),
-                    fields: vec![],
-                },
-                EnumVariant {
-                    name: TypeName::new("Blue").unwrap(),
-                    fields: vec![],
-                },
-            ],
+            kind: NamedKind::Enum,
         });
 
         let color_typename = TypeName::new("Color").unwrap();
@@ -2261,7 +2227,16 @@ mod tests {
             }],
         };
 
-        let result = RustTranspiler::new().transpile_module(&module);
+        let mut registry = TypeRegistry::default();
+        registry.insert(
+            crate::document_id::DocumentId::new("test.hop").unwrap(),
+            TypeName::new("Color").unwrap(),
+            TypeDef::Enum {
+                variants: module.enums[0].variants.clone(),
+            },
+        );
+
+        let result = RustTranspiler::new().transpile_module(&module, &registry);
         let expected = expect![[r#"
             // Code generated by the hop compiler. DO NOT EDIT.
             #![cfg_attr(rustfmt, rustfmt_skip)]
@@ -2310,19 +2285,17 @@ mod tests {
     #[test]
     fn transpiles_let_fragment_as_rust_block() {
         check(
-            IrModuleBuilder::new()
-                .component_no_params("Test", |t| {
-                    t.let_fragment(
-                        "v_0",
-                        |t| {
-                            t.write("<b>hi</b>");
-                        },
-                        |t| {
-                            t.write_expr(t.var("v_0"), false);
-                        },
-                    );
-                })
-                .build(),
+            IrModuleBuilder::new().component_no_params("Test", |t| {
+                t.let_fragment(
+                    "v_0",
+                    |t| {
+                        t.write("<b>hi</b>");
+                    },
+                    |t| {
+                        t.write_expr(t.var("v_0"), false);
+                    },
+                );
+            }),
             expect![[r#"
                 -- before --
                 view Test() {

@@ -3,6 +3,7 @@ use pretty::{Arena, DocAllocator};
 use super::{Doc, Transpiler};
 use crate::expr::patterns::{EnumPattern, Match};
 use crate::expr::typing::r#type::Type;
+use crate::expr::typing::type_registry::TypeRegistry;
 use crate::ir::ast::{
     IrArgument, IrComponentDeclaration, IrExpr, IrForSource, IrModule, IrStatement,
     IrViewDeclaration,
@@ -152,7 +153,7 @@ impl Default for TsTranspiler {
 }
 
 impl Transpiler for TsTranspiler {
-    fn transpile_module(&mut self, module: &IrModule) -> String {
+    fn transpile_module(&mut self, module: &IrModule, _registry: &TypeRegistry) -> String {
         // Reset tracking flags for this module
         self.needs_option = false;
         self.needs_escape_html = false;
@@ -1624,13 +1625,14 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
-    use crate::expr::typing::r#type::EnumVariant;
+    use crate::expr::typing::r#type::NamedKind;
     use crate::ir::syntax::builder::IrModuleBuilder;
     use expect_test::{Expect, expect};
 
-    fn check(module: IrModule, expected: Expect) {
+    fn check(builder: IrModuleBuilder, expected: Expect) {
+        let (module, registry) = builder.build_with_registry();
         let before = module.to_string();
-        let after = TsTranspiler::new().transpile_module(&module);
+        let after = TsTranspiler::new().transpile_module(&module, &registry);
         let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
         expected.assert_eq(&output);
     }
@@ -1638,11 +1640,9 @@ mod tests {
     #[test]
     fn simple_component() {
         check(
-            IrModuleBuilder::new()
-                .component_no_params("HelloWorld", |t| {
-                    t.write("<h1>Hello, World!</h1>\n");
-                })
-                .build(),
+            IrModuleBuilder::new().component_no_params("HelloWorld", |t| {
+                t.write("<h1>Hello, World!</h1>\n");
+            }),
             expect![[r#"
                 -- before --
                 view HelloWorld() {
@@ -1663,22 +1663,20 @@ mod tests {
     #[test]
     fn component_with_params_and_escaping() {
         check(
-            IrModuleBuilder::new()
-                .component(
-                    "UserInfo",
-                    [("name", Type::String), ("age", Type::String)],
-                    |t| {
-                        t.write("<div>\n");
-                        t.write("<h2>Name: ");
-                        t.write_expr_escaped(t.var("name"));
-                        t.write("</h2>\n");
-                        t.write("<p>Age: ");
-                        t.write_expr(t.var("age"), false);
-                        t.write("</p>\n");
-                        t.write("</div>\n");
-                    },
-                )
-                .build(),
+            IrModuleBuilder::new().component(
+                "UserInfo",
+                [("name", Type::String), ("age", Type::String)],
+                |t| {
+                    t.write("<div>\n");
+                    t.write("<h2>Name: ");
+                    t.write_expr_escaped(t.var("name"));
+                    t.write("</h2>\n");
+                    t.write("<p>Age: ");
+                    t.write_expr(t.var("age"), false);
+                    t.write("</p>\n");
+                    t.write("</div>\n");
+                },
+            ),
             expect![[r#"
                 -- before --
                 view UserInfo(name: String, age: String) {
@@ -1722,19 +1720,17 @@ mod tests {
     #[test]
     fn conditional_display() {
         check(
-            IrModuleBuilder::new()
-                .component(
-                    "ConditionalDisplay",
-                    [("title", Type::String), ("show", Type::Bool)],
-                    |t| {
-                        t.if_stmt(t.var("show"), |t| {
-                            t.write("<h1>");
-                            t.write_expr_escaped(t.var("title"));
-                            t.write("</h1>\n");
-                        });
-                    },
-                )
-                .build(),
+            IrModuleBuilder::new().component(
+                "ConditionalDisplay",
+                [("title", Type::String), ("show", Type::Bool)],
+                |t| {
+                    t.if_stmt(t.var("show"), |t| {
+                        t.write("<h1>");
+                        t.write_expr_escaped(t.var("title"));
+                        t.write("</h1>\n");
+                    });
+                },
+            ),
             expect![[r#"
                 -- before --
                 view ConditionalDisplay(title: String, show: Bool) {
@@ -1772,21 +1768,19 @@ mod tests {
     #[test]
     fn for_loop_with_array() {
         check(
-            IrModuleBuilder::new()
-                .component(
-                    "ListItems",
-                    [("items", Type::Array(Arc::new(Type::String)))],
-                    |t| {
-                        t.write("<ul>\n");
-                        t.for_loop("item", t.var("items"), |t| {
-                            t.write("<li>");
-                            t.write_expr_escaped(t.var("item"));
-                            t.write("</li>\n");
-                        });
-                        t.write("</ul>\n");
-                    },
-                )
-                .build(),
+            IrModuleBuilder::new().component(
+                "ListItems",
+                [("items", Type::Array(Arc::new(Type::String)))],
+                |t| {
+                    t.write("<ul>\n");
+                    t.for_loop("item", t.var("items"), |t| {
+                        t.write("<li>");
+                        t.write_expr_escaped(t.var("item"));
+                        t.write("</li>\n");
+                    });
+                    t.write("</ul>\n");
+                },
+            ),
             expect![[r#"
                 -- before --
                 view ListItems(items: Array[String]) {
@@ -1828,14 +1822,12 @@ mod tests {
     #[test]
     fn for_loop_with_range() {
         check(
-            IrModuleBuilder::new()
-                .component_no_params("Counter", |t| {
-                    t.for_range("i", t.int(1), t.int(3), |t| {
-                        t.write_expr(t.int_to_string(t.var("i")), false);
-                        t.write(" ");
-                    });
-                })
-                .build(),
+            IrModuleBuilder::new().component_no_params("Counter", |t| {
+                t.for_range("i", t.int(1), t.int(3), |t| {
+                    t.write_expr(t.int_to_string(t.var("i")), false);
+                    t.write(" ");
+                });
+            }),
             expect![[r#"
                 -- before --
                 view Counter() {
@@ -1862,17 +1854,15 @@ mod tests {
     #[test]
     fn let_binding() {
         check(
-            IrModuleBuilder::new()
-                .component_no_params("GreetingCard", |t| {
-                    t.let_stmt("greeting", t.str("Hello from hop!"), |t| {
-                        t.write("<div class=\"card\">\n");
-                        t.write("<p>");
-                        t.write_expr_escaped(t.var("greeting"));
-                        t.write("</p>\n");
-                        t.write("</div>\n");
-                    });
-                })
-                .build(),
+            IrModuleBuilder::new().component_no_params("GreetingCard", |t| {
+                t.let_stmt("greeting", t.str("Hello from hop!"), |t| {
+                    t.write("<div class=\"card\">\n");
+                    t.write("<p>");
+                    t.write_expr_escaped(t.var("greeting"));
+                    t.write("</p>\n");
+                    t.write("</div>\n");
+                });
+            }),
             expect![[r#"
                 -- before --
                 view GreetingCard() {
@@ -1913,17 +1903,15 @@ mod tests {
     #[test]
     fn nested_components_with_let_bindings() {
         check(
-            IrModuleBuilder::new()
-                .component_no_params("TestMainComp", |t| {
-                    t.write("<div data-hop-id=\"test/card-comp\">");
-                    t.let_stmt("title", t.str("Hello World"), |t| {
-                        t.write("<h2>");
-                        t.write_expr_escaped(t.var("title"));
-                        t.write("</h2>");
-                    });
-                    t.write("</div>");
-                })
-                .build(),
+            IrModuleBuilder::new().component_no_params("TestMainComp", |t| {
+                t.write("<div data-hop-id=\"test/card-comp\">");
+                t.let_stmt("title", t.str("Hello World"), |t| {
+                    t.write("<h2>");
+                    t.write_expr_escaped(t.var("title"));
+                    t.write("</h2>");
+                });
+                t.write("</div>");
+            }),
             expect![[r#"
                 -- before --
                 view TestMainComp() {
@@ -1964,24 +1952,22 @@ mod tests {
     #[test]
     fn fragment_type() {
         check(
-            IrModuleBuilder::new()
-                .component(
-                    "RenderHtml",
-                    [
-                        ("safe_content", Type::Fragment),
-                        ("user_input", Type::String),
-                    ],
-                    |t| {
-                        t.write("<div>");
-                        // Fragment should not be escaped
-                        t.write_expr(t.var("safe_content"), false);
-                        t.write("</div><div>");
-                        // Regular strings should be escaped
-                        t.write_expr_escaped(t.var("user_input"));
-                        t.write("</div>");
-                    },
-                )
-                .build(),
+            IrModuleBuilder::new().component(
+                "RenderHtml",
+                [
+                    ("safe_content", Type::Fragment),
+                    ("user_input", Type::String),
+                ],
+                |t| {
+                    t.write("<div>");
+                    // Fragment should not be escaped
+                    t.write_expr(t.var("safe_content"), false);
+                    t.write("</div><div>");
+                    // Regular strings should be escaped
+                    t.write_expr_escaped(t.var("user_input"));
+                    t.write("</div>");
+                },
+            ),
             expect![[r#"
                 -- before --
                 view RenderHtml(
@@ -2029,24 +2015,12 @@ mod tests {
     #[test]
     fn record_declarations() {
         use crate::document_id::DocumentId;
-        use crate::symbols::{field_name::FieldName, type_name::TypeName};
+        use crate::symbols::type_name::TypeName;
 
-        let user_type = Type::Record {
+        let user_type = Type::Named {
             module: DocumentId::new("test.hop").unwrap(),
             name: TypeName::new("User").unwrap(),
-            fields: vec![
-                (
-                    FieldName::new("name").unwrap(),
-                    Arc::new(Type::String),
-                    None,
-                ),
-                (FieldName::new("age").unwrap(), Arc::new(Type::Int), None),
-                (
-                    FieldName::new("active").unwrap(),
-                    Arc::new(Type::Bool),
-                    None,
-                ),
-            ],
+            kind: NamedKind::Record,
         };
 
         check(
@@ -2063,8 +2037,7 @@ mod tests {
                     t.write("<div>");
                     t.write_expr_escaped(t.field_access(t.var("user"), "name"));
                     t.write("</div>");
-                })
-                .build(),
+                }),
             expect![[r#"
                 -- before --
                 record Address {
@@ -2131,8 +2104,7 @@ mod tests {
                     let user = t.record("User", vec![("name", t.str("John")), ("age", t.int(30))]);
                     t.write_expr_escaped(t.field_access(user, "name"));
                     t.write("</div>");
-                })
-                .build(),
+                }),
             expect![[r#"
                 -- before --
                 record User {
@@ -2179,23 +2151,10 @@ mod tests {
         use crate::document_id::DocumentId;
         use crate::symbols::type_name::TypeName;
 
-        let color_type = Type::Enum {
+        let color_type = Type::Named {
             module: DocumentId::new("test.hop").unwrap(),
             name: TypeName::new("Color").unwrap(),
-            variants: vec![
-                EnumVariant {
-                    name: TypeName::new("Red").unwrap(),
-                    fields: vec![],
-                },
-                EnumVariant {
-                    name: TypeName::new("Green").unwrap(),
-                    fields: vec![],
-                },
-                EnumVariant {
-                    name: TypeName::new("Blue").unwrap(),
-                    fields: vec![],
-                },
-            ],
+            kind: NamedKind::Enum,
         };
 
         check(
@@ -2212,8 +2171,7 @@ mod tests {
                         ],
                     );
                     t.write_expr_escaped(match_result);
-                })
-                .build(),
+                }),
             expect![[r#"
                 -- before --
                 enum Color {
@@ -2272,13 +2230,10 @@ mod tests {
     #[test]
     fn bool_match_expression() {
         check(
-            IrModuleBuilder::new()
-                .component("IsActive", [("active", Type::Bool)], |t| {
-                    let match_result =
-                        t.bool_match_expr(t.var("active"), t.str("yes"), t.str("no"));
-                    t.write_expr_escaped(match_result);
-                })
-                .build(),
+            IrModuleBuilder::new().component("IsActive", [("active", Type::Bool)], |t| {
+                let match_result = t.bool_match_expr(t.var("active"), t.str("yes"), t.str("no"));
+                t.write_expr_escaped(match_result);
+            }),
             expect![[r#"
                 -- before --
                 view IsActive(active: Bool) {
@@ -2308,17 +2263,15 @@ mod tests {
     #[test]
     fn option_match_expression() {
         check(
-            IrModuleBuilder::new()
-                .component(
-                    "CheckOption",
-                    [("opt", Type::Option(Arc::new(Type::Int)))],
-                    |t| {
-                        let match_result =
-                            t.option_match_expr(t.var("opt"), t.str("has value"), t.str("empty"));
-                        t.write_expr_escaped(match_result);
-                    },
-                )
-                .build(),
+            IrModuleBuilder::new().component(
+                "CheckOption",
+                [("opt", Type::Option(Arc::new(Type::Int)))],
+                |t| {
+                    let match_result =
+                        t.option_match_expr(t.var("opt"), t.str("has value"), t.str("empty"));
+                    t.write_expr_escaped(match_result);
+                },
+            ),
             expect![[r#"
                 -- before --
                 view CheckOption(opt: Option[Int]) {
@@ -2370,8 +2323,10 @@ mod tests {
             Arc::new(Type::Option(Arc::new(Type::Option(Arc::new(Type::Bool)))));
 
         check(
-            IrModuleBuilder::new()
-                .component("CheckNestedOption", [("opt", outer_option_type)], |t| {
+            IrModuleBuilder::new().component(
+                "CheckNestedOption",
+                [("opt", outer_option_type)],
+                |t| {
                     // Outer match on opt: Some(v0) => middle_match, None => "none"
                     let outer_match = t.option_match_expr_with_binding(
                         t.var("opt"),
@@ -2398,8 +2353,8 @@ mod tests {
                     );
 
                     t.write_expr_escaped(outer_match);
-                })
-                .build(),
+                },
+            ),
             expect![[r#"
                 -- before --
                 view CheckNestedOption(opt: Option[Option[Bool]]) {
@@ -2465,13 +2420,11 @@ mod tests {
     #[test]
     fn let_expression() {
         check(
-            IrModuleBuilder::new()
-                .component("LetExpr", [("name", Type::String)], |t| {
-                    // let x = name in x
-                    let result = t.let_expr("x", t.var("name"), |t| t.var("x"));
-                    t.write_expr_escaped(result);
-                })
-                .build(),
+            IrModuleBuilder::new().component("LetExpr", [("name", Type::String)], |t| {
+                // let x = name in x
+                let result = t.let_expr("x", t.var("name"), |t| t.var("x"));
+                t.write_expr_escaped(result);
+            }),
             expect![[r#"
                 -- before --
                 view LetExpr(name: String) {
@@ -2504,26 +2457,24 @@ mod tests {
     #[test]
     fn option_match_statement() {
         check(
-            IrModuleBuilder::new()
-                .component(
-                    "DisplayOption",
-                    [("opt", Type::Option(Arc::new(Type::String)))],
-                    |t| {
-                        t.option_match_stmt(
-                            t.var("opt"),
-                            Some("value"),
-                            |t| {
-                                t.write("<span>Found: ");
-                                t.write_expr_escaped(t.var("value"));
-                                t.write("</span>");
-                            },
-                            |t| {
-                                t.write("<span>Nothing</span>");
-                            },
-                        );
-                    },
-                )
-                .build(),
+            IrModuleBuilder::new().component(
+                "DisplayOption",
+                [("opt", Type::Option(Arc::new(Type::String)))],
+                |t| {
+                    t.option_match_stmt(
+                        t.var("opt"),
+                        Some("value"),
+                        |t| {
+                            t.write("<span>Found: ");
+                            t.write_expr_escaped(t.var("value"));
+                            t.write("</span>");
+                        },
+                        |t| {
+                            t.write("<span>Nothing</span>");
+                        },
+                    );
+                },
+            ),
             expect![[r#"
                 -- before --
                 view DisplayOption(opt: Option[String]) {
@@ -2585,26 +2536,24 @@ mod tests {
     #[test]
     fn option_literal() {
         check(
-            IrModuleBuilder::new()
-                .component(
-                    "TestOptionLiteral",
-                    [
-                        ("opt1", Type::Option(Arc::new(Type::String))),
-                        ("opt2", Type::Option(Arc::new(Type::String))),
-                    ],
-                    |t| {
-                        // Test Some literal
-                        let match_result =
-                            t.option_match_expr(t.var("opt1"), t.str("has value"), t.str("empty"));
-                        t.write_expr(match_result, false);
+            IrModuleBuilder::new().component(
+                "TestOptionLiteral",
+                [
+                    ("opt1", Type::Option(Arc::new(Type::String))),
+                    ("opt2", Type::Option(Arc::new(Type::String))),
+                ],
+                |t| {
+                    // Test Some literal
+                    let match_result =
+                        t.option_match_expr(t.var("opt1"), t.str("has value"), t.str("empty"));
+                    t.write_expr(match_result, false);
 
-                        // Test None literal
-                        let match_result2 =
-                            t.option_match_expr(t.var("opt2"), t.str("HAS"), t.str("EMPTY"));
-                        t.write_expr(match_result2, false);
-                    },
-                )
-                .build(),
+                    // Test None literal
+                    let match_result2 =
+                        t.option_match_expr(t.var("opt2"), t.str("HAS"), t.str("EMPTY"));
+                    t.write_expr(match_result2, false);
+                },
+            ),
             expect![[r#"
                 -- before --
                 view TestOptionLiteral(
@@ -2654,23 +2603,21 @@ mod tests {
     #[test]
     fn option_literal_inline_match_stmt() {
         check(
-            IrModuleBuilder::new()
-                .component_no_params("TestInlineMatch", |t| {
-                    t.let_stmt("opt", t.some(t.str("world")), |t| {
-                        t.option_match_stmt(
-                            t.var("opt"),
-                            Some("val"),
-                            |t| {
-                                t.write("Got:");
-                                t.write_expr(t.var("val"), false);
-                            },
-                            |t| {
-                                t.write("Empty");
-                            },
-                        );
-                    });
-                })
-                .build(),
+            IrModuleBuilder::new().component_no_params("TestInlineMatch", |t| {
+                t.let_stmt("opt", t.some(t.str("world")), |t| {
+                    t.option_match_stmt(
+                        t.var("opt"),
+                        Some("val"),
+                        |t| {
+                            t.write("Got:");
+                            t.write_expr(t.var("val"), false);
+                        },
+                        |t| {
+                            t.write("Empty");
+                        },
+                    );
+                });
+            }),
             expect![[r#"
                 -- before --
                 view TestInlineMatch() {
@@ -2724,29 +2671,27 @@ mod tests {
     #[test]
     fn option_match_statement_on_expression_subject() {
         check(
-            IrModuleBuilder::new()
-                .component_no_params("Test", |t| {
-                    t.option_match_stmt(
-                        t.some(t.str("x")),
-                        Some("value"),
-                        |t| {
-                            t.option_match_stmt(
-                                t.some(t.var("value")),
-                                Some("inner"),
-                                |t| {
-                                    t.write_expr(t.var("inner"), false);
-                                },
-                                |t| {
-                                    t.write("none2");
-                                },
-                            );
-                        },
-                        |t| {
-                            t.write("none1");
-                        },
-                    );
-                })
-                .build(),
+            IrModuleBuilder::new().component_no_params("Test", |t| {
+                t.option_match_stmt(
+                    t.some(t.str("x")),
+                    Some("value"),
+                    |t| {
+                        t.option_match_stmt(
+                            t.some(t.var("value")),
+                            Some("inner"),
+                            |t| {
+                                t.write_expr(t.var("inner"), false);
+                            },
+                            |t| {
+                                t.write("none2");
+                            },
+                        );
+                    },
+                    |t| {
+                        t.write("none1");
+                    },
+                );
+            }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -2818,13 +2763,11 @@ mod tests {
     #[test]
     fn bool_match_expression_on_expression_subject() {
         check(
-            IrModuleBuilder::new()
-                .component("IsActive", [("active", Type::Bool)], |t| {
-                    let match_result =
-                        t.bool_match_expr(t.not(t.var("active")), t.str("yes"), t.str("no"));
-                    t.write_expr_escaped(match_result);
-                })
-                .build(),
+            IrModuleBuilder::new().component("IsActive", [("active", Type::Bool)], |t| {
+                let match_result =
+                    t.bool_match_expr(t.not(t.var("active")), t.str("yes"), t.str("no"));
+                t.write_expr_escaped(match_result);
+            }),
             expect![[r#"
                 -- before --
                 view IsActive(active: Bool) {
@@ -2857,26 +2800,12 @@ mod tests {
     #[test]
     fn enum_with_fields() {
         use crate::document_id::DocumentId;
-        use crate::symbols::field_name::FieldName;
         use crate::symbols::type_name::TypeName;
 
-        let result_type = Type::Enum {
+        let result_type = Type::Named {
             module: DocumentId::new("test.hop").unwrap(),
             name: TypeName::new("Result").unwrap(),
-            variants: vec![
-                EnumVariant {
-                    name: TypeName::new("Ok").unwrap(),
-                    fields: vec![(FieldName::new("value").unwrap(), Arc::new(Type::Int), None)],
-                },
-                EnumVariant {
-                    name: TypeName::new("Err").unwrap(),
-                    fields: vec![(
-                        FieldName::new("message").unwrap(),
-                        Arc::new(Type::String),
-                        None,
-                    )],
-                },
-            ],
+            kind: NamedKind::Enum,
         };
 
         check(
@@ -2894,8 +2823,7 @@ mod tests {
                         t.write_expr(t.str("Created Ok!"), false);
                     });
                     t.write("</div>");
-                })
-                .build(),
+                }),
             expect![[r#"
                 -- before --
                 enum Result {
@@ -2939,30 +2867,12 @@ mod tests {
     fn enum_match_with_field_bindings() {
         use crate::document_id::DocumentId;
         use crate::ir::syntax::builder::IrBuilder;
-        use crate::symbols::field_name::FieldName;
         use crate::symbols::type_name::TypeName;
 
-        let result_type = Type::Enum {
+        let result_type = Type::Named {
             module: DocumentId::new("test.hop").unwrap(),
             name: TypeName::new("Result").unwrap(),
-            variants: vec![
-                EnumVariant {
-                    name: TypeName::new("Ok").unwrap(),
-                    fields: vec![(
-                        FieldName::new("value").unwrap(),
-                        Arc::new(Type::String),
-                        None,
-                    )],
-                },
-                EnumVariant {
-                    name: TypeName::new("Err").unwrap(),
-                    fields: vec![(
-                        FieldName::new("message").unwrap(),
-                        Arc::new(Type::String),
-                        None,
-                    )],
-                },
-            ],
+            kind: NamedKind::Enum,
         };
 
         check(
@@ -2993,8 +2903,7 @@ mod tests {
                             ),
                         ],
                     );
-                })
-                .build(),
+                }),
             expect![[r#"
                 -- before --
                 enum Result {
@@ -3052,19 +2961,17 @@ mod tests {
     #[test]
     fn transpiles_let_fragment_as_nested_buffer() {
         check(
-            IrModuleBuilder::new()
-                .component_no_params("Test", |t| {
-                    t.let_fragment(
-                        "v_0",
-                        |t| {
-                            t.write("<b>hi</b>");
-                        },
-                        |t| {
-                            t.write_expr(t.var("v_0"), false);
-                        },
-                    );
-                })
-                .build(),
+            IrModuleBuilder::new().component_no_params("Test", |t| {
+                t.let_fragment(
+                    "v_0",
+                    |t| {
+                        t.write("<b>hi</b>");
+                    },
+                    |t| {
+                        t.write_expr(t.var("v_0"), false);
+                    },
+                );
+            }),
             expect![[r#"
                 -- before --
                 view Test() {

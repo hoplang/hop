@@ -1,5 +1,6 @@
 use crate::expr::Type;
-use crate::expr::typing::r#type::ExamplesAnnotation;
+use crate::expr::typing::r#type::{ExamplesAnnotation, NamedKind};
+use crate::expr::typing::type_registry::TypeRegistry;
 use crate::ir::semantics::evaluator::Value;
 use crate::symbols::field_name::FieldName;
 use rand::{Rng, RngExt};
@@ -22,7 +23,12 @@ fn random_word(rng: &mut impl Rng) -> Value {
 ///
 /// Recursively generates values for nested types (arrays, options, records, enums).
 /// An optional `examples` annotation can customize generation for String and Int types.
-pub fn random_value(rng: &mut impl Rng, ty: &Type, examples: Option<&ExamplesAnnotation>) -> Value {
+pub fn random_value(
+    rng: &mut impl Rng,
+    ty: &Type,
+    examples: Option<&ExamplesAnnotation>,
+    registry: &TypeRegistry,
+) -> Value {
     match ty {
         Type::String => match examples.and_then(|e| e.pattern.as_deref()) {
             Some(p) => random_string_from_pattern(rng, p),
@@ -40,25 +46,46 @@ pub fn random_value(rng: &mut impl Rng, ty: &Type, examples: Option<&ExamplesAnn
             let min = examples.and_then(|e| e.min_len).unwrap_or(0).max(0) as usize;
             let max = examples.and_then(|e| e.max_len).unwrap_or(5).max(0) as usize;
             let len = rng.random_range(min..=max);
-            Value::Array((0..len).map(|_| random_value(rng, inner, None)).collect())
+            Value::Array(
+                (0..len)
+                    .map(|_| random_value(rng, inner, None, registry))
+                    .collect(),
+            )
         }
         Type::Option(inner) => {
             if rng.random_bool(0.5) {
-                Value::Some(Box::new(random_value(rng, inner, None)))
+                Value::Some(Box::new(random_value(rng, inner, None, registry)))
             } else {
                 Value::None
             }
         }
-        Type::Record { fields, .. } => {
+        Type::Named {
+            module,
+            name,
+            kind: NamedKind::Record,
+        } => {
+            let fields = registry
+                .record_fields(module, name)
+                .expect("record type must be registered");
             let map = fields
                 .iter()
                 .map(|(name, ty, examples)| {
-                    (name.clone(), random_value(rng, ty, examples.as_ref()))
+                    (
+                        name.clone(),
+                        random_value(rng, ty, examples.as_ref(), registry),
+                    )
                 })
                 .collect();
             Value::Record(map)
         }
-        Type::Enum { variants, .. } => {
+        Type::Named {
+            module,
+            name,
+            kind: NamedKind::Enum,
+        } => {
+            let variants = registry
+                .enum_variants(module, name)
+                .expect("enum type must be registered");
             let idx = rng.random_range(0..variants.len());
             let variant = &variants[idx];
             let fields = variant
@@ -67,7 +94,7 @@ pub fn random_value(rng: &mut impl Rng, ty: &Type, examples: Option<&ExamplesAnn
                 .map(|(name, ty, examples): &(_, _, _)| {
                     (
                         FieldName::new(name.as_str()).unwrap(),
-                        random_value(rng, ty, examples.as_ref()),
+                        random_value(rng, ty, examples.as_ref(), registry),
                     )
                 })
                 .collect();
@@ -94,9 +121,10 @@ mod tests {
             max_len: Some(4),
             ..Default::default()
         };
+        let registry = TypeRegistry::default();
         for seed in 0..50 {
             let mut rng = StdRng::seed_from_u64(seed);
-            let value = random_value(&mut rng, &ty, Some(&examples));
+            let value = random_value(&mut rng, &ty, Some(&examples), &registry);
             let Value::Array(items) = value else {
                 panic!("expected Value::Array");
             };
@@ -112,9 +140,10 @@ mod tests {
     #[test]
     fn array_length_defaults_to_zero_through_five() {
         let ty = Type::Array(Arc::new(Type::Int));
+        let registry = TypeRegistry::default();
         for seed in 0..50 {
             let mut rng = StdRng::seed_from_u64(seed);
-            let value = random_value(&mut rng, &ty, None);
+            let value = random_value(&mut rng, &ty, None, &registry);
             let Value::Array(items) = value else {
                 panic!("expected Value::Array");
             };

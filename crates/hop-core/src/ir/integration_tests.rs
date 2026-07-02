@@ -211,6 +211,7 @@ fn check_with_asset_rewriter(
     }
 
     let typed_asts = program.get_typed_modules().clone();
+    let registry = program.type_registry();
 
     // Compile to IR without optimization
     let unoptimized_options = OrchestrateOptions {
@@ -219,7 +220,7 @@ fn check_with_asset_rewriter(
         asset_rewriter: asset_rewriter.clone(),
         ..Default::default()
     };
-    let unoptimized_module = orchestrate(&typed_asts, unoptimized_options);
+    let unoptimized_module = orchestrate(&typed_asts, registry, unoptimized_options);
 
     // Compile to IR with optimization
     let optimized_options = OrchestrateOptions {
@@ -228,7 +229,7 @@ fn check_with_asset_rewriter(
         asset_rewriter,
         ..Default::default()
     };
-    let optimized_module = orchestrate(&typed_asts, optimized_options);
+    let optimized_module = orchestrate(&typed_asts, registry, optimized_options);
 
     let unoptimized_ir = unoptimized_module.to_string();
     let optimized_ir = optimized_module.to_string();
@@ -270,7 +271,7 @@ fn check_with_asset_rewriter(
 
     // Test unoptimized version
     let mut ts_transpiler = TsTranspiler::new();
-    let ts_code = ts_transpiler.transpile_module(&unoptimized_module);
+    let ts_code = ts_transpiler.transpile_module(&unoptimized_module, registry);
     if let Err(e) = typecheck_typescript(&ts_code) {
         panic!(
             "TypeScript typecheck failed (unoptimized):\n{}\n\nIR:\n{}\nGenerated code:\n{}",
@@ -292,7 +293,7 @@ fn check_with_asset_rewriter(
     output.push_str("-- ts (unoptimized) --\nOK\n");
 
     let mut rust_transpiler = RustTranspiler::new();
-    let rust_code = rust_transpiler.transpile_module(&unoptimized_module);
+    let rust_code = rust_transpiler.transpile_module(&unoptimized_module, registry);
     if let Err(e) = typecheck_rust(&rust_code) {
         panic!(
             "Rust typecheck failed (unoptimized):\n{}\n\nIR:\n{}\nGenerated code:\n{}",
@@ -314,7 +315,7 @@ fn check_with_asset_rewriter(
     output.push_str("-- rust (unoptimized) --\nOK\n");
 
     // Test optimized version
-    let ts_code = ts_transpiler.transpile_module(&optimized_module);
+    let ts_code = ts_transpiler.transpile_module(&optimized_module, registry);
     if let Err(e) = typecheck_typescript(&ts_code) {
         panic!(
             "TypeScript typecheck failed (optimized):\n{}\n\nIR:\n{}\nGenerated code:\n{}",
@@ -335,7 +336,7 @@ fn check_with_asset_rewriter(
     );
     output.push_str("-- ts (optimized) --\nOK\n");
 
-    let rust_code = rust_transpiler.transpile_module(&optimized_module);
+    let rust_code = rust_transpiler.transpile_module(&optimized_module, registry);
     if let Err(e) = typecheck_rust(&rust_code) {
         panic!(
             "Rust typecheck failed (optimized):\n{}\n\nIR:\n{}\nGenerated code:\n{}",
@@ -8041,17 +8042,15 @@ mod tests {
                   Neg {inner: test::Expr},
                 }
                 view Test() {
-                  let e = Expr::Neg {inner: Expr::Literal {value: "42"}} in {
-                    match e {
-                      Expr::Literal(value: v_1) => {
-                        let v = v_1 in {
-                          write("lit:")
-                          write_escaped(v)
-                        }
+                  match Expr::Neg {inner: Expr::Literal {value: "42"}} {
+                    Expr::Literal(value: v_1) => {
+                      let v = v_1 in {
+                        write("lit:")
+                        write_escaped(v)
                       }
-                      Expr::Neg => {
-                        write("neg")
-                      }
+                    }
+                    Expr::Neg => {
+                      write("neg")
                     }
                   }
                 }

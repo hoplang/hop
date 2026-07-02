@@ -1579,8 +1579,7 @@ impl fmt::Display for IrEnumDeclaration {
 impl IrRecordDeclaration {
     fn type_name_without_module(typ: &Type) -> String {
         match typ {
-            Type::Record { name, .. } => name.as_str().to_string(),
-            Type::Enum { name, .. } => name.as_str().to_string(),
+            Type::Named { name, .. } => name.as_str().to_string(),
             _ => format!("{}", typ.to_doc().pretty(60)),
         }
     }

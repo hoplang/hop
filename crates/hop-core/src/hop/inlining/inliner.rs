@@ -283,6 +283,7 @@ impl<'a> InlinerState<'a> {
 mod tests {
     use super::*;
     use crate::document::Document;
+    use crate::expr::typing::type_registry::TypeRegistry;
     use crate::hop::parsing::parser::parse;
     use crate::hop::typing::type_checker::typecheck;
     use expect_test::{Expect, expect};
@@ -304,6 +305,7 @@ mod tests {
         assert!(errors.is_empty(), "Parse errors: {:?}", errors);
 
         let mut state = HashMap::new();
+        let mut registry = TypeRegistry::default();
         let mut type_errors = HashMap::new();
         let mut type_annotations = HashMap::new();
         let mut definition_links = HashMap::new();
@@ -314,6 +316,7 @@ mod tests {
         typecheck(
             &untyped_asts_refs,
             &mut state,
+            &mut registry,
             &mut typed_asts,
             &mut type_errors,
             &mut type_annotations,

@@ -5,7 +5,10 @@ use crate::error_collection::ErrorCollectionExt;
 use crate::expr::patterns::compiler::Compiler;
 use crate::expr::typing::r#type::EnumVariant;
 use crate::expr::typing::type_checker::{resolve_type, typecheck_expr};
-use crate::expr::{self, ComponentSignature, ParamEntry, Tail, Type, TypeBinding, TypedExpr};
+use crate::expr::typing::type_registry::{TypeDef, TypeRegistry};
+use crate::expr::{
+    self, ComponentSignature, NamedKind, ParamEntry, Tail, Type, TypeBinding, TypedExpr,
+};
 use crate::hop::parsing::parsed_ast::ParsedDeclaration;
 use crate::hop::parsing::parsed_ast::{
     ParsedAttribute, ParsedComponentDeclaration, ParsedEnumDeclaration, ParsedImportDeclaration,
@@ -38,6 +41,7 @@ use crate::hop::typing::typed_node::{
 pub fn typecheck(
     modules: &[&ParsedAst],
     state: &mut HashMap<DocumentId, HashMap<TypeName, (TypeBinding, DocumentRange, bool)>>,
+    registry: &mut TypeRegistry,
     typed_asts: &mut HashMap<DocumentId, TypedAst>,
     errors: &mut HashMap<DocumentId, Vec<TypeError>>,
     annotations: &mut HashMap<DocumentId, Vec<TypeAnnotation>>,
@@ -57,10 +61,12 @@ pub fn typecheck(
         module_annotations.clear();
         module_definition_links.clear();
         module_asset_references.clear();
+        registry.remove_module(&module.document_id);
 
         let typed_ast = typecheck_module(
             module,
             state,
+            registry,
             &mut module_errors,
             module_annotations,
             module_definition_links,
@@ -91,6 +97,7 @@ pub fn typecheck(
 fn typecheck_module(
     parsed_ast: &ParsedAst,
     state: &mut HashMap<DocumentId, HashMap<TypeName, (TypeBinding, DocumentRange, bool)>>,
+    registry: &mut TypeRegistry,
     errors: &mut Vec<TypeError>,
     annotations: &mut Vec<TypeAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
@@ -193,6 +200,7 @@ fn typecheck_module(
                                     Some(&param_type),
                                     &mut fresh_var_env,
                                     &mut type_env,
+                                    registry,
                                     annotations,
                                     definition_links,
                                     asset_references,
@@ -275,6 +283,7 @@ fn typecheck_module(
                         typecheck_node(
                             child,
                             &declared_names,
+                            registry,
                             errors,
                             &mut var_env,
                             &mut type_env,
@@ -419,14 +428,13 @@ fn typecheck_module(
                 fields,
                 ..
             }) => {
-                // Register placeholder so self-referential fields can resolve
                 let _ = type_env.push(
                     record_name.clone(),
                     (
-                        TypeBinding::Value(Arc::new(Type::Record {
+                        TypeBinding::Value(Arc::new(Type::Named {
                             module: parsed_ast.document_id.clone(),
                             name: record_name.clone(),
-                            fields: vec![],
+                            kind: NamedKind::Record,
                         })),
                         record_name_range.clone(),
                     ),
@@ -453,10 +461,8 @@ fn typecheck_module(
                     typed_fields.push((field.name.clone(), resolved_type, field.examples.clone()));
                 }
 
-                // Remove placeholder
-                let _ = type_env.pop();
-
                 if has_errors {
+                    let _ = type_env.pop();
                     continue;
                 }
 
@@ -464,16 +470,12 @@ fn typecheck_module(
                     name: record_name.clone(),
                     fields: typed_fields.clone(),
                 });
-                let _ = type_env.push(
+                registry.insert(
+                    parsed_ast.document_id.clone(),
                     record_name.clone(),
-                    (
-                        TypeBinding::Value(Arc::new(Type::Record {
-                            module: parsed_ast.document_id.clone(),
-                            name: record_name.clone(),
-                            fields: typed_fields,
-                        })),
-                        record_name_range.clone(),
-                    ),
+                    TypeDef::Record {
+                        fields: typed_fields,
+                    },
                 );
 
                 // Add definition link for the record name (points to itself)
@@ -488,14 +490,13 @@ fn typecheck_module(
                 variants,
                 ..
             }) => {
-                // Register placeholder so self-referential variants can resolve
                 let _ = type_env.push(
                     enum_name.clone(),
                     (
-                        TypeBinding::Value(Arc::new(Type::Enum {
+                        TypeBinding::Value(Arc::new(Type::Named {
                             module: parsed_ast.document_id.clone(),
                             name: enum_name.clone(),
-                            variants: vec![],
+                            kind: NamedKind::Enum,
                         })),
                         enum_name_range.clone(),
                     ),
@@ -529,23 +530,17 @@ fn typecheck_module(
                     });
                 }
 
-                // Remove placeholder
-                let _ = type_env.pop();
-
                 if has_errors {
+                    let _ = type_env.pop();
                     continue;
                 }
 
-                let _ = type_env.push(
+                registry.insert(
+                    parsed_ast.document_id.clone(),
                     enum_name.clone(),
-                    (
-                        TypeBinding::Value(Arc::new(Type::Enum {
-                            module: parsed_ast.document_id.clone(),
-                            name: enum_name.clone(),
-                            variants: typed_variants.clone(),
-                        })),
-                        enum_name_range.clone(),
-                    ),
+                    TypeDef::Enum {
+                        variants: typed_variants.clone(),
+                    },
                 );
 
                 // Add definition link for the enum name (points to itself)
@@ -607,6 +602,7 @@ fn typecheck_module(
                         typecheck_node(
                             child,
                             &[],
+                            registry,
                             errors,
                             &mut var_env,
                             &mut type_env,
@@ -693,6 +689,7 @@ fn typecheck_module(
 fn typecheck_node(
     node: &ParsedNode,
     caller_params: &[VarName],
+    registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
     var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
     type_env: &mut VariableScope<TypeName, (TypeBinding, DocumentRange)>,
@@ -712,6 +709,7 @@ fn typecheck_node(
                     typecheck_node(
                         child,
                         caller_params,
+                        registry,
                         errors,
                         var_env,
                         type_env,
@@ -727,6 +725,7 @@ fn typecheck_node(
                 None,
                 var_env,
                 type_env,
+                registry,
                 annotations,
                 definition_links,
                 asset_references,
@@ -763,6 +762,7 @@ fn typecheck_node(
                         None,
                         var_env,
                         type_env,
+                        registry,
                         annotations,
                         definition_links,
                         asset_references,
@@ -786,6 +786,7 @@ fn typecheck_node(
                         None,
                         var_env,
                         type_env,
+                        registry,
                         annotations,
                         definition_links,
                         asset_references,
@@ -795,6 +796,7 @@ fn typecheck_node(
                         None,
                         var_env,
                         type_env,
+                        registry,
                         annotations,
                         definition_links,
                         asset_references,
@@ -862,6 +864,7 @@ fn typecheck_node(
                     typecheck_node(
                         child,
                         caller_params,
+                        registry,
                         errors,
                         var_env,
                         type_env,
@@ -948,6 +951,7 @@ fn typecheck_node(
                     declared_type.as_ref(),
                     var_env,
                     type_env,
+                    registry,
                     annotations,
                     definition_links,
                     asset_references,
@@ -1007,6 +1011,7 @@ fn typecheck_node(
                     typecheck_node(
                         child,
                         caller_params,
+                        registry,
                         errors,
                         var_env,
                         type_env,
@@ -1058,6 +1063,7 @@ fn typecheck_node(
                     typecheck_node(
                         child,
                         caller_params,
+                        registry,
                         errors,
                         var_env,
                         type_env,
@@ -1110,6 +1116,7 @@ fn typecheck_node(
                 component_name,
                 component_name_opening_range,
                 caller_params,
+                registry,
                 errors,
                 var_env,
                 type_env,
@@ -1152,6 +1159,7 @@ fn typecheck_node(
             let typed_attributes = typecheck_attributes(
                 attributes,
                 element,
+                registry,
                 errors,
                 var_env,
                 type_env,
@@ -1166,6 +1174,7 @@ fn typecheck_node(
                     typecheck_node(
                         child,
                         caller_params,
+                        registry,
                         errors,
                         var_env,
                         type_env,
@@ -1196,6 +1205,7 @@ fn typecheck_node(
                 None,
                 var_env,
                 type_env,
+                registry,
                 annotations,
                 definition_links,
                 asset_references,
@@ -1221,6 +1231,7 @@ fn typecheck_node(
                 None,
                 var_env,
                 type_env,
+                registry,
                 annotations,
                 definition_links,
                 asset_references,
@@ -1240,15 +1251,17 @@ fn typecheck_node(
             let typed_patterns = errors.ok_or_add(
                 cases
                     .iter()
-                    .map(|case| typecheck_pattern(&case.pattern, subject_type.clone()))
+                    .map(|case| typecheck_pattern(&case.pattern, subject_type.clone(), registry))
                     .collect::<Result<Vec<_>, _>>(),
             )?;
 
-            let decision = errors.ok_or_add(Compiler::new(var_env.fresh_var_counter()).compile(
-                &typed_patterns,
-                subject_type,
-                subject.range(),
-            ))?;
+            let decision = errors.ok_or_add(
+                Compiler::new(var_env.fresh_var_counter(), registry).compile(
+                    &typed_patterns,
+                    subject_type,
+                    subject.range(),
+                ),
+            )?;
 
             let typed_bodies = cases
                 .iter()
@@ -1285,6 +1298,7 @@ fn typecheck_node(
                             typecheck_node(
                                 child,
                                 caller_params,
+                                registry,
                                 errors,
                                 var_env,
                                 type_env,
@@ -1348,6 +1362,7 @@ fn typecheck_node(
 
 fn typecheck_attribute_value(
     value: &Option<ParsedAttributeValue>,
+    registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
     var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
     type_env: &mut VariableScope<TypeName, (TypeBinding, DocumentRange)>,
@@ -1362,6 +1377,7 @@ fn typecheck_attribute_value(
                 None,
                 var_env,
                 type_env,
+                registry,
                 annotations,
                 definition_links,
                 asset_references,
@@ -1396,6 +1412,7 @@ fn typecheck_arguments(
     component_name: &TypeName,
     component_name_opening_range: &DocumentRange,
     caller_params: &[VarName],
+    registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
     var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
     type_env: &mut VariableScope<TypeName, (TypeBinding, DocumentRange)>,
@@ -1467,6 +1484,7 @@ fn typecheck_arguments(
             if accepted {
                 let value = typecheck_attribute_value(
                     arg_value,
+                    registry,
                     errors,
                     var_env,
                     type_env,
@@ -1517,6 +1535,7 @@ fn typecheck_arguments(
             Some(param_type),
             var_env,
             type_env,
+            registry,
             annotations,
             definition_links,
             asset_references,
@@ -1613,6 +1632,7 @@ fn typecheck_arguments(
 fn typecheck_attributes(
     attributes: &[ParsedAttribute],
     element: &HtmlElement,
+    registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
     var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
     type_env: &mut VariableScope<TypeName, (TypeBinding, DocumentRange)>,
@@ -1630,6 +1650,7 @@ fn typecheck_attributes(
             element,
             attr_name,
             attr_value,
+            registry,
             errors,
             var_env,
             type_env,
@@ -1649,6 +1670,7 @@ fn typecheck_html_attribute(
     element: &HtmlElement,
     name: &DocumentRange,
     value: &Option<ParsedAttributeValue>,
+    registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
     var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
     type_env: &mut VariableScope<TypeName, (TypeBinding, DocumentRange)>,
@@ -1669,6 +1691,7 @@ fn typecheck_html_attribute(
 
     let typed_value = typecheck_attribute_value(
         value,
+        registry,
         errors,
         var_env,
         type_env,
@@ -1929,6 +1952,7 @@ mod tests {
             .with_location();
 
         let mut state = HashMap::new();
+        let mut registry = TypeRegistry::default();
         let mut type_errors = HashMap::new();
         let mut type_annotations = HashMap::new();
         let mut definition_links = HashMap::new();
@@ -1960,6 +1984,7 @@ mod tests {
             typecheck(
                 &[&ast],
                 &mut state,
+                &mut registry,
                 &mut typed_asts,
                 &mut type_errors,
                 &mut type_annotations,

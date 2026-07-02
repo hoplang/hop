@@ -1,5 +1,6 @@
 use crate::asset_rewriter::AssetRewriter;
 use crate::document_id::DocumentId;
+use crate::expr::typing::type_registry::TypeRegistry;
 use crate::hop::inlining::Inliner;
 use crate::hop::inlining::transform::{
     DoctypeInjector, HtmlStructureInjector, LinkRewriter, MetaInjector, ScriptInjector,
@@ -30,6 +31,7 @@ pub struct OrchestrateOptions<'a> {
 
 pub fn orchestrate(
     typed_asts: &HashMap<DocumentId, TypedAst>,
+    registry: &TypeRegistry,
     options: OrchestrateOptions<'_>,
 ) -> IrModule {
     // Collect record declarations from all modules
@@ -117,6 +119,6 @@ pub fn orchestrate(
     if options.skip_optimization {
         module
     } else {
-        optimize(module)
+        optimize(module, registry)
     }
 }

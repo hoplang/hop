@@ -17,11 +17,13 @@ use crate::document::DocumentRange;
 use crate::expr::parsing::parsed_expr::Constructor;
 use crate::expr::patterns::typed::TypedMatchPattern;
 
-use crate::expr::typing::r#type::Type;
+use crate::expr::typing::r#type::{NamedKind, Type};
+use crate::expr::typing::type_registry::TypeRegistry;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use crate::type_error::{TypeError, TypeErrorKind};
+use crate::variable_scope::FreshVarCounter;
 
 /// A binding introduced by a pattern match (i.e. `name = source_name`).
 #[derive(Clone, Debug)]
@@ -221,10 +223,15 @@ fn is_free_from_bindings(pattern: &TypedMatchPattern) -> bool {
         TypedMatchPattern::Binding { .. } => false,
         TypedMatchPattern::Constructor { typ, fields, .. } => {
             // Only records can be free from bindings since they have one constructor
-            matches!(typ.as_ref(), Type::Record { .. })
-                && fields
-                    .iter()
-                    .all(|field| is_free_from_bindings(&field.pattern))
+            matches!(
+                typ.as_ref(),
+                Type::Named {
+                    kind: NamedKind::Record,
+                    ..
+                }
+            ) && fields
+                .iter()
+                .all(|field| is_free_from_bindings(&field.pattern))
         }
     }
 }
@@ -232,7 +239,9 @@ fn is_free_from_bindings(pattern: &TypedMatchPattern) -> bool {
 /// The `match` compiler itself.
 pub struct Compiler<'a> {
     /// Counter for generating fresh variable names.
-    fresh_vars: &'a mut crate::variable_scope::FreshVarCounter,
+    fresh_vars: &'a mut FreshVarCounter,
+    /// Registry used to resolve named type structure.
+    registry: &'a TypeRegistry,
     /// The arm indices that are reachable.
     reachable: Vec<usize>,
     /// Missing pattern strings collected during compilation.
@@ -242,9 +251,10 @@ pub struct Compiler<'a> {
 }
 
 impl<'a> Compiler<'a> {
-    pub fn new(fresh_vars: &'a mut crate::variable_scope::FreshVarCounter) -> Self {
+    pub fn new(fresh_vars: &'a mut FreshVarCounter, registry: &'a TypeRegistry) -> Self {
         Self {
             fresh_vars,
+            registry,
             reachable: Vec::new(),
             missing_patterns: HashSet::new(),
             var_info: HashMap::new(),
@@ -259,7 +269,16 @@ impl<'a> Compiler<'a> {
             Constructor::OptionSome => 0,
             Constructor::OptionNone => 1,
             Constructor::EnumVariant { variant_name, .. } => {
-                if let Type::Enum { variants, .. } = typ {
+                if let Type::Named {
+                    module,
+                    name,
+                    kind: NamedKind::Enum,
+                } = typ
+                {
+                    let variants = self
+                        .registry
+                        .enum_variants(module, name)
+                        .expect("enum type must be registered");
                     variants
                         .iter()
                         .position(|variant| variant.name == *variant_name)
@@ -394,27 +413,45 @@ impl<'a> Compiler<'a> {
                     (Constructor::OptionNone, Vec::new(), Vec::new()),
                 ]
             }
-            Type::Enum { name, variants, .. } => variants
-                .iter()
-                .map(|variant| {
-                    // Create fresh variables for each field in the variant
-                    let field_vars: Vec<Variable> = variant
-                        .fields
-                        .iter()
-                        .map(|(_, field_type, _)| self.fresh_var(field_type.clone()))
-                        .collect();
-                    (
-                        Constructor::EnumVariant {
-                            enum_name: name.clone(),
-                            variant_name: variant.name.clone(),
-                        },
-                        field_vars,
-                        Vec::new(),
-                    )
-                })
-                .collect(),
-            Type::Record { name, fields, .. } => {
+            Type::Named {
+                module,
+                name,
+                kind: NamedKind::Enum,
+            } => {
+                let variants = self
+                    .registry
+                    .enum_variants(module, name)
+                    .expect("enum type must be registered");
+                variants
+                    .iter()
+                    .map(|variant| {
+                        // Create fresh variables for each field in the variant
+                        let field_vars: Vec<Variable> = variant
+                            .fields
+                            .iter()
+                            .map(|(_, field_type, _)| self.fresh_var(field_type.clone()))
+                            .collect();
+                        (
+                            Constructor::EnumVariant {
+                                enum_name: name.clone(),
+                                variant_name: variant.name.clone(),
+                            },
+                            field_vars,
+                            Vec::new(),
+                        )
+                    })
+                    .collect()
+            }
+            Type::Named {
+                module,
+                name,
+                kind: NamedKind::Record,
+            } => {
                 // Records have a single constructor with fresh variables for each field
+                let fields = self
+                    .registry
+                    .record_fields(module, name)
+                    .expect("record type must be registered");
                 let field_vars: Vec<Variable> = fields
                     .iter()
                     .map(|(_, field_type, _)| self.fresh_var(field_type.clone()))
@@ -494,7 +531,16 @@ impl<'a> Compiler<'a> {
         for (cons, vars, rows) in cases {
             let args: Vec<(VarName, Option<FieldName>)> = if let Constructor::Record { .. } = &cons
             {
-                if let Type::Record { fields, .. } = branch_var.typ.as_ref() {
+                if let Type::Named {
+                    module,
+                    name,
+                    kind: NamedKind::Record,
+                } = branch_var.typ.as_ref()
+                {
+                    let fields = self
+                        .registry
+                        .record_fields(module, name)
+                        .expect("record type must be registered");
                     vars.iter()
                         .zip(fields.iter())
                         .map(|(v, (field_name, _, _))| (v.name.clone(), Some(field_name.clone())))
@@ -504,11 +550,15 @@ impl<'a> Compiler<'a> {
                 }
             } else if let Constructor::EnumVariant { variant_name, .. } = &cons {
                 // For enum variants with fields, include field names
-                if let Type::Enum { variants, .. } = branch_var.typ.as_ref() {
-                    let variant_fields = variants
-                        .iter()
-                        .find(|variant| &variant.name == variant_name)
-                        .map(|variant| &variant.fields);
+                if let Type::Named {
+                    module,
+                    name,
+                    kind: NamedKind::Enum,
+                } = branch_var.typ.as_ref()
+                {
+                    let variant_fields =
+                        self.registry
+                            .variant_fields(module, name, variant_name.as_str());
                     if let Some(fields) = variant_fields {
                         vars.iter()
                             .zip(fields.iter())
@@ -584,11 +634,15 @@ impl<'a> Compiler<'a> {
                     }),
                 })
             }
-            Type::Enum {
+            Type::Named {
+                module,
                 name,
-                variants: type_variants,
-                ..
+                kind: NamedKind::Enum,
             } => {
+                let type_variants = self
+                    .registry
+                    .enum_variants(module, name)
+                    .expect("enum type must be registered");
                 let cases = compiled_cases
                     .into_iter()
                     .map(|(cons, vars, body)| {
@@ -628,11 +682,15 @@ impl<'a> Compiler<'a> {
                     cases,
                 })
             }
-            Type::Record {
+            Type::Named {
+                module,
                 name,
-                fields: type_fields,
-                ..
+                kind: NamedKind::Record,
             } => {
+                let type_fields = self
+                    .registry
+                    .record_fields(module, name)
+                    .expect("record type must be registered");
                 // Records have exactly one case
                 let (_, vars, body) = compiled_cases.into_iter().next().unwrap();
 
@@ -725,17 +783,71 @@ mod tests {
     use crate::document::DocumentCursor;
     use crate::document_annotator::DocumentAnnotator;
     use crate::document_id::DocumentId;
+    use crate::expr::ExamplesAnnotation;
     use crate::expr::parse_expr;
     use crate::expr::parsing::parsed_expr::ParsedExpr;
     use crate::expr::patterns::typed::typecheck_pattern;
     use crate::expr::typing::r#type::EnumVariant;
+    use crate::expr::typing::type_registry::TypeDef;
     use crate::symbols::field_name::FieldName;
     use crate::symbols::type_name::TypeName;
     use expect_test::{Expect, expect};
     use indoc::indoc;
     use std::collections::VecDeque;
 
-    fn run_check(subject_type: Type, expr_str: &str) -> (String, bool) {
+    fn test_module() -> DocumentId {
+        DocumentId::new("test.hop").unwrap()
+    }
+
+    fn bare(typ: Type) -> (Type, TypeRegistry) {
+        (typ, TypeRegistry::default())
+    }
+
+    fn enum_def_in(
+        mut registry: TypeRegistry,
+        name: TypeName,
+        variants: Vec<EnumVariant>,
+    ) -> (Type, TypeRegistry) {
+        registry.insert(test_module(), name.clone(), TypeDef::Enum { variants });
+        (
+            Type::Named {
+                module: test_module(),
+                name,
+                kind: NamedKind::Enum,
+            },
+            registry,
+        )
+    }
+
+    fn enum_def(name: TypeName, variants: Vec<EnumVariant>) -> (Type, TypeRegistry) {
+        enum_def_in(TypeRegistry::default(), name, variants)
+    }
+
+    fn record_def_in(
+        mut registry: TypeRegistry,
+        name: TypeName,
+        fields: Vec<(FieldName, Arc<Type>, Option<ExamplesAnnotation>)>,
+    ) -> (Type, TypeRegistry) {
+        registry.insert(test_module(), name.clone(), TypeDef::Record { fields });
+        (
+            Type::Named {
+                module: test_module(),
+                name,
+                kind: NamedKind::Record,
+            },
+            registry,
+        )
+    }
+
+    fn record_def(
+        name: TypeName,
+        fields: Vec<(FieldName, Arc<Type>, Option<ExamplesAnnotation>)>,
+    ) -> (Type, TypeRegistry) {
+        record_def_in(TypeRegistry::default(), name, fields)
+    }
+
+    fn run_check(subject: (Type, TypeRegistry), expr_str: &str) -> (String, bool) {
+        let (subject_type, registry) = subject;
         let cursor =
             DocumentCursor::new(DocumentId::new("test.hop").unwrap(), expr_str.to_string());
         let range = cursor.range();
@@ -772,13 +884,16 @@ mod tests {
         // rather than exercise the compiler with invalid input.
         let typed_patterns = patterns
             .iter()
-            .map(|p| typecheck_pattern(p, subject_type.clone()))
+            .map(|p| typecheck_pattern(p, subject_type.clone(), &registry))
             .collect::<Result<Vec<_>, _>>()
             .unwrap_or_else(|e| panic!("pattern failed to typecheck: {e:?}"));
 
-        let mut fresh_vars = crate::variable_scope::FreshVarCounter::new();
-        let result =
-            Compiler::new(&mut fresh_vars).compile(&typed_patterns, subject_type, &subject_range);
+        let mut fresh_vars = FreshVarCounter::new();
+        let result = Compiler::new(&mut fresh_vars, &registry).compile(
+            &typed_patterns,
+            subject_type,
+            &subject_range,
+        );
 
         match result {
             Ok(decision) => (format_decision(&decision, 0), true),
@@ -794,16 +909,16 @@ mod tests {
         }
     }
 
-    fn accept(subject_type: Type, expr_str: &str, expected: Expect) {
-        let (actual, ok) = run_check(subject_type, expr_str);
+    fn accept(subject: (Type, TypeRegistry), expr_str: &str, expected: Expect) {
+        let (actual, ok) = run_check(subject, expr_str);
         if !ok {
             panic!("expected patterns to compile, got error:\n{actual}");
         }
         expected.assert_eq(&actual);
     }
 
-    fn reject(subject_type: Type, expr_str: &str, expected: Expect) {
-        let (actual, ok) = run_check(subject_type, expr_str);
+    fn reject(subject: (Type, TypeRegistry), expr_str: &str, expected: Expect) {
+        let (actual, ok) = run_check(subject, expr_str);
         if ok {
             panic!("expected a compile error, but patterns compiled to:\n{actual}");
         }
@@ -910,7 +1025,7 @@ mod tests {
     #[test]
     fn accepts_bool_exhaustive() {
         accept(
-            Type::Bool,
+            bare(Type::Bool),
             indoc! {"
                 match x {
                     true => 0,
@@ -929,7 +1044,7 @@ mod tests {
     #[test]
     fn rejects_bool_missing_false() {
         reject(
-            Type::Bool,
+            bare(Type::Bool),
             indoc! {"
                 match x {
                     true => 0,
@@ -946,7 +1061,7 @@ mod tests {
     #[test]
     fn rejects_bool_missing_true() {
         reject(
-            Type::Bool,
+            bare(Type::Bool),
             indoc! {"
                 match x {
                     false => 0,
@@ -963,7 +1078,7 @@ mod tests {
     #[test]
     fn rejects_bool_unreachable_arm() {
         reject(
-            Type::Bool,
+            bare(Type::Bool),
             indoc! {"
                 match x {
                     true => 0,
@@ -982,7 +1097,7 @@ mod tests {
     #[test]
     fn rejects_bool_wildcard_covers_all() {
         reject(
-            Type::Bool,
+            bare(Type::Bool),
             indoc! {"
                 match x {
                     _ => 0,
@@ -999,7 +1114,7 @@ mod tests {
     #[test]
     fn accepts_bool_binding_covers_all() {
         accept(
-            Type::Bool,
+            bare(Type::Bool),
             indoc! {"
                 match x {
                     b => 0,
@@ -1017,7 +1132,7 @@ mod tests {
     #[test]
     fn accepts_option_exhaustive() {
         accept(
-            Type::Option(Arc::new(Type::String)),
+            bare(Type::Option(Arc::new(Type::String))),
             indoc! {"
                 match x {
                     Some(item) => 0,
@@ -1037,7 +1152,7 @@ mod tests {
     #[test]
     fn rejects_option_missing_none() {
         reject(
-            Type::Option(Arc::new(Type::String)),
+            bare(Type::Option(Arc::new(Type::String))),
             indoc! {"
                 match x {
                     Some(item) => 0,
@@ -1054,7 +1169,7 @@ mod tests {
     #[test]
     fn rejects_option_missing_some() {
         reject(
-            Type::Option(Arc::new(Type::String)),
+            bare(Type::Option(Arc::new(Type::String))),
             indoc! {"
                 match x {
                     None => 0,
@@ -1071,7 +1186,7 @@ mod tests {
     #[test]
     fn accepts_nested_option_exhaustive() {
         accept(
-            Type::Option(Arc::new(Type::Option(Arc::new(Type::String)))),
+            bare(Type::Option(Arc::new(Type::Option(Arc::new(Type::String))))),
             indoc! {"
                 match x {
                     Some(Some(item)) => 0,
@@ -1097,10 +1212,9 @@ mod tests {
     #[test]
     fn accepts_enum_exhaustive() {
         accept(
-            Type::Enum {
-                module: DocumentId::new("test.hop").unwrap(),
-                name: TypeName::new("Color").unwrap(),
-                variants: vec![
+            enum_def(
+                TypeName::new("Color").unwrap(),
+                vec![
                     EnumVariant {
                         name: TypeName::new("Red").unwrap(),
                         fields: vec![],
@@ -1114,7 +1228,7 @@ mod tests {
                         fields: vec![],
                     },
                 ],
-            },
+            ),
             indoc! {"
                 match x {
                     Color::Red => 0,
@@ -1136,10 +1250,9 @@ mod tests {
     #[test]
     fn rejects_enum_missing_variant() {
         reject(
-            Type::Enum {
-                module: DocumentId::new("test.hop").unwrap(),
-                name: TypeName::new("Color").unwrap(),
-                variants: vec![
+            enum_def(
+                TypeName::new("Color").unwrap(),
+                vec![
                     EnumVariant {
                         name: TypeName::new("Red").unwrap(),
                         fields: vec![],
@@ -1153,7 +1266,7 @@ mod tests {
                         fields: vec![],
                     },
                 ],
-            },
+            ),
             indoc! {"
                 match x {
                     Color::Red => 0,
@@ -1171,10 +1284,9 @@ mod tests {
     #[test]
     fn accepts_enum_wildcard_covers_remaining() {
         accept(
-            Type::Enum {
-                module: DocumentId::new("test.hop").unwrap(),
-                name: TypeName::new("Color").unwrap(),
-                variants: vec![
+            enum_def(
+                TypeName::new("Color").unwrap(),
+                vec![
                     EnumVariant {
                         name: TypeName::new("Red").unwrap(),
                         fields: vec![],
@@ -1188,7 +1300,7 @@ mod tests {
                         fields: vec![],
                     },
                 ],
-            },
+            ),
             indoc! {"
                 match x {
                     Color::Red => 0,
@@ -1209,10 +1321,9 @@ mod tests {
     #[test]
     fn rejects_enum_unreachable_after_wildcard() {
         reject(
-            Type::Enum {
-                module: DocumentId::new("test.hop").unwrap(),
-                name: TypeName::new("Color").unwrap(),
-                variants: vec![
+            enum_def(
+                TypeName::new("Color").unwrap(),
+                vec![
                     EnumVariant {
                         name: TypeName::new("Red").unwrap(),
                         fields: vec![],
@@ -1226,7 +1337,7 @@ mod tests {
                         fields: vec![],
                     },
                 ],
-            },
+            ),
             indoc! {"
                 match x {
                     _ => 0,
@@ -1246,10 +1357,9 @@ mod tests {
     #[test]
     fn accepts_enum_variant_with_fields_exhaustive() {
         accept(
-            Type::Enum {
-                module: DocumentId::new("test.hop").unwrap(),
-                name: TypeName::new("Outcome").unwrap(),
-                variants: vec![
+            enum_def(
+                TypeName::new("Outcome").unwrap(),
+                vec![
                     EnumVariant {
                         name: TypeName::new("Success").unwrap(),
                         fields: vec![(FieldName::new("value").unwrap(), Arc::new(Type::Int), None)],
@@ -1263,7 +1373,7 @@ mod tests {
                         )],
                     },
                 ],
-            },
+            ),
             indoc! {"
                 match x {
                     Outcome::Success{value: v} => 0,
@@ -1284,10 +1394,9 @@ mod tests {
     #[test]
     fn accepts_enum_variant_mixed_fields_and_unit() {
         accept(
-            Type::Enum {
-                module: DocumentId::new("test.hop").unwrap(),
-                name: TypeName::new("Maybe").unwrap(),
-                variants: vec![
+            enum_def(
+                TypeName::new("Maybe").unwrap(),
+                vec![
                     EnumVariant {
                         name: TypeName::new("Just").unwrap(),
                         fields: vec![(FieldName::new("value").unwrap(), Arc::new(Type::Int), None)],
@@ -1297,7 +1406,7 @@ mod tests {
                         fields: vec![],
                     },
                 ],
-            },
+            ),
             indoc! {"
                 match x {
                     Maybe::Just{value: v} => 0,
@@ -1317,10 +1426,9 @@ mod tests {
     #[test]
     fn accepts_enum_variant_with_wildcard_field() {
         accept(
-            Type::Enum {
-                module: DocumentId::new("test.hop").unwrap(),
-                name: TypeName::new("Outcome").unwrap(),
-                variants: vec![
+            enum_def(
+                TypeName::new("Outcome").unwrap(),
+                vec![
                     EnumVariant {
                         name: TypeName::new("Success").unwrap(),
                         fields: vec![(FieldName::new("value").unwrap(), Arc::new(Type::Int), None)],
@@ -1334,7 +1442,7 @@ mod tests {
                         )],
                     },
                 ],
-            },
+            ),
             indoc! {"
                 match x {
                     Outcome::Success{value: _} => 0,
@@ -1353,10 +1461,9 @@ mod tests {
     #[test]
     fn accepts_enum_three_variants_with_fields() {
         accept(
-            Type::Enum {
-                module: DocumentId::new("test.hop").unwrap(),
-                name: TypeName::new("Status").unwrap(),
-                variants: vec![
+            enum_def(
+                TypeName::new("Status").unwrap(),
+                vec![
                     EnumVariant {
                         name: TypeName::new("Pending").unwrap(),
                         fields: vec![(FieldName::new("since").unwrap(), Arc::new(Type::Int), None)],
@@ -1377,7 +1484,7 @@ mod tests {
                         fields: vec![],
                     },
                 ],
-            },
+            ),
             indoc! {"
                 match x {
                     Status::Pending{since: s} => 0,
@@ -1402,10 +1509,9 @@ mod tests {
     #[test]
     fn accepts_enum_variant_with_three_fields() {
         accept(
-            Type::Enum {
-                module: DocumentId::new("test.hop").unwrap(),
-                name: TypeName::new("Point3D").unwrap(),
-                variants: vec![EnumVariant {
+            enum_def(
+                TypeName::new("Point3D").unwrap(),
+                vec![EnumVariant {
                     name: TypeName::new("Coords").unwrap(),
                     fields: vec![
                         (FieldName::new("x").unwrap(), Arc::new(Type::Int), None),
@@ -1413,7 +1519,7 @@ mod tests {
                         (FieldName::new("z").unwrap(), Arc::new(Type::Int), None),
                     ],
                 }],
-            },
+            ),
             indoc! {"
                 match x {
                     Point3D::Coords{x: a, y: b, z: c} => 0,
@@ -1432,10 +1538,9 @@ mod tests {
     #[test]
     fn accepts_enum_variant_all_fields_wildcard() {
         accept(
-            Type::Enum {
-                module: DocumentId::new("test.hop").unwrap(),
-                name: TypeName::new("Point3D").unwrap(),
-                variants: vec![EnumVariant {
+            enum_def(
+                TypeName::new("Point3D").unwrap(),
+                vec![EnumVariant {
                     name: TypeName::new("Coords").unwrap(),
                     fields: vec![
                         (FieldName::new("x").unwrap(), Arc::new(Type::Int), None),
@@ -1443,7 +1548,7 @@ mod tests {
                         (FieldName::new("z").unwrap(), Arc::new(Type::Int), None),
                     ],
                 }],
-            },
+            ),
             indoc! {"
                 match x {
                     Point3D::Coords{x: _, y: _, z: _} => 0,
@@ -1459,10 +1564,9 @@ mod tests {
     #[test]
     fn accepts_enum_variant_mixed_bindings_and_wildcards() {
         accept(
-            Type::Enum {
-                module: DocumentId::new("test.hop").unwrap(),
-                name: TypeName::new("Point3D").unwrap(),
-                variants: vec![EnumVariant {
+            enum_def(
+                TypeName::new("Point3D").unwrap(),
+                vec![EnumVariant {
                     name: TypeName::new("Coords").unwrap(),
                     fields: vec![
                         (FieldName::new("x").unwrap(), Arc::new(Type::Int), None),
@@ -1470,7 +1574,7 @@ mod tests {
                         (FieldName::new("z").unwrap(), Arc::new(Type::Int), None),
                     ],
                 }],
-            },
+            ),
             indoc! {"
                 match x {
                     Point3D::Coords{x: a, y: _, z: c} => 0,
@@ -1488,10 +1592,9 @@ mod tests {
     #[test]
     fn rejects_enum_variant_wildcard_covers_all_variants() {
         reject(
-            Type::Enum {
-                module: DocumentId::new("test.hop").unwrap(),
-                name: TypeName::new("Result").unwrap(),
-                variants: vec![
+            enum_def(
+                TypeName::new("Result").unwrap(),
+                vec![
                     EnumVariant {
                         name: TypeName::new("Ok").unwrap(),
                         fields: vec![(FieldName::new("value").unwrap(), Arc::new(Type::Int), None)],
@@ -1505,7 +1608,7 @@ mod tests {
                         )],
                     },
                 ],
-            },
+            ),
             indoc! {"
                 match x {
                     _ => 0,
@@ -1522,10 +1625,9 @@ mod tests {
     #[test]
     fn accepts_enum_variant_binding_covers_all_variants() {
         accept(
-            Type::Enum {
-                module: DocumentId::new("test.hop").unwrap(),
-                name: TypeName::new("Result").unwrap(),
-                variants: vec![
+            enum_def(
+                TypeName::new("Result").unwrap(),
+                vec![
                     EnumVariant {
                         name: TypeName::new("Ok").unwrap(),
                         fields: vec![(FieldName::new("value").unwrap(), Arc::new(Type::Int), None)],
@@ -1539,7 +1641,7 @@ mod tests {
                         )],
                     },
                 ],
-            },
+            ),
             indoc! {"
                 match x {
                     r => 0,
@@ -1555,10 +1657,9 @@ mod tests {
     #[test]
     fn accepts_enum_variant_partial_coverage_with_wildcard() {
         accept(
-            Type::Enum {
-                module: DocumentId::new("test.hop").unwrap(),
-                name: TypeName::new("Status").unwrap(),
-                variants: vec![
+            enum_def(
+                TypeName::new("Status").unwrap(),
+                vec![
                     EnumVariant {
                         name: TypeName::new("Pending").unwrap(),
                         fields: vec![(FieldName::new("since").unwrap(), Arc::new(Type::Int), None)],
@@ -1572,7 +1673,7 @@ mod tests {
                         fields: vec![],
                     },
                 ],
-            },
+            ),
             indoc! {"
                 match x {
                     Status::Pending{since: s} => 0,
@@ -1594,10 +1695,9 @@ mod tests {
     #[test]
     fn rejects_enum_variant_missing_variant() {
         reject(
-            Type::Enum {
-                module: DocumentId::new("test.hop").unwrap(),
-                name: TypeName::new("Outcome").unwrap(),
-                variants: vec![
+            enum_def(
+                TypeName::new("Outcome").unwrap(),
+                vec![
                     EnumVariant {
                         name: TypeName::new("Success").unwrap(),
                         fields: vec![(FieldName::new("value").unwrap(), Arc::new(Type::Int), None)],
@@ -1611,7 +1711,7 @@ mod tests {
                         )],
                     },
                 ],
-            },
+            ),
             indoc! {"
                 match x {
                     Outcome::Success{value: v} => 0,
@@ -1628,10 +1728,9 @@ mod tests {
     #[test]
     fn rejects_enum_variant_missing_multiple_variants() {
         reject(
-            Type::Enum {
-                module: DocumentId::new("test.hop").unwrap(),
-                name: TypeName::new("Status").unwrap(),
-                variants: vec![
+            enum_def(
+                TypeName::new("Status").unwrap(),
+                vec![
                     EnumVariant {
                         name: TypeName::new("Pending").unwrap(),
                         fields: vec![(FieldName::new("since").unwrap(), Arc::new(Type::Int), None)],
@@ -1645,7 +1744,7 @@ mod tests {
                         fields: vec![],
                     },
                 ],
-            },
+            ),
             indoc! {"
                 match x {
                     Status::Pending{since: _} => 0,
@@ -1662,10 +1761,9 @@ mod tests {
     #[test]
     fn rejects_enum_variant_duplicate_pattern() {
         reject(
-            Type::Enum {
-                module: DocumentId::new("test.hop").unwrap(),
-                name: TypeName::new("Outcome").unwrap(),
-                variants: vec![
+            enum_def(
+                TypeName::new("Outcome").unwrap(),
+                vec![
                     EnumVariant {
                         name: TypeName::new("Success").unwrap(),
                         fields: vec![(FieldName::new("value").unwrap(), Arc::new(Type::Int), None)],
@@ -1679,7 +1777,7 @@ mod tests {
                         )],
                     },
                 ],
-            },
+            ),
             indoc! {"
                 match x {
                     Outcome::Success{value: v} => 0,
@@ -1698,10 +1796,9 @@ mod tests {
     #[test]
     fn rejects_enum_variant_unreachable_after_wildcard() {
         reject(
-            Type::Enum {
-                module: DocumentId::new("test.hop").unwrap(),
-                name: TypeName::new("Outcome").unwrap(),
-                variants: vec![
+            enum_def(
+                TypeName::new("Outcome").unwrap(),
+                vec![
                     EnumVariant {
                         name: TypeName::new("Success").unwrap(),
                         fields: vec![(FieldName::new("value").unwrap(), Arc::new(Type::Int), None)],
@@ -1715,7 +1812,7 @@ mod tests {
                         )],
                     },
                 ],
-            },
+            ),
             indoc! {"
                 match x {
                     _ => 0,
@@ -1733,10 +1830,9 @@ mod tests {
     #[test]
     fn accepts_enum_variant_nested_option_field() {
         accept(
-            Type::Enum {
-                module: DocumentId::new("test.hop").unwrap(),
-                name: TypeName::new("Container").unwrap(),
-                variants: vec![EnumVariant {
+            enum_def(
+                TypeName::new("Container").unwrap(),
+                vec![EnumVariant {
                     name: TypeName::new("Wrapped").unwrap(),
                     fields: vec![(
                         FieldName::new("inner").unwrap(),
@@ -1744,7 +1840,7 @@ mod tests {
                         None,
                     )],
                 }],
-            },
+            ),
             indoc! {"
                 match x {
                     Container::Wrapped{inner: Some(v)} => 0,
@@ -1765,10 +1861,9 @@ mod tests {
     #[test]
     fn rejects_enum_variant_nested_option_field_missing_none() {
         reject(
-            Type::Enum {
-                module: DocumentId::new("test.hop").unwrap(),
-                name: TypeName::new("Container").unwrap(),
-                variants: vec![EnumVariant {
+            enum_def(
+                TypeName::new("Container").unwrap(),
+                vec![EnumVariant {
                     name: TypeName::new("Wrapped").unwrap(),
                     fields: vec![(
                         FieldName::new("inner").unwrap(),
@@ -1776,7 +1871,7 @@ mod tests {
                         None,
                     )],
                 }],
-            },
+            ),
             indoc! {"
                 match x {
                     Container::Wrapped{inner: Some(v)} => 0,
@@ -1793,10 +1888,9 @@ mod tests {
     #[test]
     fn accepts_enum_variant_nested_bool_field() {
         accept(
-            Type::Enum {
-                module: DocumentId::new("test.hop").unwrap(),
-                name: TypeName::new("Flag").unwrap(),
-                variants: vec![EnumVariant {
+            enum_def(
+                TypeName::new("Flag").unwrap(),
+                vec![EnumVariant {
                     name: TypeName::new("Active").unwrap(),
                     fields: vec![(
                         FieldName::new("enabled").unwrap(),
@@ -1804,7 +1898,7 @@ mod tests {
                         None,
                     )],
                 }],
-            },
+            ),
             indoc! {"
                 match x {
                     Flag::Active{enabled: true} => 0,
@@ -1824,10 +1918,9 @@ mod tests {
     #[test]
     fn rejects_enum_variant_nested_bool_field_missing_case() {
         reject(
-            Type::Enum {
-                module: DocumentId::new("test.hop").unwrap(),
-                name: TypeName::new("Flag").unwrap(),
-                variants: vec![EnumVariant {
+            enum_def(
+                TypeName::new("Flag").unwrap(),
+                vec![EnumVariant {
                     name: TypeName::new("Active").unwrap(),
                     fields: vec![(
                         FieldName::new("enabled").unwrap(),
@@ -1835,7 +1928,7 @@ mod tests {
                         None,
                     )],
                 }],
-            },
+            ),
             indoc! {"
                 match x {
                     Flag::Active{enabled: true} => 0,
@@ -1852,10 +1945,9 @@ mod tests {
     #[test]
     fn accepts_enum_variant_four_fields() {
         accept(
-            Type::Enum {
-                module: DocumentId::new("test.hop").unwrap(),
-                name: TypeName::new("Rectangle").unwrap(),
-                variants: vec![EnumVariant {
+            enum_def(
+                TypeName::new("Rectangle").unwrap(),
+                vec![EnumVariant {
                     name: TypeName::new("Bounds").unwrap(),
                     fields: vec![
                         (FieldName::new("x").unwrap(), Arc::new(Type::Int), None),
@@ -1864,7 +1956,7 @@ mod tests {
                         (FieldName::new("height").unwrap(), Arc::new(Type::Int), None),
                     ],
                 }],
-            },
+            ),
             indoc! {"
                 match x {
                     Rectangle::Bounds{x: a, y: b, width: w, height: h} => 0,
@@ -1884,10 +1976,9 @@ mod tests {
     #[test]
     fn accepts_enum_variant_four_variants_mixed() {
         accept(
-            Type::Enum {
-                module: DocumentId::new("test.hop").unwrap(),
-                name: TypeName::new("Event").unwrap(),
-                variants: vec![
+            enum_def(
+                TypeName::new("Event").unwrap(),
+                vec![
                     EnumVariant {
                         name: TypeName::new("Click").unwrap(),
                         fields: vec![
@@ -1912,7 +2003,7 @@ mod tests {
                         fields: vec![],
                     },
                 ],
-            },
+            ),
             indoc! {"
                 match x {
                     Event::Click{x: a, y: b} => 0,
@@ -1942,10 +2033,9 @@ mod tests {
     #[test]
     fn accepts_record_match() {
         accept(
-            Type::Record {
-                module: DocumentId::new("test.hop").unwrap(),
-                name: TypeName::new("User").unwrap(),
-                fields: vec![
+            record_def(
+                TypeName::new("User").unwrap(),
+                vec![
                     (
                         FieldName::new("name").unwrap(),
                         Arc::new(Type::String),
@@ -1953,7 +2043,7 @@ mod tests {
                     ),
                     (FieldName::new("age").unwrap(), Arc::new(Type::Int), None),
                 ],
-            },
+            ),
             indoc! {"
                 match x {
                     User{name: n, age: a} => 0,
@@ -1971,14 +2061,13 @@ mod tests {
     #[test]
     fn accepts_record_with_bool_fields_exhaustive() {
         accept(
-            Type::Record {
-                module: DocumentId::new("test.hop").unwrap(),
-                name: TypeName::new("Foo").unwrap(),
-                fields: vec![
+            record_def(
+                TypeName::new("Foo").unwrap(),
+                vec![
                     (FieldName::new("a").unwrap(), Arc::new(Type::Bool), None),
                     (FieldName::new("b").unwrap(), Arc::new(Type::Bool), None),
                 ],
-            },
+            ),
             indoc! {"
                 match x {
                     Foo{a: true, b: true} => 0,
@@ -2008,7 +2097,7 @@ mod tests {
     #[test]
     fn accepts_bool_true_with_wildcard() {
         accept(
-            Type::Bool,
+            bare(Type::Bool),
             indoc! {"
                 match x {
                     true => 0,
@@ -2027,7 +2116,7 @@ mod tests {
     #[test]
     fn rejects_bool_duplicate_false() {
         reject(
-            Type::Bool,
+            bare(Type::Bool),
             indoc! {"
                 match x {
                     true => 0,
@@ -2046,7 +2135,7 @@ mod tests {
     #[test]
     fn rejects_bool_unreachable_after_wildcard() {
         reject(
-            Type::Bool,
+            bare(Type::Bool),
             indoc! {"
                 match x {
                     _ => 0,
@@ -2064,7 +2153,7 @@ mod tests {
     #[test]
     fn rejects_bool_unreachable_after_binding() {
         reject(
-            Type::Bool,
+            bare(Type::Bool),
             indoc! {"
                 match x {
                     b => 0,
@@ -2084,7 +2173,7 @@ mod tests {
     #[test]
     fn rejects_option_wildcard_covers_all() {
         reject(
-            Type::Option(Arc::new(Type::String)),
+            bare(Type::Option(Arc::new(Type::String))),
             indoc! {"
                 match x {
                     _ => 0,
@@ -2101,7 +2190,7 @@ mod tests {
     #[test]
     fn accepts_option_some_with_wildcard() {
         accept(
-            Type::Option(Arc::new(Type::String)),
+            bare(Type::Option(Arc::new(Type::String))),
             indoc! {"
                 match x {
                     Some(v) => 0,
@@ -2121,7 +2210,7 @@ mod tests {
     #[test]
     fn rejects_option_duplicate_some() {
         reject(
-            Type::Option(Arc::new(Type::String)),
+            bare(Type::Option(Arc::new(Type::String))),
             indoc! {"
                 match x {
                     Some(_) => 0,
@@ -2140,7 +2229,7 @@ mod tests {
     #[test]
     fn rejects_option_duplicate_none() {
         reject(
-            Type::Option(Arc::new(Type::String)),
+            bare(Type::Option(Arc::new(Type::String))),
             indoc! {"
                 match x {
                     Some(_) => 0,
@@ -2159,7 +2248,7 @@ mod tests {
     #[test]
     fn rejects_nested_option_missing_some_none() {
         reject(
-            Type::Option(Arc::new(Type::Option(Arc::new(Type::Int)))),
+            bare(Type::Option(Arc::new(Type::Option(Arc::new(Type::Int))))),
             indoc! {"
                 match x {
                     Some(Some(_)) => 0,
@@ -2177,7 +2266,7 @@ mod tests {
     #[test]
     fn rejects_nested_option_with_bool_missing() {
         reject(
-            Type::Option(Arc::new(Type::Option(Arc::new(Type::Bool)))),
+            bare(Type::Option(Arc::new(Type::Option(Arc::new(Type::Bool))))),
             indoc! {"
                 match x {
                     Some(Some(false)) => 0,
@@ -2196,7 +2285,7 @@ mod tests {
     #[test]
     fn accepts_nested_option_with_bool_exhaustive() {
         accept(
-            Type::Option(Arc::new(Type::Option(Arc::new(Type::Bool)))),
+            bare(Type::Option(Arc::new(Type::Option(Arc::new(Type::Bool))))),
             indoc! {"
                 match x {
                     Some(Some(true)) => 0,
@@ -2223,7 +2312,7 @@ mod tests {
     #[test]
     fn rejects_nested_option_with_bool_missing_multiple() {
         reject(
-            Type::Option(Arc::new(Type::Option(Arc::new(Type::Bool)))),
+            bare(Type::Option(Arc::new(Type::Option(Arc::new(Type::Bool))))),
             indoc! {"
                 match x {
                     Some(None) => 1,
@@ -2243,10 +2332,9 @@ mod tests {
     #[test]
     fn accepts_enum_binding_covers_all() {
         accept(
-            Type::Enum {
-                module: DocumentId::new("test.hop").unwrap(),
-                name: TypeName::new("Color").unwrap(),
-                variants: vec![
+            enum_def(
+                TypeName::new("Color").unwrap(),
+                vec![
                     EnumVariant {
                         name: TypeName::new("Red").unwrap(),
                         fields: vec![],
@@ -2260,7 +2348,7 @@ mod tests {
                         fields: vec![],
                     },
                 ],
-            },
+            ),
             indoc! {"
                 match x {
                     c => 0,
@@ -2276,10 +2364,9 @@ mod tests {
     #[test]
     fn rejects_enum_duplicate_variant() {
         reject(
-            Type::Enum {
-                module: DocumentId::new("test.hop").unwrap(),
-                name: TypeName::new("Color").unwrap(),
-                variants: vec![
+            enum_def(
+                TypeName::new("Color").unwrap(),
+                vec![
                     EnumVariant {
                         name: TypeName::new("Red").unwrap(),
                         fields: vec![],
@@ -2289,7 +2376,7 @@ mod tests {
                         fields: vec![],
                     },
                 ],
-            },
+            ),
             indoc! {"
                 match x {
                     Color::Red => 0,
@@ -2308,10 +2395,9 @@ mod tests {
     #[test]
     fn rejects_enum_multiple_wildcards() {
         reject(
-            Type::Enum {
-                module: DocumentId::new("test.hop").unwrap(),
-                name: TypeName::new("Color").unwrap(),
-                variants: vec![
+            enum_def(
+                TypeName::new("Color").unwrap(),
+                vec![
                     EnumVariant {
                         name: TypeName::new("Red").unwrap(),
                         fields: vec![],
@@ -2321,7 +2407,7 @@ mod tests {
                         fields: vec![],
                     },
                 ],
-            },
+            ),
             indoc! {"
                 match x {
                     _ => 0,
@@ -2339,10 +2425,9 @@ mod tests {
     #[test]
     fn rejects_enum_missing_multiple_variants() {
         reject(
-            Type::Enum {
-                module: DocumentId::new("test.hop").unwrap(),
-                name: TypeName::new("Color").unwrap(),
-                variants: vec![
+            enum_def(
+                TypeName::new("Color").unwrap(),
+                vec![
                     EnumVariant {
                         name: TypeName::new("Red").unwrap(),
                         fields: vec![],
@@ -2356,7 +2441,7 @@ mod tests {
                         fields: vec![],
                     },
                 ],
-            },
+            ),
             indoc! {"
                 match x {
                     Color::Red => 0,
@@ -2375,10 +2460,9 @@ mod tests {
     #[test]
     fn rejects_record_with_wildcard_fields() {
         reject(
-            Type::Record {
-                module: DocumentId::new("test.hop").unwrap(),
-                name: TypeName::new("User").unwrap(),
-                fields: vec![
+            record_def(
+                TypeName::new("User").unwrap(),
+                vec![
                     (
                         FieldName::new("name").unwrap(),
                         Arc::new(Type::String),
@@ -2386,7 +2470,7 @@ mod tests {
                     ),
                     (FieldName::new("age").unwrap(), Arc::new(Type::Int), None),
                 ],
-            },
+            ),
             indoc! {"
                 match x {
                     User{name: _, age: _} => 0,
@@ -2403,10 +2487,9 @@ mod tests {
     #[test]
     fn accepts_record_with_nested_option() {
         accept(
-            Type::Record {
-                module: DocumentId::new("test.hop").unwrap(),
-                name: TypeName::new("User").unwrap(),
-                fields: vec![
+            record_def(
+                TypeName::new("User").unwrap(),
+                vec![
                     (
                         FieldName::new("name").unwrap(),
                         Arc::new(Type::String),
@@ -2418,7 +2501,7 @@ mod tests {
                         None,
                     ),
                 ],
-            },
+            ),
             indoc! {"
                 match x {
                     User{name: n, email: Some(e)} => 0,
@@ -2441,10 +2524,9 @@ mod tests {
     #[test]
     fn rejects_record_with_option_field_missing_none() {
         reject(
-            Type::Record {
-                module: DocumentId::new("test.hop").unwrap(),
-                name: TypeName::new("User").unwrap(),
-                fields: vec![
+            record_def(
+                TypeName::new("User").unwrap(),
+                vec![
                     (
                         FieldName::new("name").unwrap(),
                         Arc::new(Type::String),
@@ -2456,7 +2538,7 @@ mod tests {
                         None,
                     ),
                 ],
-            },
+            ),
             indoc! {"
                 match x {
                     User{name: n, email: Some(e)} => 0,
@@ -2473,14 +2555,13 @@ mod tests {
     #[test]
     fn rejects_record_with_bool_fields_missing() {
         reject(
-            Type::Record {
-                module: DocumentId::new("test.hop").unwrap(),
-                name: TypeName::new("Foo").unwrap(),
-                fields: vec![
+            record_def(
+                TypeName::new("Foo").unwrap(),
+                vec![
                     (FieldName::new("a").unwrap(), Arc::new(Type::Bool), None),
                     (FieldName::new("b").unwrap(), Arc::new(Type::Bool), None),
                 ],
-            },
+            ),
             indoc! {"
                 match x {
                     Foo{a: true, b: true} => 0,
@@ -2499,14 +2580,13 @@ mod tests {
     #[test]
     fn rejects_record_with_bool_fields_missing_multiple() {
         reject(
-            Type::Record {
-                module: DocumentId::new("test.hop").unwrap(),
-                name: TypeName::new("Foo").unwrap(),
-                fields: vec![
+            record_def(
+                TypeName::new("Foo").unwrap(),
+                vec![
                     (FieldName::new("a").unwrap(), Arc::new(Type::Bool), None),
                     (FieldName::new("b").unwrap(), Arc::new(Type::Bool), None),
                 ],
-            },
+            ),
             indoc! {"
                 match x {
                     Foo{a: true, b: true} => 0,
@@ -2523,19 +2603,19 @@ mod tests {
 
     #[test]
     fn accepts_option_of_record_exhaustive() {
+        let (user_type, registry) = record_def(
+            TypeName::new("User").unwrap(),
+            vec![
+                (
+                    FieldName::new("name").unwrap(),
+                    Arc::new(Type::String),
+                    None,
+                ),
+                (FieldName::new("age").unwrap(), Arc::new(Type::Int), None),
+            ],
+        );
         accept(
-            Type::Option(Arc::new(Type::Record {
-                module: DocumentId::new("test.hop").unwrap(),
-                name: TypeName::new("User").unwrap(),
-                fields: vec![
-                    (
-                        FieldName::new("name").unwrap(),
-                        Arc::new(Type::String),
-                        None,
-                    ),
-                    (FieldName::new("age").unwrap(), Arc::new(Type::Int), None),
-                ],
-            })),
+            (Type::Option(Arc::new(user_type)), registry),
             indoc! {"
                 match x {
                     Some(User{name: n, age: a}) => 0,
@@ -2556,19 +2636,19 @@ mod tests {
 
     #[test]
     fn accepts_option_of_record_with_wildcard_fields() {
+        let (user_type, registry) = record_def(
+            TypeName::new("User").unwrap(),
+            vec![
+                (
+                    FieldName::new("name").unwrap(),
+                    Arc::new(Type::String),
+                    None,
+                ),
+                (FieldName::new("age").unwrap(), Arc::new(Type::Int), None),
+            ],
+        );
         accept(
-            Type::Option(Arc::new(Type::Record {
-                module: DocumentId::new("test.hop").unwrap(),
-                name: TypeName::new("User").unwrap(),
-                fields: vec![
-                    (
-                        FieldName::new("name").unwrap(),
-                        Arc::new(Type::String),
-                        None,
-                    ),
-                    (FieldName::new("age").unwrap(), Arc::new(Type::Int), None),
-                ],
-            })),
+            (Type::Option(Arc::new(user_type)), registry),
             indoc! {"
                 match x {
                     Some(User{name: _, age: _}) => 0,
@@ -2587,10 +2667,9 @@ mod tests {
     #[test]
     fn accepts_option_of_nested_records_with_wildcard_fields() {
         // Role is a nested record inside User
-        let role_type = Arc::new(Type::Record {
-            module: DocumentId::new("test.hop").unwrap(),
-            name: TypeName::new("Role").unwrap(),
-            fields: vec![
+        let (role_type, registry) = record_def(
+            TypeName::new("Role").unwrap(),
+            vec![
                 (
                     FieldName::new("title").unwrap(),
                     Arc::new(Type::String),
@@ -2598,20 +2677,21 @@ mod tests {
                 ),
                 (FieldName::new("salary").unwrap(), Arc::new(Type::Int), None),
             ],
-        });
+        );
+        let (user_type, registry) = record_def_in(
+            registry,
+            TypeName::new("User").unwrap(),
+            vec![
+                (FieldName::new("role").unwrap(), Arc::new(role_type), None),
+                (
+                    FieldName::new("created_at").unwrap(),
+                    Arc::new(Type::Int),
+                    None,
+                ),
+            ],
+        );
         accept(
-            Type::Option(Arc::new(Type::Record {
-                module: DocumentId::new("test.hop").unwrap(),
-                name: TypeName::new("User").unwrap(),
-                fields: vec![
-                    (FieldName::new("role").unwrap(), role_type, None),
-                    (
-                        FieldName::new("created_at").unwrap(),
-                        Arc::new(Type::Int),
-                        None,
-                    ),
-                ],
-            })),
+            (Type::Option(Arc::new(user_type)), registry),
             indoc! {"
                 match x {
                     Some(User{role: Role{title: _, salary: _}, created_at: _}) => 0,
@@ -2630,10 +2710,9 @@ mod tests {
     #[test]
     fn rejects_record_with_all_effectively_wildcard_fields() {
         // All fields are effectively wildcards (one literal, one nested record)
-        let address_type = Arc::new(Type::Record {
-            module: DocumentId::new("test.hop").unwrap(),
-            name: TypeName::new("Address").unwrap(),
-            fields: vec![
+        let (address_type, registry) = record_def(
+            TypeName::new("Address").unwrap(),
+            vec![
                 (
                     FieldName::new("street").unwrap(),
                     Arc::new(Type::String),
@@ -2645,20 +2724,25 @@ mod tests {
                     None,
                 ),
             ],
-        });
+        );
+        let (user_type, registry) = record_def_in(
+            registry,
+            TypeName::new("User").unwrap(),
+            vec![
+                (
+                    FieldName::new("name").unwrap(),
+                    Arc::new(Type::String),
+                    None,
+                ),
+                (
+                    FieldName::new("address").unwrap(),
+                    Arc::new(address_type),
+                    None,
+                ),
+            ],
+        );
         reject(
-            Type::Record {
-                module: DocumentId::new("test.hop").unwrap(),
-                name: TypeName::new("User").unwrap(),
-                fields: vec![
-                    (
-                        FieldName::new("name").unwrap(),
-                        Arc::new(Type::String),
-                        None,
-                    ),
-                    (FieldName::new("address").unwrap(), address_type, None),
-                ],
-            },
+            (user_type, registry),
             indoc! {"
                 match x {
                     User{name: _, address: Address{street: _, city: _}} => 0,
@@ -2675,10 +2759,9 @@ mod tests {
     #[test]
     fn rejects_record_with_nested_wildcard_fields_followed_by_wildcard() {
         // First arm has all wildcard fields (effectively a wildcard), second arm is unreachable
-        let role_type = Arc::new(Type::Record {
-            module: DocumentId::new("test.hop").unwrap(),
-            name: TypeName::new("Role").unwrap(),
-            fields: vec![
+        let (role_type, registry) = record_def(
+            TypeName::new("Role").unwrap(),
+            vec![
                 (
                     FieldName::new("title").unwrap(),
                     Arc::new(Type::String),
@@ -2686,20 +2769,21 @@ mod tests {
                 ),
                 (FieldName::new("salary").unwrap(), Arc::new(Type::Int), None),
             ],
-        });
+        );
+        let (user_type, registry) = record_def_in(
+            registry,
+            TypeName::new("User").unwrap(),
+            vec![
+                (FieldName::new("role").unwrap(), Arc::new(role_type), None),
+                (
+                    FieldName::new("created_at").unwrap(),
+                    Arc::new(Type::Int),
+                    None,
+                ),
+            ],
+        );
         reject(
-            Type::Record {
-                module: DocumentId::new("test.hop").unwrap(),
-                name: TypeName::new("User").unwrap(),
-                fields: vec![
-                    (FieldName::new("role").unwrap(), role_type, None),
-                    (
-                        FieldName::new("created_at").unwrap(),
-                        Arc::new(Type::Int),
-                        None,
-                    ),
-                ],
-            },
+            (user_type, registry),
             indoc! {"
                 match x {
                     User{role: Role{title: _, salary: _}, created_at: _} => 0,
@@ -2717,10 +2801,9 @@ mod tests {
     #[test]
     fn accepts_record_with_binding_and_nested_wildcard_record() {
         // User has a binding for `name` but `address` is an effectively-wildcard record
-        let address_type = Arc::new(Type::Record {
-            module: DocumentId::new("test.hop").unwrap(),
-            name: TypeName::new("Address").unwrap(),
-            fields: vec![
+        let (address_type, registry) = record_def(
+            TypeName::new("Address").unwrap(),
+            vec![
                 (
                     FieldName::new("street").unwrap(),
                     Arc::new(Type::String),
@@ -2732,20 +2815,25 @@ mod tests {
                     None,
                 ),
             ],
-        });
+        );
+        let (user_type, registry) = record_def_in(
+            registry,
+            TypeName::new("User").unwrap(),
+            vec![
+                (
+                    FieldName::new("name").unwrap(),
+                    Arc::new(Type::String),
+                    None,
+                ),
+                (
+                    FieldName::new("address").unwrap(),
+                    Arc::new(address_type),
+                    None,
+                ),
+            ],
+        );
         accept(
-            Type::Record {
-                module: DocumentId::new("test.hop").unwrap(),
-                name: TypeName::new("User").unwrap(),
-                fields: vec![
-                    (
-                        FieldName::new("name").unwrap(),
-                        Arc::new(Type::String),
-                        None,
-                    ),
-                    (FieldName::new("address").unwrap(), address_type, None),
-                ],
-            },
+            (user_type, registry),
             indoc! {"
                 match x {
                     User{name: n, address: Address{street: _, city: _}} => 0,
@@ -2762,10 +2850,9 @@ mod tests {
     #[test]
     fn accepts_enum_variant_with_binding_and_nested_wildcard_record() {
         // Outcome::Success has a binding for `value` but `metadata` is an effectively-wildcard record
-        let metadata_type = Arc::new(Type::Record {
-            module: DocumentId::new("test.hop").unwrap(),
-            name: TypeName::new("Metadata").unwrap(),
-            fields: vec![
+        let (metadata_type, registry) = record_def(
+            TypeName::new("Metadata").unwrap(),
+            vec![
                 (
                     FieldName::new("created").unwrap(),
                     Arc::new(Type::Int),
@@ -2777,33 +2864,38 @@ mod tests {
                     None,
                 ),
             ],
-        });
-        accept(
-            Type::Enum {
-                module: DocumentId::new("test.hop").unwrap(),
-                name: TypeName::new("Outcome").unwrap(),
-                variants: vec![
-                    EnumVariant {
-                        name: TypeName::new("Success").unwrap(),
-                        fields: vec![
-                            (
-                                FieldName::new("value").unwrap(),
-                                Arc::new(Type::String),
-                                None,
-                            ),
-                            (FieldName::new("metadata").unwrap(), metadata_type, None),
-                        ],
-                    },
-                    EnumVariant {
-                        name: TypeName::new("Failure").unwrap(),
-                        fields: vec![(
-                            FieldName::new("message").unwrap(),
+        );
+        let (outcome_type, registry) = enum_def_in(
+            registry,
+            TypeName::new("Outcome").unwrap(),
+            vec![
+                EnumVariant {
+                    name: TypeName::new("Success").unwrap(),
+                    fields: vec![
+                        (
+                            FieldName::new("value").unwrap(),
                             Arc::new(Type::String),
                             None,
-                        )],
-                    },
-                ],
-            },
+                        ),
+                        (
+                            FieldName::new("metadata").unwrap(),
+                            Arc::new(metadata_type),
+                            None,
+                        ),
+                    ],
+                },
+                EnumVariant {
+                    name: TypeName::new("Failure").unwrap(),
+                    fields: vec![(
+                        FieldName::new("message").unwrap(),
+                        Arc::new(Type::String),
+                        None,
+                    )],
+                },
+            ],
+        );
+        accept(
+            (outcome_type, registry),
             indoc! {"
                 match x {
                     Outcome::Success{value: v, metadata: Metadata{created: _, updated: _}} => 0,
@@ -2823,18 +2915,17 @@ mod tests {
     #[test]
     fn accepts_three_level_nested_records_with_middle_binding() {
         // Outer -> Middle (has binding) -> Inner (all wildcards)
-        let inner_type = Type::Record {
-            module: DocumentId::new("test.hop").unwrap(),
-            name: TypeName::new("Inner").unwrap(),
-            fields: vec![
+        let (inner_type, registry) = record_def(
+            TypeName::new("Inner").unwrap(),
+            vec![
                 (FieldName::new("x").unwrap(), Arc::new(Type::Int), None),
                 (FieldName::new("y").unwrap(), Arc::new(Type::Int), None),
             ],
-        };
-        let middle_type = Type::Record {
-            module: DocumentId::new("test.hop").unwrap(),
-            name: TypeName::new("Middle").unwrap(),
-            fields: vec![
+        );
+        let (middle_type, registry) = record_def_in(
+            registry,
+            TypeName::new("Middle").unwrap(),
+            vec![
                 (
                     FieldName::new("name").unwrap(),
                     Arc::new(Type::String),
@@ -2842,17 +2933,18 @@ mod tests {
                 ),
                 (FieldName::new("inner").unwrap(), Arc::new(inner_type), None),
             ],
-        };
+        );
+        let (outer_type, registry) = record_def_in(
+            registry,
+            TypeName::new("Outer").unwrap(),
+            vec![(
+                FieldName::new("middle").unwrap(),
+                Arc::new(middle_type),
+                None,
+            )],
+        );
         accept(
-            Type::Record {
-                module: DocumentId::new("test.hop").unwrap(),
-                name: TypeName::new("Outer").unwrap(),
-                fields: vec![(
-                    FieldName::new("middle").unwrap(),
-                    Arc::new(middle_type),
-                    None,
-                )],
-            },
+            (outer_type, registry),
             indoc! {"
                 match x {
                     Outer{middle: Middle{name: n, inner: Inner{x: _, y: _}}} => 0,
@@ -2872,7 +2964,7 @@ mod tests {
     #[test]
     fn rejects_match_no_arms() {
         reject(
-            Type::Bool,
+            bare(Type::Bool),
             "match x {}",
             expect![[r#"
                 error: Match expression must have at least one arm

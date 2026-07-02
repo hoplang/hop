@@ -8,6 +8,7 @@ use crate::document::{Document, DocumentRange};
 use crate::document_id::DocumentId;
 use crate::document_position::DocumentPosition;
 use crate::expr::TypeBinding;
+use crate::expr::typing::type_registry::TypeRegistry;
 use crate::hop::inlining::transform::TailwindInjection;
 use crate::hop::parsing::find_node::find_node_at_position;
 use crate::hop::parsing::format;
@@ -82,6 +83,7 @@ pub struct Program {
     parse_errors: HashMap<DocumentId, Vec<ParseError>>,
     parsed_asts: HashMap<DocumentId, ParsedAst>,
     typechecker_state: HashMap<DocumentId, HashMap<TypeName, (TypeBinding, DocumentRange, bool)>>,
+    type_registry: TypeRegistry,
     type_errors: HashMap<DocumentId, Vec<TypeError>>,
     type_annotations: HashMap<DocumentId, Vec<TypeAnnotation>>,
     definition_links: HashMap<DocumentId, Vec<DefinitionLink>>,
@@ -131,6 +133,7 @@ impl Program {
             typecheck(
                 &modules,
                 &mut self.typechecker_state,
+                &mut self.type_registry,
                 &mut self.typed_asts,
                 &mut self.type_errors,
                 &mut self.type_annotations,
@@ -153,6 +156,7 @@ impl Program {
         self.parse_errors.remove(document_id);
         self.parsed_asts.remove(document_id);
         self.typechecker_state.remove(document_id);
+        self.type_registry.remove_module(document_id);
         self.type_errors.remove(document_id);
         self.type_annotations.remove(document_id);
         self.asset_references.remove(document_id);
@@ -175,6 +179,7 @@ impl Program {
                 typecheck(
                     &modules,
                     &mut self.typechecker_state,
+                    &mut self.type_registry,
                     &mut self.typed_asts,
                     &mut self.type_errors,
                     &mut self.type_annotations,
@@ -593,6 +598,7 @@ impl Program {
         // Pass the view filter to only compile the requested view
         let ir_module = orchestrate(
             self.get_typed_modules(),
+            &self.type_registry,
             OrchestrateOptions {
                 skip_optimization,
                 disable_links,
@@ -650,7 +656,12 @@ impl Program {
             .map(|param| {
                 (
                     param.var_name.as_str().to_string(),
-                    crate::expr::fake::random_value(rng, &param.var_type, param.examples.as_ref()),
+                    crate::expr::fake::random_value(
+                        rng,
+                        &param.var_type,
+                        param.examples.as_ref(),
+                        &self.type_registry,
+                    ),
                 )
             })
             .collect::<HashMap<_, _>>();
@@ -677,6 +688,7 @@ impl Program {
     ) -> String {
         let ir_module = orchestrate(
             self.get_typed_modules(),
+            &self.type_registry,
             OrchestrateOptions {
                 skip_optimization,
                 asset_rewriter,
@@ -689,14 +701,23 @@ impl Program {
         );
 
         match resolved_config.target {
-            TargetLanguage::Typescript => ir::TsTranspiler::new().transpile_module(&ir_module),
-            TargetLanguage::Rust => ir::RustTranspiler::new().transpile_module(&ir_module),
+            TargetLanguage::Typescript => {
+                ir::TsTranspiler::new().transpile_module(&ir_module, &self.type_registry)
+            }
+            TargetLanguage::Rust => {
+                ir::RustTranspiler::new().transpile_module(&ir_module, &self.type_registry)
+            }
         }
     }
 
     /// Get all typed modules for compilation
     pub(crate) fn get_typed_modules(&self) -> &HashMap<DocumentId, TypedAst> {
         &self.typed_asts
+    }
+
+    #[cfg(test)]
+    pub(crate) fn type_registry(&self) -> &TypeRegistry {
+        &self.type_registry
     }
 
     /// Find which module contains a given view.

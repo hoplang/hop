@@ -11,7 +11,13 @@ use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NamedKind {
+    Record,
+    Enum,
+}
+
+#[derive(Debug, PartialEq, Eq)]
 pub enum Type {
     String,
     Bool,
@@ -20,15 +26,10 @@ pub enum Type {
     Fragment,
     Array(Arc<Type>),
     Option(Arc<Type>),
-    Record {
+    Named {
         module: DocumentId,
         name: TypeName,
-        fields: Vec<(FieldName, Arc<Type>, Option<ExamplesAnnotation>)>,
-    },
-    Enum {
-        module: DocumentId,
-        name: TypeName,
-        variants: Vec<EnumVariant>,
+        kind: NamedKind,
     },
 }
 
@@ -144,7 +145,7 @@ impl Type {
                 let inner_equatable = inner.as_equatable_type()?;
                 Some(EquatableType::Option(Box::new(inner_equatable)))
             }
-            Type::Fragment | Type::Array(_) | Type::Record { .. } | Type::Enum { .. } => None,
+            Type::Fragment | Type::Array(_) | Type::Named { .. } => None,
         }
     }
 
@@ -157,55 +158,15 @@ impl Type {
             | Type::Fragment
             | Type::Array(_)
             | Type::Option(_)
-            | Type::Record { .. }
-            | Type::Enum { .. } => None,
+            | Type::Named { .. } => None,
         }
     }
 
     /// Whether values of this type can be destructured by a `match` expression.
     pub fn is_matchable(&self) -> bool {
         match self {
-            Type::Bool | Type::Option(_) | Type::Record { .. } | Type::Enum { .. } => true,
+            Type::Bool | Type::Option(_) | Type::Named { .. } => true,
             Type::String | Type::Int | Type::Float | Type::Fragment | Type::Array(_) => false,
-        }
-    }
-}
-
-impl PartialEq for Type {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Type::Bool, Type::Bool) => true,
-            (Type::String, Type::String) => true,
-            (Type::Float, Type::Float) => true,
-            (Type::Int, Type::Int) => true,
-            (Type::Fragment, Type::Fragment) => true,
-            (Type::Array(left), Type::Array(right)) => left == right,
-            (Type::Option(left), Type::Option(right)) => left == right,
-            (
-                Type::Record {
-                    module: left_module,
-                    name: left_name,
-                    ..
-                },
-                Type::Record {
-                    module: right_module,
-                    name: right_name,
-                    ..
-                },
-            ) => left_module == right_module && left_name == right_name,
-            (
-                Type::Enum {
-                    module: left_module,
-                    name: left_name,
-                    ..
-                },
-                Type::Enum {
-                    module: right_module,
-                    name: right_name,
-                    ..
-                },
-            ) => left_module == right_module && left_name == right_name,
-            _ => false,
         }
     }
 }
@@ -232,10 +193,7 @@ impl<'a> Type {
                 .append(BoxDoc::text("Option["))
                 .append(elem_type.to_doc())
                 .append(BoxDoc::text("]")),
-            Type::Record { module, name, .. } => {
-                BoxDoc::text(format!("{}::{}", module.to_module_id(), name))
-            }
-            Type::Enum { module, name, .. } => {
+            Type::Named { module, name, .. } => {
                 BoxDoc::text(format!("{}::{}", module.to_module_id(), name))
             }
         }

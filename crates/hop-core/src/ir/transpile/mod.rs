@@ -6,7 +6,8 @@ pub use rust::RustTranspiler;
 pub use ts::TsTranspiler;
 
 use crate::expr::patterns::Match;
-use crate::expr::typing::r#type::{ComparableType, EquatableType, NumericType, Type};
+use crate::expr::typing::r#type::{ComparableType, EquatableType, NamedKind, NumericType, Type};
+use crate::expr::typing::type_registry::TypeRegistry;
 use crate::ir::ast::{
     IrArgument, IrComponentDeclaration, IrExpr, IrForSource, IrModule, IrStatement,
     IrViewDeclaration,
@@ -25,7 +26,7 @@ pub trait Transpiler {
         name: &'a TypeName,
         view: &'a IrViewDeclaration,
     ) -> Doc<'a>;
-    fn transpile_module(&mut self, module: &IrModule) -> String;
+    fn transpile_module(&mut self, module: &IrModule, registry: &TypeRegistry) -> String;
 
     // Statement transpilation
     fn transpile_write_statement<'a>(&mut self, arena: &'a Arena<'a>, content: &'a str) -> Doc<'a>;
@@ -152,8 +153,16 @@ pub trait Transpiler {
             Type::Fragment => self.transpile_fragment_type(arena),
             Type::Array(elem) => self.transpile_array_type(arena, elem),
             Type::Option(inner) => self.transpile_option_type(arena, inner),
-            Type::Record { name, .. } => self.transpile_named_type(arena, name.as_str()),
-            Type::Enum { name, .. } => self.transpile_enum_type(arena, name.as_str()),
+            Type::Named {
+                name,
+                kind: NamedKind::Record,
+                ..
+            } => self.transpile_named_type(arena, name.as_str()),
+            Type::Named {
+                name,
+                kind: NamedKind::Enum,
+                ..
+            } => self.transpile_enum_type(arena, name.as_str()),
         }
     }
 

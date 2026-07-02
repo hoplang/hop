@@ -3,9 +3,10 @@ use super::syntax::transform::{
     IfStatementEliminationPass, MatchStatementEliminationPass, PartialEvaluationPass,
     UnusedVariableDeclarationEliminationPass, WriteCoalescingPass, WriteExprSimplificationPass,
 };
+use crate::expr::typing::type_registry::TypeRegistry;
 
-fn optimize_statements(body: &mut Vec<IrStatement>) {
-    PartialEvaluationPass::run(body);
+fn optimize_statements(body: &mut Vec<IrStatement>, registry: &TypeRegistry) {
+    PartialEvaluationPass::run(body, registry);
     UnusedVariableDeclarationEliminationPass::run(body);
     IfStatementEliminationPass::run(body);
     MatchStatementEliminationPass::run(body);
@@ -13,12 +14,12 @@ fn optimize_statements(body: &mut Vec<IrStatement>) {
     WriteCoalescingPass::with_limit(60).run(body);
 }
 
-pub fn optimize(mut module: IrModule) -> IrModule {
+pub fn optimize(mut module: IrModule, registry: &TypeRegistry) -> IrModule {
     for view in &mut module.views {
-        optimize_statements(&mut view.body);
+        optimize_statements(&mut view.body, registry);
     }
     for component in &mut module.components {
-        optimize_statements(&mut component.body);
+        optimize_statements(&mut component.body, registry);
     }
     module
 }
@@ -31,9 +32,10 @@ mod tests {
     use crate::ir::syntax::builder::IrModuleBuilder;
     use expect_test::{Expect, expect};
 
-    fn check(module: IrModule, expected: Expect) {
+    fn check(built: (IrModule, TypeRegistry), expected: Expect) {
+        let (module, registry) = built;
         let before = module.to_string();
-        let result = optimize(module);
+        let result = optimize(module, &registry);
         let after = result.to_string();
         let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
         expected.assert_eq(&output);
@@ -49,7 +51,7 @@ mod tests {
                     t.write("World");
                 });
             })
-            .build();
+            .build_with_registry();
 
         check(
             module,
@@ -86,7 +88,7 @@ mod tests {
                     t.write("D");
                 });
             })
-            .build();
+            .build_with_registry();
 
         check(
             module,
@@ -126,7 +128,7 @@ mod tests {
                     });
                 });
             })
-            .build();
+            .build_with_registry();
 
         check(
             module,
@@ -164,7 +166,7 @@ mod tests {
                     );
                 });
             })
-            .build();
+            .build_with_registry();
 
         check(
             module,
@@ -202,7 +204,7 @@ mod tests {
             .component_no_params("Test", |t| {
                 t.write("Hello");
             })
-            .build();
+            .build_with_registry();
 
         check(
             module,
@@ -252,7 +254,7 @@ mod tests {
                     });
                 });
             })
-            .build();
+            .build_with_registry();
 
         check(
             module,

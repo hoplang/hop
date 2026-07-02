@@ -2,7 +2,8 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use super::join_macro::build_balanced_join;
-use super::r#type::{NumericType, Type, TypeBinding};
+use super::r#type::{NamedKind, NumericType, Type, TypeBinding};
+use super::type_registry::TypeRegistry;
 use crate::asset_reference::AssetReference;
 use crate::document::{CheapString, DocumentRange};
 use crate::document_id::DocumentId;
@@ -81,6 +82,7 @@ pub fn typecheck_expr(
     inferred_type: Option<&Arc<Type>>,
     var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
     type_env: &mut VariableScope<TypeName, (TypeBinding, DocumentRange)>,
+    registry: &TypeRegistry,
     annotations: &mut Vec<TypeAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
     asset_references: &mut Vec<AssetReference>,
@@ -129,18 +131,22 @@ pub fn typecheck_expr(
                 None,
                 var_env,
                 type_env,
+                registry,
                 annotations,
                 definition_links,
                 asset_references,
             )?;
             let base_type = typed_base.as_type();
 
-            match &base_type {
-                Type::Record {
+            match base_type {
+                Type::Named {
+                    module,
                     name: record_name,
-                    fields,
-                    ..
+                    kind: NamedKind::Record,
                 } => {
+                    let fields = registry
+                        .record_fields(module, record_name)
+                        .expect("record type must be registered");
                     if let Some((_, field_type, _)) =
                         fields.iter().find(|(f, _, _)| f.as_str() == field.as_str())
                     {
@@ -180,6 +186,7 @@ pub fn typecheck_expr(
                 None,
                 var_env,
                 type_env,
+                registry,
                 annotations,
                 definition_links,
                 asset_references,
@@ -190,6 +197,7 @@ pub fn typecheck_expr(
                     None,
                     var_env,
                     type_env,
+                    registry,
                     annotations,
                     definition_links,
                     asset_references,
@@ -199,6 +207,7 @@ pub fn typecheck_expr(
                     Some(&typed_right.get_type()),
                     var_env,
                     type_env,
+                    registry,
                     annotations,
                     definition_links,
                     asset_references,
@@ -211,6 +220,7 @@ pub fn typecheck_expr(
                 Some(&typed_left.get_type()),
                 var_env,
                 type_env,
+                registry,
                 annotations,
                 definition_links,
                 asset_references,
@@ -264,6 +274,7 @@ pub fn typecheck_expr(
                 None,
                 var_env,
                 type_env,
+                registry,
                 annotations,
                 definition_links,
                 asset_references,
@@ -273,6 +284,7 @@ pub fn typecheck_expr(
                 None,
                 var_env,
                 type_env,
+                registry,
                 annotations,
                 definition_links,
                 asset_references,
@@ -325,6 +337,7 @@ pub fn typecheck_expr(
                 None,
                 var_env,
                 type_env,
+                registry,
                 annotations,
                 definition_links,
                 asset_references,
@@ -334,6 +347,7 @@ pub fn typecheck_expr(
                 None,
                 var_env,
                 type_env,
+                registry,
                 annotations,
                 definition_links,
                 asset_references,
@@ -388,6 +402,7 @@ pub fn typecheck_expr(
                 None,
                 var_env,
                 type_env,
+                registry,
                 annotations,
                 definition_links,
                 asset_references,
@@ -397,6 +412,7 @@ pub fn typecheck_expr(
                 None,
                 var_env,
                 type_env,
+                registry,
                 annotations,
                 definition_links,
                 asset_references,
@@ -451,6 +467,7 @@ pub fn typecheck_expr(
                 None,
                 var_env,
                 type_env,
+                registry,
                 annotations,
                 definition_links,
                 asset_references,
@@ -460,6 +477,7 @@ pub fn typecheck_expr(
                 None,
                 var_env,
                 type_env,
+                registry,
                 annotations,
                 definition_links,
                 asset_references,
@@ -513,6 +531,7 @@ pub fn typecheck_expr(
                 None,
                 var_env,
                 type_env,
+                registry,
                 annotations,
                 definition_links,
                 asset_references,
@@ -522,6 +541,7 @@ pub fn typecheck_expr(
                 None,
                 var_env,
                 type_env,
+                registry,
                 annotations,
                 definition_links,
                 asset_references,
@@ -575,6 +595,7 @@ pub fn typecheck_expr(
                 None,
                 var_env,
                 type_env,
+                registry,
                 annotations,
                 definition_links,
                 asset_references,
@@ -584,6 +605,7 @@ pub fn typecheck_expr(
                 None,
                 var_env,
                 type_env,
+                registry,
                 annotations,
                 definition_links,
                 asset_references,
@@ -622,6 +644,7 @@ pub fn typecheck_expr(
                 None,
                 var_env,
                 type_env,
+                registry,
                 annotations,
                 definition_links,
                 asset_references,
@@ -631,6 +654,7 @@ pub fn typecheck_expr(
                 None,
                 var_env,
                 type_env,
+                registry,
                 annotations,
                 definition_links,
                 asset_references,
@@ -668,6 +692,7 @@ pub fn typecheck_expr(
                 None,
                 var_env,
                 type_env,
+                registry,
                 annotations,
                 definition_links,
                 asset_references,
@@ -677,6 +702,7 @@ pub fn typecheck_expr(
                 None,
                 var_env,
                 type_env,
+                registry,
                 annotations,
                 definition_links,
                 asset_references,
@@ -722,6 +748,7 @@ pub fn typecheck_expr(
                 None,
                 var_env,
                 type_env,
+                registry,
                 annotations,
                 definition_links,
                 asset_references,
@@ -731,6 +758,7 @@ pub fn typecheck_expr(
                 None,
                 var_env,
                 type_env,
+                registry,
                 annotations,
                 definition_links,
                 asset_references,
@@ -772,6 +800,7 @@ pub fn typecheck_expr(
                 None,
                 var_env,
                 type_env,
+                registry,
                 annotations,
                 definition_links,
                 asset_references,
@@ -781,6 +810,7 @@ pub fn typecheck_expr(
                 None,
                 var_env,
                 type_env,
+                registry,
                 annotations,
                 definition_links,
                 asset_references,
@@ -817,6 +847,7 @@ pub fn typecheck_expr(
                 None,
                 var_env,
                 type_env,
+                registry,
                 annotations,
                 definition_links,
                 asset_references,
@@ -842,6 +873,7 @@ pub fn typecheck_expr(
                 None,
                 var_env,
                 type_env,
+                registry,
                 annotations,
                 definition_links,
                 asset_references,
@@ -897,6 +929,7 @@ pub fn typecheck_expr(
                     expected_elem_type.as_ref(),
                     var_env,
                     type_env,
+                    registry,
                     annotations,
                     definition_links,
                     asset_references,
@@ -913,6 +946,7 @@ pub fn typecheck_expr(
                         Some(elem_context),
                         var_env,
                         type_env,
+                        registry,
                         annotations,
                         definition_links,
                         asset_references,
@@ -976,9 +1010,10 @@ pub fn typecheck_expr(
             });
 
             // Extract fields from the record type
-            let Type::Record {
-                fields: record_fields,
-                ..
+            let Type::Named {
+                module,
+                name: resolved_record_name,
+                kind: NamedKind::Record,
             } = record_type.as_ref()
             else {
                 return Err(TypeError::new(
@@ -988,6 +1023,9 @@ pub fn typecheck_expr(
                     range.clone(),
                 ));
             };
+            let record_fields = registry
+                .record_fields(module, resolved_record_name)
+                .expect("record type must be registered");
 
             // Build a map of expected fields from the record type
             let expected_fields = record_fields
@@ -1017,6 +1055,7 @@ pub fn typecheck_expr(
                     Some(expected_type),
                     var_env,
                     type_env,
+                    registry,
                     annotations,
                     definition_links,
                     asset_references,
@@ -1103,33 +1142,32 @@ pub fn typecheck_expr(
             });
 
             // Verify it's actually an enum type and get the variant's fields
-            let variant_fields = match enum_type.as_ref() {
-                Type::Enum { variants, .. } => {
-                    let variant = variants
-                        .iter()
-                        .find(|variant| variant.name.as_str() == variant_name.as_str());
-                    match variant {
-                        Some(variant) => variant.fields.clone(),
-                        None => {
-                            return Err(TypeError::new(
-                                TypeErrorKind::UndefinedEnumVariant {
-                                    enum_name: enum_name.clone(),
-                                    variant_name: variant_name.clone(),
-                                },
-                                range.clone(),
-                            ));
-                        }
-                    }
-                }
-                _ => {
-                    return Err(TypeError::new(
-                        TypeErrorKind::UndefinedEnum {
-                            enum_name: enum_name.clone(),
-                        },
-                        range.clone(),
-                    ));
-                }
+            let Type::Named {
+                module,
+                name: resolved_enum_name,
+                kind: NamedKind::Enum,
+            } = enum_type.as_ref()
+            else {
+                return Err(TypeError::new(
+                    TypeErrorKind::UndefinedEnum {
+                        enum_name: enum_name.clone(),
+                    },
+                    range.clone(),
+                ));
             };
+            let variant_fields =
+                match registry.variant_fields(module, resolved_enum_name, variant_name.as_str()) {
+                    Some(fields) => fields.to_vec(),
+                    None => {
+                        return Err(TypeError::new(
+                            TypeErrorKind::UndefinedEnumVariant {
+                                enum_name: enum_name.clone(),
+                                variant_name: variant_name.clone(),
+                            },
+                            range.clone(),
+                        ));
+                    }
+                };
 
             // Validate fields
             let typed_fields = {
@@ -1151,6 +1189,7 @@ pub fn typecheck_expr(
                                 Some(expected_type),
                                 var_env,
                                 type_env,
+                                registry,
                                 annotations,
                                 definition_links,
                                 asset_references,
@@ -1230,6 +1269,7 @@ pub fn typecheck_expr(
                         expected_inner_type.as_ref(),
                         var_env,
                         type_env,
+                        registry,
                         annotations,
                         definition_links,
                         asset_references,
@@ -1265,6 +1305,7 @@ pub fn typecheck_expr(
                 None,
                 var_env,
                 type_env,
+                registry,
                 annotations,
                 definition_links,
                 asset_references,
@@ -1281,9 +1322,9 @@ pub fn typecheck_expr(
             }
             let typed_patterns = arms
                 .iter()
-                .map(|arm| typecheck_pattern(&arm.pattern, subject_type.clone()))
+                .map(|arm| typecheck_pattern(&arm.pattern, subject_type.clone(), registry))
                 .collect::<Result<Vec<_>, _>>()?;
-            let tree = Compiler::new(var_env.fresh_var_counter()).compile(
+            let tree = Compiler::new(var_env.fresh_var_counter(), registry).compile(
                 &typed_patterns,
                 subject_type,
                 subject.range(),
@@ -1294,6 +1335,7 @@ pub fn typecheck_expr(
                 &typed_patterns,
                 var_env,
                 type_env,
+                registry,
                 annotations,
                 definition_links,
                 asset_references,
@@ -1323,6 +1365,7 @@ pub fn typecheck_expr(
                         Some(&string_type),
                         var_env,
                         type_env,
+                        registry,
                         annotations,
                         definition_links,
                         asset_references,
@@ -1410,6 +1453,7 @@ pub fn typecheck_expr(
                 None,
                 var_env,
                 type_env,
+                registry,
                 annotations,
                 definition_links,
                 asset_references,
@@ -1535,6 +1579,7 @@ fn typecheck_arm_bodies(
     typed_patterns: &[TypedMatchPattern],
     var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
     type_env: &mut VariableScope<TypeName, (TypeBinding, DocumentRange)>,
+    registry: &TypeRegistry,
     annotations: &mut Vec<TypeAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
     asset_references: &mut Vec<AssetReference>,
@@ -1569,6 +1614,7 @@ fn typecheck_arm_bodies(
             result_type.as_ref(),
             var_env,
             type_env,
+            registry,
             annotations,
             definition_links,
             asset_references,
@@ -1780,6 +1826,7 @@ mod tests {
     use crate::document_id::DocumentId;
     use crate::expr::parse_expr;
     use crate::expr::typing::r#type::EnumVariant;
+    use crate::expr::typing::type_registry::TypeDef;
     use crate::symbols::field_name::FieldName;
     use crate::symbols::type_name::TypeName;
     use crate::{document::DocumentCursor, expr::parsing::parse_type::parse_type};
@@ -1838,6 +1885,7 @@ mod tests {
             VariableScope::new();
         let mut definition_links = Vec::new();
         let mut asset_references = Vec::new();
+        let mut registry = TypeRegistry::default();
         let test_module = DocumentId::new("test.hop").unwrap();
 
         // Synthetic range used as the "definition site" for builder-declared types.
@@ -1848,14 +1896,13 @@ mod tests {
             match decl {
                 Decl::Record { name, fields } => {
                     let type_name = TypeName::new(name).unwrap();
-                    // Register placeholder so self-referential fields can resolve
                     let _ = type_env.push(
                         type_name.clone(),
                         (
-                            TypeBinding::Value(Arc::new(Type::Record {
+                            TypeBinding::Value(Arc::new(Type::Named {
                                 module: test_module.clone(),
                                 name: type_name.clone(),
-                                fields: vec![],
+                                kind: NamedKind::Record,
                             })),
                             decl_range.clone(),
                         ),
@@ -1870,20 +1917,12 @@ mod tests {
                         })
                         .collect();
 
-                    // Remove placeholder
-                    let _ = type_env.pop();
-
-                    let record_type = Type::Record {
-                        module: test_module.clone(),
-                        name: type_name.clone(),
-                        fields: resolved_fields,
-                    };
-                    let _ = type_env.push(
+                    registry.insert(
+                        test_module.clone(),
                         type_name,
-                        (
-                            TypeBinding::Value(Arc::new(record_type)),
-                            decl_range.clone(),
-                        ),
+                        TypeDef::Record {
+                            fields: resolved_fields,
+                        },
                     );
                 }
                 Decl::Enum { name, variants } => {
@@ -1896,26 +1935,34 @@ mod tests {
                         })
                         .collect();
 
-                    let enum_type = Type::Enum {
-                        module: test_module.clone(),
-                        name: type_name.clone(),
-                        variants: typed_variants,
-                    };
                     let _ = type_env.push(
+                        type_name.clone(),
+                        (
+                            TypeBinding::Value(Arc::new(Type::Named {
+                                module: test_module.clone(),
+                                name: type_name.clone(),
+                                kind: NamedKind::Enum,
+                            })),
+                            decl_range.clone(),
+                        ),
+                    );
+                    registry.insert(
+                        test_module.clone(),
                         type_name,
-                        (TypeBinding::Value(Arc::new(enum_type)), decl_range.clone()),
+                        TypeDef::Enum {
+                            variants: typed_variants,
+                        },
                     );
                 }
                 Decl::EnumWithFields { name, variants } => {
                     let type_name = TypeName::new(name).unwrap();
-                    // Register placeholder so self-referential variants can resolve
                     let _ = type_env.push(
                         type_name.clone(),
                         (
-                            TypeBinding::Value(Arc::new(Type::Enum {
+                            TypeBinding::Value(Arc::new(Type::Named {
                                 module: test_module.clone(),
                                 name: type_name.clone(),
-                                variants: vec![],
+                                kind: NamedKind::Enum,
                             })),
                             decl_range.clone(),
                         ),
@@ -1942,16 +1989,12 @@ mod tests {
                         })
                         .collect();
 
-                    let _ = type_env.pop();
-
-                    let enum_type = Type::Enum {
-                        module: test_module.clone(),
-                        name: type_name.clone(),
-                        variants: typed_variants,
-                    };
-                    let _ = type_env.push(
+                    registry.insert(
+                        test_module.clone(),
                         type_name,
-                        (TypeBinding::Value(Arc::new(enum_type)), decl_range.clone()),
+                        TypeDef::Enum {
+                            variants: typed_variants,
+                        },
                     );
                 }
             }
@@ -1979,6 +2022,7 @@ mod tests {
             None,
             &mut env,
             &mut type_env,
+            &registry,
             &mut annotations,
             &mut definition_links,
             &mut asset_references,
