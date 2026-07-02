@@ -963,8 +963,6 @@ mod tests {
         }
     }
 
-    // Bool tests
-
     #[test]
     fn accepts_bool_exhaustive() {
         accept(
@@ -1076,8 +1074,6 @@ mod tests {
         );
     }
 
-    // Option tests
-
     #[test]
     fn accepts_option_exhaustive() {
         accept(
@@ -1159,8 +1155,6 @@ mod tests {
             "#]],
         );
     }
-
-    // Enum tests
 
     #[test]
     fn accepts_enum_exhaustive() {
@@ -1244,8 +1238,6 @@ mod tests {
             "#]],
         );
     }
-
-    // Enum with fields tests
 
     #[test]
     fn accepts_enum_variant_with_fields_exhaustive() {
@@ -1750,8 +1742,6 @@ mod tests {
         );
     }
 
-    // Record tests
-
     #[test]
     fn accepts_record_match() {
         accept(
@@ -1799,8 +1789,6 @@ mod tests {
             "#]],
         );
     }
-
-    // Additional Bool tests
 
     #[test]
     fn accepts_bool_true_with_wildcard() {
@@ -1879,8 +1867,6 @@ mod tests {
             "#]],
         );
     }
-
-    // Additional Option tests
 
     #[test]
     fn rejects_option_wildcard_covers_all() {
@@ -2047,8 +2033,6 @@ mod tests {
         );
     }
 
-    // Additional Enum tests
-
     #[test]
     fn accepts_enum_binding_covers_all() {
         accept(
@@ -2122,8 +2106,6 @@ mod tests {
             "#]],
         );
     }
-
-    // Additional Record tests
 
     #[test]
     fn rejects_record_with_wildcard_fields() {
@@ -2412,8 +2394,6 @@ mod tests {
         );
     }
 
-    // Pattern validation tests
-
     #[test]
     fn rejects_match_no_arms() {
         reject(
@@ -2423,6 +2403,136 @@ mod tests {
             expect![[r#"
                 error: Match expression must have at least one arm
                 match x {}
+                      ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_recursive_enum_exhaustive() {
+        accept(
+            TypeRegistryBuilder::new().enum_(
+                "IntList",
+                [
+                    ("Cons", vec![("head", "Int"), ("tail", "IntList")]),
+                    ("Nil", vec![]),
+                ],
+            ),
+            "IntList",
+            indoc! {"
+                match x {
+                    IntList::Cons{head: h, tail: t} => 0,
+                    IntList::Nil => 1,
+                }
+            "},
+            expect![[r#"
+                v_0 is IntList::Cons{head: v_1, tail: v_2}
+                  let h = v_1
+                  let t = v_2
+                  branch 0
+                v_0 is IntList::Nil
+                  branch 1
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_recursive_enum_nested_patterns() {
+        accept(
+            TypeRegistryBuilder::new().enum_(
+                "IntList",
+                [
+                    ("Cons", vec![("head", "Int"), ("tail", "IntList")]),
+                    ("Nil", vec![]),
+                ],
+            ),
+            "IntList",
+            indoc! {"
+                match x {
+                    IntList::Cons{head: h, tail: IntList::Nil} => 0,
+                    IntList::Cons{head: h, tail: IntList::Cons{head: h2, tail: rest}} => 1,
+                    IntList::Nil => 2,
+                }
+            "},
+            expect![[r#"
+                v_0 is IntList::Cons{head: v_1, tail: v_2}
+                  v_2 is IntList::Cons{head: v_3, tail: v_4}
+                    let h = v_1
+                    let h2 = v_3
+                    let rest = v_4
+                    branch 1
+                  v_2 is IntList::Nil
+                    let h = v_1
+                    branch 0
+                v_0 is IntList::Nil
+                  branch 2
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_recursive_enum_missing_nested_case() {
+        reject(
+            TypeRegistryBuilder::new().enum_(
+                "IntList",
+                [
+                    ("Cons", vec![("head", "Int"), ("tail", "IntList")]),
+                    ("Nil", vec![]),
+                ],
+            ),
+            "IntList",
+            indoc! {"
+                match x {
+                    IntList::Cons{head: h, tail: IntList::Nil} => 0,
+                    IntList::Nil => 1,
+                }
+            "},
+            expect![[r#"
+                error: Match expression is missing arms for: IntList::Cons{head: _, tail: IntList::Cons{head: _, tail: _}}
+                match x {
+                      ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_recursive_record_through_option() {
+        accept(
+            TypeRegistryBuilder::new().record("Node", [("value", "Int"), ("next", "Option[Node]")]),
+            "Node",
+            indoc! {"
+                match x {
+                    Node{value: v, next: Some(n)} => 0,
+                    Node{value: v, next: None} => 1,
+                }
+            "},
+            expect![[r#"
+                v_0 is Node{value: v_1, next: v_2}
+                  v_2 is Some(v_3)
+                    let v = v_1
+                    let n = v_3
+                    branch 0
+                  v_2 is None
+                    let v = v_1
+                    branch 1
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_recursive_record_missing_nested_case() {
+        reject(
+            TypeRegistryBuilder::new().record("Node", [("value", "Int"), ("next", "Option[Node]")]),
+            "Node",
+            indoc! {"
+                match x {
+                    Node{value: v, next: Some(Node{value: v2, next: None})} => 0,
+                    Node{value: v, next: None} => 1,
+                }
+            "},
+            expect![[r#"
+                error: Match expression is missing arms for: Node{value: _, next: Some(Node{value: _, next: Some(_)})}
+                match x {
                       ^
             "#]],
         );
