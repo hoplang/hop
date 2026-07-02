@@ -522,11 +522,9 @@ impl VariableRenamingPass {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
     use super::*;
+    use crate::document::CheapString;
     use crate::ir::syntax::builder::{build_ir, build_ir_no_params};
-    use crate::{document::CheapString, expr::Type};
     use expect_test::{Expect, expect};
 
     fn check(mut input_view: IrViewDeclaration, expected: Expect) {
@@ -540,7 +538,7 @@ mod tests {
     #[test]
     fn simple_no_renaming() {
         check(
-            build_ir("Test", [("x", Type::String)], |t| {
+            build_ir("Test", [("x", "String")], |t| {
                 t.write_expr_escaped(t.var("x"));
             }),
             expect![[r#"
@@ -560,7 +558,7 @@ mod tests {
     #[test]
     fn shadowing_in_for_loop() {
         check(
-            build_ir("Test", [("x", Type::String)], |t| {
+            build_ir("Test", [("x", "String")], |t| {
                 t.for_loop("x", t.array(vec![t.str("a")]), |t| {
                     t.write_expr_escaped(t.var("x"));
                 });
@@ -656,17 +654,13 @@ mod tests {
     #[test]
     fn multiple_parameters() {
         check(
-            build_ir(
-                "Test",
-                vec![("x", Type::String), ("y", Type::String)],
-                |t| {
+            build_ir("Test", vec![("x", "String"), ("y", "String")], |t| {
+                t.write_expr_escaped(t.var("x"));
+                t.for_loop("y", t.array(vec![t.str("a")]), |t| {
                     t.write_expr_escaped(t.var("x"));
-                    t.for_loop("y", t.array(vec![t.str("a")]), |t| {
-                        t.write_expr_escaped(t.var("x"));
-                        t.write_expr_escaped(t.var("y"));
-                    });
-                },
-            ),
+                    t.write_expr_escaped(t.var("y"));
+                });
+            }),
             expect![[r#"
                 -- before --
                 view Test(x: String, y: String) {
@@ -727,23 +721,19 @@ mod tests {
     #[test]
     fn complex_nesting() {
         check(
-            build_ir(
-                "Test",
-                vec![("items", Type::Array(Arc::new(Type::String)))],
-                |t| {
-                    t.for_loop("item", t.var("items"), |t| {
-                        t.write("<div>");
-                        t.for_loop("item", t.array(vec![t.str("nested")]), |t| {
-                            t.write_expr_escaped(t.var("item"));
-                            t.let_stmt("item", t.str("let-value"), |t| {
-                                t.write_expr_escaped(t.var("item"));
-                            });
-                        });
+            build_ir("Test", vec![("items", "Array[String]")], |t| {
+                t.for_loop("item", t.var("items"), |t| {
+                    t.write("<div>");
+                    t.for_loop("item", t.array(vec![t.str("nested")]), |t| {
                         t.write_expr_escaped(t.var("item"));
-                        t.write("</div>");
+                        t.let_stmt("item", t.str("let-value"), |t| {
+                            t.write_expr_escaped(t.var("item"));
+                        });
                     });
-                },
-            ),
+                    t.write_expr_escaped(t.var("item"));
+                    t.write("</div>");
+                });
+            }),
             expect![[r#"
                 -- before --
                 view Test(items: Array[String]) {

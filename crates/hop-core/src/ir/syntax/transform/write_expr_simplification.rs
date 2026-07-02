@@ -33,12 +33,9 @@ impl WriteExprSimplificationPass {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        expr::Type,
-        ir::{
-            ast::IrViewDeclaration,
-            syntax::builder::{build_ir, build_ir_no_params},
-        },
+    use crate::ir::{
+        ast::IrViewDeclaration,
+        syntax::builder::{build_ir, build_ir_no_params},
     };
     use expect_test::{Expect, expect};
 
@@ -139,7 +136,7 @@ mod tests {
     #[test]
     fn mixed_write_and_write_expr() {
         check(
-            build_ir("Test", [("x", Type::String)], |t| {
+            build_ir("Test", [("x", "String")], |t| {
                 t.write("Already a Write statement");
                 t.write_expr(t.str("Will become Write"), false);
                 t.write_expr(t.var("x"), false);

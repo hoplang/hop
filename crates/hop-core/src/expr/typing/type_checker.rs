@@ -1822,191 +1822,33 @@ fn decision_to_typed_expr(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::document::DocumentCursor;
     use crate::document_annotator::DocumentAnnotator;
-    use crate::document_id::DocumentId;
     use crate::expr::parse_expr;
-    use crate::expr::typing::r#type::EnumVariant;
-    use crate::expr::typing::type_registry::TypeDef;
-    use crate::symbols::field_name::FieldName;
-    use crate::symbols::type_name::TypeName;
-    use crate::{document::DocumentCursor, expr::parsing::parse_type::parse_type};
+    use crate::expr::typing::type_registry_builder::TypeRegistryBuilder;
     use expect_test::{Expect, expect};
     use indoc::indoc;
     use std::collections::VecDeque;
 
-    enum Decl<'a> {
-        Record {
-            name: &'a str,
-            fields: &'a [(&'a str, &'a str)],
-        },
-        Enum {
-            name: &'a str,
-            variants: &'a [&'a str],
-        },
-        EnumWithFields {
-            name: &'a str,
-            variants: &'a [(&'a str, &'a [(&'a str, &'a str)])],
-        },
-    }
+    fn run_check(
+        types: TypeRegistryBuilder,
+        env_vars: &[(&str, &str)],
+        expr_str: &str,
+    ) -> (String, bool) {
+        let types = types.build();
 
-    fn record<'a>(name: &'a str, fields: &'a [(&'a str, &'a str)]) -> Decl<'a> {
-        Decl::Record { name, fields }
-    }
+        let mut type_env = types.type_env();
 
-    fn enum_unit<'a>(name: &'a str, variants: &'a [&'a str]) -> Decl<'a> {
-        Decl::Enum { name, variants }
-    }
-
-    fn enum_<'a>(name: &'a str, variants: &'a [(&'a str, &'a [(&'a str, &'a str)])]) -> Decl<'a> {
-        Decl::EnumWithFields { name, variants }
-    }
-
-    fn parse_type_str(
-        type_str: &str,
-        type_env: &mut VariableScope<TypeName, (TypeBinding, DocumentRange)>,
-        definition_links: &mut Vec<DefinitionLink>,
-    ) -> (Arc<Type>, DocumentRange) {
-        let cursor =
-            DocumentCursor::new(DocumentId::new("test.hop").unwrap(), type_str.to_string());
-        let range = cursor.range();
-        let mut iter = cursor.peekable();
-        let mut comments = VecDeque::new();
-        let mut errors = Vec::new();
-        let parsed_type = parse_type(&mut iter, &mut comments, &mut errors, &range)
-            .expect("Failed to parse type");
-        let typ = resolve_type(&parsed_type, type_env, definition_links)
-            .expect("Test type should be valid");
-        (typ, range)
-    }
-
-    fn run_check(decls: &[Decl<'_>], env_vars: &[(&str, &str)], expr_str: &str) -> (String, bool) {
+        let decl_range = DocumentCursor::new(types.module().clone(), String::new()).range();
         let mut env: VariableScope<VarName, (Arc<Type>, DocumentRange)> = VariableScope::new();
-        let mut type_env: VariableScope<TypeName, (TypeBinding, DocumentRange)> =
-            VariableScope::new();
-        let mut definition_links = Vec::new();
-        let mut asset_references = Vec::new();
-        let mut registry = TypeRegistry::default();
-        let test_module = DocumentId::new("test.hop").unwrap();
-
-        // Synthetic range used as the "definition site" for builder-declared types.
-        let decl_range =
-            DocumentCursor::new(DocumentId::new("test.hop").unwrap(), String::new()).range();
-
-        for decl in decls {
-            match decl {
-                Decl::Record { name, fields } => {
-                    let type_name = TypeName::new(name).unwrap();
-                    let _ = type_env.push(
-                        type_name.clone(),
-                        (
-                            TypeBinding::Value(Arc::new(Type::Named {
-                                module: test_module.clone(),
-                                name: type_name.clone(),
-                                kind: NamedKind::Record,
-                            })),
-                            decl_range.clone(),
-                        ),
-                    );
-
-                    let resolved_fields: Vec<_> = fields
-                        .iter()
-                        .map(|(field_name, type_str)| {
-                            let (typ, _) =
-                                parse_type_str(type_str, &mut type_env, &mut definition_links);
-                            (FieldName::new(field_name).unwrap(), typ, None)
-                        })
-                        .collect();
-
-                    registry.insert(
-                        test_module.clone(),
-                        type_name,
-                        TypeDef::Record {
-                            fields: resolved_fields,
-                        },
-                    );
-                }
-                Decl::Enum { name, variants } => {
-                    let type_name = TypeName::new(name).unwrap();
-                    let typed_variants: Vec<_> = variants
-                        .iter()
-                        .map(|variant| EnumVariant {
-                            name: TypeName::new(variant).unwrap(),
-                            fields: vec![],
-                        })
-                        .collect();
-
-                    let _ = type_env.push(
-                        type_name.clone(),
-                        (
-                            TypeBinding::Value(Arc::new(Type::Named {
-                                module: test_module.clone(),
-                                name: type_name.clone(),
-                                kind: NamedKind::Enum,
-                            })),
-                            decl_range.clone(),
-                        ),
-                    );
-                    registry.insert(
-                        test_module.clone(),
-                        type_name,
-                        TypeDef::Enum {
-                            variants: typed_variants,
-                        },
-                    );
-                }
-                Decl::EnumWithFields { name, variants } => {
-                    let type_name = TypeName::new(name).unwrap();
-                    let _ = type_env.push(
-                        type_name.clone(),
-                        (
-                            TypeBinding::Value(Arc::new(Type::Named {
-                                module: test_module.clone(),
-                                name: type_name.clone(),
-                                kind: NamedKind::Enum,
-                            })),
-                            decl_range.clone(),
-                        ),
-                    );
-
-                    let typed_variants: Vec<_> = variants
-                        .iter()
-                        .map(|(variant_name, fields)| {
-                            let typed_fields: Vec<_> = fields
-                                .iter()
-                                .map(|(field_name, type_str)| {
-                                    let (typ, _) = parse_type_str(
-                                        type_str,
-                                        &mut type_env,
-                                        &mut definition_links,
-                                    );
-                                    (FieldName::new(field_name).unwrap(), typ, None)
-                                })
-                                .collect();
-                            EnumVariant {
-                                name: TypeName::new(variant_name).unwrap(),
-                                fields: typed_fields,
-                            }
-                        })
-                        .collect();
-
-                    registry.insert(
-                        test_module.clone(),
-                        type_name,
-                        TypeDef::Enum {
-                            variants: typed_variants,
-                        },
-                    );
-                }
-            }
-        }
-
         for (var_name, type_str) in env_vars {
-            let (typ, range) = parse_type_str(type_str, &mut type_env, &mut definition_links);
-            let _ = env.push(VarName::new(var_name).unwrap(), (typ, range));
+            let typ = types.resolve(type_str);
+            let _ = env.push(VarName::new(var_name).unwrap(), (typ, decl_range.clone()));
         }
 
-        let cursor =
-            DocumentCursor::new(DocumentId::new("test.hop").unwrap(), expr_str.to_string());
+        let mut asset_references = Vec::new();
+
+        let cursor = DocumentCursor::new(types.module().clone(), expr_str.to_string());
         let range = cursor.range();
         let mut iter = cursor.peekable();
         let mut comments = VecDeque::new();
@@ -2022,7 +1864,7 @@ mod tests {
             None,
             &mut env,
             &mut type_env,
-            &registry,
+            types.registry(),
             &mut annotations,
             &mut definition_links,
             &mut asset_references,
@@ -2033,23 +1875,33 @@ mod tests {
                     .with_label("error")
                     .without_location()
                     .without_line_numbers()
-                    .annotate(&DocumentId::new("test.hop").unwrap(), [e])
+                    .annotate(types.module(), [e])
                     .render(),
                 false,
             ),
         }
     }
 
-    fn accept(decls: &[Decl<'_>], env_vars: &[(&str, &str)], expr_str: &str, expected: Expect) {
-        let (actual, ok) = run_check(decls, env_vars, expr_str);
+    fn accept(
+        types: TypeRegistryBuilder,
+        env_vars: &[(&str, &str)],
+        expr_str: &str,
+        expected: Expect,
+    ) {
+        let (actual, ok) = run_check(types, env_vars, expr_str);
         if !ok {
             panic!("expected expression to typecheck, got error:\n{actual}");
         }
         expected.assert_eq(&actual);
     }
 
-    fn reject(decls: &[Decl<'_>], env_vars: &[(&str, &str)], expr_str: &str, expected: Expect) {
-        let (actual, ok) = run_check(decls, env_vars, expr_str);
+    fn reject(
+        types: TypeRegistryBuilder,
+        env_vars: &[(&str, &str)],
+        expr_str: &str,
+        expected: Expect,
+    ) {
+        let (actual, ok) = run_check(types, env_vars, expr_str);
         if ok {
             panic!("expected a type error, but expression typechecked to: {actual}");
         }
@@ -2059,7 +1911,7 @@ mod tests {
     #[test]
     fn rejects_equality_between_string_and_number() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("name", "String"), ("count", "Float")],
             "name == count",
             expect![[r#"
@@ -2073,7 +1925,7 @@ mod tests {
     #[test]
     fn rejects_equality_between_boolean_and_string() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("enabled", "Bool"), ("name", "String")],
             "enabled == name",
             expect![[r#"
@@ -2087,7 +1939,7 @@ mod tests {
     #[test]
     fn rejects_undefined_variable() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[],
             "undefined_var",
             expect![[r#"
@@ -2101,7 +1953,7 @@ mod tests {
     #[test]
     fn rejects_field_access_on_undefined_variable() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[],
             "notdefined.foo.bar",
             expect![[r#"
@@ -2115,7 +1967,7 @@ mod tests {
     #[test]
     fn rejects_negation_of_string() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("name", "String")],
             "!name",
             expect![[r#"
@@ -2129,7 +1981,7 @@ mod tests {
     #[test]
     fn rejects_negation_of_number() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("count", "Float")],
             "!count",
             expect![[r#"
@@ -2142,28 +1994,38 @@ mod tests {
 
     #[test]
     fn accepts_numeric_negation_of_int() {
-        accept(&[], &[("x", "Int")], "-x", expect!["Int"]);
+        accept(
+            TypeRegistryBuilder::new(),
+            &[("x", "Int")],
+            "-x",
+            expect!["Int"],
+        );
     }
 
     #[test]
     fn accepts_numeric_negation_of_float() {
-        accept(&[], &[("x", "Float")], "-x", expect!["Float"]);
+        accept(
+            TypeRegistryBuilder::new(),
+            &[("x", "Float")],
+            "-x",
+            expect!["Float"],
+        );
     }
 
     #[test]
     fn accepts_numeric_negation_of_int_literal() {
-        accept(&[], &[], "-42", expect!["Int"]);
+        accept(TypeRegistryBuilder::new(), &[], "-42", expect!["Int"]);
     }
 
     #[test]
     fn accepts_numeric_negation_of_float_literal() {
-        accept(&[], &[], "-3.14", expect!["Float"]);
+        accept(TypeRegistryBuilder::new(), &[], "-3.14", expect!["Float"]);
     }
 
     #[test]
     fn rejects_numeric_negation_of_string() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("name", "String")],
             "-name",
             expect![[r#"
@@ -2177,7 +2039,7 @@ mod tests {
     #[test]
     fn rejects_numeric_negation_of_bool() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("flag", "Bool")],
             "-flag",
             expect![[r#"
@@ -2190,38 +2052,48 @@ mod tests {
 
     #[test]
     fn accepts_basic_variable_lookup() {
-        accept(&[], &[("name", "String")], "name", expect!["String"]);
+        accept(
+            TypeRegistryBuilder::new(),
+            &[("name", "String")],
+            "name",
+            expect!["String"],
+        );
     }
 
     #[test]
     fn accepts_string_literal() {
-        accept(&[], &[], r#""hello world""#, expect!["String"]);
+        accept(
+            TypeRegistryBuilder::new(),
+            &[],
+            r#""hello world""#,
+            expect!["String"],
+        );
     }
 
     #[test]
     fn accepts_boolean_literal_true() {
-        accept(&[], &[], "true", expect!["Bool"]);
+        accept(TypeRegistryBuilder::new(), &[], "true", expect!["Bool"]);
     }
 
     #[test]
     fn accepts_boolean_literal_false() {
-        accept(&[], &[], "false", expect!["Bool"]);
+        accept(TypeRegistryBuilder::new(), &[], "false", expect!["Bool"]);
     }
 
     #[test]
     fn accepts_int_literal() {
-        accept(&[], &[], "42", expect!["Int"]);
+        accept(TypeRegistryBuilder::new(), &[], "42", expect!["Int"]);
     }
 
     #[test]
     fn accepts_float_literal() {
-        accept(&[], &[], "3.14", expect!["Float"]);
+        accept(TypeRegistryBuilder::new(), &[], "3.14", expect!["Float"]);
     }
 
     #[test]
     fn accepts_string_equality() {
         accept(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("name", "String")],
             r#"name == "alice""#,
             expect!["Bool"],
@@ -2231,7 +2103,7 @@ mod tests {
     #[test]
     fn rejects_equality_between_float_and_int() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("count", "Float")],
             "count == 42",
             expect![[r#"
@@ -2245,7 +2117,7 @@ mod tests {
     #[test]
     fn accepts_boolean_equality() {
         accept(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("enabled", "Bool")],
             "enabled == true",
             expect!["Bool"],
@@ -2255,7 +2127,7 @@ mod tests {
     #[test]
     fn accepts_chained_equality() {
         accept(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("a", "Bool"), ("b", "Bool")],
             "a == b == true",
             expect!["Bool"],
@@ -2264,28 +2136,38 @@ mod tests {
 
     #[test]
     fn accepts_negation_of_variable() {
-        accept(&[], &[("enabled", "Bool")], "!enabled", expect!["Bool"]);
+        accept(
+            TypeRegistryBuilder::new(),
+            &[("enabled", "Bool")],
+            "!enabled",
+            expect!["Bool"],
+        );
     }
 
     #[test]
     fn accepts_negation_of_true() {
-        accept(&[], &[], "!true", expect!["Bool"]);
+        accept(TypeRegistryBuilder::new(), &[], "!true", expect!["Bool"]);
     }
 
     #[test]
     fn accepts_negation_of_false() {
-        accept(&[], &[], "!false", expect!["Bool"]);
+        accept(TypeRegistryBuilder::new(), &[], "!false", expect!["Bool"]);
     }
 
     #[test]
     fn accepts_greater_than_with_ints() {
-        accept(&[], &[("x", "Int"), ("y", "Int")], "x > y", expect!["Bool"]);
+        accept(
+            TypeRegistryBuilder::new(),
+            &[("x", "Int"), ("y", "Int")],
+            "x > y",
+            expect!["Bool"],
+        );
     }
 
     #[test]
     fn accepts_greater_than_with_floats() {
         accept(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("x", "Float"), ("y", "Float")],
             "x > y",
             expect!["Bool"],
@@ -2295,7 +2177,7 @@ mod tests {
     #[test]
     fn rejects_greater_than_with_mixed_types() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("x", "Int"), ("y", "Float")],
             "x > y",
             expect![[r#"
@@ -2309,7 +2191,7 @@ mod tests {
     #[test]
     fn accepts_less_than_or_equal_with_ints() {
         accept(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("x", "Int"), ("y", "Int")],
             "x <= y",
             expect!["Bool"],
@@ -2319,7 +2201,7 @@ mod tests {
     #[test]
     fn accepts_less_than_or_equal_with_floats() {
         accept(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("x", "Float"), ("y", "Float")],
             "x <= y",
             expect!["Bool"],
@@ -2329,7 +2211,7 @@ mod tests {
     #[test]
     fn rejects_less_than_or_equal_with_mixed_types() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("x", "Int"), ("y", "Float")],
             "x <= y",
             expect![[r#"
@@ -2343,7 +2225,7 @@ mod tests {
     #[test]
     fn accepts_greater_than_or_equal_with_ints() {
         accept(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("x", "Int"), ("y", "Int")],
             "x >= y",
             expect!["Bool"],
@@ -2353,7 +2235,7 @@ mod tests {
     #[test]
     fn accepts_greater_than_or_equal_with_floats() {
         accept(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("x", "Float"), ("y", "Float")],
             "x >= y",
             expect!["Bool"],
@@ -2363,7 +2245,7 @@ mod tests {
     #[test]
     fn rejects_greater_than_or_equal_with_mixed_types() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("x", "Int"), ("y", "Float")],
             "x >= y",
             expect![[r#"
@@ -2377,7 +2259,7 @@ mod tests {
     #[test]
     fn accepts_negation_with_equality() {
         accept(
-            &[record("User", &[("active", "Bool")])],
+            TypeRegistryBuilder::new().record("User", [("active", "Bool")]),
             &[("user", "User")],
             "!user.active == false",
             expect!["Bool"],
@@ -2387,10 +2269,9 @@ mod tests {
     #[test]
     fn accepts_parenthesized_negation() {
         accept(
-            &[
-                record("Status", &[("enabled", "Bool")]),
-                record("Config", &[("active", "Bool")]),
-            ],
+            TypeRegistryBuilder::new()
+                .record("Status", [("enabled", "Bool")])
+                .record("Config", [("active", "Bool")]),
             &[("status", "Status"), ("config", "Config")],
             "!(status.enabled == config.active)",
             expect!["Bool"],
@@ -2399,18 +2280,28 @@ mod tests {
 
     #[test]
     fn accepts_string_concatenation() {
-        accept(&[], &[], r#""hello" + "world""#, expect!["String"]);
+        accept(
+            TypeRegistryBuilder::new(),
+            &[],
+            r#""hello" + "world""#,
+            expect!["String"],
+        );
     }
 
     #[test]
     fn accepts_multiple_string_concatenation() {
-        accept(&[], &[], r#""hello" + " " + "world""#, expect!["String"]);
+        accept(
+            TypeRegistryBuilder::new(),
+            &[],
+            r#""hello" + " " + "world""#,
+            expect!["String"],
+        );
     }
 
     #[test]
     fn accepts_string_concatenation_with_variables() {
         accept(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("greeting", "String"), ("name", "String")],
             r#"greeting + " " + name"#,
             expect!["String"],
@@ -2420,7 +2311,7 @@ mod tests {
     #[test]
     fn rejects_concatenation_with_left_number() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[],
             r#"42 + "hello""#,
             expect![[r#"
@@ -2434,7 +2325,7 @@ mod tests {
     #[test]
     fn rejects_concatenation_with_right_boolean() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[],
             r#""hello" + true"#,
             expect![[r#"
@@ -2447,16 +2338,19 @@ mod tests {
 
     #[test]
     fn accepts_int_addition() {
-        accept(&[], &[], r#"42 + 58"#, expect!["Int"]);
+        accept(
+            TypeRegistryBuilder::new(),
+            &[],
+            r#"42 + 58"#,
+            expect!["Int"],
+        );
     }
 
     #[test]
     fn accepts_string_concatenation_with_field_access() {
         accept(
-            &[record(
-                "User",
-                &[("first_name", "String"), ("last_name", "String")],
-            )],
+            TypeRegistryBuilder::new()
+                .record("User", [("first_name", "String"), ("last_name", "String")]),
             &[("user", "User")],
             r#"user.first_name + " " + user.last_name"#,
             expect!["String"],
@@ -2465,13 +2359,18 @@ mod tests {
 
     #[test]
     fn accepts_concatenation_result_comparison() {
-        accept(&[], &[], r#""a" + "b" == "ab""#, expect!["Bool"]);
+        accept(
+            TypeRegistryBuilder::new(),
+            &[],
+            r#""a" + "b" == "ab""#,
+            expect!["Bool"],
+        );
     }
 
     #[test]
     fn accepts_logical_and_with_boolean_variables() {
         accept(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("a", "Bool"), ("b", "Bool")],
             "a && b",
             expect!["Bool"],
@@ -2480,13 +2379,18 @@ mod tests {
 
     #[test]
     fn accepts_logical_and_with_boolean_literals() {
-        accept(&[], &[], "true && false", expect!["Bool"]);
+        accept(
+            TypeRegistryBuilder::new(),
+            &[],
+            "true && false",
+            expect!["Bool"],
+        );
     }
 
     #[test]
     fn accepts_logical_and_with_field_access() {
         accept(
-            &[record("User", &[("enabled", "Bool"), ("active", "Bool")])],
+            TypeRegistryBuilder::new().record("User", [("enabled", "Bool"), ("active", "Bool")]),
             &[("user", "User")],
             "user.enabled && user.active",
             expect!["Bool"],
@@ -2496,7 +2400,7 @@ mod tests {
     #[test]
     fn accepts_logical_and_with_comparison() {
         accept(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("x", "Int"), ("y", "Int"), ("enabled", "Bool")],
             "x > y && enabled",
             expect!["Bool"],
@@ -2506,7 +2410,7 @@ mod tests {
     #[test]
     fn rejects_logical_and_with_left_string() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("name", "String"), ("enabled", "Bool")],
             "name && enabled",
             expect![[r#"
@@ -2520,7 +2424,7 @@ mod tests {
     #[test]
     fn rejects_logical_and_with_right_int() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("enabled", "Bool"), ("count", "Int")],
             "enabled && count",
             expect![[r#"
@@ -2534,7 +2438,7 @@ mod tests {
     #[test]
     fn rejects_logical_and_with_both_strings() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("a", "String"), ("b", "String")],
             "a && b",
             expect![[r#"
@@ -2548,7 +2452,7 @@ mod tests {
     #[test]
     fn accepts_and_handle_logical_and_precedence() {
         accept(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("a", "Bool"), ("b", "Bool"), ("c", "Bool")],
             "a && b == c",
             expect!["Bool"],
@@ -2558,7 +2462,7 @@ mod tests {
     #[test]
     fn accepts_logical_or_with_boolean_variables() {
         accept(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("a", "Bool"), ("b", "Bool")],
             "a || b",
             expect!["Bool"],
@@ -2567,13 +2471,18 @@ mod tests {
 
     #[test]
     fn accepts_logical_or_with_boolean_literals() {
-        accept(&[], &[], "true || false", expect!["Bool"]);
+        accept(
+            TypeRegistryBuilder::new(),
+            &[],
+            "true || false",
+            expect!["Bool"],
+        );
     }
 
     #[test]
     fn accepts_logical_or_with_field_access() {
         accept(
-            &[record("User", &[("enabled", "Bool"), ("active", "Bool")])],
+            TypeRegistryBuilder::new().record("User", [("enabled", "Bool"), ("active", "Bool")]),
             &[("user", "User")],
             "user.enabled || user.active",
             expect!["Bool"],
@@ -2583,7 +2492,7 @@ mod tests {
     #[test]
     fn accepts_logical_or_with_comparison() {
         accept(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("x", "Int"), ("y", "Int"), ("enabled", "Bool")],
             "x > y || enabled",
             expect!["Bool"],
@@ -2593,7 +2502,7 @@ mod tests {
     #[test]
     fn rejects_logical_or_with_left_string() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("name", "String"), ("enabled", "Bool")],
             "name || enabled",
             expect![[r#"
@@ -2607,7 +2516,7 @@ mod tests {
     #[test]
     fn rejects_logical_or_with_right_int() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("enabled", "Bool"), ("count", "Int")],
             "enabled || count",
             expect![[r#"
@@ -2621,7 +2530,7 @@ mod tests {
     #[test]
     fn rejects_logical_or_with_both_strings() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("a", "String"), ("b", "String")],
             "a || b",
             expect![[r#"
@@ -2635,7 +2544,7 @@ mod tests {
     #[test]
     fn accepts_and_handle_logical_or_precedence() {
         accept(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("a", "Bool"), ("b", "Bool"), ("c", "Bool")],
             "a || b == c",
             expect!["Bool"],
@@ -2645,7 +2554,7 @@ mod tests {
     #[test]
     fn accepts_mixed_logical_operators() {
         accept(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("a", "Bool"), ("b", "Bool"), ("c", "Bool")],
             "a && b || c",
             expect!["Bool"],
@@ -2655,7 +2564,7 @@ mod tests {
     #[test]
     fn accepts_and_handle_complex_logical_operator_precedence() {
         accept(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("a", "Bool"), ("b", "Bool"), ("c", "Bool"), ("d", "Bool")],
             "a || b && c || d",
             expect!["Bool"],
@@ -2664,13 +2573,18 @@ mod tests {
 
     #[test]
     fn accepts_int_addition_with_variables() {
-        accept(&[], &[("x", "Int"), ("y", "Int")], "x + y", expect!["Int"]);
+        accept(
+            TypeRegistryBuilder::new(),
+            &[("x", "Int"), ("y", "Int")],
+            "x + y",
+            expect!["Int"],
+        );
     }
 
     #[test]
     fn accepts_float_addition_with_variables() {
         accept(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("x", "Float"), ("y", "Float")],
             "x + y",
             expect!["Float"],
@@ -2680,7 +2594,7 @@ mod tests {
     #[test]
     fn accepts_string_addition_with_variables() {
         accept(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("s1", "String"), ("s2", "String")],
             "s1 + s2",
             expect!["String"],
@@ -2689,23 +2603,33 @@ mod tests {
 
     #[test]
     fn accepts_int_literal_addition() {
-        accept(&[], &[], "42 + 17", expect!["Int"]);
+        accept(TypeRegistryBuilder::new(), &[], "42 + 17", expect!["Int"]);
     }
 
     #[test]
     fn accepts_float_literal_addition() {
-        accept(&[], &[], "3.14 + 2.71", expect!["Float"]);
+        accept(
+            TypeRegistryBuilder::new(),
+            &[],
+            "3.14 + 2.71",
+            expect!["Float"],
+        );
     }
 
     #[test]
     fn accepts_string_literal_concatenation() {
-        accept(&[], &[], r#""hello" + " world""#, expect!["String"]);
+        accept(
+            TypeRegistryBuilder::new(),
+            &[],
+            r#""hello" + " world""#,
+            expect!["String"],
+        );
     }
 
     #[test]
     fn rejects_addition_of_int_and_float() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("x", "Int"), ("y", "Float")],
             "x + y",
             expect![[r#"
@@ -2719,7 +2643,7 @@ mod tests {
     #[test]
     fn rejects_addition_of_string_and_int() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("name", "String"), ("count", "Int")],
             "name + count",
             expect![[r#"
@@ -2733,7 +2657,7 @@ mod tests {
     #[test]
     fn rejects_addition_of_boolean_and_int() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("flag", "Bool"), ("count", "Int")],
             "flag + count",
             expect![[r#"
@@ -2747,7 +2671,7 @@ mod tests {
     #[test]
     fn accepts_mixed_addition_and_comparison() {
         accept(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("a", "Int"), ("b", "Int"), ("c", "Int")],
             "a + b > c",
             expect!["Bool"],
@@ -2761,7 +2685,7 @@ mod tests {
     #[test]
     fn rejects_array_with_different_element_types() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[],
             "[1, true]",
             expect![[r#"
@@ -2774,13 +2698,18 @@ mod tests {
 
     #[test]
     fn accepts_array_with_trailing_comma() {
-        accept(&[], &[], "[\n\t1,\n\t2,\n\t3,\n]", expect!["Array[Int]"]);
+        accept(
+            TypeRegistryBuilder::new(),
+            &[],
+            "[\n\t1,\n\t2,\n\t3,\n]",
+            expect!["Array[Int]"],
+        );
     }
 
     #[test]
     fn accepts_single_element_array_with_trailing_comma() {
         accept(
-            &[],
+            TypeRegistryBuilder::new(),
             &[],
             indoc! {r#"
             [
@@ -2794,11 +2723,10 @@ mod tests {
     #[test]
     fn rejects_field_access_on_nested_array() {
         reject(
-            &[
-                record("Profile", &[("name", "String"), ("active", "Bool")]),
-                record("UserInfo", &[("profile", "Profile")]),
-                record("Config", &[("users", "Array[UserInfo]")]),
-            ],
+            TypeRegistryBuilder::new()
+                .record("Profile", [("name", "String"), ("active", "Bool")])
+                .record("UserInfo", [("profile", "Profile")])
+                .record("Config", [("users", "Array[UserInfo]")]),
             &[("config", "Config")],
             "config.users.profile.name",
             expect![[r#"
@@ -2812,7 +2740,7 @@ mod tests {
     #[test]
     fn rejects_field_access_on_array() {
         reject(
-            &[record("User", &[("name", "String")])],
+            TypeRegistryBuilder::new().record("User", [("name", "String")]),
             &[("users", "Array[User]")],
             "users.name",
             expect![[r#"
@@ -2826,7 +2754,7 @@ mod tests {
     #[test]
     fn accepts_array_of_some_and_none() {
         accept(
-            &[],
+            TypeRegistryBuilder::new(),
             &[],
             "[Some(1), Some(2), None]",
             expect!["Array[Option[Int]]"],
@@ -2835,13 +2763,18 @@ mod tests {
 
     #[test]
     fn accepts_array_of_arrays_with_empty_array() {
-        accept(&[], &[], "[[1,2],[2,3],[]]", expect!["Array[Array[Int]]"]);
+        accept(
+            TypeRegistryBuilder::new(),
+            &[],
+            "[[1,2],[2,3],[]]",
+            expect!["Array[Array[Int]]"],
+        );
     }
 
     #[test]
     fn rejects_array_with_mismatched_option_types() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[],
             r#"[Some(1), Some("1")]"#,
             expect![[r#"
@@ -2859,7 +2792,7 @@ mod tests {
     #[test]
     fn accepts_simple_record_literal() {
         accept(
-            &[record("User", &[("name", "String"), ("age", "Int")])],
+            TypeRegistryBuilder::new().record("User", [("name", "String"), ("age", "Int")]),
             &[],
             r#"User {name: "John", age: 30}"#,
             expect!["test::User"],
@@ -2869,7 +2802,7 @@ mod tests {
     #[test]
     fn accepts_record_literal_with_variables() {
         accept(
-            &[record("User", &[("name", "String"), ("age", "Int")])],
+            TypeRegistryBuilder::new().record("User", [("name", "String"), ("age", "Int")]),
             &[("user_name", "String"), ("user_age", "Int")],
             "User {name: user_name, age: user_age}",
             expect!["test::User"],
@@ -2879,7 +2812,7 @@ mod tests {
     #[test]
     fn rejects_literal_of_undefined_record() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[],
             r#"User {name: "John"}"#,
             expect![[r#"
@@ -2893,7 +2826,7 @@ mod tests {
     #[test]
     fn rejects_unknown_field_access() {
         reject(
-            &[record("Data", &[("field", "String")])],
+            TypeRegistryBuilder::new().record("Data", [("field", "String")]),
             &[("data", "Data")],
             "data.unknown",
             expect![[r#"
@@ -2907,10 +2840,9 @@ mod tests {
     #[test]
     fn accepts_equality_of_same_field_types() {
         accept(
-            &[
-                record("User", &[("name", "String")]),
-                record("Admin", &[("name", "String")]),
-            ],
+            TypeRegistryBuilder::new()
+                .record("User", [("name", "String")])
+                .record("Admin", [("name", "String")]),
             &[("user", "User"), ("admin", "Admin")],
             "user.name == admin.name",
             expect!["Bool"],
@@ -2920,7 +2852,7 @@ mod tests {
     #[test]
     fn rejects_field_access_on_non_record() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("count", "Float")],
             "count.value",
             expect![[r#"
@@ -2934,12 +2866,11 @@ mod tests {
     #[test]
     fn accepts_deep_field_access() {
         accept(
-            &[
-                record("Connection", &[("host", "String")]),
-                record("Database", &[("connection", "Connection")]),
-                record("Config", &[("database", "Database")]),
-                record("System", &[("config", "Config")]),
-            ],
+            TypeRegistryBuilder::new()
+                .record("Connection", [("host", "String")])
+                .record("Database", [("connection", "Connection")])
+                .record("Config", [("database", "Database")])
+                .record("System", [("config", "Config")]),
             &[("system", "System")],
             "system.config.database.connection.host",
             expect!["String"],
@@ -2949,7 +2880,7 @@ mod tests {
     #[test]
     fn accepts_multiple_field_accesses() {
         accept(
-            &[record("Obj", &[("name", "String"), ("title", "String")])],
+            TypeRegistryBuilder::new().record("Obj", [("name", "String"), ("title", "String")]),
             &[("obj", "Obj")],
             "obj.name == obj.title",
             expect!["Bool"],
@@ -2959,7 +2890,7 @@ mod tests {
     #[test]
     fn rejects_record_literal_with_missing_field() {
         reject(
-            &[record("User", &[("name", "String"), ("age", "Int")])],
+            TypeRegistryBuilder::new().record("User", [("name", "String"), ("age", "Int")]),
             &[],
             r#"User {name: "John"}"#,
             expect![[r#"
@@ -2973,7 +2904,7 @@ mod tests {
     #[test]
     fn accepts_field_access() {
         accept(
-            &[record("User", &[("name", "String")])],
+            TypeRegistryBuilder::new().record("User", [("name", "String")]),
             &[("user", "User")],
             "user.name",
             expect!["String"],
@@ -2983,11 +2914,10 @@ mod tests {
     #[test]
     fn accepts_nested_field_access() {
         accept(
-            &[
-                record("Profile", &[("name", "String")]),
-                record("User", &[("profile", "Profile")]),
-                record("App", &[("user", "User")]),
-            ],
+            TypeRegistryBuilder::new()
+                .record("Profile", [("name", "String")])
+                .record("User", [("profile", "Profile")])
+                .record("App", [("user", "User")]),
             &[("app", "App")],
             "app.user.profile.name",
             expect!["String"],
@@ -2997,7 +2927,7 @@ mod tests {
     #[test]
     fn rejects_record_literal_with_unknown_field() {
         reject(
-            &[record("User", &[("name", "String")])],
+            TypeRegistryBuilder::new().record("User", [("name", "String")]),
             &[],
             r#"User {name: "John", email: "john@example.com"}"#,
             expect![[r#"
@@ -3011,7 +2941,7 @@ mod tests {
     #[test]
     fn rejects_record_literal_with_type_mismatch() {
         reject(
-            &[record("User", &[("name", "String"), ("age", "Int")])],
+            TypeRegistryBuilder::new().record("User", [("name", "String"), ("age", "Int")]),
             &[],
             r#"User {name: "John", age: "thirty"}"#,
             expect![[r#"
@@ -3025,10 +2955,9 @@ mod tests {
     #[test]
     fn accepts_nested_record_literal() {
         accept(
-            &[
-                record("Address", &[("city", "String")]),
-                record("User", &[("name", "String"), ("address", "Address")]),
-            ],
+            TypeRegistryBuilder::new()
+                .record("Address", [("city", "String")])
+                .record("User", [("name", "String"), ("address", "Address")]),
             &[],
             r#"User {name: "John", address: Address {city: "NYC"}}"#,
             expect!["test::User"],
@@ -3038,7 +2967,7 @@ mod tests {
     #[test]
     fn accepts_record_with_array_field() {
         accept(
-            &[record("Data", &[("items", "Array[String]")])],
+            TypeRegistryBuilder::new().record("Data", [("items", "Array[String]")]),
             &[("data", "Data")],
             "data.items",
             expect!["Array[String]"],
@@ -3052,7 +2981,7 @@ mod tests {
     #[test]
     fn rejects_enum_equality() {
         reject(
-            &[enum_unit("Color", &["Red", "Green", "Blue"])],
+            TypeRegistryBuilder::new().enum_unit("Color", ["Red", "Green", "Blue"]),
             &[("a", "Color"), ("b", "Color")],
             "a == b",
             expect![[r#"
@@ -3066,7 +2995,7 @@ mod tests {
     #[test]
     fn rejects_enum_inequality() {
         reject(
-            &[enum_unit("Color", &["Red", "Green", "Blue"])],
+            TypeRegistryBuilder::new().enum_unit("Color", ["Red", "Green", "Blue"]),
             &[("a", "Color"), ("b", "Color")],
             "a != b",
             expect![[r#"
@@ -3080,10 +3009,9 @@ mod tests {
     #[test]
     fn rejects_equality_between_different_enum_types() {
         reject(
-            &[
-                enum_unit("Color", &["Red", "Green", "Blue"]),
-                enum_unit("Size", &["Small", "Medium", "Large"]),
-            ],
+            TypeRegistryBuilder::new()
+                .enum_unit("Color", ["Red", "Green", "Blue"])
+                .enum_unit("Size", ["Small", "Medium", "Large"]),
             &[("color", "Color"), ("size", "Size")],
             "color == size",
             expect![[r#"
@@ -3097,10 +3025,9 @@ mod tests {
     #[test]
     fn rejects_inequality_between_different_enum_types() {
         reject(
-            &[
-                enum_unit("Color", &["Red", "Green", "Blue"]),
-                enum_unit("Size", &["Small", "Medium", "Large"]),
-            ],
+            TypeRegistryBuilder::new()
+                .enum_unit("Color", ["Red", "Green", "Blue"])
+                .enum_unit("Size", ["Small", "Medium", "Large"]),
             &[("color", "Color"), ("size", "Size")],
             "color != size",
             expect![[r#"
@@ -3114,7 +3041,7 @@ mod tests {
     #[test]
     fn rejects_equality_between_enum_and_string() {
         reject(
-            &[enum_unit("Color", &["Red", "Green", "Blue"])],
+            TypeRegistryBuilder::new().enum_unit("Color", ["Red", "Green", "Blue"]),
             &[("color", "Color"), ("name", "String")],
             "color == name",
             expect![[r#"
@@ -3128,7 +3055,7 @@ mod tests {
     #[test]
     fn rejects_equality_between_enum_and_int() {
         reject(
-            &[enum_unit("Color", &["Red", "Green", "Blue"])],
+            TypeRegistryBuilder::new().enum_unit("Color", ["Red", "Green", "Blue"]),
             &[("color", "Color"), ("count", "Int")],
             "color == count",
             expect![[r#"
@@ -3142,7 +3069,7 @@ mod tests {
     #[test]
     fn rejects_equality_between_enum_and_bool() {
         reject(
-            &[enum_unit("Color", &["Red", "Green", "Blue"])],
+            TypeRegistryBuilder::new().enum_unit("Color", ["Red", "Green", "Blue"]),
             &[("color", "Color"), ("flag", "Bool")],
             "color == flag",
             expect![[r#"
@@ -3156,7 +3083,7 @@ mod tests {
     #[test]
     fn rejects_less_than_comparison_on_enums() {
         reject(
-            &[enum_unit("Color", &["Red", "Green", "Blue"])],
+            TypeRegistryBuilder::new().enum_unit("Color", ["Red", "Green", "Blue"]),
             &[("a", "Color"), ("b", "Color")],
             "a < b",
             expect![[r#"
@@ -3170,7 +3097,7 @@ mod tests {
     #[test]
     fn rejects_greater_than_comparison_on_enums() {
         reject(
-            &[enum_unit("Color", &["Red", "Green", "Blue"])],
+            TypeRegistryBuilder::new().enum_unit("Color", ["Red", "Green", "Blue"]),
             &[("a", "Color"), ("b", "Color")],
             "a > b",
             expect![[r#"
@@ -3184,10 +3111,9 @@ mod tests {
     #[test]
     fn rejects_enum_in_record_field_equality() {
         reject(
-            &[
-                enum_unit("Status", &["Active", "Inactive", "Pending"]),
-                record("User", &[("name", "String"), ("status", "Status")]),
-            ],
+            TypeRegistryBuilder::new()
+                .enum_unit("Status", ["Active", "Inactive", "Pending"])
+                .record("User", [("name", "String"), ("status", "Status")]),
             &[("user", "User"), ("status", "Status")],
             "user.status == status",
             expect![[r#"
@@ -3201,11 +3127,10 @@ mod tests {
     #[test]
     fn rejects_enum_equality_with_field_access() {
         reject(
-            &[
-                enum_unit("Status", &["Active", "Inactive"]),
-                record("User", &[("status", "Status")]),
-                record("Admin", &[("status", "Status")]),
-            ],
+            TypeRegistryBuilder::new()
+                .enum_unit("Status", ["Active", "Inactive"])
+                .record("User", [("status", "Status")])
+                .record("Admin", [("status", "Status")]),
             &[("user", "User"), ("admin", "Admin")],
             "user.status == admin.status",
             expect![[r#"
@@ -3219,7 +3144,7 @@ mod tests {
     #[test]
     fn accepts_enum_literal() {
         accept(
-            &[enum_unit("Color", &["Red", "Green", "Blue"])],
+            TypeRegistryBuilder::new().enum_unit("Color", ["Red", "Green", "Blue"]),
             &[],
             "Color::Red",
             expect!["test::Color"],
@@ -3229,7 +3154,7 @@ mod tests {
     #[test]
     fn rejects_undefined_enum_variant() {
         reject(
-            &[enum_unit("Color", &["Red", "Green", "Blue"])],
+            TypeRegistryBuilder::new().enum_unit("Color", ["Red", "Green", "Blue"]),
             &[],
             "Color::Yellow",
             expect![[r#"
@@ -3243,7 +3168,7 @@ mod tests {
     #[test]
     fn rejects_undefined_enum() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[],
             "Missing::Red",
             expect![[r#"
@@ -3257,13 +3182,13 @@ mod tests {
     #[test]
     fn accepts_enum_variant_with_fields() {
         accept(
-            &[enum_(
+            TypeRegistryBuilder::new().enum_(
                 "Outcome",
-                &[
-                    ("Success", &[("value", "Int")]),
-                    ("Failure", &[("message", "String")]),
+                [
+                    ("Success", vec![("value", "Int")]),
+                    ("Failure", vec![("message", "String")]),
                 ],
-            )],
+            ),
             &[],
             "Outcome::Success {value: 42}",
             expect!["test::Outcome"],
@@ -3273,10 +3198,10 @@ mod tests {
     #[test]
     fn accepts_enum_variant_with_multiple_fields() {
         accept(
-            &[enum_(
+            TypeRegistryBuilder::new().enum_(
                 "Point",
-                &[("XY", &[("x", "Int"), ("y", "Int")]), ("Origin", &[])],
-            )],
+                [("XY", vec![("x", "Int"), ("y", "Int")]), ("Origin", vec![])],
+            ),
             &[],
             "Point::XY {x: 10, y: 20}",
             expect!["test::Point"],
@@ -3286,13 +3211,13 @@ mod tests {
     #[test]
     fn rejects_enum_variant_missing_field() {
         reject(
-            &[enum_(
+            TypeRegistryBuilder::new().enum_(
                 "Outcome",
-                &[
-                    ("Success", &[("value", "Int")]),
-                    ("Failure", &[("message", "String")]),
+                [
+                    ("Success", vec![("value", "Int")]),
+                    ("Failure", vec![("message", "String")]),
                 ],
-            )],
+            ),
             &[],
             "Outcome::Success {}",
             expect![[r#"
@@ -3306,7 +3231,7 @@ mod tests {
     #[test]
     fn rejects_enum_variant_missing_two_fields() {
         reject(
-            &[enum_("Point", &[("XY", &[("x", "Int"), ("y", "Int")])])],
+            TypeRegistryBuilder::new().enum_("Point", [("XY", vec![("x", "Int"), ("y", "Int")])]),
             &[],
             "Point::XY {}",
             expect![[r#"
@@ -3320,13 +3245,13 @@ mod tests {
     #[test]
     fn rejects_enum_variant_unknown_field() {
         reject(
-            &[enum_(
+            TypeRegistryBuilder::new().enum_(
                 "Outcome",
-                &[
-                    ("Success", &[("value", "Int")]),
-                    ("Failure", &[("message", "String")]),
+                [
+                    ("Success", vec![("value", "Int")]),
+                    ("Failure", vec![("message", "String")]),
                 ],
-            )],
+            ),
             &[],
             "Outcome::Success {wrong: 42}",
             expect![[r#"
@@ -3340,13 +3265,13 @@ mod tests {
     #[test]
     fn rejects_enum_variant_field_type_mismatch() {
         reject(
-            &[enum_(
+            TypeRegistryBuilder::new().enum_(
                 "Outcome",
-                &[
-                    ("Success", &[("value", "Int")]),
-                    ("Failure", &[("message", "String")]),
+                [
+                    ("Success", vec![("value", "Int")]),
+                    ("Failure", vec![("message", "String")]),
                 ],
-            )],
+            ),
             &[],
             r#"Outcome::Success {value: "hello"}"#,
             expect![[r#"
@@ -3360,10 +3285,10 @@ mod tests {
     #[test]
     fn rejects_fields_on_unit_variant() {
         reject(
-            &[enum_(
+            TypeRegistryBuilder::new().enum_(
                 "Maybe",
-                &[("Just", &[("value", "Int")]), ("Nothing", &[])],
-            )],
+                [("Just", vec![("value", "Int")]), ("Nothing", vec![])],
+            ),
             &[],
             "Maybe::Nothing {value: 42}",
             expect![[r#"
@@ -3377,7 +3302,7 @@ mod tests {
     #[test]
     fn rejects_enum_variant_in_equality() {
         reject(
-            &[enum_unit("Color", &["Red", "Green", "Blue"])],
+            TypeRegistryBuilder::new().enum_unit("Color", ["Red", "Green", "Blue"]),
             &[("color", "Color")],
             "Color::Red == color",
             expect![[r#"
@@ -3391,10 +3316,9 @@ mod tests {
     #[test]
     fn accepts_enum_variant_in_record_field_assignment() {
         accept(
-            &[
-                enum_unit("Status", &["Active", "Inactive"]),
-                record("User", &[("name", "String"), ("status", "Status")]),
-            ],
+            TypeRegistryBuilder::new()
+                .enum_unit("Status", ["Active", "Inactive"])
+                .record("User", [("name", "String"), ("status", "Status")]),
             &[],
             r#"User {name: "Alice", status: Status::Active}"#,
             expect!["test::User"],
@@ -3404,7 +3328,7 @@ mod tests {
     #[test]
     fn rejects_two_enum_variants_in_equality() {
         reject(
-            &[enum_unit("Color", &["Red", "Green", "Blue"])],
+            TypeRegistryBuilder::new().enum_unit("Color", ["Red", "Green", "Blue"]),
             &[],
             "Color::Red == Color::Green",
             expect![[r#"
@@ -3418,10 +3342,9 @@ mod tests {
     #[test]
     fn rejects_equality_between_different_enums_with_same_variants() {
         reject(
-            &[
-                enum_unit("Color", &["Red", "Green", "Blue"]),
-                enum_unit("Shade", &["Red", "Green", "Blue"]),
-            ],
+            TypeRegistryBuilder::new()
+                .enum_unit("Color", ["Red", "Green", "Blue"])
+                .enum_unit("Shade", ["Red", "Green", "Blue"]),
             &[],
             "Color::Red == Shade::Red",
             expect![[r#"
@@ -3438,28 +3361,48 @@ mod tests {
 
     #[test]
     fn accepts_some_with_integer_literal() {
-        accept(&[], &[], "Some(42)", expect!["Option[Int]"]);
+        accept(
+            TypeRegistryBuilder::new(),
+            &[],
+            "Some(42)",
+            expect!["Option[Int]"],
+        );
     }
 
     #[test]
     fn accepts_some_with_string_literal() {
-        accept(&[], &[], r#"Some("hello")"#, expect!["Option[String]"]);
+        accept(
+            TypeRegistryBuilder::new(),
+            &[],
+            r#"Some("hello")"#,
+            expect!["Option[String]"],
+        );
     }
 
     #[test]
     fn accepts_some_with_boolean_literal() {
-        accept(&[], &[], "Some(true)", expect!["Option[Bool]"]);
+        accept(
+            TypeRegistryBuilder::new(),
+            &[],
+            "Some(true)",
+            expect!["Option[Bool]"],
+        );
     }
 
     #[test]
     fn accepts_some_with_float_literal() {
-        accept(&[], &[], "Some(3.14)", expect!["Option[Float]"]);
+        accept(
+            TypeRegistryBuilder::new(),
+            &[],
+            "Some(3.14)",
+            expect!["Option[Float]"],
+        );
     }
 
     #[test]
     fn accepts_some_with_variable() {
         accept(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("name", "String")],
             "Some(name)",
             expect!["Option[String]"],
@@ -3469,7 +3412,7 @@ mod tests {
     #[test]
     fn accepts_some_with_field_access() {
         accept(
-            &[record("User", &[("name", "String")])],
+            TypeRegistryBuilder::new().record("User", [("name", "String")]),
             &[("user", "User")],
             "Some(user.name)",
             expect!["Option[String]"],
@@ -3478,18 +3421,28 @@ mod tests {
 
     #[test]
     fn accepts_nested_some() {
-        accept(&[], &[], "Some(Some(42))", expect!["Option[Option[Int]]"]);
+        accept(
+            TypeRegistryBuilder::new(),
+            &[],
+            "Some(Some(42))",
+            expect!["Option[Option[Int]]"],
+        );
     }
 
     #[test]
     fn accepts_some_with_array() {
-        accept(&[], &[], "Some([1, 2, 3])", expect!["Option[Array[Int]]"]);
+        accept(
+            TypeRegistryBuilder::new(),
+            &[],
+            "Some([1, 2, 3])",
+            expect!["Option[Array[Int]]"],
+        );
     }
 
     #[test]
     fn accepts_some_with_record_literal() {
         accept(
-            &[record("Point", &[("x", "Int"), ("y", "Int")])],
+            TypeRegistryBuilder::new().record("Point", [("x", "Int"), ("y", "Int")]),
             &[],
             "Some(Point{x: 1, y: 2})",
             expect!["Option[test::Point]"],
@@ -3499,7 +3452,7 @@ mod tests {
     #[test]
     fn accepts_some_with_enum_literal() {
         accept(
-            &[enum_unit("Color", &["Red", "Green", "Blue"])],
+            TypeRegistryBuilder::new().enum_unit("Color", ["Red", "Green", "Blue"]),
             &[],
             "Some(Color::Red)",
             expect!["Option[test::Color]"],
@@ -3509,7 +3462,7 @@ mod tests {
     #[test]
     fn accepts_option_variable() {
         accept(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("maybe_count", "Option[Int]")],
             "maybe_count",
             expect!["Option[Int]"],
@@ -3519,10 +3472,7 @@ mod tests {
     #[test]
     fn accepts_option_in_record_field() {
         accept(
-            &[record(
-                "User",
-                &[("name", "String"), ("age", "Option[Int]")],
-            )],
+            TypeRegistryBuilder::new().record("User", [("name", "String"), ("age", "Option[Int]")]),
             &[("user", "User")],
             "user.age",
             expect!["Option[Int]"],
@@ -3532,10 +3482,8 @@ mod tests {
     #[test]
     fn accepts_none_in_record_field_assignment() {
         accept(
-            &[record(
-                "User",
-                &[("name", "String"), ("nickname", "Option[String]")],
-            )],
+            TypeRegistryBuilder::new()
+                .record("User", [("name", "String"), ("nickname", "Option[String]")]),
             &[],
             r#"User {name: "Alice", nickname: None}"#,
             expect!["test::User"],
@@ -3545,10 +3493,8 @@ mod tests {
     #[test]
     fn accepts_some_in_record_field_assignment() {
         accept(
-            &[record(
-                "User",
-                &[("name", "String"), ("nickname", "Option[String]")],
-            )],
+            TypeRegistryBuilder::new()
+                .record("User", [("name", "String"), ("nickname", "Option[String]")]),
             &[],
             r#"User {name: "Alice", nickname: Some("Ali")}"#,
             expect!["test::User"],
@@ -3558,7 +3504,7 @@ mod tests {
     #[test]
     fn accepts_nested_option_in_record_field() {
         accept(
-            &[record("Config", &[("value", "Option[Option[Int]]")])],
+            TypeRegistryBuilder::new().record("Config", [("value", "Option[Option[Int]]")]),
             &[],
             "Config {value: Some(Some(42))}",
             expect!["test::Config"],
@@ -3568,7 +3514,7 @@ mod tests {
     #[test]
     fn accepts_none_for_nested_option_field() {
         accept(
-            &[record("Config", &[("value", "Option[Option[Int]]")])],
+            TypeRegistryBuilder::new().record("Config", [("value", "Option[Option[Int]]")]),
             &[],
             "Config {value: None}",
             expect!["test::Config"],
@@ -3578,7 +3524,7 @@ mod tests {
     #[test]
     fn accepts_array_of_options() {
         accept(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("items", "Array[Option[Int]]")],
             "items",
             expect!["Array[Option[Int]]"],
@@ -3588,7 +3534,7 @@ mod tests {
     #[test]
     fn accepts_option_of_array() {
         accept(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("maybe_items", "Option[Array[Int]]")],
             "maybe_items",
             expect!["Option[Array[Int]]"],
@@ -3598,7 +3544,7 @@ mod tests {
     #[test]
     fn rejects_none_without_context() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[],
             "None",
             expect![[r#"
@@ -3612,10 +3558,7 @@ mod tests {
     #[test]
     fn rejects_type_mismatch_in_option_field() {
         reject(
-            &[record(
-                "User",
-                &[("name", "String"), ("age", "Option[Int]")],
-            )],
+            TypeRegistryBuilder::new().record("User", [("name", "String"), ("age", "Option[Int]")]),
             &[],
             r#"User {name: "Alice", age: Some("thirty")}"#,
             expect![[r#"
@@ -3629,10 +3572,7 @@ mod tests {
     #[test]
     fn rejects_non_option_for_option_field() {
         reject(
-            &[record(
-                "User",
-                &[("name", "String"), ("age", "Option[Int]")],
-            )],
+            TypeRegistryBuilder::new().record("User", [("name", "String"), ("age", "Option[Int]")]),
             &[],
             r#"User {name: "Alice", age: 30}"#,
             expect![[r#"
@@ -3645,13 +3585,18 @@ mod tests {
 
     #[test]
     fn accepts_option_equality() {
-        accept(&[], &[], "Some(1) == Some(2)", expect!["Bool"]);
+        accept(
+            TypeRegistryBuilder::new(),
+            &[],
+            "Some(1) == Some(2)",
+            expect!["Bool"],
+        );
     }
 
     #[test]
     fn rejects_option_of_array_equality() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[],
             "Some([1]) == Some([1])",
             expect![[r#"
@@ -3664,28 +3609,48 @@ mod tests {
 
     #[test]
     fn accepts_some_equals_none() {
-        accept(&[], &[], "Some(1) == None", expect!["Bool"]);
+        accept(
+            TypeRegistryBuilder::new(),
+            &[],
+            "Some(1) == None",
+            expect!["Bool"],
+        );
     }
 
     #[test]
     fn accepts_none_equals_some() {
-        accept(&[], &[], "None == Some(1)", expect!["Bool"]);
+        accept(
+            TypeRegistryBuilder::new(),
+            &[],
+            "None == Some(1)",
+            expect!["Bool"],
+        );
     }
 
     #[test]
     fn accepts_nested_some_equals_some_none() {
-        accept(&[], &[], "Some(Some(1)) == Some(None)", expect!["Bool"]);
+        accept(
+            TypeRegistryBuilder::new(),
+            &[],
+            "Some(Some(1)) == Some(None)",
+            expect!["Bool"],
+        );
     }
 
     #[test]
     fn accepts_nested_some_equals_none() {
-        accept(&[], &[], "Some(Some(1)) == None", expect!["Bool"]);
+        accept(
+            TypeRegistryBuilder::new(),
+            &[],
+            "Some(Some(1)) == None",
+            expect!["Bool"],
+        );
     }
 
     #[test]
     fn rejects_nested_some_with_different_inner_types() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[],
             r#"Some(Some(1)) == Some(Some("2"))"#,
             expect![[r#"
@@ -3703,7 +3668,7 @@ mod tests {
     #[test]
     fn rejects_match_with_no_arms() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("flag", "Bool")],
             indoc! {r#"
                 match flag {
@@ -3724,7 +3689,7 @@ mod tests {
     #[test]
     fn accepts_match_expression_with_all_variants() {
         accept(
-            &[enum_unit("Color", &["Red", "Green", "Blue"])],
+            TypeRegistryBuilder::new().enum_unit("Color", ["Red", "Green", "Blue"]),
             &[("color", "Color")],
             indoc! {r#"
                 match color {
@@ -3740,7 +3705,7 @@ mod tests {
     #[test]
     fn accepts_match_expression_returning_int() {
         accept(
-            &[enum_unit("Size", &["Small", "Medium", "Large"])],
+            TypeRegistryBuilder::new().enum_unit("Size", ["Small", "Medium", "Large"]),
             &[("size", "Size")],
             indoc! {"
                 match size {
@@ -3756,7 +3721,7 @@ mod tests {
     #[test]
     fn accepts_match_expression_returning_bool() {
         accept(
-            &[enum_unit("Status", &["Active", "Inactive"])],
+            TypeRegistryBuilder::new().enum_unit("Status", ["Active", "Inactive"]),
             &[("status", "Status")],
             indoc! {"
                 match status {
@@ -3771,7 +3736,7 @@ mod tests {
     #[test]
     fn rejects_match_on_non_enum() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("name", "String")],
             indoc! {r#"
                 match name {
@@ -3789,7 +3754,7 @@ mod tests {
     #[test]
     fn rejects_match_with_mismatched_arm_types() {
         reject(
-            &[enum_unit("Color", &["Red", "Green"])],
+            TypeRegistryBuilder::new().enum_unit("Color", ["Red", "Green"]),
             &[("color", "Color")],
             indoc! {r#"
                 match color {
@@ -3808,10 +3773,9 @@ mod tests {
     #[test]
     fn rejects_match_with_wrong_enum_in_pattern() {
         reject(
-            &[
-                enum_unit("Color", &["Red", "Green"]),
-                enum_unit("Size", &["Small", "Large"]),
-            ],
+            TypeRegistryBuilder::new()
+                .enum_unit("Color", ["Red", "Green"])
+                .enum_unit("Size", ["Small", "Large"]),
             &[("color", "Color")],
             indoc! {r#"
                 match color {
@@ -3830,7 +3794,7 @@ mod tests {
     #[test]
     fn rejects_match_with_undefined_variant_in_pattern() {
         reject(
-            &[enum_unit("Color", &["Red", "Green"])],
+            TypeRegistryBuilder::new().enum_unit("Color", ["Red", "Green"]),
             &[("color", "Color")],
             indoc! {r#"
                 match color {
@@ -3849,10 +3813,9 @@ mod tests {
     #[test]
     fn accepts_match_with_field_access_subject() {
         accept(
-            &[
-                enum_unit("Status", &["Active", "Inactive"]),
-                record("User", &[("status", "Status")]),
-            ],
+            TypeRegistryBuilder::new()
+                .enum_unit("Status", ["Active", "Inactive"])
+                .record("User", [("status", "Status")]),
             &[("user", "User")],
             indoc! {r#"
                 match user.status {
@@ -3867,10 +3830,9 @@ mod tests {
     #[test]
     fn accepts_match_with_complex_arm_bodies() {
         accept(
-            &[
-                enum_unit("Status", &["Active", "Inactive"]),
-                record("User", &[("name", "String"), ("status", "Status")]),
-            ],
+            TypeRegistryBuilder::new()
+                .enum_unit("Status", ["Active", "Inactive"])
+                .record("User", [("name", "String"), ("status", "Status")]),
             &[("user", "User")],
             indoc! {"
                 match user.status {
@@ -3885,7 +3847,7 @@ mod tests {
     #[test]
     fn accepts_match_with_single_variant_enum() {
         accept(
-            &[enum_unit("Unit", &["Value"])],
+            TypeRegistryBuilder::new().enum_unit("Unit", ["Value"]),
             &[("unit", "Unit")],
             indoc! {r#"
                 match unit {
@@ -3899,7 +3861,7 @@ mod tests {
     #[test]
     fn accepts_match_with_wildcard_pattern() {
         accept(
-            &[enum_unit("Color", &["Red", "Green", "Blue"])],
+            TypeRegistryBuilder::new().enum_unit("Color", ["Red", "Green", "Blue"]),
             &[("color", "Color")],
             indoc! {r#"
                 match color {
@@ -3914,7 +3876,7 @@ mod tests {
     #[test]
     fn rejects_match_with_only_wildcard() {
         reject(
-            &[enum_unit("Color", &["Red", "Green", "Blue"])],
+            TypeRegistryBuilder::new().enum_unit("Color", ["Red", "Green", "Blue"]),
             &[("color", "Color")],
             indoc! {r#"
                 match color {
@@ -3932,10 +3894,8 @@ mod tests {
     #[test]
     fn accepts_match_with_wildcard_at_end() {
         accept(
-            &[enum_unit(
-                "Status",
-                &["Active", "Inactive", "Pending", "Archived"],
-            )],
+            TypeRegistryBuilder::new()
+                .enum_unit("Status", ["Active", "Inactive", "Pending", "Archived"]),
             &[("status", "Status")],
             indoc! {"
                 match status {
@@ -3955,7 +3915,7 @@ mod tests {
     #[test]
     fn accepts_boolean_match_with_both_values() {
         accept(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("flag", "Bool")],
             indoc! {r#"
                 match flag {
@@ -3970,7 +3930,7 @@ mod tests {
     #[test]
     fn accepts_boolean_match_with_wildcard() {
         accept(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("flag", "Bool")],
             indoc! {r#"
                 match flag {
@@ -3985,7 +3945,7 @@ mod tests {
     #[test]
     fn rejects_boolean_match_with_only_wildcard() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("flag", "Bool")],
             indoc! {r#"
                 match flag {
@@ -4003,7 +3963,7 @@ mod tests {
     #[test]
     fn rejects_enum_pattern_in_boolean_match() {
         reject(
-            &[enum_unit("Color", &["Red"])],
+            TypeRegistryBuilder::new().enum_unit("Color", ["Red"]),
             &[("flag", "Bool")],
             indoc! {r#"
                 match flag {
@@ -4022,7 +3982,7 @@ mod tests {
     #[test]
     fn rejects_boolean_pattern_in_enum_match() {
         reject(
-            &[enum_unit("Color", &["Red", "Green"])],
+            TypeRegistryBuilder::new().enum_unit("Color", ["Red", "Green"]),
             &[("color", "Color")],
             indoc! {r#"
                 match color {
@@ -4045,7 +4005,7 @@ mod tests {
     #[test]
     fn accepts_option_match_with_some_and_none() {
         accept(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("opt", "Option[Int]")],
             indoc! {r#"
                 match opt {
@@ -4060,7 +4020,7 @@ mod tests {
     #[test]
     fn accepts_option_match_returning_int() {
         accept(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("opt", "Option[String]")],
             indoc! {"
                 match opt {
@@ -4075,7 +4035,7 @@ mod tests {
     #[test]
     fn accepts_option_match_with_wildcard() {
         accept(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("opt", "Option[Bool]")],
             indoc! {r#"
                 match opt {
@@ -4090,7 +4050,7 @@ mod tests {
     #[test]
     fn rejects_option_match_with_only_wildcard() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("opt", "Option[Int]")],
             indoc! {r#"
                 match opt {
@@ -4108,7 +4068,7 @@ mod tests {
     #[test]
     fn accepts_option_match_with_specific_some_and_wildcard() {
         accept(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("opt", "Option[Bool]")],
             indoc! {"
                 match opt {
@@ -4123,7 +4083,7 @@ mod tests {
     #[test]
     fn accepts_exhaustive_nested_option_match() {
         accept(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("opt", "Option[Option[Int]]")],
             indoc! {r#"
                 match opt {
@@ -4139,7 +4099,7 @@ mod tests {
     #[test]
     fn accepts_exhaustive_nested_option_match_with_literal_subject() {
         accept(
-            &[],
+            TypeRegistryBuilder::new(),
             &[],
             indoc! {r#"
                 match Some(Some(10)) {
@@ -4155,7 +4115,7 @@ mod tests {
     #[test]
     fn rejects_option_match_with_mismatched_arm_types() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("opt", "Option[Int]")],
             indoc! {"
                 match opt {
@@ -4174,7 +4134,7 @@ mod tests {
     #[test]
     fn rejects_enum_pattern_in_option_match() {
         reject(
-            &[enum_unit("Color", &["Red", "Green"])],
+            TypeRegistryBuilder::new().enum_unit("Color", ["Red", "Green"]),
             &[("opt", "Option[Int]")],
             indoc! {r#"
                 match opt {
@@ -4193,7 +4153,7 @@ mod tests {
     #[test]
     fn rejects_boolean_pattern_in_option_match() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("opt", "Option[Int]")],
             indoc! {r#"
                 match opt {
@@ -4212,7 +4172,7 @@ mod tests {
     #[test]
     fn rejects_option_pattern_in_enum_match() {
         reject(
-            &[enum_unit("Color", &["Red", "Green"])],
+            TypeRegistryBuilder::new().enum_unit("Color", ["Red", "Green"]),
             &[("color", "Color")],
             indoc! {r#"
                 match color {
@@ -4231,7 +4191,7 @@ mod tests {
     #[test]
     fn rejects_option_pattern_in_bool_match() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("flag", "Bool")],
             indoc! {r#"
                 match flag {
@@ -4250,7 +4210,7 @@ mod tests {
     #[test]
     fn rejects_nested_option_pattern_when_inner_type_is_bool() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("opt", "Option[Bool]")],
             indoc! {r#"
                 match opt {
@@ -4269,7 +4229,7 @@ mod tests {
     #[test]
     fn accepts_option_match_with_nested_enum() {
         accept(
-            &[enum_unit("Color", &["Red", "Green", "Blue"])],
+            TypeRegistryBuilder::new().enum_unit("Color", ["Red", "Green", "Blue"]),
             &[("opt", "Option[Color]")],
             indoc! {r#"
                 match opt {
@@ -4286,7 +4246,7 @@ mod tests {
     #[test]
     fn rejects_deeply_nested_option_pattern_when_inner_type_is_bool() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("opt", "Option[Bool]")],
             indoc! {r#"
                 match opt {
@@ -4309,7 +4269,7 @@ mod tests {
     #[test]
     fn accepts_binding_pattern_in_bool_match() {
         accept(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("flag", "Bool")],
             indoc! {r#"
                 match flag {
@@ -4323,7 +4283,7 @@ mod tests {
     #[test]
     fn accepts_binding_pattern_in_enum_match() {
         accept(
-            &[enum_unit("Color", &["Red", "Green", "Blue"])],
+            TypeRegistryBuilder::new().enum_unit("Color", ["Red", "Green", "Blue"]),
             &[("color", "Color")],
             indoc! {r#"
                 match color {
@@ -4337,7 +4297,7 @@ mod tests {
     #[test]
     fn accepts_binding_pattern_in_option_match() {
         accept(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("opt", "Option[Int]")],
             indoc! {r#"
                 match opt {
@@ -4351,7 +4311,7 @@ mod tests {
     #[test]
     fn accepts_binding_pattern_inside_some() {
         accept(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("opt", "Option[Int]")],
             indoc! {r#"
                 match opt {
@@ -4366,7 +4326,7 @@ mod tests {
     #[test]
     fn accepts_binding_pattern_in_arithmetic() {
         accept(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("opt", "Option[Int]")],
             indoc! {r#"
                 match opt {
@@ -4381,7 +4341,7 @@ mod tests {
     #[test]
     fn accepts_binding_pattern_returning_option() {
         accept(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("opt", "Option[Int]")],
             indoc! {r#"
                 match opt {
@@ -4396,7 +4356,7 @@ mod tests {
     #[test]
     fn accepts_binding_pattern_as_catchall() {
         accept(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("flag", "Bool")],
             indoc! {r#"
                 match flag {
@@ -4411,7 +4371,7 @@ mod tests {
     #[test]
     fn rejects_unused_binding() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("flag", "Bool")],
             indoc! {r#"
                 match flag {
@@ -4429,7 +4389,7 @@ mod tests {
     #[test]
     fn rejects_unused_binding_inside_some() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("opt", "Option[Int]")],
             indoc! {r#"
                 match opt {
@@ -4448,7 +4408,7 @@ mod tests {
     #[test]
     fn accepts_binding_inside_nested_some() {
         accept(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("opt", "Option[Option[Int]]")],
             indoc! {r#"
                 match opt {
@@ -4464,7 +4424,7 @@ mod tests {
     #[test]
     fn rejects_unused_binding_inside_nested_some() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("opt", "Option[Option[Int]]")],
             indoc! {r#"
                 match opt {
@@ -4488,7 +4448,7 @@ mod tests {
     #[test]
     fn accepts_record_match_with_all_fields() {
         accept(
-            &[record("User", &[("name", "String"), ("age", "Int")])],
+            TypeRegistryBuilder::new().record("User", [("name", "String"), ("age", "Int")]),
             &[("user", "User")],
             indoc! {r#"
                 match user {
@@ -4502,7 +4462,7 @@ mod tests {
     #[test]
     fn rejects_record_match_with_wildcard_fields() {
         reject(
-            &[record("User", &[("name", "String"), ("age", "Int")])],
+            TypeRegistryBuilder::new().record("User", [("name", "String"), ("age", "Int")]),
             &[("user", "User")],
             indoc! {r#"
                 match user {
@@ -4520,10 +4480,9 @@ mod tests {
     #[test]
     fn rejects_record_match_with_nested_wildcard_fields() {
         reject(
-            &[
-                record("Role", &[("title", "String"), ("salary", "Int")]),
-                record("User", &[("role", "Role"), ("created_at", "Int")]),
-            ],
+            TypeRegistryBuilder::new()
+                .record("Role", [("title", "String"), ("salary", "Int")])
+                .record("User", [("role", "Role"), ("created_at", "Int")]),
             &[("user", "User")],
             indoc! {r#"
                 match user {
@@ -4541,10 +4500,9 @@ mod tests {
     #[test]
     fn rejects_record_match_with_nested_wildcard_fields_followed_by_wildcard() {
         reject(
-            &[
-                record("Role", &[("title", "String"), ("salary", "Int")]),
-                record("User", &[("role", "Role"), ("created_at", "Int")]),
-            ],
+            TypeRegistryBuilder::new()
+                .record("Role", [("title", "String"), ("salary", "Int")])
+                .record("User", [("role", "Role"), ("created_at", "Int")]),
             &[("user", "User")],
             indoc! {r#"
                 match user {
@@ -4563,10 +4521,9 @@ mod tests {
     #[test]
     fn accepts_record_match_with_nested_enum_pattern() {
         accept(
-            &[
-                enum_unit("Status", &["Active", "Inactive"]),
-                record("User", &[("name", "String"), ("status", "Status")]),
-            ],
+            TypeRegistryBuilder::new()
+                .enum_unit("Status", ["Active", "Inactive"])
+                .record("User", [("name", "String"), ("status", "Status")]),
             &[("user", "User")],
             indoc! {r#"
                 match user {
@@ -4581,7 +4538,7 @@ mod tests {
     #[test]
     fn rejects_record_match_with_missing_fields() {
         reject(
-            &[record("User", &[("name", "String"), ("age", "Int")])],
+            TypeRegistryBuilder::new().record("User", [("name", "String"), ("age", "Int")]),
             &[("user", "User")],
             indoc! {r#"
                 match user {
@@ -4599,7 +4556,7 @@ mod tests {
     #[test]
     fn rejects_record_match_with_unknown_field() {
         reject(
-            &[record("User", &[("name", "String"), ("age", "Int")])],
+            TypeRegistryBuilder::new().record("User", [("name", "String"), ("age", "Int")]),
             &[("user", "User")],
             indoc! {r#"
                 match user {
@@ -4617,10 +4574,9 @@ mod tests {
     #[test]
     fn rejects_record_match_with_wrong_record_type() {
         reject(
-            &[
-                record("User", &[("name", "String")]),
-                record("Admin", &[("name", "String")]),
-            ],
+            TypeRegistryBuilder::new()
+                .record("User", [("name", "String")])
+                .record("Admin", [("name", "String")]),
             &[("user", "User")],
             indoc! {r#"
                 match user {
@@ -4638,7 +4594,7 @@ mod tests {
     #[test]
     fn rejects_unused_binding_in_record_pattern() {
         reject(
-            &[record("User", &[("name", "String"), ("age", "Int")])],
+            TypeRegistryBuilder::new().record("User", [("name", "String"), ("age", "Int")]),
             &[("user", "User")],
             indoc! {r#"
                 match user {
@@ -4656,10 +4612,8 @@ mod tests {
     #[test]
     fn accepts_record_match_with_nested_option_pattern() {
         accept(
-            &[record(
-                "User",
-                &[("name", "String"), ("email", "Option[String]")],
-            )],
+            TypeRegistryBuilder::new()
+                .record("User", [("name", "String"), ("email", "Option[String]")]),
             &[("user", "User")],
             indoc! {r#"
                 match user {
@@ -4674,7 +4628,7 @@ mod tests {
     #[test]
     fn accepts_option_match_with_nested_record_pattern() {
         accept(
-            &[record("User", &[("name", "String"), ("age", "Int")])],
+            TypeRegistryBuilder::new().record("User", [("name", "String"), ("age", "Int")]),
             &[("maybe_user", "Option[User]")],
             indoc! {r#"
                 match maybe_user {
@@ -4689,7 +4643,7 @@ mod tests {
     #[test]
     fn accepts_option_of_record_match_with_some_and_none() {
         accept(
-            &[record("User", &[("name", "String"), ("age", "Int")])],
+            TypeRegistryBuilder::new().record("User", [("name", "String"), ("age", "Int")]),
             &[("maybe_user", "Option[User]")],
             indoc! {r#"
                 match maybe_user {
@@ -4708,7 +4662,7 @@ mod tests {
     #[test]
     fn accepts_join_macro_with_string_args() {
         accept(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("first", "String"), ("last", "String")],
             "join!(first, last)",
             expect!["String"],
@@ -4717,18 +4671,28 @@ mod tests {
 
     #[test]
     fn accepts_join_macro_with_no_args() {
-        accept(&[], &[], "join!()", expect!["String"]);
+        accept(
+            TypeRegistryBuilder::new(),
+            &[],
+            "join!()",
+            expect!["String"],
+        );
     }
 
     #[test]
     fn accepts_join_macro_with_string_literals() {
-        accept(&[], &[], r#"join!("hello", "world")"#, expect!["String"]);
+        accept(
+            TypeRegistryBuilder::new(),
+            &[],
+            r#"join!("hello", "world")"#,
+            expect!["String"],
+        );
     }
 
     #[test]
     fn rejects_join_macro_with_non_string_arg() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("count", "Int")],
             "join!(count)",
             expect![[r#"
@@ -4743,18 +4707,28 @@ mod tests {
 
     #[test]
     fn accepts_asset_macro_with_string_literal() {
-        accept(&[], &[], r#"asset!("/logo.svg")"#, expect!["String"]);
+        accept(
+            TypeRegistryBuilder::new(),
+            &[],
+            r#"asset!("/logo.svg")"#,
+            expect!["String"],
+        );
     }
 
     #[test]
     fn accepts_asset_macro_with_nested_path() {
-        accept(&[], &[], r#"asset!("/icons/star.svg")"#, expect!["String"]);
+        accept(
+            TypeRegistryBuilder::new(),
+            &[],
+            r#"asset!("/icons/star.svg")"#,
+            expect!["String"],
+        );
     }
 
     #[test]
     fn rejects_asset_macro_with_no_args() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[],
             "asset!()",
             expect![[r#"
@@ -4768,7 +4742,7 @@ mod tests {
     #[test]
     fn rejects_asset_macro_with_two_args() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[],
             r#"asset!("/a", "/b")"#,
             expect![[r#"
@@ -4782,7 +4756,7 @@ mod tests {
     #[test]
     fn rejects_asset_macro_with_variable_arg() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("path", "String")],
             "asset!(path)",
             expect![[r#"
@@ -4796,7 +4770,7 @@ mod tests {
     #[test]
     fn rejects_asset_macro_with_concat_arg() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[],
             r#"asset!("/a" + "/b")"#,
             expect![[r#"
@@ -4810,7 +4784,7 @@ mod tests {
     #[test]
     fn rejects_asset_macro_with_relative_path() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[],
             r#"asset!("logo.svg")"#,
             expect![[r#"
@@ -4824,7 +4798,7 @@ mod tests {
     #[test]
     fn rejects_asset_macro_with_empty_string() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[],
             r#"asset!("")"#,
             expect![[r#"
@@ -4840,7 +4814,7 @@ mod tests {
     #[test]
     fn accepts_len_on_array() {
         accept(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("items", "Array[String]")],
             "items.len()",
             expect!["Int"],
@@ -4850,7 +4824,7 @@ mod tests {
     #[test]
     fn accepts_len_on_int_array() {
         accept(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("numbers", "Array[Int]")],
             "numbers.len()",
             expect!["Int"],
@@ -4860,7 +4834,7 @@ mod tests {
     #[test]
     fn accepts_len_in_comparison() {
         accept(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("items", "Array[String]")],
             "items.len() == 0",
             expect!["Bool"],
@@ -4870,7 +4844,7 @@ mod tests {
     #[test]
     fn rejects_len_on_non_array() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("name", "String")],
             "name.len()",
             expect![[r#"
@@ -4884,7 +4858,7 @@ mod tests {
     #[test]
     fn rejects_unknown_method_on_array() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("items", "Array[String]")],
             "items.foo()",
             expect![[r#"
@@ -4900,7 +4874,7 @@ mod tests {
     #[test]
     fn accepts_to_string_on_int() {
         accept(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("count", "Int")],
             "count.to_string()",
             expect!["String"],
@@ -4910,7 +4884,7 @@ mod tests {
     #[test]
     fn accepts_to_string_in_concat() {
         accept(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("n", "Int")],
             r#""Value: " + n.to_string()"#,
             expect!["String"],
@@ -4920,7 +4894,7 @@ mod tests {
     #[test]
     fn rejects_to_string_on_string() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("name", "String")],
             "name.to_string()",
             expect![[r#"
@@ -4934,7 +4908,7 @@ mod tests {
     #[test]
     fn rejects_to_string_on_array() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("items", "Array[Int]")],
             "items.to_string()",
             expect![[r#"
@@ -4949,13 +4923,18 @@ mod tests {
 
     #[test]
     fn accepts_to_int_on_float() {
-        accept(&[], &[("price", "Float")], "price.to_int()", expect!["Int"]);
+        accept(
+            TypeRegistryBuilder::new(),
+            &[("price", "Float")],
+            "price.to_int()",
+            expect!["Int"],
+        );
     }
 
     #[test]
     fn accepts_to_int_in_comparison() {
         accept(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("price", "Float")],
             "price.to_int() == 5",
             expect!["Bool"],
@@ -4965,7 +4944,7 @@ mod tests {
     #[test]
     fn rejects_to_int_on_int() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("count", "Int")],
             "count.to_int()",
             expect![[r#"
@@ -4979,7 +4958,7 @@ mod tests {
     #[test]
     fn rejects_to_int_on_string() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("name", "String")],
             "name.to_int()",
             expect![[r#"
@@ -4995,7 +4974,7 @@ mod tests {
     #[test]
     fn accepts_to_float_on_int() {
         accept(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("count", "Int")],
             "count.to_float()",
             expect!["Float"],
@@ -5005,7 +4984,7 @@ mod tests {
     #[test]
     fn accepts_to_float_in_arithmetic() {
         accept(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("count", "Int"), ("rate", "Float")],
             "count.to_float() + rate",
             expect!["Float"],
@@ -5015,7 +4994,7 @@ mod tests {
     #[test]
     fn rejects_to_float_on_float() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("price", "Float")],
             "price.to_float()",
             expect![[r#"
@@ -5029,7 +5008,7 @@ mod tests {
     #[test]
     fn rejects_to_float_on_string() {
         reject(
-            &[],
+            TypeRegistryBuilder::new(),
             &[("name", "String")],
             "name.to_float()",
             expect![[r#"
@@ -5044,26 +5023,51 @@ mod tests {
 
     #[test]
     fn accepts_to_string_on_int_literal() {
-        accept(&[], &[], "42.to_string()", expect!["String"]);
+        accept(
+            TypeRegistryBuilder::new(),
+            &[],
+            "42.to_string()",
+            expect!["String"],
+        );
     }
 
     #[test]
     fn accepts_to_float_on_int_literal() {
-        accept(&[], &[], "42.to_float()", expect!["Float"]);
+        accept(
+            TypeRegistryBuilder::new(),
+            &[],
+            "42.to_float()",
+            expect!["Float"],
+        );
     }
 
     #[test]
     fn accepts_to_int_on_float_literal() {
-        accept(&[], &[], "3.14.to_int()", expect!["Int"]);
+        accept(
+            TypeRegistryBuilder::new(),
+            &[],
+            "3.14.to_int()",
+            expect!["Int"],
+        );
     }
 
     #[test]
     fn accepts_len_on_array_literal() {
-        accept(&[], &[], "[1, 2, 3].len()", expect!["Int"]);
+        accept(
+            TypeRegistryBuilder::new(),
+            &[],
+            "[1, 2, 3].len()",
+            expect!["Int"],
+        );
     }
 
     #[test]
     fn accepts_method_call_on_parenthesized_arithmetic() {
-        accept(&[], &[], "(1 + 2).to_string()", expect!["String"]);
+        accept(
+            TypeRegistryBuilder::new(),
+            &[],
+            "(1 + 2).to_string()",
+            expect!["String"],
+        );
     }
 }

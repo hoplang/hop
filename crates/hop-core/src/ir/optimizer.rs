@@ -28,7 +28,6 @@ pub fn optimize(mut module: IrModule, registry: &TypeRegistry) -> IrModule {
 mod tests {
 
     use super::*;
-    use crate::expr::Type;
     use crate::ir::syntax::builder::IrModuleBuilder;
     use expect_test::{Expect, expect};
 
@@ -44,7 +43,7 @@ mod tests {
     #[test]
     fn should_optimize_single_component() {
         let module = IrModuleBuilder::new()
-            .component_no_params("Test", |t| {
+            .view_no_params("Test", |t| {
                 t.let_stmt("unused", t.str("value"), |t| {
                     t.write("Hello");
                     t.write(" ");
@@ -76,13 +75,13 @@ mod tests {
     #[test]
     fn should_optimize_multiple_components() {
         let module = IrModuleBuilder::new()
-            .component_no_params("First", |t| {
+            .view_no_params("First", |t| {
                 t.let_stmt("unused", t.str("x"), |t| {
                     t.write("A");
                     t.write("B");
                 });
             })
-            .component_no_params("Second", |t| {
+            .view_no_params("Second", |t| {
                 t.if_stmt(t.bool(true), |t| {
                     t.write("C");
                     t.write("D");
@@ -121,7 +120,7 @@ mod tests {
     #[test]
     fn should_apply_constant_propagation_before_unused_let_elimination() {
         let module = IrModuleBuilder::new()
-            .component_no_params("Test", |t| {
+            .view_no_params("Test", |t| {
                 t.let_stmt("flag", t.bool(true), |t| {
                     t.if_stmt(t.var("flag"), |t| {
                         t.write("yes");
@@ -153,7 +152,7 @@ mod tests {
     #[test]
     fn should_eliminate_bool_match_with_constant_subject() {
         let module = IrModuleBuilder::new()
-            .component_no_params("Test", |t| {
+            .view_no_params("Test", |t| {
                 t.let_stmt("flag", t.bool(true), |t| {
                     t.bool_match_stmt(
                         t.var("flag"),
@@ -196,12 +195,9 @@ mod tests {
     #[test]
     fn should_preserve_records_and_enums() {
         let module = IrModuleBuilder::new()
-            .record("User", |r| {
-                r.field("name", Type::String);
-                r.field("age", Type::Int);
-            })
-            .enum_decl("Status", ["Active", "Inactive"])
-            .component_no_params("Test", |t| {
+            .record("User", [("name", "String"), ("age", "Int")])
+            .enum_unit("Status", ["Active", "Inactive"])
+            .view_no_params("Test", |t| {
                 t.write("Hello");
             })
             .build_with_registry();
@@ -241,7 +237,7 @@ mod tests {
     #[test]
     fn should_chain_multiple_optimizations() {
         let module = IrModuleBuilder::new()
-            .component_no_params("Test", |t| {
+            .view_no_params("Test", |t| {
                 // let x = "hello"
                 // let unused = x  -- unused, should be eliminated
                 // if true { write("A"); write("B") }  -- if should be eliminated, writes coalesced

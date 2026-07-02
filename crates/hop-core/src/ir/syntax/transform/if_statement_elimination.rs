@@ -33,7 +33,6 @@ impl IfStatementEliminationPass {
 mod tests {
 
     use super::*;
-    use crate::expr::Type;
     use crate::ir::ast::IrViewDeclaration;
     use crate::ir::syntax::builder::{build_ir, build_ir_no_params};
     use expect_test::{Expect, expect};
@@ -99,7 +98,7 @@ mod tests {
     #[test]
     fn should_preserve_if_statement_with_dynamic_conditions() {
         check(
-            build_ir("Test", [("show", Type::Bool)], |t| {
+            build_ir("Test", [("show", "Bool")], |t| {
                 t.if_stmt(t.var("show"), |t| {
                     t.write("Dynamic");
                 });
@@ -138,7 +137,7 @@ mod tests {
     #[test]
     fn should_handle_elimination_of_nested_if_statements() {
         check(
-            build_ir("Test", [("condition", Type::Bool)], |t| {
+            build_ir("Test", [("condition", "Bool")], |t| {
                 t.if_stmt(t.var("condition"), |t| {
                     t.write("Before nested");
                     t.if_stmt(t.bool(true), |t| {

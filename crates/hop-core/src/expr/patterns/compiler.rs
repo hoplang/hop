@@ -782,74 +782,18 @@ mod tests {
     use super::*;
     use crate::document::DocumentCursor;
     use crate::document_annotator::DocumentAnnotator;
-    use crate::document_id::DocumentId;
-    use crate::expr::ExamplesAnnotation;
     use crate::expr::parse_expr;
     use crate::expr::parsing::parsed_expr::ParsedExpr;
     use crate::expr::patterns::typed::typecheck_pattern;
-    use crate::expr::typing::r#type::EnumVariant;
-    use crate::expr::typing::type_registry::TypeDef;
-    use crate::symbols::field_name::FieldName;
-    use crate::symbols::type_name::TypeName;
+    use crate::expr::typing::type_registry_builder::TypeRegistryBuilder;
     use expect_test::{Expect, expect};
     use indoc::indoc;
     use std::collections::VecDeque;
 
-    fn test_module() -> DocumentId {
-        DocumentId::new("test.hop").unwrap()
-    }
-
-    fn bare(typ: Type) -> (Type, TypeRegistry) {
-        (typ, TypeRegistry::default())
-    }
-
-    fn enum_def_in(
-        mut registry: TypeRegistry,
-        name: TypeName,
-        variants: Vec<EnumVariant>,
-    ) -> (Type, TypeRegistry) {
-        registry.insert(test_module(), name.clone(), TypeDef::Enum { variants });
-        (
-            Type::Named {
-                module: test_module(),
-                name,
-                kind: NamedKind::Enum,
-            },
-            registry,
-        )
-    }
-
-    fn enum_def(name: TypeName, variants: Vec<EnumVariant>) -> (Type, TypeRegistry) {
-        enum_def_in(TypeRegistry::default(), name, variants)
-    }
-
-    fn record_def_in(
-        mut registry: TypeRegistry,
-        name: TypeName,
-        fields: Vec<(FieldName, Arc<Type>, Option<ExamplesAnnotation>)>,
-    ) -> (Type, TypeRegistry) {
-        registry.insert(test_module(), name.clone(), TypeDef::Record { fields });
-        (
-            Type::Named {
-                module: test_module(),
-                name,
-                kind: NamedKind::Record,
-            },
-            registry,
-        )
-    }
-
-    fn record_def(
-        name: TypeName,
-        fields: Vec<(FieldName, Arc<Type>, Option<ExamplesAnnotation>)>,
-    ) -> (Type, TypeRegistry) {
-        record_def_in(TypeRegistry::default(), name, fields)
-    }
-
-    fn run_check(subject: (Type, TypeRegistry), expr_str: &str) -> (String, bool) {
-        let (subject_type, registry) = subject;
-        let cursor =
-            DocumentCursor::new(DocumentId::new("test.hop").unwrap(), expr_str.to_string());
+    fn run_check(types: TypeRegistryBuilder, subject: &str, expr_str: &str) -> (String, bool) {
+        let types = types.build();
+        let subject_type = types.resolve(subject);
+        let cursor = DocumentCursor::new(types.module().clone(), expr_str.to_string());
         let range = cursor.range();
         let mut iter = cursor.peekable();
         let mut comments = VecDeque::new();
@@ -874,7 +818,6 @@ mod tests {
             _ => panic!("Expected match expression"),
         };
 
-        let subject_type = Arc::new(subject_type);
         assert!(
             subject_type.is_matchable(),
             "match is not implemented for subject type {subject_type:?}"
@@ -884,12 +827,12 @@ mod tests {
         // rather than exercise the compiler with invalid input.
         let typed_patterns = patterns
             .iter()
-            .map(|p| typecheck_pattern(p, subject_type.clone(), &registry))
+            .map(|p| typecheck_pattern(p, subject_type.clone(), types.registry()))
             .collect::<Result<Vec<_>, _>>()
             .unwrap_or_else(|e| panic!("pattern failed to typecheck: {e:?}"));
 
         let mut fresh_vars = FreshVarCounter::new();
-        let result = Compiler::new(&mut fresh_vars, &registry).compile(
+        let result = Compiler::new(&mut fresh_vars, types.registry()).compile(
             &typed_patterns,
             subject_type,
             &subject_range,
@@ -902,23 +845,23 @@ mod tests {
                     .with_label("error")
                     .without_location()
                     .without_line_numbers()
-                    .annotate(&DocumentId::new("test.hop").unwrap(), [e])
+                    .annotate(types.module(), [e])
                     .render(),
                 false,
             ),
         }
     }
 
-    fn accept(subject: (Type, TypeRegistry), expr_str: &str, expected: Expect) {
-        let (actual, ok) = run_check(subject, expr_str);
+    fn accept(types: TypeRegistryBuilder, subject: &str, expr_str: &str, expected: Expect) {
+        let (actual, ok) = run_check(types, subject, expr_str);
         if !ok {
             panic!("expected patterns to compile, got error:\n{actual}");
         }
         expected.assert_eq(&actual);
     }
 
-    fn reject(subject: (Type, TypeRegistry), expr_str: &str, expected: Expect) {
-        let (actual, ok) = run_check(subject, expr_str);
+    fn reject(types: TypeRegistryBuilder, subject: &str, expr_str: &str, expected: Expect) {
+        let (actual, ok) = run_check(types, subject, expr_str);
         if ok {
             panic!("expected a compile error, but patterns compiled to:\n{actual}");
         }
@@ -1025,7 +968,8 @@ mod tests {
     #[test]
     fn accepts_bool_exhaustive() {
         accept(
-            bare(Type::Bool),
+            TypeRegistryBuilder::new(),
+            "Bool",
             indoc! {"
                 match x {
                     true => 0,
@@ -1044,7 +988,8 @@ mod tests {
     #[test]
     fn rejects_bool_missing_false() {
         reject(
-            bare(Type::Bool),
+            TypeRegistryBuilder::new(),
+            "Bool",
             indoc! {"
                 match x {
                     true => 0,
@@ -1061,7 +1006,8 @@ mod tests {
     #[test]
     fn rejects_bool_missing_true() {
         reject(
-            bare(Type::Bool),
+            TypeRegistryBuilder::new(),
+            "Bool",
             indoc! {"
                 match x {
                     false => 0,
@@ -1078,7 +1024,8 @@ mod tests {
     #[test]
     fn rejects_bool_unreachable_arm() {
         reject(
-            bare(Type::Bool),
+            TypeRegistryBuilder::new(),
+            "Bool",
             indoc! {"
                 match x {
                     true => 0,
@@ -1097,7 +1044,8 @@ mod tests {
     #[test]
     fn rejects_bool_wildcard_covers_all() {
         reject(
-            bare(Type::Bool),
+            TypeRegistryBuilder::new(),
+            "Bool",
             indoc! {"
                 match x {
                     _ => 0,
@@ -1114,7 +1062,8 @@ mod tests {
     #[test]
     fn accepts_bool_binding_covers_all() {
         accept(
-            bare(Type::Bool),
+            TypeRegistryBuilder::new(),
+            "Bool",
             indoc! {"
                 match x {
                     b => 0,
@@ -1132,7 +1081,8 @@ mod tests {
     #[test]
     fn accepts_option_exhaustive() {
         accept(
-            bare(Type::Option(Arc::new(Type::String))),
+            TypeRegistryBuilder::new(),
+            "Option[String]",
             indoc! {"
                 match x {
                     Some(item) => 0,
@@ -1152,7 +1102,8 @@ mod tests {
     #[test]
     fn rejects_option_missing_none() {
         reject(
-            bare(Type::Option(Arc::new(Type::String))),
+            TypeRegistryBuilder::new(),
+            "Option[String]",
             indoc! {"
                 match x {
                     Some(item) => 0,
@@ -1169,7 +1120,8 @@ mod tests {
     #[test]
     fn rejects_option_missing_some() {
         reject(
-            bare(Type::Option(Arc::new(Type::String))),
+            TypeRegistryBuilder::new(),
+            "Option[String]",
             indoc! {"
                 match x {
                     None => 0,
@@ -1186,7 +1138,8 @@ mod tests {
     #[test]
     fn accepts_nested_option_exhaustive() {
         accept(
-            bare(Type::Option(Arc::new(Type::Option(Arc::new(Type::String))))),
+            TypeRegistryBuilder::new(),
+            "Option[Option[String]]",
             indoc! {"
                 match x {
                     Some(Some(item)) => 0,
@@ -1212,23 +1165,8 @@ mod tests {
     #[test]
     fn accepts_enum_exhaustive() {
         accept(
-            enum_def(
-                TypeName::new("Color").unwrap(),
-                vec![
-                    EnumVariant {
-                        name: TypeName::new("Red").unwrap(),
-                        fields: vec![],
-                    },
-                    EnumVariant {
-                        name: TypeName::new("Green").unwrap(),
-                        fields: vec![],
-                    },
-                    EnumVariant {
-                        name: TypeName::new("Blue").unwrap(),
-                        fields: vec![],
-                    },
-                ],
-            ),
+            TypeRegistryBuilder::new().enum_unit("Color", ["Red", "Green", "Blue"]),
+            "Color",
             indoc! {"
                 match x {
                     Color::Red => 0,
@@ -1250,23 +1188,8 @@ mod tests {
     #[test]
     fn rejects_enum_missing_variant() {
         reject(
-            enum_def(
-                TypeName::new("Color").unwrap(),
-                vec![
-                    EnumVariant {
-                        name: TypeName::new("Red").unwrap(),
-                        fields: vec![],
-                    },
-                    EnumVariant {
-                        name: TypeName::new("Green").unwrap(),
-                        fields: vec![],
-                    },
-                    EnumVariant {
-                        name: TypeName::new("Blue").unwrap(),
-                        fields: vec![],
-                    },
-                ],
-            ),
+            TypeRegistryBuilder::new().enum_unit("Color", ["Red", "Green", "Blue"]),
+            "Color",
             indoc! {"
                 match x {
                     Color::Red => 0,
@@ -1284,23 +1207,8 @@ mod tests {
     #[test]
     fn accepts_enum_wildcard_covers_remaining() {
         accept(
-            enum_def(
-                TypeName::new("Color").unwrap(),
-                vec![
-                    EnumVariant {
-                        name: TypeName::new("Red").unwrap(),
-                        fields: vec![],
-                    },
-                    EnumVariant {
-                        name: TypeName::new("Green").unwrap(),
-                        fields: vec![],
-                    },
-                    EnumVariant {
-                        name: TypeName::new("Blue").unwrap(),
-                        fields: vec![],
-                    },
-                ],
-            ),
+            TypeRegistryBuilder::new().enum_unit("Color", ["Red", "Green", "Blue"]),
+            "Color",
             indoc! {"
                 match x {
                     Color::Red => 0,
@@ -1321,23 +1229,8 @@ mod tests {
     #[test]
     fn rejects_enum_unreachable_after_wildcard() {
         reject(
-            enum_def(
-                TypeName::new("Color").unwrap(),
-                vec![
-                    EnumVariant {
-                        name: TypeName::new("Red").unwrap(),
-                        fields: vec![],
-                    },
-                    EnumVariant {
-                        name: TypeName::new("Green").unwrap(),
-                        fields: vec![],
-                    },
-                    EnumVariant {
-                        name: TypeName::new("Blue").unwrap(),
-                        fields: vec![],
-                    },
-                ],
-            ),
+            TypeRegistryBuilder::new().enum_unit("Color", ["Red", "Green", "Blue"]),
+            "Color",
             indoc! {"
                 match x {
                     _ => 0,
@@ -1357,23 +1250,14 @@ mod tests {
     #[test]
     fn accepts_enum_variant_with_fields_exhaustive() {
         accept(
-            enum_def(
-                TypeName::new("Outcome").unwrap(),
-                vec![
-                    EnumVariant {
-                        name: TypeName::new("Success").unwrap(),
-                        fields: vec![(FieldName::new("value").unwrap(), Arc::new(Type::Int), None)],
-                    },
-                    EnumVariant {
-                        name: TypeName::new("Failure").unwrap(),
-                        fields: vec![(
-                            FieldName::new("message").unwrap(),
-                            Arc::new(Type::String),
-                            None,
-                        )],
-                    },
+            TypeRegistryBuilder::new().enum_(
+                "Outcome",
+                [
+                    ("Success", vec![("value", "Int")]),
+                    ("Failure", vec![("message", "String")]),
                 ],
             ),
+            "Outcome",
             indoc! {"
                 match x {
                     Outcome::Success{value: v} => 0,
@@ -1394,19 +1278,11 @@ mod tests {
     #[test]
     fn accepts_enum_variant_mixed_fields_and_unit() {
         accept(
-            enum_def(
-                TypeName::new("Maybe").unwrap(),
-                vec![
-                    EnumVariant {
-                        name: TypeName::new("Just").unwrap(),
-                        fields: vec![(FieldName::new("value").unwrap(), Arc::new(Type::Int), None)],
-                    },
-                    EnumVariant {
-                        name: TypeName::new("Nothing").unwrap(),
-                        fields: vec![],
-                    },
-                ],
+            TypeRegistryBuilder::new().enum_(
+                "Maybe",
+                [("Just", vec![("value", "Int")]), ("Nothing", vec![])],
             ),
+            "Maybe",
             indoc! {"
                 match x {
                     Maybe::Just{value: v} => 0,
@@ -1426,23 +1302,14 @@ mod tests {
     #[test]
     fn accepts_enum_variant_with_wildcard_field() {
         accept(
-            enum_def(
-                TypeName::new("Outcome").unwrap(),
-                vec![
-                    EnumVariant {
-                        name: TypeName::new("Success").unwrap(),
-                        fields: vec![(FieldName::new("value").unwrap(), Arc::new(Type::Int), None)],
-                    },
-                    EnumVariant {
-                        name: TypeName::new("Failure").unwrap(),
-                        fields: vec![(
-                            FieldName::new("message").unwrap(),
-                            Arc::new(Type::String),
-                            None,
-                        )],
-                    },
+            TypeRegistryBuilder::new().enum_(
+                "Outcome",
+                [
+                    ("Success", vec![("value", "Int")]),
+                    ("Failure", vec![("message", "String")]),
                 ],
             ),
+            "Outcome",
             indoc! {"
                 match x {
                     Outcome::Success{value: _} => 0,
@@ -1461,30 +1328,15 @@ mod tests {
     #[test]
     fn accepts_enum_three_variants_with_fields() {
         accept(
-            enum_def(
-                TypeName::new("Status").unwrap(),
-                vec![
-                    EnumVariant {
-                        name: TypeName::new("Pending").unwrap(),
-                        fields: vec![(FieldName::new("since").unwrap(), Arc::new(Type::Int), None)],
-                    },
-                    EnumVariant {
-                        name: TypeName::new("Active").unwrap(),
-                        fields: vec![
-                            (FieldName::new("id").unwrap(), Arc::new(Type::Int), None),
-                            (
-                                FieldName::new("name").unwrap(),
-                                Arc::new(Type::String),
-                                None,
-                            ),
-                        ],
-                    },
-                    EnumVariant {
-                        name: TypeName::new("Inactive").unwrap(),
-                        fields: vec![],
-                    },
+            TypeRegistryBuilder::new().enum_(
+                "Status",
+                [
+                    ("Pending", vec![("since", "Int")]),
+                    ("Active", vec![("id", "Int"), ("name", "String")]),
+                    ("Inactive", vec![]),
                 ],
             ),
+            "Status",
             indoc! {"
                 match x {
                     Status::Pending{since: s} => 0,
@@ -1509,17 +1361,11 @@ mod tests {
     #[test]
     fn accepts_enum_variant_with_three_fields() {
         accept(
-            enum_def(
-                TypeName::new("Point3D").unwrap(),
-                vec![EnumVariant {
-                    name: TypeName::new("Coords").unwrap(),
-                    fields: vec![
-                        (FieldName::new("x").unwrap(), Arc::new(Type::Int), None),
-                        (FieldName::new("y").unwrap(), Arc::new(Type::Int), None),
-                        (FieldName::new("z").unwrap(), Arc::new(Type::Int), None),
-                    ],
-                }],
+            TypeRegistryBuilder::new().enum_(
+                "Point3D",
+                [("Coords", vec![("x", "Int"), ("y", "Int"), ("z", "Int")])],
             ),
+            "Point3D",
             indoc! {"
                 match x {
                     Point3D::Coords{x: a, y: b, z: c} => 0,
@@ -1538,17 +1384,11 @@ mod tests {
     #[test]
     fn accepts_enum_variant_all_fields_wildcard() {
         accept(
-            enum_def(
-                TypeName::new("Point3D").unwrap(),
-                vec![EnumVariant {
-                    name: TypeName::new("Coords").unwrap(),
-                    fields: vec![
-                        (FieldName::new("x").unwrap(), Arc::new(Type::Int), None),
-                        (FieldName::new("y").unwrap(), Arc::new(Type::Int), None),
-                        (FieldName::new("z").unwrap(), Arc::new(Type::Int), None),
-                    ],
-                }],
+            TypeRegistryBuilder::new().enum_(
+                "Point3D",
+                [("Coords", vec![("x", "Int"), ("y", "Int"), ("z", "Int")])],
             ),
+            "Point3D",
             indoc! {"
                 match x {
                     Point3D::Coords{x: _, y: _, z: _} => 0,
@@ -1564,17 +1404,11 @@ mod tests {
     #[test]
     fn accepts_enum_variant_mixed_bindings_and_wildcards() {
         accept(
-            enum_def(
-                TypeName::new("Point3D").unwrap(),
-                vec![EnumVariant {
-                    name: TypeName::new("Coords").unwrap(),
-                    fields: vec![
-                        (FieldName::new("x").unwrap(), Arc::new(Type::Int), None),
-                        (FieldName::new("y").unwrap(), Arc::new(Type::Int), None),
-                        (FieldName::new("z").unwrap(), Arc::new(Type::Int), None),
-                    ],
-                }],
+            TypeRegistryBuilder::new().enum_(
+                "Point3D",
+                [("Coords", vec![("x", "Int"), ("y", "Int"), ("z", "Int")])],
             ),
+            "Point3D",
             indoc! {"
                 match x {
                     Point3D::Coords{x: a, y: _, z: c} => 0,
@@ -1592,23 +1426,14 @@ mod tests {
     #[test]
     fn rejects_enum_variant_wildcard_covers_all_variants() {
         reject(
-            enum_def(
-                TypeName::new("Result").unwrap(),
-                vec![
-                    EnumVariant {
-                        name: TypeName::new("Ok").unwrap(),
-                        fields: vec![(FieldName::new("value").unwrap(), Arc::new(Type::Int), None)],
-                    },
-                    EnumVariant {
-                        name: TypeName::new("Err").unwrap(),
-                        fields: vec![(
-                            FieldName::new("message").unwrap(),
-                            Arc::new(Type::String),
-                            None,
-                        )],
-                    },
+            TypeRegistryBuilder::new().enum_(
+                "Res",
+                [
+                    ("Ok", vec![("value", "Int")]),
+                    ("Err", vec![("message", "String")]),
                 ],
             ),
+            "Res",
             indoc! {"
                 match x {
                     _ => 0,
@@ -1625,23 +1450,14 @@ mod tests {
     #[test]
     fn accepts_enum_variant_binding_covers_all_variants() {
         accept(
-            enum_def(
-                TypeName::new("Result").unwrap(),
-                vec![
-                    EnumVariant {
-                        name: TypeName::new("Ok").unwrap(),
-                        fields: vec![(FieldName::new("value").unwrap(), Arc::new(Type::Int), None)],
-                    },
-                    EnumVariant {
-                        name: TypeName::new("Err").unwrap(),
-                        fields: vec![(
-                            FieldName::new("message").unwrap(),
-                            Arc::new(Type::String),
-                            None,
-                        )],
-                    },
+            TypeRegistryBuilder::new().enum_(
+                "Res",
+                [
+                    ("Ok", vec![("value", "Int")]),
+                    ("Err", vec![("message", "String")]),
                 ],
             ),
+            "Res",
             indoc! {"
                 match x {
                     r => 0,
@@ -1657,23 +1473,15 @@ mod tests {
     #[test]
     fn accepts_enum_variant_partial_coverage_with_wildcard() {
         accept(
-            enum_def(
-                TypeName::new("Status").unwrap(),
-                vec![
-                    EnumVariant {
-                        name: TypeName::new("Pending").unwrap(),
-                        fields: vec![(FieldName::new("since").unwrap(), Arc::new(Type::Int), None)],
-                    },
-                    EnumVariant {
-                        name: TypeName::new("Active").unwrap(),
-                        fields: vec![(FieldName::new("id").unwrap(), Arc::new(Type::Int), None)],
-                    },
-                    EnumVariant {
-                        name: TypeName::new("Inactive").unwrap(),
-                        fields: vec![],
-                    },
+            TypeRegistryBuilder::new().enum_(
+                "Status",
+                [
+                    ("Pending", vec![("since", "Int")]),
+                    ("Active", vec![("id", "Int")]),
+                    ("Inactive", vec![]),
                 ],
             ),
+            "Status",
             indoc! {"
                 match x {
                     Status::Pending{since: s} => 0,
@@ -1695,23 +1503,14 @@ mod tests {
     #[test]
     fn rejects_enum_variant_missing_variant() {
         reject(
-            enum_def(
-                TypeName::new("Outcome").unwrap(),
-                vec![
-                    EnumVariant {
-                        name: TypeName::new("Success").unwrap(),
-                        fields: vec![(FieldName::new("value").unwrap(), Arc::new(Type::Int), None)],
-                    },
-                    EnumVariant {
-                        name: TypeName::new("Failure").unwrap(),
-                        fields: vec![(
-                            FieldName::new("message").unwrap(),
-                            Arc::new(Type::String),
-                            None,
-                        )],
-                    },
+            TypeRegistryBuilder::new().enum_(
+                "Outcome",
+                [
+                    ("Success", vec![("value", "Int")]),
+                    ("Failure", vec![("message", "String")]),
                 ],
             ),
+            "Outcome",
             indoc! {"
                 match x {
                     Outcome::Success{value: v} => 0,
@@ -1728,23 +1527,15 @@ mod tests {
     #[test]
     fn rejects_enum_variant_missing_multiple_variants() {
         reject(
-            enum_def(
-                TypeName::new("Status").unwrap(),
-                vec![
-                    EnumVariant {
-                        name: TypeName::new("Pending").unwrap(),
-                        fields: vec![(FieldName::new("since").unwrap(), Arc::new(Type::Int), None)],
-                    },
-                    EnumVariant {
-                        name: TypeName::new("Active").unwrap(),
-                        fields: vec![(FieldName::new("id").unwrap(), Arc::new(Type::Int), None)],
-                    },
-                    EnumVariant {
-                        name: TypeName::new("Inactive").unwrap(),
-                        fields: vec![],
-                    },
+            TypeRegistryBuilder::new().enum_(
+                "Status",
+                [
+                    ("Pending", vec![("since", "Int")]),
+                    ("Active", vec![("id", "Int")]),
+                    ("Inactive", vec![]),
                 ],
             ),
+            "Status",
             indoc! {"
                 match x {
                     Status::Pending{since: _} => 0,
@@ -1761,23 +1552,14 @@ mod tests {
     #[test]
     fn rejects_enum_variant_duplicate_pattern() {
         reject(
-            enum_def(
-                TypeName::new("Outcome").unwrap(),
-                vec![
-                    EnumVariant {
-                        name: TypeName::new("Success").unwrap(),
-                        fields: vec![(FieldName::new("value").unwrap(), Arc::new(Type::Int), None)],
-                    },
-                    EnumVariant {
-                        name: TypeName::new("Failure").unwrap(),
-                        fields: vec![(
-                            FieldName::new("message").unwrap(),
-                            Arc::new(Type::String),
-                            None,
-                        )],
-                    },
+            TypeRegistryBuilder::new().enum_(
+                "Outcome",
+                [
+                    ("Success", vec![("value", "Int")]),
+                    ("Failure", vec![("message", "String")]),
                 ],
             ),
+            "Outcome",
             indoc! {"
                 match x {
                     Outcome::Success{value: v} => 0,
@@ -1796,23 +1578,14 @@ mod tests {
     #[test]
     fn rejects_enum_variant_unreachable_after_wildcard() {
         reject(
-            enum_def(
-                TypeName::new("Outcome").unwrap(),
-                vec![
-                    EnumVariant {
-                        name: TypeName::new("Success").unwrap(),
-                        fields: vec![(FieldName::new("value").unwrap(), Arc::new(Type::Int), None)],
-                    },
-                    EnumVariant {
-                        name: TypeName::new("Failure").unwrap(),
-                        fields: vec![(
-                            FieldName::new("message").unwrap(),
-                            Arc::new(Type::String),
-                            None,
-                        )],
-                    },
+            TypeRegistryBuilder::new().enum_(
+                "Outcome",
+                [
+                    ("Success", vec![("value", "Int")]),
+                    ("Failure", vec![("message", "String")]),
                 ],
             ),
+            "Outcome",
             indoc! {"
                 match x {
                     _ => 0,
@@ -1830,17 +1603,9 @@ mod tests {
     #[test]
     fn accepts_enum_variant_nested_option_field() {
         accept(
-            enum_def(
-                TypeName::new("Container").unwrap(),
-                vec![EnumVariant {
-                    name: TypeName::new("Wrapped").unwrap(),
-                    fields: vec![(
-                        FieldName::new("inner").unwrap(),
-                        Arc::new(Type::Option(Arc::new(Type::Int))),
-                        None,
-                    )],
-                }],
-            ),
+            TypeRegistryBuilder::new()
+                .enum_("Container", [("Wrapped", vec![("inner", "Option[Int]")])]),
+            "Container",
             indoc! {"
                 match x {
                     Container::Wrapped{inner: Some(v)} => 0,
@@ -1861,17 +1626,9 @@ mod tests {
     #[test]
     fn rejects_enum_variant_nested_option_field_missing_none() {
         reject(
-            enum_def(
-                TypeName::new("Container").unwrap(),
-                vec![EnumVariant {
-                    name: TypeName::new("Wrapped").unwrap(),
-                    fields: vec![(
-                        FieldName::new("inner").unwrap(),
-                        Arc::new(Type::Option(Arc::new(Type::Int))),
-                        None,
-                    )],
-                }],
-            ),
+            TypeRegistryBuilder::new()
+                .enum_("Container", [("Wrapped", vec![("inner", "Option[Int]")])]),
+            "Container",
             indoc! {"
                 match x {
                     Container::Wrapped{inner: Some(v)} => 0,
@@ -1888,17 +1645,8 @@ mod tests {
     #[test]
     fn accepts_enum_variant_nested_bool_field() {
         accept(
-            enum_def(
-                TypeName::new("Flag").unwrap(),
-                vec![EnumVariant {
-                    name: TypeName::new("Active").unwrap(),
-                    fields: vec![(
-                        FieldName::new("enabled").unwrap(),
-                        Arc::new(Type::Bool),
-                        None,
-                    )],
-                }],
-            ),
+            TypeRegistryBuilder::new().enum_("Flag", [("Active", vec![("enabled", "Bool")])]),
+            "Flag",
             indoc! {"
                 match x {
                     Flag::Active{enabled: true} => 0,
@@ -1918,17 +1666,8 @@ mod tests {
     #[test]
     fn rejects_enum_variant_nested_bool_field_missing_case() {
         reject(
-            enum_def(
-                TypeName::new("Flag").unwrap(),
-                vec![EnumVariant {
-                    name: TypeName::new("Active").unwrap(),
-                    fields: vec![(
-                        FieldName::new("enabled").unwrap(),
-                        Arc::new(Type::Bool),
-                        None,
-                    )],
-                }],
-            ),
+            TypeRegistryBuilder::new().enum_("Flag", [("Active", vec![("enabled", "Bool")])]),
+            "Flag",
             indoc! {"
                 match x {
                     Flag::Active{enabled: true} => 0,
@@ -1945,18 +1684,19 @@ mod tests {
     #[test]
     fn accepts_enum_variant_four_fields() {
         accept(
-            enum_def(
-                TypeName::new("Rectangle").unwrap(),
-                vec![EnumVariant {
-                    name: TypeName::new("Bounds").unwrap(),
-                    fields: vec![
-                        (FieldName::new("x").unwrap(), Arc::new(Type::Int), None),
-                        (FieldName::new("y").unwrap(), Arc::new(Type::Int), None),
-                        (FieldName::new("width").unwrap(), Arc::new(Type::Int), None),
-                        (FieldName::new("height").unwrap(), Arc::new(Type::Int), None),
+            TypeRegistryBuilder::new().enum_(
+                "Rectangle",
+                [(
+                    "Bounds",
+                    vec![
+                        ("x", "Int"),
+                        ("y", "Int"),
+                        ("width", "Int"),
+                        ("height", "Int"),
                     ],
-                }],
+                )],
             ),
+            "Rectangle",
             indoc! {"
                 match x {
                     Rectangle::Bounds{x: a, y: b, width: w, height: h} => 0,
@@ -1976,34 +1716,16 @@ mod tests {
     #[test]
     fn accepts_enum_variant_four_variants_mixed() {
         accept(
-            enum_def(
-                TypeName::new("Event").unwrap(),
-                vec![
-                    EnumVariant {
-                        name: TypeName::new("Click").unwrap(),
-                        fields: vec![
-                            (FieldName::new("x").unwrap(), Arc::new(Type::Int), None),
-                            (FieldName::new("y").unwrap(), Arc::new(Type::Int), None),
-                        ],
-                    },
-                    EnumVariant {
-                        name: TypeName::new("KeyPress").unwrap(),
-                        fields: vec![(
-                            FieldName::new("key").unwrap(),
-                            Arc::new(Type::String),
-                            None,
-                        )],
-                    },
-                    EnumVariant {
-                        name: TypeName::new("Focus").unwrap(),
-                        fields: vec![],
-                    },
-                    EnumVariant {
-                        name: TypeName::new("Blur").unwrap(),
-                        fields: vec![],
-                    },
+            TypeRegistryBuilder::new().enum_(
+                "Event",
+                [
+                    ("Click", vec![("x", "Int"), ("y", "Int")]),
+                    ("KeyPress", vec![("key", "String")]),
+                    ("Focus", vec![]),
+                    ("Blur", vec![]),
                 ],
             ),
+            "Event",
             indoc! {"
                 match x {
                     Event::Click{x: a, y: b} => 0,
@@ -2033,17 +1755,8 @@ mod tests {
     #[test]
     fn accepts_record_match() {
         accept(
-            record_def(
-                TypeName::new("User").unwrap(),
-                vec![
-                    (
-                        FieldName::new("name").unwrap(),
-                        Arc::new(Type::String),
-                        None,
-                    ),
-                    (FieldName::new("age").unwrap(), Arc::new(Type::Int), None),
-                ],
-            ),
+            TypeRegistryBuilder::new().record("User", [("name", "String"), ("age", "Int")]),
+            "User",
             indoc! {"
                 match x {
                     User{name: n, age: a} => 0,
@@ -2061,13 +1774,8 @@ mod tests {
     #[test]
     fn accepts_record_with_bool_fields_exhaustive() {
         accept(
-            record_def(
-                TypeName::new("Foo").unwrap(),
-                vec![
-                    (FieldName::new("a").unwrap(), Arc::new(Type::Bool), None),
-                    (FieldName::new("b").unwrap(), Arc::new(Type::Bool), None),
-                ],
-            ),
+            TypeRegistryBuilder::new().record("Foo", [("a", "Bool"), ("b", "Bool")]),
+            "Foo",
             indoc! {"
                 match x {
                     Foo{a: true, b: true} => 0,
@@ -2097,7 +1805,8 @@ mod tests {
     #[test]
     fn accepts_bool_true_with_wildcard() {
         accept(
-            bare(Type::Bool),
+            TypeRegistryBuilder::new(),
+            "Bool",
             indoc! {"
                 match x {
                     true => 0,
@@ -2116,7 +1825,8 @@ mod tests {
     #[test]
     fn rejects_bool_duplicate_false() {
         reject(
-            bare(Type::Bool),
+            TypeRegistryBuilder::new(),
+            "Bool",
             indoc! {"
                 match x {
                     true => 0,
@@ -2135,7 +1845,8 @@ mod tests {
     #[test]
     fn rejects_bool_unreachable_after_wildcard() {
         reject(
-            bare(Type::Bool),
+            TypeRegistryBuilder::new(),
+            "Bool",
             indoc! {"
                 match x {
                     _ => 0,
@@ -2153,7 +1864,8 @@ mod tests {
     #[test]
     fn rejects_bool_unreachable_after_binding() {
         reject(
-            bare(Type::Bool),
+            TypeRegistryBuilder::new(),
+            "Bool",
             indoc! {"
                 match x {
                     b => 0,
@@ -2173,7 +1885,8 @@ mod tests {
     #[test]
     fn rejects_option_wildcard_covers_all() {
         reject(
-            bare(Type::Option(Arc::new(Type::String))),
+            TypeRegistryBuilder::new(),
+            "Option[String]",
             indoc! {"
                 match x {
                     _ => 0,
@@ -2190,7 +1903,8 @@ mod tests {
     #[test]
     fn accepts_option_some_with_wildcard() {
         accept(
-            bare(Type::Option(Arc::new(Type::String))),
+            TypeRegistryBuilder::new(),
+            "Option[String]",
             indoc! {"
                 match x {
                     Some(v) => 0,
@@ -2210,7 +1924,8 @@ mod tests {
     #[test]
     fn rejects_option_duplicate_some() {
         reject(
-            bare(Type::Option(Arc::new(Type::String))),
+            TypeRegistryBuilder::new(),
+            "Option[String]",
             indoc! {"
                 match x {
                     Some(_) => 0,
@@ -2229,7 +1944,8 @@ mod tests {
     #[test]
     fn rejects_option_duplicate_none() {
         reject(
-            bare(Type::Option(Arc::new(Type::String))),
+            TypeRegistryBuilder::new(),
+            "Option[String]",
             indoc! {"
                 match x {
                     Some(_) => 0,
@@ -2248,7 +1964,8 @@ mod tests {
     #[test]
     fn rejects_nested_option_missing_some_none() {
         reject(
-            bare(Type::Option(Arc::new(Type::Option(Arc::new(Type::Int))))),
+            TypeRegistryBuilder::new(),
+            "Option[Option[Int]]",
             indoc! {"
                 match x {
                     Some(Some(_)) => 0,
@@ -2266,7 +1983,8 @@ mod tests {
     #[test]
     fn rejects_nested_option_with_bool_missing() {
         reject(
-            bare(Type::Option(Arc::new(Type::Option(Arc::new(Type::Bool))))),
+            TypeRegistryBuilder::new(),
+            "Option[Option[Bool]]",
             indoc! {"
                 match x {
                     Some(Some(false)) => 0,
@@ -2285,7 +2003,8 @@ mod tests {
     #[test]
     fn accepts_nested_option_with_bool_exhaustive() {
         accept(
-            bare(Type::Option(Arc::new(Type::Option(Arc::new(Type::Bool))))),
+            TypeRegistryBuilder::new(),
+            "Option[Option[Bool]]",
             indoc! {"
                 match x {
                     Some(Some(true)) => 0,
@@ -2312,7 +2031,8 @@ mod tests {
     #[test]
     fn rejects_nested_option_with_bool_missing_multiple() {
         reject(
-            bare(Type::Option(Arc::new(Type::Option(Arc::new(Type::Bool))))),
+            TypeRegistryBuilder::new(),
+            "Option[Option[Bool]]",
             indoc! {"
                 match x {
                     Some(None) => 1,
@@ -2332,23 +2052,8 @@ mod tests {
     #[test]
     fn accepts_enum_binding_covers_all() {
         accept(
-            enum_def(
-                TypeName::new("Color").unwrap(),
-                vec![
-                    EnumVariant {
-                        name: TypeName::new("Red").unwrap(),
-                        fields: vec![],
-                    },
-                    EnumVariant {
-                        name: TypeName::new("Green").unwrap(),
-                        fields: vec![],
-                    },
-                    EnumVariant {
-                        name: TypeName::new("Blue").unwrap(),
-                        fields: vec![],
-                    },
-                ],
-            ),
+            TypeRegistryBuilder::new().enum_unit("Color", ["Red", "Green", "Blue"]),
+            "Color",
             indoc! {"
                 match x {
                     c => 0,
@@ -2364,19 +2069,8 @@ mod tests {
     #[test]
     fn rejects_enum_duplicate_variant() {
         reject(
-            enum_def(
-                TypeName::new("Color").unwrap(),
-                vec![
-                    EnumVariant {
-                        name: TypeName::new("Red").unwrap(),
-                        fields: vec![],
-                    },
-                    EnumVariant {
-                        name: TypeName::new("Green").unwrap(),
-                        fields: vec![],
-                    },
-                ],
-            ),
+            TypeRegistryBuilder::new().enum_unit("Color", ["Red", "Green"]),
+            "Color",
             indoc! {"
                 match x {
                     Color::Red => 0,
@@ -2395,19 +2089,8 @@ mod tests {
     #[test]
     fn rejects_enum_multiple_wildcards() {
         reject(
-            enum_def(
-                TypeName::new("Color").unwrap(),
-                vec![
-                    EnumVariant {
-                        name: TypeName::new("Red").unwrap(),
-                        fields: vec![],
-                    },
-                    EnumVariant {
-                        name: TypeName::new("Green").unwrap(),
-                        fields: vec![],
-                    },
-                ],
-            ),
+            TypeRegistryBuilder::new().enum_unit("Color", ["Red", "Green"]),
+            "Color",
             indoc! {"
                 match x {
                     _ => 0,
@@ -2425,23 +2108,8 @@ mod tests {
     #[test]
     fn rejects_enum_missing_multiple_variants() {
         reject(
-            enum_def(
-                TypeName::new("Color").unwrap(),
-                vec![
-                    EnumVariant {
-                        name: TypeName::new("Red").unwrap(),
-                        fields: vec![],
-                    },
-                    EnumVariant {
-                        name: TypeName::new("Green").unwrap(),
-                        fields: vec![],
-                    },
-                    EnumVariant {
-                        name: TypeName::new("Blue").unwrap(),
-                        fields: vec![],
-                    },
-                ],
-            ),
+            TypeRegistryBuilder::new().enum_unit("Color", ["Red", "Green", "Blue"]),
+            "Color",
             indoc! {"
                 match x {
                     Color::Red => 0,
@@ -2460,17 +2128,8 @@ mod tests {
     #[test]
     fn rejects_record_with_wildcard_fields() {
         reject(
-            record_def(
-                TypeName::new("User").unwrap(),
-                vec![
-                    (
-                        FieldName::new("name").unwrap(),
-                        Arc::new(Type::String),
-                        None,
-                    ),
-                    (FieldName::new("age").unwrap(), Arc::new(Type::Int), None),
-                ],
-            ),
+            TypeRegistryBuilder::new().record("User", [("name", "String"), ("age", "Int")]),
+            "User",
             indoc! {"
                 match x {
                     User{name: _, age: _} => 0,
@@ -2487,21 +2146,9 @@ mod tests {
     #[test]
     fn accepts_record_with_nested_option() {
         accept(
-            record_def(
-                TypeName::new("User").unwrap(),
-                vec![
-                    (
-                        FieldName::new("name").unwrap(),
-                        Arc::new(Type::String),
-                        None,
-                    ),
-                    (
-                        FieldName::new("email").unwrap(),
-                        Arc::new(Type::Option(Arc::new(Type::String))),
-                        None,
-                    ),
-                ],
-            ),
+            TypeRegistryBuilder::new()
+                .record("User", [("name", "String"), ("email", "Option[String]")]),
+            "User",
             indoc! {"
                 match x {
                     User{name: n, email: Some(e)} => 0,
@@ -2524,21 +2171,9 @@ mod tests {
     #[test]
     fn rejects_record_with_option_field_missing_none() {
         reject(
-            record_def(
-                TypeName::new("User").unwrap(),
-                vec![
-                    (
-                        FieldName::new("name").unwrap(),
-                        Arc::new(Type::String),
-                        None,
-                    ),
-                    (
-                        FieldName::new("email").unwrap(),
-                        Arc::new(Type::Option(Arc::new(Type::String))),
-                        None,
-                    ),
-                ],
-            ),
+            TypeRegistryBuilder::new()
+                .record("User", [("name", "String"), ("email", "Option[String]")]),
+            "User",
             indoc! {"
                 match x {
                     User{name: n, email: Some(e)} => 0,
@@ -2555,13 +2190,8 @@ mod tests {
     #[test]
     fn rejects_record_with_bool_fields_missing() {
         reject(
-            record_def(
-                TypeName::new("Foo").unwrap(),
-                vec![
-                    (FieldName::new("a").unwrap(), Arc::new(Type::Bool), None),
-                    (FieldName::new("b").unwrap(), Arc::new(Type::Bool), None),
-                ],
-            ),
+            TypeRegistryBuilder::new().record("Foo", [("a", "Bool"), ("b", "Bool")]),
+            "Foo",
             indoc! {"
                 match x {
                     Foo{a: true, b: true} => 0,
@@ -2580,13 +2210,8 @@ mod tests {
     #[test]
     fn rejects_record_with_bool_fields_missing_multiple() {
         reject(
-            record_def(
-                TypeName::new("Foo").unwrap(),
-                vec![
-                    (FieldName::new("a").unwrap(), Arc::new(Type::Bool), None),
-                    (FieldName::new("b").unwrap(), Arc::new(Type::Bool), None),
-                ],
-            ),
+            TypeRegistryBuilder::new().record("Foo", [("a", "Bool"), ("b", "Bool")]),
+            "Foo",
             indoc! {"
                 match x {
                     Foo{a: true, b: true} => 0,
@@ -2603,19 +2228,9 @@ mod tests {
 
     #[test]
     fn accepts_option_of_record_exhaustive() {
-        let (user_type, registry) = record_def(
-            TypeName::new("User").unwrap(),
-            vec![
-                (
-                    FieldName::new("name").unwrap(),
-                    Arc::new(Type::String),
-                    None,
-                ),
-                (FieldName::new("age").unwrap(), Arc::new(Type::Int), None),
-            ],
-        );
         accept(
-            (Type::Option(Arc::new(user_type)), registry),
+            TypeRegistryBuilder::new().record("User", [("name", "String"), ("age", "Int")]),
+            "Option[User]",
             indoc! {"
                 match x {
                     Some(User{name: n, age: a}) => 0,
@@ -2636,19 +2251,9 @@ mod tests {
 
     #[test]
     fn accepts_option_of_record_with_wildcard_fields() {
-        let (user_type, registry) = record_def(
-            TypeName::new("User").unwrap(),
-            vec![
-                (
-                    FieldName::new("name").unwrap(),
-                    Arc::new(Type::String),
-                    None,
-                ),
-                (FieldName::new("age").unwrap(), Arc::new(Type::Int), None),
-            ],
-        );
         accept(
-            (Type::Option(Arc::new(user_type)), registry),
+            TypeRegistryBuilder::new().record("User", [("name", "String"), ("age", "Int")]),
+            "Option[User]",
             indoc! {"
                 match x {
                     Some(User{name: _, age: _}) => 0,
@@ -2667,31 +2272,11 @@ mod tests {
     #[test]
     fn accepts_option_of_nested_records_with_wildcard_fields() {
         // Role is a nested record inside User
-        let (role_type, registry) = record_def(
-            TypeName::new("Role").unwrap(),
-            vec![
-                (
-                    FieldName::new("title").unwrap(),
-                    Arc::new(Type::String),
-                    None,
-                ),
-                (FieldName::new("salary").unwrap(), Arc::new(Type::Int), None),
-            ],
-        );
-        let (user_type, registry) = record_def_in(
-            registry,
-            TypeName::new("User").unwrap(),
-            vec![
-                (FieldName::new("role").unwrap(), Arc::new(role_type), None),
-                (
-                    FieldName::new("created_at").unwrap(),
-                    Arc::new(Type::Int),
-                    None,
-                ),
-            ],
-        );
         accept(
-            (Type::Option(Arc::new(user_type)), registry),
+            TypeRegistryBuilder::new()
+                .record("Role", [("title", "String"), ("salary", "Int")])
+                .record("User", [("role", "Role"), ("created_at", "Int")]),
+            "Option[User]",
             indoc! {"
                 match x {
                     Some(User{role: Role{title: _, salary: _}, created_at: _}) => 0,
@@ -2710,39 +2295,11 @@ mod tests {
     #[test]
     fn rejects_record_with_all_effectively_wildcard_fields() {
         // All fields are effectively wildcards (one literal, one nested record)
-        let (address_type, registry) = record_def(
-            TypeName::new("Address").unwrap(),
-            vec![
-                (
-                    FieldName::new("street").unwrap(),
-                    Arc::new(Type::String),
-                    None,
-                ),
-                (
-                    FieldName::new("city").unwrap(),
-                    Arc::new(Type::String),
-                    None,
-                ),
-            ],
-        );
-        let (user_type, registry) = record_def_in(
-            registry,
-            TypeName::new("User").unwrap(),
-            vec![
-                (
-                    FieldName::new("name").unwrap(),
-                    Arc::new(Type::String),
-                    None,
-                ),
-                (
-                    FieldName::new("address").unwrap(),
-                    Arc::new(address_type),
-                    None,
-                ),
-            ],
-        );
         reject(
-            (user_type, registry),
+            TypeRegistryBuilder::new()
+                .record("Address", [("street", "String"), ("city", "String")])
+                .record("User", [("name", "String"), ("address", "Address")]),
+            "User",
             indoc! {"
                 match x {
                     User{name: _, address: Address{street: _, city: _}} => 0,
@@ -2759,31 +2316,11 @@ mod tests {
     #[test]
     fn rejects_record_with_nested_wildcard_fields_followed_by_wildcard() {
         // First arm has all wildcard fields (effectively a wildcard), second arm is unreachable
-        let (role_type, registry) = record_def(
-            TypeName::new("Role").unwrap(),
-            vec![
-                (
-                    FieldName::new("title").unwrap(),
-                    Arc::new(Type::String),
-                    None,
-                ),
-                (FieldName::new("salary").unwrap(), Arc::new(Type::Int), None),
-            ],
-        );
-        let (user_type, registry) = record_def_in(
-            registry,
-            TypeName::new("User").unwrap(),
-            vec![
-                (FieldName::new("role").unwrap(), Arc::new(role_type), None),
-                (
-                    FieldName::new("created_at").unwrap(),
-                    Arc::new(Type::Int),
-                    None,
-                ),
-            ],
-        );
         reject(
-            (user_type, registry),
+            TypeRegistryBuilder::new()
+                .record("Role", [("title", "String"), ("salary", "Int")])
+                .record("User", [("role", "Role"), ("created_at", "Int")]),
+            "User",
             indoc! {"
                 match x {
                     User{role: Role{title: _, salary: _}, created_at: _} => 0,
@@ -2801,39 +2338,11 @@ mod tests {
     #[test]
     fn accepts_record_with_binding_and_nested_wildcard_record() {
         // User has a binding for `name` but `address` is an effectively-wildcard record
-        let (address_type, registry) = record_def(
-            TypeName::new("Address").unwrap(),
-            vec![
-                (
-                    FieldName::new("street").unwrap(),
-                    Arc::new(Type::String),
-                    None,
-                ),
-                (
-                    FieldName::new("city").unwrap(),
-                    Arc::new(Type::String),
-                    None,
-                ),
-            ],
-        );
-        let (user_type, registry) = record_def_in(
-            registry,
-            TypeName::new("User").unwrap(),
-            vec![
-                (
-                    FieldName::new("name").unwrap(),
-                    Arc::new(Type::String),
-                    None,
-                ),
-                (
-                    FieldName::new("address").unwrap(),
-                    Arc::new(address_type),
-                    None,
-                ),
-            ],
-        );
         accept(
-            (user_type, registry),
+            TypeRegistryBuilder::new()
+                .record("Address", [("street", "String"), ("city", "String")])
+                .record("User", [("name", "String"), ("address", "Address")]),
+            "User",
             indoc! {"
                 match x {
                     User{name: n, address: Address{street: _, city: _}} => 0,
@@ -2850,52 +2359,20 @@ mod tests {
     #[test]
     fn accepts_enum_variant_with_binding_and_nested_wildcard_record() {
         // Outcome::Success has a binding for `value` but `metadata` is an effectively-wildcard record
-        let (metadata_type, registry) = record_def(
-            TypeName::new("Metadata").unwrap(),
-            vec![
-                (
-                    FieldName::new("created").unwrap(),
-                    Arc::new(Type::Int),
-                    None,
-                ),
-                (
-                    FieldName::new("updated").unwrap(),
-                    Arc::new(Type::Int),
-                    None,
-                ),
-            ],
-        );
-        let (outcome_type, registry) = enum_def_in(
-            registry,
-            TypeName::new("Outcome").unwrap(),
-            vec![
-                EnumVariant {
-                    name: TypeName::new("Success").unwrap(),
-                    fields: vec![
-                        (
-                            FieldName::new("value").unwrap(),
-                            Arc::new(Type::String),
-                            None,
-                        ),
-                        (
-                            FieldName::new("metadata").unwrap(),
-                            Arc::new(metadata_type),
-                            None,
-                        ),
-                    ],
-                },
-                EnumVariant {
-                    name: TypeName::new("Failure").unwrap(),
-                    fields: vec![(
-                        FieldName::new("message").unwrap(),
-                        Arc::new(Type::String),
-                        None,
-                    )],
-                },
-            ],
-        );
         accept(
-            (outcome_type, registry),
+            TypeRegistryBuilder::new()
+                .record("Metadata", [("created", "Int"), ("updated", "Int")])
+                .enum_(
+                    "Outcome",
+                    [
+                        (
+                            "Success",
+                            vec![("value", "String"), ("metadata", "Metadata")],
+                        ),
+                        ("Failure", vec![("message", "String")]),
+                    ],
+                ),
+            "Outcome",
             indoc! {"
                 match x {
                     Outcome::Success{value: v, metadata: Metadata{created: _, updated: _}} => 0,
@@ -2915,36 +2392,12 @@ mod tests {
     #[test]
     fn accepts_three_level_nested_records_with_middle_binding() {
         // Outer -> Middle (has binding) -> Inner (all wildcards)
-        let (inner_type, registry) = record_def(
-            TypeName::new("Inner").unwrap(),
-            vec![
-                (FieldName::new("x").unwrap(), Arc::new(Type::Int), None),
-                (FieldName::new("y").unwrap(), Arc::new(Type::Int), None),
-            ],
-        );
-        let (middle_type, registry) = record_def_in(
-            registry,
-            TypeName::new("Middle").unwrap(),
-            vec![
-                (
-                    FieldName::new("name").unwrap(),
-                    Arc::new(Type::String),
-                    None,
-                ),
-                (FieldName::new("inner").unwrap(), Arc::new(inner_type), None),
-            ],
-        );
-        let (outer_type, registry) = record_def_in(
-            registry,
-            TypeName::new("Outer").unwrap(),
-            vec![(
-                FieldName::new("middle").unwrap(),
-                Arc::new(middle_type),
-                None,
-            )],
-        );
         accept(
-            (outer_type, registry),
+            TypeRegistryBuilder::new()
+                .record("Inner", [("x", "Int"), ("y", "Int")])
+                .record("Middle", [("name", "String"), ("inner", "Inner")])
+                .record("Outer", [("middle", "Middle")]),
+            "Outer",
             indoc! {"
                 match x {
                     Outer{middle: Middle{name: n, inner: Inner{x: _, y: _}}} => 0,
@@ -2964,7 +2417,8 @@ mod tests {
     #[test]
     fn rejects_match_no_arms() {
         reject(
-            bare(Type::Bool),
+            TypeRegistryBuilder::new(),
+            "Bool",
             "match x {}",
             expect![[r#"
                 error: Match expression must have at least one arm

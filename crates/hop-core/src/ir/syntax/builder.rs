@@ -1,13 +1,15 @@
 use crate::document::CheapString;
-use crate::document_id::DocumentId;
 use crate::expr::Type;
 use crate::expr::patterns::{EnumMatchArm, EnumPattern, Match};
-use crate::expr::typing::r#type::{EnumVariant, EquatableType, ExamplesAnnotation, NamedKind};
-use crate::expr::typing::type_registry::{TypeDef, TypeRegistry};
+use crate::expr::typing::r#type::{EquatableType, NamedKind};
+use crate::expr::typing::type_registry::TypeRegistry;
+use crate::expr::typing::type_registry_builder::{TestTypes, TypeRegistryBuilder};
 use crate::ir::ast::{
     ExprId, IrArgument, IrExpr, IrForSource, IrParameter, IrStatement, StatementId,
 };
-use crate::ir::ast::{IrEnumDeclaration, IrModule, IrRecordDeclaration, IrViewDeclaration};
+use crate::ir::ast::{
+    IrComponentDeclaration, IrEnumDeclaration, IrModule, IrRecordDeclaration, IrViewDeclaration,
+};
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
@@ -16,112 +18,112 @@ use std::collections::BTreeSet;
 use std::rc::Rc;
 use std::sync::Arc;
 
-/// The module all test-built named types are registered under.
-fn test_module() -> DocumentId {
-    DocumentId::new("test.hop").unwrap()
+struct PendingView {
+    name: String,
+    params: Vec<(String, String)>,
+    body_fn: Box<dyn FnOnce(&mut IrBuilder)>,
 }
 
 pub struct IrModuleBuilder {
-    registry: TypeRegistry,
+    types_builder: TypeRegistryBuilder,
     record_names: BTreeSet<TypeName>,
     enum_names: BTreeSet<TypeName>,
-    views: Vec<IrViewDeclaration>,
+    views: Vec<PendingView>,
+    components: Vec<PendingView>,
 }
 
 impl IrModuleBuilder {
     pub fn new() -> Self {
         Self {
-            registry: TypeRegistry::default(),
+            types_builder: TypeRegistryBuilder::new(),
             record_names: BTreeSet::new(),
             enum_names: BTreeSet::new(),
             views: Vec::new(),
+            components: Vec::new(),
         }
     }
 
+    pub fn record<'a>(
+        mut self,
+        name: &str,
+        fields: impl IntoIterator<Item = (&'a str, &'a str)>,
+    ) -> Self {
+        self.types_builder = self.types_builder.record(name, fields);
+        self.record_names.insert(TypeName::new(name).unwrap());
+        self
+    }
+
     /// Define an enum with unit variants (no fields)
-    pub fn enum_decl<I, S>(mut self, name: &str, variants: I) -> Self
-    where
-        I: IntoIterator<Item = S>,
-        S: AsRef<str>,
-    {
-        let variants: Vec<EnumVariant> = variants
-            .into_iter()
-            .map(|s| EnumVariant {
-                name: TypeName::new(s.as_ref()).unwrap(),
-                fields: vec![],
-            })
-            .collect();
-        let type_name = TypeName::new(name).unwrap();
-        self.registry
-            .insert(test_module(), type_name.clone(), TypeDef::Enum { variants });
-        self.enum_names.insert(type_name);
+    pub fn enum_unit<'a>(
+        mut self,
+        name: &str,
+        variants: impl IntoIterator<Item = &'a str>,
+    ) -> Self {
+        self.types_builder = self.types_builder.enum_unit(name, variants);
+        self.enum_names.insert(TypeName::new(name).unwrap());
         self
     }
 
-    /// Define an enum with a builder closure for more complex variants
-    pub fn enum_with_fields<F>(mut self, name: &str, f: F) -> Self
-    where
-        F: FnOnce(&mut EnumBuilder),
-    {
-        let mut builder = EnumBuilder {
-            variants: Vec::new(),
-        };
-        f(&mut builder);
-        let type_name = TypeName::new(name).unwrap();
-        self.registry.insert(
-            test_module(),
-            type_name.clone(),
-            TypeDef::Enum {
-                variants: builder.variants,
-            },
-        );
-        self.enum_names.insert(type_name);
+    /// Define an enum with variants that may carry fields
+    pub fn enum_<'a>(
+        mut self,
+        name: &str,
+        variants: impl IntoIterator<Item = (&'a str, Vec<(&'a str, &'a str)>)>,
+    ) -> Self {
+        self.types_builder = self.types_builder.enum_(name, variants);
+        self.enum_names.insert(TypeName::new(name).unwrap());
         self
     }
 
-    pub fn record<F>(mut self, name: &str, f: F) -> Self
+    pub fn view_no_params<F>(self, name: &str, body_fn: F) -> Self
     where
-        F: FnOnce(&mut RecordBuilder),
+        F: FnOnce(&mut IrBuilder) + 'static,
     {
-        let mut builder = RecordBuilder { fields: Vec::new() };
-        f(&mut builder);
-        let type_name = TypeName::new(name).unwrap();
-        self.registry.insert(
-            test_module(),
-            type_name.clone(),
-            TypeDef::Record {
-                fields: builder.fields,
-            },
-        );
-        self.record_names.insert(type_name);
+        self.view(name, [], body_fn)
+    }
+
+    pub fn view<'a, F>(
+        mut self,
+        name: &str,
+        params: impl IntoIterator<Item = (&'a str, &'a str)>,
+        body_fn: F,
+    ) -> Self
+    where
+        F: FnOnce(&mut IrBuilder) + 'static,
+    {
+        self.views.push(Self::pending(name, params, body_fn));
         self
     }
 
-    pub fn component_no_params<F>(mut self, name: &str, body_fn: F) -> Self
+    pub fn component<'a, F>(
+        mut self,
+        name: &str,
+        params: impl IntoIterator<Item = (&'a str, &'a str)>,
+        body_fn: F,
+    ) -> Self
     where
-        F: FnOnce(&mut IrBuilder),
+        F: FnOnce(&mut IrBuilder) + 'static,
     {
-        let mut builder = IrBuilder::new(vec![], self.registry.clone());
-        body_fn(&mut builder);
-        self.views.push(builder.build(name));
+        self.components.push(Self::pending(name, params, body_fn));
         self
     }
 
-    pub fn component<F, P, T>(mut self, name: &str, params: P, body_fn: F) -> Self
+    fn pending<'a, F>(
+        name: &str,
+        params: impl IntoIterator<Item = (&'a str, &'a str)>,
+        body_fn: F,
+    ) -> PendingView
     where
-        F: FnOnce(&mut IrBuilder),
-        P: IntoIterator<Item = (&'static str, T)>,
-        T: Into<Arc<Type>>,
+        F: FnOnce(&mut IrBuilder) + 'static,
     {
-        let params_owned: Vec<(String, Arc<Type>)> = params
-            .into_iter()
-            .map(|(k, v)| (k.to_string(), v.into()))
-            .collect();
-
-        let mut builder = IrBuilder::new(params_owned, self.registry.clone());
-        body_fn(&mut builder);
-        self.views.push(builder.build(name));
-        self
+        PendingView {
+            name: name.to_string(),
+            params: params
+                .into_iter()
+                .map(|(k, t)| (k.to_string(), t.to_string()))
+                .collect(),
+            body_fn: Box::new(body_fn),
+        }
     }
 
     pub fn build(self) -> IrModule {
@@ -129,47 +131,54 @@ impl IrModuleBuilder {
     }
 
     pub fn build_with_registry(self) -> (IrModule, TypeRegistry) {
-        let module = test_module();
-
-        let enum_declarations: Vec<IrEnumDeclaration> = self
+        let types = self.types_builder.build();
+        let build_pending = |pending: Vec<PendingView>, types: &TestTypes| {
+            pending
+                .into_iter()
+                .map(|pending| {
+                    let params = pending
+                        .params
+                        .iter()
+                        .map(|(k, t)| (k.clone(), types.resolve(t)))
+                        .collect();
+                    let mut builder = IrBuilder::new(params, types.clone());
+                    (pending.body_fn)(&mut builder);
+                    builder.build(&pending.name)
+                })
+                .collect::<Vec<_>>()
+        };
+        let views = build_pending(self.views, &types);
+        let components = build_pending(self.components, &types)
+            .into_iter()
+            .map(|view| IrComponentDeclaration {
+                name: view.name,
+                parameters: view.parameters,
+                body: view.body,
+            })
+            .collect();
+        let enum_declarations = self
             .enum_names
             .iter()
-            .map(|name| {
-                let variants = self
-                    .registry
-                    .enum_variants(&module, name)
-                    .expect("enum must be registered")
-                    .to_vec();
-                IrEnumDeclaration {
-                    name: name.clone(),
-                    variants,
-                }
+            .map(|name| IrEnumDeclaration {
+                name: name.clone(),
+                variants: types.enum_variants(name.as_str()).to_vec(),
             })
             .collect();
-
-        let record_declarations: Vec<IrRecordDeclaration> = self
+        let record_declarations = self
             .record_names
             .iter()
-            .map(|name| {
-                let fields = self
-                    .registry
-                    .record_fields(&module, name)
-                    .expect("record must be registered")
-                    .to_vec();
-                IrRecordDeclaration {
-                    name: name.clone(),
-                    fields,
-                }
+            .map(|name| IrRecordDeclaration {
+                name: name.clone(),
+                fields: types.record_fields(name.as_str()).to_vec(),
             })
             .collect();
-
         let ir_module = IrModule {
-            views: self.views,
-            components: vec![],
+            views,
+            components,
             records: record_declarations,
             enums: enum_declarations,
         };
-        (ir_module, self.registry)
+        (ir_module, types.registry().clone())
     }
 }
 
@@ -179,101 +188,31 @@ impl Default for IrModuleBuilder {
     }
 }
 
-pub struct RecordBuilder {
-    fields: Vec<(FieldName, Arc<Type>, Option<ExamplesAnnotation>)>,
-}
-
-impl RecordBuilder {
-    pub fn field(&mut self, name: &str, typ: impl Into<Arc<Type>>) -> &mut Self {
-        self.fields
-            .push((FieldName::new(name).unwrap(), typ.into(), None));
-        self
-    }
-}
-
-/// Builder for defining enum variants with optional fields
-pub struct EnumBuilder {
-    variants: Vec<EnumVariant>,
-}
-
-impl EnumBuilder {
-    /// Add a unit variant (no fields)
-    pub fn variant(&mut self, name: &str) -> &mut Self {
-        self.variants.push(EnumVariant {
-            name: TypeName::new(name).unwrap(),
-            fields: vec![],
-        });
-        self
-    }
-
-    /// Add a variant with fields
-    pub fn variant_with_fields<T: Into<Arc<Type>>>(
-        &mut self,
-        name: &str,
-        fields: Vec<(&str, T)>,
-    ) -> &mut Self {
-        self.variants.push(EnumVariant {
-            name: TypeName::new(name).unwrap(),
-            fields: fields
-                .into_iter()
-                .map(|(n, t)| (FieldName::new(n).unwrap(), t.into(), None))
-                .collect(),
-        });
-        self
-    }
-}
-
 pub fn build_ir_no_params<F>(name: &str, body_fn: F) -> IrViewDeclaration
 where
     F: FnOnce(&mut IrBuilder),
 {
-    let mut builder = IrBuilder::new(vec![], TypeRegistry::default());
+    let mut builder = IrBuilder::new(vec![], TestTypes::empty());
     body_fn(&mut builder);
     builder.build(name)
 }
 
-pub fn build_ir<F, P, T>(name: &str, params: P, body_fn: F) -> IrViewDeclaration
-where
-    F: FnOnce(&mut IrBuilder),
-    P: IntoIterator<Item = (&'static str, T)>,
-    T: Into<Arc<Type>>,
-{
-    let params_owned: Vec<(String, Arc<Type>)> = params
-        .into_iter()
-        .map(|(k, v)| (k.to_string(), v.into()))
-        .collect();
-    let mut builder = IrBuilder::new(params_owned, TypeRegistry::default());
-    body_fn(&mut builder);
-    builder.build(name)
-}
-
-pub fn build_ir_with_enums_no_params<F>(
+pub fn build_ir<'a, F>(
     name: &str,
-    enums: Vec<(&str, Vec<&str>)>,
+    params: impl IntoIterator<Item = (&'a str, &'a str)>,
     body_fn: F,
-) -> (IrViewDeclaration, TypeRegistry)
+) -> IrViewDeclaration
 where
     F: FnOnce(&mut IrBuilder),
 {
-    let mut registry = TypeRegistry::default();
-    for (enum_name, variants) in &enums {
-        let variants: Vec<EnumVariant> = variants
-            .iter()
-            .map(|v| EnumVariant {
-                name: TypeName::new(v).unwrap(),
-                fields: vec![],
-            })
-            .collect();
-        registry.insert(
-            test_module(),
-            TypeName::new(enum_name).unwrap(),
-            TypeDef::Enum { variants },
-        );
-    }
-
-    let mut builder = IrBuilder::new(vec![], registry.clone());
+    let types = TestTypes::empty();
+    let params = params
+        .into_iter()
+        .map(|(k, t)| (k.to_string(), types.resolve(t)))
+        .collect();
+    let mut builder = IrBuilder::new(params, types);
     body_fn(&mut builder);
-    (builder.build(name), registry)
+    builder.build(name)
 }
 
 pub struct IrBuilder {
@@ -281,12 +220,12 @@ pub struct IrBuilder {
     next_node_id: Rc<RefCell<StatementId>>,
     var_stack: RefCell<Vec<(String, Arc<Type>)>>,
     params: Vec<IrParameter>,
-    registry: TypeRegistry,
+    types: TestTypes,
     statements: Vec<IrStatement>,
 }
 
 impl IrBuilder {
-    fn new(params: Vec<(String, Arc<Type>)>, registry: TypeRegistry) -> Self {
+    fn new(params: Vec<(String, Arc<Type>)>, types: TestTypes) -> Self {
         let initial_vars = params.clone();
 
         Self {
@@ -300,7 +239,7 @@ impl IrBuilder {
                     typ: t,
                 })
                 .collect(),
-            registry,
+            types,
             statements: Vec::new(),
         }
     }
@@ -311,7 +250,7 @@ impl IrBuilder {
             next_node_id: self.next_node_id.clone(),
             var_stack: self.var_stack.clone(),
             params: self.params.clone(),
-            registry: self.registry.clone(),
+            types: self.types.clone(),
             statements: Vec::new(),
         }
     }
@@ -448,12 +387,8 @@ impl IrBuilder {
     }
 
     pub fn record(&self, record_name: &str, fields: Vec<(&str, IrExpr)>) -> IrExpr {
-        let module = test_module();
         let name = TypeName::new(record_name).unwrap();
-        let record_fields = self
-            .registry
-            .record_fields(&module, &name)
-            .unwrap_or_else(|| panic!("Record '{}' not found in test builder", record_name));
+        let record_fields = self.types.record_fields(record_name);
 
         for (field_name, _) in &fields {
             if !record_fields
@@ -468,16 +403,12 @@ impl IrBuilder {
         }
 
         IrExpr::RecordLiteral {
-            record_name: name.clone(),
+            record_name: name,
             fields: fields
                 .into_iter()
                 .map(|(k, v)| (FieldName::new(k).unwrap(), v))
                 .collect(),
-            kind: Arc::new(Type::Named {
-                module,
-                name,
-                kind: NamedKind::Record,
-            }),
+            kind: self.types.named(record_name),
             id: self.next_expr_id(),
         }
     }
@@ -494,12 +425,8 @@ impl IrBuilder {
         variant_name: &str,
         field_values: Vec<(&str, IrExpr)>,
     ) -> IrExpr {
-        let module = test_module();
         let name = TypeName::new(enum_name).unwrap();
-        let variants = self
-            .registry
-            .enum_variants(&module, &name)
-            .unwrap_or_else(|| panic!("Enum '{}' not found in test builder", enum_name));
+        let variants = self.types.enum_variants(enum_name);
 
         if !variants.iter().any(|v| v.name.as_str() == variant_name) {
             let variant_names: Vec<&str> = variants.iter().map(|v| v.name.as_str()).collect();
@@ -510,17 +437,13 @@ impl IrBuilder {
         }
 
         IrExpr::EnumLiteral {
-            enum_name: name.clone(),
+            enum_name: name,
             variant_name: TypeName::new(variant_name).unwrap(),
             fields: field_values
                 .into_iter()
                 .map(|(k, v)| (FieldName::new(k).unwrap(), v))
                 .collect(),
-            kind: Arc::new(Type::Named {
-                module,
-                name,
-                kind: NamedKind::Enum,
-            }),
+            kind: self.types.named(enum_name),
             id: self.next_expr_id(),
         }
     }
@@ -674,18 +597,15 @@ impl IrBuilder {
         arms: Vec<(&str, Vec<(&str, &str)>, Box<dyn FnOnce(&Self) -> IrExpr>)>,
     ) -> IrExpr {
         let Type::Named {
-            module,
             name,
             kind: NamedKind::Enum,
+            ..
         } = subject.as_type()
         else {
             panic!("Match subject must be an enum type")
         };
         let enum_name = name.clone();
-        let variants = self
-            .registry
-            .enum_variants(module, name)
-            .expect("enum must be registered");
+        let variants = self.types.enum_variants(name.as_str());
 
         // Use the type of the first arm's body as the result type (computed after building arms)
         let mut result_type: Option<Arc<Type>> = None;
@@ -757,13 +677,14 @@ impl IrBuilder {
         let field_name = FieldName::new(field_str).unwrap();
         let field_type = match object.as_type() {
             Type::Named {
-                module,
                 name: record_name,
                 kind: NamedKind::Record,
+                ..
             } => self
-                .registry
-                .record_fields(module, record_name)
-                .and_then(|fields| fields.iter().find(|(f, _, _)| f.as_str() == field_str))
+                .types
+                .record_fields(record_name.as_str())
+                .iter()
+                .find(|(f, _, _)| f.as_str() == field_str)
                 .map(|(_, t, _)| t.clone())
                 .unwrap_or_else(|| {
                     panic!(
@@ -1094,18 +1015,15 @@ impl IrBuilder {
         use crate::expr::patterns::Match;
 
         let Type::Named {
-            module,
             name,
             kind: NamedKind::Enum,
+            ..
         } = subject.as_type()
         else {
             panic!("Match subject must be an enum type")
         };
         let enum_name = name.clone();
-        let variants = self
-            .registry
-            .enum_variants(module, name)
-            .expect("enum must be registered");
+        let variants = self.types.enum_variants(name.as_str());
 
         let ir_arms: Vec<EnumMatchArm<Vec<IrStatement>>> = arms
             .into_iter()
@@ -1176,17 +1094,14 @@ impl IrBuilder {
         F: FnOnce(&mut Self),
     {
         let Type::Named {
-            module,
             name: record_name,
             kind: NamedKind::Record,
+            ..
         } = subject.as_type()
         else {
             panic!("record_destructure_stmt subject must be a record type")
         };
-        let record_fields = self
-            .registry
-            .record_fields(module, record_name)
-            .expect("record must be registered");
+        let record_fields = self.types.record_fields(record_name.as_str());
 
         let ir_bindings: Vec<(FieldName, VarName)> = bindings
             .iter()
@@ -1221,19 +1136,21 @@ impl IrBuilder {
         });
     }
 
-    /// Emit a component invocation with no children.
-    pub fn component_ref(&mut self, component_name: &str, args: Vec<(&str, IrExpr)>) {
+    /// Invoke a component by name with the given arguments.
+    /// No validation is done against the invoked component's params,
+    /// since components may still be pending at the point of the call.
+    pub fn invoke_component(&mut self, name: &str, args: Vec<(&str, IrExpr)>) {
         let ir_args: Vec<IrArgument> = args
             .into_iter()
-            .map(|(name, expr)| IrArgument {
-                name: VarName::try_from(name.to_string()).unwrap(),
+            .map(|(k, expr)| IrArgument {
+                name: VarName::new(k).unwrap(),
                 expr,
             })
             .collect();
 
         self.statements.push(IrStatement::ComponentInvocation {
             id: self.next_node_id(),
-            component_name: TypeName::new(component_name).unwrap(),
+            component_name: TypeName::new(name).unwrap(),
             args: ir_args,
         });
     }

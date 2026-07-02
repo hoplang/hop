@@ -722,9 +722,8 @@ impl PartialEvaluationPass {
 #[cfg(test)]
 mod tests {
     use crate::ir::{
-        IrModule,
         ast::IrViewDeclaration,
-        syntax::builder::{build_ir_no_params, build_ir_with_enums_no_params},
+        syntax::builder::{IrModuleBuilder, build_ir_no_params},
     };
     use expect_test::{Expect, expect};
 
@@ -738,20 +737,16 @@ mod tests {
         expected.assert_eq(&output);
     }
 
-    fn check_with_enums(built: (IrViewDeclaration, TypeRegistry), expected: Expect) {
-        let (mut view, registry) = built;
+    /// Run the pass on a module's first view, using the module's own registry
+    /// to resolve named type structure.
+    fn check_module(builder: IrModuleBuilder, expected: Expect) {
+        let (module, registry) = builder.build_with_registry();
+        let mut view = module.views.into_iter().next().unwrap();
         let before = view.to_string();
         PartialEvaluationPass::run(&mut view.body, &registry);
         let after = view.to_string();
         let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
         expected.assert_eq(&output);
-    }
-
-    /// Run the pass on a module's first view, using the module's own registry
-    /// to resolve named type structure.
-    fn check_module_view(module: IrModule, registry: TypeRegistry, expected: Expect) {
-        let view = module.views.into_iter().next().unwrap();
-        check_with_enums((view, registry), expected);
     }
 
     #[test]
@@ -1259,15 +1254,17 @@ mod tests {
 
     #[test]
     fn should_evaluate_simple_match_expression() {
-        check_with_enums(
-            build_ir_with_enums_no_params("Test", vec![("Color", vec!["Red", "Blue"])], |t| {
-                t.let_stmt("color", t.enum_variant("Color", "Red"), |t| {
-                    t.write_expr_escaped(t.match_expr(
-                        t.var("color"),
-                        vec![("Red", t.str("red")), ("Blue", t.str("blue"))],
-                    ));
-                });
-            }),
+        check_module(
+            IrModuleBuilder::new()
+                .enum_unit("Color", ["Red", "Blue"])
+                .view_no_params("Test", |t| {
+                    t.let_stmt("color", t.enum_variant("Color", "Red"), |t| {
+                        t.write_expr_escaped(t.match_expr(
+                            t.var("color"),
+                            vec![("Red", t.str("red")), ("Blue", t.str("blue"))],
+                        ));
+                    });
+                }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -1291,13 +1288,15 @@ mod tests {
 
     #[test]
     fn should_evaluate_match_with_literal_subject() {
-        check_with_enums(
-            build_ir_with_enums_no_params("Test", vec![("Color", vec!["Red", "Blue"])], |t| {
-                t.write_expr_escaped(t.match_expr(
-                    t.enum_variant("Color", "Blue"),
-                    vec![("Red", t.str("red")), ("Blue", t.str("blue"))],
-                ));
-            }),
+        check_module(
+            IrModuleBuilder::new()
+                .enum_unit("Color", ["Red", "Blue"])
+                .view_no_params("Test", |t| {
+                    t.write_expr_escaped(t.match_expr(
+                        t.enum_variant("Color", "Blue"),
+                        vec![("Red", t.str("red")), ("Blue", t.str("blue"))],
+                    ));
+                }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -1366,15 +1365,17 @@ mod tests {
 
     #[test]
     fn should_evaluate_match_with_variable_subject() {
-        check_with_enums(
-            build_ir_with_enums_no_params("Test", vec![("Color", vec!["Red", "Blue"])], |t| {
-                t.let_stmt("color", t.enum_variant("Color", "Blue"), |t| {
-                    t.write_expr_escaped(t.match_expr(
-                        t.var("color"),
-                        vec![("Red", t.str("red")), ("Blue", t.str("blue"))],
-                    ));
-                });
-            }),
+        check_module(
+            IrModuleBuilder::new()
+                .enum_unit("Color", ["Red", "Blue"])
+                .view_no_params("Test", |t| {
+                    t.let_stmt("color", t.enum_variant("Color", "Blue"), |t| {
+                        t.write_expr_escaped(t.match_expr(
+                            t.var("color"),
+                            vec![("Red", t.str("red")), ("Blue", t.str("blue"))],
+                        ));
+                    });
+                }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -1398,20 +1399,22 @@ mod tests {
 
     #[test]
     fn should_evaluate_match_with_constant_arm_body() {
-        check_with_enums(
-            build_ir_with_enums_no_params("Test", vec![("Color", vec!["Red", "Blue"])], |t| {
-                t.let_stmt("color", t.enum_variant("Color", "Red"), |t| {
-                    t.if_stmt(
-                        t.match_expr(
-                            t.var("color"),
-                            vec![("Red", t.not(t.bool(false))), ("Blue", t.bool(false))],
-                        ),
-                        |t| {
-                            t.write("Match evaluated to true");
-                        },
-                    );
-                });
-            }),
+        check_module(
+            IrModuleBuilder::new()
+                .enum_unit("Color", ["Red", "Blue"])
+                .view_no_params("Test", |t| {
+                    t.let_stmt("color", t.enum_variant("Color", "Red"), |t| {
+                        t.if_stmt(
+                            t.match_expr(
+                                t.var("color"),
+                                vec![("Red", t.not(t.bool(false))), ("Blue", t.bool(false))],
+                            ),
+                            |t| {
+                                t.write("Match evaluated to true");
+                            },
+                        );
+                    });
+                }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -1439,11 +1442,10 @@ mod tests {
 
     #[test]
     fn should_evaluate_nested_match_in_equality() {
-        check_with_enums(
-            build_ir_with_enums_no_params(
-                "Test",
-                vec![("Status", vec!["Active", "Inactive"])],
-                |t| {
+        check_module(
+            IrModuleBuilder::new()
+                .enum_unit("Status", ["Active", "Inactive"])
+                .view_no_params("Test", |t| {
                     t.let_stmt("status", t.enum_variant("Status", "Active"), |t| {
                         t.if_stmt(
                             t.eq(
@@ -1458,8 +1460,7 @@ mod tests {
                             },
                         );
                     });
-                },
-            ),
+                }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -1487,17 +1488,19 @@ mod tests {
 
     #[test]
     fn should_propagate_enum_constant_through_variables() {
-        check_with_enums(
-            build_ir_with_enums_no_params("Test", vec![("Color", vec!["Red", "Blue"])], |t| {
-                t.let_stmt("x", t.enum_variant("Color", "Red"), |t| {
-                    t.let_stmt("y", t.var("x"), |t| {
-                        t.write_expr_escaped(t.match_expr(
-                            t.var("y"),
-                            vec![("Red", t.str("red")), ("Blue", t.str("blue"))],
-                        ));
+        check_module(
+            IrModuleBuilder::new()
+                .enum_unit("Color", ["Red", "Blue"])
+                .view_no_params("Test", |t| {
+                    t.let_stmt("x", t.enum_variant("Color", "Red"), |t| {
+                        t.let_stmt("y", t.var("x"), |t| {
+                            t.write_expr_escaped(t.match_expr(
+                                t.var("y"),
+                                vec![("Red", t.str("red")), ("Blue", t.str("blue"))],
+                            ));
+                        });
                     });
-                });
-            }),
+                }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -1560,25 +1563,16 @@ mod tests {
 
     #[test]
     fn should_preserve_enum_variant_fields() {
-        use crate::expr::Type;
-        use crate::ir::syntax::builder::IrModuleBuilder;
-
-        let (module, registry) = IrModuleBuilder::new()
-            .enum_with_fields("Msg", |e| {
-                e.variant_with_fields("Say", vec![("text", Type::String)]);
-            })
-            .component_no_params("Test", |t| {
-                t.let_stmt(
-                    "x",
-                    t.enum_variant_with_fields("Msg", "Say", vec![("text", t.str("hi"))]),
-                    |_| {},
-                );
-            })
-            .build_with_registry();
-
-        check_module_view(
-            module,
-            registry,
+        check_module(
+            IrModuleBuilder::new()
+                .enum_("Msg", [("Say", vec![("text", "String")])])
+                .view_no_params("Test", |t| {
+                    t.let_stmt(
+                        "x",
+                        t.enum_variant_with_fields("Msg", "Say", vec![("text", t.str("hi"))]),
+                        |_| {},
+                    );
+                }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -1717,19 +1711,21 @@ mod tests {
 
     #[test]
     fn should_evaluate_tw_merge_with_enum_match() {
-        check_with_enums(
-            build_ir_with_enums_no_params("Test", vec![("Size", vec!["Small", "Large"])], |t| {
-                t.let_stmt("size", t.enum_variant("Size", "Large"), |t| {
-                    let classes = t.join(vec![
-                        t.str("px-4"),
-                        t.match_expr(
-                            t.var("size"),
-                            vec![("Small", t.str("text-sm")), ("Large", t.str("text-lg"))],
-                        ),
-                    ]);
-                    t.write_expr_escaped(t.tw_merge(classes));
-                });
-            }),
+        check_module(
+            IrModuleBuilder::new()
+                .enum_unit("Size", ["Small", "Large"])
+                .view_no_params("Test", |t| {
+                    t.let_stmt("size", t.enum_variant("Size", "Large"), |t| {
+                        let classes = t.join(vec![
+                            t.str("px-4"),
+                            t.match_expr(
+                                t.var("size"),
+                                vec![("Small", t.str("text-sm")), ("Large", t.str("text-lg"))],
+                            ),
+                        ]);
+                        t.write_expr_escaped(t.tw_merge(classes));
+                    });
+                }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -1753,22 +1749,24 @@ mod tests {
 
     #[test]
     fn should_evaluate_join_with_enum_match_containing_join() {
-        check_with_enums(
-            build_ir_with_enums_no_params("Test", vec![("Size", vec!["Small", "Large"])], |t| {
-                t.let_stmt("size", t.enum_variant("Size", "Large"), |t| {
-                    let classes = t.join(vec![
-                        t.str("flex"),
-                        t.match_expr(
-                            t.var("size"),
-                            vec![
-                                ("Small", t.join(vec![t.str("p-2"), t.str("text-sm")])),
-                                ("Large", t.join(vec![t.str("p-4"), t.str("text-lg")])),
-                            ],
-                        ),
-                    ]);
-                    t.write_expr_escaped(t.tw_merge(classes));
-                });
-            }),
+        check_module(
+            IrModuleBuilder::new()
+                .enum_unit("Size", ["Small", "Large"])
+                .view_no_params("Test", |t| {
+                    t.let_stmt("size", t.enum_variant("Size", "Large"), |t| {
+                        let classes = t.join(vec![
+                            t.str("flex"),
+                            t.match_expr(
+                                t.var("size"),
+                                vec![
+                                    ("Small", t.join(vec![t.str("p-2"), t.str("text-sm")])),
+                                    ("Large", t.join(vec![t.str("p-4"), t.str("text-lg")])),
+                                ],
+                            ),
+                        ]);
+                        t.write_expr_escaped(t.tw_merge(classes));
+                    });
+                }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -2135,34 +2133,27 @@ mod tests {
 
     #[test]
     fn should_propagate_enum_binding_value() {
-        use crate::expr::Type;
-        use crate::ir::syntax::builder::{IrBuilder, IrModuleBuilder};
+        use crate::ir::syntax::builder::IrBuilder;
 
-        let (module, registry) = IrModuleBuilder::new()
-            .enum_with_fields("Msg", |e| {
-                e.variant_with_fields("Say", vec![("text", Type::String)]);
-            })
-            .component_no_params("Test", |t| {
-                t.let_stmt(
-                    "msg",
-                    t.enum_variant_with_fields("Msg", "Say", vec![("text", t.str("hello"))]),
-                    |t| {
-                        t.write_expr_escaped(t.match_expr_with_bindings(
-                            t.var("msg"),
-                            vec![(
-                                "Say",
-                                vec![("text", "t")],
-                                Box::new(|t: &IrBuilder| t.var("t")),
-                            )],
-                        ));
-                    },
-                );
-            })
-            .build_with_registry();
-
-        check_module_view(
-            module,
-            registry,
+        check_module(
+            IrModuleBuilder::new()
+                .enum_("Msg", [("Say", vec![("text", "String")])])
+                .view_no_params("Test", |t| {
+                    t.let_stmt(
+                        "msg",
+                        t.enum_variant_with_fields("Msg", "Say", vec![("text", t.str("hello"))]),
+                        |t| {
+                            t.write_expr_escaped(t.match_expr_with_bindings(
+                                t.var("msg"),
+                                vec![(
+                                    "Say",
+                                    vec![("text", "t")],
+                                    Box::new(|t: &IrBuilder| t.var("t")),
+                                )],
+                            ));
+                        },
+                    );
+                }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -2183,36 +2174,29 @@ mod tests {
 
     #[test]
     fn should_propagate_enum_binding_in_string_concat() {
-        use crate::expr::Type;
-        use crate::ir::syntax::builder::{IrBuilder, IrModuleBuilder};
+        use crate::ir::syntax::builder::IrBuilder;
 
-        let (module, registry) = IrModuleBuilder::new()
-            .enum_with_fields("Msg", |e| {
-                e.variant_with_fields("Say", vec![("text", Type::String)]);
-            })
-            .component_no_params("Test", |t| {
-                t.let_stmt(
-                    "msg",
-                    t.enum_variant_with_fields("Msg", "Say", vec![("text", t.str("world"))]),
-                    |t| {
-                        t.write_expr_escaped(t.match_expr_with_bindings(
-                            t.var("msg"),
-                            vec![(
-                                "Say",
-                                vec![("text", "t")],
-                                Box::new(|t: &IrBuilder| {
-                                    t.string_concat(t.str("hello "), t.var("t"))
-                                }),
-                            )],
-                        ));
-                    },
-                );
-            })
-            .build_with_registry();
-
-        check_module_view(
-            module,
-            registry,
+        check_module(
+            IrModuleBuilder::new()
+                .enum_("Msg", [("Say", vec![("text", "String")])])
+                .view_no_params("Test", |t| {
+                    t.let_stmt(
+                        "msg",
+                        t.enum_variant_with_fields("Msg", "Say", vec![("text", t.str("world"))]),
+                        |t| {
+                            t.write_expr_escaped(t.match_expr_with_bindings(
+                                t.var("msg"),
+                                vec![(
+                                    "Say",
+                                    vec![("text", "t")],
+                                    Box::new(|t: &IrBuilder| {
+                                        t.string_concat(t.str("hello "), t.var("t"))
+                                    }),
+                                )],
+                            ));
+                        },
+                    );
+                }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -2235,39 +2219,32 @@ mod tests {
 
     #[test]
     fn should_propagate_enum_binding_in_equality() {
-        use crate::expr::Type;
-        use crate::ir::syntax::builder::{IrBuilder, IrModuleBuilder};
+        use crate::ir::syntax::builder::IrBuilder;
 
-        let (module, registry) = IrModuleBuilder::new()
-            .enum_with_fields("Msg", |e| {
-                e.variant_with_fields("Say", vec![("text", Type::String)]);
-            })
-            .component_no_params("Test", |t| {
-                t.let_stmt(
-                    "msg",
-                    t.enum_variant_with_fields("Msg", "Say", vec![("text", t.str("hello"))]),
-                    |t| {
-                        t.if_stmt(
-                            t.match_expr_with_bindings(
-                                t.var("msg"),
-                                vec![(
-                                    "Say",
-                                    vec![("text", "t")],
-                                    Box::new(|t: &IrBuilder| t.eq(t.var("t"), t.str("hello"))),
-                                )],
-                            ),
-                            |t| {
-                                t.write("matched hello");
-                            },
-                        );
-                    },
-                );
-            })
-            .build_with_registry();
-
-        check_module_view(
-            module,
-            registry,
+        check_module(
+            IrModuleBuilder::new()
+                .enum_("Msg", [("Say", vec![("text", "String")])])
+                .view_no_params("Test", |t| {
+                    t.let_stmt(
+                        "msg",
+                        t.enum_variant_with_fields("Msg", "Say", vec![("text", t.str("hello"))]),
+                        |t| {
+                            t.if_stmt(
+                                t.match_expr_with_bindings(
+                                    t.var("msg"),
+                                    vec![(
+                                        "Say",
+                                        vec![("text", "t")],
+                                        Box::new(|t: &IrBuilder| t.eq(t.var("t"), t.str("hello"))),
+                                    )],
+                                ),
+                                |t| {
+                                    t.write("matched hello");
+                                },
+                            );
+                        },
+                    );
+                }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -2292,37 +2269,30 @@ mod tests {
 
     #[test]
     fn should_propagate_enum_binding_through_variable() {
-        use crate::expr::Type;
-        use crate::ir::syntax::builder::{IrBuilder, IrModuleBuilder};
+        use crate::ir::syntax::builder::IrBuilder;
 
         // Test that enum bindings work when the subject is propagated through a variable
-        let (module, registry) = IrModuleBuilder::new()
-            .enum_with_fields("Msg", |e| {
-                e.variant_with_fields("Say", vec![("text", Type::String)]);
-            })
-            .component_no_params("Test", |t| {
-                t.let_stmt(
-                    "x",
-                    t.enum_variant_with_fields("Msg", "Say", vec![("text", t.str("hello"))]),
-                    |t| {
-                        t.let_stmt("y", t.var("x"), |t| {
-                            t.write_expr_escaped(t.match_expr_with_bindings(
-                                t.var("y"),
-                                vec![(
-                                    "Say",
-                                    vec![("text", "t")],
-                                    Box::new(|t: &IrBuilder| t.var("t")),
-                                )],
-                            ));
-                        });
-                    },
-                );
-            })
-            .build_with_registry();
-
-        check_module_view(
-            module,
-            registry,
+        check_module(
+            IrModuleBuilder::new()
+                .enum_("Msg", [("Say", vec![("text", "String")])])
+                .view_no_params("Test", |t| {
+                    t.let_stmt(
+                        "x",
+                        t.enum_variant_with_fields("Msg", "Say", vec![("text", t.str("hello"))]),
+                        |t| {
+                            t.let_stmt("y", t.var("x"), |t| {
+                                t.write_expr_escaped(t.match_expr_with_bindings(
+                                    t.var("y"),
+                                    vec![(
+                                        "Say",
+                                        vec![("text", "t")],
+                                        Box::new(|t: &IrBuilder| t.var("t")),
+                                    )],
+                                ));
+                            });
+                        },
+                    );
+                }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -2347,47 +2317,40 @@ mod tests {
 
     #[test]
     fn should_propagate_multiple_enum_bindings() {
-        use crate::expr::Type;
-        use crate::ir::syntax::builder::{IrBuilder, IrModuleBuilder};
+        use crate::ir::syntax::builder::IrBuilder;
 
         // Test multiple field bindings in a single variant
-        let (module, registry) = IrModuleBuilder::new()
-            .enum_with_fields("Pair", |e| {
-                e.variant_with_fields(
-                    "Values",
-                    vec![("first", Type::String), ("second", Type::String)],
-                );
-            })
-            .component_no_params("Test", |t| {
-                t.let_stmt(
-                    "pair",
-                    t.enum_variant_with_fields(
-                        "Pair",
-                        "Values",
-                        vec![("first", t.str("hello")), ("second", t.str("world"))],
-                    ),
-                    |t| {
-                        t.write_expr_escaped(t.match_expr_with_bindings(
-                            t.var("pair"),
-                            vec![(
-                                "Values",
-                                vec![("first", "a"), ("second", "b")],
-                                Box::new(|t: &IrBuilder| {
-                                    t.string_concat(
-                                        t.var("a"),
-                                        t.string_concat(t.str(" "), t.var("b")),
-                                    )
-                                }),
-                            )],
-                        ));
-                    },
-                );
-            })
-            .build_with_registry();
-
-        check_module_view(
-            module,
-            registry,
+        check_module(
+            IrModuleBuilder::new()
+                .enum_(
+                    "Pair",
+                    [("Values", vec![("first", "String"), ("second", "String")])],
+                )
+                .view_no_params("Test", |t| {
+                    t.let_stmt(
+                        "pair",
+                        t.enum_variant_with_fields(
+                            "Pair",
+                            "Values",
+                            vec![("first", t.str("hello")), ("second", t.str("world"))],
+                        ),
+                        |t| {
+                            t.write_expr_escaped(t.match_expr_with_bindings(
+                                t.var("pair"),
+                                vec![(
+                                    "Values",
+                                    vec![("first", "a"), ("second", "b")],
+                                    Box::new(|t: &IrBuilder| {
+                                        t.string_concat(
+                                            t.var("a"),
+                                            t.string_concat(t.str(" "), t.var("b")),
+                                        )
+                                    }),
+                                )],
+                            ));
+                        },
+                    );
+                }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -2410,45 +2373,47 @@ mod tests {
 
     #[test]
     fn should_evaluate_enum_match_selecting_correct_arm_with_bindings() {
-        use crate::expr::Type;
-        use crate::ir::syntax::builder::{IrBuilder, IrModuleBuilder};
+        use crate::ir::syntax::builder::IrBuilder;
 
         // Test that when we have multiple variants, we select the correct arm
-        let (module, registry) = IrModuleBuilder::new()
-            .enum_with_fields("Result", |e| {
-                e.variant_with_fields("Ok", vec![("value", Type::String)]);
-                e.variant_with_fields("Err", vec![("msg", Type::String)]);
-            })
-            .component_no_params("Test", |t| {
-                t.let_stmt(
-                    "result",
-                    t.enum_variant_with_fields("Result", "Ok", vec![("value", t.str("success"))]),
-                    |t| {
-                        t.write_expr_escaped(t.match_expr_with_bindings(
-                            t.var("result"),
-                            vec![
-                                (
-                                    "Ok",
-                                    vec![("value", "v")],
-                                    Box::new(|t: &IrBuilder| t.var("v")),
-                                ),
-                                (
-                                    "Err",
-                                    vec![("msg", "m")],
-                                    Box::new(|t: &IrBuilder| {
-                                        t.string_concat(t.str("error: "), t.var("m"))
-                                    }),
-                                ),
-                            ],
-                        ));
-                    },
-                );
-            })
-            .build_with_registry();
-
-        check_module_view(
-            module,
-            registry,
+        check_module(
+            IrModuleBuilder::new()
+                .enum_(
+                    "Result",
+                    [
+                        ("Ok", vec![("value", "String")]),
+                        ("Err", vec![("msg", "String")]),
+                    ],
+                )
+                .view_no_params("Test", |t| {
+                    t.let_stmt(
+                        "result",
+                        t.enum_variant_with_fields(
+                            "Result",
+                            "Ok",
+                            vec![("value", t.str("success"))],
+                        ),
+                        |t| {
+                            t.write_expr_escaped(t.match_expr_with_bindings(
+                                t.var("result"),
+                                vec![
+                                    (
+                                        "Ok",
+                                        vec![("value", "v")],
+                                        Box::new(|t: &IrBuilder| t.var("v")),
+                                    ),
+                                    (
+                                        "Err",
+                                        vec![("msg", "m")],
+                                        Box::new(|t: &IrBuilder| {
+                                            t.string_concat(t.str("error: "), t.var("m"))
+                                        }),
+                                    ),
+                                ],
+                            ));
+                        },
+                    );
+                }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -2472,59 +2437,52 @@ mod tests {
 
     #[test]
     fn should_propagate_enum_binding_through_match_arm_selection() {
-        use crate::expr::Type;
-        use crate::ir::syntax::builder::{IrBuilder, IrModuleBuilder};
+        use crate::ir::syntax::builder::IrBuilder;
 
         // When a match expression selects an arm that returns an enum with fields,
         // those field values should propagate to subsequent matches on the result.
-        let (module, registry) = IrModuleBuilder::new()
-            .enum_decl("Choice", ["A", "B"])
-            .enum_with_fields("Msg", |e| {
-                e.variant_with_fields("Say", vec![("text", Type::String)]);
-            })
-            .component_no_params("Test", |t| {
-                t.let_stmt("choice", t.enum_variant("Choice", "A"), |t| {
-                    t.let_stmt(
-                        "x",
-                        t.match_expr(
-                            t.var("choice"),
-                            vec![
-                                (
-                                    "A",
-                                    t.enum_variant_with_fields(
-                                        "Msg",
-                                        "Say",
-                                        vec![("text", t.str("hello"))],
+        check_module(
+            IrModuleBuilder::new()
+                .enum_unit("Choice", ["A", "B"])
+                .enum_("Msg", [("Say", vec![("text", "String")])])
+                .view_no_params("Test", |t| {
+                    t.let_stmt("choice", t.enum_variant("Choice", "A"), |t| {
+                        t.let_stmt(
+                            "x",
+                            t.match_expr(
+                                t.var("choice"),
+                                vec![
+                                    (
+                                        "A",
+                                        t.enum_variant_with_fields(
+                                            "Msg",
+                                            "Say",
+                                            vec![("text", t.str("hello"))],
+                                        ),
                                     ),
-                                ),
-                                (
-                                    "B",
-                                    t.enum_variant_with_fields(
-                                        "Msg",
-                                        "Say",
-                                        vec![("text", t.str("world"))],
+                                    (
+                                        "B",
+                                        t.enum_variant_with_fields(
+                                            "Msg",
+                                            "Say",
+                                            vec![("text", t.str("world"))],
+                                        ),
                                     ),
-                                ),
-                            ],
-                        ),
-                        |t| {
-                            t.write_expr_escaped(t.match_expr_with_bindings(
-                                t.var("x"),
-                                vec![(
-                                    "Say",
-                                    vec![("text", "t")],
-                                    Box::new(|t: &IrBuilder| t.var("t")),
-                                )],
-                            ));
-                        },
-                    );
-                });
-            })
-            .build_with_registry();
-
-        check_module_view(
-            module,
-            registry,
+                                ],
+                            ),
+                            |t| {
+                                t.write_expr_escaped(t.match_expr_with_bindings(
+                                    t.var("x"),
+                                    vec![(
+                                        "Say",
+                                        vec![("text", "t")],
+                                        Box::new(|t: &IrBuilder| t.var("t")),
+                                    )],
+                                ));
+                            },
+                        );
+                    });
+                }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -2681,65 +2639,58 @@ mod tests {
 
     #[test]
     fn enum_binding_through_let_in_match_arm() {
-        use crate::expr::Type;
-        use crate::ir::syntax::builder::{IrBuilder, IrModuleBuilder};
+        use crate::ir::syntax::builder::IrBuilder;
 
         // Test that enum_field propagates through let expressions in match arm bodies.
         // When a match arm body is `let x = Enum(...) in x`, the field information should
         // flow from the enum literal -> let body -> let expr -> match expr.
-        let (module, registry) = IrModuleBuilder::new()
-            .enum_decl("Choice", ["A", "B"])
-            .enum_with_fields("Msg", |e| {
-                e.variant_with_fields("Say", vec![("text", Type::String)]);
-            })
-            .component_no_params("Test", |t| {
-                t.let_stmt("choice", t.enum_variant("Choice", "A"), |t| {
-                    t.let_stmt(
-                        "y",
-                        t.match_expr(
-                            t.var("choice"),
-                            vec![
-                                // Arm body is a let expression, not a direct enum literal
-                                (
-                                    "A",
-                                    t.let_expr(
-                                        "x",
+        check_module(
+            IrModuleBuilder::new()
+                .enum_unit("Choice", ["A", "B"])
+                .enum_("Msg", [("Say", vec![("text", "String")])])
+                .view_no_params("Test", |t| {
+                    t.let_stmt("choice", t.enum_variant("Choice", "A"), |t| {
+                        t.let_stmt(
+                            "y",
+                            t.match_expr(
+                                t.var("choice"),
+                                vec![
+                                    // Arm body is a let expression, not a direct enum literal
+                                    (
+                                        "A",
+                                        t.let_expr(
+                                            "x",
+                                            t.enum_variant_with_fields(
+                                                "Msg",
+                                                "Say",
+                                                vec![("text", t.str("hello"))],
+                                            ),
+                                            |t| t.var("x"),
+                                        ),
+                                    ),
+                                    (
+                                        "B",
                                         t.enum_variant_with_fields(
                                             "Msg",
                                             "Say",
-                                            vec![("text", t.str("hello"))],
+                                            vec![("text", t.str("world"))],
                                         ),
-                                        |t| t.var("x"),
                                     ),
-                                ),
-                                (
-                                    "B",
-                                    t.enum_variant_with_fields(
-                                        "Msg",
+                                ],
+                            ),
+                            |t| {
+                                t.write_expr_escaped(t.match_expr_with_bindings(
+                                    t.var("y"),
+                                    vec![(
                                         "Say",
-                                        vec![("text", t.str("world"))],
-                                    ),
-                                ),
-                            ],
-                        ),
-                        |t| {
-                            t.write_expr_escaped(t.match_expr_with_bindings(
-                                t.var("y"),
-                                vec![(
-                                    "Say",
-                                    vec![("text", "txt")],
-                                    Box::new(|t: &IrBuilder| t.var("txt")),
-                                )],
-                            ));
-                        },
-                    );
-                });
-            })
-            .build_with_registry();
-
-        check_module_view(
-            module,
-            registry,
+                                        vec![("text", "txt")],
+                                        Box::new(|t: &IrBuilder| t.var("txt")),
+                                    )],
+                                ));
+                            },
+                        );
+                    });
+                }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -2992,7 +2943,7 @@ mod tests {
     fn should_evaluate_component_invocation_args() {
         check(
             build_ir_no_params("Test", |t| {
-                t.component_ref(
+                t.invoke_component(
                     "Foo",
                     vec![("x", t.not(t.bool(false))), ("y", t.str("hello"))],
                 );
@@ -3016,7 +2967,7 @@ mod tests {
         check(
             build_ir_no_params("Test", |t| {
                 t.let_stmt("val", t.not(t.bool(true)), |t| {
-                    t.component_ref("Foo", vec![("enabled", t.var("val"))]);
+                    t.invoke_component("Foo", vec![("enabled", t.var("val"))]);
                 });
             }),
             expect![[r#"

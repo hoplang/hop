@@ -93,7 +93,6 @@ mod tests {
     use crate::ir::ast::IrViewDeclaration;
     use crate::ir::syntax::builder::{build_ir, build_ir_no_params};
     use expect_test::{Expect, expect};
-    use std::sync::Arc;
 
     fn check(mut view: IrViewDeclaration, expected: Expect) {
         let before = view.to_string();
@@ -176,7 +175,7 @@ mod tests {
     #[test]
     fn should_preserve_bool_match_with_dynamic_subject() {
         check(
-            build_ir("Test", [("show", Type::Bool)], |t| {
+            build_ir("Test", [("show", "Bool")], |t| {
                 t.bool_match_stmt(
                     t.var("show"),
                     |t| {
@@ -307,22 +306,18 @@ mod tests {
     #[test]
     fn should_preserve_option_match_with_dynamic_subject() {
         check(
-            build_ir(
-                "Test",
-                [("maybe", Type::Option(Arc::new(Type::String)))],
-                |t| {
-                    t.option_match_stmt(
-                        t.var("maybe"),
-                        Some("x"),
-                        |t| {
-                            t.write_expr(t.var("x"), false);
-                        },
-                        |t| {
-                            t.write("none");
-                        },
-                    );
-                },
-            ),
+            build_ir("Test", [("maybe", "Option[String]")], |t| {
+                t.option_match_stmt(
+                    t.var("maybe"),
+                    Some("x"),
+                    |t| {
+                        t.write_expr(t.var("x"), false);
+                    },
+                    |t| {
+                        t.write("none");
+                    },
+                );
+            }),
             expect![[r#"
                 -- before --
                 view Test(maybe: Option[String]) {

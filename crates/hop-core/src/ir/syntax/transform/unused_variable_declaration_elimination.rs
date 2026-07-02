@@ -226,12 +226,9 @@ impl UnusedVariableDeclarationEliminationPass {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        expr::Type,
-        ir::{
-            ast::IrViewDeclaration,
-            syntax::builder::{IrBuilder, IrModuleBuilder, build_ir_no_params},
-        },
+    use crate::ir::{
+        ast::IrViewDeclaration,
+        syntax::builder::{IrBuilder, IrModuleBuilder, build_ir_no_params},
     };
     use expect_test::{Expect, expect};
 
@@ -782,11 +779,11 @@ mod tests {
     #[test]
     fn should_preserve_let_used_as_enum_match_subject() {
         let module = IrModuleBuilder::new()
-            .enum_with_fields("BadgeElement", |e| {
-                e.variant("Span");
-                e.variant_with_fields("Link", vec![("href", Type::String)]);
-            })
-            .component_no_params("Test", |t| {
+            .enum_(
+                "BadgeElement",
+                [("Span", vec![]), ("Link", vec![("href", "String")])],
+            )
+            .view_no_params("Test", |t| {
                 t.let_stmt("element", t.enum_variant("BadgeElement", "Span"), |t| {
                     t.let_stmt("match_subject", t.var("element"), |t| {
                         t.enum_match_stmt_with_bindings(
@@ -855,10 +852,8 @@ mod tests {
     #[test]
     fn should_preserve_let_used_in_enum_literal() {
         let module = IrModuleBuilder::new()
-            .enum_with_fields("MyEnum", |e| {
-                e.variant_with_fields("Foo", vec![("value", Type::String)]);
-            })
-            .component_no_params("Test", |t| {
+            .enum_("MyEnum", [("Foo", vec![("value", "String")])])
+            .view_no_params("Test", |t| {
                 // let x = "hello"
                 // let foo = MyEnum::Foo(value: x)
                 // match foo { Foo(v) => write(v) }  -- uses foo, which uses x
@@ -919,11 +914,11 @@ mod tests {
     #[test]
     fn should_preserve_let_used_in_enum_variant_field() {
         let module = IrModuleBuilder::new()
-            .enum_with_fields("BadgeElement", |e| {
-                e.variant("Span");
-                e.variant_with_fields("Link", vec![("href", Type::String)]);
-            })
-            .component_no_params("Test", |t| {
+            .enum_(
+                "BadgeElement",
+                [("Span", vec![]), ("Link", vec![("href", "String")])],
+            )
+            .view_no_params("Test", |t| {
                 // let href = "/home"
                 t.let_stmt("href", t.str("/home"), |t| {
                     // let element = BadgeElement::Link(href: href)
@@ -1289,11 +1284,8 @@ mod tests {
     #[test]
     fn should_eliminate_unused_record_destructure_binding() {
         let module = IrModuleBuilder::new()
-            .record("Point", |r| {
-                r.field("x", Type::String);
-                r.field("y", Type::String);
-            })
-            .component_no_params("Test", |t| {
+            .record("Point", [("x", "String"), ("y", "String")])
+            .view_no_params("Test", |t| {
                 let point = t.record("Point", vec![("x", t.str("hi")), ("y", t.str("bye"))]);
                 t.record_destructure_stmt(point, vec![("x", "a"), ("y", "b")], |t| {
                     t.write_expr(t.var("a"), false);
@@ -1325,11 +1317,8 @@ mod tests {
     #[test]
     fn should_eliminate_empty_record_destructure() {
         let module = IrModuleBuilder::new()
-            .record("Point", |r| {
-                r.field("x", Type::String);
-                r.field("y", Type::String);
-            })
-            .component_no_params("Test", |t| {
+            .record("Point", [("x", "String"), ("y", "String")])
+            .view_no_params("Test", |t| {
                 let point = t.record("Point", vec![("x", t.str("hi")), ("y", t.str("bye"))]);
                 t.record_destructure_stmt(point, vec![("x", "a")], |t| {
                     t.write("no bindings used");
@@ -1359,11 +1348,8 @@ mod tests {
     #[test]
     fn should_preserve_used_record_destructure_binding() {
         let module = IrModuleBuilder::new()
-            .record("Point", |r| {
-                r.field("x", Type::String);
-                r.field("y", Type::String);
-            })
-            .component_no_params("Test", |t| {
+            .record("Point", [("x", "String"), ("y", "String")])
+            .view_no_params("Test", |t| {
                 let point = t.record("Point", vec![("x", t.str("hi")), ("y", t.str("bye"))]);
                 t.record_destructure_stmt(point, vec![("x", "a")], |t| {
                     t.write_expr(t.var("a"), false);
@@ -1395,11 +1381,8 @@ mod tests {
     #[test]
     fn should_eliminate_cascading_unused_record_destructure_binding() {
         let module = IrModuleBuilder::new()
-            .record("Point", |r| {
-                r.field("x", Type::String);
-                r.field("y", Type::String);
-            })
-            .component_no_params("Test", |t| {
+            .record("Point", [("x", "String"), ("y", "String")])
+            .view_no_params("Test", |t| {
                 let point = t.record("Point", vec![("x", t.str("hi")), ("y", t.str("bye"))]);
                 t.record_destructure_stmt(point, vec![("x", "v")], |t| {
                     t.let_stmt("a", t.var("v"), |t| {

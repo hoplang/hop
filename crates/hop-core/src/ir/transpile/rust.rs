@@ -1658,12 +1658,8 @@ impl Transpiler for RustTranspiler {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
     use super::*;
-    use crate::expr::typing::r#type::EnumVariant;
-    use crate::expr::typing::type_registry::TypeDef;
-    use crate::ir::syntax::builder::IrModuleBuilder;
+    use crate::ir::syntax::builder::{IrBuilder, IrModuleBuilder};
     use expect_test::{Expect, expect};
 
     fn check(builder: IrModuleBuilder, expected: Expect) {
@@ -1677,7 +1673,7 @@ mod tests {
     #[test]
     fn simple_component() {
         check(
-            IrModuleBuilder::new().component_no_params("Test", |t| {
+            IrModuleBuilder::new().view_no_params("Test", |t| {
                 t.write("<h1>Hello, World!</h1>\n");
             }),
             expect![[r#"
@@ -1711,7 +1707,7 @@ mod tests {
     #[test]
     fn conditional_display() {
         check(
-            IrModuleBuilder::new().component("Test", [("show", Type::Bool)], |t| {
+            IrModuleBuilder::new().view("Test", [("show", "Bool")], |t| {
                 t.if_stmt(t.var("show"), |t| {
                     t.write("<h1>Visible</h1>");
                 });
@@ -1754,7 +1750,7 @@ mod tests {
     #[test]
     fn for_loop_with_range() {
         check(
-            IrModuleBuilder::new().component_no_params("Test", |t| {
+            IrModuleBuilder::new().view_no_params("Test", |t| {
                 t.for_range("i", t.int(1), t.int(3), |t| {
                     t.write_expr(t.int_to_string(t.var("i")), false);
                 });
@@ -1794,7 +1790,7 @@ mod tests {
     #[test]
     fn option_match_statement_on_expression_subject() {
         check(
-            IrModuleBuilder::new().component_no_params("Test", |t| {
+            IrModuleBuilder::new().view_no_params("Test", |t| {
                 t.option_match_stmt(
                     t.some(t.str("x")),
                     Some("value"),
@@ -1854,23 +1850,19 @@ mod tests {
     #[test]
     fn option_match_statement() {
         check(
-            IrModuleBuilder::new().component(
-                "Test",
-                [("opt", Type::Option(Arc::new(Type::String)))],
-                |t| {
-                    t.option_match_stmt(
-                        t.var("opt"),
-                        Some("value"),
-                        |t| {
-                            t.write("some: ");
-                            t.write_expr(t.var("value"), false);
-                        },
-                        |t| {
-                            t.write("none");
-                        },
-                    );
-                },
-            ),
+            IrModuleBuilder::new().view("Test", [("opt", "Option[String]")], |t| {
+                t.option_match_stmt(
+                    t.var("opt"),
+                    Some("value"),
+                    |t| {
+                        t.write("some: ");
+                        t.write_expr(t.var("value"), false);
+                    },
+                    |t| {
+                        t.write("none");
+                    },
+                );
+            }),
             expect![[r#"
                 -- before --
                 view Test(opt: Option[String]) {
@@ -1922,34 +1914,11 @@ mod tests {
     fn record_with_record_field_uses_arc() {
         check(
             IrModuleBuilder::new()
-                .record("Address", |r| {
-                    r.field("street", Type::String);
-                })
-                .record("Person", |r| {
-                    r.field("name", Type::String);
-                    r.field(
-                        "address",
-                        Type::Named {
-                            module: crate::document_id::DocumentId::new("test.hop").unwrap(),
-                            name: crate::symbols::type_name::TypeName::new("Address").unwrap(),
-                            kind: NamedKind::Record,
-                        },
-                    );
-                })
-                .component(
-                    "Test",
-                    [(
-                        "person",
-                        Type::Named {
-                            module: crate::document_id::DocumentId::new("test.hop").unwrap(),
-                            name: crate::symbols::type_name::TypeName::new("Person").unwrap(),
-                            kind: NamedKind::Record,
-                        },
-                    )],
-                    |t| {
-                        t.write_expr(t.field_access(t.var("person"), "name"), false);
-                    },
-                ),
+                .record("Address", [("street", "String")])
+                .record("Person", [("name", "String"), ("address", "Address")])
+                .view("Test", [("person", "Person")], |t| {
+                    t.write_expr(t.field_access(t.var("person"), "name"), false);
+                }),
             expect![[r#"
                 -- before --
                 record Address {
@@ -2003,24 +1972,15 @@ mod tests {
     fn enum_with_record_field_uses_arc() {
         check(
             IrModuleBuilder::new()
-                .record("Address", |r| {
-                    r.field("street", Type::String);
-                })
-                .enum_with_fields("Shape", |e| {
-                    e.variant_with_fields(
-                        "Located",
-                        vec![(
-                            "location",
-                            Type::Named {
-                                module: crate::document_id::DocumentId::new("test.hop").unwrap(),
-                                name: crate::symbols::type_name::TypeName::new("Address").unwrap(),
-                                kind: NamedKind::Record,
-                            },
-                        )],
-                    );
-                    e.variant("Empty");
-                })
-                .component_no_params("Test", |t| {
+                .record("Address", [("street", "String")])
+                .enum_(
+                    "Shape",
+                    [
+                        ("Located", vec![("location", "Address")]),
+                        ("Empty", vec![]),
+                    ],
+                )
+                .view_no_params("Test", |t| {
                     t.write("hello");
                 }),
             expect![[r#"
@@ -2073,11 +2033,8 @@ mod tests {
     fn record_with_only_primitives_no_arc() {
         check(
             IrModuleBuilder::new()
-                .record("Point", |r| {
-                    r.field("x", Type::Float);
-                    r.field("y", Type::Float);
-                })
-                .component_no_params("Test", |t| {
+                .record("Point", [("x", "Float"), ("y", "Float")])
+                .view_no_params("Test", |t| {
                     t.write("hello");
                 }),
             expect![[r#"
@@ -2120,172 +2077,103 @@ mod tests {
 
     #[test]
     fn component_with_enum_param() {
-        use crate::expr::Type;
-        use crate::expr::patterns::{EnumMatchArm, EnumPattern, Match};
-        use crate::ir::ast::{
-            IrArgument, IrComponentDeclaration, IrEnumDeclaration, IrExpr, IrModule, IrParameter,
-            IrStatement, IrViewDeclaration,
-        };
-        use crate::symbols::type_name::TypeName;
-
-        let color_type = Arc::new(Type::Named {
-            module: crate::document_id::DocumentId::new("test.hop").unwrap(),
-            name: TypeName::new("Color").unwrap(),
-            kind: NamedKind::Enum,
-        });
-
-        let color_typename = TypeName::new("Color").unwrap();
-
-        let module = IrModule {
-            views: vec![IrViewDeclaration {
-                name: TypeName::new("Test").unwrap(),
-                parameters: vec![],
-                body: vec![IrStatement::ComponentInvocation {
-                    id: 1,
-                    component_name: TypeName::new("Badge").unwrap(),
-                    args: vec![IrArgument {
-                        name: VarName::new("color").unwrap(),
-                        expr: IrExpr::EnumLiteral {
-                            enum_name: color_typename.clone(),
-                            variant_name: TypeName::new("Green").unwrap(),
-                            fields: vec![],
-                            kind: color_type.clone(),
-                            id: 2,
-                        },
-                    }],
-                }],
-            }],
-            components: vec![IrComponentDeclaration {
-                name: TypeName::new("Badge").unwrap(),
-                parameters: vec![IrParameter {
-                    name: VarName::new("color").unwrap(),
-                    typ: color_type.clone(),
-                }],
-                body: vec![IrStatement::Match {
-                    id: 10,
-                    match_: Match::Enum {
-                        subject: Box::new(IrExpr::Var {
-                            value: VarName::new("color").unwrap(),
-                            kind: color_type,
-                            id: 0,
-                        }),
-                        arms: vec![
-                            EnumMatchArm {
-                                pattern: EnumPattern::Variant {
-                                    enum_name: color_typename.clone(),
-                                    variant_name: TypeName::new("Red").unwrap(),
-                                },
-                                bindings: vec![],
-                                body: vec![IrStatement::Write {
-                                    id: 11,
-                                    content: "red".to_string(),
-                                }],
-                            },
-                            EnumMatchArm {
-                                pattern: EnumPattern::Variant {
-                                    enum_name: color_typename.clone(),
-                                    variant_name: TypeName::new("Green").unwrap(),
-                                },
-                                bindings: vec![],
-                                body: vec![IrStatement::Write {
-                                    id: 12,
-                                    content: "green".to_string(),
-                                }],
-                            },
-                            EnumMatchArm {
-                                pattern: EnumPattern::Variant {
-                                    enum_name: color_typename,
-                                    variant_name: TypeName::new("Blue").unwrap(),
-                                },
-                                bindings: vec![],
-                                body: vec![IrStatement::Write {
-                                    id: 13,
-                                    content: "blue".to_string(),
-                                }],
-                            },
+        check(
+            IrModuleBuilder::new()
+                .enum_unit("Color", ["Red", "Green", "Blue"])
+                .view_no_params("Test", |t| {
+                    t.invoke_component("Badge", vec![("color", t.enum_variant("Color", "Green"))]);
+                })
+                .component("Badge", [("color", "Color")], |t| {
+                    t.enum_match_stmt_with_bindings(
+                        t.var("color"),
+                        vec![
+                            ("Red", vec![], Box::new(|t: &mut IrBuilder| t.write("red"))),
+                            (
+                                "Green",
+                                vec![],
+                                Box::new(|t: &mut IrBuilder| t.write("green")),
+                            ),
+                            (
+                                "Blue",
+                                vec![],
+                                Box::new(|t: &mut IrBuilder| t.write("blue")),
+                            ),
                         ],
-                    },
-                }],
-            }],
-            records: vec![],
-            enums: vec![IrEnumDeclaration {
-                name: TypeName::new("Color").unwrap(),
-                variants: vec![
-                    EnumVariant {
-                        name: TypeName::new("Red").unwrap(),
-                        fields: vec![],
-                    },
-                    EnumVariant {
-                        name: TypeName::new("Green").unwrap(),
-                        fields: vec![],
-                    },
-                    EnumVariant {
-                        name: TypeName::new("Blue").unwrap(),
-                        fields: vec![],
-                    },
-                ],
-            }],
-        };
-
-        let mut registry = TypeRegistry::default();
-        registry.insert(
-            crate::document_id::DocumentId::new("test.hop").unwrap(),
-            TypeName::new("Color").unwrap(),
-            TypeDef::Enum {
-                variants: module.enums[0].variants.clone(),
-            },
-        );
-
-        let result = RustTranspiler::new().transpile_module(&module, &registry);
-        let expected = expect![[r#"
-            // Code generated by the hop compiler. DO NOT EDIT.
-            #![cfg_attr(rustfmt, rustfmt_skip)]
-            #![allow(unused_parens, dead_code, clippy::all)]
-
-            pub trait View {
-                fn render(self) -> String;
-            }
-
-            #[derive(Clone, Debug)]
-            pub enum Color {
-                Red,
-                Green,
-                Blue,
-            }
-
-            fn render_badge(color: &Color) -> String {
-                let mut output = String::new();
-                match &color {
+                    );
+                }),
+            expect![[r#"
+                -- before --
+                enum Color {
+                  Red,
+                  Green,
+                  Blue,
+                }
+                component Badge(color: test::Color) {
+                  match color {
                     Color::Red => {
-                        output.push_str("red");
+                      write("red")
                     }
                     Color::Green => {
-                        output.push_str("green");
+                      write("green")
                     }
                     Color::Blue => {
-                        output.push_str("blue");
+                      write("blue")
                     }
+                  }
                 }
-                output
-            }
+                view Test() {
+                  call Badge(color = Color::Green)
+                }
 
-            pub struct Test {}
+                -- after --
+                // Code generated by the hop compiler. DO NOT EDIT.
+                #![cfg_attr(rustfmt, rustfmt_skip)]
+                #![allow(unused_parens, dead_code, clippy::all)]
 
-            impl View for Test {
-                fn render(self) -> String {
+                pub trait View {
+                    fn render(self) -> String;
+                }
+
+                #[derive(Clone, Debug)]
+                pub enum Color {
+                    Red,
+                    Green,
+                    Blue,
+                }
+
+                fn render_badge(color: &Color) -> String {
                     let mut output = String::new();
-                    output.push_str(&render_badge(&Color::Green));
+                    match &color {
+                        Color::Red => {
+                            output.push_str("red");
+                        }
+                        Color::Green => {
+                            output.push_str("green");
+                        }
+                        Color::Blue => {
+                            output.push_str("blue");
+                        }
+                    }
                     output
                 }
-            }
-        "#]];
-        expected.assert_eq(&result);
+
+                pub struct Test {}
+
+                impl View for Test {
+                    fn render(self) -> String {
+                        let mut output = String::new();
+                        output.push_str(&render_badge(&Color::Green));
+                        output
+                    }
+                }
+            "#]],
+        );
     }
 
     #[test]
     fn transpiles_let_fragment_as_rust_block() {
         check(
-            IrModuleBuilder::new().component_no_params("Test", |t| {
+            IrModuleBuilder::new().view_no_params("Test", |t| {
                 t.let_fragment(
                     "v_0",
                     |t| {

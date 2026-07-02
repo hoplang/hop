@@ -363,56 +363,19 @@ mod tests {
     use super::*;
     use crate::document::DocumentCursor;
     use crate::document_annotator::DocumentAnnotator;
-    use crate::document_id::DocumentId;
-    use crate::expr::ExamplesAnnotation;
     use crate::expr::parse_expr;
     use crate::expr::parsing::parsed_expr::ParsedExpr;
-    use crate::expr::typing::r#type::EnumVariant;
-    use crate::expr::typing::type_registry::TypeDef;
-    use crate::symbols::type_name::TypeName;
+    use crate::expr::typing::type_registry_builder::TypeRegistryBuilder;
     use expect_test::{Expect, expect};
     use indoc::indoc;
     use std::collections::VecDeque;
 
-    fn test_module() -> DocumentId {
-        DocumentId::new("test.hop").unwrap()
-    }
-
-    fn enum_def(name: TypeName, variants: Vec<EnumVariant>) -> (Type, TypeRegistry) {
-        let mut registry = TypeRegistry::default();
-        registry.insert(test_module(), name.clone(), TypeDef::Enum { variants });
-        (
-            Type::Named {
-                module: test_module(),
-                name,
-                kind: NamedKind::Enum,
-            },
-            registry,
-        )
-    }
-
-    fn record_def(
-        name: TypeName,
-        fields: Vec<(FieldName, Arc<Type>, Option<ExamplesAnnotation>)>,
-    ) -> (Type, TypeRegistry) {
-        let mut registry = TypeRegistry::default();
-        registry.insert(test_module(), name.clone(), TypeDef::Record { fields });
-        (
-            Type::Named {
-                module: test_module(),
-                name,
-                kind: NamedKind::Record,
-            },
-            registry,
-        )
-    }
-
     // Parse a match expression and run `typecheck_pattern` on each arm pattern.
     // Returns the rendered typed patterns on success, or the rendered error.
-    fn run_check(subject: (Type, TypeRegistry), expr_str: &str) -> (String, bool) {
-        let (subject_type, registry) = subject;
-        let cursor =
-            DocumentCursor::new(DocumentId::new("test.hop").unwrap(), expr_str.to_string());
+    fn run_check(types: TypeRegistryBuilder, subject: &str, expr_str: &str) -> (String, bool) {
+        let types = types.build();
+        let subject_type = types.resolve(subject);
+        let cursor = DocumentCursor::new(types.module().clone(), expr_str.to_string());
         let range = cursor.range();
         let mut iter = cursor.peekable();
         let mut comments = VecDeque::new();
@@ -427,10 +390,9 @@ mod tests {
             _ => panic!("Expected match expression"),
         };
 
-        let subject_type = Arc::new(subject_type);
         let result = patterns
             .iter()
-            .map(|p| typecheck_pattern(p, subject_type.clone(), &registry))
+            .map(|p| typecheck_pattern(p, subject_type.clone(), types.registry()))
             .collect::<Result<Vec<_>, _>>();
         match result {
             Ok(typed) => (
@@ -446,15 +408,15 @@ mod tests {
                     .with_label("error")
                     .without_location()
                     .without_line_numbers()
-                    .annotate(&DocumentId::new("test.hop").unwrap(), [e])
+                    .annotate(types.module(), [e])
                     .render(),
                 false,
             ),
         }
     }
 
-    fn reject(subject: (Type, TypeRegistry), expr_str: &str, expected: Expect) {
-        let (actual, ok) = run_check(subject, expr_str);
+    fn reject(types: TypeRegistryBuilder, subject: &str, expr_str: &str, expected: Expect) {
+        let (actual, ok) = run_check(types, subject, expr_str);
         if ok {
             panic!("expected a typecheck error, but patterns typechecked to:\n{actual}");
         }
@@ -464,23 +426,14 @@ mod tests {
     #[test]
     fn rejects_enum_variant_unknown_field() {
         reject(
-            enum_def(
-                TypeName::new("Outcome").unwrap(),
-                vec![
-                    EnumVariant {
-                        name: TypeName::new("Success").unwrap(),
-                        fields: vec![(FieldName::new("value").unwrap(), Arc::new(Type::Int), None)],
-                    },
-                    EnumVariant {
-                        name: TypeName::new("Failure").unwrap(),
-                        fields: vec![(
-                            FieldName::new("message").unwrap(),
-                            Arc::new(Type::String),
-                            None,
-                        )],
-                    },
+            TypeRegistryBuilder::new().enum_(
+                "Outcome",
+                [
+                    ("Success", vec![("value", "Int")]),
+                    ("Failure", vec![("message", "String")]),
                 ],
             ),
+            "Outcome",
             indoc! {"
                 match x {
                     Outcome::Success{unknown: v} => 0,
@@ -497,16 +450,8 @@ mod tests {
     #[test]
     fn rejects_enum_variant_unknown_field_after_valid_field() {
         reject(
-            enum_def(
-                TypeName::new("Point").unwrap(),
-                vec![EnumVariant {
-                    name: TypeName::new("XY").unwrap(),
-                    fields: vec![
-                        (FieldName::new("x").unwrap(), Arc::new(Type::Int), None),
-                        (FieldName::new("y").unwrap(), Arc::new(Type::Int), None),
-                    ],
-                }],
-            ),
+            TypeRegistryBuilder::new().enum_("Point", [("XY", vec![("x", "Int"), ("y", "Int")])]),
+            "Point",
             indoc! {"
                 match x {
                     Point::XY{x: a, unknown: b} => 0,
@@ -522,16 +467,8 @@ mod tests {
     #[test]
     fn rejects_enum_variant_two_unknown_fields() {
         reject(
-            enum_def(
-                TypeName::new("Point").unwrap(),
-                vec![EnumVariant {
-                    name: TypeName::new("XY").unwrap(),
-                    fields: vec![
-                        (FieldName::new("x").unwrap(), Arc::new(Type::Int), None),
-                        (FieldName::new("y").unwrap(), Arc::new(Type::Int), None),
-                    ],
-                }],
-            ),
+            TypeRegistryBuilder::new().enum_("Point", [("XY", vec![("x", "Int"), ("y", "Int")])]),
+            "Point",
             indoc! {"
                 match x {
                     Point::XY{foo: a, bar: b} => 0,
@@ -547,16 +484,8 @@ mod tests {
     #[test]
     fn rejects_enum_variant_missing_field_in_pattern() {
         reject(
-            enum_def(
-                TypeName::new("Point").unwrap(),
-                vec![EnumVariant {
-                    name: TypeName::new("XY").unwrap(),
-                    fields: vec![
-                        (FieldName::new("x").unwrap(), Arc::new(Type::Int), None),
-                        (FieldName::new("y").unwrap(), Arc::new(Type::Int), None),
-                    ],
-                }],
-            ),
+            TypeRegistryBuilder::new().enum_("Point", [("XY", vec![("x", "Int"), ("y", "Int")])]),
+            "Point",
             indoc! {"
                 match x {
                     Point::XY{x: a} => 0,
@@ -572,17 +501,11 @@ mod tests {
     #[test]
     fn rejects_enum_variant_missing_two_fields_in_pattern() {
         reject(
-            enum_def(
-                TypeName::new("Point").unwrap(),
-                vec![EnumVariant {
-                    name: TypeName::new("XYZ").unwrap(),
-                    fields: vec![
-                        (FieldName::new("x").unwrap(), Arc::new(Type::Int), None),
-                        (FieldName::new("y").unwrap(), Arc::new(Type::Int), None),
-                        (FieldName::new("z").unwrap(), Arc::new(Type::Int), None),
-                    ],
-                }],
+            TypeRegistryBuilder::new().enum_(
+                "Point",
+                [("XYZ", vec![("x", "Int"), ("y", "Int"), ("z", "Int")])],
             ),
+            "Point",
             indoc! {"
                 match x {
                     Point::XYZ{x: a} => 0,
@@ -598,16 +521,8 @@ mod tests {
     #[test]
     fn rejects_enum_variant_no_parens_when_fields_expected() {
         reject(
-            enum_def(
-                TypeName::new("Point").unwrap(),
-                vec![EnumVariant {
-                    name: TypeName::new("XY").unwrap(),
-                    fields: vec![
-                        (FieldName::new("x").unwrap(), Arc::new(Type::Int), None),
-                        (FieldName::new("y").unwrap(), Arc::new(Type::Int), None),
-                    ],
-                }],
-            ),
+            TypeRegistryBuilder::new().enum_("Point", [("XY", vec![("x", "Int"), ("y", "Int")])]),
+            "Point",
             indoc! {"
                 match x {
                     Point::XY => 0,
@@ -623,19 +538,11 @@ mod tests {
     #[test]
     fn rejects_enum_variant_fields_provided_to_unit_variant() {
         reject(
-            enum_def(
-                TypeName::new("Maybe").unwrap(),
-                vec![
-                    EnumVariant {
-                        name: TypeName::new("Just").unwrap(),
-                        fields: vec![(FieldName::new("value").unwrap(), Arc::new(Type::Int), None)],
-                    },
-                    EnumVariant {
-                        name: TypeName::new("Nothing").unwrap(),
-                        fields: vec![],
-                    },
-                ],
+            TypeRegistryBuilder::new().enum_(
+                "Maybe",
+                [("Just", vec![("value", "Int")]), ("Nothing", vec![])],
             ),
+            "Maybe",
             indoc! {"
                 match x {
                     Maybe::Just{value: v} => 0,
@@ -652,19 +559,8 @@ mod tests {
     #[test]
     fn rejects_validation_undefined_enum_variant() {
         reject(
-            enum_def(
-                TypeName::new("Color").unwrap(),
-                vec![
-                    EnumVariant {
-                        name: TypeName::new("Red").unwrap(),
-                        fields: vec![],
-                    },
-                    EnumVariant {
-                        name: TypeName::new("Green").unwrap(),
-                        fields: vec![],
-                    },
-                ],
-            ),
+            TypeRegistryBuilder::new().enum_unit("Color", ["Red", "Green"]),
+            "Color",
             indoc! {"
                 match x {
                     Color::Blue => 0,
@@ -681,17 +577,8 @@ mod tests {
     #[test]
     fn rejects_validation_record_missing_fields() {
         reject(
-            record_def(
-                TypeName::new("User").unwrap(),
-                vec![
-                    (
-                        FieldName::new("name").unwrap(),
-                        Arc::new(Type::String),
-                        None,
-                    ),
-                    (FieldName::new("age").unwrap(), Arc::new(Type::Int), None),
-                ],
-            ),
+            TypeRegistryBuilder::new().record("User", [("name", "String"), ("age", "Int")]),
+            "User",
             indoc! {"
                 match x {
                     User{name: n} => 0,
@@ -707,14 +594,8 @@ mod tests {
     #[test]
     fn rejects_validation_record_unknown_field() {
         reject(
-            record_def(
-                TypeName::new("User").unwrap(),
-                vec![(
-                    FieldName::new("name").unwrap(),
-                    Arc::new(Type::String),
-                    None,
-                )],
-            ),
+            TypeRegistryBuilder::new().record("User", [("name", "String")]),
+            "User",
             indoc! {"
                 match x {
                     User{email: e} => 0,
@@ -730,19 +611,8 @@ mod tests {
     #[test]
     fn rejects_validation_boolean_pattern_on_enum() {
         reject(
-            enum_def(
-                TypeName::new("Color").unwrap(),
-                vec![
-                    EnumVariant {
-                        name: TypeName::new("Red").unwrap(),
-                        fields: vec![],
-                    },
-                    EnumVariant {
-                        name: TypeName::new("Green").unwrap(),
-                        fields: vec![],
-                    },
-                ],
-            ),
+            TypeRegistryBuilder::new().enum_unit("Color", ["Red", "Green"]),
+            "Color",
             indoc! {"
                 match x {
                     true => 0,
@@ -759,19 +629,8 @@ mod tests {
     #[test]
     fn rejects_validation_option_pattern_on_enum() {
         reject(
-            enum_def(
-                TypeName::new("Color").unwrap(),
-                vec![
-                    EnumVariant {
-                        name: TypeName::new("Red").unwrap(),
-                        fields: vec![],
-                    },
-                    EnumVariant {
-                        name: TypeName::new("Green").unwrap(),
-                        fields: vec![],
-                    },
-                ],
-            ),
+            TypeRegistryBuilder::new().enum_unit("Color", ["Red", "Green"]),
+            "Color",
             indoc! {"
                 match x {
                     Some(v) => 0,
@@ -788,7 +647,8 @@ mod tests {
     #[test]
     fn rejects_validation_nested_option_wrong_inner_type() {
         reject(
-            (Type::Option(Arc::new(Type::Bool)), TypeRegistry::default()),
+            TypeRegistryBuilder::new(),
+            "Option[Bool]",
             indoc! {"
                 match x {
                     Some(Some(v)) => 0,

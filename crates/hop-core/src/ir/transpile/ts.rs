@@ -1625,8 +1625,7 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
-    use crate::expr::typing::r#type::NamedKind;
-    use crate::ir::syntax::builder::IrModuleBuilder;
+    use crate::ir::syntax::builder::{IrBuilder, IrModuleBuilder};
     use expect_test::{Expect, expect};
 
     fn check(builder: IrModuleBuilder, expected: Expect) {
@@ -1640,7 +1639,7 @@ mod tests {
     #[test]
     fn simple_component() {
         check(
-            IrModuleBuilder::new().component_no_params("HelloWorld", |t| {
+            IrModuleBuilder::new().view_no_params("HelloWorld", |t| {
                 t.write("<h1>Hello, World!</h1>\n");
             }),
             expect![[r#"
@@ -1663,20 +1662,16 @@ mod tests {
     #[test]
     fn component_with_params_and_escaping() {
         check(
-            IrModuleBuilder::new().component(
-                "UserInfo",
-                [("name", Type::String), ("age", Type::String)],
-                |t| {
-                    t.write("<div>\n");
-                    t.write("<h2>Name: ");
-                    t.write_expr_escaped(t.var("name"));
-                    t.write("</h2>\n");
-                    t.write("<p>Age: ");
-                    t.write_expr(t.var("age"), false);
-                    t.write("</p>\n");
-                    t.write("</div>\n");
-                },
-            ),
+            IrModuleBuilder::new().view("UserInfo", [("name", "String"), ("age", "String")], |t| {
+                t.write("<div>\n");
+                t.write("<h2>Name: ");
+                t.write_expr_escaped(t.var("name"));
+                t.write("</h2>\n");
+                t.write("<p>Age: ");
+                t.write_expr(t.var("age"), false);
+                t.write("</p>\n");
+                t.write("</div>\n");
+            }),
             expect![[r#"
                 -- before --
                 view UserInfo(name: String, age: String) {
@@ -1720,9 +1715,9 @@ mod tests {
     #[test]
     fn conditional_display() {
         check(
-            IrModuleBuilder::new().component(
+            IrModuleBuilder::new().view(
                 "ConditionalDisplay",
-                [("title", Type::String), ("show", Type::Bool)],
+                [("title", "String"), ("show", "Bool")],
                 |t| {
                     t.if_stmt(t.var("show"), |t| {
                         t.write("<h1>");
@@ -1768,19 +1763,15 @@ mod tests {
     #[test]
     fn for_loop_with_array() {
         check(
-            IrModuleBuilder::new().component(
-                "ListItems",
-                [("items", Type::Array(Arc::new(Type::String)))],
-                |t| {
-                    t.write("<ul>\n");
-                    t.for_loop("item", t.var("items"), |t| {
-                        t.write("<li>");
-                        t.write_expr_escaped(t.var("item"));
-                        t.write("</li>\n");
-                    });
-                    t.write("</ul>\n");
-                },
-            ),
+            IrModuleBuilder::new().view("ListItems", [("items", "Array[String]")], |t| {
+                t.write("<ul>\n");
+                t.for_loop("item", t.var("items"), |t| {
+                    t.write("<li>");
+                    t.write_expr_escaped(t.var("item"));
+                    t.write("</li>\n");
+                });
+                t.write("</ul>\n");
+            }),
             expect![[r#"
                 -- before --
                 view ListItems(items: Array[String]) {
@@ -1822,7 +1813,7 @@ mod tests {
     #[test]
     fn for_loop_with_range() {
         check(
-            IrModuleBuilder::new().component_no_params("Counter", |t| {
+            IrModuleBuilder::new().view_no_params("Counter", |t| {
                 t.for_range("i", t.int(1), t.int(3), |t| {
                     t.write_expr(t.int_to_string(t.var("i")), false);
                     t.write(" ");
@@ -1854,7 +1845,7 @@ mod tests {
     #[test]
     fn let_binding() {
         check(
-            IrModuleBuilder::new().component_no_params("GreetingCard", |t| {
+            IrModuleBuilder::new().view_no_params("GreetingCard", |t| {
                 t.let_stmt("greeting", t.str("Hello from hop!"), |t| {
                     t.write("<div class=\"card\">\n");
                     t.write("<p>");
@@ -1903,7 +1894,7 @@ mod tests {
     #[test]
     fn nested_components_with_let_bindings() {
         check(
-            IrModuleBuilder::new().component_no_params("TestMainComp", |t| {
+            IrModuleBuilder::new().view_no_params("TestMainComp", |t| {
                 t.write("<div data-hop-id=\"test/card-comp\">");
                 t.let_stmt("title", t.str("Hello World"), |t| {
                     t.write("<h2>");
@@ -1952,12 +1943,9 @@ mod tests {
     #[test]
     fn fragment_type() {
         check(
-            IrModuleBuilder::new().component(
+            IrModuleBuilder::new().view(
                 "RenderHtml",
-                [
-                    ("safe_content", Type::Fragment),
-                    ("user_input", Type::String),
-                ],
+                [("safe_content", "Fragment"), ("user_input", "String")],
                 |t| {
                     t.write("<div>");
                     // Fragment should not be escaped
@@ -2014,26 +2002,14 @@ mod tests {
 
     #[test]
     fn record_declarations() {
-        use crate::document_id::DocumentId;
-        use crate::symbols::type_name::TypeName;
-
-        let user_type = Type::Named {
-            module: DocumentId::new("test.hop").unwrap(),
-            name: TypeName::new("User").unwrap(),
-            kind: NamedKind::Record,
-        };
-
         check(
             IrModuleBuilder::new()
-                .record("User", |r| {
-                    r.field("name", Type::String)
-                        .field("age", Type::Int)
-                        .field("active", Type::Bool);
-                })
-                .record("Address", |r| {
-                    r.field("street", Type::String).field("city", Type::String);
-                })
-                .component("UserProfile", [("user", user_type)], |t| {
+                .record(
+                    "User",
+                    [("name", "String"), ("age", "Int"), ("active", "Bool")],
+                )
+                .record("Address", [("street", "String"), ("city", "String")])
+                .view("UserProfile", [("user", "User")], |t| {
                     t.write("<div>");
                     t.write_expr_escaped(t.field_access(t.var("user"), "name"));
                     t.write("</div>");
@@ -2096,10 +2072,8 @@ mod tests {
     fn record_literal() {
         check(
             IrModuleBuilder::new()
-                .record("User", |r| {
-                    r.field("name", Type::String).field("age", Type::Int);
-                })
-                .component_no_params("CreateUser", |t| {
+                .record("User", [("name", "String"), ("age", "Int")])
+                .view_no_params("CreateUser", |t| {
                     t.write("<div>");
                     let user = t.record("User", vec![("name", t.str("John")), ("age", t.int(30))]);
                     t.write_expr_escaped(t.field_access(user, "name"));
@@ -2148,19 +2122,10 @@ mod tests {
 
     #[test]
     fn match_expression() {
-        use crate::document_id::DocumentId;
-        use crate::symbols::type_name::TypeName;
-
-        let color_type = Type::Named {
-            module: DocumentId::new("test.hop").unwrap(),
-            name: TypeName::new("Color").unwrap(),
-            kind: NamedKind::Enum,
-        };
-
         check(
             IrModuleBuilder::new()
-                .enum_decl("Color", ["Red", "Green", "Blue"])
-                .component("ColorName", [("color", color_type)], |t| {
+                .enum_unit("Color", ["Red", "Green", "Blue"])
+                .view("ColorName", [("color", "Color")], |t| {
                     // Use match expression to convert color to string
                     let match_result = t.match_expr(
                         t.var("color"),
@@ -2230,7 +2195,7 @@ mod tests {
     #[test]
     fn bool_match_expression() {
         check(
-            IrModuleBuilder::new().component("IsActive", [("active", Type::Bool)], |t| {
+            IrModuleBuilder::new().view("IsActive", [("active", "Bool")], |t| {
                 let match_result = t.bool_match_expr(t.var("active"), t.str("yes"), t.str("no"));
                 t.write_expr_escaped(match_result);
             }),
@@ -2263,15 +2228,11 @@ mod tests {
     #[test]
     fn option_match_expression() {
         check(
-            IrModuleBuilder::new().component(
-                "CheckOption",
-                [("opt", Type::Option(Arc::new(Type::Int)))],
-                |t| {
-                    let match_result =
-                        t.option_match_expr(t.var("opt"), t.str("has value"), t.str("empty"));
-                    t.write_expr_escaped(match_result);
-                },
-            ),
+            IrModuleBuilder::new().view("CheckOption", [("opt", "Option[Int]")], |t| {
+                let match_result =
+                    t.option_match_expr(t.var("opt"), t.str("has value"), t.str("empty"));
+                t.write_expr_escaped(match_result);
+            }),
             expect![[r#"
                 -- before --
                 view CheckOption(opt: Option[Int]) {
@@ -2319,13 +2280,10 @@ mod tests {
 
     #[test]
     fn nested_option_match_expression() {
-        let outer_option_type =
-            Arc::new(Type::Option(Arc::new(Type::Option(Arc::new(Type::Bool)))));
-
         check(
-            IrModuleBuilder::new().component(
+            IrModuleBuilder::new().view(
                 "CheckNestedOption",
-                [("opt", outer_option_type)],
+                [("opt", "Option[Option[Bool]]")],
                 |t| {
                     // Outer match on opt: Some(v0) => middle_match, None => "none"
                     let outer_match = t.option_match_expr_with_binding(
@@ -2420,7 +2378,7 @@ mod tests {
     #[test]
     fn let_expression() {
         check(
-            IrModuleBuilder::new().component("LetExpr", [("name", Type::String)], |t| {
+            IrModuleBuilder::new().view("LetExpr", [("name", "String")], |t| {
                 // let x = name in x
                 let result = t.let_expr("x", t.var("name"), |t| t.var("x"));
                 t.write_expr_escaped(result);
@@ -2457,24 +2415,20 @@ mod tests {
     #[test]
     fn option_match_statement() {
         check(
-            IrModuleBuilder::new().component(
-                "DisplayOption",
-                [("opt", Type::Option(Arc::new(Type::String)))],
-                |t| {
-                    t.option_match_stmt(
-                        t.var("opt"),
-                        Some("value"),
-                        |t| {
-                            t.write("<span>Found: ");
-                            t.write_expr_escaped(t.var("value"));
-                            t.write("</span>");
-                        },
-                        |t| {
-                            t.write("<span>Nothing</span>");
-                        },
-                    );
-                },
-            ),
+            IrModuleBuilder::new().view("DisplayOption", [("opt", "Option[String]")], |t| {
+                t.option_match_stmt(
+                    t.var("opt"),
+                    Some("value"),
+                    |t| {
+                        t.write("<span>Found: ");
+                        t.write_expr_escaped(t.var("value"));
+                        t.write("</span>");
+                    },
+                    |t| {
+                        t.write("<span>Nothing</span>");
+                    },
+                );
+            }),
             expect![[r#"
                 -- before --
                 view DisplayOption(opt: Option[String]) {
@@ -2536,12 +2490,9 @@ mod tests {
     #[test]
     fn option_literal() {
         check(
-            IrModuleBuilder::new().component(
+            IrModuleBuilder::new().view(
                 "TestOptionLiteral",
-                [
-                    ("opt1", Type::Option(Arc::new(Type::String))),
-                    ("opt2", Type::Option(Arc::new(Type::String))),
-                ],
+                [("opt1", "Option[String]"), ("opt2", "Option[String]")],
                 |t| {
                     // Test Some literal
                     let match_result =
@@ -2603,7 +2554,7 @@ mod tests {
     #[test]
     fn option_literal_inline_match_stmt() {
         check(
-            IrModuleBuilder::new().component_no_params("TestInlineMatch", |t| {
+            IrModuleBuilder::new().view_no_params("TestInlineMatch", |t| {
                 t.let_stmt("opt", t.some(t.str("world")), |t| {
                     t.option_match_stmt(
                         t.var("opt"),
@@ -2671,7 +2622,7 @@ mod tests {
     #[test]
     fn option_match_statement_on_expression_subject() {
         check(
-            IrModuleBuilder::new().component_no_params("Test", |t| {
+            IrModuleBuilder::new().view_no_params("Test", |t| {
                 t.option_match_stmt(
                     t.some(t.str("x")),
                     Some("value"),
@@ -2763,7 +2714,7 @@ mod tests {
     #[test]
     fn bool_match_expression_on_expression_subject() {
         check(
-            IrModuleBuilder::new().component("IsActive", [("active", Type::Bool)], |t| {
+            IrModuleBuilder::new().view("IsActive", [("active", "Bool")], |t| {
                 let match_result =
                     t.bool_match_expr(t.not(t.var("active")), t.str("yes"), t.str("no"));
                 t.write_expr_escaped(match_result);
@@ -2799,40 +2750,33 @@ mod tests {
 
     #[test]
     fn enum_with_fields() {
-        use crate::document_id::DocumentId;
-        use crate::symbols::type_name::TypeName;
-
-        let result_type = Type::Named {
-            module: DocumentId::new("test.hop").unwrap(),
-            name: TypeName::new("Result").unwrap(),
-            kind: NamedKind::Enum,
-        };
-
         check(
             IrModuleBuilder::new()
-                .enum_with_fields("Result", |e| {
-                    e.variant_with_fields("Ok", vec![("value", Type::Int)]);
-                    e.variant_with_fields("Err", vec![("message", Type::String)]);
-                })
-                .component("ShowResult", [("r", result_type)], |t| {
+                .enum_(
+                    "Outcome",
+                    [
+                        ("Ok", vec![("value", "Int")]),
+                        ("Err", vec![("message", "String")]),
+                    ],
+                )
+                .view("ShowOutcome", [("r", "Outcome")], |t| {
                     t.write("<div>");
-                    // Create an Ok variant with a field value
-                    let ok_result =
-                        t.enum_variant_with_fields("Result", "Ok", vec![("value", t.int(42))]);
-                    t.let_stmt("ok", ok_result, |t| {
+                    let ok =
+                        t.enum_variant_with_fields("Outcome", "Ok", vec![("value", t.int(42))]);
+                    t.let_stmt("ok", ok, |t| {
                         t.write_expr(t.str("Created Ok!"), false);
                     });
                     t.write("</div>");
                 }),
             expect![[r#"
                 -- before --
-                enum Result {
+                enum Outcome {
                   Ok {value: Int},
                   Err {message: String},
                 }
-                view ShowResult(r: test::Result) {
+                view ShowOutcome(r: test::Outcome) {
                   write("<div>")
-                  let ok = Result::Ok {value: 42} in {
+                  let ok = Outcome::Ok {value: 42} in {
                     write_expr("Created Ok!")
                   }
                   write("</div>")
@@ -2841,21 +2785,21 @@ mod tests {
                 -- after --
                 // Code generated by the hop compiler. DO NOT EDIT.
 
-                export namespace Result {
-                    export type Result = { readonly tag: "Ok", readonly value: number } | { readonly tag: "Err", readonly message: string };
+                export namespace Outcome {
+                    export type Outcome = { readonly tag: "Ok", readonly value: number } | { readonly tag: "Err", readonly message: string };
 
-                    export function Ok(value: number): Result {
+                    export function Ok(value: number): Outcome {
                         return { tag: "Ok", value };
                     }
-                    export function Err(message: string): Result {
+                    export function Err(message: string): Outcome {
                         return { tag: "Err", message };
                     }
                 }
 
-                export function ShowResult({r}: {r: Result.Result}): string {
+                export function ShowOutcome({r}: {r: Outcome.Outcome}): string {
                     let output: string = "";
                     output += "<div>";
-                    const ok = Result.Ok(42);
+                    const ok = Outcome.Ok(42);
                     output += "Created Ok!";
                     output += "</div>";
                     return output;
@@ -2865,23 +2809,16 @@ mod tests {
 
     #[test]
     fn enum_match_with_field_bindings() {
-        use crate::document_id::DocumentId;
-        use crate::ir::syntax::builder::IrBuilder;
-        use crate::symbols::type_name::TypeName;
-
-        let result_type = Type::Named {
-            module: DocumentId::new("test.hop").unwrap(),
-            name: TypeName::new("Result").unwrap(),
-            kind: NamedKind::Enum,
-        };
-
         check(
             IrModuleBuilder::new()
-                .enum_with_fields("Result", |e| {
-                    e.variant_with_fields("Ok", vec![("value", Type::String)]);
-                    e.variant_with_fields("Err", vec![("message", Type::String)]);
-                })
-                .component("ShowResult", [("r", result_type)], |t| {
+                .enum_(
+                    "Outcome",
+                    [
+                        ("Ok", vec![("value", "String")]),
+                        ("Err", vec![("message", "String")]),
+                    ],
+                )
+                .view("ShowOutcome", [("r", "Outcome")], |t| {
                     t.enum_match_stmt_with_bindings(
                         t.var("r"),
                         vec![
@@ -2906,17 +2843,17 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
-                enum Result {
+                enum Outcome {
                   Ok {value: String},
                   Err {message: String},
                 }
-                view ShowResult(r: test::Result) {
+                view ShowOutcome(r: test::Outcome) {
                   match r {
-                    Result::Ok(value: v) => {
+                    Outcome::Ok(value: v) => {
                       write("Value: ")
                       write_expr(v)
                     }
-                    Result::Err(message: m) => {
+                    Outcome::Err(message: m) => {
                       write("Error: ")
                       write_expr(m)
                     }
@@ -2926,18 +2863,18 @@ mod tests {
                 -- after --
                 // Code generated by the hop compiler. DO NOT EDIT.
 
-                export namespace Result {
-                    export type Result = { readonly tag: "Ok", readonly value: string } | { readonly tag: "Err", readonly message: string };
+                export namespace Outcome {
+                    export type Outcome = { readonly tag: "Ok", readonly value: string } | { readonly tag: "Err", readonly message: string };
 
-                    export function Ok(value: string): Result {
+                    export function Ok(value: string): Outcome {
                         return { tag: "Ok", value };
                     }
-                    export function Err(message: string): Result {
+                    export function Err(message: string): Outcome {
                         return { tag: "Err", message };
                     }
                 }
 
-                export function ShowResult({r}: {r: Result.Result}): string {
+                export function ShowOutcome({r}: {r: Outcome.Outcome}): string {
                     let output: string = "";
                     switch (r.tag) {
                         case "Ok": {
@@ -2961,7 +2898,7 @@ mod tests {
     #[test]
     fn transpiles_let_fragment_as_nested_buffer() {
         check(
-            IrModuleBuilder::new().component_no_params("Test", |t| {
+            IrModuleBuilder::new().view_no_params("Test", |t| {
                 t.let_fragment(
                     "v_0",
                     |t| {

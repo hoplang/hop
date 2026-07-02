@@ -909,7 +909,7 @@ mod tests {
     #[test]
     fn should_escape_html_in_expressions() {
         check(
-            build_ir("Test", [("content", Type::String)], |t| {
+            build_ir("Test", [("content", "String")], |t| {
                 t.write_expr_escaped(t.var("content"));
             }),
             vec![(
@@ -931,7 +931,7 @@ mod tests {
     #[test]
     fn should_render_if_body_when_condition_is_true() {
         check(
-            build_ir("Test", [("show", Type::Bool)], |t| {
+            build_ir("Test", [("show", "Bool")], |t| {
                 t.if_stmt(t.var("show"), |t| {
                     t.write("<div>Visible</div>");
                 });
@@ -954,7 +954,7 @@ mod tests {
     #[test]
     fn should_skip_if_body_when_condition_is_false() {
         check(
-            build_ir("Test", [("show", Type::Bool)], |t| {
+            build_ir("Test", [("show", "Bool")], |t| {
                 t.if_stmt(t.var("show"), |t| {
                     t.write("<div>Hidden</div>");
                 });
@@ -977,17 +977,13 @@ mod tests {
     #[test]
     fn should_iterate_over_array_in_for_loop() {
         check(
-            build_ir(
-                "Test",
-                vec![("items", Type::Array(Arc::new(Type::String)))],
-                |t| {
-                    t.for_loop("item", t.var("items"), |t| {
-                        t.write("<li>");
-                        t.write_expr_escaped(t.var("item"));
-                        t.write("</li>\n");
-                    });
-                },
-            ),
+            build_ir("Test", vec![("items", "Array[String]")], |t| {
+                t.for_loop("item", t.var("items"), |t| {
+                    t.write("<li>");
+                    t.write_expr_escaped(t.var("item"));
+                    t.write("</li>\n");
+                });
+            }),
             vec![(
                 "items",
                 Value::Array(vec![
