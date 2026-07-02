@@ -6,9 +6,9 @@ use crate::document_annotator::DocumentAnnotator;
 use crate::document_id::DocumentId;
 use crate::expr::ExamplesAnnotation;
 use crate::expr::parsing::parse_type::parse_type;
-use crate::expr::typing::r#type::{EnumVariant, NamedKind, Type, TypeBinding};
+use crate::expr::typing::r#type::{EnumVariant, Type, TypeBinding};
 use crate::expr::typing::type_checker::resolve_type;
-use crate::expr::typing::type_registry::{TypeDef, TypeRegistry};
+use crate::expr::typing::type_registry::{ResolvedType, TypeDef, TypeRegistry};
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::variable_scope::VariableScope;
@@ -107,15 +107,15 @@ impl TypeRegistryBuilder {
         let mut named = BTreeMap::new();
 
         for decl in &self.decls {
-            let (name, kind) = match decl {
-                Decl::Record { name, .. } => (name, NamedKind::Record),
-                Decl::EnumUnit { name, .. } | Decl::Enum { name, .. } => (name, NamedKind::Enum),
+            let name = match decl {
+                Decl::Record { name, .. }
+                | Decl::EnumUnit { name, .. }
+                | Decl::Enum { name, .. } => name,
             };
             let type_name = type_name(name);
             let typ = Arc::new(Type::Named {
                 module: module.clone(),
                 name: type_name.clone(),
-                kind,
             });
             if named.insert(type_name, typ).is_some() {
                 panic!("duplicate declaration of type `{name}`");
@@ -247,15 +247,19 @@ impl TestTypes {
         &self,
         name: &str,
     ) -> &[(FieldName, Arc<Type>, Option<ExamplesAnnotation>)] {
-        self.registry
-            .record_fields(&self.module, &type_name(name))
-            .unwrap_or_else(|| panic!("no record `{name}` is declared"))
+        let typ = self.named.get(&type_name(name));
+        match typ.map(|typ| self.registry.resolve(typ)) {
+            Some(Some(ResolvedType::Record { fields, .. })) => fields,
+            _ => panic!("no record `{name}` is declared"),
+        }
     }
 
     pub fn enum_variants(&self, name: &str) -> &[EnumVariant] {
-        self.registry
-            .enum_variants(&self.module, &type_name(name))
-            .unwrap_or_else(|| panic!("no enum `{name}` is declared"))
+        let typ = self.named.get(&type_name(name));
+        match typ.map(|typ| self.registry.resolve(typ)) {
+            Some(Some(ResolvedType::Enum { variants, .. })) => variants,
+            _ => panic!("no enum `{name}` is declared"),
+        }
     }
 
     pub fn type_env(&self) -> VariableScope<TypeName, (TypeBinding, DocumentRange)> {

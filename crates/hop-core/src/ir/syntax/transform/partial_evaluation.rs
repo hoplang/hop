@@ -3,8 +3,8 @@ use std::sync::Arc;
 
 use crate::document::CheapString;
 use crate::expr::patterns::{EnumPattern, Match};
-use crate::expr::typing::r#type::{NamedKind, Type};
-use crate::expr::typing::type_registry::TypeRegistry;
+use crate::expr::typing::r#type::Type;
+use crate::expr::typing::type_registry::{ResolvedType, TypeRegistry};
 use crate::ir::{
     IrExpr,
     ast::ExprId,
@@ -69,16 +69,13 @@ impl Const {
                 fields,
             } => {
                 // Reconstruct field expressions from const_map
-                let Type::Named {
-                    module,
-                    name,
-                    kind: NamedKind::Enum,
-                } = &*kind
-                else {
+                let Some(ResolvedType::Enum { variants, .. }) = registry.resolve(&kind) else {
                     return None;
                 };
-                let variant_fields =
-                    registry.variant_fields(module, name, variant_name.as_str())?;
+                let variant_fields = &variants
+                    .iter()
+                    .find(|variant| variant.name.as_str() == variant_name.as_str())?
+                    .fields;
 
                 let reconstructed_fields: Option<Vec<_>> = fields
                     .iter()

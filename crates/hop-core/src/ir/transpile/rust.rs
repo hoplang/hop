@@ -2,8 +2,8 @@ use pretty::{Arena, DocAllocator};
 
 use super::{Doc, Transpiler};
 use crate::expr::patterns::{EnumPattern, Match};
-use crate::expr::typing::r#type::{NamedKind, Type};
-use crate::expr::typing::type_registry::TypeRegistry;
+use crate::expr::typing::r#type::Type;
+use crate::expr::typing::type_registry::{ResolvedType, TypeRegistry};
 use crate::ir::ast::{
     IrArgument, IrComponentDeclaration, IrExpr, IrForSource, IrModule, IrStatement,
     IrViewDeclaration,
@@ -57,12 +57,8 @@ impl RustTranspiler {
         subject: &'a IrExpr,
         bindings: &'a [(FieldName, VarName)],
     ) -> Doc<'a> {
-        let record_name = match subject.get_type().as_ref() {
-            Type::Named {
-                name,
-                kind: NamedKind::Record,
-                ..
-            } => name.as_str().to_string(),
+        let record_name = match self.registry.resolve(subject.get_type().as_ref()) {
+            Some(ResolvedType::Record { name, .. }) => name.as_str().to_string(),
             _ => unreachable!("LetRecordDestructure subject must have Record type"),
         };
         let bindings_doc = arena.intersperse(
@@ -247,6 +243,10 @@ impl Default for RustTranspiler {
 }
 
 impl Transpiler for RustTranspiler {
+    fn registry(&self) -> &TypeRegistry {
+        &self.registry
+    }
+
     fn transpile_module(&mut self, module: &IrModule, registry: &TypeRegistry) -> String {
         // Reset tracking flags for this module
         self.needs_escape_html = false;
@@ -867,20 +867,12 @@ impl Transpiler for RustTranspiler {
             Match::Enum { subject, arms } => {
                 // Extract variant information from the subject's type
                 let subject_type = subject.get_type();
-                let Type::Named {
-                    module,
-                    name,
-                    kind: NamedKind::Enum,
-                    ..
-                } = subject_type.as_ref()
+                let Some(ResolvedType::Enum { variants, .. }) =
+                    self.registry.resolve(subject_type.as_ref())
                 else {
                     unreachable!("Enum match subject must have Named enum type")
                 };
-                let variants = self
-                    .registry
-                    .enum_variants(module, name)
-                    .expect("enum must be registered for transpile")
-                    .to_vec();
+                let variants = variants.to_vec();
 
                 let arms_doc = arena.intersperse(
                     arms.iter().map(|arm| {
@@ -1478,20 +1470,12 @@ impl Transpiler for RustTranspiler {
             Match::Enum { subject, arms } => {
                 // Extract variant information from the subject's type
                 let subject_type = subject.get_type();
-                let Type::Named {
-                    module,
-                    name,
-                    kind: NamedKind::Enum,
-                    ..
-                } = subject_type.as_ref()
+                let Some(ResolvedType::Enum { variants, .. }) =
+                    self.registry.resolve(subject_type.as_ref())
                 else {
                     unreachable!("Enum match subject must have Named enum type")
                 };
-                let variants = self
-                    .registry
-                    .enum_variants(module, name)
-                    .expect("enum must be registered for transpile")
-                    .to_vec();
+                let variants = variants.to_vec();
 
                 let mut doc = arena
                     .text("match &")

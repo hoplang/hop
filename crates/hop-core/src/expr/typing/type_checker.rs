@@ -2,8 +2,8 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use super::join_macro::build_balanced_join;
-use super::r#type::{NamedKind, NumericType, Type, TypeBinding};
-use super::type_registry::TypeRegistry;
+use super::r#type::{NumericType, Type, TypeBinding};
+use super::type_registry::{ResolvedType, TypeRegistry};
 use crate::asset_reference::AssetReference;
 use crate::document::{CheapString, DocumentRange};
 use crate::document_id::DocumentId;
@@ -138,15 +138,12 @@ pub fn typecheck_expr(
             )?;
             let base_type = typed_base.as_type();
 
-            match base_type {
-                Type::Named {
-                    module,
+            match registry.resolve(base_type) {
+                Some(ResolvedType::Record {
                     name: record_name,
-                    kind: NamedKind::Record,
-                } => {
-                    let fields = registry
-                        .record_fields(module, record_name)
-                        .expect("record type must be registered");
+                    fields,
+                    ..
+                }) => {
                     if let Some((_, field_type, _)) =
                         fields.iter().find(|(f, _, _)| f.as_str() == field.as_str())
                     {
@@ -1010,11 +1007,10 @@ pub fn typecheck_expr(
             });
 
             // Extract fields from the record type
-            let Type::Named {
-                module,
-                name: resolved_record_name,
-                kind: NamedKind::Record,
-            } = record_type.as_ref()
+            let Some(ResolvedType::Record {
+                fields: record_fields,
+                ..
+            }) = registry.resolve(&record_type)
             else {
                 return Err(TypeError::new(
                     TypeErrorKind::UndefinedRecord {
@@ -1023,9 +1019,6 @@ pub fn typecheck_expr(
                     range.clone(),
                 ));
             };
-            let record_fields = registry
-                .record_fields(module, resolved_record_name)
-                .expect("record type must be registered");
 
             // Build a map of expected fields from the record type
             let expected_fields = record_fields
@@ -1142,12 +1135,7 @@ pub fn typecheck_expr(
             });
 
             // Verify it's actually an enum type and get the variant's fields
-            let Type::Named {
-                module,
-                name: resolved_enum_name,
-                kind: NamedKind::Enum,
-            } = enum_type.as_ref()
-            else {
+            let Some(ResolvedType::Enum { variants, .. }) = registry.resolve(&enum_type) else {
                 return Err(TypeError::new(
                     TypeErrorKind::UndefinedEnum {
                         enum_name: enum_name.clone(),
@@ -1155,19 +1143,21 @@ pub fn typecheck_expr(
                     range.clone(),
                 ));
             };
-            let variant_fields =
-                match registry.variant_fields(module, resolved_enum_name, variant_name.as_str()) {
-                    Some(fields) => fields.to_vec(),
-                    None => {
-                        return Err(TypeError::new(
-                            TypeErrorKind::UndefinedEnumVariant {
-                                enum_name: enum_name.clone(),
-                                variant_name: variant_name.clone(),
-                            },
-                            range.clone(),
-                        ));
-                    }
-                };
+            let variant_fields = match variants
+                .iter()
+                .find(|variant| variant.name.as_str() == variant_name.as_str())
+            {
+                Some(variant) => variant.fields.to_vec(),
+                None => {
+                    return Err(TypeError::new(
+                        TypeErrorKind::UndefinedEnumVariant {
+                            enum_name: enum_name.clone(),
+                            variant_name: variant_name.clone(),
+                        },
+                        range.clone(),
+                    ));
+                }
+            };
 
             // Validate fields
             let typed_fields = {

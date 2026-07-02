@@ -1,6 +1,6 @@
 use crate::expr::Type;
-use crate::expr::typing::r#type::{ExamplesAnnotation, NamedKind};
-use crate::expr::typing::type_registry::TypeRegistry;
+use crate::expr::typing::r#type::ExamplesAnnotation;
+use crate::expr::typing::type_registry::{ResolvedType, TypeRegistry};
 use crate::ir::semantics::evaluator::Value;
 use crate::symbols::field_name::FieldName;
 use rand::{Rng, RngExt};
@@ -29,20 +29,20 @@ pub fn random_value(
     examples: Option<&ExamplesAnnotation>,
     registry: &TypeRegistry,
 ) -> Value {
-    match ty {
-        Type::String => match examples.and_then(|e| e.pattern.as_deref()) {
+    match registry.resolve(ty).expect("named type must be registered") {
+        ResolvedType::String => match examples.and_then(|e| e.pattern.as_deref()) {
             Some(p) => random_string_from_pattern(rng, p),
             None => random_word(rng),
         },
-        Type::Bool => Value::Bool(rng.random_bool(0.5)),
-        Type::Int => {
+        ResolvedType::Bool => Value::Bool(rng.random_bool(0.5)),
+        ResolvedType::Int => {
             let min = examples.and_then(|e| e.min).unwrap_or(0);
             let max = examples.and_then(|e| e.max).unwrap_or(100);
             Value::Int(rng.random_range(min..=max))
         }
-        Type::Float => Value::Float(rng.random_range(0.0..100.0)),
-        Type::Fragment => Value::String("<span>sample</span>".to_string()),
-        Type::Array(inner) => {
+        ResolvedType::Float => Value::Float(rng.random_range(0.0..100.0)),
+        ResolvedType::Fragment => Value::String("<span>sample</span>".to_string()),
+        ResolvedType::Array(inner) => {
             let min = examples.and_then(|e| e.min_len).unwrap_or(0).max(0) as usize;
             let max = examples.and_then(|e| e.max_len).unwrap_or(5).max(0) as usize;
             let len = rng.random_range(min..=max);
@@ -52,21 +52,14 @@ pub fn random_value(
                     .collect(),
             )
         }
-        Type::Option(inner) => {
+        ResolvedType::Option(inner) => {
             if rng.random_bool(0.5) {
                 Value::Some(Box::new(random_value(rng, inner, None, registry)))
             } else {
                 Value::None
             }
         }
-        Type::Named {
-            module,
-            name,
-            kind: NamedKind::Record,
-        } => {
-            let fields = registry
-                .record_fields(module, name)
-                .expect("record type must be registered");
+        ResolvedType::Record { fields, .. } => {
             let map = fields
                 .iter()
                 .map(|(name, ty, examples)| {
@@ -78,14 +71,7 @@ pub fn random_value(
                 .collect();
             Value::Record(map)
         }
-        Type::Named {
-            module,
-            name,
-            kind: NamedKind::Enum,
-        } => {
-            let variants = registry
-                .enum_variants(module, name)
-                .expect("enum type must be registered");
+        ResolvedType::Enum { variants, .. } => {
             let idx = rng.random_range(0..variants.len());
             let variant = &variants[idx];
             let fields = variant

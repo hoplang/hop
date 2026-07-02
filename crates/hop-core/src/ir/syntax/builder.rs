@@ -1,8 +1,8 @@
 use crate::document::CheapString;
 use crate::expr::Type;
 use crate::expr::patterns::{EnumMatchArm, EnumPattern, Match};
-use crate::expr::typing::r#type::{EquatableType, NamedKind};
-use crate::expr::typing::type_registry::TypeRegistry;
+use crate::expr::typing::r#type::EquatableType;
+use crate::expr::typing::type_registry::{ResolvedType, TypeRegistry};
 use crate::expr::typing::type_registry_builder::{TestTypes, TypeRegistryBuilder};
 use crate::ir::ast::{
     ExprId, IrArgument, IrExpr, IrForSource, IrParameter, IrStatement, StatementId,
@@ -472,12 +472,8 @@ impl IrBuilder {
     /// arms is a list of (variant_name, body_expr) tuples
     pub fn match_expr(&self, subject: IrExpr, arms: Vec<(&str, IrExpr)>) -> IrExpr {
         // Get the enum type from the subject
-        let (enum_name, result_type) = match subject.as_type() {
-            Type::Named {
-                name,
-                kind: NamedKind::Enum,
-                ..
-            } => {
+        let (enum_name, result_type) = match self.types.registry().resolve(subject.as_type()) {
+            Some(ResolvedType::Enum { name, .. }) => {
                 // Use the type of the first arm's body as the result type
                 let result_type = arms
                     .first()
@@ -597,16 +593,12 @@ impl IrBuilder {
         subject: IrExpr,
         arms: Vec<(&str, Vec<(&str, &str)>, Box<dyn FnOnce(&Self) -> IrExpr>)>,
     ) -> IrExpr {
-        let Type::Named {
-            name,
-            kind: NamedKind::Enum,
-            ..
-        } = subject.as_type()
+        let Some(ResolvedType::Enum { name, variants, .. }) =
+            self.types.registry().resolve(subject.as_type())
         else {
             panic!("Match subject must be an enum type")
         };
         let enum_name = name.clone();
-        let variants = self.types.enum_variants(name.as_str());
 
         // Use the type of the first arm's body as the result type (computed after building arms)
         let mut result_type: Option<Arc<Type>> = None;
@@ -676,14 +668,12 @@ impl IrBuilder {
 
     pub fn field_access(&self, object: IrExpr, field_str: &str) -> IrExpr {
         let field_name = FieldName::new(field_str).unwrap();
-        let field_type = match object.as_type() {
-            Type::Named {
+        let field_type = match self.types.registry().resolve(object.as_type()) {
+            Some(ResolvedType::Record {
                 name: record_name,
-                kind: NamedKind::Record,
+                fields,
                 ..
-            } => self
-                .types
-                .record_fields(record_name.as_str())
+            }) => fields
                 .iter()
                 .find(|(f, _, _)| f.as_str() == field_str)
                 .map(|(_, t, _)| t.clone())
@@ -1015,16 +1005,12 @@ impl IrBuilder {
     ) {
         use crate::expr::patterns::Match;
 
-        let Type::Named {
-            name,
-            kind: NamedKind::Enum,
-            ..
-        } = subject.as_type()
+        let Some(ResolvedType::Enum { name, variants, .. }) =
+            self.types.registry().resolve(subject.as_type())
         else {
             panic!("Match subject must be an enum type")
         };
         let enum_name = name.clone();
-        let variants = self.types.enum_variants(name.as_str());
 
         let ir_arms: Vec<EnumMatchArm<Vec<IrStatement>>> = arms
             .into_iter()
@@ -1094,15 +1080,13 @@ impl IrBuilder {
     ) where
         F: FnOnce(&mut Self),
     {
-        let Type::Named {
-            name: record_name,
-            kind: NamedKind::Record,
+        let Some(ResolvedType::Record {
+            fields: record_fields,
             ..
-        } = subject.as_type()
+        }) = self.types.registry().resolve(subject.as_type())
         else {
             panic!("record_destructure_stmt subject must be a record type")
         };
-        let record_fields = self.types.record_fields(record_name.as_str());
 
         let ir_bindings: Vec<(FieldName, VarName)> = bindings
             .iter()

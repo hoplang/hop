@@ -4,8 +4,8 @@ use pretty::BoxDoc;
 
 use crate::document::DocumentRange;
 use crate::expr::parsing::parsed_expr::{Constructor, ParsedMatchPattern};
-use crate::expr::typing::r#type::{NamedKind, Type};
-use crate::expr::typing::type_registry::TypeRegistry;
+use crate::expr::typing::r#type::Type;
+use crate::expr::typing::type_registry::{ResolvedType, TypeRegistry};
 use crate::symbols::field_name::FieldName;
 use crate::symbols::var_name::VarName;
 use crate::type_error::{TypeError, TypeErrorKind};
@@ -141,8 +141,8 @@ pub fn typecheck_pattern(
             constructor_range,
             range,
             ..
-        } => match (constructor, subject_type.as_ref()) {
-            (Constructor::BooleanTrue | Constructor::BooleanFalse, Type::Bool) => {
+        } => match (constructor, registry.resolve(&subject_type)) {
+            (Constructor::BooleanTrue | Constructor::BooleanFalse, Some(ResolvedType::Bool)) => {
                 Ok(TypedMatchPattern::Constructor {
                     constructor: constructor.clone(),
                     typ: subject_type.clone(),
@@ -152,7 +152,7 @@ pub fn typecheck_pattern(
                 })
             }
 
-            (Constructor::OptionSome, Type::Option(inner_type)) => {
+            (Constructor::OptionSome, Some(ResolvedType::Option(inner_type))) => {
                 let mut typed_args = Vec::new();
                 if let Some(inner_pattern) = args.first() {
                     typed_args.push(typecheck_pattern(
@@ -170,24 +170,26 @@ pub fn typecheck_pattern(
                 })
             }
 
-            (Constructor::OptionNone, Type::Option(_)) => Ok(TypedMatchPattern::Constructor {
-                constructor: constructor.clone(),
-                typ: subject_type.clone(),
-                args: Vec::new(),
-                fields: Vec::new(),
-                range: range.clone(),
-            }),
+            (Constructor::OptionNone, Some(ResolvedType::Option(_))) => {
+                Ok(TypedMatchPattern::Constructor {
+                    constructor: constructor.clone(),
+                    typ: subject_type.clone(),
+                    args: Vec::new(),
+                    fields: Vec::new(),
+                    range: range.clone(),
+                })
+            }
 
             (
                 Constructor::EnumVariant {
                     enum_name: pattern_enum_name,
                     variant_name: pattern_variant_name,
                 },
-                Type::Named {
-                    module,
+                Some(ResolvedType::Enum {
                     name: subject_enum_name,
-                    kind: NamedKind::Enum,
-                },
+                    variants,
+                    ..
+                }),
             ) => {
                 if pattern_enum_name != subject_enum_name {
                     return Err(TypeError::new(
@@ -199,11 +201,10 @@ pub fn typecheck_pattern(
                     ));
                 }
 
-                let variant_fields = registry.variant_fields(
-                    module,
-                    subject_enum_name,
-                    pattern_variant_name.as_str(),
-                );
+                let variant_fields = variants
+                    .iter()
+                    .find(|variant| variant.name.as_str() == pattern_variant_name.as_str())
+                    .map(|variant| variant.fields.as_slice());
 
                 let Some(variant_fields) = variant_fields else {
                     return Err(TypeError::new(
@@ -274,11 +275,11 @@ pub fn typecheck_pattern(
                 Constructor::Record {
                     type_name: pattern_type_name,
                 },
-                Type::Named {
-                    module,
+                Some(ResolvedType::Record {
                     name: subject_type_name,
-                    kind: NamedKind::Record,
-                },
+                    fields: subject_fields,
+                    ..
+                }),
             ) => {
                 if pattern_type_name != subject_type_name {
                     return Err(TypeError::new(
@@ -289,10 +290,6 @@ pub fn typecheck_pattern(
                         range.clone(),
                     ));
                 }
-
-                let subject_fields = registry
-                    .record_fields(module, subject_type_name)
-                    .expect("record type must be registered");
 
                 let mut typed_fields = Vec::new();
                 for (field_name, field_name_range, field_pattern) in fields {

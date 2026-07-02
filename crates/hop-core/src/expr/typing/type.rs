@@ -11,12 +11,6 @@ use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum NamedKind {
-    Record,
-    Enum,
-}
-
 #[derive(Debug, PartialEq, Eq)]
 pub enum Type {
     String,
@@ -26,11 +20,7 @@ pub enum Type {
     Fragment,
     Array(Arc<Type>),
     Option(Arc<Type>),
-    Named {
-        module: DocumentId,
-        name: TypeName,
-        kind: NamedKind,
-    },
+    Named { module: DocumentId, name: TypeName },
 }
 
 #[derive(Debug, Clone)]

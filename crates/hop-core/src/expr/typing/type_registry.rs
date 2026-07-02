@@ -15,6 +15,28 @@ pub enum TypeDef {
     Enum { variants: Vec<EnumVariant> },
 }
 
+/// A `Type` with named types resolved to their registry definition.
+/// Resolution is exactly one level deep, fields and variants carry
+/// unresolved types.
+#[derive(Debug, Clone, Copy)]
+pub enum ResolvedType<'a> {
+    String,
+    Bool,
+    Int,
+    Float,
+    Fragment,
+    Array(&'a Arc<Type>),
+    Option(&'a Arc<Type>),
+    Record {
+        name: &'a TypeName,
+        fields: &'a [(FieldName, Arc<Type>, Option<ExamplesAnnotation>)],
+    },
+    Enum {
+        name: &'a TypeName,
+        variants: &'a [EnumVariant],
+    },
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct TypeRegistry {
     defs: HashMap<DocumentId, HashMap<TypeName, TypeDef>>,
@@ -29,34 +51,19 @@ impl TypeRegistry {
         self.defs.entry(module).or_default().insert(name, def);
     }
 
-    pub fn record_fields(
-        &self,
-        module: &DocumentId,
-        name: &TypeName,
-    ) -> Option<&[(FieldName, Arc<Type>, Option<ExamplesAnnotation>)]> {
-        match self.defs.get(module)?.get(name)? {
-            TypeDef::Record { fields } => Some(fields),
-            TypeDef::Enum { .. } => None,
+    pub fn resolve<'a>(&'a self, typ: &'a Type) -> Option<ResolvedType<'a>> {
+        match typ {
+            Type::String => Some(ResolvedType::String),
+            Type::Bool => Some(ResolvedType::Bool),
+            Type::Int => Some(ResolvedType::Int),
+            Type::Float => Some(ResolvedType::Float),
+            Type::Fragment => Some(ResolvedType::Fragment),
+            Type::Array(inner) => Some(ResolvedType::Array(inner)),
+            Type::Option(inner) => Some(ResolvedType::Option(inner)),
+            Type::Named { module, name } => match self.defs.get(module)?.get(name)? {
+                TypeDef::Record { fields } => Some(ResolvedType::Record { name, fields }),
+                TypeDef::Enum { variants } => Some(ResolvedType::Enum { name, variants }),
+            },
         }
-    }
-
-    pub fn enum_variants(&self, module: &DocumentId, name: &TypeName) -> Option<&[EnumVariant]> {
-        match self.defs.get(module)?.get(name)? {
-            TypeDef::Enum { variants } => Some(variants),
-            TypeDef::Record { .. } => None,
-        }
-    }
-
-    pub fn variant_fields(
-        &self,
-        module: &DocumentId,
-        name: &TypeName,
-        variant: &str,
-    ) -> Option<&[(FieldName, Arc<Type>, Option<ExamplesAnnotation>)]> {
-        let variants = self.enum_variants(module, name)?;
-        variants
-            .iter()
-            .find(|v| v.name.as_str() == variant)
-            .map(|v| v.fields.as_slice())
     }
 }

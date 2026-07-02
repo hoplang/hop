@@ -6,9 +6,7 @@ use crate::expr::patterns::compiler::Compiler;
 use crate::expr::typing::r#type::EnumVariant;
 use crate::expr::typing::type_checker::{resolve_type, typecheck_expr};
 use crate::expr::typing::type_registry::{TypeDef, TypeRegistry};
-use crate::expr::{
-    self, ComponentSignature, NamedKind, ParamEntry, Tail, Type, TypeBinding, TypedExpr,
-};
+use crate::expr::{self, ComponentSignature, ParamEntry, Tail, Type, TypeBinding, TypedExpr};
 use crate::hop::parsing::parsed_ast::ParsedDeclaration;
 use crate::hop::parsing::parsed_ast::{
     ParsedAttribute, ParsedComponentDeclaration, ParsedEnumDeclaration, ParsedImportDeclaration,
@@ -434,7 +432,6 @@ fn typecheck_module(
                         TypeBinding::Value(Arc::new(Type::Named {
                             module: parsed_ast.document_id.clone(),
                             name: record_name.clone(),
-                            kind: NamedKind::Record,
                         })),
                         record_name_range.clone(),
                     ),
@@ -496,7 +493,6 @@ fn typecheck_module(
                         TypeBinding::Value(Arc::new(Type::Named {
                             module: parsed_ast.document_id.clone(),
                             name: enum_name.clone(),
-                            kind: NamedKind::Enum,
                         })),
                         enum_name_range.clone(),
                     ),

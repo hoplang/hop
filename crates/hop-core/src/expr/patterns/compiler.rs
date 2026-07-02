@@ -17,8 +17,8 @@ use crate::document::DocumentRange;
 use crate::expr::parsing::parsed_expr::Constructor;
 use crate::expr::patterns::typed::TypedMatchPattern;
 
-use crate::expr::typing::r#type::{NamedKind, Type};
-use crate::expr::typing::type_registry::TypeRegistry;
+use crate::expr::typing::r#type::Type;
+use crate::expr::typing::type_registry::{ResolvedType, TypeRegistry};
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
@@ -214,28 +214,6 @@ struct VarInfo {
     args: Vec<(VarName, Option<FieldName>)>,
 }
 
-/// Checks if a pattern introduces no bindings and requires no runtime discrimination.
-/// This is true for wildcards and for record patterns where all fields are free from bindings
-/// (since records have only one constructor).
-fn is_free_from_bindings(pattern: &TypedMatchPattern) -> bool {
-    match pattern {
-        TypedMatchPattern::Wildcard { .. } => true,
-        TypedMatchPattern::Binding { .. } => false,
-        TypedMatchPattern::Constructor { typ, fields, .. } => {
-            // Only records can be free from bindings since they have one constructor
-            matches!(
-                typ.as_ref(),
-                Type::Named {
-                    kind: NamedKind::Record,
-                    ..
-                }
-            ) && fields
-                .iter()
-                .all(|field| is_free_from_bindings(&field.pattern))
-        }
-    }
-}
-
 /// The `match` compiler itself.
 pub struct Compiler<'a> {
     /// Counter for generating fresh variable names.
@@ -261,6 +239,25 @@ impl<'a> Compiler<'a> {
         }
     }
 
+    /// Checks if a pattern introduces no bindings and requires no runtime discrimination.
+    /// This is true for wildcards and for record patterns where all fields are free from bindings
+    /// (since records have only one constructor).
+    fn is_free_from_bindings(&self, pattern: &TypedMatchPattern) -> bool {
+        match pattern {
+            TypedMatchPattern::Wildcard { .. } => true,
+            TypedMatchPattern::Binding { .. } => false,
+            TypedMatchPattern::Constructor { typ, fields, .. } => {
+                // Only records can be free from bindings since they have one constructor
+                matches!(
+                    self.registry.resolve(typ),
+                    Some(ResolvedType::Record { .. })
+                ) && fields
+                    .iter()
+                    .all(|field| self.is_free_from_bindings(&field.pattern))
+            }
+        }
+    }
+
     /// Returns the index of a constructor within the given type.
     fn constructor_index(&self, cons: &Constructor, typ: &Type) -> usize {
         match cons {
@@ -269,23 +266,13 @@ impl<'a> Compiler<'a> {
             Constructor::OptionSome => 0,
             Constructor::OptionNone => 1,
             Constructor::EnumVariant { variant_name, .. } => {
-                if let Type::Named {
-                    module,
-                    name,
-                    kind: NamedKind::Enum,
-                } = typ
-                {
-                    let variants = self
-                        .registry
-                        .enum_variants(module, name)
-                        .expect("enum type must be registered");
-                    variants
-                        .iter()
-                        .position(|variant| variant.name == *variant_name)
-                        .expect("unknown variant")
-                } else {
+                let Some(ResolvedType::Enum { variants, .. }) = self.registry.resolve(typ) else {
                     panic!("type is not an enum")
-                }
+                };
+                variants
+                    .iter()
+                    .position(|variant| variant.name == *variant_name)
+                    .expect("unknown variant")
             }
             // Records have only one constructor, so index is always 0
             Constructor::Record { .. } => 0,
@@ -381,7 +368,7 @@ impl<'a> Compiler<'a> {
                     ));
                     false
                 }
-                TypedMatchPattern::Constructor { .. } => !is_free_from_bindings(&col.pattern),
+                TypedMatchPattern::Constructor { .. } => !self.is_free_from_bindings(&col.pattern),
             });
         }
 
@@ -396,14 +383,18 @@ impl<'a> Compiler<'a> {
 
         let branch_var = self.find_branch_variable(&rows);
 
-        let mut cases = match branch_var.typ.as_ref() {
-            Type::Bool => {
+        let mut cases = match self
+            .registry
+            .resolve(branch_var.typ.as_ref())
+            .expect("named type must be registered")
+        {
+            ResolvedType::Bool => {
                 vec![
                     (Constructor::BooleanFalse, Vec::new(), Vec::new()),
                     (Constructor::BooleanTrue, Vec::new(), Vec::new()),
                 ]
             }
-            Type::Option(inner) => {
+            ResolvedType::Option(inner) => {
                 vec![
                     (
                         Constructor::OptionSome,
@@ -413,45 +404,27 @@ impl<'a> Compiler<'a> {
                     (Constructor::OptionNone, Vec::new(), Vec::new()),
                 ]
             }
-            Type::Named {
-                module,
-                name,
-                kind: NamedKind::Enum,
-            } => {
-                let variants = self
-                    .registry
-                    .enum_variants(module, name)
-                    .expect("enum type must be registered");
-                variants
-                    .iter()
-                    .map(|variant| {
-                        // Create fresh variables for each field in the variant
-                        let field_vars: Vec<Variable> = variant
-                            .fields
-                            .iter()
-                            .map(|(_, field_type, _)| self.fresh_var(field_type.clone()))
-                            .collect();
-                        (
-                            Constructor::EnumVariant {
-                                enum_name: name.clone(),
-                                variant_name: variant.name.clone(),
-                            },
-                            field_vars,
-                            Vec::new(),
-                        )
-                    })
-                    .collect()
-            }
-            Type::Named {
-                module,
-                name,
-                kind: NamedKind::Record,
-            } => {
+            ResolvedType::Enum { name, variants, .. } => variants
+                .iter()
+                .map(|variant| {
+                    // Create fresh variables for each field in the variant
+                    let field_vars: Vec<Variable> = variant
+                        .fields
+                        .iter()
+                        .map(|(_, field_type, _)| self.fresh_var(field_type.clone()))
+                        .collect();
+                    (
+                        Constructor::EnumVariant {
+                            enum_name: name.clone(),
+                            variant_name: variant.name.clone(),
+                        },
+                        field_vars,
+                        Vec::new(),
+                    )
+                })
+                .collect(),
+            ResolvedType::Record { name, fields, .. } => {
                 // Records have a single constructor with fresh variables for each field
-                let fields = self
-                    .registry
-                    .record_fields(module, name)
-                    .expect("record type must be registered");
                 let field_vars: Vec<Variable> = fields
                     .iter()
                     .map(|(_, field_type, _)| self.fresh_var(field_type.clone()))
@@ -464,7 +437,11 @@ impl<'a> Compiler<'a> {
                     Vec::new(),
                 )]
             }
-            Type::String | Type::Int | Type::Float | Type::Fragment | Type::Array(_) => {
+            ResolvedType::String
+            | ResolvedType::Int
+            | ResolvedType::Float
+            | ResolvedType::Fragment
+            | ResolvedType::Array(_) => {
                 panic!("pattern matching not supported for this type")
             }
         };
@@ -501,7 +478,7 @@ impl<'a> Compiler<'a> {
                         // Field patterns: index is resolved on the typed field.
                         for field in fields {
                             let var = &mut cases[idx].1[field.index];
-                            if is_free_from_bindings(&field.pattern) {
+                            if self.is_free_from_bindings(&field.pattern) {
                                 var.is_free_from_bindings = true;
                             }
                             cols.push(Column::new(var.clone(), field.pattern));
@@ -509,7 +486,7 @@ impl<'a> Compiler<'a> {
                     } else {
                         // Positional args (Option Some, etc.)
                         for (var, pat) in cases[idx].1.iter_mut().zip(args) {
-                            if is_free_from_bindings(&pat) {
+                            if self.is_free_from_bindings(&pat) {
                                 var.is_free_from_bindings = true;
                             }
                             cols.push(Column::new(var.clone(), pat));
@@ -531,16 +508,9 @@ impl<'a> Compiler<'a> {
         for (cons, vars, rows) in cases {
             let args: Vec<(VarName, Option<FieldName>)> = if let Constructor::Record { .. } = &cons
             {
-                if let Type::Named {
-                    module,
-                    name,
-                    kind: NamedKind::Record,
-                } = branch_var.typ.as_ref()
+                if let Some(ResolvedType::Record { fields, .. }) =
+                    self.registry.resolve(branch_var.typ.as_ref())
                 {
-                    let fields = self
-                        .registry
-                        .record_fields(module, name)
-                        .expect("record type must be registered");
                     vars.iter()
                         .zip(fields.iter())
                         .map(|(v, (field_name, _, _))| (v.name.clone(), Some(field_name.clone())))
@@ -550,15 +520,13 @@ impl<'a> Compiler<'a> {
                 }
             } else if let Constructor::EnumVariant { variant_name, .. } = &cons {
                 // For enum variants with fields, include field names
-                if let Type::Named {
-                    module,
-                    name,
-                    kind: NamedKind::Enum,
-                } = branch_var.typ.as_ref()
+                if let Some(ResolvedType::Enum { variants, .. }) =
+                    self.registry.resolve(branch_var.typ.as_ref())
                 {
-                    let variant_fields =
-                        self.registry
-                            .variant_fields(module, name, variant_name.as_str());
+                    let variant_fields = variants
+                        .iter()
+                        .find(|v| v.name.as_str() == variant_name.as_str())
+                        .map(|v| v.fields.as_slice());
                     if let Some(fields) = variant_fields {
                         vars.iter()
                             .zip(fields.iter())
@@ -597,8 +565,12 @@ impl<'a> Compiler<'a> {
         // All case bodies are Some, build the appropriate typed Decision variant
         // Clone the type to avoid borrow issues when moving branch_var
         let branch_typ = branch_var.typ.clone();
-        match branch_typ.as_ref() {
-            Type::Bool => {
+        match self
+            .registry
+            .resolve(branch_typ.as_ref())
+            .expect("named type must be registered")
+        {
+            ResolvedType::Bool => {
                 // compiled_cases is ordered: [false, true]
                 let mut iter = compiled_cases.into_iter();
                 let (_, _, false_body) = iter.next().unwrap();
@@ -613,7 +585,7 @@ impl<'a> Compiler<'a> {
                     }),
                 })
             }
-            Type::Option(_) => {
+            ResolvedType::Option(_) => {
                 // compiled_cases is ordered: [some, none]
                 let mut iter = compiled_cases.into_iter();
                 let (_, some_vars, some_body) = iter.next().unwrap();
@@ -634,15 +606,11 @@ impl<'a> Compiler<'a> {
                     }),
                 })
             }
-            Type::Named {
-                module,
+            ResolvedType::Enum {
                 name,
-                kind: NamedKind::Enum,
+                variants: type_variants,
+                ..
             } => {
-                let type_variants = self
-                    .registry
-                    .enum_variants(module, name)
-                    .expect("enum type must be registered");
                 let cases = compiled_cases
                     .into_iter()
                     .map(|(cons, vars, body)| {
@@ -682,15 +650,11 @@ impl<'a> Compiler<'a> {
                     cases,
                 })
             }
-            Type::Named {
-                module,
+            ResolvedType::Record {
                 name,
-                kind: NamedKind::Record,
+                fields: type_fields,
+                ..
             } => {
-                let type_fields = self
-                    .registry
-                    .record_fields(module, name)
-                    .expect("record type must be registered");
                 // Records have exactly one case
                 let (_, vars, body) = compiled_cases.into_iter().next().unwrap();
 

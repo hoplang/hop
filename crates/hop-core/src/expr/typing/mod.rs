@@ -6,7 +6,5 @@ pub mod type_registry;
 pub mod type_registry_builder;
 pub mod typed_expr;
 
-pub use r#type::{
-    ComponentSignature, ExamplesAnnotation, NamedKind, ParamEntry, Tail, Type, TypeBinding,
-};
+pub use r#type::{ComponentSignature, ExamplesAnnotation, ParamEntry, Tail, Type, TypeBinding};
 pub use typed_expr::TypedExpr;

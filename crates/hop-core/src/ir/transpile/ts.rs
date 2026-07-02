@@ -21,6 +21,8 @@ pub struct TsTranspiler {
     needs_escape_html: bool,
     /// Tracks whether Fragment type is used during transpilation
     needs_fragment: bool,
+    /// Registry of the module currently being transpiled
+    registry: TypeRegistry,
 }
 
 impl TsTranspiler {
@@ -30,6 +32,7 @@ impl TsTranspiler {
             needs_option: false,
             needs_escape_html: false,
             needs_fragment: false,
+            registry: TypeRegistry::default(),
         }
     }
 
@@ -153,11 +156,16 @@ impl Default for TsTranspiler {
 }
 
 impl Transpiler for TsTranspiler {
-    fn transpile_module(&mut self, module: &IrModule, _registry: &TypeRegistry) -> String {
+    fn registry(&self) -> &TypeRegistry {
+        &self.registry
+    }
+
+    fn transpile_module(&mut self, module: &IrModule, registry: &TypeRegistry) -> String {
         // Reset tracking flags for this module
         self.needs_option = false;
         self.needs_escape_html = false;
         self.needs_fragment = false;
+        self.registry = registry.clone();
 
         let arena = &Arena::new();
 
