@@ -2,6 +2,7 @@ pub mod join_macro;
 pub mod r#type;
 pub mod type_checker;
 pub mod type_env;
+pub mod type_export;
 pub mod type_registry;
 #[cfg(test)]
 pub mod type_registry_builder;

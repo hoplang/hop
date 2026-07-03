@@ -26,7 +26,7 @@ struct Entry {
 
 #[derive(Debug, Clone)]
 enum Origin {
-    Local { is_pub: bool },
+    Local,
     Imported { import_range: DocumentRange },
 }
 
@@ -41,9 +41,8 @@ impl TypeEnv {
         name: TypeName,
         binding: TypeBinding,
         definition_range: DocumentRange,
-        is_pub: bool,
     ) {
-        self.insert(name, binding, definition_range, Origin::Local { is_pub });
+        self.insert(name, binding, definition_range, Origin::Local);
     }
 
     /// Bind an imported name. The import range is the range of the
@@ -83,16 +82,6 @@ impl TypeEnv {
         let entry = self.entries.get_mut(name)?;
         entry.accessed = true;
         Some((&entry.binding, &entry.definition_range))
-    }
-
-    /// Look up an exported name and whether it is public. Imported names
-    /// are not re-exported and yield None. Does not mark access.
-    pub fn lookup_export(&self, name: &TypeName) -> Option<(&TypeBinding, &DocumentRange, bool)> {
-        let entry = self.entries.get(name)?;
-        match entry.origin {
-            Origin::Local { is_pub } => Some((&entry.binding, &entry.definition_range, is_pub)),
-            Origin::Imported { .. } => None,
-        }
     }
 
     /// Imported names that were never accessed via lookup, with their

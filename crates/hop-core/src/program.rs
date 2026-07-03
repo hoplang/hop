@@ -8,7 +8,7 @@ use crate::dependency_graph::DependencyGraph;
 use crate::document::{Document, DocumentRange};
 use crate::document_id::DocumentId;
 use crate::document_position::DocumentPosition;
-use crate::expr::typing::type_env::TypeEnv;
+use crate::expr::typing::type_export::TypeExport;
 use crate::expr::typing::type_registry::TypeRegistry;
 use crate::hop::inlining::transform::TailwindInjection;
 use crate::hop::parsing::find_node::find_node_at_position;
@@ -82,7 +82,7 @@ pub struct Program {
     css_errors: HashMap<DocumentId, Vec<CssError>>,
     parse_errors: HashMap<DocumentId, Vec<ParseError>>,
     parsed_asts: HashMap<DocumentId, ParsedAst>,
-    typechecker_state: HashMap<DocumentId, TypeEnv>,
+    type_exports: HashMap<DocumentId, HashMap<TypeName, TypeExport>>,
     type_registry: TypeRegistry,
     type_errors: HashMap<DocumentId, Vec<TypeError>>,
     type_annotations: HashMap<DocumentId, Vec<TypeAnnotation>>,
@@ -132,7 +132,7 @@ impl Program {
                 .collect::<Vec<_>>();
             typecheck(
                 &modules,
-                &mut self.typechecker_state,
+                &mut self.type_exports,
                 &mut self.type_registry,
                 &mut self.typed_asts,
                 &mut self.type_errors,
@@ -155,7 +155,7 @@ impl Program {
         self.documents.remove(document_id);
         self.parse_errors.remove(document_id);
         self.parsed_asts.remove(document_id);
-        self.typechecker_state.remove(document_id);
+        self.type_exports.remove(document_id);
         self.type_registry.remove_module(document_id);
         self.type_errors.remove(document_id);
         self.type_annotations.remove(document_id);
@@ -177,7 +177,7 @@ impl Program {
             if !modules.is_empty() {
                 typecheck(
                     &modules,
-                    &mut self.typechecker_state,
+                    &mut self.type_exports,
                     &mut self.type_registry,
                     &mut self.typed_asts,
                     &mut self.type_errors,

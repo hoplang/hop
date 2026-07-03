@@ -7,6 +7,7 @@ use crate::expr::patterns::compiler::Compiler;
 use crate::expr::typing::r#type::EnumVariant;
 use crate::expr::typing::type_checker::{resolve_type, typecheck_expr};
 use crate::expr::typing::type_env::TypeEnv;
+use crate::expr::typing::type_export::TypeExport;
 use crate::expr::typing::type_registry::{TypeDef, TypeRegistry};
 use crate::expr::{self, ComponentSignature, ParamEntry, Tail, Type, TypeBinding, TypedExpr};
 use crate::hop::parsing::parsed_ast::ParsedDeclaration;
@@ -40,7 +41,7 @@ use crate::hop::typing::typed_node::{
 
 pub fn typecheck(
     modules: &[&ParsedAst],
-    state: &mut HashMap<DocumentId, TypeEnv>,
+    exports: &mut HashMap<DocumentId, HashMap<TypeName, TypeExport>>,
     registry: &mut TypeRegistry,
     typed_asts: &mut HashMap<DocumentId, TypedAst>,
     errors: &mut HashMap<DocumentId, Vec<TypeError>>,
@@ -49,7 +50,7 @@ pub fn typecheck(
     asset_references: &mut HashMap<DocumentId, Vec<AssetReference>>,
 ) {
     for module in modules {
-        let mut module_errors: Vec<TypeError> = Vec::new();
+        let module_errors = errors.entry(module.document_id.clone()).or_default();
         let module_annotations = annotations.entry(module.document_id.clone()).or_default();
         let module_definition_links = definition_links
             .entry(module.document_id.clone())
@@ -58,6 +59,7 @@ pub fn typecheck(
             .entry(module.document_id.clone())
             .or_default();
 
+        module_errors.clear();
         module_annotations.clear();
         module_definition_links.clear();
         module_asset_references.clear();
@@ -65,9 +67,9 @@ pub fn typecheck(
 
         let typed_ast = typecheck_module(
             module,
-            state,
+            exports,
             registry,
-            &mut module_errors,
+            module_errors,
             module_annotations,
             module_definition_links,
             module_asset_references,
@@ -89,14 +91,12 @@ pub fn typecheck(
                 ));
             }
         }
-
-        errors.insert(module.document_id.clone(), module_errors);
     }
 }
 
 fn typecheck_module(
     parsed_ast: &ParsedAst,
-    state: &mut HashMap<DocumentId, TypeEnv>,
+    exports: &mut HashMap<DocumentId, HashMap<TypeName, TypeExport>>,
     registry: &mut TypeRegistry,
     errors: &mut Vec<TypeError>,
     annotations: &mut Vec<TypeAnnotation>,
@@ -105,6 +105,7 @@ fn typecheck_module(
 ) -> TypedAst {
     let mut type_env = TypeEnv::new();
     let mut var_env = VariableScope::new();
+    let mut module_exports: HashMap<TypeName, TypeExport> = HashMap::new();
 
     let mut typed_records = Vec::new();
     let mut typed_enums = Vec::new();
@@ -112,7 +113,7 @@ fn typecheck_module(
 
     // Register imports
     for import in parsed_ast.get_import_declarations() {
-        check_import_declaration(import, state, &mut type_env, errors, definition_links);
+        check_import_declaration(import, exports, &mut type_env, errors, definition_links);
     }
 
     // Pre-register local type names so that type declarations
@@ -138,7 +139,13 @@ fn typecheck_module(
                         name: name.clone(),
                     })),
                     name_range.clone(),
-                    pub_range.is_some(),
+                );
+                module_exports.insert(
+                    name.clone(),
+                    TypeExport::Type {
+                        definition_range: name_range.clone(),
+                        is_pub: pub_range.is_some(),
+                    },
                 );
             }
             ParsedDeclaration::Component(c) => {
@@ -153,7 +160,6 @@ fn typecheck_module(
                         is_recursive: false,
                     }),
                     c.tag_name.clone(),
-                    c.pub_range.is_some(),
                 );
             }
             _ => {}
@@ -236,6 +242,7 @@ fn typecheck_module(
                 errors,
                 &mut var_env,
                 &mut type_env,
+                &mut module_exports,
                 annotations,
                 definition_links,
                 asset_references,
@@ -267,8 +274,8 @@ fn typecheck_module(
         ));
     }
 
-    // Persist the env as the module's interface for other modules
-    state.insert(parsed_ast.document_id.clone(), type_env);
+    // Persist the exports as the module's interface for other modules
+    exports.insert(parsed_ast.document_id.clone(), module_exports);
 
     TypedAst::new(
         typed_component_declarations,
@@ -280,7 +287,7 @@ fn typecheck_module(
 
 fn check_import_declaration(
     import: &ParsedImportDeclaration,
-    state: &HashMap<DocumentId, TypeEnv>,
+    exports: &HashMap<DocumentId, HashMap<TypeName, TypeExport>>,
     type_env: &mut TypeEnv,
     errors: &mut Vec<TypeError>,
     definition_links: &mut Vec<DefinitionLink>,
@@ -294,7 +301,7 @@ fn check_import_declaration(
         ..
     } = import;
 
-    let Some(imported_module_env) = state.get(&imported_module.to_document_id()) else {
+    let Some(imported_module_exports) = exports.get(&imported_module.to_document_id()) else {
         errors.push(TypeError::new(
             TypeErrorKind::ModuleNotFound {
                 module: imported_module.clone(),
@@ -304,7 +311,7 @@ fn check_import_declaration(
         return;
     };
 
-    let Some((typ, def_range, is_pub)) = imported_module_env.lookup_export(imported_name) else {
+    let Some(export) = imported_module_exports.get(imported_name) else {
         errors.push(TypeError::new(
             TypeErrorKind::UndeclaredType {
                 module: imported_module.clone(),
@@ -315,7 +322,7 @@ fn check_import_declaration(
         return;
     };
 
-    if !is_pub {
+    if !export.is_pub() {
         errors.push(TypeError::new(
             TypeErrorKind::NotPublic {
                 module: imported_module.clone(),
@@ -328,13 +335,20 @@ fn check_import_declaration(
 
     definition_links.push(DefinitionLink {
         use_range: imported_name_range.clone(),
-        definition_range: def_range.clone(),
+        definition_range: export.definition_range().clone(),
     });
 
+    let binding = match export {
+        TypeExport::Type { .. } => TypeBinding::Type(Arc::new(Type::Named {
+            module: imported_module.to_document_id(),
+            name: imported_name.clone(),
+        })),
+        TypeExport::Component { signature, .. } => TypeBinding::Component(signature.clone()),
+    };
     type_env.insert_import(
         imported_name.clone(),
-        typ.clone(),
-        def_range.clone(),
+        binding,
+        export.definition_range().clone(),
         import_range.clone(),
     );
 }
@@ -572,6 +586,7 @@ fn check_component_body(
     errors: &mut Vec<TypeError>,
     var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
     type_env: &mut TypeEnv,
+    module_exports: &mut HashMap<TypeName, TypeExport>,
     annotations: &mut Vec<TypeAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
     asset_references: &mut Vec<AssetReference>,
@@ -590,6 +605,7 @@ fn check_component_body(
         closing_tag_name,
         rest_param,
         rest_target,
+        pub_range,
         ..
     } = component;
 
@@ -710,14 +726,20 @@ fn check_component_body(
     let mut extended_params = declared_params;
     extended_params.extend(forwarded);
 
-    type_env.replace_binding(
-        component_name,
-        TypeBinding::Component(ComponentSignature {
-            module: document_id.clone(),
-            params: extended_params,
-            tail,
-            is_recursive,
-        }),
+    let signature = ComponentSignature {
+        module: document_id.clone(),
+        params: extended_params,
+        tail,
+        is_recursive,
+    };
+    type_env.replace_binding(component_name, TypeBinding::Component(signature.clone()));
+    module_exports.insert(
+        component_name.clone(),
+        TypeExport::Component {
+            signature,
+            definition_range: tag_name.clone(),
+            is_pub: pub_range.is_some(),
+        },
     );
 
     TypedComponentDeclaration {

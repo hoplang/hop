@@ -271,7 +271,6 @@ impl TestTypes {
                 name.clone(),
                 TypeBinding::Type(typ.clone()),
                 decl_range.clone(),
-                true,
             );
         }
         env
