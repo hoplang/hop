@@ -1,16 +1,18 @@
 use super::type_annotation::TypeAnnotation;
 use crate::asset_reference::AssetReference;
+use crate::dependency_graph::DependencyGraph;
 use crate::document::{CheapString, DocumentRange};
 use crate::error_collection::ErrorCollectionExt;
 use crate::expr::patterns::compiler::Compiler;
 use crate::expr::typing::r#type::EnumVariant;
 use crate::expr::typing::type_checker::{resolve_type, typecheck_expr};
+use crate::expr::typing::type_env::TypeEnv;
 use crate::expr::typing::type_registry::{TypeDef, TypeRegistry};
 use crate::expr::{self, ComponentSignature, ParamEntry, Tail, Type, TypeBinding, TypedExpr};
 use crate::hop::parsing::parsed_ast::ParsedDeclaration;
 use crate::hop::parsing::parsed_ast::{
     ParsedAttribute, ParsedComponentDeclaration, ParsedEnumDeclaration, ParsedImportDeclaration,
-    ParsedRecordDeclaration, ParsedViewDeclaration, RestSpreadTarget,
+    ParsedParameter, ParsedRecordDeclaration, ParsedViewDeclaration, RestSpreadTarget,
 };
 use crate::hop::typing::definition_link::DefinitionLink;
 use crate::html::HtmlElement;
@@ -19,7 +21,7 @@ use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use crate::type_error::{TypeError, TypeErrorKind};
 use crate::variable_scope::VariableScope;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
 use crate::document_id::DocumentId;
@@ -38,7 +40,7 @@ use crate::hop::typing::typed_node::{
 
 pub fn typecheck(
     modules: &[&ParsedAst],
-    state: &mut HashMap<DocumentId, HashMap<TypeName, (TypeBinding, DocumentRange, bool)>>,
+    state: &mut HashMap<DocumentId, TypeEnv>,
     registry: &mut TypeRegistry,
     typed_asts: &mut HashMap<DocumentId, TypedAst>,
     errors: &mut HashMap<DocumentId, Vec<TypeError>>,
@@ -94,585 +96,179 @@ pub fn typecheck(
 
 fn typecheck_module(
     parsed_ast: &ParsedAst,
-    state: &mut HashMap<DocumentId, HashMap<TypeName, (TypeBinding, DocumentRange, bool)>>,
+    state: &mut HashMap<DocumentId, TypeEnv>,
     registry: &mut TypeRegistry,
     errors: &mut Vec<TypeError>,
     annotations: &mut Vec<TypeAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
     asset_references: &mut Vec<AssetReference>,
 ) -> TypedAst {
-    let mut type_env: VariableScope<TypeName, (TypeBinding, DocumentRange)> = VariableScope::new();
-    let mut var_env: VariableScope<VarName, (Arc<Type>, DocumentRange)> = VariableScope::new();
+    let mut type_env = TypeEnv::new();
+    let mut var_env = VariableScope::new();
 
     let mut typed_records = Vec::new();
     let mut typed_enums = Vec::new();
-    let mut typed_component_declarations = Vec::new();
     let mut typed_views = Vec::new();
 
-    // Track imported names and their path ranges for unused import detection
-    let mut imported_names: Vec<(TypeName, DocumentRange)> = Vec::new();
+    // Register imports
+    for import in parsed_ast.get_import_declarations() {
+        check_import_declaration(import, state, &mut type_env, errors, definition_links);
+    }
 
+    // Pre-register local type names so that type declarations
+    // can reference each other regardless of declaration order
     for decl in parsed_ast.get_declarations() {
         match decl {
-            ParsedDeclaration::Import(ParsedImportDeclaration {
-                module_name: imported_module,
-                type_name_range: imported_name_range,
-                type_name: imported_name,
-                path: import_path,
-                import_range,
-                ..
-            }) => {
-                let Some(imported_module_type_info) = state.get(&imported_module.to_document_id())
-                else {
-                    errors.push(TypeError::new(
-                        TypeErrorKind::ModuleNotFound {
-                            module: imported_module.clone(),
-                        },
-                        import_path.clone(),
-                    ));
-                    continue;
-                };
-
-                let Some((typ, def_range, is_pub)) = imported_module_type_info.get(imported_name)
-                else {
-                    errors.push(TypeError::new(
-                        TypeErrorKind::UndeclaredType {
-                            module: imported_module.clone(),
-                            type_name: imported_name.clone(),
-                        },
-                        imported_name_range.clone(),
-                    ));
-                    continue;
-                };
-
-                if !is_pub {
-                    errors.push(TypeError::new(
-                        TypeErrorKind::NotPublic {
-                            module: imported_module.clone(),
-                            type_name: imported_name.clone(),
-                        },
-                        imported_name_range.clone(),
-                    ));
-                    continue;
-                }
-
-                definition_links.push(DefinitionLink {
-                    use_range: imported_name_range.clone(),
-                    definition_range: def_range.clone(),
-                });
-
-                let _ = type_env.push(imported_name.clone(), (typ.clone(), def_range.clone()));
-
-                imported_names.push((imported_name.clone(), import_range.clone()));
-            }
-            ParsedDeclaration::Component(ParsedComponentDeclaration {
-                params,
-                children,
-                component_name,
-                tag_name,
-                closing_tag_name,
-                rest_param,
-                rest_target,
-                ..
-            }) => {
-                let mut pushed_params = Vec::new();
-                let mut declared_params: Vec<ParamEntry> = Vec::new();
-                let mut typed_params = Vec::new();
-                if let Some((params, _)) = params {
-                    for param in params {
-                        let Some(param_type) = errors.ok_or_add(resolve_type(
-                            &param.var_type,
-                            &mut type_env,
-                            definition_links,
-                        )) else {
-                            continue;
-                        };
-
-                        let typed_default_value = {
-                            if let Some(default_expr) = &param.default_value {
-                                // Use a fresh variable scope, default values
-                                // are not allowed to reference eachother.
-                                let mut fresh_var_env = VariableScope::new();
-                                if let Some(typed_default) = errors.ok_or_add(typecheck_expr(
-                                    default_expr,
-                                    Some(&param_type),
-                                    &mut fresh_var_env,
-                                    &mut type_env,
-                                    registry,
-                                    annotations,
-                                    definition_links,
-                                    asset_references,
-                                )) {
-                                    let default_type = typed_default.get_type();
-                                    if *default_type != *param_type {
-                                        errors.push(TypeError::new(
-                                            TypeErrorKind::DefaultValueTypeMismatch {
-                                                param_name: param.var_name.clone(),
-                                                expected: param_type.clone(),
-                                                found: default_type,
-                                            },
-                                            default_expr.range().clone(),
-                                        ));
-                                        None
-                                    } else {
-                                        Some(typed_default)
-                                    }
-                                } else {
-                                    None
-                                }
-                            } else {
-                                None
-                            }
-                        };
-
-                        annotations.push(TypeAnnotation::TypeForVarName {
-                            range: param.var_name_range.clone(),
-                            typ: param_type.clone(),
-                            var_name: param.var_name.clone(),
-                        });
-                        let _ = var_env.push(
-                            param.var_name.clone(),
-                            (param_type.clone(), param.var_name_range.clone()),
-                        );
-                        validate_examples_annotation(
-                            &param.examples,
-                            &param_type,
-                            &param.var_name_range,
-                            errors,
-                        );
-
-                        pushed_params.push(param);
-                        declared_params.push(ParamEntry {
-                            name: param.var_name.clone(),
-                            typ: param_type.clone(),
-                            default: typed_default_value,
-                        });
-                        typed_params.push(TypedParameter {
-                            var_name: param.var_name.clone(),
-                            var_type: param_type,
-                            examples: param.examples.clone(),
-                        });
-                    }
-                }
-
-                // Register component signature BEFORE type-checking body to allow
-                // self-referential (recursive) components
-                let component_signature = ComponentSignature {
-                    module: parsed_ast.document_id.clone(),
-                    params: declared_params.clone(),
-                    tail: Tail::Closed,
-                    is_recursive: false,
-                };
-
-                let _ = type_env.push(
-                    component_name.clone(),
-                    (
-                        TypeBinding::Component(component_signature),
-                        tag_name.clone(),
-                    ),
-                );
-
-                let declared_names: Vec<VarName> =
-                    declared_params.iter().map(|p| p.name.clone()).collect();
-
-                let typed_children = children
-                    .iter()
-                    .filter_map(|child| {
-                        typecheck_node(
-                            child,
-                            &declared_names,
-                            registry,
-                            errors,
-                            &mut var_env,
-                            &mut type_env,
-                            annotations,
-                            definition_links,
-                            asset_references,
-                        )
-                    })
-                    .collect::<Vec<_>>();
-
-                let is_recursive = type_env.has_been_accessed(component_name);
-
-                for param in pushed_params.iter().rev() {
-                    let (name, _, accessed) = var_env.pop();
-                    if !accessed {
-                        errors.push(TypeError::new(
-                            TypeErrorKind::UnusedVariable { var_name: name },
-                            param.var_name_range.clone(),
-                        ));
-                    }
-                }
-
-                // Add definition link for the opening tag (points to itself)
-                definition_links.push(DefinitionLink {
-                    use_range: tag_name.clone(),
-                    definition_range: tag_name.clone(),
-                });
-
-                // Add definition link for the closing tag if present
-                if let Some(closing_range) = closing_tag_name {
-                    definition_links.push(DefinitionLink {
-                        use_range: closing_range.clone(),
-                        definition_range: tag_name.clone(),
-                    });
-                }
-
-                if is_recursive && rest_param.is_some() {
-                    errors.push(TypeError::new(
-                        TypeErrorKind::RecursiveComponentWithRest {
-                            component: component_name.clone(),
-                        },
-                        tag_name.clone(),
-                    ));
-                }
-
-                let (forwarded, tail) = match rest_target {
-                    Some(RestSpreadTarget::Element {
-                        element,
-                        supplied_attrs,
-                        ..
-                    }) => (
-                        Vec::new(),
-                        Tail::Html {
-                            element: element.clone(),
-                            reserved: supplied_attrs.clone(),
-                        },
-                    ),
-                    Some(RestSpreadTarget::Component {
-                        callee,
-                        supplied_attrs,
-                        has_children,
-                        spread_range,
-                        ..
-                    }) => match type_env.lookup(callee) {
-                        Some((TypeBinding::Component(callee_sig), _)) => {
-                            if callee_sig.is_recursive {
-                                errors.push(TypeError::new(
-                                    TypeErrorKind::RestForwardedIntoRecursive {
-                                        component: callee.clone(),
-                                    },
-                                    spread_range.clone(),
-                                ));
-                                (Vec::new(), Tail::Closed)
-                            } else {
-                                let tail = match callee_sig.tail.clone() {
-                                    Tail::Html {
-                                        element,
-                                        mut reserved,
-                                    } => {
-                                        let callee_param_names: HashSet<&str> = callee_sig
-                                            .params
-                                            .iter()
-                                            .map(|p| p.name.as_str())
-                                            .collect();
-                                        for attr in supplied_attrs {
-                                            let a = attr.as_str();
-                                            if !callee_param_names.contains(a)
-                                                && !reserved.iter().any(|r| r.as_str() == a)
-                                            {
-                                                reserved.push(attr.clone());
-                                            }
-                                        }
-                                        Tail::Html { element, reserved }
-                                    }
-                                    Tail::Closed => Tail::Closed,
-                                };
-                                let covered_by_rest = |p: &ParamEntry| {
-                                    !(supplied_attrs.iter().any(|a| a.as_str() == p.name.as_str())
-                                        || (*has_children && p.name.as_str() == "children")
-                                        || declared_names.contains(&p.name))
-                                };
-                                let forwarded = callee_sig
-                                    .params
-                                    .iter()
-                                    .filter(|p| covered_by_rest(p))
-                                    .cloned()
-                                    .collect::<Vec<_>>();
-                                (forwarded, tail)
-                            }
-                        }
-                        _ => (Vec::new(), Tail::Closed),
-                    },
-                    None => (Vec::new(), Tail::Closed),
-                };
-                let mut extended_params = declared_params.clone();
-                extended_params.extend(forwarded);
-
-                let _ = type_env.replace(
-                    component_name,
-                    (
-                        TypeBinding::Component(ComponentSignature {
-                            module: parsed_ast.document_id.clone(),
-                            params: extended_params,
-                            tail,
-                            is_recursive,
-                        }),
-                        tag_name.clone(),
-                    ),
-                );
-
-                typed_component_declarations.push(TypedComponentDeclaration {
-                    component_name: component_name.clone(),
-                    params: typed_params,
-                    rest_param: rest_param.as_ref().map(|(name, _)| name.clone()),
-                    children: typed_children,
-                    is_recursive,
-                });
-            }
             ParsedDeclaration::Record(ParsedRecordDeclaration {
-                name: record_name,
-                name_range: record_name_range,
-                fields,
-                ..
-            }) => {
-                let _ = type_env.push(
-                    record_name.clone(),
-                    (
-                        TypeBinding::Value(Arc::new(Type::Named {
-                            module: parsed_ast.document_id.clone(),
-                            name: record_name.clone(),
-                        })),
-                        record_name_range.clone(),
-                    ),
-                );
-
-                let mut typed_fields = Vec::new();
-                let mut has_errors = false;
-
-                for field in fields {
-                    let Some(resolved_type) = errors.ok_or_add(resolve_type(
-                        &field.field_type,
-                        &mut type_env,
-                        definition_links,
-                    )) else {
-                        has_errors = true;
-                        continue;
-                    };
-                    validate_examples_annotation(
-                        &field.examples,
-                        &resolved_type,
-                        &field.name_range,
-                        errors,
-                    );
-                    typed_fields.push((field.name.clone(), resolved_type, field.examples.clone()));
-                }
-
-                if has_errors {
-                    let _ = type_env.pop();
-                    continue;
-                }
-
-                typed_records.push(TypedRecordDeclaration {
-                    name: record_name.clone(),
-                    fields: typed_fields.clone(),
-                });
-                registry.insert(
-                    parsed_ast.document_id.clone(),
-                    record_name.clone(),
-                    TypeDef::Record {
-                        fields: typed_fields,
-                    },
-                );
-
-                // Add definition link for the record name (points to itself)
-                definition_links.push(DefinitionLink {
-                    use_range: record_name_range.clone(),
-                    definition_range: record_name_range.clone(),
-                });
-            }
-            ParsedDeclaration::Enum(ParsedEnumDeclaration {
-                name: enum_name,
-                name_range: enum_name_range,
-                variants,
-                ..
-            }) => {
-                let _ = type_env.push(
-                    enum_name.clone(),
-                    (
-                        TypeBinding::Value(Arc::new(Type::Named {
-                            module: parsed_ast.document_id.clone(),
-                            name: enum_name.clone(),
-                        })),
-                        enum_name_range.clone(),
-                    ),
-                );
-
-                let mut typed_variants = Vec::new();
-                let mut has_errors = false;
-
-                for variant in variants {
-                    let mut typed_fields = Vec::new();
-                    for (field_name, field_name_range, field_type, examples) in &variant.fields {
-                        let Some(resolved_type) = errors.ok_or_add(resolve_type(
-                            field_type,
-                            &mut type_env,
-                            definition_links,
-                        )) else {
-                            has_errors = true;
-                            continue;
-                        };
-                        validate_examples_annotation(
-                            examples,
-                            &resolved_type,
-                            field_name_range,
-                            errors,
-                        );
-                        typed_fields.push((field_name.clone(), resolved_type, examples.clone()));
-                    }
-                    typed_variants.push(EnumVariant {
-                        name: variant.name.clone(),
-                        fields: typed_fields,
-                    });
-                }
-
-                if has_errors {
-                    let _ = type_env.pop();
-                    continue;
-                }
-
-                registry.insert(
-                    parsed_ast.document_id.clone(),
-                    enum_name.clone(),
-                    TypeDef::Enum {
-                        variants: typed_variants.clone(),
-                    },
-                );
-
-                // Add definition link for the enum name (points to itself)
-                definition_links.push(DefinitionLink {
-                    use_range: enum_name_range.clone(),
-                    definition_range: enum_name_range.clone(),
-                });
-
-                typed_enums.push(TypedEnumDeclaration {
-                    name: enum_name.clone(),
-                    variants: typed_variants,
-                });
-            }
-            ParsedDeclaration::View(ParsedViewDeclaration {
-                params,
-                children,
                 name,
+                name_range,
+                pub_range,
+                ..
+            })
+            | ParsedDeclaration::Enum(ParsedEnumDeclaration {
+                name,
+                name_range,
+                pub_range,
                 ..
             }) => {
-                let mut pushed_params = Vec::new();
-                let mut typed_params = Vec::new();
+                type_env.insert_local(
+                    name.clone(),
+                    TypeBinding::Type(Arc::new(Type::Named {
+                        module: parsed_ast.document_id.clone(),
+                        name: name.clone(),
+                    })),
+                    name_range.clone(),
+                    pub_range.is_some(),
+                );
+            }
+            ParsedDeclaration::Component(c) => {
+                // Placeholder so type positions naming a component error
+                // correctly.
+                type_env.insert_local(
+                    c.component_name.clone(),
+                    TypeBinding::Component(ComponentSignature {
+                        module: parsed_ast.document_id.clone(),
+                        params: Vec::new(),
+                        tail: Tail::Closed,
+                        is_recursive: false,
+                    }),
+                    c.tag_name.clone(),
+                    c.pub_range.is_some(),
+                );
+            }
+            _ => {}
+        }
+    }
 
-                for param in params {
-                    let Some(param_type) = errors.ok_or_add(resolve_type(
-                        &param.var_type,
-                        &mut type_env,
-                        definition_links,
-                    )) else {
-                        continue;
-                    };
+    // Resolve type definitions
+    for record in parsed_ast.get_record_declarations() {
+        typed_records.push(check_record_declaration(
+            record,
+            &parsed_ast.document_id,
+            &mut type_env,
+            registry,
+            errors,
+            definition_links,
+        ));
+    }
+    for enum_decl in parsed_ast.get_enum_declarations() {
+        typed_enums.push(check_enum_declaration(
+            enum_decl,
+            &parsed_ast.document_id,
+            &mut type_env,
+            registry,
+            errors,
+            definition_links,
+        ));
+    }
 
-                    annotations.push(TypeAnnotation::TypeForVarName {
-                        range: param.var_name_range.clone(),
-                        typ: param_type.clone(),
-                        var_name: param.var_name.clone(),
-                    });
-                    let _ = var_env.push(
-                        param.var_name.clone(),
-                        (param_type.clone(), param.var_name_range.clone()),
-                    );
-                    validate_examples_annotation(
-                        &param.examples,
-                        &param_type,
-                        &param.var_name_range,
-                        errors,
-                    );
-
-                    pushed_params.push(param);
-                    typed_params.push(TypedParameter {
-                        var_name: param.var_name.clone(),
-                        var_type: param_type,
-                        examples: param.examples.clone(),
-                    });
+    // Type check components in dependency order so that callee signatures
+    // are final before their callers are checked.
+    let component_by_name: HashMap<_, _> = parsed_ast
+        .get_component_declarations()
+        .map(|c| (c.component_name.clone(), c))
+        .collect();
+    let mut call_graph = DependencyGraph::new();
+    for (name, c) in &component_by_name {
+        let mut deps = BTreeSet::new();
+        let mut stack: Vec<&ParsedNode> = c.children.iter().collect();
+        while let Some(node) = stack.pop() {
+            if let ParsedNode::ComponentInvocation { component_name, .. } = node {
+                if component_by_name.contains_key(component_name) {
+                    deps.insert(component_name.clone());
                 }
-
-                let typed_children = children
-                    .iter()
-                    .filter_map(|child| {
-                        typecheck_node(
-                            child,
-                            &[],
-                            registry,
-                            errors,
-                            &mut var_env,
-                            &mut type_env,
-                            annotations,
-                            definition_links,
-                            asset_references,
-                        )
-                    })
-                    .collect::<Vec<_>>();
-
-                for param in pushed_params.iter().rev() {
-                    let (name, _, accessed) = var_env.pop();
-                    if !accessed {
-                        errors.push(TypeError::new(
-                            TypeErrorKind::UnusedVariable { var_name: name },
-                            param.var_name_range.clone(),
-                        ));
-                    }
+            }
+            if let ParsedNode::Match { cases, .. } = node {
+                for case in cases {
+                    stack.extend(case.children.iter());
                 }
-
-                typed_views.push(TypedViewDeclaration {
-                    name: name.clone(),
-                    params: typed_params,
-                    children: typed_children,
-                });
+            } else {
+                stack.extend(node.children().iter());
             }
         }
+        call_graph.set_dependencies(name.clone(), deps);
     }
 
-    // Build module type map from locally declared types
-    let mut module_types = HashMap::new();
-    for comp in &typed_component_declarations {
-        if let Some((typ, def_range)) = type_env.lookup(&comp.component_name) {
-            let is_pub = parsed_ast
-                .get_component_declaration(comp.component_name.as_str())
-                .map(|c| c.pub_range.is_some())
-                .unwrap_or(false);
-            module_types.insert(
-                comp.component_name.clone(),
-                (typ.clone(), def_range.clone(), is_pub),
-            );
+    let mut typed_component_declarations = Vec::new();
+    for scc in call_graph.sorted_sccs() {
+        let is_recursive =
+            scc.len() > 1 || scc.iter().any(|name| call_graph.depends_on(name, name));
+        let mut pending = Vec::new();
+        for name in &scc {
+            pending.push(register_component_signature(
+                component_by_name[name],
+                &parsed_ast.document_id,
+                is_recursive,
+                &mut type_env,
+                registry,
+                errors,
+                annotations,
+                definition_links,
+                asset_references,
+            ));
         }
-    }
-    for rec in &typed_records {
-        if let Some((typ, def_range)) = type_env.lookup(&rec.name) {
-            let is_pub = parsed_ast
-                .get_record_declaration(rec.name.as_str())
-                .map(|r| r.pub_range.is_some())
-                .unwrap_or(false);
-            module_types.insert(rec.name.clone(), (typ.clone(), def_range.clone(), is_pub));
-        }
-    }
-    for enm in &typed_enums {
-        if let Some((typ, def_range)) = type_env.lookup(&enm.name) {
-            let is_pub = parsed_ast
-                .get_enum_declaration(enm.name.as_str())
-                .map(|e| e.pub_range.is_some())
-                .unwrap_or(false);
-            module_types.insert(enm.name.clone(), (typ.clone(), def_range.clone(), is_pub));
-        }
-    }
-    state.insert(parsed_ast.document_id.clone(), module_types);
-
-    // Detect unused imports
-    for (imported_name, import_range) in &imported_names {
-        if !type_env.has_been_accessed(imported_name) {
-            errors.push(TypeError::new(
-                TypeErrorKind::UnusedImport {
-                    import_name: imported_name.clone(),
-                },
-                import_range.clone(),
+        for p in pending {
+            typed_component_declarations.push(check_component_body(
+                p,
+                &parsed_ast.document_id,
+                is_recursive,
+                registry,
+                errors,
+                &mut var_env,
+                &mut type_env,
+                annotations,
+                definition_links,
+                asset_references,
             ));
         }
     }
+    // Sort by name for stable output
+    typed_component_declarations.sort_by(|a, b| a.component_name.cmp(&b.component_name));
+
+    for view in parsed_ast.get_view_declarations() {
+        typed_views.push(check_view_declaration(
+            view,
+            registry,
+            errors,
+            &mut var_env,
+            &mut type_env,
+            annotations,
+            definition_links,
+            asset_references,
+        ));
+    }
+
+    for (imported_name, import_range) in type_env.unused_imports() {
+        errors.push(TypeError::new(
+            TypeErrorKind::UnusedImport {
+                import_name: imported_name.clone(),
+            },
+            import_range.clone(),
+        ));
+    }
+
+    // Persist the env as the module's interface for other modules
+    state.insert(parsed_ast.document_id.clone(), type_env);
 
     TypedAst::new(
         typed_component_declarations,
@@ -682,13 +278,544 @@ fn typecheck_module(
     )
 }
 
+fn check_import_declaration(
+    import: &ParsedImportDeclaration,
+    state: &HashMap<DocumentId, TypeEnv>,
+    type_env: &mut TypeEnv,
+    errors: &mut Vec<TypeError>,
+    definition_links: &mut Vec<DefinitionLink>,
+) {
+    let ParsedImportDeclaration {
+        module_name: imported_module,
+        type_name_range: imported_name_range,
+        type_name: imported_name,
+        path: import_path,
+        import_range,
+        ..
+    } = import;
+
+    let Some(imported_module_env) = state.get(&imported_module.to_document_id()) else {
+        errors.push(TypeError::new(
+            TypeErrorKind::ModuleNotFound {
+                module: imported_module.clone(),
+            },
+            import_path.clone(),
+        ));
+        return;
+    };
+
+    let Some((typ, def_range, is_pub)) = imported_module_env.lookup_export(imported_name) else {
+        errors.push(TypeError::new(
+            TypeErrorKind::UndeclaredType {
+                module: imported_module.clone(),
+                type_name: imported_name.clone(),
+            },
+            imported_name_range.clone(),
+        ));
+        return;
+    };
+
+    if !is_pub {
+        errors.push(TypeError::new(
+            TypeErrorKind::NotPublic {
+                module: imported_module.clone(),
+                type_name: imported_name.clone(),
+            },
+            imported_name_range.clone(),
+        ));
+        return;
+    }
+
+    definition_links.push(DefinitionLink {
+        use_range: imported_name_range.clone(),
+        definition_range: def_range.clone(),
+    });
+
+    type_env.insert_import(
+        imported_name.clone(),
+        typ.clone(),
+        def_range.clone(),
+        import_range.clone(),
+    );
+}
+
+fn check_record_declaration(
+    record: &ParsedRecordDeclaration,
+    document_id: &DocumentId,
+    type_env: &mut TypeEnv,
+    registry: &mut TypeRegistry,
+    errors: &mut Vec<TypeError>,
+    definition_links: &mut Vec<DefinitionLink>,
+) -> TypedRecordDeclaration {
+    let ParsedRecordDeclaration {
+        name: record_name,
+        name_range: record_name_range,
+        fields,
+        ..
+    } = record;
+
+    let mut typed_fields = Vec::new();
+
+    for field in fields {
+        let Some(resolved_type) =
+            errors.ok_or_add(resolve_type(&field.field_type, type_env, definition_links))
+        else {
+            continue;
+        };
+        validate_examples_annotation(&field.examples, &resolved_type, &field.name_range, errors);
+        typed_fields.push((field.name.clone(), resolved_type, field.examples.clone()));
+    }
+
+    registry.insert(
+        document_id.clone(),
+        record_name.clone(),
+        TypeDef::Record {
+            fields: typed_fields.clone(),
+        },
+    );
+
+    definition_links.push(DefinitionLink {
+        use_range: record_name_range.clone(),
+        definition_range: record_name_range.clone(),
+    });
+
+    TypedRecordDeclaration {
+        name: record_name.clone(),
+        fields: typed_fields,
+    }
+}
+
+fn check_enum_declaration(
+    enum_decl: &ParsedEnumDeclaration,
+    document_id: &DocumentId,
+    type_env: &mut TypeEnv,
+    registry: &mut TypeRegistry,
+    errors: &mut Vec<TypeError>,
+    definition_links: &mut Vec<DefinitionLink>,
+) -> TypedEnumDeclaration {
+    let ParsedEnumDeclaration {
+        name: enum_name,
+        name_range: enum_name_range,
+        variants,
+        ..
+    } = enum_decl;
+
+    let mut typed_variants = Vec::new();
+
+    for variant in variants {
+        let mut typed_fields = Vec::new();
+        for (field_name, field_name_range, field_type, examples) in &variant.fields {
+            let Some(resolved_type) =
+                errors.ok_or_add(resolve_type(field_type, type_env, definition_links))
+            else {
+                continue;
+            };
+            validate_examples_annotation(examples, &resolved_type, field_name_range, errors);
+            typed_fields.push((field_name.clone(), resolved_type, examples.clone()));
+        }
+        typed_variants.push(EnumVariant {
+            name: variant.name.clone(),
+            fields: typed_fields,
+        });
+    }
+
+    registry.insert(
+        document_id.clone(),
+        enum_name.clone(),
+        TypeDef::Enum {
+            variants: typed_variants.clone(),
+        },
+    );
+
+    definition_links.push(DefinitionLink {
+        use_range: enum_name_range.clone(),
+        definition_range: enum_name_range.clone(),
+    });
+
+    TypedEnumDeclaration {
+        name: enum_name.clone(),
+        variants: typed_variants,
+    }
+}
+
+struct PendingComponent<'a> {
+    component: &'a ParsedComponentDeclaration,
+    resolved_params: Vec<(&'a ParsedParameter, Arc<Type>)>,
+    declared_params: Vec<ParamEntry>,
+    typed_params: Vec<TypedParameter>,
+}
+
+fn register_component_signature<'a>(
+    component: &'a ParsedComponentDeclaration,
+    document_id: &DocumentId,
+    is_recursive: bool,
+    type_env: &mut TypeEnv,
+    registry: &TypeRegistry,
+    errors: &mut Vec<TypeError>,
+    annotations: &mut Vec<TypeAnnotation>,
+    definition_links: &mut Vec<DefinitionLink>,
+    asset_references: &mut Vec<AssetReference>,
+) -> PendingComponent<'a> {
+    let ParsedComponentDeclaration {
+        params,
+        component_name,
+        tag_name,
+        rest_param,
+        ..
+    } = component;
+
+    let mut resolved_params = Vec::new();
+    let mut declared_params: Vec<ParamEntry> = Vec::new();
+    let mut typed_params = Vec::new();
+    if let Some((params, _)) = params {
+        for param in params {
+            let Some(param_type) =
+                errors.ok_or_add(resolve_type(&param.var_type, type_env, definition_links))
+            else {
+                continue;
+            };
+
+            let typed_default_value = {
+                if let Some(default_expr) = &param.default_value {
+                    // Use a fresh variable scope, default values
+                    // are not allowed to reference eachother.
+                    let mut fresh_var_env = VariableScope::new();
+                    if let Some(typed_default) = errors.ok_or_add(typecheck_expr(
+                        default_expr,
+                        Some(&param_type),
+                        &mut fresh_var_env,
+                        type_env,
+                        registry,
+                        annotations,
+                        definition_links,
+                        asset_references,
+                    )) {
+                        let default_type = typed_default.get_type();
+                        if *default_type != *param_type {
+                            errors.push(TypeError::new(
+                                TypeErrorKind::DefaultValueTypeMismatch {
+                                    param_name: param.var_name.clone(),
+                                    expected: param_type.clone(),
+                                    found: default_type,
+                                },
+                                default_expr.range().clone(),
+                            ));
+                            None
+                        } else {
+                            Some(typed_default)
+                        }
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            };
+
+            annotations.push(TypeAnnotation::TypeForVarName {
+                range: param.var_name_range.clone(),
+                typ: param_type.clone(),
+                var_name: param.var_name.clone(),
+            });
+            validate_examples_annotation(
+                &param.examples,
+                &param_type,
+                &param.var_name_range,
+                errors,
+            );
+
+            resolved_params.push((param, param_type.clone()));
+            declared_params.push(ParamEntry {
+                name: param.var_name.clone(),
+                typ: param_type.clone(),
+                default: typed_default_value,
+            });
+            typed_params.push(TypedParameter {
+                var_name: param.var_name.clone(),
+                var_type: param_type,
+                examples: param.examples.clone(),
+            });
+        }
+    }
+
+    if is_recursive && rest_param.is_some() {
+        errors.push(TypeError::new(
+            TypeErrorKind::RecursiveComponentWithRest {
+                component: component_name.clone(),
+            },
+            tag_name.clone(),
+        ));
+    }
+
+    let component_signature = ComponentSignature {
+        module: document_id.clone(),
+        params: declared_params.clone(),
+        tail: Tail::Closed,
+        is_recursive,
+    };
+
+    type_env.replace_binding(component_name, TypeBinding::Component(component_signature));
+
+    PendingComponent {
+        component,
+        resolved_params,
+        declared_params,
+        typed_params,
+    }
+}
+
+fn check_component_body(
+    pending: PendingComponent,
+    document_id: &DocumentId,
+    is_recursive: bool,
+    registry: &TypeRegistry,
+    errors: &mut Vec<TypeError>,
+    var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
+    type_env: &mut TypeEnv,
+    annotations: &mut Vec<TypeAnnotation>,
+    definition_links: &mut Vec<DefinitionLink>,
+    asset_references: &mut Vec<AssetReference>,
+) -> TypedComponentDeclaration {
+    let PendingComponent {
+        component,
+        resolved_params,
+        declared_params,
+        typed_params,
+    } = pending;
+
+    let ParsedComponentDeclaration {
+        children,
+        component_name,
+        tag_name,
+        closing_tag_name,
+        rest_param,
+        rest_target,
+        ..
+    } = component;
+
+    for (param, param_type) in &resolved_params {
+        let _ = var_env.push(
+            param.var_name.clone(),
+            (param_type.clone(), param.var_name_range.clone()),
+        );
+    }
+
+    let declared_names: Vec<VarName> = declared_params.iter().map(|p| p.name.clone()).collect();
+
+    let typed_children = children
+        .iter()
+        .filter_map(|child| {
+            typecheck_node(
+                child,
+                &declared_names,
+                registry,
+                errors,
+                var_env,
+                type_env,
+                annotations,
+                definition_links,
+                asset_references,
+            )
+        })
+        .collect::<Vec<_>>();
+
+    for (param, _) in resolved_params.iter().rev() {
+        let (name, _, accessed) = var_env.pop();
+        if !accessed {
+            errors.push(TypeError::new(
+                TypeErrorKind::UnusedVariable { var_name: name },
+                param.var_name_range.clone(),
+            ));
+        }
+    }
+
+    definition_links.push(DefinitionLink {
+        use_range: tag_name.clone(),
+        definition_range: tag_name.clone(),
+    });
+
+    if let Some(closing_range) = closing_tag_name {
+        definition_links.push(DefinitionLink {
+            use_range: closing_range.clone(),
+            definition_range: tag_name.clone(),
+        });
+    }
+
+    let (forwarded, tail) = match rest_target {
+        Some(RestSpreadTarget::Element {
+            element,
+            supplied_attrs,
+            ..
+        }) => (
+            Vec::new(),
+            Tail::Html {
+                element: element.clone(),
+                reserved: supplied_attrs.clone(),
+            },
+        ),
+        Some(RestSpreadTarget::Component {
+            callee,
+            supplied_attrs,
+            has_children,
+            spread_range,
+            ..
+        }) => match type_env.lookup(callee) {
+            Some((TypeBinding::Component(callee_sig), _)) => {
+                if callee_sig.is_recursive {
+                    errors.push(TypeError::new(
+                        TypeErrorKind::RestForwardedIntoRecursive {
+                            component: callee.clone(),
+                        },
+                        spread_range.clone(),
+                    ));
+                    (Vec::new(), Tail::Closed)
+                } else {
+                    let tail = match callee_sig.tail.clone() {
+                        Tail::Html {
+                            element,
+                            mut reserved,
+                        } => {
+                            let callee_param_names: HashSet<&str> =
+                                callee_sig.params.iter().map(|p| p.name.as_str()).collect();
+                            for attr in supplied_attrs {
+                                let a = attr.as_str();
+                                if !callee_param_names.contains(a)
+                                    && !reserved.iter().any(|r| r.as_str() == a)
+                                {
+                                    reserved.push(attr.clone());
+                                }
+                            }
+                            Tail::Html { element, reserved }
+                        }
+                        Tail::Closed => Tail::Closed,
+                    };
+                    let covered_by_rest = |p: &ParamEntry| {
+                        !(supplied_attrs.iter().any(|a| a.as_str() == p.name.as_str())
+                            || (*has_children && p.name.as_str() == "children")
+                            || declared_names.contains(&p.name))
+                    };
+                    let forwarded = callee_sig
+                        .params
+                        .iter()
+                        .filter(|p| covered_by_rest(p))
+                        .cloned()
+                        .collect::<Vec<_>>();
+                    (forwarded, tail)
+                }
+            }
+            _ => (Vec::new(), Tail::Closed),
+        },
+        None => (Vec::new(), Tail::Closed),
+    };
+    let mut extended_params = declared_params;
+    extended_params.extend(forwarded);
+
+    type_env.replace_binding(
+        component_name,
+        TypeBinding::Component(ComponentSignature {
+            module: document_id.clone(),
+            params: extended_params,
+            tail,
+            is_recursive,
+        }),
+    );
+
+    TypedComponentDeclaration {
+        component_name: component_name.clone(),
+        params: typed_params,
+        rest_param: rest_param.as_ref().map(|(name, _)| name.clone()),
+        children: typed_children,
+        is_recursive,
+    }
+}
+
+fn check_view_declaration(
+    view: &ParsedViewDeclaration,
+    registry: &TypeRegistry,
+    errors: &mut Vec<TypeError>,
+    var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
+    type_env: &mut TypeEnv,
+    annotations: &mut Vec<TypeAnnotation>,
+    definition_links: &mut Vec<DefinitionLink>,
+    asset_references: &mut Vec<AssetReference>,
+) -> TypedViewDeclaration {
+    let ParsedViewDeclaration {
+        params,
+        children,
+        name,
+        ..
+    } = view;
+
+    let mut pushed_params = Vec::new();
+    let mut typed_params = Vec::new();
+
+    for param in params {
+        let Some(param_type) =
+            errors.ok_or_add(resolve_type(&param.var_type, type_env, definition_links))
+        else {
+            continue;
+        };
+
+        annotations.push(TypeAnnotation::TypeForVarName {
+            range: param.var_name_range.clone(),
+            typ: param_type.clone(),
+            var_name: param.var_name.clone(),
+        });
+        let _ = var_env.push(
+            param.var_name.clone(),
+            (param_type.clone(), param.var_name_range.clone()),
+        );
+        validate_examples_annotation(&param.examples, &param_type, &param.var_name_range, errors);
+
+        pushed_params.push(param);
+        typed_params.push(TypedParameter {
+            var_name: param.var_name.clone(),
+            var_type: param_type,
+            examples: param.examples.clone(),
+        });
+    }
+
+    let typed_children = children
+        .iter()
+        .filter_map(|child| {
+            typecheck_node(
+                child,
+                &[],
+                registry,
+                errors,
+                var_env,
+                type_env,
+                annotations,
+                definition_links,
+                asset_references,
+            )
+        })
+        .collect::<Vec<_>>();
+
+    for param in pushed_params.iter().rev() {
+        let (name, _, accessed) = var_env.pop();
+        if !accessed {
+            errors.push(TypeError::new(
+                TypeErrorKind::UnusedVariable { var_name: name },
+                param.var_name_range.clone(),
+            ));
+        }
+    }
+
+    TypedViewDeclaration {
+        name: name.clone(),
+        params: typed_params,
+        children: typed_children,
+    }
+}
+
 fn typecheck_node(
     node: &ParsedNode,
     caller_params: &[VarName],
     registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
     var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
-    type_env: &mut VariableScope<TypeName, (TypeBinding, DocumentRange)>,
+    type_env: &mut TypeEnv,
     annotations: &mut Vec<TypeAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
     asset_references: &mut Vec<AssetReference>,
@@ -1361,7 +1488,7 @@ fn typecheck_attribute_value(
     registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
     var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
-    type_env: &mut VariableScope<TypeName, (TypeBinding, DocumentRange)>,
+    type_env: &mut TypeEnv,
     annotations: &mut Vec<TypeAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
     asset_references: &mut Vec<AssetReference>,
@@ -1411,7 +1538,7 @@ fn typecheck_arguments(
     registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
     var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
-    type_env: &mut VariableScope<TypeName, (TypeBinding, DocumentRange)>,
+    type_env: &mut TypeEnv,
     annotations: &mut Vec<TypeAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
     asset_references: &mut Vec<AssetReference>,
@@ -1631,7 +1758,7 @@ fn typecheck_attributes(
     registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
     var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
-    type_env: &mut VariableScope<TypeName, (TypeBinding, DocumentRange)>,
+    type_env: &mut TypeEnv,
     annotations: &mut Vec<TypeAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
     asset_references: &mut Vec<AssetReference>,
@@ -1669,7 +1796,7 @@ fn typecheck_html_attribute(
     registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
     var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
-    type_env: &mut VariableScope<TypeName, (TypeBinding, DocumentRange)>,
+    type_env: &mut TypeEnv,
     annotations: &mut Vec<TypeAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
     asset_references: &mut Vec<AssetReference>,
@@ -2399,7 +2526,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_when_an_undefined_component_is_referenced() {
+    fn rejects_when_an_undefined_component_is_invoked() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -2993,16 +3120,16 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
+                component Foo {
+                  <Main a={true} b={"foo"}/>
+                }
+
                 component Main(a: Bool, b: String) {
                   <if {a}>
                     <div>
                       {b}
                     </div>
                   </if>
-                }
-
-                component Foo {
-                  <Main a={true} b={"foo"}/>
                 }
             "#]],
         );
@@ -3611,12 +3738,6 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Main(children: Fragment) {
-                  <strong>
-                    {children}
-                  </strong>
-                }
-
                 component Bar {
                   <let {
                     v_0 = {
@@ -3625,6 +3746,12 @@ mod tests {
                   }>
                     <Main children={v_0}/>
                   </let>
+                }
+
+                component Main(children: Fragment) {
+                  <strong>
+                    {children}
+                  </strong>
                 }
             "#]],
         );
@@ -3958,8 +4085,8 @@ mod tests {
     }
 
     #[test]
-    fn rejects_when_referencing_a_record_defined_below() {
-        reject(
+    fn accepts_when_referencing_a_record_defined_below() {
+        accept(
             indoc! {r#"
                 -- main.hop --
                 record User {
@@ -3972,11 +4099,16 @@ mod tests {
                 component Main {}
             "#},
             expect![[r#"
-                error: Type 'Address' is not defined
-                  --> main.hop (line 2, col 12)
-                1 | record User {
-                2 |   address: Address,
-                  |            ^^^^^^^
+                -- main.hop --
+                record User {
+                  address: main::Address,
+                }
+
+                record Address {
+                  city: String,
+                }
+
+                component Main {}
             "#]],
         );
     }
@@ -4279,6 +4411,57 @@ mod tests {
     }
 
     #[test]
+    fn rejects_broken_record_without_cascading_to_references() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                record Broken {
+                    bad: Missing,
+                    good: String,
+                }
+
+                component Main(b: Broken) {
+                    <div>{b.good}</div>
+                }
+            "#},
+            expect![[r#"
+                error: Type 'Missing' is not defined
+                  --> main.hop (line 2, col 10)
+                1 | record Broken {
+                2 |     bad: Missing,
+                  |          ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_broken_enum_without_cascading_to_references() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                enum Status {
+                    Bad{value: Missing},
+                    Good{label: String},
+                }
+
+                component Main(s: Status) {
+                    <match {s}>
+                        <case {Status::Bad{}}>bad</case>
+                        <case {Status::Good{label}}>{label}</case>
+                    </match>
+                }
+            "#},
+            expect![[r#"
+                error: Type 'Missing' is not defined
+                  --> main.hop (line 2, col 16)
+                 1 | enum Status {
+                 2 |     Bad{value: Missing},
+                   |                ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
     fn rejects_when_type_in_record_declaration_is_not_defined() {
         reject(
             indoc! {r#"
@@ -4561,6 +4744,136 @@ mod tests {
     }
 
     #[test]
+    fn accepts_record_referencing_later_record() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                record Outer {
+                    inner: Inner,
+                }
+
+                record Inner {
+                    value: String,
+                }
+
+                component Main(o: Outer) {
+                    <div>{o.inner.value}</div>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                record Outer {
+                  inner: main::Inner,
+                }
+
+                record Inner {
+                  value: String,
+                }
+
+                component Main(o: main::Outer) {
+                  <div>
+                    {o.inner.value}
+                  </div>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_mutually_recursive_records_through_array() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                record Folder {
+                    name: String,
+                    files: Array[File],
+                }
+
+                record File {
+                    name: String,
+                    backups: Array[Folder],
+                }
+
+                component Main(root: Folder) {
+                    <div>{root.name}</div>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                record Folder {
+                  name: String,
+                  files: Array[main::File],
+                }
+
+                record File {
+                  name: String,
+                  backups: Array[main::Folder],
+                }
+
+                component Main(root: main::Folder) {
+                  <div>
+                    {root.name}
+                  </div>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_mutually_recursive_record_and_enum() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                enum Node {
+                    Leaf{label: String},
+                    Branch{children: Array[Tree]},
+                }
+
+                record Tree {
+                    root: Node,
+                }
+
+                component Main(t: Tree) {
+                    <match {t.root}>
+                        <case {Node::Leaf{label}}>{label}</case>
+                        <case {Node::Branch{children}}>
+                            <for {_ in children}>...</for>
+                        </case>
+                    </match>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                record Tree {
+                  root: main::Node,
+                }
+
+                enum Node {
+                  Leaf{label: String},
+                  Branch{children: Array[main::Tree]},
+                }
+
+                component Main(t: main::Tree) {
+                  <match {t.root}>
+                    <case {Node::Leaf{label: v_1}}>
+                      <let {label = v_1}>
+                        {label}
+                      </let>
+                    </case>
+                    <case {Node::Branch{children: v_2}}>
+                      <let {children = v_2}>
+                        <for {_ in children}>
+                          ...
+                        </for>
+                      </let>
+                    </case>
+                  </match>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
     fn rejects_enum_field_in_conditional() {
         reject(
             indoc! {r#"
@@ -4660,15 +4973,15 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
+                component Main {
+                  <UserCard name={"Alice"} role={"user"}/>
+                }
+
                 component UserCard(name: String, role: String) {
                   {name}
                    (
                   {role}
                   )
-                }
-
-                component Main {
-                  <UserCard name={"Alice"} role={"user"}/>
                 }
             "#]],
         );
@@ -4797,12 +5110,12 @@ mod tests {
                   enabled: Bool,
                 }
 
-                component Settings(config: main::Config) {
-                  {config.name}
-                }
-
                 component Main {
                   <Settings config={Config {name: "default", enabled: true}}/>
+                }
+
+                component Settings(config: main::Config) {
+                  {config.name}
                 }
             "#]],
         );
@@ -6737,7 +7050,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_view_referencing_component() {
+    fn accepts_view_invoking_component() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -7399,12 +7712,12 @@ mod tests {
                   </div>
                 }
 
-                component Wrapper(...rest) {
-                  <Card ...rest/>
-                }
-
                 component Page(user: main::User) {
                   <Wrapper user={user}/>
+                }
+
+                component Wrapper(...rest) {
+                  <Card ...rest/>
                 }
             "#]],
         );
@@ -7433,12 +7746,6 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Card(title: String) {
-                  <div>
-                    {title}
-                  </div>
-                }
-
                 component Bar(name: String, ...rest) {
                   <div>
                     {name}
@@ -7448,6 +7755,12 @@ mod tests {
 
                 component Baz(...rest) {
                   <Bar ...rest/>
+                }
+
+                component Card(title: String) {
+                  <div>
+                    {title}
+                  </div>
                 }
 
                 view Main() {
@@ -7689,18 +8002,18 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Foo(children: Fragment) {
-                  <div>
-                    {children}
-                  </div>
-                }
-
                 component Bar(...rest) {
                   <Foo ...rest/>
                 }
 
                 component Baz(...rest) {
                   <Bar ...rest/>
+                }
+
+                component Foo(children: Fragment) {
+                  <div>
+                    {children}
+                  </div>
                 }
 
                 view Main() {
@@ -7798,12 +8111,6 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Foo(children: Fragment, class: String, ...rest) {
-                  <div class={class} ...rest>
-                    {children}
-                  </div>
-                }
-
                 component Button(children: Fragment, class: String, ...rest) {
                   <let {
                     v_0 = {
@@ -7812,6 +8119,12 @@ mod tests {
                   }>
                     <Foo children={v_0} class={class} ...rest/>
                   </let>
+                }
+
+                component Foo(children: Fragment, class: String, ...rest) {
+                  <div class={class} ...rest>
+                    {children}
+                  </div>
                 }
 
                 view Main() {
@@ -8169,6 +8482,248 @@ mod tests {
                 view Main() {
                   <Wrapper tabindex={2} data-x="y"/>
                 }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_mutually_recursive_components() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                component Ping(n: Int) {
+                    <if {n > 0}>
+                        <Pong n={n - 1}/>
+                    </if>
+                }
+
+                component Pong(n: Int) {
+                    <if {n > 0}>
+                        <Ping n={n - 1}/>
+                    </if>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                component Ping(n: Int) {
+                  <if {(n > 0)}>
+                    <Pong n={(n - 1)}/>
+                  </if>
+                }
+
+                component Pong(n: Int) {
+                  <if {(n > 0)}>
+                    <Ping n={(n - 1)}/>
+                  </if>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_three_component_cycle() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                component A(n: Int) {
+                    <if {n > 0}><B n={n - 1}/></if>
+                }
+
+                component B(n: Int) {
+                    <if {n > 0}><C n={n - 1}/></if>
+                }
+
+                component C(n: Int) {
+                    <if {n > 0}><A n={n - 1}/></if>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                component A(n: Int) {
+                  <if {(n > 0)}>
+                    <B n={(n - 1)}/>
+                  </if>
+                }
+
+                component B(n: Int) {
+                  <if {(n > 0)}>
+                    <C n={(n - 1)}/>
+                  </if>
+                }
+
+                component C(n: Int) {
+                  <if {(n > 0)}>
+                    <A n={(n - 1)}/>
+                  </if>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_forward_component_invocation() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                component Main {
+                    <Later/>
+                }
+
+                component Later {
+                    <div></div>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                component Later {
+                  <div></div>
+                }
+
+                component Main {
+                  <Later/>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_view_invoking_later_component() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                view Main() {
+                    <Later/>
+                }
+
+                component Later {
+                    <div></div>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                component Later {
+                  <div></div>
+                }
+
+                view Main() {
+                  <Later/>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_component_invocation_inside_match_case_cycle() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                component Render(item: Option[Int]) {
+                    <match {item}>
+                        <case {Some(n)}><Wrap n={n}/></case>
+                        <case {None}>done</case>
+                    </match>
+                }
+
+                component Wrap(n: Int) {
+                    <Render item={Some(n)}/>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                component Render(item: Option[Int]) {
+                  <match {item}>
+                    <case {Some(v_1)}>
+                      <let {n = v_1}>
+                        <Wrap n={n}/>
+                      </let>
+                    </case>
+                    <case {None}>
+                      done
+                    </case>
+                  </match>
+                }
+
+                component Wrap(n: Int) {
+                  <Render item={Some(n)}/>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_rest_param_on_mutually_recursive_component() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component First(n: Int, ...rest) {
+                    <Second n={n} ...rest/>
+                }
+
+                component Second(n: Int) {
+                    <First n={n}/>
+                }
+            "#},
+            expect![[r#"
+                error: Component First is recursive and cannot use rest parameters
+                  --> main.hop (line 1, col 11)
+                1 | component First(n: Int, ...rest) {
+                  |           ^^^^^
+
+                error: Rest cannot be forwarded into recursive component Second
+                  --> main.hop (line 2, col 19)
+                1 | component First(n: Int, ...rest) {
+                2 |     <Second n={n} ...rest/>
+                  |                   ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_rest_forwarded_into_mutually_recursive_component() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component Outer(...rest) {
+                    <First ...rest/>
+                }
+
+                component First(n: Int) {
+                    <Second n={n}/>
+                }
+
+                component Second(n: Int) {
+                    <First n={n}/>
+                }
+            "#},
+            expect![[r#"
+                error: Rest cannot be forwarded into recursive component First
+                  --> main.hop (line 2, col 12)
+                 1 | component Outer(...rest) {
+                 2 |     <First ...rest/>
+                   |            ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_record_field_referencing_later_component() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                record Holder {
+                    part: Widget,
+                }
+
+                component Widget {
+                    <div></div>
+                }
+            "#},
+            expect![[r#"
+                error: `Widget` is a component and cannot be used as a type
+                  --> main.hop (line 2, col 11)
+                1 | record Holder {
+                2 |     part: Widget,
+                  |           ^^^^^^
             "#]],
         );
     }

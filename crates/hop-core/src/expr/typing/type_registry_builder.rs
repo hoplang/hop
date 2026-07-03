@@ -1,17 +1,18 @@
 use std::collections::{BTreeMap, VecDeque};
 use std::sync::Arc;
 
-use crate::document::{DocumentCursor, DocumentRange};
+use crate::document::DocumentCursor;
 use crate::document_annotator::DocumentAnnotator;
 use crate::document_id::DocumentId;
 use crate::expr::ExamplesAnnotation;
 use crate::expr::parsing::parse_type::parse_type;
-use crate::expr::typing::r#type::{EnumVariant, Type, TypeBinding};
+use crate::expr::typing::r#type::{EnumVariant, Type};
 use crate::expr::typing::type_checker::resolve_type;
+use crate::expr::typing::type_env::TypeBinding;
+use crate::expr::typing::type_env::TypeEnv;
 use crate::expr::typing::type_registry::{ResolvedType, TypeDef, TypeRegistry};
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
-use crate::variable_scope::VariableScope;
 
 /// The module all test-declared types live in.
 fn test_module() -> DocumentId {
@@ -262,13 +263,15 @@ impl TestTypes {
         }
     }
 
-    pub fn type_env(&self) -> VariableScope<TypeName, (TypeBinding, DocumentRange)> {
+    pub fn type_env(&self) -> TypeEnv {
         let decl_range = DocumentCursor::new(self.module.clone(), String::new()).range();
-        let mut env = VariableScope::new();
+        let mut env = TypeEnv::new();
         for (name, typ) in &self.named {
-            let _ = env.push(
+            env.insert_local(
                 name.clone(),
-                (TypeBinding::Value(typ.clone()), decl_range.clone()),
+                TypeBinding::Type(typ.clone()),
+                decl_range.clone(),
+                true,
             );
         }
         env

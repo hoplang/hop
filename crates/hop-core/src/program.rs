@@ -4,10 +4,11 @@ use crate::asset_rewriter::AssetRewriter;
 use crate::config::{ResolvedConfig, TargetLanguage};
 use crate::css;
 use crate::css_error::CssError;
+use crate::dependency_graph::DependencyGraph;
 use crate::document::{Document, DocumentRange};
 use crate::document_id::DocumentId;
 use crate::document_position::DocumentPosition;
-use crate::expr::TypeBinding;
+use crate::expr::typing::type_env::TypeEnv;
 use crate::expr::typing::type_registry::TypeRegistry;
 use crate::hop::inlining::transform::TailwindInjection;
 use crate::hop::parsing::find_node::find_node_at_position;
@@ -24,11 +25,10 @@ use crate::ir::Transpiler;
 use crate::orchestrator::{OrchestrateOptions, orchestrate};
 use crate::parse_error::ParseError;
 use crate::symbols::type_name::TypeName;
-use crate::toposorter::TopoSorter;
 use crate::type_error::TypeError;
 use anyhow::Result;
 use rand::Rng;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 
 /// HoverInfo is a message that should be displayed when the user hovers
@@ -76,13 +76,13 @@ impl RenameableSymbol {
 
 #[derive(Debug, Default)]
 pub struct Program {
-    topo_sorter: TopoSorter<DocumentId>,
+    dependency_graph: DependencyGraph<DocumentId>,
     documents: HashMap<DocumentId, Document>,
     css_documents: HashMap<DocumentId, Document>,
     css_errors: HashMap<DocumentId, Vec<CssError>>,
     parse_errors: HashMap<DocumentId, Vec<ParseError>>,
     parsed_asts: HashMap<DocumentId, ParsedAst>,
-    typechecker_state: HashMap<DocumentId, HashMap<TypeName, (TypeBinding, DocumentRange, bool)>>,
+    typechecker_state: HashMap<DocumentId, TypeEnv>,
     type_registry: TypeRegistry,
     type_errors: HashMap<DocumentId, Vec<TypeError>>,
     type_annotations: HashMap<DocumentId, Vec<TypeAnnotation>>,
@@ -115,16 +115,16 @@ impl Program {
         let module_dependencies = parsed_ast
             .get_import_declarations()
             .map(|import_node| import_node.imported_module().to_document_id())
-            .collect::<HashSet<DocumentId>>();
+            .collect::<BTreeSet<DocumentId>>();
 
         // Store the AST
         self.parsed_asts.insert(document_id.clone(), parsed_ast);
 
         // Typecheck the module along with all dependent modules (grouped
         // into strongly connected components).
-        let grouped_modules = self
-            .topo_sorter
-            .update_node(document_id.clone(), module_dependencies);
+        self.dependency_graph
+            .set_dependencies(document_id.clone(), module_dependencies);
+        let grouped_modules = self.dependency_graph.dependent_sccs(document_id);
         for names in &grouped_modules {
             let modules = names
                 .iter()
@@ -162,12 +162,11 @@ impl Program {
         self.asset_references.remove(document_id);
         self.typed_asts.remove(document_id);
 
-        // Clear the module's dependencies in the topo sorter (but keep the node
-        // so that reverse dependencies are preserved). This returns all modules
-        // that need to be re-typechecked.
-        let grouped_modules = self
-            .topo_sorter
-            .update_node(document_id.clone(), HashSet::new());
+        // Clear the module's dependencies but keep the node so that its
+        // dependents are still found and re-typechecked.
+        self.dependency_graph
+            .set_dependencies(document_id.clone(), BTreeSet::new());
+        let grouped_modules = self.dependency_graph.dependent_sccs(document_id);
 
         // Re-typecheck dependent modules (they now have broken imports)
         for names in grouped_modules {
@@ -415,7 +414,7 @@ impl Program {
 
     /// Collects all locations where a component should be renamed, including:
     /// - The component definition (opening and closing tags)
-    /// - All references to the component (opening and closing tags)
+    /// - All invocations of the component (opening and closing tags)
     /// - All import statements that import the component
     fn collect_component_rename_locations(
         &self,

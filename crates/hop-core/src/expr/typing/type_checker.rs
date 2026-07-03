@@ -2,7 +2,8 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use super::join_macro::build_balanced_join;
-use super::r#type::{NumericType, Type, TypeBinding};
+use super::r#type::{NumericType, Type};
+use super::type_env::TypeBinding;
 use super::type_registry::{ResolvedType, TypeRegistry};
 use crate::asset_reference::AssetReference;
 use crate::document::{CheapString, DocumentRange};
@@ -15,10 +16,10 @@ use crate::expr::parsing::parsed_expr::{
 use crate::expr::patterns::compiler::{Compiler, Decision};
 use crate::expr::patterns::typed::{TypedMatchPattern, typecheck_pattern};
 use crate::expr::patterns::{EnumMatchArm, EnumPattern, Match};
+use crate::expr::typing::type_env::TypeEnv;
 use crate::hop::typing::definition_link::DefinitionLink;
 use crate::hop::typing::type_annotation::TypeAnnotation;
 use crate::symbols::field_name::FieldName;
-use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use crate::type_error::{TypeError, TypeErrorKind};
 use crate::variable_scope::VariableScope;
@@ -26,7 +27,7 @@ use crate::variable_scope::VariableScope;
 /// Resolve a parsed Type to a semantic Type.
 pub fn resolve_type(
     parsed_type: &ParsedType,
-    type_env: &mut VariableScope<TypeName, (TypeBinding, DocumentRange)>,
+    type_env: &mut TypeEnv,
     definition_links: &mut Vec<DefinitionLink>,
 ) -> Result<Arc<Type>, TypeError> {
     let (typ, _) = match parsed_type {
@@ -53,7 +54,7 @@ pub fn resolve_type(
                 )
             })?;
             match binding {
-                TypeBinding::Value(typ) => {
+                TypeBinding::Type(typ) => {
                     let typ = typ.clone();
                     definition_links.push(DefinitionLink {
                         use_range: range.clone(),
@@ -81,7 +82,7 @@ pub fn typecheck_expr(
     parsed_expr: &ParsedExpr,
     inferred_type: Option<&Arc<Type>>,
     var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
-    type_env: &mut VariableScope<TypeName, (TypeBinding, DocumentRange)>,
+    type_env: &mut TypeEnv,
     registry: &TypeRegistry,
     annotations: &mut Vec<TypeAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
@@ -984,7 +985,7 @@ pub fn typecheck_expr(
             })?;
             let def_range = def_range.clone();
             let record_type = match binding {
-                TypeBinding::Value(typ) => typ.clone(),
+                TypeBinding::Type(typ) => typ.clone(),
                 TypeBinding::Component(_) => {
                     return Err(TypeError::new(
                         TypeErrorKind::UndefinedRecord {
@@ -1112,7 +1113,7 @@ pub fn typecheck_expr(
             })?;
             let def_range = def_range.clone();
             let enum_type = match binding {
-                TypeBinding::Value(typ) => typ.clone(),
+                TypeBinding::Type(typ) => typ.clone(),
                 TypeBinding::Component(_) => {
                     return Err(TypeError::new(
                         TypeErrorKind::UndefinedEnum {
@@ -1526,7 +1527,7 @@ pub fn typecheck_expr(
 /// Collect definition links for enum variant references in match patterns.
 fn collect_pattern_definition_links(
     pattern: &ParsedMatchPattern,
-    type_env: &mut VariableScope<TypeName, (TypeBinding, DocumentRange)>,
+    type_env: &mut TypeEnv,
     definition_links: &mut Vec<DefinitionLink>,
 ) {
     match pattern {
@@ -1568,7 +1569,7 @@ fn typecheck_arm_bodies(
     arms: &[ParsedMatchArm],
     typed_patterns: &[TypedMatchPattern],
     var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
-    type_env: &mut VariableScope<TypeName, (TypeBinding, DocumentRange)>,
+    type_env: &mut TypeEnv,
     registry: &TypeRegistry,
     annotations: &mut Vec<TypeAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,

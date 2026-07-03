@@ -1,4 +1,5 @@
 mod css;
+mod dependency_graph;
 mod error_collection;
 mod expr;
 mod hop;
@@ -7,7 +8,6 @@ mod ir;
 mod itertools;
 mod orchestrator;
 mod symbols;
-mod toposorter;
 mod variable_scope;
 
 #[cfg(test)]

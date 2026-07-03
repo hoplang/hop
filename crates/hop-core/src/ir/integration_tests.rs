@@ -10766,4 +10766,91 @@ mod tests {
             "#]],
         );
     }
+
+    #[test]
+    #[ignore]
+    fn mutually_recursive_components() {
+        check(
+            indoc! {r#"
+                component Even(n: Int) {
+                  <if {n == 0}>
+                    even
+                  </if>
+                  <if {0 < n}>
+                    <Odd n={n - 1}/>
+                  </if>
+                }
+
+                component Odd(n: Int) {
+                  <if {n == 0}>
+                    odd
+                  </if>
+                  <if {0 < n}>
+                    <Even n={n - 1}/>
+                  </if>
+                }
+
+                view Test {
+                  <Even n={4}/>
+                }
+            "#},
+            "even",
+            expect![[r#"
+                -- ir (unoptimized) --
+                component Odd(n: Int) {
+                  if (n == 0) {
+                    write("odd")
+                  }
+                  if (0 < n) {
+                    call Even(n = (n - 1))
+                  }
+                }
+                component Even(n: Int) {
+                  if (n == 0) {
+                    write("even")
+                  }
+                  if (0 < n) {
+                    call Odd(n = (n - 1))
+                  }
+                }
+                view Test() {
+                  call Even(n = 4)
+                }
+                -- ir (optimized) --
+                component Odd(n: Int) {
+                  if (n == 0) {
+                    write("odd")
+                  }
+                  if (0 < n) {
+                    call Even(n = (n - 1))
+                  }
+                }
+                component Even(n: Int) {
+                  if (n == 0) {
+                    write("even")
+                  }
+                  if (0 < n) {
+                    call Odd(n = (n - 1))
+                  }
+                }
+                view Test() {
+                  call Even(n = 4)
+                }
+                -- expected output --
+                even
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
 }

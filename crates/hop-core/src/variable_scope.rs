@@ -103,15 +103,6 @@ impl<K: Hash + Eq + Clone, V> VariableScope<K, V> {
             .unwrap()
     }
 
-    /// Check whether a key has been accessed via lookup.
-    pub fn has_been_accessed<Q>(&self, key: &Q) -> bool
-    where
-        K: Borrow<Q>,
-        Q: Hash + Eq + ?Sized,
-    {
-        self.entries.get(key).is_some_and(|entry| entry.accessed)
-    }
-
     /// Access the value behind a key in the environment.
     pub fn lookup<Q>(&mut self, key: &Q) -> Option<&V>
     where
@@ -123,16 +114,6 @@ impl<K: Hash + Eq + Clone, V> VariableScope<K, V> {
             Some(&entry.value)
         } else {
             None
-        }
-    }
-
-    pub fn replace(&mut self, key: &K, value: V) -> Result<(), ()> {
-        match self.entries.get_mut(key) {
-            Some(entry) => {
-                entry.value = value;
-                Ok(())
-            }
-            None => Err(()),
         }
     }
 }

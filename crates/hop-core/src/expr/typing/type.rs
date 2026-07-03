@@ -47,12 +47,6 @@ pub enum Tail {
     },
 }
 
-#[derive(Debug, Clone)]
-pub enum TypeBinding {
-    Value(Arc<Type>),
-    Component(ComponentSignature),
-}
-
 /// Metadata from `#[examples(...)]` annotations on fields/parameters.
 #[derive(Debug, Clone, Default)]
 pub struct ExamplesAnnotation {
