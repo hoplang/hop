@@ -323,7 +323,6 @@ fn check_import_declaration(
         type_name: imported_name,
         path: import_path,
         import_range,
-        ..
     } = import;
 
     let Some(imported_module_exports) = exports.get(&imported_module.to_document_id()) else {
