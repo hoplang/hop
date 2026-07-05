@@ -1148,7 +1148,7 @@ pub fn typecheck_expr(
                 .iter()
                 .find(|variant| variant.name.as_str() == variant_name.as_str())
             {
-                Some(variant) => variant.fields.to_vec(),
+                Some(variant) => variant.fields.clone(),
                 None => {
                     return Err(TypeError::new(
                         TypeErrorKind::UndefinedEnumVariant {

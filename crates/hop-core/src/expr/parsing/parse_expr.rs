@@ -760,7 +760,7 @@ mod tests {
         if parse_expr(&mut iter, &mut comments, &mut errors, &range).is_some() {
             panic!("expected parse error but expression parsed successfully");
         }
-        let err = errors.to_vec().pop().expect("expected at least one error");
+        let err = errors.clone().pop().expect("expected at least one error");
         let actual = DocumentAnnotator::new()
             .with_label("error")
             .without_location()

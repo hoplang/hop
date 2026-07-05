@@ -1461,7 +1461,7 @@ mod tests {
             let rendered = DocumentAnnotator::new()
                 .with_label("error")
                 .with_lines_before(1)
-                .annotate(&DocumentId::new("test.hop").unwrap(), errors.to_vec())
+                .annotate(&DocumentId::new("test.hop").unwrap(), errors.clone())
                 .render();
             panic!("expected no parse errors, got:\n{rendered}");
         }
@@ -1482,7 +1482,7 @@ mod tests {
         let actual = DocumentAnnotator::new()
             .with_label("error")
             .with_lines_before(1)
-            .annotate(&DocumentId::new("test.hop").unwrap(), errors.to_vec())
+            .annotate(&DocumentId::new("test.hop").unwrap(), errors.clone())
             .render();
         expected.assert_eq(&actual);
     }
