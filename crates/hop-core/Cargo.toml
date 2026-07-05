@@ -25,6 +25,7 @@ indoc = "2.0"
 
 [lints.rust]
 unnameable_types = "warn"
+rust_2018_idioms = "warn"
 
 [lints.clippy]
 too_many_arguments = "allow"

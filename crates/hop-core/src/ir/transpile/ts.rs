@@ -177,7 +177,7 @@ impl Transpiler for TsTranspiler {
         // Add enum type definitions (namespace-based)
         for enum_def in &module.enums {
             // Generate namespace with tagged union type and constructor functions
-            let variant_type_docs: Vec<Doc> = enum_def
+            let variant_type_docs: Vec<_> = enum_def
                 .variants
                 .iter()
                 .map(|variant| {
@@ -188,7 +188,7 @@ impl Transpiler for TsTranspiler {
                     if variant.fields.is_empty() {
                         base.append(arena.text(" }"))
                     } else {
-                        let field_docs: Vec<Doc> = variant
+                        let field_docs: Vec<_> = variant
                             .fields
                             .iter()
                             .map(|(field_name, field_type, _)| {
@@ -237,7 +237,7 @@ impl Transpiler for TsTranspiler {
                         .append(arena.text("    }"));
                 } else {
                     // Variant with fields: add parameters
-                    let param_docs: Vec<Doc> = variant
+                    let param_docs: Vec<_> = variant
                         .fields
                         .iter()
                         .map(|(field_name, field_type, _)| {
@@ -247,7 +247,7 @@ impl Transpiler for TsTranspiler {
                                 .append(self.transpile_type(arena, field_type))
                         })
                         .collect();
-                    let field_name_docs: Vec<Doc> = variant
+                    let field_name_docs: Vec<_> = variant
                         .fields
                         .iter()
                         .map(|(field_name, _, _)| {
@@ -283,7 +283,7 @@ impl Transpiler for TsTranspiler {
         // Add record type definitions
         if !records.is_empty() {
             for record in records {
-                let field_docs: Vec<Doc> = record
+                let field_docs: Vec<_> = record
                     .fields
                     .iter()
                     .map(|(name, ty, _)| {
@@ -330,7 +330,7 @@ impl Transpiler for TsTranspiler {
                 .append(arena.hardline());
         }
 
-        let view_docs: Vec<Doc> = views
+        let view_docs: Vec<_> = views
             .iter()
             .map(|view| self.transpile_view(arena, &view.name, view))
             .collect();
@@ -457,12 +457,12 @@ impl Transpiler for TsTranspiler {
 
         if !view.parameters.is_empty() {
             // Destructuring pattern: {a, b, c}
-            let name_docs: Vec<Doc> = view
+            let name_docs: Vec<_> = view
                 .parameters
                 .iter()
                 .map(|param| arena.text(param.name.as_str()))
                 .collect();
-            let type_docs: Vec<Doc> = view
+            let type_docs: Vec<_> = view
                 .parameters
                 .iter()
                 .map(|param| {
@@ -512,7 +512,7 @@ impl Transpiler for TsTranspiler {
         let has_params = !component.parameters.is_empty();
         if has_params {
             // Destructuring pattern: {a, b, c}
-            let param_names: Vec<Doc> = component
+            let param_names: Vec<_> = component
                 .parameters
                 .iter()
                 .map(|param| arena.text(param.name.as_str()))
@@ -524,7 +524,7 @@ impl Transpiler for TsTranspiler {
                 .append(arena.text("}: {"));
 
             // Type annotation: {a: TypeA, b: TypeB}
-            let param_types: Vec<Doc> = component
+            let param_types: Vec<_> = component
                 .parameters
                 .iter()
                 .map(|param| {
@@ -573,7 +573,7 @@ impl Transpiler for TsTranspiler {
 
         if !args.is_empty() {
             // Build named arguments
-            let arg_docs: Vec<Doc> = args
+            let arg_docs: Vec<_> = args
                 .iter()
                 .map(|arg| {
                     arena
@@ -863,7 +863,7 @@ impl Transpiler for TsTranspiler {
             }
             Match::Enum { subject, arms } => {
                 let subject_name = Self::subject_ref(subject);
-                let case_docs: Vec<Doc> = arms
+                let case_docs: Vec<_> = arms
                     .iter()
                     .map(|arm| match &arm.pattern {
                         EnumPattern::Variant {
@@ -874,7 +874,7 @@ impl Transpiler for TsTranspiler {
                             let bindings_doc = if arm.bindings.is_empty() {
                                 arena.nil()
                             } else {
-                                let destructure_docs: Vec<Doc> = arm
+                                let destructure_docs: Vec<_> = arm
                                     .bindings
                                     .iter()
                                     .map(|(field, var)| {
@@ -987,7 +987,7 @@ impl Transpiler for TsTranspiler {
         elements: &'a [IrExpr],
         _elem_type: &'a Type,
     ) -> Doc<'a> {
-        let elem_docs: Vec<Doc> = elements
+        let elem_docs: Vec<_> = elements
             .iter()
             .map(|e| self.transpile_expr(arena, e))
             .collect();
@@ -1004,7 +1004,7 @@ impl Transpiler for TsTranspiler {
         record_name: &'a str,
         fields: &'a [(FieldName, IrExpr)],
     ) -> Doc<'a> {
-        let field_docs: Vec<Doc> = fields
+        let field_docs: Vec<_> = fields
             .iter()
             .map(|(_key, value)| self.transpile_expr(arena, value))
             .collect();
@@ -1032,7 +1032,7 @@ impl Transpiler for TsTranspiler {
         if fields.is_empty() {
             base.append(arena.text(")"))
         } else {
-            let field_docs: Vec<Doc> = fields
+            let field_docs: Vec<_> = fields
                 .iter()
                 .map(|(_, field_expr)| self.transpile_expr(arena, field_expr))
                 .collect();
@@ -1345,7 +1345,7 @@ impl Transpiler for TsTranspiler {
         match match_ {
             Match::Enum { subject, arms } => {
                 let subject_name = Self::subject_ref(subject);
-                let case_docs: Vec<Doc> =
+                let case_docs: Vec<_> =
                     arms.iter()
                         .map(|arm| match &arm.pattern {
                             EnumPattern::Variant {
@@ -1360,7 +1360,7 @@ impl Transpiler for TsTranspiler {
                                         .append(self.transpile_expr(arena, &arm.body))
                                         .append(arena.text(";"))
                                 } else {
-                                    let destructure_docs: Vec<Doc> = arm
+                                    let destructure_docs: Vec<_> = arm
                                         .bindings
                                         .iter()
                                         .map(|(field, var)| {

@@ -332,7 +332,7 @@ impl PartialEq for DocumentRange {
 impl Eq for DocumentRange {}
 
 impl fmt::Display for DocumentRange {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())
     }
 }
@@ -378,7 +378,7 @@ impl Hash for CheapString {
 }
 
 impl fmt::Display for CheapString {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())
     }
 }

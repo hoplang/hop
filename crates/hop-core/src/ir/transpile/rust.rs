@@ -283,7 +283,7 @@ impl Transpiler for RustTranspiler {
                         .append(arena.text(" { "));
 
                     let is_recursive_enum = self.recursive_types.contains(&enum_def.name);
-                    let field_docs: Vec<Doc> = variant
+                    let field_docs: Vec<_> = variant
                         .fields
                         .iter()
                         .map(|(field_name, field_type, _)| {

@@ -579,7 +579,7 @@ fn register_component_signature<'a>(
 }
 
 fn check_component_body(
-    pending: PendingComponent,
+    pending: PendingComponent<'_>,
     document_id: &DocumentId,
     is_recursive: bool,
     registry: &TypeRegistry,
