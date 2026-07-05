@@ -318,6 +318,9 @@ pub(crate) enum TypeErrorKind {
     #[error("Variable {name} is already defined")]
     VariableAlreadyDefined { name: VarName },
 
+    #[error("{name} is already defined")]
+    TypeNameIsAlreadyDefined { name: TypeName },
+
     #[error("Mismatched type for '{macro_name}': expected `{expected}` got `{found}`")]
     MacroArgumentTypeMismatch {
         macro_name: String,

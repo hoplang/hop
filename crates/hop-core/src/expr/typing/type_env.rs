@@ -9,6 +9,7 @@ use crate::symbols::type_name::TypeName;
 pub enum TypeBinding {
     Type(Arc<Type>),
     Component(ComponentSignature),
+    View,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -36,30 +37,34 @@ impl TypeEnv {
     }
 
     /// Bind a locally declared name.
+    ///
+    /// Errors if the name is already taken.
     pub fn insert_local(
         &mut self,
         name: TypeName,
         binding: TypeBinding,
         definition_range: DocumentRange,
-    ) {
-        self.insert(name, binding, definition_range, Origin::Local);
+    ) -> Result<(), ()> {
+        self.insert(name, binding, definition_range, Origin::Local)
     }
 
     /// Bind an imported name. The import range is the range of the
     /// import statement in the importing module.
+    ///
+    /// Errors if the name is already taken.
     pub fn insert_import(
         &mut self,
         name: TypeName,
         binding: TypeBinding,
         definition_range: DocumentRange,
         import_range: DocumentRange,
-    ) {
+    ) -> Result<(), ()> {
         self.insert(
             name,
             binding,
             definition_range,
             Origin::Imported { import_range },
-        );
+        )
     }
 
     fn insert(
@@ -68,13 +73,20 @@ impl TypeEnv {
         binding: TypeBinding,
         definition_range: DocumentRange,
         origin: Origin,
-    ) {
-        self.entries.entry(name).or_insert(Entry {
-            binding,
-            definition_range,
-            accessed: false,
-            origin,
-        });
+    ) -> Result<(), ()> {
+        if self.entries.contains_key(&name) {
+            return Err(());
+        }
+        self.entries.insert(
+            name,
+            Entry {
+                binding,
+                definition_range,
+                accessed: false,
+                origin,
+            },
+        );
+        Ok(())
     }
 
     /// Access the binding behind a name.

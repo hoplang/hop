@@ -41,9 +41,6 @@ pub fn parse(
 
     let mut defined_components = HashSet::new();
     let mut imported_components = HashMap::new();
-    let mut defined_records = HashSet::new();
-    let mut defined_enums = HashSet::new();
-    let mut defined_views: HashSet<String> = HashSet::new();
 
     loop {
         let pub_range =
@@ -60,18 +57,9 @@ pub fn parse(
                 if let Some(import) =
                     parse_import_declaration(&mut iter, &mut comments, errors, &document_range)
                 {
-                    let name_str = import.type_name.as_str();
-                    if imported_components.contains_key(name_str) {
-                        errors.push(ParseError::new(
-                            ParseErrorKind::TypeNameIsAlreadyDefined {
-                                name: import.type_name_range.to_cheap_string(),
-                            },
-                            import.type_name_range.clone(),
-                        ));
-                    } else {
-                        imported_components
-                            .insert(name_str.to_string(), import.module_name.to_document_id());
-                    }
+                    imported_components
+                        .entry(import.type_name.as_str().to_string())
+                        .or_insert_with(|| import.module_name.to_document_id());
                     declarations.push(ParsedDeclaration::Import(import));
                 }
             }
@@ -83,21 +71,6 @@ pub fn parse(
                     &document_range,
                     pub_range,
                 ) {
-                    let name = record.name();
-                    if defined_records.contains(name)
-                        || defined_enums.contains(name)
-                        || defined_components.contains(name)
-                        || imported_components.contains_key(name)
-                    {
-                        errors.push(ParseError::new(
-                            ParseErrorKind::TypeNameIsAlreadyDefined {
-                                name: record.name_range.to_cheap_string(),
-                            },
-                            record.name_range.clone(),
-                        ));
-                    } else {
-                        defined_records.insert(name.to_string());
-                    }
                     declarations.push(ParsedDeclaration::Record(record));
                 }
             }
@@ -109,21 +82,6 @@ pub fn parse(
                     &document_range,
                     pub_range,
                 ) {
-                    let name = enum_decl.name();
-                    if defined_enums.contains(name)
-                        || defined_records.contains(name)
-                        || defined_components.contains(name)
-                        || imported_components.contains_key(name)
-                    {
-                        errors.push(ParseError::new(
-                            ParseErrorKind::TypeNameIsAlreadyDefined {
-                                name: enum_decl.name_range.to_cheap_string(),
-                            },
-                            enum_decl.name_range.clone(),
-                        ));
-                    } else {
-                        defined_enums.insert(name.to_string());
-                    }
                     declarations.push(ParsedDeclaration::Enum(enum_decl));
                 }
             }
@@ -137,21 +95,7 @@ pub fn parse(
                     &imported_components,
                     pub_range,
                 ) {
-                    let name = component.tag_name.as_str();
-                    if defined_components.contains(name)
-                        || imported_components.contains_key(name)
-                        || defined_records.contains(name)
-                        || defined_enums.contains(name)
-                    {
-                        errors.push(ParseError::new(
-                            ParseErrorKind::TypeNameIsAlreadyDefined {
-                                name: component.tag_name.to_cheap_string(),
-                            },
-                            component.tag_name.clone(),
-                        ));
-                    } else {
-                        defined_components.insert(name.to_string());
-                    }
+                    defined_components.insert(component.tag_name.as_str().to_string());
                     declarations.push(ParsedDeclaration::Component(component));
                 }
             }
@@ -165,22 +109,6 @@ pub fn parse(
                     &imported_components,
                     pub_range,
                 ) {
-                    let name = view.name.as_str();
-                    if defined_views.contains(name)
-                        || defined_components.contains(name)
-                        || imported_components.contains_key(name)
-                        || defined_records.contains(name)
-                        || defined_enums.contains(name)
-                    {
-                        errors.push(ParseError::new(
-                            ParseErrorKind::TypeNameIsAlreadyDefined {
-                                name: view.name_range.to_cheap_string(),
-                            },
-                            view.name_range.clone(),
-                        ));
-                    } else {
-                        defined_views.insert(name.to_string());
-                    }
                     declarations.push(ParsedDeclaration::View(view));
                 }
             }
@@ -2100,106 +2028,6 @@ mod tests {
     }
 
     #[test]
-    fn rejects_when_an_import_is_imported_twice() {
-        reject(
-            indoc! {r#"
-                import other::Foo
-                import other::Foo
-
-                component Main {
-                	<Foo></Foo>
-                }
-            "#},
-            expect![[r#"
-                error: Foo is already defined
-                1 | import other::Foo
-                2 | import other::Foo
-                  |               ^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_when_a_component_is_defined_twice() {
-        reject(
-            indoc! {r#"
-                component Foo {
-                }
-
-                component Foo {
-                }
-            "#},
-            expect![[r#"
-                error: Foo is already defined
-                3 | 
-                4 | component Foo {
-                  |           ^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_when_a_component_is_defined_with_the_same_name_as_an_import() {
-        reject(
-            indoc! {r#"
-                import other::Foo
-
-                component Foo {
-                }
-
-                component Bar {
-                	<Foo/>
-                }
-            "#},
-            expect![[r#"
-                error: Foo is already defined
-                2 | 
-                3 | component Foo {
-                  |           ^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_when_a_component_is_defined_with_the_same_name_as_a_record() {
-        reject(
-            indoc! {r#"
-                record User {
-                  name: String,
-                }
-
-                component User {
-                }
-            "#},
-            expect![[r#"
-                error: User is already defined
-                4 | 
-                5 | component User {
-                  |           ^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_when_a_record_is_defined_with_the_same_name_as_an_import() {
-        reject(
-            indoc! {r#"
-                import other::User
-
-                record User {
-                  name: String
-                }
-            "#},
-            expect![[r#"
-                error: User is already defined
-                2 | 
-                3 | record User {
-                  |        ^^^^
-            "#]],
-        );
-    }
-
-    #[test]
     fn rejects_when_import_has_only_one_segment() {
         reject(
             indoc! {r#"
@@ -2859,79 +2687,6 @@ mod tests {
                 error: Unexpected text at top level
                 1 | foo
                   | ^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_when_enum_is_defined_with_the_same_name_as_a_record() {
-        reject(
-            indoc! {"
-                record Color {
-                    name: String,
-                }
-
-                enum Color {Red, Green, Blue}
-            "},
-            expect![[r#"
-                error: Color is already defined
-                4 | 
-                5 | enum Color {Red, Green, Blue}
-                  |      ^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_when_record_is_defined_with_the_same_name_as_an_enum() {
-        reject(
-            indoc! {"
-                enum Color {Red, Green, Blue}
-
-                record Color {
-                    name: String,
-                }
-            "},
-            expect![[r#"
-                error: Color is already defined
-                2 | 
-                3 | record Color {
-                  |        ^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_when_component_is_defined_with_the_same_name_as_an_enum() {
-        reject(
-            indoc! {"
-                enum Color {Red, Green, Blue}
-
-                component Color {
-                }
-            "},
-            expect![[r#"
-                error: Color is already defined
-                2 | 
-                3 | component Color {
-                  |           ^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_when_enum_is_defined_with_the_same_name_as_an_import() {
-        reject(
-            indoc! {"
-                import other::Color
-
-                enum Color {Red, Green, Blue}
-            "},
-            expect![[r#"
-                error: Color is already defined
-                2 | 
-                3 | enum Color {Red, Green, Blue}
-                  |      ^^^^^
             "#]],
         );
     }
@@ -3956,48 +3711,6 @@ mod tests {
     }
 
     #[test]
-    fn rejects_duplicate_view_names() {
-        reject(
-            indoc! {"
-                view Index() {
-                    <div>First</div>
-                }
-
-                view Index() {
-                    <div>Second</div>
-                }
-            "},
-            expect![[r#"
-                error: Index is already defined
-                4 | 
-                5 | view Index() {
-                  |      ^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_view_with_same_name_as_component() {
-        reject(
-            indoc! {"
-                component Index {
-                    <div>Component</div>
-                }
-
-                view Index() {
-                    <div>Entrypoint</div>
-                }
-            "},
-            expect![[r#"
-                error: Index is already defined
-                4 | 
-                5 | view Index() {
-                  |      ^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
     fn rejects_view_with_reserved_name() {
         reject(
             indoc! {"
@@ -4171,49 +3884,6 @@ mod tests {
                     {name}
                   </div>
                 }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_view_with_same_name_as_record() {
-        reject(
-            indoc! {"
-                record Index {
-                    name: String
-                }
-
-                view Index() {
-                    <div>Hello</div>
-                }
-            "},
-            expect![[r#"
-                error: Index is already defined
-                4 | 
-                5 | view Index() {
-                  |      ^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_view_with_same_name_as_enum() {
-        reject(
-            indoc! {"
-                enum Index {
-                    Page,
-                    Home
-                }
-
-                view Index() {
-                    <div>Hello</div>
-                }
-            "},
-            expect![[r#"
-                error: Index is already defined
-                5 | 
-                6 | view Index() {
-                  |      ^^^^^
             "#]],
         );
     }

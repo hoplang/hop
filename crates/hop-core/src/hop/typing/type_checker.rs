@@ -111,15 +111,14 @@ fn typecheck_module(
     let mut typed_enums = Vec::new();
     let mut typed_views = Vec::new();
 
-    // Register imports
-    for import in parsed_ast.get_import_declarations() {
-        check_import_declaration(import, exports, &mut type_env, errors, definition_links);
-    }
-
-    // Pre-register local type names so that type declarations
-    // can reference each other regardless of declaration order
+    // Register all top level names in document order. Duplicates are
+    // reported at the second occurrence. Pre-registering also lets type
+    // declarations reference each other regardless of declaration order.
     for decl in parsed_ast.get_declarations() {
         match decl {
+            ParsedDeclaration::Import(import) => {
+                check_import_declaration(import, exports, &mut type_env, errors, definition_links);
+            }
             ParsedDeclaration::Record(ParsedRecordDeclaration {
                 name,
                 name_range,
@@ -132,7 +131,7 @@ fn typecheck_module(
                 pub_range,
                 ..
             }) => {
-                type_env.insert_local(
+                let insertion = type_env.insert_local(
                     name.clone(),
                     TypeBinding::Type(Arc::new(Type::Named {
                         module: parsed_ast.document_id.clone(),
@@ -140,18 +139,25 @@ fn typecheck_module(
                     })),
                     name_range.clone(),
                 );
-                module_exports.insert(
-                    name.clone(),
-                    TypeExport::Type {
-                        definition_range: name_range.clone(),
-                        is_pub: pub_range.is_some(),
-                    },
-                );
+                if insertion.is_ok() {
+                    module_exports.insert(
+                        name.clone(),
+                        TypeExport::Type {
+                            definition_range: name_range.clone(),
+                            is_pub: pub_range.is_some(),
+                        },
+                    );
+                } else {
+                    errors.push(TypeError::new(
+                        TypeErrorKind::TypeNameIsAlreadyDefined { name: name.clone() },
+                        name_range.clone(),
+                    ));
+                }
             }
             ParsedDeclaration::Component(c) => {
                 // Placeholder so type positions naming a component error
                 // correctly.
-                type_env.insert_local(
+                let insertion = type_env.insert_local(
                     c.component_name.clone(),
                     TypeBinding::Component(ComponentSignature {
                         module: parsed_ast.document_id.clone(),
@@ -161,8 +167,27 @@ fn typecheck_module(
                     }),
                     c.tag_name.clone(),
                 );
+                if insertion.is_err() {
+                    errors.push(TypeError::new(
+                        TypeErrorKind::TypeNameIsAlreadyDefined {
+                            name: c.component_name.clone(),
+                        },
+                        c.tag_name.clone(),
+                    ));
+                }
             }
-            _ => {}
+            ParsedDeclaration::View(v) => {
+                let insertion =
+                    type_env.insert_local(v.name.clone(), TypeBinding::View, v.name_range.clone());
+                if insertion.is_err() {
+                    errors.push(TypeError::new(
+                        TypeErrorKind::TypeNameIsAlreadyDefined {
+                            name: v.name.clone(),
+                        },
+                        v.name_range.clone(),
+                    ));
+                }
+            }
         }
     }
 
@@ -345,12 +370,22 @@ fn check_import_declaration(
         })),
         TypeExport::Component { signature, .. } => TypeBinding::Component(signature.clone()),
     };
-    type_env.insert_import(
-        imported_name.clone(),
-        binding,
-        export.definition_range().clone(),
-        import_range.clone(),
-    );
+    if type_env
+        .insert_import(
+            imported_name.clone(),
+            binding,
+            export.definition_range().clone(),
+            import_range.clone(),
+        )
+        .is_err()
+    {
+        errors.push(TypeError::new(
+            TypeErrorKind::TypeNameIsAlreadyDefined {
+                name: imported_name.clone(),
+            },
+            imported_name_range.clone(),
+        ));
+    }
 }
 
 fn check_record_declaration(
@@ -8746,6 +8781,411 @@ mod tests {
                 1 | record Holder {
                 2 |     part: Widget,
                   |           ^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_when_an_import_is_imported_twice() {
+        reject(
+            indoc! {r#"
+                -- other.hop --
+                pub component Foo {
+                }
+                -- main.hop --
+                import other::Foo
+                import other::Foo
+
+                component Main {
+                	<Foo></Foo>
+                }
+            "#},
+            expect![[r#"
+                error: Foo is already defined
+                  --> main.hop (line 2, col 15)
+                1 | import other::Foo
+                2 | import other::Foo
+                  |               ^^^
+
+                error: Component Foo does not accept content (missing `children: Fragment` parameter)
+                  --> main.hop (line 5, col 3)
+                4 | component Main {
+                5 |     <Foo></Foo>
+                  |      ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_when_a_component_is_defined_twice() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component Foo {
+                }
+
+                component Foo {
+                }
+            "#},
+            expect![[r#"
+                error: Foo is already defined
+                  --> main.hop (line 4, col 11)
+                3 | 
+                4 | component Foo {
+                  |           ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_when_a_component_is_defined_with_the_same_name_as_an_import() {
+        reject(
+            indoc! {r#"
+                -- other.hop --
+                pub component Foo {
+                }
+                -- main.hop --
+                import other::Foo
+
+                component Foo {
+                }
+
+                component Bar {
+                	<Foo/>
+                }
+            "#},
+            expect![[r#"
+                error: Foo is already defined
+                  --> main.hop (line 3, col 11)
+                2 | 
+                3 | component Foo {
+                  |           ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_when_a_component_is_defined_with_the_same_name_as_a_record() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                record User {
+                  name: String,
+                }
+
+                component User {
+                }
+            "#},
+            expect![[r#"
+                error: User is already defined
+                  --> main.hop (line 5, col 11)
+                4 | 
+                5 | component User {
+                  |           ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_when_a_record_is_defined_with_the_same_name_as_an_import() {
+        reject(
+            indoc! {r#"
+                -- other.hop --
+                pub record User {
+                  name: String,
+                }
+                -- main.hop --
+                import other::User
+
+                record User {
+                  name: String
+                }
+            "#},
+            expect![[r#"
+                error: User is already defined
+                  --> main.hop (line 3, col 8)
+                2 | 
+                3 | record User {
+                  |        ^^^^
+
+                warning: Unused import 'User'
+                  --> main.hop (line 1, col 1)
+                1 | import other::User
+                  | ^^^^^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_when_enum_is_defined_with_the_same_name_as_a_record() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                record Color {
+                    name: String,
+                }
+
+                enum Color {Red, Green, Blue}
+            "#},
+            expect![[r#"
+                error: Color is already defined
+                  --> main.hop (line 5, col 6)
+                4 | 
+                5 | enum Color {Red, Green, Blue}
+                  |      ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_when_record_is_defined_with_the_same_name_as_an_enum() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                enum Color {Red, Green, Blue}
+
+                record Color {
+                    name: String,
+                }
+            "#},
+            expect![[r#"
+                error: Color is already defined
+                  --> main.hop (line 3, col 8)
+                2 | 
+                3 | record Color {
+                  |        ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_when_component_is_defined_with_the_same_name_as_an_enum() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                enum Color {Red, Green, Blue}
+
+                component Color {
+                }
+            "#},
+            expect![[r#"
+                error: Color is already defined
+                  --> main.hop (line 3, col 11)
+                2 | 
+                3 | component Color {
+                  |           ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_when_enum_is_defined_with_the_same_name_as_an_import() {
+        reject(
+            indoc! {r#"
+                -- other.hop --
+                pub enum Color {Red, Green, Blue}
+                -- main.hop --
+                import other::Color
+
+                enum Color {Red, Green, Blue}
+            "#},
+            expect![[r#"
+                error: Color is already defined
+                  --> main.hop (line 3, col 6)
+                2 | 
+                3 | enum Color {Red, Green, Blue}
+                  |      ^^^^^
+
+                warning: Unused import 'Color'
+                  --> main.hop (line 1, col 1)
+                1 | import other::Color
+                  | ^^^^^^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_duplicate_view_names() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                view Index() {
+                    <div>First</div>
+                }
+
+                view Index() {
+                    <div>Second</div>
+                }
+            "#},
+            expect![[r#"
+                error: Index is already defined
+                  --> main.hop (line 5, col 6)
+                4 | 
+                5 | view Index() {
+                  |      ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_view_with_same_name_as_component() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component Index {
+                    <div>Component</div>
+                }
+
+                view Index() {
+                    <div>Entrypoint</div>
+                }
+            "#},
+            expect![[r#"
+                error: Index is already defined
+                  --> main.hop (line 5, col 6)
+                4 | 
+                5 | view Index() {
+                  |      ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_view_with_same_name_as_record() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                record Index {
+                    name: String
+                }
+
+                view Index() {
+                    <div>Hello</div>
+                }
+            "#},
+            expect![[r#"
+                error: Index is already defined
+                  --> main.hop (line 5, col 6)
+                4 | 
+                5 | view Index() {
+                  |      ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_view_with_same_name_as_enum() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                enum Index {
+                    Page,
+                    Home
+                }
+
+                view Index() {
+                    <div>Hello</div>
+                }
+            "#},
+            expect![[r#"
+                error: Index is already defined
+                  --> main.hop (line 6, col 6)
+                5 | 
+                6 | view Index() {
+                  |      ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_import_after_record_with_same_name() {
+        reject(
+            indoc! {r#"
+                -- other.hop --
+                pub record Foo {
+                  name: String,
+                }
+                -- main.hop --
+                record Foo {
+                  name: String,
+                }
+
+                import other::Foo
+            "#},
+            expect![[r#"
+                error: Foo is already defined
+                  --> main.hop (line 5, col 15)
+                4 | 
+                5 | import other::Foo
+                  |               ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_component_defined_with_same_name_as_view() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                view Index() {
+                    <div>Hello</div>
+                }
+
+                component Index {
+                }
+            "#},
+            expect![[r#"
+                error: Index is already defined
+                  --> main.hop (line 5, col 11)
+                4 | 
+                5 | component Index {
+                  |           ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_record_defined_with_same_name_as_view() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                view Index() {
+                    <div>Hello</div>
+                }
+
+                record Index {
+                    name: String
+                }
+            "#},
+            expect![[r#"
+                error: Index is already defined
+                  --> main.hop (line 5, col 8)
+                4 | 
+                5 | record Index {
+                  |        ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_view_name_used_as_type() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                view Index() {
+                    <div>Hello</div>
+                }
+
+                component Main(x: Index) {
+                    <div></div>
+                }
+            "#},
+            expect![[r#"
+                error: `Index` is a component and cannot be used as a type
+                  --> main.hop (line 5, col 19)
+                4 | 
+                5 | component Main(x: Index) {
+                  |                   ^^^^^
             "#]],
         );
     }

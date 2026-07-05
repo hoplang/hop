@@ -54,9 +54,6 @@ pub(crate) enum ParseErrorKind {
     #[error("'{name}' is a reserved word and cannot be used as a view name")]
     ReservedViewName { name: CheapString },
 
-    #[error("{name} is already defined")]
-    TypeNameIsAlreadyDefined { name: CheapString },
-
     #[error("Duplicate attribute '{name}'")]
     DuplicateAttribute { name: CheapString },
 

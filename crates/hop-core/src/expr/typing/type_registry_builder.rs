@@ -267,7 +267,8 @@ impl TestTypes {
         let decl_range = DocumentCursor::new(self.module.clone(), String::new()).range();
         let mut env = TypeEnv::new();
         for (name, typ) in &self.named {
-            env.insert_local(
+            // Names come from a HashMap so they are unique and cannot collide.
+            let _ = env.insert_local(
                 name.clone(),
                 TypeBinding::Type(typ.clone()),
                 decl_range.clone(),

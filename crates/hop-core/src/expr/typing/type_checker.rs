@@ -62,7 +62,7 @@ pub fn resolve_type(
                     });
                     (typ, range)
                 }
-                TypeBinding::Component(_) => {
+                TypeBinding::Component(_) | TypeBinding::View => {
                     return Err(TypeError::new(
                         TypeErrorKind::ComponentUsedAsType { name: name.clone() },
                         range.clone(),
@@ -986,7 +986,7 @@ pub fn typecheck_expr(
             let def_range = def_range.clone();
             let record_type = match binding {
                 TypeBinding::Type(typ) => typ.clone(),
-                TypeBinding::Component(_) => {
+                TypeBinding::Component(_) | TypeBinding::View => {
                     return Err(TypeError::new(
                         TypeErrorKind::UndefinedRecord {
                             record_name: record_name.clone(),
@@ -1114,7 +1114,7 @@ pub fn typecheck_expr(
             let def_range = def_range.clone();
             let enum_type = match binding {
                 TypeBinding::Type(typ) => typ.clone(),
-                TypeBinding::Component(_) => {
+                TypeBinding::Component(_) | TypeBinding::View => {
                     return Err(TypeError::new(
                         TypeErrorKind::UndefinedEnum {
                             enum_name: enum_name.clone(),
