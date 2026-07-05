@@ -8,6 +8,7 @@ use crate::dependency_graph::DependencyGraph;
 use crate::document::{Document, DocumentRange};
 use crate::document_id::DocumentId;
 use crate::document_position::DocumentPosition;
+use crate::expr::fake::random_value;
 use crate::expr::typing::type_export::TypeExport;
 use crate::expr::typing::type_registry::TypeRegistry;
 use crate::hop::inlining::transform::TailwindInjection;
@@ -655,7 +656,7 @@ impl Program {
             .map(|param| {
                 (
                     param.var_name.as_str().to_string(),
-                    crate::expr::fake::random_value(
+                    random_value(
                         rng,
                         &param.var_type,
                         param.examples.as_ref(),

@@ -8,6 +8,7 @@ use crate::expr::Type;
 use crate::expr::TypedExpr;
 use crate::hop::typing::typed_ast::TypedParameter;
 use crate::hop::typing::typed_node::{TypedAttribute, TypedAttributeValue, TypedLoopSource};
+use crate::html::HtmlElement;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 
@@ -182,7 +183,7 @@ impl InlinedAstBuilder {
             .collect();
 
         self.children.push(InlinedNode::Html {
-            element: crate::html::HtmlElement::parse(tag_name)
+            element: HtmlElement::parse(tag_name)
                 .expect("builder html() called with an unrecognized tag name"),
             attributes: attrs,
             children: inner_builder.children,

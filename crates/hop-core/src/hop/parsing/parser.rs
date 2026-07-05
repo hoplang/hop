@@ -16,7 +16,7 @@ use crate::html::HtmlElement;
 use crate::parse_error::{ParseError, ParseErrorKind};
 use crate::symbols::field_name::FieldName;
 use crate::symbols::module_name::ModuleName;
-use crate::symbols::type_name::TypeName;
+use crate::symbols::type_name::{InvalidTypeNameError, TypeName};
 use crate::symbols::var_name::VarName;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::iter::Peekable;
@@ -426,22 +426,20 @@ fn parse_component_declaration(
             Some((expr::Token::TypeName(name_str), range)) => (name_str, range),
             Some((_, range)) => {
                 errors.push(ParseError::new(
-                ParseErrorKind::InvalidComponentName {
-                    error:
-                        crate::symbols::type_name::InvalidTypeNameError::DoesNotStartWithUppercase,
-                },
-                range,
-            ));
+                    ParseErrorKind::InvalidComponentName {
+                        error: InvalidTypeNameError::DoesNotStartWithUppercase,
+                    },
+                    range,
+                ));
                 return None;
             }
             None => {
                 errors.push(ParseError::new(
-                ParseErrorKind::InvalidComponentName {
-                    error:
-                        crate::symbols::type_name::InvalidTypeNameError::DoesNotStartWithUppercase,
-                },
-                keyword_range,
-            ));
+                    ParseErrorKind::InvalidComponentName {
+                        error: InvalidTypeNameError::DoesNotStartWithUppercase,
+                    },
+                    keyword_range,
+                ));
                 return None;
             }
         };

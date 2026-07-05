@@ -2111,10 +2111,10 @@ fn validate_examples_annotation(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::document::Document;
     use crate::document_annotator::DocumentAnnotator;
     use crate::document_id::DocumentId;
     use crate::hop::parsing::parser::parse;
+    use crate::{document::Document, program::Severity};
     use expect_test::{Expect, expect};
     use indoc::indoc;
     use txtar::Archive;
@@ -2176,7 +2176,7 @@ mod tests {
                 if !module_errors.is_empty() {
                     let (real_errors, real_warnings): (Vec<_>, Vec<_>) = module_errors
                         .iter()
-                        .partition(|e| e.severity() == crate::program::Severity::Error);
+                        .partition(|e| e.severity() == Severity::Error);
 
                     if !real_errors.is_empty() {
                         error_annotator.annotate(&document_id, &real_errors);

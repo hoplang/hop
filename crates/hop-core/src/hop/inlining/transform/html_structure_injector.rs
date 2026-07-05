@@ -74,7 +74,7 @@ impl HtmlStructureInjector {
     /// Create an empty HTML element
     fn create_html_element(tag_name: &str, children: Vec<InlinedNode>) -> InlinedNode {
         InlinedNode::Html {
-            element: crate::html::HtmlElement::parse(tag_name)
+            element: HtmlElement::parse(tag_name)
                 .expect("create_html_element called with an unrecognized tag name"),
             attributes: Vec::new(),
             children,

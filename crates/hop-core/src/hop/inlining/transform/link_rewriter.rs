@@ -1,8 +1,10 @@
 use crate::{
     document::CheapString,
-    expr::patterns::Match,
-    hop::inlining::{InlinedComponentDeclaration, InlinedNode, InlinedViewDeclaration},
-    hop::typing::typed_node::{TypedAttribute, TypedAttributeValue},
+    expr::patterns::{EnumMatchArm, Match},
+    hop::{
+        inlining::{InlinedComponentDeclaration, InlinedNode, InlinedViewDeclaration},
+        typing::typed_node::{TypedAttribute, TypedAttributeValue},
+    },
     html::HtmlElement,
 };
 
@@ -95,7 +97,7 @@ impl LinkRewriter {
                             subject,
                             arms: arms
                                 .into_iter()
-                                .map(|arm| crate::expr::patterns::EnumMatchArm {
+                                .map(|arm| EnumMatchArm {
                                     pattern: arm.pattern,
                                     bindings: arm.bindings,
                                     body: Self::rewrite_links(arm.body),
@@ -144,7 +146,7 @@ impl LinkRewriter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hop::inlining::builder::build_inlined_view_no_params;
+    use crate::hop::inlining::builder::{build_inlined_view, build_inlined_view_no_params};
     use expect_test::{Expect, expect};
 
     fn format_view_children(view: &InlinedViewDeclaration) -> String {
@@ -258,25 +260,21 @@ mod tests {
     fn should_rewrite_links_inside_bool_match() {
         use crate::expr::Type;
 
-        let view = crate::hop::inlining::builder::build_inlined_view(
-            "Page",
-            [("flag", Type::Bool)],
-            |t| {
-                t.bool_match_node(
-                    t.var_expr("flag"),
-                    |t| {
-                        t.html("a", vec![("href", t.attr_str("/yes"))], |t| {
-                            t.text("Yes");
-                        });
-                    },
-                    |t| {
-                        t.html("a", vec![("href", t.attr_str("/no"))], |t| {
-                            t.text("No");
-                        });
-                    },
-                );
-            },
-        );
+        let view = build_inlined_view("Page", [("flag", Type::Bool)], |t| {
+            t.bool_match_node(
+                t.var_expr("flag"),
+                |t| {
+                    t.html("a", vec![("href", t.attr_str("/yes"))], |t| {
+                        t.text("Yes");
+                    });
+                },
+                |t| {
+                    t.html("a", vec![("href", t.attr_str("/no"))], |t| {
+                        t.text("No");
+                    });
+                },
+            );
+        });
 
         check_link_rewrite(
             view,

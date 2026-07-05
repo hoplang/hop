@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use pretty::{Arena, DocAllocator};
 
 use super::{Doc, Transpiler};
@@ -18,7 +20,7 @@ pub struct RustTranspiler {
     /// Tracks whether Fragment type is used during transpilation
     needs_fragment: bool,
     /// Set of type names that are self-referential and need Box indirection
-    recursive_types: std::collections::HashSet<TypeName>,
+    recursive_types: HashSet<TypeName>,
     /// Registry used to resolve named type structure.
     registry: TypeRegistry,
 }
@@ -28,7 +30,7 @@ impl RustTranspiler {
         Self {
             needs_escape_html: false,
             needs_fragment: false,
-            recursive_types: std::collections::HashSet::new(),
+            recursive_types: HashSet::new(),
             registry: TypeRegistry::default(),
         }
     }
@@ -109,8 +111,8 @@ impl RustTranspiler {
     }
 
     /// Compute which types are self-referential and need Box indirection
-    fn compute_recursive_types(module: &IrModule) -> std::collections::HashSet<TypeName> {
-        let mut recursive = std::collections::HashSet::new();
+    fn compute_recursive_types(module: &IrModule) -> HashSet<TypeName> {
+        let mut recursive = HashSet::new();
         for record in &module.records {
             for (_, field_type, _) in &record.fields {
                 if Self::type_needs_box(field_type, record.name.as_str()) {

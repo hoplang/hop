@@ -1,14 +1,15 @@
 //! Generic match types that can be used across different AST representations.
 
 use crate::symbols::field_name::FieldName;
+use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 
 /// An enum variant pattern, e.g. `Color::Red`
 #[derive(Debug, Clone, PartialEq)]
 pub enum EnumPattern {
     Variant {
-        enum_name: crate::symbols::type_name::TypeName,
-        variant_name: crate::symbols::type_name::TypeName,
+        enum_name: TypeName,
+        variant_name: TypeName,
     },
 }
 
