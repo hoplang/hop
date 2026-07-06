@@ -214,530 +214,524 @@ struct VarInfo {
     args: Vec<(VarName, Option<FieldName>)>,
 }
 
-/// The `match` compiler itself.
-pub struct Compiler<'a> {
-    /// Counter for generating fresh variable names.
-    fresh_vars: &'a mut FreshVarCounter,
-    /// Registry used to resolve named type structure.
-    registry: &'a TypeRegistry,
-    /// The arm indices that are reachable.
-    reachable: Vec<usize>,
-    /// Missing pattern strings collected during compilation.
-    missing_patterns: HashSet<String>,
-    /// Maps variable names to their matched constructor info.
-    var_info: HashMap<VarName, VarInfo>,
+/// Checks if a pattern introduces no bindings and requires no runtime discrimination.
+/// This is true for wildcards and for record patterns where all fields are free from bindings
+/// (since records have only one constructor).
+fn is_free_from_bindings(registry: &TypeRegistry, pattern: &TypedMatchPattern) -> bool {
+    match pattern {
+        TypedMatchPattern::Wildcard { .. } => true,
+        TypedMatchPattern::Binding { .. } => false,
+        TypedMatchPattern::Constructor { typ, fields, .. } => {
+            // Only records can be free from bindings since they have one constructor
+            matches!(registry.resolve(typ), Some(ResolvedType::Record { .. }))
+                && fields
+                    .iter()
+                    .all(|field| is_free_from_bindings(registry, &field.pattern))
+        }
+    }
 }
 
-impl<'a> Compiler<'a> {
-    pub fn new(fresh_vars: &'a mut FreshVarCounter, registry: &'a TypeRegistry) -> Self {
-        Self {
-            fresh_vars,
-            registry,
-            reachable: Vec::new(),
-            missing_patterns: HashSet::new(),
-            var_info: HashMap::new(),
-        }
-    }
-
-    /// Checks if a pattern introduces no bindings and requires no runtime discrimination.
-    /// This is true for wildcards and for record patterns where all fields are free from bindings
-    /// (since records have only one constructor).
-    fn is_free_from_bindings(&self, pattern: &TypedMatchPattern) -> bool {
-        match pattern {
-            TypedMatchPattern::Wildcard { .. } => true,
-            TypedMatchPattern::Binding { .. } => false,
-            TypedMatchPattern::Constructor { typ, fields, .. } => {
-                // Only records can be free from bindings since they have one constructor
-                matches!(
-                    self.registry.resolve(typ),
-                    Some(ResolvedType::Record { .. })
-                ) && fields
-                    .iter()
-                    .all(|field| self.is_free_from_bindings(&field.pattern))
-            }
-        }
-    }
-
-    /// Returns the index of a constructor within the given type.
-    fn constructor_index(&self, cons: &Constructor, typ: &Type) -> usize {
-        match cons {
-            Constructor::BooleanFalse => 0,
-            Constructor::BooleanTrue => 1,
-            Constructor::OptionSome => 0,
-            Constructor::OptionNone => 1,
-            Constructor::EnumVariant { variant_name, .. } => {
-                let Some(ResolvedType::Enum { variants, .. }) = self.registry.resolve(typ) else {
-                    panic!("type is not an enum")
-                };
-                variants
-                    .iter()
-                    .position(|variant| variant.name == *variant_name)
-                    .expect("unknown variant")
-            }
-            // Records have only one constructor, so index is always 0
-            Constructor::Record { .. } => 0,
-        }
-    }
-
-    /// Compile a collection of patterns into a decision tree.
-    pub fn compile(
-        mut self,
-        patterns: &[TypedMatchPattern],
-        subject_type: Arc<Type>,
-        subject_range: &DocumentRange,
-    ) -> Result<Decision, TypeError> {
-        // Check for empty arms
-        if patterns.is_empty() {
-            return Err(TypeError::new(
-                TypeErrorKind::MatchNoArms {},
-                subject_range.clone(),
-            ));
-        }
-
-        let subject_var = self.fresh_var(subject_type);
-
-        let rows: Vec<Row> = patterns
-            .iter()
-            .enumerate()
-            .map(|(idx, pattern)| {
-                Row::new(
-                    vec![Column::new(subject_var.clone(), pattern.clone())],
-                    Body::new(idx),
-                )
-            })
-            .collect();
-
-        let tree = self.compile_rows(&subject_var.name, rows);
-
-        // Check for unreachable arms
-        let unreachable: Vec<usize> = (0..patterns.len())
-            .filter(|i| !self.reachable.contains(i))
-            .collect();
-        if let Some(&first_unreachable) = unreachable.first() {
-            let pattern = &patterns[first_unreachable];
-            return Err(TypeError::new(
-                TypeErrorKind::MatchUnreachableArm {
-                    pattern: Box::new(pattern.clone()),
-                },
-                pattern.range().clone(),
-            ));
-        }
-
-        // Check for missing patterns
-        if !self.missing_patterns.is_empty() {
-            let mut missing: Vec<String> = self.missing_patterns.into_iter().collect();
-            missing.sort();
-            return Err(TypeError::new(
-                TypeErrorKind::MatchMissingVariants { variants: missing },
-                subject_range.clone(),
-            ));
-        }
-
-        // Tree is guaranteed to be Some if there are no missing patterns
-        let tree = tree.expect("tree should be Some when there are no missing patterns");
-
-        // Check for useless match (Success with no bindings)
-        if let Decision::Success(body) = &tree {
-            if body.bindings.is_empty() {
-                return Err(TypeError::new(
-                    TypeErrorKind::MatchUseless {},
-                    subject_range.clone(),
-                ));
-            }
-        }
-
-        Ok(tree)
-    }
-
-    fn compile_rows(&mut self, root_var: &VarName, mut rows: Vec<Row>) -> Option<Decision> {
-        if rows.is_empty() {
-            self.missing_patterns
-                .insert(self.build_pattern_for_var(root_var));
-            return None;
-        }
-
-        for row in &mut rows {
-            // Remove wildcards and move binding patterns into the body
-            row.columns.retain(|col| match &col.pattern {
-                TypedMatchPattern::Wildcard { .. } => false,
-                TypedMatchPattern::Binding { name, .. } => {
-                    row.body.bindings.push(Binding::new(
-                        name.clone(),
-                        col.variable.name.clone(),
-                        col.variable.typ.clone(),
-                    ));
-                    false
-                }
-                TypedMatchPattern::Constructor { .. } => !self.is_free_from_bindings(&col.pattern),
-            });
-        }
-
-        // There may be multiple rows, but if the first one has no patterns
-        // those extra rows are redundant, as a row without columns/patterns
-        // always matches.
-        if rows.first().is_some_and(|c| c.columns.is_empty()) {
-            let row = rows.remove(0);
-            self.reachable.push(row.body.value);
-            return Some(Decision::Success(row.body));
-        }
-
-        let branch_var = self.find_branch_variable(&rows);
-
-        let mut cases = match self
-            .registry
-            .resolve(branch_var.typ.as_ref())
-            .expect("named type must be registered")
-        {
-            ResolvedType::Bool => {
-                vec![
-                    (Constructor::BooleanFalse, Vec::new(), Vec::new()),
-                    (Constructor::BooleanTrue, Vec::new(), Vec::new()),
-                ]
-            }
-            ResolvedType::Option(inner) => {
-                vec![
-                    (
-                        Constructor::OptionSome,
-                        vec![self.fresh_var(inner.clone())],
-                        Vec::new(),
-                    ),
-                    (Constructor::OptionNone, Vec::new(), Vec::new()),
-                ]
-            }
-            ResolvedType::Enum { name, variants, .. } => variants
+/// Returns the index of a constructor within the given type.
+fn constructor_index(registry: &TypeRegistry, cons: &Constructor, typ: &Type) -> usize {
+    match cons {
+        Constructor::BooleanFalse => 0,
+        Constructor::BooleanTrue => 1,
+        Constructor::OptionSome => 0,
+        Constructor::OptionNone => 1,
+        Constructor::EnumVariant { variant_name, .. } => {
+            let Some(ResolvedType::Enum { variants, .. }) = registry.resolve(typ) else {
+                panic!("type is not an enum")
+            };
+            variants
                 .iter()
-                .map(|variant| {
-                    // Create fresh variables for each field in the variant
-                    let field_vars: Vec<Variable> = variant
-                        .fields
-                        .iter()
-                        .map(|(_, field_type, _)| self.fresh_var(field_type.clone()))
-                        .collect();
-                    (
-                        Constructor::EnumVariant {
-                            enum_name: name.clone(),
-                            variant_name: variant.name.clone(),
-                        },
-                        field_vars,
-                        Vec::new(),
-                    )
-                })
-                .collect(),
-            ResolvedType::Record { name, fields, .. } => {
-                // Records have a single constructor with fresh variables for each field
-                let field_vars: Vec<Variable> = fields
+                .position(|variant| variant.name == *variant_name)
+                .expect("unknown variant")
+        }
+        // Records have only one constructor, so index is always 0
+        Constructor::Record { .. } => 0,
+    }
+}
+
+/// Compile a collection of patterns into a decision tree.
+pub fn compile_match(
+    fresh_vars: &mut FreshVarCounter,
+    registry: &TypeRegistry,
+    patterns: &[TypedMatchPattern],
+    subject_type: Arc<Type>,
+    subject_range: &DocumentRange,
+) -> Result<Decision, TypeError> {
+    // Check for empty arms
+    if patterns.is_empty() {
+        return Err(TypeError::new(
+            TypeErrorKind::MatchNoArms {},
+            subject_range.clone(),
+        ));
+    }
+
+    let subject_var = fresh_var(fresh_vars, subject_type);
+
+    let rows: Vec<Row> = patterns
+        .iter()
+        .enumerate()
+        .map(|(idx, pattern)| {
+            Row::new(
+                vec![Column::new(subject_var.clone(), pattern.clone())],
+                Body::new(idx),
+            )
+        })
+        .collect();
+
+    let mut reachable = Vec::new();
+    let mut missing_patterns = HashSet::new();
+    let mut var_info = HashMap::new();
+
+    let tree = compile_rows(
+        fresh_vars,
+        registry,
+        &mut reachable,
+        &mut missing_patterns,
+        &mut var_info,
+        &subject_var.name,
+        rows,
+    );
+
+    // Check for unreachable arms
+    let unreachable: Vec<usize> = (0..patterns.len())
+        .filter(|i| !reachable.contains(i))
+        .collect();
+    if let Some(&first_unreachable) = unreachable.first() {
+        let pattern = &patterns[first_unreachable];
+        return Err(TypeError::new(
+            TypeErrorKind::MatchUnreachableArm {
+                pattern: Box::new(pattern.clone()),
+            },
+            pattern.range().clone(),
+        ));
+    }
+
+    // Check for missing patterns
+    if !missing_patterns.is_empty() {
+        let mut missing: Vec<String> = missing_patterns.into_iter().collect();
+        missing.sort();
+        return Err(TypeError::new(
+            TypeErrorKind::MatchMissingVariants { variants: missing },
+            subject_range.clone(),
+        ));
+    }
+
+    // Tree is guaranteed to be Some if there are no missing patterns
+    let tree = tree.expect("tree should be Some when there are no missing patterns");
+
+    // Check for useless match (Success with no bindings)
+    if let Decision::Success(body) = &tree {
+        if body.bindings.is_empty() {
+            return Err(TypeError::new(
+                TypeErrorKind::MatchUseless {},
+                subject_range.clone(),
+            ));
+        }
+    }
+
+    Ok(tree)
+}
+
+fn compile_rows(
+    fresh_vars: &mut FreshVarCounter,
+    registry: &TypeRegistry,
+    reachable: &mut Vec<usize>,
+    missing_patterns: &mut HashSet<String>,
+    var_info: &mut HashMap<VarName, VarInfo>,
+    root_var: &VarName,
+    mut rows: Vec<Row>,
+) -> Option<Decision> {
+    if rows.is_empty() {
+        missing_patterns.insert(build_pattern_for_var(var_info, root_var));
+        return None;
+    }
+
+    for row in &mut rows {
+        // Remove wildcards and move binding patterns into the body
+        row.columns.retain(|col| match &col.pattern {
+            TypedMatchPattern::Wildcard { .. } => false,
+            TypedMatchPattern::Binding { name, .. } => {
+                row.body.bindings.push(Binding::new(
+                    name.clone(),
+                    col.variable.name.clone(),
+                    col.variable.typ.clone(),
+                ));
+                false
+            }
+            TypedMatchPattern::Constructor { .. } => !is_free_from_bindings(registry, &col.pattern),
+        });
+    }
+
+    // There may be multiple rows, but if the first one has no patterns
+    // those extra rows are redundant, as a row without columns/patterns
+    // always matches.
+    if rows.first().is_some_and(|c| c.columns.is_empty()) {
+        let row = rows.remove(0);
+        reachable.push(row.body.value);
+        return Some(Decision::Success(row.body));
+    }
+
+    let branch_var = find_branch_variable(&rows);
+
+    let mut cases = match registry
+        .resolve(branch_var.typ.as_ref())
+        .expect("named type must be registered")
+    {
+        ResolvedType::Bool => {
+            vec![
+                (Constructor::BooleanFalse, Vec::new(), Vec::new()),
+                (Constructor::BooleanTrue, Vec::new(), Vec::new()),
+            ]
+        }
+        ResolvedType::Option(inner) => {
+            vec![
+                (
+                    Constructor::OptionSome,
+                    vec![fresh_var(fresh_vars, inner.clone())],
+                    Vec::new(),
+                ),
+                (Constructor::OptionNone, Vec::new(), Vec::new()),
+            ]
+        }
+        ResolvedType::Enum { name, variants, .. } => variants
+            .iter()
+            .map(|variant| {
+                // Create fresh variables for each field in the variant
+                let field_vars: Vec<Variable> = variant
+                    .fields
                     .iter()
-                    .map(|(_, field_type, _)| self.fresh_var(field_type.clone()))
+                    .map(|(_, field_type, _)| fresh_var(fresh_vars, field_type.clone()))
                     .collect();
-                vec![(
-                    Constructor::Record {
-                        type_name: name.clone(),
+                (
+                    Constructor::EnumVariant {
+                        enum_name: name.clone(),
+                        variant_name: variant.name.clone(),
                     },
                     field_vars,
                     Vec::new(),
-                )]
-            }
-            ResolvedType::String
-            | ResolvedType::Int
-            | ResolvedType::Float
-            | ResolvedType::Fragment
-            | ResolvedType::Array(_) => {
-                panic!("pattern matching not supported for this type")
-            }
-        };
+                )
+            })
+            .collect(),
+        ResolvedType::Record { name, fields, .. } => {
+            // Records have a single constructor with fresh variables for each field
+            let field_vars: Vec<Variable> = fields
+                .iter()
+                .map(|(_, field_type, _)| fresh_var(fresh_vars, field_type.clone()))
+                .collect();
+            vec![(
+                Constructor::Record {
+                    type_name: name.clone(),
+                },
+                field_vars,
+                Vec::new(),
+            )]
+        }
+        ResolvedType::String
+        | ResolvedType::Int
+        | ResolvedType::Float
+        | ResolvedType::Fragment
+        | ResolvedType::Array(_) => {
+            panic!("pattern matching not supported for this type")
+        }
+    };
 
-        // Compile the cases and sub cases for the constructor located at the
-        // column of the branching variable.
-        //
-        // 1. Take the column we're branching on and remove it from every row.
-        // 2. We add additional columns to this row, if the constructor takes any
-        //    arguments (which we'll handle in a nested match).
-        // 3. We turn the resulting list of rows into a list of cases, then compile
-        //    those into decision (sub) trees.
-        //
-        // If a row didn't include the branching variable, we simply copy that row
-        // into the list of rows for every constructor to test.
-        //
-        // For this to work, the `cases` variable must be prepared such that it has
-        // a triple for every constructor we need to handle. For an ADT with 10
-        // constructors, that means 10 triples. This is needed so this method can
-        // assign the correct sub matches to these constructors.
-        for mut row in rows {
-            if let Some(col) = row.remove_column(&branch_var) {
-                if let TypedMatchPattern::Constructor {
-                    constructor: cons,
-                    args,
-                    fields,
-                    ..
-                } = col.pattern
-                {
-                    let idx = self.constructor_index(&cons, &branch_var.typ);
-                    let mut cols = row.columns;
+    // Compile the cases and sub cases for the constructor located at the
+    // column of the branching variable.
+    //
+    // 1. Take the column we're branching on and remove it from every row.
+    // 2. We add additional columns to this row, if the constructor takes any
+    //    arguments (which we'll handle in a nested match).
+    // 3. We turn the resulting list of rows into a list of cases, then compile
+    //    those into decision (sub) trees.
+    //
+    // If a row didn't include the branching variable, we simply copy that row
+    // into the list of rows for every constructor to test.
+    //
+    // For this to work, the `cases` variable must be prepared such that it has
+    // a triple for every constructor we need to handle. For an ADT with 10
+    // constructors, that means 10 triples. This is needed so this function can
+    // assign the correct sub matches to these constructors.
+    for mut row in rows {
+        if let Some(col) = row.remove_column(&branch_var) {
+            if let TypedMatchPattern::Constructor {
+                constructor: cons,
+                args,
+                fields,
+                ..
+            } = col.pattern
+            {
+                let idx = constructor_index(registry, &cons, &branch_var.typ);
+                let mut cols = row.columns;
 
-                    if !fields.is_empty() {
-                        // Field patterns: index is resolved on the typed field.
-                        for field in fields {
-                            let var = &mut cases[idx].1[field.index];
-                            if self.is_free_from_bindings(&field.pattern) {
-                                var.is_free_from_bindings = true;
-                            }
-                            cols.push(Column::new(var.clone(), field.pattern));
+                if !fields.is_empty() {
+                    // Field patterns: index is resolved on the typed field.
+                    for field in fields {
+                        let var = &mut cases[idx].1[field.index];
+                        if is_free_from_bindings(registry, &field.pattern) {
+                            var.is_free_from_bindings = true;
                         }
-                    } else {
-                        // Positional args (Option Some, etc.)
-                        for (var, pat) in cases[idx].1.iter_mut().zip(args) {
-                            if self.is_free_from_bindings(&pat) {
-                                var.is_free_from_bindings = true;
-                            }
-                            cols.push(Column::new(var.clone(), pat));
-                        }
+                        cols.push(Column::new(var.clone(), field.pattern));
                     }
+                } else {
+                    // Positional args (Option Some, etc.)
+                    for (var, pat) in cases[idx].1.iter_mut().zip(args) {
+                        if is_free_from_bindings(registry, &pat) {
+                            var.is_free_from_bindings = true;
+                        }
+                        cols.push(Column::new(var.clone(), pat));
+                    }
+                }
 
-                    cases[idx].2.push(Row::new(cols, row.body));
-                }
-            } else {
-                for (_, _, rows) in &mut cases {
-                    rows.push(row.clone());
-                }
+                cases[idx].2.push(Row::new(cols, row.body));
+            }
+        } else {
+            for (_, _, rows) in &mut cases {
+                rows.push(row.clone());
             }
         }
+    }
 
-        // Compile all case bodies, collecting missing patterns along the way
-        let mut compiled_cases = Vec::with_capacity(cases.len());
+    // Compile all case bodies, collecting missing patterns along the way
+    let mut compiled_cases = Vec::with_capacity(cases.len());
 
-        for (cons, vars, rows) in cases {
-            let args: Vec<(VarName, Option<FieldName>)> = if let Constructor::Record { .. } = &cons
+    for (cons, vars, rows) in cases {
+        let args: Vec<(VarName, Option<FieldName>)> = if let Constructor::Record { .. } = &cons {
+            if let Some(ResolvedType::Record { fields, .. }) =
+                registry.resolve(branch_var.typ.as_ref())
             {
-                if let Some(ResolvedType::Record { fields, .. }) =
-                    self.registry.resolve(branch_var.typ.as_ref())
-                {
+                vars.iter()
+                    .zip(fields.iter())
+                    .map(|(v, (field_name, _, _))| (v.name.clone(), Some(field_name.clone())))
+                    .collect()
+            } else {
+                Vec::new()
+            }
+        } else if let Constructor::EnumVariant { variant_name, .. } = &cons {
+            // For enum variants with fields, include field names
+            if let Some(ResolvedType::Enum { variants, .. }) =
+                registry.resolve(branch_var.typ.as_ref())
+            {
+                let variant_fields = variants
+                    .iter()
+                    .find(|v| v.name.as_str() == variant_name.as_str())
+                    .map(|v| v.fields.as_slice());
+                if let Some(fields) = variant_fields {
                     vars.iter()
                         .zip(fields.iter())
                         .map(|(v, (field_name, _, _))| (v.name.clone(), Some(field_name.clone())))
                         .collect()
                 } else {
-                    Vec::new()
-                }
-            } else if let Constructor::EnumVariant { variant_name, .. } = &cons {
-                // For enum variants with fields, include field names
-                if let Some(ResolvedType::Enum { variants, .. }) =
-                    self.registry.resolve(branch_var.typ.as_ref())
-                {
-                    let variant_fields = variants
-                        .iter()
-                        .find(|v| v.name.as_str() == variant_name.as_str())
-                        .map(|v| v.fields.as_slice());
-                    if let Some(fields) = variant_fields {
-                        vars.iter()
-                            .zip(fields.iter())
-                            .map(|(v, (field_name, _, _))| {
-                                (v.name.clone(), Some(field_name.clone()))
-                            })
-                            .collect()
-                    } else {
-                        vars.iter().map(|v| (v.name.clone(), None)).collect()
-                    }
-                } else {
                     vars.iter().map(|v| (v.name.clone(), None)).collect()
                 }
             } else {
                 vars.iter().map(|v| (v.name.clone(), None)).collect()
-            };
-            self.var_info.insert(
-                branch_var.name.clone(),
-                VarInfo {
-                    constructor: cons.to_string(),
-                    args,
-                },
-            );
+            }
+        } else {
+            vars.iter().map(|v| (v.name.clone(), None)).collect()
+        };
+        var_info.insert(
+            branch_var.name.clone(),
+            VarInfo {
+                constructor: cons.to_string(),
+                args,
+            },
+        );
 
-            let body = self.compile_rows(root_var, rows);
-            self.var_info.remove(&branch_var.name);
+        let body = compile_rows(
+            fresh_vars,
+            registry,
+            reachable,
+            missing_patterns,
+            var_info,
+            root_var,
+            rows,
+        );
+        var_info.remove(&branch_var.name);
 
-            compiled_cases.push((cons, vars, body));
+        compiled_cases.push((cons, vars, body));
+    }
+
+    // If any case body is None, return None (missing patterns already collected)
+    if compiled_cases.iter().any(|(_, _, body)| body.is_none()) {
+        return None;
+    }
+
+    // All case bodies are Some, build the appropriate typed Decision variant
+    // Clone the type to avoid borrow issues when moving branch_var
+    let branch_typ = branch_var.typ.clone();
+    match registry
+        .resolve(branch_typ.as_ref())
+        .expect("named type must be registered")
+    {
+        ResolvedType::Bool => {
+            // compiled_cases is ordered: [false, true]
+            let mut iter = compiled_cases.into_iter();
+            let (_, _, false_body) = iter.next().unwrap();
+            let (_, _, true_body) = iter.next().unwrap();
+            Some(Decision::SwitchBool {
+                variable: branch_var,
+                false_case: Box::new(BoolCase {
+                    body: false_body.unwrap(),
+                }),
+                true_case: Box::new(BoolCase {
+                    body: true_body.unwrap(),
+                }),
+            })
         }
-
-        // If any case body is None, return None (missing patterns already collected)
-        if compiled_cases.iter().any(|(_, _, body)| body.is_none()) {
-            return None;
+        ResolvedType::Option(_) => {
+            // compiled_cases is ordered: [some, none]
+            let mut iter = compiled_cases.into_iter();
+            let (_, some_vars, some_body) = iter.next().unwrap();
+            let (_, _, none_body) = iter.next().unwrap();
+            let some_var = some_vars.into_iter().next().unwrap();
+            Some(Decision::SwitchOption {
+                variable: branch_var,
+                some_case: Box::new(OptionSomeCase {
+                    bound_name: if some_var.is_free_from_bindings {
+                        None
+                    } else {
+                        Some(some_var.name)
+                    },
+                    body: some_body.unwrap(),
+                }),
+                none_case: Box::new(OptionNoneCase {
+                    body: none_body.unwrap(),
+                }),
+            })
         }
-
-        // All case bodies are Some, build the appropriate typed Decision variant
-        // Clone the type to avoid borrow issues when moving branch_var
-        let branch_typ = branch_var.typ.clone();
-        match self
-            .registry
-            .resolve(branch_typ.as_ref())
-            .expect("named type must be registered")
-        {
-            ResolvedType::Bool => {
-                // compiled_cases is ordered: [false, true]
-                let mut iter = compiled_cases.into_iter();
-                let (_, _, false_body) = iter.next().unwrap();
-                let (_, _, true_body) = iter.next().unwrap();
-                Some(Decision::SwitchBool {
-                    variable: branch_var,
-                    false_case: Box::new(BoolCase {
-                        body: false_body.unwrap(),
-                    }),
-                    true_case: Box::new(BoolCase {
-                        body: true_body.unwrap(),
-                    }),
-                })
-            }
-            ResolvedType::Option(_) => {
-                // compiled_cases is ordered: [some, none]
-                let mut iter = compiled_cases.into_iter();
-                let (_, some_vars, some_body) = iter.next().unwrap();
-                let (_, _, none_body) = iter.next().unwrap();
-                let some_var = some_vars.into_iter().next().unwrap();
-                Some(Decision::SwitchOption {
-                    variable: branch_var,
-                    some_case: Box::new(OptionSomeCase {
-                        bound_name: if some_var.is_free_from_bindings {
-                            None
-                        } else {
-                            Some(some_var.name)
-                        },
-                        body: some_body.unwrap(),
-                    }),
-                    none_case: Box::new(OptionNoneCase {
-                        body: none_body.unwrap(),
-                    }),
-                })
-            }
-            ResolvedType::Enum {
-                name,
-                variants: type_variants,
-                ..
-            } => {
-                let cases = compiled_cases
-                    .into_iter()
-                    .map(|(cons, vars, body)| {
-                        let Constructor::EnumVariant { variant_name, .. } = cons else {
-                            unreachable!("Expected EnumVariant constructor")
-                        };
-                        // Get the field names from the type definition
-                        let empty_fields = vec![];
-                        let variant_fields = type_variants
-                            .iter()
-                            .find(|variant| variant.name.as_str() == variant_name.as_str())
-                            .map(|variant| &variant.fields)
-                            .unwrap_or(&empty_fields);
-                        // Create FieldBindings with field names
-                        let bindings = variant_fields
-                            .iter()
-                            .zip(vars)
-                            .map(|((field_name, _, _), var)| FieldBinding {
-                                field_name: field_name.clone(),
-                                bound_name: if var.is_free_from_bindings {
-                                    None
-                                } else {
-                                    Some(var.name)
-                                },
-                            })
-                            .collect();
-                        EnumCase {
-                            enum_name: name.clone(),
-                            variant_name,
-                            bindings,
-                            body: body.unwrap(),
-                        }
-                    })
-                    .collect();
-                Some(Decision::SwitchEnum {
-                    variable: branch_var,
-                    cases,
-                })
-            }
-            ResolvedType::Record {
-                name,
-                fields: type_fields,
-                ..
-            } => {
-                // Records have exactly one case
-                let (_, vars, body) = compiled_cases.into_iter().next().unwrap();
-
-                // Create FieldBindings with field names
-                let bindings = type_fields
-                    .iter()
-                    .zip(vars)
-                    .map(|((field_name, _, _), var)| FieldBinding {
-                        field_name: field_name.clone(),
-                        bound_name: if var.is_free_from_bindings {
-                            None
-                        } else {
-                            Some(var.name)
-                        },
-                    })
-                    .collect();
-                Some(Decision::SwitchRecord {
-                    variable: branch_var,
-                    case: Box::new(RecordCase {
-                        _type_name: name.clone(),
+        ResolvedType::Enum {
+            name,
+            variants: type_variants,
+            ..
+        } => {
+            let cases = compiled_cases
+                .into_iter()
+                .map(|(cons, vars, body)| {
+                    let Constructor::EnumVariant { variant_name, .. } = cons else {
+                        unreachable!("Expected EnumVariant constructor")
+                    };
+                    // Get the field names from the type definition
+                    let empty_fields = vec![];
+                    let variant_fields = type_variants
+                        .iter()
+                        .find(|variant| variant.name.as_str() == variant_name.as_str())
+                        .map(|variant| &variant.fields)
+                        .unwrap_or(&empty_fields);
+                    // Create FieldBindings with field names
+                    let bindings = variant_fields
+                        .iter()
+                        .zip(vars)
+                        .map(|((field_name, _, _), var)| FieldBinding {
+                            field_name: field_name.clone(),
+                            bound_name: if var.is_free_from_bindings {
+                                None
+                            } else {
+                                Some(var.name)
+                            },
+                        })
+                        .collect();
+                    EnumCase {
+                        enum_name: name.clone(),
+                        variant_name,
                         bindings,
                         body: body.unwrap(),
-                    }),
+                    }
                 })
-            }
-            _ => unreachable!("Unsupported type for pattern matching"),
-        }
-    }
-
-    /// Given a row, returns the variable in that row that's referred to the
-    /// most across all rows.
-    fn find_branch_variable(&self, rows: &[Row]) -> Variable {
-        let mut counts: HashMap<&VarName, usize> = HashMap::new();
-        for row in rows {
-            for col in &row.columns {
-                *counts.entry(&col.variable.name).or_insert(0_usize) += 1;
-            }
-        }
-        rows[0]
-            .columns
-            .iter()
-            .map(|col| col.variable.clone())
-            .max_by_key(|var| counts[&var.name])
-            .unwrap()
-    }
-
-    /// Returns a new variable to use in the decision tree.
-    fn fresh_var(&mut self, typ: Arc<Type>) -> Variable {
-        let name = self.fresh_vars.fresh_var();
-        Variable::new(name, typ)
-    }
-
-    /// Builds a pattern string for a variable by recursively looking up constructor info.
-    ///
-    /// This is used to generate human-readable missing pattern messages. Starting from
-    /// the root variable, it traverses `var_info` to reconstruct the pattern that would
-    /// be needed to make the match exhaustive.
-    fn build_pattern_for_var(&self, var_name: &VarName) -> String {
-        let Some(info) = self.var_info.get(var_name) else {
-            return "_".to_string();
-        };
-        if info.args.is_empty() {
-            return info.constructor.clone();
-        }
-        let has_named_fields = info.args.iter().any(|(_, f)| f.is_some());
-        let args = info
-            .args
-            .iter()
-            .map(|(sub_var, field_name)| {
-                let pattern = self.build_pattern_for_var(sub_var);
-                match field_name {
-                    Some(name) => format!("{}: {}", name, pattern),
-                    None => pattern,
-                }
+                .collect();
+            Some(Decision::SwitchEnum {
+                variable: branch_var,
+                cases,
             })
-            .collect::<Vec<_>>()
-            .join(", ");
-
-        if has_named_fields {
-            format!("{}{{{}}}", info.constructor, args)
-        } else {
-            format!("{}({})", info.constructor, args)
         }
+        ResolvedType::Record {
+            name,
+            fields: type_fields,
+            ..
+        } => {
+            // Records have exactly one case
+            let (_, vars, body) = compiled_cases.into_iter().next().unwrap();
+
+            // Create FieldBindings with field names
+            let bindings = type_fields
+                .iter()
+                .zip(vars)
+                .map(|((field_name, _, _), var)| FieldBinding {
+                    field_name: field_name.clone(),
+                    bound_name: if var.is_free_from_bindings {
+                        None
+                    } else {
+                        Some(var.name)
+                    },
+                })
+                .collect();
+            Some(Decision::SwitchRecord {
+                variable: branch_var,
+                case: Box::new(RecordCase {
+                    _type_name: name.clone(),
+                    bindings,
+                    body: body.unwrap(),
+                }),
+            })
+        }
+        _ => unreachable!("Unsupported type for pattern matching"),
+    }
+}
+
+/// Given a row, returns the variable in that row that's referred to the
+/// most across all rows.
+fn find_branch_variable(rows: &[Row]) -> Variable {
+    let mut counts: HashMap<&VarName, usize> = HashMap::new();
+    for row in rows {
+        for col in &row.columns {
+            *counts.entry(&col.variable.name).or_insert(0_usize) += 1;
+        }
+    }
+    rows[0]
+        .columns
+        .iter()
+        .map(|col| col.variable.clone())
+        .max_by_key(|var| counts[&var.name])
+        .unwrap()
+}
+
+/// Returns a new variable to use in the decision tree.
+fn fresh_var(fresh_vars: &mut FreshVarCounter, typ: Arc<Type>) -> Variable {
+    Variable::new(fresh_vars.fresh_var(), typ)
+}
+
+/// Builds a pattern string for a variable by recursively looking up constructor info.
+///
+/// This is used to generate human-readable missing pattern messages. Starting from
+/// the root variable, it traverses `var_info` to reconstruct the pattern that would
+/// be needed to make the match exhaustive.
+fn build_pattern_for_var(var_info: &HashMap<VarName, VarInfo>, var_name: &VarName) -> String {
+    let Some(info) = var_info.get(var_name) else {
+        return "_".to_string();
+    };
+    if info.args.is_empty() {
+        return info.constructor.clone();
+    }
+    let has_named_fields = info.args.iter().any(|(_, f)| f.is_some());
+    let args = info
+        .args
+        .iter()
+        .map(|(sub_var, field_name)| {
+            let pattern = build_pattern_for_var(var_info, sub_var);
+            match field_name {
+                Some(name) => format!("{}: {}", name, pattern),
+                None => pattern,
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    if has_named_fields {
+        format!("{}{{{}}}", info.constructor, args)
+    } else {
+        format!("{}({})", info.constructor, args)
     }
 }
 
@@ -796,7 +790,9 @@ mod tests {
             .unwrap_or_else(|e| panic!("pattern failed to typecheck: {e:?}"));
 
         let mut fresh_vars = FreshVarCounter::new();
-        let result = Compiler::new(&mut fresh_vars, types.registry()).compile(
+        let result = compile_match(
+            &mut fresh_vars,
+            types.registry(),
             &typed_patterns,
             subject_type,
             &subject_range,

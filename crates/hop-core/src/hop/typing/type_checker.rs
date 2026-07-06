@@ -3,7 +3,7 @@ use crate::asset_reference::AssetReference;
 use crate::dependency_graph::DependencyGraph;
 use crate::document::{CheapString, DocumentRange};
 use crate::error_collection::ErrorCollectionExt;
-use crate::expr::patterns::compiler::Compiler;
+use crate::expr::patterns::compiler::compile_match;
 use crate::expr::typing::r#type::EnumVariant;
 use crate::expr::typing::type_checker::{resolve_type, typecheck_expr};
 use crate::expr::typing::type_env::TypeEnv;
@@ -1434,13 +1434,13 @@ fn typecheck_node(
                     .collect::<Result<Vec<_>, _>>(),
             )?;
 
-            let decision = errors.ok_or_add(
-                Compiler::new(var_env.fresh_var_counter(), registry).compile(
-                    &typed_patterns,
-                    subject_type,
-                    subject.range(),
-                ),
-            )?;
+            let decision = errors.ok_or_add(compile_match(
+                var_env.fresh_var_counter(),
+                registry,
+                &typed_patterns,
+                subject_type,
+                subject.range(),
+            ))?;
 
             let typed_bodies = cases
                 .iter()

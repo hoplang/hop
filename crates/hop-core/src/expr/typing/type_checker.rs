@@ -13,7 +13,7 @@ use crate::expr::parsing::ParsedType;
 use crate::expr::parsing::parsed_expr::{
     Constructor, ParsedBinaryOp, ParsedExpr, ParsedMatchArm, ParsedMatchPattern,
 };
-use crate::expr::patterns::compiler::{Compiler, Decision};
+use crate::expr::patterns::compiler::{Decision, compile_match};
 use crate::expr::patterns::typed::{TypedMatchPattern, typecheck_pattern};
 use crate::expr::patterns::{EnumMatchArm, EnumPattern, Match};
 use crate::expr::typing::type_env::TypeEnv;
@@ -1315,7 +1315,9 @@ pub fn typecheck_expr(
                 .iter()
                 .map(|arm| typecheck_pattern(&arm.pattern, subject_type.clone(), registry))
                 .collect::<Result<Vec<_>, _>>()?;
-            let tree = Compiler::new(var_env.fresh_var_counter(), registry).compile(
+            let tree = compile_match(
+                var_env.fresh_var_counter(),
+                registry,
                 &typed_patterns,
                 subject_type,
                 subject.range(),
