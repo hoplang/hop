@@ -70,11 +70,14 @@ impl Const {
             } => {
                 // Reconstruct field expressions from const_map
                 let Some(ResolvedType::Enum { variants, .. }) = registry.resolve(&kind) else {
-                    return None;
+                    panic!("Const::Enum must have enum type, got {:?}", kind);
                 };
                 let variant_fields = &variants
                     .iter()
-                    .find(|variant| variant.name.as_str() == variant_name.as_str())?
+                    .find(|variant| variant.name.as_str() == variant_name.as_str())
+                    .unwrap_or_else(|| {
+                        panic!("enum {enum_name} has no variant {variant_name}")
+                    })
                     .fields;
 
                 let reconstructed_fields: Option<Vec<_>> = fields
@@ -83,7 +86,13 @@ impl Const {
                         let field_type = variant_fields
                             .iter()
                             .find(|(f, _, _)| f.as_str() == field_name.as_str())
-                            .map(|(_, t, _)| t.clone())?;
+                            .map(|(_, t, _)| t.clone())
+                            .unwrap_or_else(|| {
+                                panic!(
+                                    "variant {variant_name} of enum {enum_name} has no field {}",
+                                    field_name.as_str()
+                                )
+                            });
 
                         let field_const = known_expr_map.get(field_id)?;
                         let field_expr =
