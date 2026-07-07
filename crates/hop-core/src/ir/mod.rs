@@ -1,5 +1,5 @@
+pub mod evaluator;
 mod optimizer;
-pub mod semantics;
 pub mod syntax;
 pub mod transpile;
 

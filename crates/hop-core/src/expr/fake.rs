@@ -2,7 +2,7 @@ use crate::document_id::DocumentId;
 use crate::expr::Type;
 use crate::expr::typing::r#type::{EnumVariant, ExamplesAnnotation};
 use crate::expr::typing::type_registry::{ResolvedType, TypeRegistry};
-use crate::ir::semantics::evaluator::Value;
+use crate::ir::evaluator::Value;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use rand::{Rng, RngExt};

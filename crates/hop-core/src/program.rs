@@ -547,7 +547,7 @@ impl Program {
         &self,
         document_id: &DocumentId,
         view_name: &TypeName,
-        args: HashMap<String, ir::semantics::evaluator::Value>,
+        args: HashMap<String, ir::evaluator::Value>,
         generated_tailwind_css: Option<&str>,
         skip_optimization: bool,
         disable_links: bool,
@@ -619,7 +619,7 @@ impl Program {
         })?;
 
         // Evaluate the view
-        ir::semantics::evaluator::evaluate_view(view, args, &ir_module.components)
+        ir::evaluator::evaluate_view(view, args, &ir_module.components)
     }
 
     /// Evaluate a view with randomly generated parameter values using the given RNG.
@@ -2467,7 +2467,7 @@ mod tests {
         let mut args = HashMap::new();
         args.insert(
             "name".to_string(),
-            ir::semantics::evaluator::Value::String("Alice".to_string()),
+            ir::evaluator::Value::String("Alice".to_string()),
         );
 
         let main_module = DocumentId::new("main.hop").unwrap();

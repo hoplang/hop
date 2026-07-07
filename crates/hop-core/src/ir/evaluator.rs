@@ -13,8 +13,7 @@ use tailwind_merge::tw_merge;
 use crate::expr::patterns::{EnumPattern, Match};
 use crate::ir::syntax::ast::{IrComponentDeclaration, IrForSource, IrStatement, IrViewDeclaration};
 
-/// Fast stack-based environment for the evaluator.
-/// Uses a Vec instead of HashMap for better performance with small scopes.
+/// Stack-based environment for the evaluator.
 struct Env {
     stack: Vec<(VarName, Value)>,
 }
@@ -41,7 +40,7 @@ impl Env {
     }
 }
 
-/// Runtime value for the Hop evaluator.
+/// Runtime value for the evaluator.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     String(String),
