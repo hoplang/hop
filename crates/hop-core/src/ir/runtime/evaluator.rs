@@ -295,15 +295,19 @@ fn eval_statement(
                 .find(|c| c.name.as_str() == component_name.as_str())
                 .ok_or_else(|| anyhow!("Undefined component: {}", component_name.as_str()))?;
 
-            // Evaluate args and bind to component parameters
+            // Evaluate all argument expressions in the caller's env first,
+            // so an earlier-bound parameter can't shadow a caller variable
+            // that a later argument expression refers to. Only after every
+            // value is computed do we bind them onto the env.
             let bind_count = component_def.parameters.len();
+            let mut values = Vec::with_capacity(bind_count);
             for param in &component_def.parameters {
                 if let Some(arg) = args
                     .iter()
                     .find(|arg| arg.name.as_str() == param.name.as_str())
                 {
                     let value = evaluate_expr(&arg.expr, env)?;
-                    env.push(param.name.clone(), value);
+                    values.push((param.name.clone(), value));
                 } else {
                     return Err(anyhow!(
                         "Missing required parameter '{}' for component '{}'",
@@ -311,6 +315,9 @@ fn eval_statement(
                         component_name.as_str()
                     ));
                 }
+            }
+            for (name, value) in values {
+                env.push(name, value);
             }
 
             eval_statements(&component_def.body, env, output, component_defs)?;
@@ -985,5 +992,29 @@ mod tests {
         let err = result.unwrap_err();
         assert!(err.to_string().contains("Missing required parameter"));
         assert!(err.to_string().contains("name"));
+    }
+
+    #[test]
+    fn component_args_are_evaluated_in_caller_env_not_shadowed_by_earlier_params() {
+        use crate::ir::syntax::builder::IrModuleBuilder;
+
+        let module = IrModuleBuilder::new()
+            .component("C", [("p0", "Int"), ("p1", "Int")], |t| {
+                t.write_expr(t.int_to_string(t.var("p1")), false);
+            })
+            .view("Test", [("p0", "Int")], |t| {
+                t.invoke_component("C", vec![("p0", t.int(999)), ("p1", t.var("p0"))]);
+            })
+            .build();
+
+        let mut args = HashMap::new();
+        args.insert("p0".to_string(), Value::Int(42));
+
+        let output = evaluate_view(&module.views[0], args, &module.components)
+            .expect("Evaluation should succeed");
+
+        // p1 = p0 refers to the caller's p0 (42), not the component's own
+        // p0 (999) that gets bound first.
+        assert_eq!(output, "42");
     }
 }
