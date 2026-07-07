@@ -140,7 +140,7 @@ pub fn perform_partial_evaluation(body: &mut Vec<IrStatement>, registry: &TypeRe
     // shadowing or scoping.
     let mut variable_bindings: HashMap<VarName, ExprId> = HashMap::new();
     let mut option_bindings: HashMap<VarName, ExprId> = HashMap::new();
-    let mut enum_field_bindings: HashMap<VarName, (ExprId, FieldName)> = HashMap::new();
+    let mut enum_field_bindings: HashMap<VarName, (ExprId, TypeName, FieldName)> = HashMap::new();
 
     let mut initial_constants: Vec<(ExprId, Const)> = Vec::new();
 
@@ -157,8 +157,8 @@ pub fn perform_partial_evaluation(body: &mut Vec<IrStatement>, registry: &TypeRe
     let mut variable_references: Vec<(ExprId, ExprId)> = Vec::new();
     // Option binding references: (defining_expr_id => reference_expr_id)
     let mut option_binding_references: Vec<(ExprId, ExprId)> = Vec::new();
-    // Enum binding references: ((defining_expr_id, field_name) => reference_expr_id)
-    let mut enum_binding_references: Vec<((ExprId, FieldName), ExprId)> = Vec::new();
+    // Enum binding references: ((defining_expr_id, variant_name, field_name) => reference_expr_id)
+    let mut enum_binding_references: Vec<((ExprId, TypeName, FieldName), ExprId)> = Vec::new();
 
     let mut enum_match_subjects: Vec<(ExprId, ExprId)> = Vec::new();
     let mut enum_match_arm_entries: Vec<((ExprId, TypeName, TypeName), ExprId)> = Vec::new();
@@ -172,8 +172,8 @@ pub fn perform_partial_evaluation(body: &mut Vec<IrStatement>, registry: &TypeRe
     // Let expr bodies: (body_expr_id => let_expr_id)
     let mut let_expr_bodies: Vec<(ExprId, ExprId)> = Vec::new();
 
-    // Enum field values: (enum_expr_id => (field_name, field_expr_id))
-    let mut enum_fields: Vec<(ExprId, (FieldName, ExprId))> = Vec::new();
+    // Enum field values: (enum_expr_id => (variant_name, field_name, field_expr_id))
+    let mut enum_fields: Vec<(ExprId, (TypeName, FieldName, ExprId))> = Vec::new();
 
     // Options contained values: (option_expr_id => contained_expr_id)
     let mut option_contained_values: Vec<(ExprId, ExprId)> = Vec::new();
@@ -259,7 +259,8 @@ pub fn perform_partial_evaluation(body: &mut Vec<IrStatement>, registry: &TypeRe
                         ));
                         // Track field values for binding propagation
                         for (field_name, field_id) in field_ids {
-                            enum_fields.push((expr.id(), (field_name, field_id)));
+                            enum_fields
+                                .push((expr.id(), (variant_name.clone(), field_name, field_id)));
                         }
                     }
                     IrExpr::Match { match_, .. } => match match_ {
@@ -267,10 +268,11 @@ pub fn perform_partial_evaluation(body: &mut Vec<IrStatement>, registry: &TypeRe
                             let subject_id = subject.id();
                             enum_match_subjects.push((subject_id, expr.id()));
                             for arm in arms {
+                                let EnumPattern::Variant { variant_name, .. } = &arm.pattern;
                                 for (field_name, binding_name) in &arm.bindings {
                                     enum_field_bindings.insert(
                                         binding_name.clone(),
-                                        (subject_id, field_name.clone()),
+                                        (subject_id, variant_name.clone(), field_name.clone()),
                                     );
                                 }
                             }
@@ -318,11 +320,13 @@ pub fn perform_partial_evaluation(body: &mut Vec<IrStatement>, registry: &TypeRe
                             variable_references.push((*def_expr_id, expr.id()));
                         } else if let Some(subject_def_id) = option_bindings.get(name) {
                             option_binding_references.push((*subject_def_id, expr.id()));
-                        } else if let Some((subject_def_id, field_name)) =
+                        } else if let Some((subject_def_id, variant_name, field_name)) =
                             enum_field_bindings.get(name)
                         {
-                            enum_binding_references
-                                .push(((*subject_def_id, field_name.clone()), expr.id()));
+                            enum_binding_references.push((
+                                (*subject_def_id, variant_name.clone(), field_name.clone()),
+                                expr.id(),
+                            ));
                         }
                     }
                     IrExpr::OptionLiteral { value, .. } => {
@@ -464,21 +468,23 @@ pub fn perform_partial_evaluation(body: &mut Vec<IrStatement>, registry: &TypeRe
     // Option binding uses: (subject_def_expr_id => binding_var_expr_id)
     let option_binding_reference = Relation::from_vec(option_binding_references);
 
-    // Enum field expression ids: (enum_expr_id => (field_name, field_expr_id))
+    // Enum field expression ids: (enum_expr_id => (variant_name, field_name, field_expr_id))
     // Used for propagating through variable bindings
-    let enum_field = iteration.variable::<(ExprId, (FieldName, ExprId))>("enum_field");
+    let enum_field = iteration.variable::<(ExprId, (TypeName, FieldName, ExprId))>("enum_field");
     enum_field.extend(enum_fields.clone());
 
-    // Enum field keyed by (expr_id, field_name): ((enum_expr_id, field_name) => field_expr_id)
-    // Used for joining with binding uses
-    let enum_field_keyed = iteration.variable::<((ExprId, FieldName), ExprId)>("enum_field_keyed");
-    enum_field_keyed.extend(
-        enum_fields
-            .into_iter()
-            .map(|(expr_id, (field_name, field_id))| ((expr_id, field_name), field_id)),
-    );
+    // Enum field keyed by (expr_id, variant_name, field_name): ((enum_expr_id, variant_name, field_name) => field_expr_id)
+    // Used for joining with binding uses. Keying by variant_name too matters
+    // because different variants of the same enum may share a field name.
+    let enum_field_keyed =
+        iteration.variable::<((ExprId, TypeName, FieldName), ExprId)>("enum_field_keyed");
+    enum_field_keyed.extend(enum_fields.into_iter().map(
+        |(expr_id, (variant_name, field_name, field_id))| {
+            ((expr_id, variant_name, field_name), field_id)
+        },
+    ));
 
-    // Enum binding uses: ((subject_def_expr_id, field_name) => binding_var_expr_id)
+    // Enum binding uses: ((subject_def_expr_id, variant_name, field_name) => binding_var_expr_id)
     let enum_binding_use = Relation::from_vec(enum_binding_references);
 
     // Constant propagation: `propagate_to(x, y)` means "y computes the same value as x".
@@ -596,24 +602,32 @@ pub fn perform_partial_evaluation(body: &mut Vec<IrStatement>, registry: &TypeRe
             propagate_to.from_join(
                 &enum_field_keyed,
                 &enum_binding_use,
-                |_key: &(ExprId, FieldName), field_id: &ExprId, binding_use_id: &ExprId| {
-                    (*field_id, *binding_use_id)
-                },
+                |_key: &(ExprId, TypeName, FieldName),
+                 field_id: &ExprId,
+                 binding_use_id: &ExprId| { (*field_id, *binding_use_id) },
             );
             enum_field.from_join(
                 &enum_field,
                 &propagate_to,
                 |_source: &ExprId,
-                 (field_name, field_id): &(FieldName, ExprId),
-                 target: &ExprId| { (*target, (field_name.clone(), *field_id)) },
+                 (variant_name, field_name, field_id): &(TypeName, FieldName, ExprId),
+                 target: &ExprId| {
+                    (
+                        *target,
+                        (variant_name.clone(), field_name.clone(), *field_id),
+                    )
+                },
             );
         }
 
         // Keep enum_field_keyed in sync with enum_field
         {
-            enum_field_keyed.from_map(&enum_field, |&(target, (ref field_name, field_id))| {
-                ((target, field_name.clone()), field_id)
-            });
+            enum_field_keyed.from_map(
+                &enum_field,
+                |&(target, (ref variant_name, ref field_name, field_id))| {
+                    ((target, variant_name.clone(), field_name.clone()), field_id)
+                },
+            );
         }
 
         // Evaluate IrExpr::Match over Option
@@ -2404,6 +2418,68 @@ mod tests {
                 view Test() {
                   let result = Result::Ok {value: "success"} in {
                     write_escaped("success")
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_not_confuse_same_named_fields_of_different_types_across_variants() {
+        use crate::ir::syntax::builder::IrBuilder;
+
+        // Two variants of the same enum both name a field "f0", but with
+        // different types (Bool vs String). The subject is known to be the
+        // String variant, so the Bool-binding arm is never taken.
+        check_module(
+            IrModuleBuilder::new()
+                .enum_(
+                    "E",
+                    [("V0", vec![("f0", "Bool")]), ("V1", vec![("f0", "String")])],
+                )
+                .view_no_params("Test", |t| {
+                    t.let_stmt(
+                        "subject",
+                        t.enum_variant_with_fields("E", "V1", vec![("f0", t.str("hello"))]),
+                        |t| {
+                            t.write_expr_escaped(t.match_expr_with_bindings(
+                                t.var("subject"),
+                                vec![
+                                    (
+                                        "V0",
+                                        vec![("f0", "v")],
+                                        Box::new(|t: &IrBuilder| {
+                                            t.bool_match_expr(t.var("v"), t.str("yes"), t.str("no"))
+                                        }),
+                                    ),
+                                    (
+                                        "V1",
+                                        vec![("f0", "w")],
+                                        Box::new(|t: &IrBuilder| t.var("w")),
+                                    ),
+                                ],
+                            ));
+                        },
+                    );
+                }),
+            expect![[r#"
+                -- before --
+                view Test() {
+                  let subject = E::V1 {f0: "hello"} in {
+                    write_escaped(match subject {
+                      E::V0 {f0: v} => match v {
+                        true => "yes",
+                        false => "no",
+                      },
+                      E::V1 {f0: w} => w,
+                    })
+                  }
+                }
+
+                -- after --
+                view Test() {
+                  let subject = E::V1 {f0: "hello"} in {
+                    write_escaped("hello")
                   }
                 }
             "#]],
