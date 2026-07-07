@@ -2,7 +2,7 @@ use super::transpile::{RustTranspiler, Transpiler, TsTranspiler};
 use crate::asset_rewriter::AssetRewriter;
 use crate::document::Document;
 use crate::document_id::DocumentId;
-use crate::ir::evaluator::evaluate_view;
+use crate::ir::runtime::evaluator::evaluate_view;
 use crate::orchestrator::{OrchestrateOptions, orchestrate};
 use crate::program::Program;
 use expect_test::Expect;

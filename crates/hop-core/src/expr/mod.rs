@@ -1,4 +1,3 @@
-pub mod fake;
 pub mod parsing;
 pub mod patterns;
 pub mod typing;

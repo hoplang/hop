@@ -8,7 +8,6 @@ use crate::dependency_graph::DependencyGraph;
 use crate::document::{Document, DocumentRange};
 use crate::document_id::DocumentId;
 use crate::document_position::DocumentPosition;
-use crate::expr::fake::random_value;
 use crate::expr::typing::type_export::TypeExport;
 use crate::expr::typing::type_registry::TypeRegistry;
 use crate::hop::inlining::transform::TailwindInjection;
@@ -23,6 +22,7 @@ use crate::hop::typing::type_checker::typecheck;
 use crate::hop::typing::typed_ast::TypedAst;
 use crate::ir;
 use crate::ir::Transpiler;
+use crate::ir::runtime::random::random_value;
 use crate::orchestrator::{OrchestrateOptions, orchestrate};
 use crate::parse_error::ParseError;
 use crate::symbols::type_name::TypeName;
@@ -547,7 +547,7 @@ impl Program {
         &self,
         document_id: &DocumentId,
         view_name: &TypeName,
-        args: HashMap<String, ir::evaluator::Value>,
+        args: HashMap<String, ir::runtime::value::Value>,
         generated_tailwind_css: Option<&str>,
         skip_optimization: bool,
         disable_links: bool,
@@ -619,7 +619,7 @@ impl Program {
         })?;
 
         // Evaluate the view
-        ir::evaluator::evaluate_view(view, args, &ir_module.components)
+        ir::runtime::evaluator::evaluate_view(view, args, &ir_module.components)
     }
 
     /// Evaluate a view with randomly generated parameter values using the given RNG.
@@ -2467,7 +2467,7 @@ mod tests {
         let mut args = HashMap::new();
         args.insert(
             "name".to_string(),
-            ir::evaluator::Value::String("Alice".to_string()),
+            ir::runtime::value::Value::String("Alice".to_string()),
         );
 
         let main_module = DocumentId::new("main.hop").unwrap();
