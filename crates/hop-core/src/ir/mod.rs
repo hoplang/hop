@@ -4,7 +4,7 @@ pub mod syntax;
 pub mod transpile;
 
 #[cfg(test)]
-mod integration_tests;
+mod end_to_end_tests;
 
 pub use optimizer::optimize;
 pub use syntax::ast;
