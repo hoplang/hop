@@ -6,12 +6,12 @@ use super::parsed_ast::{
 use super::parsed_node::{ParsedLetBinding, ParsedLoopSource, ParsedMatchCase, ParsedNode};
 use super::token_tree::{TokenTree, parse_tree};
 use super::tokenizer::Tokenizer;
-use super::tokenizer::{self, Token};
 use crate::document::{CheapString, Document, DocumentCursor, DocumentRange};
 use crate::document_id::DocumentId;
 use crate::expr::parsing::ParsedType;
 use crate::expr::parsing::parse_type::parse_type;
 use crate::expr::{self, ExamplesAnnotation};
+use crate::hop::parsing::token::{Token, TokenizedAttribute, TokenizedAttributeValue};
 use crate::html::HtmlElement;
 use crate::parse_error::{ParseError, ParseErrorKind};
 use crate::symbols::field_name::FieldName;
@@ -1367,21 +1367,21 @@ fn parse_pattern_annotation(
 }
 
 fn parse_attribute(
-    item: &tokenizer::TokenizedAttribute,
+    item: &TokenizedAttribute,
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut Vec<ParseError>,
 ) -> Option<parsed_ast::ParsedAttribute> {
     match item {
-        tokenizer::TokenizedAttribute::Named { name, value, .. } => {
+        TokenizedAttribute::Named { name, value, .. } => {
             let value = match value {
-                Some(tokenizer::TokenizedAttributeValue::String {
+                Some(TokenizedAttributeValue::String {
                     content,
                     quoted_range,
                 }) => Some(parsed_ast::ParsedAttributeValue::String {
                     content: content.clone(),
                     quoted_range: quoted_range.clone(),
                 }),
-                Some(tokenizer::TokenizedAttributeValue::Expression(range)) => {
+                Some(TokenizedAttributeValue::Expression(range)) => {
                     let mut iter = range.cursor().peekable();
                     let result = expr::parse_expr::parse_expr(&mut iter, comments, errors, range);
                     Some(result.map(parsed_ast::ParsedAttributeValue::Expression)?)
@@ -1393,29 +1393,27 @@ fn parse_attribute(
                 value,
             })
         }
-        tokenizer::TokenizedAttribute::Spread { name, range } => {
-            match VarName::new(name.as_str()) {
-                Ok(var_name) => Some(parsed_ast::ParsedAttribute::Spread {
-                    name: var_name,
-                    range: range.clone(),
-                }),
-                Err(error) => {
-                    errors.push(ParseError::new(
-                        ParseErrorKind::InvalidVariableName {
-                            name: name.to_cheap_string(),
-                            error,
-                        },
-                        name.clone(),
-                    ));
-                    None
-                }
+        TokenizedAttribute::Spread { name, range } => match VarName::new(name.as_str()) {
+            Ok(var_name) => Some(parsed_ast::ParsedAttribute::Spread {
+                name: var_name,
+                range: range.clone(),
+            }),
+            Err(error) => {
+                errors.push(ParseError::new(
+                    ParseErrorKind::InvalidVariableName {
+                        name: name.to_cheap_string(),
+                        error,
+                    },
+                    name.clone(),
+                ));
+                None
             }
-        }
+        },
     }
 }
 
 fn parse_attributes(
-    attributes: &[tokenizer::TokenizedAttribute],
+    attributes: &[TokenizedAttribute],
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut Vec<ParseError>,
 ) -> Vec<parsed_ast::ParsedAttribute> {
@@ -1426,7 +1424,7 @@ fn parse_attributes(
 }
 
 fn disallow_attributes<'a>(
-    attributes: &'a [tokenizer::TokenizedAttribute],
+    attributes: &'a [TokenizedAttribute],
     tag_name: &'a DocumentRange,
 ) -> impl Iterator<Item = ParseError> + 'a {
     attributes.iter().map(move |item| {

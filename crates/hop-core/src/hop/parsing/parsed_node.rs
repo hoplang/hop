@@ -112,10 +112,14 @@ pub enum ParsedLoopSource {
 }
 
 /// A case in a match node.
-/// E.g. <match {x}>
-///        <case {Some(y)}>...</case>
-///        ^^^^^^^^^^^^^^^^^^^^^^^
-///      </match>
+///
+/// E.g.
+/// ```text
+/// <match {x}>
+///   <case {Some(y)}>...</case>
+///   ^^^^^^^^^^^^^^^^^^^^^^^^^^
+/// </match>
+/// ```
 #[derive(Debug, Clone)]
 pub struct ParsedMatchCase {
     pub pattern: ParsedMatchPattern,
@@ -143,7 +147,15 @@ impl ParsedMatchCase {
 }
 
 /// A single binding in a let node.
-/// E.g. `name: String = "World"` in `<let {name: String = "World", count: Int = 0}>`
+///
+/// E.g.
+/// ```text
+/// <let {
+///   name: String = "World",
+///   ^^^^^^^^^^^^^^^^^^^^^^
+///   count: Int = 0,
+/// }>
+/// ```
 #[derive(Debug, Clone)]
 pub struct ParsedLetBinding {
     pub var_name: VarName,

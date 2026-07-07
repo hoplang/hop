@@ -1,246 +1,12 @@
-use std::fmt::{self, Display};
 use std::iter::Peekable;
 
+use crate::hop::parsing::token::{Token, TokenizedAttribute, TokenizedAttributeValue};
 use crate::itertools::PeekingExt as _;
 
 use crate::document::{DocumentCursor, DocumentRange};
 use crate::expr;
 use crate::html::is_void_element;
 use crate::parse_error::{ParseError, ParseErrorKind};
-
-#[derive(Debug, Clone)]
-pub enum TokenizedAttributeValue {
-    /// A quoted string attribute value. Content is None for empty strings like `a=""`
-    String {
-        content: Option<DocumentRange>,
-        /// Range of the whole value including the surrounding quotes, e.g. `"bar"`.
-        quoted_range: DocumentRange,
-    },
-    Expression(DocumentRange),
-}
-
-#[derive(Debug, Clone)]
-pub enum TokenizedAttribute {
-    Named {
-        name: DocumentRange,
-        value: Option<TokenizedAttributeValue>,
-
-        /// This is the range for the whole attribute,
-        /// including possible quotes.
-        ///
-        /// E.g. <div foo="bar">
-        ///           ^^^^^^^^^
-        range: DocumentRange,
-    },
-    Spread {
-        name: DocumentRange,
-        range: DocumentRange,
-    },
-}
-
-impl TokenizedAttribute {
-    pub fn name(&self) -> &DocumentRange {
-        match self {
-            TokenizedAttribute::Named { name, .. } | TokenizedAttribute::Spread { name, .. } => {
-                name
-            }
-        }
-    }
-
-    pub fn range(&self) -> &DocumentRange {
-        match self {
-            TokenizedAttribute::Named { range, .. } | TokenizedAttribute::Spread { range, .. } => {
-                range
-            }
-        }
-    }
-}
-
-#[derive(Debug)]
-pub enum Token {
-    Doctype {
-        range: DocumentRange,
-    },
-    Comment {
-        range: DocumentRange,
-    },
-    OpeningTag {
-        tag_name: DocumentRange,
-        attributes: Vec<TokenizedAttribute>,
-        expression: Option<DocumentRange>,
-        self_closing: bool,
-        range: DocumentRange,
-    },
-    ClosingTag {
-        tag_name: DocumentRange,
-        range: DocumentRange,
-    },
-    Text {
-        range: DocumentRange,
-    },
-    /// A newline character in text position.
-    /// This is emitted separately from Text tokens to allow the parser
-    /// to handle whitespace normalization more precisely.
-    Newline {
-        range: DocumentRange,
-    },
-    TextExpression {
-        content: DocumentRange,
-        range: DocumentRange,
-    },
-    RawTextTag {
-        tag_name: DocumentRange,
-        attributes: Vec<TokenizedAttribute>,
-        expression: Option<DocumentRange>,
-        content: Option<DocumentRange>,
-        range: DocumentRange,
-    },
-}
-
-impl Token {
-    pub fn range(&self) -> &DocumentRange {
-        match self {
-            Token::Doctype { range }
-            | Token::Comment { range }
-            | Token::OpeningTag { range, .. }
-            | Token::ClosingTag { range, .. }
-            | Token::Text { range }
-            | Token::Newline { range }
-            | Token::TextExpression { range, .. }
-            | Token::RawTextTag { range, .. } => range,
-        }
-    }
-}
-
-impl Display for Token {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Token::Text { range: value } => {
-                write!(
-                    f,
-                    "Text [{} byte, {:#?}]",
-                    value.as_str().len(),
-                    value.to_string()
-                )
-            }
-            Token::Newline { .. } => {
-                write!(f, "Newline")
-            }
-            Token::Doctype { .. } => {
-                write!(f, "Doctype")
-            }
-            Token::ClosingTag { tag_name, .. } => {
-                writeln!(f, "ClosingTag(")?;
-                writeln!(f, "  tag_name: {:?},", tag_name.to_string())?;
-                write!(f, ")")
-            }
-            Token::OpeningTag {
-                tag_name,
-                attributes,
-                expression,
-                self_closing,
-                ..
-            } => {
-                writeln!(f, "OpeningTag(")?;
-                writeln!(f, "  tag_name: {:?},", tag_name.to_string())?;
-                write!(f, "  attributes: {{")?;
-                if attributes.is_empty() {
-                    writeln!(f, "}},")?;
-                } else {
-                    writeln!(f)?;
-                    for item in attributes {
-                        match item {
-                            TokenizedAttribute::Named { name, value, .. } => {
-                                let value_str = match value {
-                                    Some(TokenizedAttributeValue::String { content, .. }) => {
-                                        let val = content
-                                            .as_ref()
-                                            .map(|r| r.to_string())
-                                            .unwrap_or_default();
-                                        format!("String({:?})", val)
-                                    }
-                                    Some(TokenizedAttributeValue::Expression(val)) => {
-                                        format!("Expression({:?})", val.to_string())
-                                    }
-                                    None => "None".to_string(),
-                                };
-                                writeln!(f, "    {}: {},", name, value_str)?;
-                            }
-                            TokenizedAttribute::Spread { name, .. } => {
-                                writeln!(f, "    ...{},", name)?;
-                            }
-                        }
-                    }
-                    writeln!(f, "  }},")?;
-                }
-                let expr_str = match expression {
-                    Some(expr) => format!("Some({:?})", expr.to_string()),
-                    None => "None".to_string(),
-                };
-                writeln!(f, "  expression: {},", expr_str)?;
-                writeln!(f, "  self_closing: {},", self_closing)?;
-                write!(f, ")")
-            }
-            Token::Comment { .. } => {
-                write!(f, "Comment")
-            }
-            Token::TextExpression { content, .. } => {
-                write!(f, "TextExpression({:?})", content.to_string())
-            }
-            Token::RawTextTag {
-                tag_name,
-                attributes,
-                expression,
-                content,
-                ..
-            } => {
-                writeln!(f, "RawTextTag(")?;
-                writeln!(f, "  tag_name: {:?},", tag_name.to_string())?;
-                write!(f, "  attributes: {{")?;
-                if attributes.is_empty() {
-                    writeln!(f, "}},")?;
-                } else {
-                    writeln!(f)?;
-                    for item in attributes {
-                        match item {
-                            TokenizedAttribute::Named { name, value, .. } => {
-                                let value_str = match value {
-                                    Some(TokenizedAttributeValue::String { content, .. }) => {
-                                        let val = content
-                                            .as_ref()
-                                            .map(|r| r.to_string())
-                                            .unwrap_or_default();
-                                        format!("String({:?})", val)
-                                    }
-                                    Some(TokenizedAttributeValue::Expression(val)) => {
-                                        format!("Expression({:?})", val.to_string())
-                                    }
-                                    None => "None".to_string(),
-                                };
-                                writeln!(f, "    {}: {},", name, value_str)?;
-                            }
-                            TokenizedAttribute::Spread { name, .. } => {
-                                writeln!(f, "    ...{},", name)?;
-                            }
-                        }
-                    }
-                    writeln!(f, "  }},")?;
-                }
-                let expr_str = match expression {
-                    Some(expr) => format!("Some({:?})", expr.to_string()),
-                    None => "None".to_string(),
-                };
-                writeln!(f, "  expression: {},", expr_str)?;
-                let content_str = match content {
-                    Some(c) => format!("Some({:?})", c.to_string()),
-                    None => "None".to_string(),
-                };
-                writeln!(f, "  content: {},", content_str)?;
-                write!(f, ")")
-            }
-        }
-    }
-}
 
 /// Parse the next token from the input.
 ///
@@ -279,8 +45,10 @@ fn step(iter: &mut Peekable<DocumentCursor>, errors: &mut Vec<ParseError>) -> Op
 /// Expects the current char iterator be on the first character
 /// of an expression.
 ///
-/// E.g. {x + 2}
-///       ^
+/// ```text
+/// {x + 2}
+///  ^
+/// ```
 ///
 /// Returns None if we reached EOF before finding the closing '}'.
 fn find_expression_end(mut iter: Peekable<DocumentCursor>) -> Option<DocumentRange> {
@@ -309,12 +77,14 @@ fn skip_whitespace(iter: &mut Peekable<DocumentCursor>) {
     }
 }
 
-// Parse a comment.
-//
-// E.g. <!-- hello -->
-//        ^^^^^^^^^^^^
-// Expects that the iterator points to the initial '-'.
-//
+/// Parse a comment.
+///
+/// E.g.
+/// ```text
+/// <!-- hello -->
+///   ^^^^^^^^^^^^
+/// ```
+/// Expects that the iterator points to the initial '-'.
 fn parse_comment(
     iter: &mut Peekable<DocumentCursor>,
     errors: &mut Vec<ParseError>,
@@ -394,12 +164,14 @@ fn parse_doctype(
     })
 }
 
-// Parse a markup declaration from the iterator.
-//
-// E.g. <!-- hello -->
-//       ^^^^^^^^^^^^^
-// Expects that the iterator points to the initial '!'.
-//
+/// Parse a markup declaration from the iterator.
+///
+/// E.g.
+/// ```text
+/// <!-- hello -->
+///  ^^^^^^^^^^^^^
+/// ```
+/// Expects that the iterator points to the initial '!'.
 fn parse_markup_declaration(
     iter: &mut Peekable<DocumentCursor>,
     errors: &mut Vec<ParseError>,
@@ -424,13 +196,15 @@ fn parse_markup_declaration(
     }
 }
 
-// Parse an attribute from the iterator.
-//
-// E.g. <div foo="bar">
-//           ^^^^^^^^^
-// Expects that the iterator points to the initial alphabetic char.
-//
-// Returns None if a valid attribute could not be parsed from the iterator.
+/// Parse an attribute from the iterator.
+///
+/// E.g.
+/// ```text
+/// <div foo="bar">
+///      ^^^^^^^^^
+/// ```
+/// Expects that the iterator points to the initial alphabetic char.
+/// Returns None if a valid attribute could not be parsed from the iterator.
 fn parse_attribute(
     iter: &mut Peekable<DocumentCursor>,
     errors: &mut Vec<ParseError>,
@@ -534,8 +308,11 @@ fn parse_attribute(
 
 /// Parse an expression.
 ///
-/// E.g. <div foo="bar" {x: String}>
-///                     ^^^^^^^^^^^
+/// E.g.
+/// ```text
+/// <div foo="bar" {x: String}>
+///                ^^^^^^^^^^^
+/// ```
 /// Expects that the iterator points to the initial '{'.
 ///
 /// Returns None if we reached EOF or if the expression was empty.
@@ -592,9 +369,11 @@ fn parse_expression(
 }
 
 /// Parse a text expression.
-///
-/// E.g. <div>Hello {name}!</div>
-///                 ^^^^^^
+/// E.g.
+/// ```text
+/// <div>Hello {name}!</div>
+///            ^^^^^^
+/// ```
 /// Expects that the iterator points to the initial '{'.
 fn parse_text_expression(
     iter: &mut Peekable<DocumentCursor>,
@@ -606,8 +385,11 @@ fn parse_text_expression(
 
 /// Parse tag content (attributes and expressions).
 ///
-/// E.g. <div foo="bar" {x: String}>
-///           ^^^^^^^^^^^^^^^^^^^^^
+/// E.g.
+/// ```text
+/// <div foo="bar" {x: String}>
+///      ^^^^^^^^^^^^^^^^^^^^^
+/// ```
 fn parse_tag_content(
     iter: &mut Peekable<DocumentCursor>,
     errors: &mut Vec<ParseError>,
@@ -684,10 +466,12 @@ fn parse_tag_content(
 
 /// Parse an opening tag.
 ///
-/// E.g. <div foo="bar" {x: String}>
-///       ^^^^^^^^^^^^^^^^^^^^^^^^^^
+/// E.g.
+/// ```text
+/// <div foo="bar" {x: String}>
+///  ^^^^^^^^^^^^^^^^^^^^^^^^^^
+/// ```
 /// Expects that the iterator points to the initial alphabetic char.
-///
 fn parse_opening_tag(
     iter: &mut Peekable<DocumentCursor>,
     errors: &mut Vec<ParseError>,
@@ -738,10 +522,12 @@ fn parse_opening_tag(
 
 /// Parse a closing tag.
 ///
-/// E.g. <div></div>
-///            ^^^^^
+/// E.g.
+/// ```text
+/// <div></div>
+///       ^^^^^
+/// ```
 /// Expects that the iterator points to the initial '/'.
-///
 fn parse_closing_tag(
     iter: &mut Peekable<DocumentCursor>,
     errors: &mut Vec<ParseError>,
@@ -839,8 +625,11 @@ fn parse_rawtext_content(
 
 /// Consume the closing tag for a raw text element.
 ///
-/// E.g. </script>
-///      ^^^^^^^^^
+/// E.g.
+/// ```text
+/// </script>
+/// ^^^^^^^^^
+/// ```
 /// Expects that peek_rawtext_closing_tag returned true.
 /// Returns the range of the '>' character.
 fn consume_rawtext_closing_tag(
@@ -870,8 +659,11 @@ fn consume_rawtext_closing_tag(
 
 /// Parse a raw text element (script or style).
 ///
-/// E.g. <script>alert(1)</script>
-///      ^^^^^^^^^^^^^^^^^^^^^^^^^
+/// E.g.
+/// ```text
+/// <script>alert(1)</script>
+/// ^^^^^^^^^^^^^^^^^^^^^^^^^
+/// ```
 /// This method is called after the opening tag has been parsed up to '>'.
 /// It parses the content and closing tag, returning a RawTextTag token.
 fn parse_raw_text_element(
@@ -908,8 +700,11 @@ fn parse_raw_text_element(
 
 /// Parse a text token.
 ///
-/// E.g. <div>hello</div>
-///           ^^^^^
+/// E.g.
+/// ```text
+/// <div>hello</div>
+///      ^^^^^
+/// ```
 /// Expects that the iterator points to the initial char.
 /// Stops at '<', '{', or '\n' (newlines are emitted as separate tokens).
 fn parse_text(iter: &mut Peekable<DocumentCursor>) -> Token {
@@ -1029,7 +824,7 @@ impl Tokenizer {
                         self.pending_newline = Some(range);
                     }
                     self.trim_next_start = true;
-                    // Don't emit the newline yet; continue to get the next token
+                    // Don't emit the newline yet, continue to get the next token
                     continue;
                 }
                 Token::TextExpression { content, range } => {
@@ -1045,7 +840,7 @@ impl Tokenizer {
                     self_closing,
                     range,
                 } => {
-                    // Don't emit Newline before opening tag; only between text/expression
+                    // Don't emit Newline before opening tag, only between text/expression
                     self.pending_newline = None;
                     // After a non-void, non-self-closing opening tag, the next text
                     // is at the start of the container's children
@@ -1063,7 +858,7 @@ impl Tokenizer {
                     // Don't emit Newline before closing tag (container end)
                     self.pending_newline = None;
                     self.trim_next_start = false;
-                    // Only Text/TextExpression are inline content; tags are not
+                    // Only Text/TextExpression are inline content, tags are not
                     self.prev_was_inline = false;
                     return Some(Token::ClosingTag { tag_name, range });
                 }
@@ -1074,7 +869,7 @@ impl Tokenizer {
                     content,
                     range,
                 } => {
-                    // Don't emit Newline before tags; only between text/expression
+                    // Don't emit Newline before tags, only between text/expression
                     self.pending_newline = None;
                     self.trim_next_start = false;
                     self.prev_was_inline = false;

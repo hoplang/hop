@@ -1,7 +1,8 @@
 use std::fmt::{self, Display};
 use std::iter::Peekable;
 
-use super::tokenizer::{Token, Tokenizer};
+use super::token::Token;
+use super::tokenizer::Tokenizer;
 use crate::document::{DocumentCursor, DocumentRange};
 use crate::html::is_void_element;
 use crate::parse_error::{ParseError, ParseErrorKind};
@@ -19,8 +20,10 @@ pub struct TokenTree {
     /// tag.
     ///
     /// E.g.
+    /// ```text
     /// <div></div>
     ///        ^^^
+    /// ```
     /// This information is needed by the parser.
     pub closing_tag_name: Option<DocumentRange>,
     pub children: Vec<TokenTree>,
