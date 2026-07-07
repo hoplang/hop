@@ -191,10 +191,6 @@ pub struct TestTypes {
 }
 
 impl TestTypes {
-    pub fn empty() -> Self {
-        TypeRegistryBuilder::new().build()
-    }
-
     pub fn registry(&self) -> &TypeRegistry {
         &self.registry
     }

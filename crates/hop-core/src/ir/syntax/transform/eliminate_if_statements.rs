@@ -28,14 +28,19 @@ pub fn eliminate_if_statements(body: &mut Vec<IrStatement>) {
 mod tests {
 
     use super::*;
-    use crate::ir::ast::IrViewDeclaration;
-    use crate::ir::syntax::builder::{build_ir, build_ir_no_params};
+    use crate::ir::ast::IrModule;
+    use crate::ir::syntax::builder::IrModuleBuilder;
     use expect_test::{Expect, expect};
 
-    fn check(mut view: IrViewDeclaration, expected: Expect) {
-        let before = view.to_string();
-        eliminate_if_statements(&mut view.body);
-        let after = view.to_string();
+    fn check(mut module: IrModule, expected: Expect) {
+        let before = module.to_string();
+        for view in &mut module.views {
+            eliminate_if_statements(&mut view.body);
+        }
+        for component in &mut module.components {
+            eliminate_if_statements(&mut component.body);
+        }
+        let after = module.to_string();
         let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
         expected.assert_eq(&output);
     }
@@ -43,11 +48,13 @@ mod tests {
     #[test]
     fn should_eliminate_if_statement_that_is_always_true() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.if_stmt(t.bool(true), |t| {
-                    t.write("Always shown");
-                });
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.if_stmt(t.bool(true), |t| {
+                        t.write("Always shown");
+                    });
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -67,12 +74,14 @@ mod tests {
     #[test]
     fn should_eliminate_if_statement_that_is_always_false() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.if_stmt(t.bool(false), |t| {
-                    t.write("Never shown");
-                });
-                t.write("After if");
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.if_stmt(t.bool(false), |t| {
+                        t.write("Never shown");
+                    });
+                    t.write("After if");
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -93,17 +102,19 @@ mod tests {
     #[test]
     fn should_preserve_if_statement_with_dynamic_conditions() {
         check(
-            build_ir("Test", [("show", "Bool")], |t| {
-                t.if_stmt(t.var("show"), |t| {
-                    t.write("Dynamic");
-                });
-                t.if_stmt(t.bool(true), |t| {
-                    t.write("Static true");
-                });
-                t.if_stmt(t.bool(false), |t| {
-                    t.write("Static false");
-                });
-            }),
+            IrModuleBuilder::new()
+                .view("Test", [("show", "Bool")], |t| {
+                    t.if_stmt(t.var("show"), |t| {
+                        t.write("Dynamic");
+                    });
+                    t.if_stmt(t.bool(true), |t| {
+                        t.write("Static true");
+                    });
+                    t.if_stmt(t.bool(false), |t| {
+                        t.write("Static false");
+                    });
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test(show: Bool) {
@@ -132,28 +143,30 @@ mod tests {
     #[test]
     fn should_handle_elimination_of_nested_if_statements() {
         check(
-            build_ir("Test", [("condition", "Bool")], |t| {
-                t.if_stmt(t.var("condition"), |t| {
-                    t.write("Before nested");
-                    t.if_stmt(t.bool(true), |t| {
-                        t.write("Nested always true");
-                    });
-                    t.if_stmt(t.bool(false), |t| {
-                        t.write("Nested never shown");
-                    });
-                    t.write("After nested");
-                });
-                t.if_stmt(t.bool(true), |t| {
-                    t.write("Outer true - before nested");
-                    t.if_stmt(t.bool(false), |t| {
-                        t.write("Inner false - never shown");
-                    });
+            IrModuleBuilder::new()
+                .view("Test", [("condition", "Bool")], |t| {
                     t.if_stmt(t.var("condition"), |t| {
-                        t.write("Inner dynamic");
+                        t.write("Before nested");
+                        t.if_stmt(t.bool(true), |t| {
+                            t.write("Nested always true");
+                        });
+                        t.if_stmt(t.bool(false), |t| {
+                            t.write("Nested never shown");
+                        });
+                        t.write("After nested");
                     });
-                    t.write("Outer true - after nested");
-                });
-            }),
+                    t.if_stmt(t.bool(true), |t| {
+                        t.write("Outer true - before nested");
+                        t.if_stmt(t.bool(false), |t| {
+                            t.write("Inner false - never shown");
+                        });
+                        t.if_stmt(t.var("condition"), |t| {
+                            t.write("Inner dynamic");
+                        });
+                        t.write("Outer true - after nested");
+                    });
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test(condition: Bool) {

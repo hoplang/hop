@@ -217,16 +217,19 @@ fn collect_unused_vars(body: &[IrStatement]) -> UnusedVars {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::{
-        ast::IrViewDeclaration,
-        syntax::builder::{IrBuilder, IrModuleBuilder, build_ir_no_params},
-    };
+    use crate::ir::ast::IrModule;
+    use crate::ir::syntax::builder::{IrBuilder, IrModuleBuilder};
     use expect_test::{Expect, expect};
 
-    fn check(mut view: IrViewDeclaration, expected: Expect) {
-        let before = view.to_string();
-        eliminate_unused_variable_declarations(&mut view.body);
-        let after = view.to_string();
+    fn check(mut module: IrModule, expected: Expect) {
+        let before = module.to_string();
+        for view in &mut module.views {
+            eliminate_unused_variable_declarations(&mut view.body);
+        }
+        for component in &mut module.components {
+            eliminate_unused_variable_declarations(&mut component.body);
+        }
+        let after = module.to_string();
         let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
         expected.assert_eq(&output);
     }
@@ -234,11 +237,13 @@ mod tests {
     #[test]
     fn should_eliminate_unused_let_in_outermost_scope() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.let_stmt("unused", t.str("value"), |t| {
-                    t.write("Hello");
-                });
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.let_stmt("unused", t.str("value"), |t| {
+                        t.write("Hello");
+                    });
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -258,11 +263,13 @@ mod tests {
     #[test]
     fn should_preserve_let_statement_when_variable_is_used_in_text_expression() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.let_stmt("message", t.str("Hello"), |t| {
-                    t.write_expr(t.var("message"), false);
-                });
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.let_stmt("message", t.str("Hello"), |t| {
+                        t.write_expr(t.var("message"), false);
+                    });
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -284,13 +291,15 @@ mod tests {
     #[test]
     fn should_preserve_let_statement_when_variable_is_used_in_if_statement() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.let_stmt("cond", t.bool(true), |t| {
-                    t.if_stmt(t.var("cond"), |t| {
-                        t.write("Condition is true");
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.let_stmt("cond", t.bool(true), |t| {
+                        t.if_stmt(t.var("cond"), |t| {
+                            t.write("Condition is true");
+                        });
                     });
-                });
-            }),
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -316,13 +325,15 @@ mod tests {
     #[test]
     fn should_eliminate_let_statement_inside_if_body() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.if_stmt(t.bool(true), |t| {
-                    t.let_stmt("unused", t.str("value"), |t| {
-                        t.write("Inside if");
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.if_stmt(t.bool(true), |t| {
+                        t.let_stmt("unused", t.str("value"), |t| {
+                            t.write("Inside if");
+                        });
                     });
-                });
-            }),
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -346,14 +357,16 @@ mod tests {
     #[test]
     fn should_eliminate_let_statement_inside_for_loop_body() {
         check(
-            build_ir_no_params("Test", |t| {
-                let items = t.array(vec![t.str("a"), t.str("b")]);
-                t.for_loop("item", items, |t| {
-                    t.let_stmt("unused", t.str("value"), |t| {
-                        t.write_expr(t.var("item"), false);
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    let items = t.array(vec![t.str("a"), t.str("b")]);
+                    t.for_loop("item", items, |t| {
+                        t.let_stmt("unused", t.str("value"), |t| {
+                            t.write_expr(t.var("item"), false);
+                        });
                     });
-                });
-            }),
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -377,15 +390,17 @@ mod tests {
     #[test]
     fn should_preserve_let_statement_when_variable_is_used_in_binary_op() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.let_stmt("x", t.bool(true), |t| {
-                    t.let_stmt("y", t.bool(false), |t| {
-                        t.if_stmt(t.eq(t.var("x"), t.var("y")), |t| {
-                            t.write("Equal");
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.let_stmt("x", t.bool(true), |t| {
+                        t.let_stmt("y", t.bool(false), |t| {
+                            t.if_stmt(t.eq(t.var("x"), t.var("y")), |t| {
+                                t.write("Equal");
+                            });
                         });
                     });
-                });
-            }),
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -415,15 +430,17 @@ mod tests {
     #[test]
     fn should_eliminate_let_statements_declared_in_sequence() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.let_stmt("a", t.str("a_value"), |t| {
-                    t.write("First");
-                });
-                t.let_stmt("b", t.str("b_value"), |t| {
-                    t.write("Second");
-                });
-                t.write("Third");
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.let_stmt("a", t.str("a_value"), |t| {
+                        t.write("First");
+                    });
+                    t.let_stmt("b", t.str("b_value"), |t| {
+                        t.write("Second");
+                    });
+                    t.write("Third");
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -449,14 +466,16 @@ mod tests {
     #[test]
     fn should_preserve_let_statement_when_variable_is_used_inside_array() {
         check(
-            build_ir_no_params("Test", |t| {
-                let items = t.array(vec![t.str("a"), t.str("b")]);
-                t.let_stmt("items", items, |t| {
-                    t.for_loop("item", t.var("items"), |t| {
-                        t.write_expr(t.var("item"), false);
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    let items = t.array(vec![t.str("a"), t.str("b")]);
+                    t.let_stmt("items", items, |t| {
+                        t.for_loop("item", t.var("items"), |t| {
+                            t.write_expr(t.var("item"), false);
+                        });
                     });
-                });
-            }),
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -482,13 +501,15 @@ mod tests {
     #[test]
     fn should_preserve_let_statement_when_variable_is_used_in_for_range_end() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.let_stmt("count", t.int(3), |t| {
-                    t.for_range("i", t.int(1), t.var("count"), |t| {
-                        t.write_expr(t.int_to_string(t.var("i")), false);
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.let_stmt("count", t.int(3), |t| {
+                        t.for_range("i", t.int(1), t.var("count"), |t| {
+                            t.write_expr(t.int_to_string(t.var("i")), false);
+                        });
                     });
-                });
-            }),
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -514,13 +535,15 @@ mod tests {
     #[test]
     fn should_preserve_let_statement_when_variable_is_used_in_for_range_start() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.let_stmt("start", t.int(1), |t| {
-                    t.for_range("i", t.var("start"), t.int(5), |t| {
-                        t.write_expr(t.int_to_string(t.var("i")), false);
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.let_stmt("start", t.int(1), |t| {
+                        t.for_range("i", t.var("start"), t.int(5), |t| {
+                            t.write_expr(t.int_to_string(t.var("i")), false);
+                        });
                     });
-                });
-            }),
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -546,13 +569,15 @@ mod tests {
     #[test]
     fn should_preserve_let_statement_when_variable_is_used_in_discarded_for_range() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.let_stmt("count", t.int(3), |t| {
-                    t.for_range_discarded(t.int(1), t.var("count"), |t| {
-                        t.write("x");
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.let_stmt("count", t.int(3), |t| {
+                        t.for_range_discarded(t.int(1), t.var("count"), |t| {
+                            t.write("x");
+                        });
                     });
-                });
-            }),
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -578,14 +603,16 @@ mod tests {
     #[test]
     fn should_eliminate_let_statement_when_sibling_statement_variable_is_not_referenced() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.let_stmt("x", t.str("first x"), |t| {
-                    t.write_expr(t.var("x"), false);
-                });
-                t.let_stmt("x_1", t.str("second x"), |t| {
-                    t.write("No reference to x_1 here");
-                });
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.let_stmt("x", t.str("first x"), |t| {
+                        t.write_expr(t.var("x"), false);
+                    });
+                    t.let_stmt("x_1", t.str("second x"), |t| {
+                        t.write("No reference to x_1 here");
+                    });
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -611,13 +638,15 @@ mod tests {
     #[test]
     fn should_eliminate_nested_unused_let_statements() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.let_stmt("outer", t.str("outer_value"), |t| {
-                    t.let_stmt("inner", t.str("inner_value"), |t| {
-                        t.write("No variables used");
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.let_stmt("outer", t.str("outer_value"), |t| {
+                        t.let_stmt("inner", t.str("inner_value"), |t| {
+                            t.write("No variables used");
+                        });
                     });
-                });
-            }),
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -639,17 +668,19 @@ mod tests {
     #[test]
     fn should_eliminate_deeply_nested_unused_let_statements() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.let_stmt("level1", t.str("value1"), |t| {
-                    t.let_stmt("level2", t.str("value2"), |t| {
-                        t.let_stmt("level3", t.str("value3"), |t| {
-                            t.let_stmt("level4", t.str("value4"), |t| {
-                                t.write("Deeply nested, no variables used");
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.let_stmt("level1", t.str("value1"), |t| {
+                        t.let_stmt("level2", t.str("value2"), |t| {
+                            t.let_stmt("level3", t.str("value3"), |t| {
+                                t.let_stmt("level4", t.str("value4"), |t| {
+                                    t.write("Deeply nested, no variables used");
+                                });
                             });
                         });
                     });
-                });
-            }),
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -675,15 +706,17 @@ mod tests {
     #[test]
     fn should_eliminate_deeply_nested_cascading_unused_let_statements() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.let_stmt("x", t.str("str"), |t| {
-                    t.let_stmt("y", t.var("x"), |t| {
-                        t.let_stmt("z", t.var("y"), |t| {
-                            t.write("Deeply nested, no variables used");
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.let_stmt("x", t.str("str"), |t| {
+                        t.let_stmt("y", t.var("x"), |t| {
+                            t.let_stmt("z", t.var("y"), |t| {
+                                t.write("Deeply nested, no variables used");
+                            });
                         });
                     });
-                });
-            }),
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -707,15 +740,17 @@ mod tests {
     #[test]
     fn should_eliminate_deeply_nested_cascading_unused_let_statements_but_keep_used() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.let_stmt("x", t.str("str"), |t| {
-                    t.let_stmt("y", t.var("x"), |t| {
-                        t.let_stmt("z", t.var("y"), |t| {
-                            t.write_expr(t.var("x"), false);
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.let_stmt("x", t.str("str"), |t| {
+                        t.let_stmt("y", t.var("x"), |t| {
+                            t.let_stmt("z", t.var("y"), |t| {
+                                t.write_expr(t.var("x"), false);
+                            });
                         });
                     });
-                });
-            }),
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -741,14 +776,16 @@ mod tests {
     #[test]
     fn should_preserve_let_used_in_bool_match_expr() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.let_stmt("flag", t.bool(true), |t| {
-                    t.write_expr(
-                        t.bool_match_expr(t.var("flag"), t.str("yes"), t.str("no")),
-                        true,
-                    );
-                });
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.let_stmt("flag", t.bool(true), |t| {
+                        t.write_expr(
+                            t.bool_match_expr(t.var("flag"), t.str("yes"), t.str("no")),
+                            true,
+                        );
+                    });
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -801,11 +838,14 @@ mod tests {
             })
             .build();
 
-        let view = module.views.into_iter().next().unwrap();
         check(
-            view,
+            module,
             expect![[r#"
                 -- before --
+                enum BadgeElement {
+                  Span,
+                  Link {href: String},
+                }
                 view Test() {
                   let element = BadgeElement::Span in {
                     let match_subject = element in {
@@ -822,6 +862,10 @@ mod tests {
                 }
 
                 -- after --
+                enum BadgeElement {
+                  Span,
+                  Link {href: String},
+                }
                 view Test() {
                   let element = BadgeElement::Span in {
                     let match_subject = element in {
@@ -869,11 +913,13 @@ mod tests {
             })
             .build();
 
-        let view = module.views.into_iter().next().unwrap();
         check(
-            view,
+            module,
             expect![[r#"
                 -- before --
+                enum MyEnum {
+                  Foo {value: String},
+                }
                 view Test() {
                   let x = "hello" in {
                     let foo = MyEnum::Foo {value: x} in {
@@ -887,6 +933,9 @@ mod tests {
                 }
 
                 -- after --
+                enum MyEnum {
+                  Foo {value: String},
+                }
                 view Test() {
                   let x = "hello" in {
                     let foo = MyEnum::Foo {value: x} in {
@@ -950,11 +999,14 @@ mod tests {
             })
             .build();
 
-        let view = module.views.into_iter().next().unwrap();
         check(
-            view,
+            module,
             expect![[r#"
                 -- before --
+                enum BadgeElement {
+                  Span,
+                  Link {href: String},
+                }
                 view Test() {
                   let href = "/home" in {
                     let element = BadgeElement::Link {href: href} in {
@@ -973,6 +1025,10 @@ mod tests {
                 }
 
                 -- after --
+                enum BadgeElement {
+                  Span,
+                  Link {href: String},
+                }
                 view Test() {
                   let href = "/home" in {
                     let element = BadgeElement::Link {href: href} in {
@@ -996,22 +1052,24 @@ mod tests {
     #[test]
     fn should_eliminate_unused_let_inside_option_match_arm_body() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.let_stmt("opt", t.some(t.str("hello")), |t| {
-                    t.option_match_stmt(
-                        t.var("opt"),
-                        Some("v0"),
-                        |t| {
-                            t.let_stmt("val", t.var("v0"), |t| {
-                                t.write("constant");
-                            });
-                        },
-                        |t| {
-                            t.write("none");
-                        },
-                    );
-                });
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.let_stmt("opt", t.some(t.str("hello")), |t| {
+                        t.option_match_stmt(
+                            t.var("opt"),
+                            Some("v0"),
+                            |t| {
+                                t.let_stmt("val", t.var("v0"), |t| {
+                                    t.write("constant");
+                                });
+                            },
+                            |t| {
+                                t.write("none");
+                            },
+                        );
+                    });
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -1049,20 +1107,22 @@ mod tests {
     #[test]
     fn should_eliminate_unused_option_match_binding() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.let_stmt("opt", t.some(t.str("hello")), |t| {
-                    t.option_match_stmt(
-                        t.var("opt"),
-                        Some("unused_binding"),
-                        |t| {
-                            t.write("some");
-                        },
-                        |t| {
-                            t.write("none");
-                        },
-                    );
-                });
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.let_stmt("opt", t.some(t.str("hello")), |t| {
+                        t.option_match_stmt(
+                            t.var("opt"),
+                            Some("unused_binding"),
+                            |t| {
+                                t.write("some");
+                            },
+                            |t| {
+                                t.write("none");
+                            },
+                        );
+                    });
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -1098,29 +1158,31 @@ mod tests {
     #[test]
     fn should_preserve_option_match_binding_when_used_as_nested_match_subject() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.let_stmt("outer_opt", t.some(t.some(t.str("deep"))), |t| {
-                    t.option_match_stmt(
-                        t.var("outer_opt"),
-                        Some("inner"),
-                        |t| {
-                            t.option_match_stmt(
-                                t.var("inner"),
-                                Some("value"),
-                                |t| {
-                                    t.write_expr(t.var("value"), false);
-                                },
-                                |t| {
-                                    t.write("inner-none");
-                                },
-                            );
-                        },
-                        |t| {
-                            t.write("outer-none");
-                        },
-                    );
-                });
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.let_stmt("outer_opt", t.some(t.some(t.str("deep"))), |t| {
+                        t.option_match_stmt(
+                            t.var("outer_opt"),
+                            Some("inner"),
+                            |t| {
+                                t.option_match_stmt(
+                                    t.var("inner"),
+                                    Some("value"),
+                                    |t| {
+                                        t.write_expr(t.var("value"), false);
+                                    },
+                                    |t| {
+                                        t.write("inner-none");
+                                    },
+                                );
+                            },
+                            |t| {
+                                t.write("outer-none");
+                            },
+                        );
+                    });
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -1170,22 +1232,24 @@ mod tests {
     #[test]
     fn should_eliminate_cascading_unused_variables() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.let_stmt("opt", t.some(t.str("hello")), |t| {
-                    t.option_match_stmt(
-                        t.var("opt"),
-                        Some("v0"),
-                        |t| {
-                            t.let_stmt("val", t.var("v0"), |t| {
-                                t.write("constant");
-                            });
-                        },
-                        |t| {
-                            t.write("none");
-                        },
-                    );
-                });
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.let_stmt("opt", t.some(t.str("hello")), |t| {
+                        t.option_match_stmt(
+                            t.var("opt"),
+                            Some("v0"),
+                            |t| {
+                                t.let_stmt("val", t.var("v0"), |t| {
+                                    t.write("constant");
+                                });
+                            },
+                            |t| {
+                                t.write("none");
+                            },
+                        );
+                    });
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -1223,21 +1287,23 @@ mod tests {
     #[test]
     fn should_eliminate_unused_let_inside_bool_match_arm_body() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.let_stmt("flag", t.bool(true), |t| {
-                    t.bool_match_stmt(
-                        t.var("flag"),
-                        |t| {
-                            t.let_stmt("unused", t.str("not used"), |t| {
-                                t.write("true branch");
-                            });
-                        },
-                        |t| {
-                            t.write("false branch");
-                        },
-                    );
-                });
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.let_stmt("flag", t.bool(true), |t| {
+                        t.bool_match_stmt(
+                            t.var("flag"),
+                            |t| {
+                                t.let_stmt("unused", t.str("not used"), |t| {
+                                    t.write("true branch");
+                                });
+                            },
+                            |t| {
+                                t.write("false branch");
+                            },
+                        );
+                    });
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -1284,11 +1350,14 @@ mod tests {
             })
             .build();
 
-        let view = module.views.into_iter().next().unwrap();
         check(
-            view,
+            module,
             expect![[r#"
                 -- before --
+                record Point {
+                  x: String,
+                  y: String,
+                }
                 view Test() {
                   let {x: a, y: b} = Point {x: "hi", y: "bye"} in {
                     write_expr(a)
@@ -1296,6 +1365,10 @@ mod tests {
                 }
 
                 -- after --
+                record Point {
+                  x: String,
+                  y: String,
+                }
                 view Test() {
                   let {x: a} = Point {x: "hi", y: "bye"} in {
                     write_expr(a)
@@ -1317,11 +1390,14 @@ mod tests {
             })
             .build();
 
-        let view = module.views.into_iter().next().unwrap();
         check(
-            view,
+            module,
             expect![[r#"
                 -- before --
+                record Point {
+                  x: String,
+                  y: String,
+                }
                 view Test() {
                   let {x: a} = Point {x: "hi", y: "bye"} in {
                     write("no bindings used")
@@ -1329,6 +1405,10 @@ mod tests {
                 }
 
                 -- after --
+                record Point {
+                  x: String,
+                  y: String,
+                }
                 view Test() {
                   write("no bindings used")
                 }
@@ -1348,11 +1428,14 @@ mod tests {
             })
             .build();
 
-        let view = module.views.into_iter().next().unwrap();
         check(
-            view,
+            module,
             expect![[r#"
                 -- before --
+                record Point {
+                  x: String,
+                  y: String,
+                }
                 view Test() {
                   let {x: a} = Point {x: "hi", y: "bye"} in {
                     write_expr(a)
@@ -1360,6 +1443,10 @@ mod tests {
                 }
 
                 -- after --
+                record Point {
+                  x: String,
+                  y: String,
+                }
                 view Test() {
                   let {x: a} = Point {x: "hi", y: "bye"} in {
                     write_expr(a)
@@ -1383,11 +1470,14 @@ mod tests {
             })
             .build();
 
-        let view = module.views.into_iter().next().unwrap();
         check(
-            view,
+            module,
             expect![[r#"
                 -- before --
+                record Point {
+                  x: String,
+                  y: String,
+                }
                 view Test() {
                   let {x: v} = Point {x: "hi", y: "bye"} in {
                     let a = v in {
@@ -1397,6 +1487,10 @@ mod tests {
                 }
 
                 -- after --
+                record Point {
+                  x: String,
+                  y: String,
+                }
                 view Test() {
                   write("constant")
                 }
@@ -1440,11 +1534,14 @@ mod tests {
             })
             .build();
 
-        let view = module.views.into_iter().next().unwrap();
         check(
-            view,
+            module,
             expect![[r#"
                 -- before --
+                enum E {
+                  A {f0: String},
+                  B {f0: String},
+                }
                 view Test() {
                   let e = E::A {f0: "hi"} in {
                     match e {
@@ -1459,6 +1556,10 @@ mod tests {
                 }
 
                 -- after --
+                enum E {
+                  A {f0: String},
+                  B {f0: String},
+                }
                 view Test() {
                   let e = E::A {f0: "hi"} in {
                     match e {

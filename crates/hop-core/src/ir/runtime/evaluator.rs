@@ -782,18 +782,16 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::expr::Type;
-    use crate::ir::syntax::builder::{build_ir, build_ir_no_params};
-    use crate::symbols::type_name::TypeName;
-    use crate::symbols::var_name::VarName;
+    use crate::ir::ast::IrModule;
+    use crate::ir::syntax::builder::IrModuleBuilder;
     use expect_test::{Expect, expect};
-    use std::sync::Arc;
 
-    fn check(view: IrViewDeclaration, args: Vec<(&str, Value)>, expected: Expect) {
-        let before = view.to_string();
+    fn check(module: IrModule, args: Vec<(&str, Value)>, expected: Expect) {
+        let before = module.to_string();
         let args_map: HashMap<String, Value> =
             args.into_iter().map(|(k, v)| (k.to_string(), v)).collect();
-        let after = evaluate_view(&view, args_map, &[]).expect("Evaluation should succeed");
+        let after = evaluate_view(&module.views[0], args_map, &module.components)
+            .expect("Evaluation should succeed");
 
         let output = format!("-- before --\n{}\n-- after --\n{}\n", before, after);
         expected.assert_eq(&output);
@@ -802,9 +800,11 @@ mod tests {
     #[test]
     fn should_evaluate_simple_write() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.write("<div>Hello World</div>");
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.write("<div>Hello World</div>");
+                })
+                .build(),
             vec![],
             expect![[r#"
                 -- before --
@@ -821,9 +821,11 @@ mod tests {
     #[test]
     fn should_escape_html_in_expressions() {
         check(
-            build_ir("Test", [("content", "String")], |t| {
-                t.write_expr_escaped(t.var("content"));
-            }),
+            IrModuleBuilder::new()
+                .view("Test", [("content", "String")], |t| {
+                    t.write_expr_escaped(t.var("content"));
+                })
+                .build(),
             vec![(
                 "content",
                 Value::String("<script>alert('xss')</script>".to_string()),
@@ -843,11 +845,13 @@ mod tests {
     #[test]
     fn should_render_if_body_when_condition_is_true() {
         check(
-            build_ir("Test", [("show", "Bool")], |t| {
-                t.if_stmt(t.var("show"), |t| {
-                    t.write("<div>Visible</div>");
-                });
-            }),
+            IrModuleBuilder::new()
+                .view("Test", [("show", "Bool")], |t| {
+                    t.if_stmt(t.var("show"), |t| {
+                        t.write("<div>Visible</div>");
+                    });
+                })
+                .build(),
             vec![("show", Value::Bool(true))],
             expect![[r#"
                 -- before --
@@ -866,11 +870,13 @@ mod tests {
     #[test]
     fn should_skip_if_body_when_condition_is_false() {
         check(
-            build_ir("Test", [("show", "Bool")], |t| {
-                t.if_stmt(t.var("show"), |t| {
-                    t.write("<div>Hidden</div>");
-                });
-            }),
+            IrModuleBuilder::new()
+                .view("Test", [("show", "Bool")], |t| {
+                    t.if_stmt(t.var("show"), |t| {
+                        t.write("<div>Hidden</div>");
+                    });
+                })
+                .build(),
             vec![("show", Value::Bool(false))],
             expect![[r#"
                 -- before --
@@ -889,13 +895,15 @@ mod tests {
     #[test]
     fn should_iterate_over_array_in_for_loop() {
         check(
-            build_ir("Test", vec![("items", "Array[String]")], |t| {
-                t.for_loop("item", t.var("items"), |t| {
-                    t.write("<li>");
-                    t.write_expr_escaped(t.var("item"));
-                    t.write("</li>\n");
-                });
-            }),
+            IrModuleBuilder::new()
+                .view("Test", [("items", "Array[String]")], |t| {
+                    t.for_loop("item", t.var("items"), |t| {
+                        t.write("<li>");
+                        t.write_expr_escaped(t.var("item"));
+                        t.write("</li>\n");
+                    });
+                })
+                .build(),
             vec![(
                 "items",
                 Value::Array(vec![
@@ -926,17 +934,19 @@ mod tests {
     #[test]
     fn let_fragment_renders_into_a_value_then_writes_it() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.let_fragment(
-                    "v_0",
-                    |t| {
-                        t.write("<b>hi</b>");
-                    },
-                    |t| {
-                        t.write_expr(t.var("v_0"), false);
-                    },
-                );
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.let_fragment(
+                        "v_0",
+                        |t| {
+                            t.write("<b>hi</b>");
+                        },
+                        |t| {
+                            t.write_expr(t.var("v_0"), false);
+                        },
+                    );
+                })
+                .build(),
             vec![],
             expect![[r#"
                 -- before --
@@ -956,28 +966,14 @@ mod tests {
 
     #[test]
     fn should_error_when_required_param_not_provided() {
-        use crate::ir::ast::{IrExpr, IrParameter, IrStatement, IrViewDeclaration};
-
-        // Create an view with a required parameter (no default)
-        let view = IrViewDeclaration {
-            name: TypeName::new("Test").unwrap(),
-            parameters: vec![IrParameter {
-                name: VarName::new("name").unwrap(),
-                typ: Arc::new(Type::String),
-            }],
-            body: vec![IrStatement::WriteExpr {
-                id: 0,
-                expr: IrExpr::Var {
-                    value: VarName::new("name").unwrap(),
-                    kind: Arc::new(Type::String),
-                    id: 1,
-                },
-                escape: false,
-            }],
-        };
+        let module = IrModuleBuilder::new()
+            .view("Test", [("name", "String")], |t| {
+                t.write_expr(t.var("name"), false);
+            })
+            .build();
 
         // Call without providing the required argument
-        let result = evaluate_view(&view, HashMap::new(), &[]);
+        let result = evaluate_view(&module.views[0], HashMap::new(), &module.components);
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.to_string().contains("Missing required parameter"));
@@ -986,25 +982,30 @@ mod tests {
 
     #[test]
     fn component_args_are_evaluated_in_caller_env_not_shadowed_by_earlier_params() {
-        use crate::ir::syntax::builder::IrModuleBuilder;
-
-        let module = IrModuleBuilder::new()
-            .component("C", [("p0", "Int"), ("p1", "Int")], |t| {
-                t.write_expr(t.int_to_string(t.var("p1")), false);
-            })
-            .view("Test", [("p0", "Int")], |t| {
-                t.invoke_component("C", vec![("p0", t.int(999)), ("p1", t.var("p0"))]);
-            })
-            .build();
-
-        let mut args = HashMap::new();
-        args.insert("p0".to_string(), Value::Int(42));
-
-        let output = evaluate_view(&module.views[0], args, &module.components)
-            .expect("Evaluation should succeed");
-
         // p1 = p0 refers to the caller's p0 (42), not the component's own
         // p0 (999) that gets bound first.
-        assert_eq!(output, "42");
+        check(
+            IrModuleBuilder::new()
+                .component("C", [("p0", "Int"), ("p1", "Int")], |t| {
+                    t.write_expr(t.int_to_string(t.var("p1")), false);
+                })
+                .view("Test", [("p0", "Int")], |t| {
+                    t.invoke_component("C", vec![("p0", t.int(999)), ("p1", t.var("p0"))]);
+                })
+                .build(),
+            vec![("p0", Value::Int(42))],
+            expect![[r#"
+                -- before --
+                component C(p0: Int, p1: Int) {
+                  write_expr(p1.to_string())
+                }
+                view Test(p0: Int) {
+                  call C(p0 = 999, p1 = p0)
+                }
+
+                -- after --
+                42
+            "#]],
+        );
     }
 }

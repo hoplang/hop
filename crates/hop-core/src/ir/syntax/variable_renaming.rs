@@ -524,13 +524,19 @@ impl VariableRenamingPass {
 mod tests {
     use super::*;
     use crate::document::CheapString;
-    use crate::ir::syntax::builder::{build_ir, build_ir_no_params};
+    use crate::ir::ast::IrModule;
+    use crate::ir::syntax::builder::IrModuleBuilder;
     use expect_test::{Expect, expect};
 
-    fn check(mut input_view: IrViewDeclaration, expected: Expect) {
-        let before = input_view.to_string();
-        VariableRenamingPass::run(&mut input_view);
-        let after = input_view.to_string();
+    fn check(mut module: IrModule, expected: Expect) {
+        let before = module.to_string();
+        for view in &mut module.views {
+            VariableRenamingPass::run(view);
+        }
+        for component in &mut module.components {
+            VariableRenamingPass::run_component(component);
+        }
+        let after = module.to_string();
         let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
         expected.assert_eq(&output);
     }
@@ -538,9 +544,11 @@ mod tests {
     #[test]
     fn simple_no_renaming() {
         check(
-            build_ir("Test", [("x", "String")], |t| {
-                t.write_expr_escaped(t.var("x"));
-            }),
+            IrModuleBuilder::new()
+                .view("Test", [("x", "String")], |t| {
+                    t.write_expr_escaped(t.var("x"));
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test(x: String) {
@@ -558,11 +566,13 @@ mod tests {
     #[test]
     fn shadowing_in_for_loop() {
         check(
-            build_ir("Test", [("x", "String")], |t| {
-                t.for_loop("x", t.array(vec![t.str("a")]), |t| {
-                    t.write_expr_escaped(t.var("x"));
-                });
-            }),
+            IrModuleBuilder::new()
+                .view("Test", [("x", "String")], |t| {
+                    t.for_loop("x", t.array(vec![t.str("a")]), |t| {
+                        t.write_expr_escaped(t.var("x"));
+                    });
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test(x: String) {
@@ -584,14 +594,16 @@ mod tests {
     #[test]
     fn sibling_scopes() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.for_loop("x", t.array(vec![t.str("a")]), |t| {
-                    t.write_expr_escaped(t.var("x"));
-                });
-                t.for_loop("x", t.array(vec![t.str("b")]), |t| {
-                    t.write_expr_escaped(t.var("x"));
-                });
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.for_loop("x", t.array(vec![t.str("a")]), |t| {
+                        t.write_expr_escaped(t.var("x"));
+                    });
+                    t.for_loop("x", t.array(vec![t.str("b")]), |t| {
+                        t.write_expr_escaped(t.var("x"));
+                    });
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -619,14 +631,16 @@ mod tests {
     #[test]
     fn nested_let_bindings() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.let_stmt("x", t.str("hello"), |t| {
-                    t.write_expr_escaped(t.var("x"));
-                    t.let_stmt("x", t.str("world"), |t| {
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.let_stmt("x", t.str("hello"), |t| {
                         t.write_expr_escaped(t.var("x"));
+                        t.let_stmt("x", t.str("world"), |t| {
+                            t.write_expr_escaped(t.var("x"));
+                        });
                     });
-                });
-            }),
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -654,13 +668,15 @@ mod tests {
     #[test]
     fn multiple_parameters() {
         check(
-            build_ir("Test", vec![("x", "String"), ("y", "String")], |t| {
-                t.write_expr_escaped(t.var("x"));
-                t.for_loop("y", t.array(vec![t.str("a")]), |t| {
+            IrModuleBuilder::new()
+                .view("Test", [("x", "String"), ("y", "String")], |t| {
                     t.write_expr_escaped(t.var("x"));
-                    t.write_expr_escaped(t.var("y"));
-                });
-            }),
+                    t.for_loop("y", t.array(vec![t.str("a")]), |t| {
+                        t.write_expr_escaped(t.var("x"));
+                        t.write_expr_escaped(t.var("y"));
+                    });
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test(x: String, y: String) {
@@ -686,14 +702,16 @@ mod tests {
     #[test]
     fn sibling_let_bindings() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.let_stmt("x", t.str("first"), |t| {
-                    t.write_expr_escaped(t.var("x"));
-                });
-                t.let_stmt("x", t.str("second"), |t| {
-                    t.write_expr_escaped(t.var("x"));
-                });
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.let_stmt("x", t.str("first"), |t| {
+                        t.write_expr_escaped(t.var("x"));
+                    });
+                    t.let_stmt("x", t.str("second"), |t| {
+                        t.write_expr_escaped(t.var("x"));
+                    });
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -721,19 +739,21 @@ mod tests {
     #[test]
     fn complex_nesting() {
         check(
-            build_ir("Test", vec![("items", "Array[String]")], |t| {
-                t.for_loop("item", t.var("items"), |t| {
-                    t.write("<div>");
-                    t.for_loop("item", t.array(vec![t.str("nested")]), |t| {
-                        t.write_expr_escaped(t.var("item"));
-                        t.let_stmt("item", t.str("let-value"), |t| {
+            IrModuleBuilder::new()
+                .view("Test", [("items", "Array[String]")], |t| {
+                    t.for_loop("item", t.var("items"), |t| {
+                        t.write("<div>");
+                        t.for_loop("item", t.array(vec![t.str("nested")]), |t| {
                             t.write_expr_escaped(t.var("item"));
+                            t.let_stmt("item", t.str("let-value"), |t| {
+                                t.write_expr_escaped(t.var("item"));
+                            });
                         });
+                        t.write_expr_escaped(t.var("item"));
+                        t.write("</div>");
                     });
-                    t.write_expr_escaped(t.var("item"));
-                    t.write("</div>");
-                });
-            }),
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test(items: Array[String]) {
@@ -796,12 +816,14 @@ mod tests {
     fn should_rename_reserved_keywords() {
         // Test that reserved keywords from target languages are renamed
         check(
-            build_ir_no_params("Test", |t| {
-                // `delete` is reserved in TypeScript
-                t.let_stmt("delete", t.str("value"), |t| {
-                    t.write_expr_escaped(t.var("delete"));
-                });
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    // `delete` is reserved in TypeScript
+                    t.let_stmt("delete", t.str("value"), |t| {
+                        t.write_expr_escaped(t.var("delete"));
+                    });
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -824,16 +846,18 @@ mod tests {
     fn should_rename_multiple_reserved_keywords() {
         // Test multiple reserved keywords from different target languages
         check(
-            build_ir_no_params("Test", |t| {
-                // `class` is reserved in TypeScript
-                t.let_stmt("class", t.str("ts"), |t| {
-                    t.write_expr_escaped(t.var("class"));
-                    // `const` is reserved in TypeScript and Rust
-                    t.let_stmt("const", t.str("rust"), |t| {
-                        t.write_expr_escaped(t.var("const"));
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    // `class` is reserved in TypeScript
+                    t.let_stmt("class", t.str("ts"), |t| {
+                        t.write_expr_escaped(t.var("class"));
+                        // `const` is reserved in TypeScript and Rust
+                        t.let_stmt("const", t.str("rust"), |t| {
+                            t.write_expr_escaped(t.var("const"));
+                        });
                     });
-                });
-            }),
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {

@@ -54,16 +54,19 @@ pub fn coalesce_write_statements(body: &mut Vec<IrStatement>, limit: usize) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::{
-        ast::IrViewDeclaration,
-        syntax::builder::{build_ir, build_ir_no_params},
-    };
+    use crate::ir::ast::IrModule;
+    use crate::ir::syntax::builder::IrModuleBuilder;
     use expect_test::{Expect, expect};
 
-    fn check(mut view: IrViewDeclaration, expected: Expect) {
-        let before = view.to_string();
-        coalesce_write_statements(&mut view.body, usize::MAX);
-        let after = view.to_string();
+    fn check(mut module: IrModule, expected: Expect) {
+        let before = module.to_string();
+        for view in &mut module.views {
+            coalesce_write_statements(&mut view.body, usize::MAX);
+        }
+        for component in &mut module.components {
+            coalesce_write_statements(&mut component.body, usize::MAX);
+        }
+        let after = module.to_string();
         let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
         expected.assert_eq(&output);
     }
@@ -71,12 +74,14 @@ mod tests {
     #[test]
     fn coalesce_consecutive_writes() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.write("Hello");
-                t.write(" ");
-                t.write("World");
-                t.write("!");
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.write("Hello");
+                    t.write(" ");
+                    t.write("World");
+                    t.write("!");
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -97,15 +102,17 @@ mod tests {
     #[test]
     fn coalesce_with_interruption() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.write("Before");
-                t.write(" if");
-                t.if_stmt(t.bool(true), |t| {
-                    t.write("Inside if");
-                });
-                t.write("After");
-                t.write(" if");
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.write("Before");
+                    t.write(" if");
+                    t.if_stmt(t.bool(true), |t| {
+                        t.write("Inside if");
+                    });
+                    t.write("After");
+                    t.write(" if");
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -133,13 +140,15 @@ mod tests {
     #[test]
     fn coalesce_inside_if() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.if_stmt(t.bool(true), |t| {
-                    t.write("Line");
-                    t.write(" ");
-                    t.write("one");
-                });
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.if_stmt(t.bool(true), |t| {
+                        t.write("Line");
+                        t.write(" ");
+                        t.write("one");
+                    });
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -163,15 +172,17 @@ mod tests {
     #[test]
     fn coalesce_inside_for() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.for_loop("item", t.array(vec![t.str("x")]), |t| {
-                    t.write("Item");
-                    t.write(": ");
-                    t.write_expr_escaped(t.var("item"));
-                    t.write(" - ");
-                    t.write("Done");
-                });
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.for_loop("item", t.array(vec![t.str("x")]), |t| {
+                        t.write("Item");
+                        t.write(": ");
+                        t.write_expr_escaped(t.var("item"));
+                        t.write(" - ");
+                        t.write("Done");
+                    });
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -199,13 +210,15 @@ mod tests {
     #[test]
     fn coalesce_inside_let() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.let_stmt("x", t.str("value"), |t| {
-                    t.write("The");
-                    t.write(" value");
-                    t.write(" is");
-                });
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.let_stmt("x", t.str("value"), |t| {
+                        t.write("The");
+                        t.write(" value");
+                        t.write(" is");
+                    });
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -229,22 +242,24 @@ mod tests {
     #[test]
     fn nested_coalescing() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.write("Start");
-                t.write(": ");
-                t.if_stmt(t.bool(true), |t| {
-                    t.write("In");
-                    t.write(" if");
-                    t.for_loop("i", t.array(vec![t.str("foo")]), |t| {
-                        t.write("Loop");
-                        t.write(" body");
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.write("Start");
+                    t.write(": ");
+                    t.if_stmt(t.bool(true), |t| {
+                        t.write("In");
+                        t.write(" if");
+                        t.for_loop("i", t.array(vec![t.str("foo")]), |t| {
+                            t.write("Loop");
+                            t.write(" body");
+                        });
+                        t.write("After");
+                        t.write(" loop");
                     });
-                    t.write("After");
-                    t.write(" loop");
-                });
-                t.write("End");
-                t.write(".");
-            }),
+                    t.write("End");
+                    t.write(".");
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -283,13 +298,15 @@ mod tests {
     #[test]
     fn no_coalescing_with_write_expr() {
         check(
-            build_ir("Test", [("x", "String")], |t| {
-                t.write("Value");
-                t.write(": ");
-                t.write_expr_escaped(t.var("x"));
-                t.write(" - ");
-                t.write("done");
-            }),
+            IrModuleBuilder::new()
+                .view("Test", [("x", "String")], |t| {
+                    t.write("Value");
+                    t.write(": ");
+                    t.write_expr_escaped(t.var("x"));
+                    t.write(" - ");
+                    t.write("done");
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test(x: String) {
@@ -313,7 +330,9 @@ mod tests {
     #[test]
     fn empty_input() {
         check(
-            build_ir_no_params("Test", |_| {}),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |_| {})
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {}
@@ -327,9 +346,11 @@ mod tests {
     #[test]
     fn single_write() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.write("Single");
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.write("Single");
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -344,10 +365,15 @@ mod tests {
         );
     }
 
-    fn check_with_limit(mut view: IrViewDeclaration, limit: usize, expected: Expect) {
-        let before = view.to_string();
-        coalesce_write_statements(&mut view.body, limit);
-        let after = view.to_string();
+    fn check_with_limit(mut module: IrModule, limit: usize, expected: Expect) {
+        let before = module.to_string();
+        for view in &mut module.views {
+            coalesce_write_statements(&mut view.body, limit);
+        }
+        for component in &mut module.components {
+            coalesce_write_statements(&mut component.body, limit);
+        }
+        let after = module.to_string();
         let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
         expected.assert_eq(&output);
     }
@@ -357,11 +383,13 @@ mod tests {
         // "Hello" (5) + " " (1) = 6, which is >= limit of 6, so no merge
         // " " (1) + "World" (5) = 6, which is >= limit of 6, so no merge
         check_with_limit(
-            build_ir_no_params("Test", |t| {
-                t.write("Hello");
-                t.write(" ");
-                t.write("World");
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.write("Hello");
+                    t.write(" ");
+                    t.write("World");
+                })
+                .build(),
             6,
             expect![[r#"
                 -- before --
@@ -386,11 +414,13 @@ mod tests {
         // "Hello" (5) + " " (1) = 6, which is < limit of 7, so merge to "Hello " (6)
         // "Hello " (6) + "World" (5) = 11, which is >= limit of 7, so no merge
         check_with_limit(
-            build_ir_no_params("Test", |t| {
-                t.write("Hello");
-                t.write(" ");
-                t.write("World");
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.write("Hello");
+                    t.write(" ");
+                    t.write("World");
+                })
+                .build(),
             7,
             expect![[r#"
                 -- before --
@@ -414,12 +444,14 @@ mod tests {
         // With limit 5, we can't merge anything since each write is 3 chars
         // "AAA" + "BBB" = 6 >= 5, so no merge
         check_with_limit(
-            build_ir_no_params("Test", |t| {
-                t.write("AAA");
-                t.write("BBB");
-                t.write("CCC");
-                t.write("DDD");
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.write("AAA");
+                    t.write("BBB");
+                    t.write("CCC");
+                    t.write("DDD");
+                })
+                .build(),
             5,
             expect![[r#"
                 -- before --
@@ -447,12 +479,14 @@ mod tests {
         // Then "AAABBB" (6) + "CCC" (3) = 9 >= 7, flush and start new
         // "CCC" (3) + "DDD" (3) = 6 < 7, merge to "CCCDDD"
         check_with_limit(
-            build_ir_no_params("Test", |t| {
-                t.write("AAA");
-                t.write("BBB");
-                t.write("CCC");
-                t.write("DDD");
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.write("AAA");
+                    t.write("BBB");
+                    t.write("CCC");
+                    t.write("DDD");
+                })
+                .build(),
             7,
             expect![[r#"
                 -- before --
@@ -475,10 +509,12 @@ mod tests {
     #[test]
     fn limit_zero_prevents_all_merges() {
         check_with_limit(
-            build_ir_no_params("Test", |t| {
-                t.write("A");
-                t.write("B");
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.write("A");
+                    t.write("B");
+                })
+                .build(),
             0,
             expect![[r#"
                 -- before --
@@ -499,13 +535,15 @@ mod tests {
     #[test]
     fn limit_applies_inside_nested_structures() {
         check_with_limit(
-            build_ir_no_params("Test", |t| {
-                t.if_stmt(t.bool(true), |t| {
-                    t.write("AAA");
-                    t.write("BBB");
-                    t.write("CCC");
-                });
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.if_stmt(t.bool(true), |t| {
+                        t.write("AAA");
+                        t.write("BBB");
+                        t.write("CCC");
+                    });
+                })
+                .build(),
             7,
             expect![[r#"
                 -- before --

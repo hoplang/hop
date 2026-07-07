@@ -712,18 +712,21 @@ pub fn perform_partial_evaluation(body: &mut Vec<IrStatement>, registry: &TypeRe
 
 #[cfg(test)]
 mod tests {
-    use crate::ir::{
-        ast::IrViewDeclaration,
-        syntax::builder::{IrModuleBuilder, build_ir_no_params},
-    };
+    use crate::ir::ast::IrModule;
+    use crate::ir::syntax::builder::IrModuleBuilder;
     use expect_test::{Expect, expect};
 
     use super::*;
 
-    fn check(mut view: IrViewDeclaration, expected: Expect) {
-        let before = view.to_string();
-        perform_partial_evaluation(&mut view.body, &TypeRegistry::default());
-        let after = view.to_string();
+    fn check(mut module: IrModule, expected: Expect) {
+        let before = module.to_string();
+        for view in &mut module.views {
+            perform_partial_evaluation(&mut view.body, &TypeRegistry::default());
+        }
+        for component in &mut module.components {
+            perform_partial_evaluation(&mut component.body, &TypeRegistry::default());
+        }
+        let after = module.to_string();
         let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
         expected.assert_eq(&output);
     }
@@ -743,11 +746,13 @@ mod tests {
     #[test]
     fn should_evaluate_simple_boolean_negation() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.if_stmt(t.not(t.bool(false)), |t| {
-                    t.write("Should be true");
-                });
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.if_stmt(t.not(t.bool(false)), |t| {
+                        t.write("Should be true");
+                    });
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -769,11 +774,13 @@ mod tests {
     #[test]
     fn should_evaluate_double_boolean_negation() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.if_stmt(t.not(t.not(t.bool(true))), |t| {
-                    t.write("Double negation");
-                });
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.if_stmt(t.not(t.not(t.bool(true))), |t| {
+                        t.write("Double negation");
+                    });
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -795,11 +802,13 @@ mod tests {
     #[test]
     fn should_evaluate_triple_boolean_negation() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.if_stmt(t.not(t.not(t.not(t.bool(false)))), |t| {
-                    t.write("Triple negation");
-                });
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.if_stmt(t.not(t.not(t.not(t.bool(false)))), |t| {
+                        t.write("Triple negation");
+                    });
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -820,17 +829,19 @@ mod tests {
 
     #[test]
     fn should_evaluate_boolean_equality_comparisons() {
-        let ep = build_ir_no_params("Test", |t| {
-            t.if_stmt(t.eq(t.bool(true), t.bool(true)), |t| {
-                t.write("true == true");
-            });
-            t.if_stmt(t.eq(t.bool(false), t.bool(false)), |t| {
-                t.write("false == false");
-            });
-            t.if_stmt(t.eq(t.bool(true), t.bool(false)), |t| {
-                t.write("Should not appear");
-            });
-        });
+        let ep = IrModuleBuilder::new()
+            .view_no_params("Test", |t| {
+                t.if_stmt(t.eq(t.bool(true), t.bool(true)), |t| {
+                    t.write("true == true");
+                });
+                t.if_stmt(t.eq(t.bool(false), t.bool(false)), |t| {
+                    t.write("false == false");
+                });
+                t.if_stmt(t.eq(t.bool(true), t.bool(false)), |t| {
+                    t.write("Should not appear");
+                });
+            })
+            .build();
         check(
             ep,
             expect![[r#"
@@ -866,14 +877,16 @@ mod tests {
     #[test]
     fn should_evaluate_equality_with_nested_negations() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.if_stmt(
-                    t.eq(t.not(t.not(t.bool(false))), t.not(t.bool(false))),
-                    |t| {
-                        t.write("Should not appear");
-                    },
-                );
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.if_stmt(
+                        t.eq(t.not(t.not(t.bool(false))), t.not(t.bool(false))),
+                        |t| {
+                            t.write("Should not appear");
+                        },
+                    );
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -895,16 +908,18 @@ mod tests {
     #[test]
     fn should_propagate_constants_through_variables() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.let_stmt("x", t.not(t.not(t.bool(true))), |t| {
-                    t.if_stmt(t.var("x"), |t| {
-                        t.write("x is true");
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.let_stmt("x", t.not(t.not(t.bool(true))), |t| {
+                        t.if_stmt(t.var("x"), |t| {
+                            t.write("x is true");
+                        });
+                        t.if_stmt(t.not(t.var("x")), |t| {
+                            t.write("x is false");
+                        });
                     });
-                    t.if_stmt(t.not(t.var("x")), |t| {
-                        t.write("x is false");
-                    });
-                });
-            }),
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -936,18 +951,20 @@ mod tests {
     #[test]
     fn should_evaluate_equality_with_variable_operands() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.let_stmt("x", t.bool(true), |t| {
-                    t.let_stmt("y", t.not(t.bool(true)), |t| {
-                        t.if_stmt(t.eq(t.var("x"), t.var("y")), |t| {
-                            t.write("x equals y");
-                        });
-                        t.if_stmt(t.eq(t.var("x"), t.not(t.var("y"))), |t| {
-                            t.write("x equals not y");
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.let_stmt("x", t.bool(true), |t| {
+                        t.let_stmt("y", t.not(t.bool(true)), |t| {
+                            t.if_stmt(t.eq(t.var("x"), t.var("y")), |t| {
+                                t.write("x equals y");
+                            });
+                            t.if_stmt(t.eq(t.var("x"), t.not(t.var("y"))), |t| {
+                                t.write("x equals not y");
+                            });
                         });
                     });
-                });
-            }),
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -983,11 +1000,13 @@ mod tests {
     #[test]
     fn should_propagate_string_constants_through_variables() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.let_stmt("message", t.str("Hello, World!"), |t| {
-                    t.write_expr_escaped(t.var("message"));
-                });
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.let_stmt("message", t.str("Hello, World!"), |t| {
+                        t.write_expr_escaped(t.var("message"));
+                    });
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -1009,14 +1028,16 @@ mod tests {
     #[test]
     fn should_propagate_nested_string_variables() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.let_stmt("greeting", t.str("Hello"), |t| {
-                    t.let_stmt("name", t.str("World"), |t| {
-                        t.write_expr_escaped(t.var("greeting"));
-                        t.write_expr_escaped(t.var("name"));
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.let_stmt("greeting", t.str("Hello"), |t| {
+                        t.let_stmt("name", t.str("World"), |t| {
+                            t.write_expr_escaped(t.var("greeting"));
+                            t.write_expr_escaped(t.var("name"));
+                        });
                     });
-                });
-            }),
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -1044,15 +1065,17 @@ mod tests {
     #[test]
     fn should_propagate_string_variable_to_multiple_uses() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.let_stmt("title", t.str("Welcome"), |t| {
-                    t.write_expr_escaped(t.var("title"));
-                    t.write_expr_escaped(t.var("title"));
-                    t.let_stmt("subtitle", t.var("title"), |t| {
-                        t.write_expr_escaped(t.var("subtitle"));
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.let_stmt("title", t.str("Welcome"), |t| {
+                        t.write_expr_escaped(t.var("title"));
+                        t.write_expr_escaped(t.var("title"));
+                        t.let_stmt("subtitle", t.var("title"), |t| {
+                            t.write_expr_escaped(t.var("subtitle"));
+                        });
                     });
-                });
-            }),
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -1082,21 +1105,23 @@ mod tests {
     #[test]
     fn should_evaluate_string_equality_comparisons() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.if_stmt(t.eq(t.str("hello"), t.str("hello")), |t| {
-                    t.write("Strings are equal");
-                });
-                t.if_stmt(t.eq(t.str("hello"), t.str("world")), |t| {
-                    t.write("Should not appear");
-                });
-                t.let_stmt("greeting", t.str("hello"), |t| {
-                    t.let_stmt("message", t.str("hello"), |t| {
-                        t.if_stmt(t.eq(t.var("greeting"), t.var("message")), |t| {
-                            t.write("Variables are equal");
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.if_stmt(t.eq(t.str("hello"), t.str("hello")), |t| {
+                        t.write("Strings are equal");
+                    });
+                    t.if_stmt(t.eq(t.str("hello"), t.str("world")), |t| {
+                        t.write("Should not appear");
+                    });
+                    t.let_stmt("greeting", t.str("hello"), |t| {
+                        t.let_stmt("message", t.str("hello"), |t| {
+                            t.if_stmt(t.eq(t.var("greeting"), t.var("message")), |t| {
+                                t.write("Variables are equal");
+                            });
                         });
                     });
-                });
-            }),
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -1138,11 +1163,14 @@ mod tests {
     #[test]
     fn should_evaluate_nested_string_concatenation() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.write_expr_escaped(
-                    t.string_concat(t.string_concat(t.str("Hello"), t.str(" ")), t.str("World")),
-                );
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.write_expr_escaped(t.string_concat(
+                        t.string_concat(t.str("Hello"), t.str(" ")),
+                        t.str("World"),
+                    ));
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -1160,23 +1188,25 @@ mod tests {
     #[test]
     fn should_evaluate_string_concatenation_in_equality() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.if_stmt(
-                    t.eq(t.string_concat(t.str("foo"), t.str("bar")), t.str("foobar")),
-                    |t| {
-                        t.write("Concatenation matches");
-                    },
-                );
-                t.if_stmt(
-                    t.eq(
-                        t.string_concat(t.str("hello"), t.str(" world")),
-                        t.str("hello"),
-                    ),
-                    |t| {
-                        t.write("Should not appear");
-                    },
-                );
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.if_stmt(
+                        t.eq(t.string_concat(t.str("foo"), t.str("bar")), t.str("foobar")),
+                        |t| {
+                            t.write("Concatenation matches");
+                        },
+                    );
+                    t.if_stmt(
+                        t.eq(
+                            t.string_concat(t.str("hello"), t.str(" world")),
+                            t.str("hello"),
+                        ),
+                        |t| {
+                            t.write("Should not appear");
+                        },
+                    );
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -1204,19 +1234,21 @@ mod tests {
     #[test]
     fn should_evaluate_string_concatenation_with_propagated_variables() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.let_stmt("prefix", t.str("Hello"), |t| {
-                    t.let_stmt("suffix", t.string_concat(t.str(" "), t.str("World")), |t| {
-                        t.let_stmt(
-                            "full",
-                            t.string_concat(t.var("prefix"), t.var("suffix")),
-                            |t| {
-                                t.write_expr_escaped(t.var("full"));
-                            },
-                        );
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.let_stmt("prefix", t.str("Hello"), |t| {
+                        t.let_stmt("suffix", t.string_concat(t.str(" "), t.str("World")), |t| {
+                            t.let_stmt(
+                                "full",
+                                t.string_concat(t.var("prefix"), t.var("suffix")),
+                                |t| {
+                                    t.write_expr_escaped(t.var("full"));
+                                },
+                            );
+                        });
                     });
-                });
-            }),
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -1308,20 +1340,22 @@ mod tests {
     #[test]
     fn should_inline_constant_statement_match_subject() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.let_stmt("opt", t.some(t.str("x")), |t| {
-                    t.option_match_stmt(
-                        t.var("opt"),
-                        Some("v"),
-                        |t| {
-                            t.write_expr(t.var("v"), false);
-                        },
-                        |t| {
-                            t.write("none");
-                        },
-                    );
-                });
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.let_stmt("opt", t.some(t.str("x")), |t| {
+                        t.option_match_stmt(
+                            t.var("opt"),
+                            Some("v"),
+                            |t| {
+                                t.write_expr(t.var("v"), false);
+                            },
+                            |t| {
+                                t.write("none");
+                            },
+                        );
+                    });
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -1520,14 +1554,16 @@ mod tests {
     #[test]
     fn sibling_let_constant_propagation() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.let_stmt("x", t.str("first"), |t| {
-                    t.write_expr_escaped(t.var("x"));
-                });
-                t.let_stmt("y", t.str("second"), |t| {
-                    t.write_expr_escaped(t.var("y"));
-                });
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.let_stmt("x", t.str("first"), |t| {
+                        t.write_expr_escaped(t.var("x"));
+                    });
+                    t.let_stmt("y", t.str("second"), |t| {
+                        t.write_expr_escaped(t.var("y"));
+                    });
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -1581,10 +1617,13 @@ mod tests {
     #[test]
     fn should_evaluate_join_with_constant_strings() {
         check(
-            build_ir_no_params("Test", |t| {
-                let classes = t.join(vec![t.str("flex"), t.str("items-center"), t.str("gap-4")]);
-                t.write_expr_escaped(t.tw_merge(classes));
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    let classes =
+                        t.join(vec![t.str("flex"), t.str("items-center"), t.str("gap-4")]);
+                    t.write_expr_escaped(t.tw_merge(classes));
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -1602,10 +1641,12 @@ mod tests {
     #[test]
     fn should_evaluate_join_with_tailwind_conflicts() {
         check(
-            build_ir_no_params("Test", |t| {
-                let classes = t.join(vec![t.str("px-4"), t.str("py-2"), t.str("p-6")]);
-                t.write_expr_escaped(t.tw_merge(classes));
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    let classes = t.join(vec![t.str("px-4"), t.str("py-2"), t.str("p-6")]);
+                    t.write_expr_escaped(t.tw_merge(classes));
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -1623,14 +1664,16 @@ mod tests {
     #[test]
     fn should_evaluate_join_with_propagated_variables() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.let_stmt("base", t.str("flex items-center"), |t| {
-                    t.let_stmt("extra", t.str("gap-4 text-red-500"), |t| {
-                        let classes = t.join(vec![t.var("base"), t.var("extra")]);
-                        t.write_expr_escaped(t.tw_merge(classes));
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.let_stmt("base", t.str("flex items-center"), |t| {
+                        t.let_stmt("extra", t.str("gap-4 text-red-500"), |t| {
+                            let classes = t.join(vec![t.var("base"), t.var("extra")]);
+                            t.write_expr_escaped(t.tw_merge(classes));
+                        });
                     });
-                });
-            }),
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -1656,9 +1699,11 @@ mod tests {
     #[test]
     fn should_evaluate_empty_join() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.write_expr_escaped(t.join(vec![]));
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.write_expr_escaped(t.join(vec![]));
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -1676,16 +1721,18 @@ mod tests {
     #[test]
     fn should_evaluate_nested_join() {
         check(
-            build_ir_no_params("Test", |t| {
-                // Inner join just concatenates: "px-2 p-3"
-                // Outer join concatenates: "px-4 px-2 p-3"
-                // tw_merge resolves conflicts: "p-3"
-                let classes = t.join(vec![
-                    t.str("px-4"),
-                    t.join(vec![t.str("px-2"), t.str("p-3")]),
-                ]);
-                t.write_expr_escaped(t.tw_merge(classes));
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    // Inner join just concatenates: "px-2 p-3"
+                    // Outer join concatenates: "px-4 px-2 p-3"
+                    // tw_merge resolves conflicts: "p-3"
+                    let classes = t.join(vec![
+                        t.str("px-4"),
+                        t.join(vec![t.str("px-2"), t.str("p-3")]),
+                    ]);
+                    t.write_expr_escaped(t.tw_merge(classes));
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -1782,15 +1829,17 @@ mod tests {
     #[test]
     fn should_evaluate_option_match_with_some() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.let_stmt("opt", t.some(t.str("hello")), |t| {
-                    t.write_expr_escaped(t.option_match_expr(
-                        t.var("opt"),
-                        t.str("got some"),
-                        t.str("got none"),
-                    ));
-                });
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.let_stmt("opt", t.some(t.str("hello")), |t| {
+                        t.write_expr_escaped(t.option_match_expr(
+                            t.var("opt"),
+                            t.str("got some"),
+                            t.str("got none"),
+                        ));
+                    });
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -1815,15 +1864,17 @@ mod tests {
     #[test]
     fn should_evaluate_option_match_with_none() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.let_stmt("opt", t.none("String"), |t| {
-                    t.write_expr_escaped(t.option_match_expr(
-                        t.var("opt"),
-                        t.str("got some"),
-                        t.str("got none"),
-                    ));
-                });
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.let_stmt("opt", t.none("String"), |t| {
+                        t.write_expr_escaped(t.option_match_expr(
+                            t.var("opt"),
+                            t.str("got some"),
+                            t.str("got none"),
+                        ));
+                    });
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -1848,17 +1899,19 @@ mod tests {
     #[test]
     fn should_propagate_option_constant_through_variables() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.let_stmt("x", t.some(t.str("hello")), |t| {
-                    t.let_stmt("y", t.var("x"), |t| {
-                        t.write_expr_escaped(t.option_match_expr(
-                            t.var("y"),
-                            t.str("got some"),
-                            t.str("got none"),
-                        ));
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.let_stmt("x", t.some(t.str("hello")), |t| {
+                        t.let_stmt("y", t.var("x"), |t| {
+                            t.write_expr_escaped(t.option_match_expr(
+                                t.var("y"),
+                                t.str("got some"),
+                                t.str("got none"),
+                            ));
+                        });
                     });
-                });
-            }),
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -1889,17 +1942,19 @@ mod tests {
         use crate::expr::Type;
 
         check(
-            build_ir_no_params("Test", |t| {
-                t.let_stmt("opt", t.some(t.str("hello")), |t| {
-                    t.write_expr_escaped(t.option_match_expr_with_binding(
-                        t.var("opt"),
-                        "inner",
-                        Type::String,
-                        |t| t.var("inner"),
-                        t.str("default"),
-                    ));
-                });
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.let_stmt("opt", t.some(t.str("hello")), |t| {
+                        t.write_expr_escaped(t.option_match_expr_with_binding(
+                            t.var("opt"),
+                            "inner",
+                            Type::String,
+                            |t| t.var("inner"),
+                            t.str("default"),
+                        ));
+                    });
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -1927,20 +1982,22 @@ mod tests {
 
         // Test that the binding value propagates into nested expressions
         check(
-            build_ir_no_params("Test", |t| {
-                t.let_stmt("opt", t.some(t.str("hello")), |t| {
-                    t.write_expr_escaped(t.option_match_expr_with_binding(
-                        t.var("opt"),
-                        "inner",
-                        Type::String,
-                        |t| {
-                            // Use the binding in an equality check and string concat
-                            t.string_concat(t.var("inner"), t.str(" world"))
-                        },
-                        t.str("default"),
-                    ));
-                });
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.let_stmt("opt", t.some(t.str("hello")), |t| {
+                        t.write_expr_escaped(t.option_match_expr_with_binding(
+                            t.var("opt"),
+                            "inner",
+                            Type::String,
+                            |t| {
+                                // Use the binding in an equality check and string concat
+                                t.string_concat(t.var("inner"), t.str(" world"))
+                            },
+                            t.str("default"),
+                        ));
+                    });
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -1968,22 +2025,24 @@ mod tests {
 
         // Test that the binding value propagates into equality comparisons
         check(
-            build_ir_no_params("Test", |t| {
-                t.let_stmt("opt", t.some(t.str("hello")), |t| {
-                    t.if_stmt(
-                        t.option_match_expr_with_binding(
-                            t.var("opt"),
-                            "inner",
-                            Type::String,
-                            |t| t.eq(t.var("inner"), t.str("hello")),
-                            t.bool(false),
-                        ),
-                        |t| {
-                            t.write("matched hello");
-                        },
-                    );
-                });
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.let_stmt("opt", t.some(t.str("hello")), |t| {
+                        t.if_stmt(
+                            t.option_match_expr_with_binding(
+                                t.var("opt"),
+                                "inner",
+                                Type::String,
+                                |t| t.eq(t.var("inner"), t.str("hello")),
+                                t.bool(false),
+                            ),
+                            |t| {
+                                t.write("matched hello");
+                            },
+                        );
+                    });
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -2015,31 +2074,33 @@ mod tests {
 
         // Test nested option matches using let statements to bind intermediate values
         check(
-            build_ir_no_params("Test", |t| {
-                t.let_stmt("outer", t.some(t.some(t.str("nested"))), |t| {
-                    // First match extracts inner_opt from outer
-                    t.let_stmt(
-                        "inner_result",
-                        t.option_match_expr_with_binding(
-                            t.var("outer"),
-                            "inner_opt",
-                            Type::Option(Arc::new(Type::String)),
-                            |t| t.var("inner_opt"),
-                            t.none("String"),
-                        ),
-                        |t| {
-                            // Second match extracts value from inner_result
-                            t.write_expr_escaped(t.option_match_expr_with_binding(
-                                t.var("inner_result"),
-                                "value",
-                                Type::String,
-                                |t| t.var("value"),
-                                t.str("inner none"),
-                            ));
-                        },
-                    );
-                });
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.let_stmt("outer", t.some(t.some(t.str("nested"))), |t| {
+                        // First match extracts inner_opt from outer
+                        t.let_stmt(
+                            "inner_result",
+                            t.option_match_expr_with_binding(
+                                t.var("outer"),
+                                "inner_opt",
+                                Type::Option(Arc::new(Type::String)),
+                                |t| t.var("inner_opt"),
+                                t.none("String"),
+                            ),
+                            |t| {
+                                // Second match extracts value from inner_result
+                                t.write_expr_escaped(t.option_match_expr_with_binding(
+                                    t.var("inner_result"),
+                                    "value",
+                                    Type::String,
+                                    |t| t.var("value"),
+                                    t.str("inner none"),
+                                ));
+                            },
+                        );
+                    });
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -2074,28 +2135,30 @@ mod tests {
 
         // Test nested option match where inner match is inside a let expression in the Some arm
         check(
-            build_ir_no_params("Test", |t| {
-                t.let_stmt("outer", t.some(t.some(t.str("nested"))), |t| {
-                    t.write_expr_escaped(t.option_match_expr_with_binding(
-                        t.var("outer"),
-                        "inner_opt",
-                        Type::Option(Arc::new(Type::String)),
-                        |t| {
-                            // let inner_opt_var = inner_opt in match inner_opt_var { ... }
-                            t.let_expr("inner_opt_var", t.var("inner_opt"), |t| {
-                                t.option_match_expr_with_binding(
-                                    t.var("inner_opt_var"),
-                                    "value",
-                                    Type::String,
-                                    |t| t.var("value"),
-                                    t.str("inner none"),
-                                )
-                            })
-                        },
-                        t.str("outer none"),
-                    ));
-                });
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.let_stmt("outer", t.some(t.some(t.str("nested"))), |t| {
+                        t.write_expr_escaped(t.option_match_expr_with_binding(
+                            t.var("outer"),
+                            "inner_opt",
+                            Type::Option(Arc::new(Type::String)),
+                            |t| {
+                                // let inner_opt_var = inner_opt in match inner_opt_var { ... }
+                                t.let_expr("inner_opt_var", t.var("inner_opt"), |t| {
+                                    t.option_match_expr_with_binding(
+                                        t.var("inner_opt_var"),
+                                        "value",
+                                        Type::String,
+                                        |t| t.var("value"),
+                                        t.str("inner none"),
+                                    )
+                                })
+                            },
+                            t.str("outer none"),
+                        ));
+                    });
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -2562,15 +2625,17 @@ mod tests {
     #[test]
     fn should_evaluate_bool_match_with_true() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.let_stmt("flag", t.bool(true), |t| {
-                    t.write_expr_escaped(t.bool_match_expr(
-                        t.var("flag"),
-                        t.str("yes"),
-                        t.str("no"),
-                    ));
-                });
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.let_stmt("flag", t.bool(true), |t| {
+                        t.write_expr_escaped(t.bool_match_expr(
+                            t.var("flag"),
+                            t.str("yes"),
+                            t.str("no"),
+                        ));
+                    });
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -2592,15 +2657,17 @@ mod tests {
     #[test]
     fn should_evaluate_bool_match_with_false() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.let_stmt("flag", t.bool(false), |t| {
-                    t.write_expr_escaped(t.bool_match_expr(
-                        t.var("flag"),
-                        t.str("yes"),
-                        t.str("no"),
-                    ));
-                });
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.let_stmt("flag", t.bool(false), |t| {
+                        t.write_expr_escaped(t.bool_match_expr(
+                            t.var("flag"),
+                            t.str("yes"),
+                            t.str("no"),
+                        ));
+                    });
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -2622,17 +2689,19 @@ mod tests {
     #[test]
     fn should_propagate_bool_constant_through_variables_in_match() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.let_stmt("x", t.bool(true), |t| {
-                    t.let_stmt("y", t.var("x"), |t| {
-                        t.write_expr_escaped(t.bool_match_expr(
-                            t.var("y"),
-                            t.str("yes"),
-                            t.str("no"),
-                        ));
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.let_stmt("x", t.bool(true), |t| {
+                        t.let_stmt("y", t.var("x"), |t| {
+                            t.write_expr_escaped(t.bool_match_expr(
+                                t.var("y"),
+                                t.str("yes"),
+                                t.str("no"),
+                            ));
+                        });
                     });
-                });
-            }),
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -2658,15 +2727,17 @@ mod tests {
     #[test]
     fn should_evaluate_bool_match_with_negated_subject() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.let_stmt("flag", t.not(t.bool(false)), |t| {
-                    t.write_expr_escaped(t.bool_match_expr(
-                        t.var("flag"),
-                        t.str("was true"),
-                        t.str("was false"),
-                    ));
-                });
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.let_stmt("flag", t.not(t.bool(false)), |t| {
+                        t.write_expr_escaped(t.bool_match_expr(
+                            t.var("flag"),
+                            t.str("was true"),
+                            t.str("was false"),
+                        ));
+                    });
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -2770,20 +2841,22 @@ mod tests {
     #[test]
     fn should_evaluate_logical_or_with_literals() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.if_stmt(t.or(t.bool(false), t.bool(false)), |t| {
-                    t.write("false || false");
-                });
-                t.if_stmt(t.or(t.bool(false), t.bool(true)), |t| {
-                    t.write("false || true");
-                });
-                t.if_stmt(t.or(t.bool(true), t.bool(false)), |t| {
-                    t.write("true || false");
-                });
-                t.if_stmt(t.or(t.bool(true), t.bool(true)), |t| {
-                    t.write("true || true");
-                });
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.if_stmt(t.or(t.bool(false), t.bool(false)), |t| {
+                        t.write("false || false");
+                    });
+                    t.if_stmt(t.or(t.bool(false), t.bool(true)), |t| {
+                        t.write("false || true");
+                    });
+                    t.if_stmt(t.or(t.bool(true), t.bool(false)), |t| {
+                        t.write("true || false");
+                    });
+                    t.if_stmt(t.or(t.bool(true), t.bool(true)), |t| {
+                        t.write("true || true");
+                    });
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -2823,20 +2896,22 @@ mod tests {
     #[test]
     fn should_evaluate_logical_and_with_literals() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.if_stmt(t.and(t.bool(false), t.bool(false)), |t| {
-                    t.write("false && false");
-                });
-                t.if_stmt(t.and(t.bool(false), t.bool(true)), |t| {
-                    t.write("false && true");
-                });
-                t.if_stmt(t.and(t.bool(true), t.bool(false)), |t| {
-                    t.write("true && false");
-                });
-                t.if_stmt(t.and(t.bool(true), t.bool(true)), |t| {
-                    t.write("true && true");
-                });
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.if_stmt(t.and(t.bool(false), t.bool(false)), |t| {
+                        t.write("false && false");
+                    });
+                    t.if_stmt(t.and(t.bool(false), t.bool(true)), |t| {
+                        t.write("false && true");
+                    });
+                    t.if_stmt(t.and(t.bool(true), t.bool(false)), |t| {
+                        t.write("true && false");
+                    });
+                    t.if_stmt(t.and(t.bool(true), t.bool(true)), |t| {
+                        t.write("true && true");
+                    });
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -2876,18 +2951,20 @@ mod tests {
     #[test]
     fn should_evaluate_logical_operations_with_propagated_variables() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.let_stmt("a", t.bool(true), |t| {
-                    t.let_stmt("b", t.bool(false), |t| {
-                        t.if_stmt(t.or(t.var("a"), t.var("b")), |t| {
-                            t.write("a || b");
-                        });
-                        t.if_stmt(t.and(t.var("a"), t.var("b")), |t| {
-                            t.write("a && b");
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.let_stmt("a", t.bool(true), |t| {
+                        t.let_stmt("b", t.bool(false), |t| {
+                            t.if_stmt(t.or(t.var("a"), t.var("b")), |t| {
+                                t.write("a || b");
+                            });
+                            t.if_stmt(t.and(t.var("a"), t.var("b")), |t| {
+                                t.write("a && b");
+                            });
                         });
                     });
-                });
-            }),
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -2923,18 +3000,20 @@ mod tests {
     #[test]
     fn should_evaluate_nested_logical_operations() {
         check(
-            build_ir_no_params("Test", |t| {
-                // (true && false) || (false || true) => false || true => true
-                t.if_stmt(
-                    t.or(
-                        t.and(t.bool(true), t.bool(false)),
-                        t.or(t.bool(false), t.bool(true)),
-                    ),
-                    |t| {
-                        t.write("complex expression");
-                    },
-                );
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    // (true && false) || (false || true) => false || true => true
+                    t.if_stmt(
+                        t.or(
+                            t.and(t.bool(true), t.bool(false)),
+                            t.or(t.bool(false), t.bool(true)),
+                        ),
+                        |t| {
+                            t.write("complex expression");
+                        },
+                    );
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -2956,16 +3035,18 @@ mod tests {
     #[test]
     fn should_evaluate_logical_operations_with_negation() {
         check(
-            build_ir_no_params("Test", |t| {
-                // !false && !false => true && true => true
-                t.if_stmt(t.and(t.not(t.bool(false)), t.not(t.bool(false))), |t| {
-                    t.write("both negated");
-                });
-                // !true || false => false || false => false
-                t.if_stmt(t.or(t.not(t.bool(true)), t.bool(false)), |t| {
-                    t.write("should not appear");
-                });
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    // !false && !false => true && true => true
+                    t.if_stmt(t.and(t.not(t.bool(false)), t.not(t.bool(false))), |t| {
+                        t.write("both negated");
+                    });
+                    // !true || false => false || false => false
+                    t.if_stmt(t.or(t.not(t.bool(true)), t.bool(false)), |t| {
+                        t.write("should not appear");
+                    });
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -2993,12 +3074,14 @@ mod tests {
     #[test]
     fn should_evaluate_component_invocation_args() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.invoke_component(
-                    "Foo",
-                    vec![("x", t.not(t.bool(false))), ("y", t.str("hello"))],
-                );
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.invoke_component(
+                        "Foo",
+                        vec![("x", t.not(t.bool(false))), ("y", t.str("hello"))],
+                    );
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -3016,11 +3099,13 @@ mod tests {
     #[test]
     fn should_evaluate_component_invocation_args_with_propagated_variables() {
         check(
-            build_ir_no_params("Test", |t| {
-                t.let_stmt("val", t.not(t.bool(true)), |t| {
-                    t.invoke_component("Foo", vec![("enabled", t.var("val"))]);
-                });
-            }),
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.let_stmt("val", t.not(t.bool(true)), |t| {
+                        t.invoke_component("Foo", vec![("enabled", t.var("val"))]);
+                    });
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {

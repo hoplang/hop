@@ -188,33 +188,6 @@ impl Default for IrModuleBuilder {
     }
 }
 
-pub fn build_ir_no_params<F>(name: &str, body_fn: F) -> IrViewDeclaration
-where
-    F: FnOnce(&mut IrBuilder),
-{
-    let mut builder = IrBuilder::new(vec![], TestTypes::empty());
-    body_fn(&mut builder);
-    builder.build(name)
-}
-
-pub fn build_ir<'a, F>(
-    name: &str,
-    params: impl IntoIterator<Item = (&'a str, &'a str)>,
-    body_fn: F,
-) -> IrViewDeclaration
-where
-    F: FnOnce(&mut IrBuilder),
-{
-    let types = TestTypes::empty();
-    let params = params
-        .into_iter()
-        .map(|(k, t)| (k.to_string(), types.resolve(t)))
-        .collect();
-    let mut builder = IrBuilder::new(params, types);
-    body_fn(&mut builder);
-    builder.build(name)
-}
-
 pub struct IrBuilder {
     next_expr_id: Rc<RefCell<ExprId>>,
     next_node_id: Rc<RefCell<StatementId>>,
