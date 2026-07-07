@@ -3577,12 +3577,16 @@ mod tests {
     }
 
     #[test]
-    fn accepts_option_equality() {
-        accept(
+    fn rejects_option_equality() {
+        reject(
             TypeRegistryBuilder::new(),
             &[],
             "Some(1) == Some(2)",
-            expect!["Bool"],
+            expect![[r#"
+                error: Type Option[Int] is not comparable
+                Some(1) == Some(2)
+                ^^^^^^^
+            "#]],
         );
     }
 
@@ -3601,42 +3605,58 @@ mod tests {
     }
 
     #[test]
-    fn accepts_some_equals_none() {
-        accept(
+    fn rejects_some_equals_none() {
+        reject(
             TypeRegistryBuilder::new(),
             &[],
             "Some(1) == None",
-            expect!["Bool"],
+            expect![[r#"
+                error: Type Option[Int] is not comparable
+                Some(1) == None
+                ^^^^^^^
+            "#]],
         );
     }
 
     #[test]
-    fn accepts_none_equals_some() {
-        accept(
+    fn rejects_none_equals_some() {
+        reject(
             TypeRegistryBuilder::new(),
             &[],
             "None == Some(1)",
-            expect!["Bool"],
+            expect![[r#"
+                error: Type Option[Int] is not comparable
+                None == Some(1)
+                ^^^^
+            "#]],
         );
     }
 
     #[test]
-    fn accepts_nested_some_equals_some_none() {
-        accept(
+    fn rejects_nested_some_equals_some_none() {
+        reject(
             TypeRegistryBuilder::new(),
             &[],
             "Some(Some(1)) == Some(None)",
-            expect!["Bool"],
+            expect![[r#"
+                error: Type Option[Option[Int]] is not comparable
+                Some(Some(1)) == Some(None)
+                ^^^^^^^^^^^^^
+            "#]],
         );
     }
 
     #[test]
-    fn accepts_nested_some_equals_none() {
-        accept(
+    fn rejects_nested_some_equals_none() {
+        reject(
             TypeRegistryBuilder::new(),
             &[],
             "Some(Some(1)) == None",
-            expect!["Bool"],
+            expect![[r#"
+                error: Type Option[Option[Int]] is not comparable
+                Some(Some(1)) == None
+                ^^^^^^^^^^^^^
+            "#]],
         );
     }
 
@@ -3647,9 +3667,9 @@ mod tests {
             &[],
             r#"Some(Some(1)) == Some(Some("2"))"#,
             expect![[r#"
-                error: Cannot compare Option[Option[Int]] to Option[Option[String]]
+                error: Type Option[Option[Int]] is not comparable
                 Some(Some(1)) == Some(Some("2"))
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                ^^^^^^^^^^^^^
             "#]],
         );
     }

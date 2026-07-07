@@ -446,16 +446,6 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value> {
             let right_float = right_val.as_f64().unwrap_or(0.0);
             Ok(Value::Bool(left_float == right_float))
         }
-        IrExpr::Equals {
-            left,
-            right,
-            operand_types: EquatableType::Option(_),
-            ..
-        } => {
-            let left_val = evaluate_expr(left, env)?;
-            let right_val = evaluate_expr(right, env)?;
-            Ok(Value::Bool(left_val == right_val))
-        }
         IrExpr::LessThan {
             left,
             right,

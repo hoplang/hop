@@ -70,7 +70,6 @@ pub enum EquatableType {
     Bool,
     Int,
     Float,
-    Option(Box<EquatableType>),
 }
 
 /// A ComparableType is a type where its values can be ordered
@@ -125,11 +124,7 @@ impl Type {
             Type::String => Some(EquatableType::String),
             Type::Int => Some(EquatableType::Int),
             Type::Float => Some(EquatableType::Float),
-            Type::Option(inner) => {
-                let inner_equatable = inner.as_equatable_type()?;
-                Some(EquatableType::Option(Box::new(inner_equatable)))
-            }
-            Type::Fragment | Type::Array(_) | Type::Named { .. } => None,
+            Type::Option(_) | Type::Fragment | Type::Array(_) | Type::Named { .. } => None,
         }
     }
 

@@ -5222,7 +5222,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 component Greeting(name: Option[String]) {
-                  <if {name == None}></if>
+                  <if {name.is_none()}></if>
                 }
                 component Main {
                   <Greeting name={Some("World")} />
@@ -5231,7 +5231,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 component Greeting(name: Option[String]) {
-                  <if {(name == None)}></if>
+                  <if {name.is_none()}></if>
                 }
 
                 component Main {
@@ -5247,7 +5247,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 component Greeting(name: Option[String]) {
-                  <if {name == None}></if>
+                  <if {name.is_none()}></if>
                 }
                 component Main {
                   <Greeting name={None} />
@@ -5256,7 +5256,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 component Greeting(name: Option[String]) {
-                  <if {(name == None)}></if>
+                  <if {name.is_none()}></if>
                 }
 
                 component Main {
@@ -5272,7 +5272,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 component Greeting(name: Option[String] = None) {
-                  <if {name == None}></if>
+                  <if {name.is_none()}></if>
                 }
                 component Main {
                   <Greeting />
@@ -5281,7 +5281,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 component Greeting(name: Option[String]) {
-                  <if {(name == None)}></if>
+                  <if {name.is_none()}></if>
                 }
 
                 component Main {
@@ -5297,7 +5297,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 component Greeting(name: Option[String] = Some("World")) {
-                  <if {name == None}></if>
+                  <if {name.is_none()}></if>
                 }
                 component Main {
                   <Greeting />
@@ -5306,7 +5306,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 component Greeting(name: Option[String]) {
-                  <if {(name == None)}></if>
+                  <if {name.is_none()}></if>
                 }
 
                 component Main {
@@ -5322,7 +5322,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 component Greeting(name: Option[String]) {
-                  <if {name == None}></if>
+                  <if {name.is_none()}></if>
                 }
                 component Main {
                   <Greeting name="World" />

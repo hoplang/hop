@@ -392,7 +392,6 @@ pub trait Transpiler {
                 EquatableType::String => self.transpile_string_equals(arena, left, right),
                 EquatableType::Int => self.transpile_int_equals(arena, left, right),
                 EquatableType::Float => self.transpile_float_equals(arena, left, right),
-                EquatableType::Option(_) => todo!(),
             },
             IrExpr::LessThan {
                 left,
