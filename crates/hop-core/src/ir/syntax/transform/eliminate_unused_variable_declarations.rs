@@ -13,8 +13,11 @@ struct UnusedVars {
     unused_lets: HashSet<StatementId>,
     /// Match statements with unused Option bindings
     unused_option_bindings: HashSet<StatementId>,
-    /// Match statements with unused Enum bindings
-    unused_enum_bindings: HashSet<(StatementId, FieldName)>,
+    /// Enum match arm bindings that are unused, identified by variable name
+    /// (variable names are globally unique after VariableRenamingPass, so this
+    /// distinguishes bindings in different arms even when they share a field
+    /// name)
+    unused_enum_bindings: HashSet<VarName>,
     /// Record destructures with unused field bindings
     unused_record_bindings: HashSet<(StatementId, FieldName)>,
 }
@@ -54,10 +57,8 @@ pub fn eliminate_unused_variable_declarations(body: &mut Vec<IrStatement>) {
                             Match::Enum { arms, .. } => {
                                 for arm in arms {
                                     let before = arm.bindings.len();
-                                    arm.bindings.retain(|(field_name, _)| {
-                                        !unused_vars
-                                            .unused_enum_bindings
-                                            .contains(&(id, field_name.clone()))
+                                    arm.bindings.retain(|(_, var_name)| {
+                                        !unused_vars.unused_enum_bindings.contains(var_name)
                                     });
                                     if arm.bindings.len() != before {
                                         changed = true;
@@ -120,7 +121,7 @@ fn collect_unused_vars(body: &[IrStatement]) -> UnusedVars {
 
     let mut let_bindings: HashMap<VarName, StatementId> = HashMap::new();
     let mut option_bindings: HashMap<VarName, StatementId> = HashMap::new();
-    let mut enum_bindings: HashMap<VarName, (StatementId, FieldName)> = HashMap::new();
+    let mut enum_bindings: HashSet<VarName> = HashSet::new();
     let mut record_bindings: HashMap<VarName, (StatementId, FieldName)> = HashMap::new();
 
     for stmt in body {
@@ -158,13 +159,9 @@ fn collect_unused_vars(body: &[IrStatement]) -> UnusedVars {
                         }
                         Match::Enum { arms, .. } => {
                             for arm in arms {
-                                for (field_name, var_name) in &arm.bindings {
-                                    let prev = enum_bindings
-                                        .insert(var_name.clone(), (*id, field_name.clone()));
-                                    assert!(
-                                        prev.is_none(),
-                                        "duplicate enum binding name `{var_name}`"
-                                    );
+                                for (_, var_name) in &arm.bindings {
+                                    let inserted = enum_bindings.insert(var_name.clone());
+                                    assert!(inserted, "duplicate enum binding name `{var_name}`");
                                 }
                             }
                         }
@@ -197,10 +194,10 @@ fn collect_unused_vars(body: &[IrStatement]) -> UnusedVars {
         .map(|(_, id)| *id)
         .collect();
 
-    let unused_enum_bindings: HashSet<(StatementId, FieldName)> = enum_bindings
+    let unused_enum_bindings: HashSet<VarName> = enum_bindings
         .iter()
-        .filter(|(binding_name, _)| !used_var_names.contains(*binding_name))
-        .map(|(_, (id, field_name))| (*id, field_name.clone()))
+        .filter(|binding_name| !used_var_names.contains(*binding_name))
+        .cloned()
         .collect();
 
     let unused_record_bindings: HashSet<(StatementId, FieldName)> = record_bindings
@@ -1406,4 +1403,76 @@ mod tests {
             "#]],
         );
     }
+
+    #[test]
+    fn should_preserve_used_binding_when_sibling_arm_has_unused_binding_with_same_field_name() {
+        // Two variants share the field name `f0`. The binding in arm A is
+        // used, the binding in arm B is unused. Only the unused one should
+        // be removed, the used one must survive.
+        let module = IrModuleBuilder::new()
+            .enum_(
+                "E",
+                [("A", vec![("f0", "String")]), ("B", vec![("f0", "String")])],
+            )
+            .view_no_params("Test", |t| {
+                let e = t.enum_variant_with_fields("E", "A", vec![("f0", t.str("hi"))]);
+                t.let_stmt("e", e, |t| {
+                    t.enum_match_stmt_with_bindings(
+                        t.var("e"),
+                        vec![
+                            (
+                                "A",
+                                vec![("f0", "used")],
+                                Box::new(|t: &mut IrBuilder| {
+                                    t.write_expr(t.var("used"), false);
+                                }),
+                            ),
+                            (
+                                "B",
+                                vec![("f0", "unused")],
+                                Box::new(|t: &mut IrBuilder| {
+                                    t.write("no reference to unused here");
+                                }),
+                            ),
+                        ],
+                    );
+                });
+            })
+            .build();
+
+        let view = module.views.into_iter().next().unwrap();
+        check(
+            view,
+            expect![[r#"
+                -- before --
+                view Test() {
+                  let e = E::A {f0: "hi"} in {
+                    match e {
+                      E::A(f0: used) => {
+                        write_expr(used)
+                      }
+                      E::B(f0: unused) => {
+                        write("no reference to unused here")
+                      }
+                    }
+                  }
+                }
+
+                -- after --
+                view Test() {
+                  let e = E::A {f0: "hi"} in {
+                    match e {
+                      E::A(f0: used) => {
+                        write_expr(used)
+                      }
+                      E::B => {
+                        write("no reference to unused here")
+                      }
+                    }
+                  }
+                }
+            "#]],
+        );
+    }
+
 }
