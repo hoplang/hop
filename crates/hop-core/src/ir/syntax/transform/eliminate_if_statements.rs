@@ -3,30 +3,25 @@ use crate::ir::{
     ast::{IrStatement, traverse_statements_mut},
 };
 
-/// A pass that eliminates if statements with constant conditions
-pub struct IfStatementEliminationPass;
-
-impl IfStatementEliminationPass {
-    pub fn run(body: &mut Vec<IrStatement>) {
-        traverse_statements_mut(body, &mut |stmts| {
-            let mut transformed = Vec::new();
-            for stmt in std::mem::take(stmts) {
-                match stmt {
-                    IrStatement::If {
-                        condition: IrExpr::BooleanLiteral { value: true, .. },
-                        body,
-                        ..
-                    } => transformed.extend(body),
-                    IrStatement::If {
-                        condition: IrExpr::BooleanLiteral { value: false, .. },
-                        ..
-                    } => {}
-                    other => transformed.push(other),
-                }
+pub fn eliminate_if_statements(body: &mut Vec<IrStatement>) {
+    traverse_statements_mut(body, &mut |stmts| {
+        let mut transformed = Vec::new();
+        for stmt in std::mem::take(stmts) {
+            match stmt {
+                IrStatement::If {
+                    condition: IrExpr::BooleanLiteral { value: true, .. },
+                    body,
+                    ..
+                } => transformed.extend(body),
+                IrStatement::If {
+                    condition: IrExpr::BooleanLiteral { value: false, .. },
+                    ..
+                } => {}
+                other => transformed.push(other),
             }
-            *stmts = transformed;
-        });
-    }
+        }
+        *stmts = transformed;
+    });
 }
 
 #[cfg(test)]
@@ -39,7 +34,7 @@ mod tests {
 
     fn check(mut view: IrViewDeclaration, expected: Expect) {
         let before = view.to_string();
-        IfStatementEliminationPass::run(&mut view.body);
+        eliminate_if_statements(&mut view.body);
         let after = view.to_string();
         let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
         expected.assert_eq(&output);

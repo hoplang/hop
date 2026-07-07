@@ -7,14 +7,6 @@ use crate::symbols::field_name::FieldName;
 use crate::symbols::var_name::VarName;
 use std::collections::{HashMap, HashSet};
 
-/// A pass that eliminates unused variable declarations.
-/// - Unused let statements are replaced with their body
-/// - Unused Option match bindings are set to `_` (wildcard)
-/// - Unused Enum match bindings are removed from the bindings list
-/// - Unused record destructure bindings are removed; an empty destructure is
-///   replaced with its body
-pub struct UnusedVariableDeclarationEliminationPass;
-
 /// Collected information about unused variables
 struct UnusedVars {
     /// Let statements with unused variables
@@ -27,199 +19,201 @@ struct UnusedVars {
     unused_record_bindings: HashSet<(StatementId, FieldName)>,
 }
 
-impl UnusedVariableDeclarationEliminationPass {
-    /// Collect which let statements and match bindings have unused variables.
-    /// Variables are globally unique after VariableRenamingPass, so we only
-    /// need name-based tracking (no scope bookkeeping).
-    fn collect_unused_vars(body: &[IrStatement]) -> UnusedVars {
-        // All variable names that are referenced anywhere
-        let mut used_var_names: HashSet<VarName> = HashSet::new();
+/// A pass that eliminates unused variable declarations.
+/// - Unused let statements are replaced with their body
+/// - Unused Option match bindings are set to `_` (wildcard)
+/// - Unused Enum match bindings are removed from the bindings list
+/// - Unused record destructure bindings are removed; an empty destructure is
+///   replaced with its body
+pub fn eliminate_unused_variable_declarations(body: &mut Vec<IrStatement>) {
+    loop {
+        let unused_vars = collect_unused_vars(body);
+        let mut made_changes = false;
 
-        let mut let_bindings: HashMap<VarName, StatementId> = HashMap::new();
-        let mut option_bindings: HashMap<VarName, StatementId> = HashMap::new();
-        let mut enum_bindings: HashMap<VarName, (StatementId, FieldName)> = HashMap::new();
-        let mut record_bindings: HashMap<VarName, (StatementId, FieldName)> = HashMap::new();
-
-        for stmt in body {
-            stmt.traverse(&mut |s| {
-                match s {
-                    IrStatement::Let { id, var, .. } => {
-                        // Variable names are globally unique after VariableRenamingPass.
-                        // If this panics, the renaming pass may not have run before this pass.
-                        let prev = let_bindings.insert(var.clone(), *id);
-                        assert!(
-                            prev.is_none(),
-                            "duplicate variable name `{var}` in let_vars"
-                        );
+        traverse_statements_mut(body, &mut |stmts| {
+            let mut changed = false;
+            let mut transformed = Vec::new();
+            for stmt in std::mem::take(stmts) {
+                match stmt {
+                    IrStatement::Let { body, id, .. } if unused_vars.unused_lets.contains(&id) => {
+                        changed = true;
+                        transformed.extend(body);
                     }
-                    IrStatement::LetRecordDestructure { id, bindings, .. } => {
-                        for (field_name, var_name) in bindings {
-                            let prev =
-                                record_bindings.insert(var_name.clone(), (*id, field_name.clone()));
-                            assert!(prev.is_none(), "duplicate record binding name `{var_name}`");
-                        }
-                    }
-                    IrStatement::Match { id, match_ } => {
-                        match match_ {
+                    IrStatement::Match { id, mut match_ } => {
+                        match &mut match_ {
                             Match::Option {
-                                some_arm_binding: some_arm,
-                                ..
+                                some_arm_binding, ..
                             } => {
-                                if let Some(binding) = some_arm {
-                                    let prev = option_bindings.insert(binding.clone(), *id);
-                                    assert!(
-                                        prev.is_none(),
-                                        "duplicate option binding name `{binding}`"
-                                    );
+                                if some_arm_binding.is_some()
+                                    && unused_vars.unused_option_bindings.contains(&id)
+                                {
+                                    *some_arm_binding = None;
+                                    changed = true;
                                 }
                             }
                             Match::Enum { arms, .. } => {
                                 for arm in arms {
-                                    for (field_name, var_name) in &arm.bindings {
-                                        let prev = enum_bindings
-                                            .insert(var_name.clone(), (*id, field_name.clone()));
-                                        assert!(
-                                            prev.is_none(),
-                                            "duplicate enum binding name `{var_name}`"
-                                        );
-                                    }
-                                }
-                            }
-                            Match::Bool { .. } => {
-                                // No bindings
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-
-                // Collect variable references from all expressions
-                s.traverse_exprs(&mut |e| {
-                    if let IrExpr::Var { value: name, .. } = e {
-                        used_var_names.insert(name.clone());
-                    }
-                });
-            });
-        }
-
-        let unused_lets: HashSet<StatementId> = let_bindings
-            .iter()
-            .filter(|(name, _)| !used_var_names.contains(*name))
-            .map(|(_, id)| *id)
-            .collect();
-
-        let unused_option_bindings: HashSet<StatementId> = option_bindings
-            .iter()
-            .filter(|(binding_name, _)| !used_var_names.contains(*binding_name))
-            .map(|(_, id)| *id)
-            .collect();
-
-        let unused_enum_bindings: HashSet<(StatementId, FieldName)> = enum_bindings
-            .iter()
-            .filter(|(binding_name, _)| !used_var_names.contains(*binding_name))
-            .map(|(_, (id, field_name))| (*id, field_name.clone()))
-            .collect();
-
-        let unused_record_bindings: HashSet<(StatementId, FieldName)> = record_bindings
-            .iter()
-            .filter(|(binding_name, _)| !used_var_names.contains(*binding_name))
-            .map(|(_, (id, field_name))| (*id, field_name.clone()))
-            .collect();
-
-        UnusedVars {
-            unused_lets,
-            unused_option_bindings,
-            unused_enum_bindings,
-            unused_record_bindings,
-        }
-    }
-
-    pub fn run(body: &mut Vec<IrStatement>) {
-        loop {
-            let unused_vars = Self::collect_unused_vars(body);
-            let mut made_changes = false;
-
-            traverse_statements_mut(body, &mut |stmts| {
-                let mut changed = false;
-                let mut transformed = Vec::new();
-                for stmt in std::mem::take(stmts) {
-                    match stmt {
-                        IrStatement::Let { body, id, .. }
-                            if unused_vars.unused_lets.contains(&id) =>
-                        {
-                            changed = true;
-                            transformed.extend(body);
-                        }
-                        IrStatement::Match { id, mut match_ } => {
-                            match &mut match_ {
-                                Match::Option {
-                                    some_arm_binding, ..
-                                } => {
-                                    if some_arm_binding.is_some()
-                                        && unused_vars.unused_option_bindings.contains(&id)
-                                    {
-                                        *some_arm_binding = None;
+                                    let before = arm.bindings.len();
+                                    arm.bindings.retain(|(field_name, _)| {
+                                        !unused_vars
+                                            .unused_enum_bindings
+                                            .contains(&(id, field_name.clone()))
+                                    });
+                                    if arm.bindings.len() != before {
                                         changed = true;
                                     }
                                 }
-                                Match::Enum { arms, .. } => {
-                                    for arm in arms {
-                                        let before = arm.bindings.len();
-                                        arm.bindings.retain(|(field_name, _)| {
-                                            !unused_vars
-                                                .unused_enum_bindings
-                                                .contains(&(id, field_name.clone()))
-                                        });
-                                        if arm.bindings.len() != before {
-                                            changed = true;
-                                        }
-                                    }
-                                }
-                                Match::Bool { .. } => {}
                             }
-                            transformed.push(IrStatement::Match { id, match_ });
+                            Match::Bool { .. } => {}
                         }
-                        IrStatement::LetRecordDestructure {
-                            id,
-                            subject,
-                            mut bindings,
-                            body,
-                        } => {
-                            let before = bindings.len();
-                            bindings.retain(|(field_name, _)| {
-                                !unused_vars
-                                    .unused_record_bindings
-                                    .contains(&(id, field_name.clone()))
+                        transformed.push(IrStatement::Match { id, match_ });
+                    }
+                    IrStatement::LetRecordDestructure {
+                        id,
+                        subject,
+                        mut bindings,
+                        body,
+                    } => {
+                        let before = bindings.len();
+                        bindings.retain(|(field_name, _)| {
+                            !unused_vars
+                                .unused_record_bindings
+                                .contains(&(id, field_name.clone()))
+                        });
+                        if bindings.len() != before {
+                            changed = true;
+                        }
+                        if bindings.is_empty() {
+                            // An empty destructure is dropped, keeping its body.
+                            changed = true;
+                            transformed.extend(body);
+                        } else {
+                            transformed.push(IrStatement::LetRecordDestructure {
+                                id,
+                                subject,
+                                bindings,
+                                body,
                             });
-                            if bindings.len() != before {
-                                changed = true;
-                            }
-                            if bindings.is_empty() {
-                                // An empty destructure is dropped, keeping its body.
-                                changed = true;
-                                transformed.extend(body);
-                            } else {
-                                transformed.push(IrStatement::LetRecordDestructure {
-                                    id,
-                                    subject,
-                                    bindings,
-                                    body,
-                                });
-                            }
                         }
-                        other => transformed.push(other),
+                    }
+                    other => transformed.push(other),
+                }
+            }
+            *stmts = transformed;
+            if changed {
+                made_changes = true;
+            }
+        });
+
+        if !made_changes {
+            break;
+        }
+    }
+}
+
+/// Collect which let statements and match bindings have unused variables.
+/// Variables are globally unique after VariableRenamingPass, so we only
+/// need name-based tracking (no scope bookkeeping).
+fn collect_unused_vars(body: &[IrStatement]) -> UnusedVars {
+    // All variable names that are referenced anywhere
+    let mut used_var_names: HashSet<VarName> = HashSet::new();
+
+    let mut let_bindings: HashMap<VarName, StatementId> = HashMap::new();
+    let mut option_bindings: HashMap<VarName, StatementId> = HashMap::new();
+    let mut enum_bindings: HashMap<VarName, (StatementId, FieldName)> = HashMap::new();
+    let mut record_bindings: HashMap<VarName, (StatementId, FieldName)> = HashMap::new();
+
+    for stmt in body {
+        stmt.traverse(&mut |s| {
+            match s {
+                IrStatement::Let { id, var, .. } => {
+                    // Variable names are globally unique after VariableRenamingPass.
+                    // If this panics, the renaming pass may not have run before this pass.
+                    let prev = let_bindings.insert(var.clone(), *id);
+                    assert!(
+                        prev.is_none(),
+                        "duplicate variable name `{var}` in let_vars"
+                    );
+                }
+                IrStatement::LetRecordDestructure { id, bindings, .. } => {
+                    for (field_name, var_name) in bindings {
+                        let prev =
+                            record_bindings.insert(var_name.clone(), (*id, field_name.clone()));
+                        assert!(prev.is_none(), "duplicate record binding name `{var_name}`");
                     }
                 }
-                *stmts = transformed;
-                if changed {
-                    made_changes = true;
+                IrStatement::Match { id, match_ } => {
+                    match match_ {
+                        Match::Option {
+                            some_arm_binding: some_arm,
+                            ..
+                        } => {
+                            if let Some(binding) = some_arm {
+                                let prev = option_bindings.insert(binding.clone(), *id);
+                                assert!(
+                                    prev.is_none(),
+                                    "duplicate option binding name `{binding}`"
+                                );
+                            }
+                        }
+                        Match::Enum { arms, .. } => {
+                            for arm in arms {
+                                for (field_name, var_name) in &arm.bindings {
+                                    let prev = enum_bindings
+                                        .insert(var_name.clone(), (*id, field_name.clone()));
+                                    assert!(
+                                        prev.is_none(),
+                                        "duplicate enum binding name `{var_name}`"
+                                    );
+                                }
+                            }
+                        }
+                        Match::Bool { .. } => {
+                            // No bindings
+                        }
+                    }
+                }
+                _ => {}
+            }
+
+            // Collect variable references from all expressions
+            s.traverse_exprs(&mut |e| {
+                if let IrExpr::Var { value: name, .. } = e {
+                    used_var_names.insert(name.clone());
                 }
             });
+        });
+    }
 
-            if !made_changes {
-                break;
-            }
-        }
+    let unused_lets: HashSet<StatementId> = let_bindings
+        .iter()
+        .filter(|(name, _)| !used_var_names.contains(*name))
+        .map(|(_, id)| *id)
+        .collect();
+
+    let unused_option_bindings: HashSet<StatementId> = option_bindings
+        .iter()
+        .filter(|(binding_name, _)| !used_var_names.contains(*binding_name))
+        .map(|(_, id)| *id)
+        .collect();
+
+    let unused_enum_bindings: HashSet<(StatementId, FieldName)> = enum_bindings
+        .iter()
+        .filter(|(binding_name, _)| !used_var_names.contains(*binding_name))
+        .map(|(_, (id, field_name))| (*id, field_name.clone()))
+        .collect();
+
+    let unused_record_bindings: HashSet<(StatementId, FieldName)> = record_bindings
+        .iter()
+        .filter(|(binding_name, _)| !used_var_names.contains(*binding_name))
+        .map(|(_, (id, field_name))| (*id, field_name.clone()))
+        .collect();
+
+    UnusedVars {
+        unused_lets,
+        unused_option_bindings,
+        unused_enum_bindings,
+        unused_record_bindings,
     }
 }
 
@@ -234,7 +228,7 @@ mod tests {
 
     fn check(mut view: IrViewDeclaration, expected: Expect) {
         let before = view.to_string();
-        UnusedVariableDeclarationEliminationPass::run(&mut view.body);
+        eliminate_unused_variable_declarations(&mut view.body);
         let after = view.to_string();
         let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
         expected.assert_eq(&output);

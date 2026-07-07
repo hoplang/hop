@@ -130,590 +130,570 @@ impl Const {
 
 /// A datafrog-based partial evaluation pass that tracks and propagates
 /// constant values.
-pub struct PartialEvaluationPass;
+pub fn perform_partial_evaluation(body: &mut Vec<IrStatement>, registry: &TypeRegistry) {
+    let mut iteration = Iteration::new();
 
-impl PartialEvaluationPass {
-    pub fn run(body: &mut Vec<IrStatement>, registry: &TypeRegistry) {
-        let mut iteration = Iteration::new();
+    // Binding maps.
+    //
+    // The VariableRenamingPass guarantees globally unique variable names,
+    // so we can collect all bindings into HashMaps without worrying about
+    // shadowing or scoping.
+    let mut variable_bindings: HashMap<VarName, ExprId> = HashMap::new();
+    let mut option_bindings: HashMap<VarName, ExprId> = HashMap::new();
+    let mut enum_field_bindings: HashMap<VarName, (ExprId, FieldName)> = HashMap::new();
 
-        // Binding maps.
-        //
-        // The VariableRenamingPass guarantees globally unique variable names,
-        // so we can collect all bindings into HashMaps without worrying about
-        // shadowing or scoping.
-        let mut variable_bindings: HashMap<VarName, ExprId> = HashMap::new();
-        let mut option_bindings: HashMap<VarName, ExprId> = HashMap::new();
-        let mut enum_field_bindings: HashMap<VarName, (ExprId, FieldName)> = HashMap::new();
+    let mut initial_constants: Vec<(ExprId, Const)> = Vec::new();
 
-        let mut initial_constants: Vec<(ExprId, Const)> = Vec::new();
+    // Unary operations: (operand_expr_id => parent_expr_id)
+    let mut unary_operands: Vec<(ExprId, ExprId)> = Vec::new();
+    let mut unary_ops: Vec<(ExprId, UnaryOp)> = Vec::new();
 
-        // Unary operations: (operand_expr_id => parent_expr_id)
-        let mut unary_operands: Vec<(ExprId, ExprId)> = Vec::new();
-        let mut unary_ops: Vec<(ExprId, UnaryOp)> = Vec::new();
+    // Binary operands: (operand_expr_id => parent_expr_id)
+    let mut binary_left_operands: Vec<(ExprId, ExprId)> = Vec::new();
+    let mut binary_right_operands: Vec<(ExprId, ExprId)> = Vec::new();
+    let mut binary_ops: Vec<(ExprId, BinaryOp)> = Vec::new();
 
-        // Binary operands: (operand_expr_id => parent_expr_id)
-        let mut binary_left_operands: Vec<(ExprId, ExprId)> = Vec::new();
-        let mut binary_right_operands: Vec<(ExprId, ExprId)> = Vec::new();
-        let mut binary_ops: Vec<(ExprId, BinaryOp)> = Vec::new();
+    // Variable references: (defining_expr_id => reference_expr_id)
+    let mut variable_references: Vec<(ExprId, ExprId)> = Vec::new();
+    // Option binding references: (defining_expr_id => reference_expr_id)
+    let mut option_binding_references: Vec<(ExprId, ExprId)> = Vec::new();
+    // Enum binding references: ((defining_expr_id, field_name) => reference_expr_id)
+    let mut enum_binding_references: Vec<((ExprId, FieldName), ExprId)> = Vec::new();
 
-        // Variable references: (defining_expr_id => reference_expr_id)
-        let mut variable_references: Vec<(ExprId, ExprId)> = Vec::new();
-        // Option binding references: (defining_expr_id => reference_expr_id)
-        let mut option_binding_references: Vec<(ExprId, ExprId)> = Vec::new();
-        // Enum binding references: ((defining_expr_id, field_name) => reference_expr_id)
-        let mut enum_binding_references: Vec<((ExprId, FieldName), ExprId)> = Vec::new();
+    let mut enum_match_subjects: Vec<(ExprId, ExprId)> = Vec::new();
+    let mut enum_match_arm_entries: Vec<((ExprId, TypeName, TypeName), ExprId)> = Vec::new();
 
-        let mut enum_match_subjects: Vec<(ExprId, ExprId)> = Vec::new();
-        let mut enum_match_arm_entries: Vec<((ExprId, TypeName, TypeName), ExprId)> = Vec::new();
+    let mut option_match_subjects: Vec<(ExprId, ExprId)> = Vec::new();
+    let mut option_match_arm_entries: Vec<((ExprId, bool), ExprId)> = Vec::new();
 
-        let mut option_match_subjects: Vec<(ExprId, ExprId)> = Vec::new();
-        let mut option_match_arm_entries: Vec<((ExprId, bool), ExprId)> = Vec::new();
+    let mut bool_match_subjects: Vec<(ExprId, ExprId)> = Vec::new();
+    let mut bool_match_arm_entries: Vec<((ExprId, bool), ExprId)> = Vec::new();
 
-        let mut bool_match_subjects: Vec<(ExprId, ExprId)> = Vec::new();
-        let mut bool_match_arm_entries: Vec<((ExprId, bool), ExprId)> = Vec::new();
+    // Let expr bodies: (body_expr_id => let_expr_id)
+    let mut let_expr_bodies: Vec<(ExprId, ExprId)> = Vec::new();
 
-        // Let expr bodies: (body_expr_id => let_expr_id)
-        let mut let_expr_bodies: Vec<(ExprId, ExprId)> = Vec::new();
+    // Enum field values: (enum_expr_id => (field_name, field_expr_id))
+    let mut enum_fields: Vec<(ExprId, (FieldName, ExprId))> = Vec::new();
 
-        // Enum field values: (enum_expr_id => (field_name, field_expr_id))
-        let mut enum_fields: Vec<(ExprId, (FieldName, ExprId))> = Vec::new();
+    // Options contained values: (option_expr_id => contained_expr_id)
+    let mut option_contained_values: Vec<(ExprId, ExprId)> = Vec::new();
 
-        // Options contained values: (option_expr_id => contained_expr_id)
-        let mut option_contained_values: Vec<(ExprId, ExprId)> = Vec::new();
+    for stmt in body.iter() {
+        stmt.traverse(&mut |s| {
+            // Collect statement-level bindings
+            match s {
+                IrStatement::Let { var, value, .. } => {
+                    variable_bindings.insert(var.clone(), value.id());
+                }
+                IrStatement::LetFragment { .. } => {}
+                IrStatement::LetRecordDestructure { .. } => {}
+                IrStatement::For { .. } => {}
+                IrStatement::Match { .. } => {}
+                IrStatement::If { .. }
+                | IrStatement::Write { .. }
+                | IrStatement::WriteExpr { .. }
+                | IrStatement::ComponentInvocation { .. } => {
+                    // No bindings
+                }
+            }
 
-        for stmt in body.iter() {
-            stmt.traverse(&mut |s| {
-                // Collect statement-level bindings
-                match s {
-                    IrStatement::Let { var, value, .. } => {
-                        variable_bindings.insert(var.clone(), value.id());
+            s.traverse_exprs(&mut |expr| {
+                match expr {
+                    // Simple constants
+                    IrExpr::BooleanLiteral { value, .. } => {
+                        initial_constants.push((expr.id(), Const::Bool(*value)));
                     }
-                    IrStatement::LetFragment { .. } => {}
-                    IrStatement::LetRecordDestructure { .. } => {}
-                    IrStatement::For { .. } => {}
-                    IrStatement::Match { .. } => {}
-                    IrStatement::If { .. }
-                    | IrStatement::Write { .. }
-                    | IrStatement::WriteExpr { .. }
-                    | IrStatement::ComponentInvocation { .. } => {
-                        // No bindings
+                    IrExpr::StringLiteral { value, .. } => {
+                        initial_constants.push((expr.id(), Const::String(value.clone())));
+                    }
+                    // Unary ops
+                    IrExpr::BooleanNegation { operand, .. } => {
+                        unary_operands.push((operand.id(), expr.id()));
+                        unary_ops.push((expr.id(), UnaryOp::BooleanNegation));
+                    }
+                    IrExpr::TwMerge { operand, .. } => {
+                        unary_operands.push((operand.id(), expr.id()));
+                        unary_ops.push((expr.id(), UnaryOp::TwMerge));
+                    }
+                    // Binary ops
+                    IrExpr::BooleanLogicalOr { left, right, .. } => {
+                        binary_left_operands.push((left.id(), expr.id()));
+                        binary_right_operands.push((right.id(), expr.id()));
+                        binary_ops.push((expr.id(), BinaryOp::LogicalOr));
+                    }
+                    IrExpr::BooleanLogicalAnd { left, right, .. } => {
+                        binary_left_operands.push((left.id(), expr.id()));
+                        binary_right_operands.push((right.id(), expr.id()));
+                        binary_ops.push((expr.id(), BinaryOp::LogicalAnd));
+                    }
+                    IrExpr::Equals { left, right, .. } => {
+                        binary_left_operands.push((left.id(), expr.id()));
+                        binary_right_operands.push((right.id(), expr.id()));
+                        binary_ops.push((expr.id(), BinaryOp::Equals));
+                    }
+                    IrExpr::StringConcat { left, right, .. } => {
+                        binary_left_operands.push((left.id(), expr.id()));
+                        binary_right_operands.push((right.id(), expr.id()));
+                        binary_ops.push((expr.id(), BinaryOp::StringConcat));
+                    }
+                    // Other
+                    IrExpr::EnumLiteral {
+                        enum_name,
+                        variant_name,
+                        fields,
+                        ..
+                    } => {
+                        // Track enum as constant (variant info for match
+                        // selection + field IDs for reconstruction)
+                        let field_ids: Vec<(FieldName, ExprId)> = fields
+                            .iter()
+                            .map(|(name, expr)| (name.clone(), expr.id()))
+                            .collect();
+                        initial_constants.push((
+                            expr.id(),
+                            Const::Enum {
+                                enum_name: enum_name.clone(),
+                                variant_name: variant_name.clone(),
+                                fields: field_ids.clone(),
+                            },
+                        ));
+                        // Track field values for binding propagation
+                        for (field_name, field_id) in field_ids {
+                            enum_fields.push((expr.id(), (field_name, field_id)));
+                        }
+                    }
+                    IrExpr::Match { match_, .. } => match match_ {
+                        Match::Enum { subject, arms } => {
+                            let subject_id = subject.id();
+                            enum_match_subjects.push((subject_id, expr.id()));
+                            for arm in arms {
+                                for (field_name, binding_name) in &arm.bindings {
+                                    enum_field_bindings.insert(
+                                        binding_name.clone(),
+                                        (subject_id, field_name.clone()),
+                                    );
+                                }
+                            }
+                            for arm in arms {
+                                match &arm.pattern {
+                                    EnumPattern::Variant {
+                                        enum_name,
+                                        variant_name,
+                                    } => {
+                                        enum_match_arm_entries.push((
+                                            (expr.id(), enum_name.clone(), variant_name.clone()),
+                                            arm.body.id(),
+                                        ));
+                                    }
+                                }
+                            }
+                        }
+                        Match::Bool {
+                            subject,
+                            true_body,
+                            false_body,
+                        } => {
+                            let subject_id = subject.id();
+                            bool_match_subjects.push((subject_id, expr.id()));
+                            bool_match_arm_entries.push(((expr.id(), true), true_body.id()));
+                            bool_match_arm_entries.push(((expr.id(), false), false_body.id()));
+                        }
+                        Match::Option {
+                            subject,
+                            some_arm_binding,
+                            some_arm_body,
+                            none_arm_body,
+                        } => {
+                            let subject_id = subject.id();
+                            option_match_subjects.push((subject_id, expr.id()));
+                            option_match_arm_entries.push(((expr.id(), true), some_arm_body.id()));
+                            option_match_arm_entries.push(((expr.id(), false), none_arm_body.id()));
+                            if let Some(binding) = some_arm_binding {
+                                option_bindings.insert(binding.clone(), subject_id);
+                            }
+                        }
+                    },
+                    IrExpr::Var { value: name, .. } => {
+                        if let Some(def_expr_id) = variable_bindings.get(name) {
+                            variable_references.push((*def_expr_id, expr.id()));
+                        } else if let Some(subject_def_id) = option_bindings.get(name) {
+                            option_binding_references.push((*subject_def_id, expr.id()));
+                        } else if let Some((subject_def_id, field_name)) =
+                            enum_field_bindings.get(name)
+                        {
+                            enum_binding_references
+                                .push(((*subject_def_id, field_name.clone()), expr.id()));
+                        }
+                    }
+                    IrExpr::OptionLiteral { value, .. } => {
+                        // Track the full Option constant with inner expression id
+                        let inner_id = value.as_ref().map(|inner| inner.id());
+                        initial_constants.push((expr.id(), Const::Option(inner_id)));
+                        // Track contained expr id for binding propagation
+                        if let Some(inner) = value {
+                            option_contained_values.push((expr.id(), inner.id()));
+                        }
+                    }
+                    IrExpr::Let {
+                        var_name,
+                        value,
+                        body,
+                        ..
+                    } => {
+                        variable_bindings.insert(var_name.clone(), value.id());
+                        let_expr_bodies.push((body.id(), expr.id()));
+                    }
+                    IrExpr::LetRecordDestructure { .. } => {}
+                    IrExpr::LessThanOrEqual { .. } => {
+                        // Not yet implemented
+                    }
+                    IrExpr::LessThan { .. } => {
+                        // Not yet implemented
+                    }
+                    IrExpr::NumericAdd { .. } => {
+                        // Not yet implemented
+                    }
+                    IrExpr::NumericSubtract { .. } => {
+                        // Not yet implemented
+                    }
+                    IrExpr::NumericMultiply { .. } => {
+                        // Not yet implemented
+                    }
+                    IrExpr::RecordLiteral { .. } => {
+                        // Not yet implemented
+                    }
+                    IrExpr::IntLiteral { .. } => {
+                        // Not yet implemented
+                    }
+                    IrExpr::ArrayLiteral { .. } => {
+                        // Not yet implemented
+                    }
+                    IrExpr::FloatLiteral { .. } => {
+                        // Not yet implemented
+                    }
+                    IrExpr::FieldAccess { .. } => {
+                        // Not yet implemented
+                    }
+                    IrExpr::NumericNegation { .. } => {
+                        // Not yet implemented
+                    }
+                    IrExpr::ArrayLength { .. } => {
+                        // Not yet implemented
+                    }
+                    IrExpr::ArrayIsEmpty { .. } => {
+                        // Not yet implemented
+                    }
+                    IrExpr::StringIsEmpty { .. } => {
+                        // Not yet implemented
+                    }
+                    IrExpr::OptionIsSome { .. } => {
+                        // Not yet implemented
+                    }
+                    IrExpr::OptionIsNone { .. } => {
+                        // Not yet implemented
+                    }
+                    IrExpr::IntToString { .. } => {
+                        // Not yet implemented
+                    }
+                    IrExpr::FloatToInt { .. } => {
+                        // Not yet implemented
+                    }
+                    IrExpr::IntToFloat { .. } => {
+                        // Not yet implemented
+                    }
+                    IrExpr::FragmentEmpty { .. } => {
+                        // Leaf constant, no sub-expressions to analyze
                     }
                 }
+            });
+        });
+    }
 
-                s.traverse_exprs(&mut |expr| {
-                    match expr {
-                        // Simple constants
-                        IrExpr::BooleanLiteral { value, .. } => {
-                            initial_constants.push((expr.id(), Const::Bool(*value)));
-                        }
-                        IrExpr::StringLiteral { value, .. } => {
-                            initial_constants.push((expr.id(), Const::String(value.clone())));
-                        }
-                        // Unary ops
-                        IrExpr::BooleanNegation { operand, .. } => {
-                            unary_operands.push((operand.id(), expr.id()));
-                            unary_ops.push((expr.id(), UnaryOp::BooleanNegation));
-                        }
-                        IrExpr::TwMerge { operand, .. } => {
-                            unary_operands.push((operand.id(), expr.id()));
-                            unary_ops.push((expr.id(), UnaryOp::TwMerge));
-                        }
-                        // Binary ops
-                        IrExpr::BooleanLogicalOr { left, right, .. } => {
-                            binary_left_operands.push((left.id(), expr.id()));
-                            binary_right_operands.push((right.id(), expr.id()));
-                            binary_ops.push((expr.id(), BinaryOp::LogicalOr));
-                        }
-                        IrExpr::BooleanLogicalAnd { left, right, .. } => {
-                            binary_left_operands.push((left.id(), expr.id()));
-                            binary_right_operands.push((right.id(), expr.id()));
-                            binary_ops.push((expr.id(), BinaryOp::LogicalAnd));
-                        }
-                        IrExpr::Equals { left, right, .. } => {
-                            binary_left_operands.push((left.id(), expr.id()));
-                            binary_right_operands.push((right.id(), expr.id()));
-                            binary_ops.push((expr.id(), BinaryOp::Equals));
-                        }
-                        IrExpr::StringConcat { left, right, .. } => {
-                            binary_left_operands.push((left.id(), expr.id()));
-                            binary_right_operands.push((right.id(), expr.id()));
-                            binary_ops.push((expr.id(), BinaryOp::StringConcat));
-                        }
-                        // Other
-                        IrExpr::EnumLiteral {
-                            enum_name,
-                            variant_name,
-                            fields,
-                            ..
-                        } => {
-                            // Track enum as constant (variant info for match
-                            // selection + field IDs for reconstruction)
-                            let field_ids: Vec<(FieldName, ExprId)> = fields
-                                .iter()
-                                .map(|(name, expr)| (name.clone(), expr.id()))
-                                .collect();
-                            initial_constants.push((
-                                expr.id(),
-                                Const::Enum {
-                                    enum_name: enum_name.clone(),
-                                    variant_name: variant_name.clone(),
-                                    fields: field_ids.clone(),
-                                },
-                            ));
-                            // Track field values for binding propagation
-                            for (field_name, field_id) in field_ids {
-                                enum_fields.push((expr.id(), (field_name, field_id)));
-                            }
-                        }
-                        IrExpr::Match { match_, .. } => match match_ {
-                            Match::Enum { subject, arms } => {
-                                let subject_id = subject.id();
-                                enum_match_subjects.push((subject_id, expr.id()));
-                                for arm in arms {
-                                    for (field_name, binding_name) in &arm.bindings {
-                                        enum_field_bindings.insert(
-                                            binding_name.clone(),
-                                            (subject_id, field_name.clone()),
-                                        );
-                                    }
-                                }
-                                for arm in arms {
-                                    match &arm.pattern {
-                                        EnumPattern::Variant {
-                                            enum_name,
-                                            variant_name,
-                                        } => {
-                                            enum_match_arm_entries.push((
-                                                (
-                                                    expr.id(),
-                                                    enum_name.clone(),
-                                                    variant_name.clone(),
-                                                ),
-                                                arm.body.id(),
-                                            ));
-                                        }
-                                    }
-                                }
-                            }
-                            Match::Bool {
-                                subject,
-                                true_body,
-                                false_body,
-                            } => {
-                                let subject_id = subject.id();
-                                bool_match_subjects.push((subject_id, expr.id()));
-                                bool_match_arm_entries.push(((expr.id(), true), true_body.id()));
-                                bool_match_arm_entries.push(((expr.id(), false), false_body.id()));
-                            }
-                            Match::Option {
-                                subject,
-                                some_arm_binding,
-                                some_arm_body,
-                                none_arm_body,
-                            } => {
-                                let subject_id = subject.id();
-                                option_match_subjects.push((subject_id, expr.id()));
-                                option_match_arm_entries
-                                    .push(((expr.id(), true), some_arm_body.id()));
-                                option_match_arm_entries
-                                    .push(((expr.id(), false), none_arm_body.id()));
-                                if let Some(binding) = some_arm_binding {
-                                    option_bindings.insert(binding.clone(), subject_id);
-                                }
+    // Known values of expressions: (expr_id => known_value)
+    let known_expr_value = iteration.variable::<(ExprId, Const)>("known_expr_value");
+    known_expr_value.extend(initial_constants);
+
+    // Unary operations
+    let unary_op = Relation::from_vec(unary_ops);
+    let unary_operand = Relation::from_vec(unary_operands);
+    let unary_known_value = iteration.variable::<(ExprId, Const)>("unary_op_known_value");
+
+    // Binary operations
+    let binary_op = Relation::from_vec(binary_ops);
+    let binary_left_operand = Relation::from_vec(binary_left_operands);
+    let binary_right_operand = Relation::from_vec(binary_right_operands);
+    let binary_left_known_value = iteration.variable::<(ExprId, Const)>("binary_left_known_value");
+    let binary_right_known_value =
+        iteration.variable::<(ExprId, Const)>("binary_right_known_value");
+    let binary_known_values = iteration.variable::<(ExprId, (Const, Const))>("binary_known_values");
+
+    // Enum match subject expressions: (subject_id => match_id)
+    let enum_match_subject = Relation::from_vec(enum_match_subjects);
+
+    // Enum match arms: ((match_id, enum_name, variant_name) => arm_body_id)
+    let enum_match_arms = Relation::from_vec(enum_match_arm_entries);
+
+    // Enum matches with known subjects: ((match_id, enum_name, variant_name) => match_id)
+    let match_expr_with_known_enum =
+        iteration.variable::<((ExprId, TypeName, TypeName), ExprId)>("match_with_known_enum");
+
+    // Option match subject expressions: (subject_id => match_id)
+    let option_match_subject = Relation::from_vec(option_match_subjects);
+
+    // Option match arms: ((match_id, is_some) => body_id)
+    let option_match_arms = Relation::from_vec(option_match_arm_entries);
+
+    // Option matches with known subjects: ((match_id, is_some) => match_id)
+    let match_expr_with_known_option =
+        iteration.variable::<((ExprId, bool), ExprId)>("match_with_known_option");
+
+    // Bool match subject expressions: (subject_id => match_id)
+    let bool_match_subject = Relation::from_vec(bool_match_subjects);
+
+    // Bool match arms: ((match_id, is_true) => body_id)
+    let bool_match_arms = Relation::from_vec(bool_match_arm_entries);
+
+    // Bool matches with known subjects: ((match_id, is_true) => match_id)
+    let match_expr_with_known_bool =
+        iteration.variable::<((ExprId, bool), ExprId)>("match_with_known_bool");
+
+    // Option contained value: (option_expr_id => contained_expr_id)
+    let option_contained_value = iteration.variable::<(ExprId, ExprId)>("option_contained_value");
+    option_contained_value.extend(option_contained_values);
+
+    // Option binding uses: (subject_def_expr_id => binding_var_expr_id)
+    let option_binding_reference = Relation::from_vec(option_binding_references);
+
+    // Enum field expression ids: (enum_expr_id => (field_name, field_expr_id))
+    // Used for propagating through variable bindings
+    let enum_field = iteration.variable::<(ExprId, (FieldName, ExprId))>("enum_field");
+    enum_field.extend(enum_fields.clone());
+
+    // Enum field keyed by (expr_id, field_name): ((enum_expr_id, field_name) => field_expr_id)
+    // Used for joining with binding uses
+    let enum_field_keyed = iteration.variable::<((ExprId, FieldName), ExprId)>("enum_field_keyed");
+    enum_field_keyed.extend(
+        enum_fields
+            .into_iter()
+            .map(|(expr_id, (field_name, field_id))| ((expr_id, field_name), field_id)),
+    );
+
+    // Enum binding uses: ((subject_def_expr_id, field_name) => binding_var_expr_id)
+    let enum_binding_use = Relation::from_vec(enum_binding_references);
+
+    // Constant propagation: `propagate_to(x, y)` means "y computes the same value as x".
+    let propagate_to = iteration.variable::<(ExprId, ExprId)>("propagate_to");
+    propagate_to.extend(variable_references);
+    propagate_to.extend(let_expr_bodies);
+
+    while iteration.changed() {
+        // Evaluate unary operations
+        {
+            unary_known_value.from_join(
+                &known_expr_value,
+                &unary_operand,
+                |_: &ExprId, known_val: &Const, parent_expr_id: &ExprId| {
+                    (*parent_expr_id, known_val.clone())
+                },
+            );
+            known_expr_value.from_join(
+                &unary_known_value,
+                &unary_op,
+                |parent_expr_id: &ExprId, known_val: &Const, op: &UnaryOp| {
+                    let result = match op {
+                        UnaryOp::BooleanNegation => match known_val {
+                            Const::Bool(b) => Const::Bool(!b),
+                            _ => {
+                                unreachable!("Boolean negation can only have boolean operands")
                             }
                         },
-                        IrExpr::Var { value: name, .. } => {
-                            if let Some(def_expr_id) = variable_bindings.get(name) {
-                                variable_references.push((*def_expr_id, expr.id()));
-                            } else if let Some(subject_def_id) = option_bindings.get(name) {
-                                option_binding_references.push((*subject_def_id, expr.id()));
-                            } else if let Some((subject_def_id, field_name)) =
-                                enum_field_bindings.get(name)
-                            {
-                                enum_binding_references
-                                    .push(((*subject_def_id, field_name.clone()), expr.id()));
+                        UnaryOp::TwMerge => match known_val {
+                            Const::String(s) => {
+                                Const::String(CheapString::new(tw_merge(s.as_str())))
                             }
-                        }
-                        IrExpr::OptionLiteral { value, .. } => {
-                            // Track the full Option constant with inner expression id
-                            let inner_id = value.as_ref().map(|inner| inner.id());
-                            initial_constants.push((expr.id(), Const::Option(inner_id)));
-                            // Track contained expr id for binding propagation
-                            if let Some(inner) = value {
-                                option_contained_values.push((expr.id(), inner.id()));
+                            _ => unreachable!("TwMerge can only have string operands"),
+                        },
+                    };
+                    (*parent_expr_id, result)
+                },
+            );
+        }
+
+        // Evaluate binary operations
+        {
+            binary_left_known_value.from_join(
+                &known_expr_value,
+                &binary_left_operand,
+                |_: &ExprId, known_val: &Const, parent_expr_id: &ExprId| {
+                    (*parent_expr_id, known_val.clone())
+                },
+            );
+            binary_right_known_value.from_join(
+                &known_expr_value,
+                &binary_right_operand,
+                |_: &ExprId, known_val: &Const, parent_expr_id: &ExprId| {
+                    (*parent_expr_id, known_val.clone())
+                },
+            );
+            binary_known_values.from_join(
+                &binary_left_known_value,
+                &binary_right_known_value,
+                |parent_expr_id: &ExprId, known_left_val: &Const, known_right_val: &Const| {
+                    (
+                        *parent_expr_id,
+                        (known_left_val.clone(), known_right_val.clone()),
+                    )
+                },
+            );
+            known_expr_value.from_join(
+                &binary_known_values,
+                &binary_op,
+                |parent_expr_id: &ExprId,
+                 (known_left_val, known_right_val): &(Const, Const),
+                 op: &BinaryOp| {
+                    let result = match op {
+                        BinaryOp::Equals => Const::Bool(known_left_val == known_right_val),
+                        BinaryOp::StringConcat => match (known_left_val, known_right_val) {
+                            (Const::String(l), Const::String(r)) => {
+                                let s = format!("{}{}", l, r);
+                                Const::String(CheapString::new(s))
                             }
-                        }
-                        IrExpr::Let {
-                            var_name,
-                            value,
-                            body,
-                            ..
-                        } => {
-                            variable_bindings.insert(var_name.clone(), value.id());
-                            let_expr_bodies.push((body.id(), expr.id()));
-                        }
-                        IrExpr::LetRecordDestructure { .. } => {}
-                        IrExpr::LessThanOrEqual { .. } => {
-                            // Not yet implemented
-                        }
-                        IrExpr::LessThan { .. } => {
-                            // Not yet implemented
-                        }
-                        IrExpr::NumericAdd { .. } => {
-                            // Not yet implemented
-                        }
-                        IrExpr::NumericSubtract { .. } => {
-                            // Not yet implemented
-                        }
-                        IrExpr::NumericMultiply { .. } => {
-                            // Not yet implemented
-                        }
-                        IrExpr::RecordLiteral { .. } => {
-                            // Not yet implemented
-                        }
-                        IrExpr::IntLiteral { .. } => {
-                            // Not yet implemented
-                        }
-                        IrExpr::ArrayLiteral { .. } => {
-                            // Not yet implemented
-                        }
-                        IrExpr::FloatLiteral { .. } => {
-                            // Not yet implemented
-                        }
-                        IrExpr::FieldAccess { .. } => {
-                            // Not yet implemented
-                        }
-                        IrExpr::NumericNegation { .. } => {
-                            // Not yet implemented
-                        }
-                        IrExpr::ArrayLength { .. } => {
-                            // Not yet implemented
-                        }
-                        IrExpr::ArrayIsEmpty { .. } => {
-                            // Not yet implemented
-                        }
-                        IrExpr::StringIsEmpty { .. } => {
-                            // Not yet implemented
-                        }
-                        IrExpr::OptionIsSome { .. } => {
-                            // Not yet implemented
-                        }
-                        IrExpr::OptionIsNone { .. } => {
-                            // Not yet implemented
-                        }
-                        IrExpr::IntToString { .. } => {
-                            // Not yet implemented
-                        }
-                        IrExpr::FloatToInt { .. } => {
-                            // Not yet implemented
-                        }
-                        IrExpr::IntToFloat { .. } => {
-                            // Not yet implemented
-                        }
-                        IrExpr::FragmentEmpty { .. } => {
-                            // Leaf constant, no sub-expressions to analyze
-                        }
-                    }
-                });
+                            _ => unreachable!("StringConcat can only have string operands"),
+                        },
+                        BinaryOp::LogicalOr => match (known_left_val, known_right_val) {
+                            (Const::Bool(l), Const::Bool(r)) => Const::Bool(*l || *r),
+                            _ => unreachable!("LogicalOr can only have boolean operands"),
+                        },
+                        BinaryOp::LogicalAnd => match (known_left_val, known_right_val) {
+                            (Const::Bool(l), Const::Bool(r)) => Const::Bool(*l && *r),
+                            _ => unreachable!("LogicalAnd can only have boolean operands"),
+                        },
+                    };
+                    (*parent_expr_id, result)
+                },
+            );
+        }
+
+        // Constant propagation
+        {
+            known_expr_value.from_join(
+                &known_expr_value,
+                &propagate_to,
+                |_source: &ExprId, val: &Const, target: &ExprId| (*target, val.clone()),
+            );
+            propagate_to.from_join(
+                &option_contained_value,
+                &option_binding_reference,
+                |_subject: &ExprId, inner_id: &ExprId, binding_use_id: &ExprId| {
+                    (*inner_id, *binding_use_id)
+                },
+            );
+            option_contained_value.from_join(
+                &option_contained_value,
+                &propagate_to,
+                |_source: &ExprId, inner_id: &ExprId, target: &ExprId| (*target, *inner_id),
+            );
+            propagate_to.from_join(
+                &enum_field_keyed,
+                &enum_binding_use,
+                |_key: &(ExprId, FieldName), field_id: &ExprId, binding_use_id: &ExprId| {
+                    (*field_id, *binding_use_id)
+                },
+            );
+            enum_field.from_join(
+                &enum_field,
+                &propagate_to,
+                |_source: &ExprId,
+                 (field_name, field_id): &(FieldName, ExprId),
+                 target: &ExprId| { (*target, (field_name.clone(), *field_id)) },
+            );
+        }
+
+        // Keep enum_field_keyed in sync with enum_field
+        {
+            enum_field_keyed.from_map(&enum_field, |&(target, (ref field_name, field_id))| {
+                ((target, field_name.clone()), field_id)
             });
         }
 
-        // Known values of expressions: (expr_id => known_value)
-        let known_expr_value = iteration.variable::<(ExprId, Const)>("known_expr_value");
-        known_expr_value.extend(initial_constants);
+        // Evaluate IrExpr::Match over Option
+        {
+            match_expr_with_known_option.from_join(
+                &known_expr_value,
+                &option_match_subject,
+                |_subject: &ExprId, known_val: &Const, match_id: &ExprId| match known_val {
+                    Const::Option(inner) => ((*match_id, inner.is_some()), *match_id),
+                    _ => unreachable!("option match subject must have option constant"),
+                },
+            );
 
-        // Unary operations
-        let unary_op = Relation::from_vec(unary_ops);
-        let unary_operand = Relation::from_vec(unary_operands);
-        let unary_known_value = iteration.variable::<(ExprId, Const)>("unary_op_known_value");
-
-        // Binary operations
-        let binary_op = Relation::from_vec(binary_ops);
-        let binary_left_operand = Relation::from_vec(binary_left_operands);
-        let binary_right_operand = Relation::from_vec(binary_right_operands);
-        let binary_left_known_value =
-            iteration.variable::<(ExprId, Const)>("binary_left_known_value");
-        let binary_right_known_value =
-            iteration.variable::<(ExprId, Const)>("binary_right_known_value");
-        let binary_known_values =
-            iteration.variable::<(ExprId, (Const, Const))>("binary_known_values");
-
-        // Enum match subject expressions: (subject_id => match_id)
-        let enum_match_subject = Relation::from_vec(enum_match_subjects);
-
-        // Enum match arms: ((match_id, enum_name, variant_name) => arm_body_id)
-        let enum_match_arms = Relation::from_vec(enum_match_arm_entries);
-
-        // Enum matches with known subjects: ((match_id, enum_name, variant_name) => match_id)
-        let match_expr_with_known_enum =
-            iteration.variable::<((ExprId, TypeName, TypeName), ExprId)>("match_with_known_enum");
-
-        // Option match subject expressions: (subject_id => match_id)
-        let option_match_subject = Relation::from_vec(option_match_subjects);
-
-        // Option match arms: ((match_id, is_some) => body_id)
-        let option_match_arms = Relation::from_vec(option_match_arm_entries);
-
-        // Option matches with known subjects: ((match_id, is_some) => match_id)
-        let match_expr_with_known_option =
-            iteration.variable::<((ExprId, bool), ExprId)>("match_with_known_option");
-
-        // Bool match subject expressions: (subject_id => match_id)
-        let bool_match_subject = Relation::from_vec(bool_match_subjects);
-
-        // Bool match arms: ((match_id, is_true) => body_id)
-        let bool_match_arms = Relation::from_vec(bool_match_arm_entries);
-
-        // Bool matches with known subjects: ((match_id, is_true) => match_id)
-        let match_expr_with_known_bool =
-            iteration.variable::<((ExprId, bool), ExprId)>("match_with_known_bool");
-
-        // Option contained value: (option_expr_id => contained_expr_id)
-        let option_contained_value =
-            iteration.variable::<(ExprId, ExprId)>("option_contained_value");
-        option_contained_value.extend(option_contained_values);
-
-        // Option binding uses: (subject_def_expr_id => binding_var_expr_id)
-        let option_binding_reference = Relation::from_vec(option_binding_references);
-
-        // Enum field expression ids: (enum_expr_id => (field_name, field_expr_id))
-        // Used for propagating through variable bindings
-        let enum_field = iteration.variable::<(ExprId, (FieldName, ExprId))>("enum_field");
-        enum_field.extend(enum_fields.clone());
-
-        // Enum field keyed by (expr_id, field_name): ((enum_expr_id, field_name) => field_expr_id)
-        // Used for joining with binding uses
-        let enum_field_keyed =
-            iteration.variable::<((ExprId, FieldName), ExprId)>("enum_field_keyed");
-        enum_field_keyed.extend(
-            enum_fields
-                .into_iter()
-                .map(|(expr_id, (field_name, field_id))| ((expr_id, field_name), field_id)),
-        );
-
-        // Enum binding uses: ((subject_def_expr_id, field_name) => binding_var_expr_id)
-        let enum_binding_use = Relation::from_vec(enum_binding_references);
-
-        // Constant propagation: `propagate_to(x, y)` means "y computes the same value as x".
-        let propagate_to = iteration.variable::<(ExprId, ExprId)>("propagate_to");
-        propagate_to.extend(variable_references);
-        propagate_to.extend(let_expr_bodies);
-
-        while iteration.changed() {
-            // Evaluate unary operations
-            {
-                unary_known_value.from_join(
-                    &known_expr_value,
-                    &unary_operand,
-                    |_: &ExprId, known_val: &Const, parent_expr_id: &ExprId| {
-                        (*parent_expr_id, known_val.clone())
-                    },
-                );
-                known_expr_value.from_join(
-                    &unary_known_value,
-                    &unary_op,
-                    |parent_expr_id: &ExprId, known_val: &Const, op: &UnaryOp| {
-                        let result = match op {
-                            UnaryOp::BooleanNegation => match known_val {
-                                Const::Bool(b) => Const::Bool(!b),
-                                _ => {
-                                    unreachable!("Boolean negation can only have boolean operands")
-                                }
-                            },
-                            UnaryOp::TwMerge => match known_val {
-                                Const::String(s) => {
-                                    Const::String(CheapString::new(tw_merge(s.as_str())))
-                                }
-                                _ => unreachable!("TwMerge can only have string operands"),
-                            },
-                        };
-                        (*parent_expr_id, result)
-                    },
-                );
-            }
-
-            // Evaluate binary operations
-            {
-                binary_left_known_value.from_join(
-                    &known_expr_value,
-                    &binary_left_operand,
-                    |_: &ExprId, known_val: &Const, parent_expr_id: &ExprId| {
-                        (*parent_expr_id, known_val.clone())
-                    },
-                );
-                binary_right_known_value.from_join(
-                    &known_expr_value,
-                    &binary_right_operand,
-                    |_: &ExprId, known_val: &Const, parent_expr_id: &ExprId| {
-                        (*parent_expr_id, known_val.clone())
-                    },
-                );
-                binary_known_values.from_join(
-                    &binary_left_known_value,
-                    &binary_right_known_value,
-                    |parent_expr_id: &ExprId, known_left_val: &Const, known_right_val: &Const| {
-                        (
-                            *parent_expr_id,
-                            (known_left_val.clone(), known_right_val.clone()),
-                        )
-                    },
-                );
-                known_expr_value.from_join(
-                    &binary_known_values,
-                    &binary_op,
-                    |parent_expr_id: &ExprId,
-                     (known_left_val, known_right_val): &(Const, Const),
-                     op: &BinaryOp| {
-                        let result = match op {
-                            BinaryOp::Equals => Const::Bool(known_left_val == known_right_val),
-                            BinaryOp::StringConcat => match (known_left_val, known_right_val) {
-                                (Const::String(l), Const::String(r)) => {
-                                    let s = format!("{}{}", l, r);
-                                    Const::String(CheapString::new(s))
-                                }
-                                _ => unreachable!("StringConcat can only have string operands"),
-                            },
-                            BinaryOp::LogicalOr => match (known_left_val, known_right_val) {
-                                (Const::Bool(l), Const::Bool(r)) => Const::Bool(*l || *r),
-                                _ => unreachable!("LogicalOr can only have boolean operands"),
-                            },
-                            BinaryOp::LogicalAnd => match (known_left_val, known_right_val) {
-                                (Const::Bool(l), Const::Bool(r)) => Const::Bool(*l && *r),
-                                _ => unreachable!("LogicalAnd can only have boolean operands"),
-                            },
-                        };
-                        (*parent_expr_id, result)
-                    },
-                );
-            }
-
-            // Constant propagation
-            {
-                known_expr_value.from_join(
-                    &known_expr_value,
-                    &propagate_to,
-                    |_source: &ExprId, val: &Const, target: &ExprId| (*target, val.clone()),
-                );
-                propagate_to.from_join(
-                    &option_contained_value,
-                    &option_binding_reference,
-                    |_subject: &ExprId, inner_id: &ExprId, binding_use_id: &ExprId| {
-                        (*inner_id, *binding_use_id)
-                    },
-                );
-                option_contained_value.from_join(
-                    &option_contained_value,
-                    &propagate_to,
-                    |_source: &ExprId, inner_id: &ExprId, target: &ExprId| (*target, *inner_id),
-                );
-                propagate_to.from_join(
-                    &enum_field_keyed,
-                    &enum_binding_use,
-                    |_key: &(ExprId, FieldName), field_id: &ExprId, binding_use_id: &ExprId| {
-                        (*field_id, *binding_use_id)
-                    },
-                );
-                enum_field.from_join(
-                    &enum_field,
-                    &propagate_to,
-                    |_source: &ExprId,
-                     (field_name, field_id): &(FieldName, ExprId),
-                     target: &ExprId| {
-                        (*target, (field_name.clone(), *field_id))
-                    },
-                );
-            }
-
-            // Keep enum_field_keyed in sync with enum_field
-            {
-                enum_field_keyed.from_map(&enum_field, |&(target, (ref field_name, field_id))| {
-                    ((target, field_name.clone()), field_id)
-                });
-            }
-
-            // Evaluate IrExpr::Match over Option
-            {
-                match_expr_with_known_option.from_join(
-                    &known_expr_value,
-                    &option_match_subject,
-                    |_subject: &ExprId, known_val: &Const, match_id: &ExprId| match known_val {
-                        Const::Option(inner) => ((*match_id, inner.is_some()), *match_id),
-                        _ => unreachable!("option match subject must have option constant"),
-                    },
-                );
-
-                propagate_to.from_join(
-                    &match_expr_with_known_option,
-                    &option_match_arms,
-                    |_key: &(ExprId, bool), match_id: &ExprId, body_id: &ExprId| {
-                        (*body_id, *match_id)
-                    },
-                );
-            }
-
-            // Evaluate IrExpr::Match over Enum
-            {
-                match_expr_with_known_enum.from_join(
-                    &known_expr_value,
-                    &enum_match_subject,
-                    |_subject: &ExprId, known_val: &Const, match_id: &ExprId| match known_val {
-                        Const::Enum {
-                            enum_name,
-                            variant_name,
-                            ..
-                        } => (
-                            (*match_id, enum_name.clone(), variant_name.clone()),
-                            *match_id,
-                        ),
-                        _ => unreachable!("enum match subject must have enum constant"),
-                    },
-                );
-                propagate_to.from_join(
-                    &match_expr_with_known_enum,
-                    &enum_match_arms,
-                    |_key: &(ExprId, TypeName, TypeName), match_id: &ExprId, arm_body: &ExprId| {
-                        (*arm_body, *match_id)
-                    },
-                );
-            }
-
-            // Evaluate IrExpr::Match over Bool
-            {
-                match_expr_with_known_bool.from_join(
-                    &known_expr_value,
-                    &bool_match_subject,
-                    |_subject: &ExprId, known_val: &Const, match_id: &ExprId| match known_val {
-                        Const::Bool(b) => ((*match_id, *b), *match_id),
-                        _ => unreachable!("bool match subject must have bool constant"),
-                    },
-                );
-                propagate_to.from_join(
-                    &match_expr_with_known_bool,
-                    &bool_match_arms,
-                    |_key: &(ExprId, bool), match_id: &ExprId, body_id: &ExprId| {
-                        (*body_id, *match_id)
-                    },
-                );
-            }
+            propagate_to.from_join(
+                &match_expr_with_known_option,
+                &option_match_arms,
+                |_key: &(ExprId, bool), match_id: &ExprId, body_id: &ExprId| (*body_id, *match_id),
+            );
         }
 
-        let known_expr_map: HashMap<ExprId, Const> =
-            known_expr_value.complete().iter().cloned().collect();
+        // Evaluate IrExpr::Match over Enum
+        {
+            match_expr_with_known_enum.from_join(
+                &known_expr_value,
+                &enum_match_subject,
+                |_subject: &ExprId, known_val: &Const, match_id: &ExprId| match known_val {
+                    Const::Enum {
+                        enum_name,
+                        variant_name,
+                        ..
+                    } => (
+                        (*match_id, enum_name.clone(), variant_name.clone()),
+                        *match_id,
+                    ),
+                    _ => unreachable!("enum match subject must have enum constant"),
+                },
+            );
+            propagate_to.from_join(
+                &match_expr_with_known_enum,
+                &enum_match_arms,
+                |_key: &(ExprId, TypeName, TypeName), match_id: &ExprId, arm_body: &ExprId| {
+                    (*arm_body, *match_id)
+                },
+            );
+        }
 
-        traverse_statements_mut(body, &mut |stmts| {
-            for s in stmts.iter_mut() {
-                s.traverse_exprs_mut(&mut |e| {
-                    if let Some(known_val) = known_expr_map.get(&e.id()) {
-                        if let Some(expr) =
-                            known_val.to_expr(e.id(), e.get_type(), &known_expr_map, registry)
-                        {
-                            *e = expr;
-                        }
-                    }
-                });
-            }
-        });
+        // Evaluate IrExpr::Match over Bool
+        {
+            match_expr_with_known_bool.from_join(
+                &known_expr_value,
+                &bool_match_subject,
+                |_subject: &ExprId, known_val: &Const, match_id: &ExprId| match known_val {
+                    Const::Bool(b) => ((*match_id, *b), *match_id),
+                    _ => unreachable!("bool match subject must have bool constant"),
+                },
+            );
+            propagate_to.from_join(
+                &match_expr_with_known_bool,
+                &bool_match_arms,
+                |_key: &(ExprId, bool), match_id: &ExprId, body_id: &ExprId| (*body_id, *match_id),
+            );
+        }
     }
+
+    let known_expr_map: HashMap<ExprId, Const> =
+        known_expr_value.complete().iter().cloned().collect();
+
+    traverse_statements_mut(body, &mut |stmts| {
+        for s in stmts.iter_mut() {
+            s.traverse_exprs_mut(&mut |e| {
+                if let Some(known_val) = known_expr_map.get(&e.id()) {
+                    if let Some(expr) =
+                        known_val.to_expr(e.id(), e.get_type(), &known_expr_map, registry)
+                    {
+                        *e = expr;
+                    }
+                }
+            });
+        }
+    });
 }
 
 #[cfg(test)]
@@ -728,7 +708,7 @@ mod tests {
 
     fn check(mut view: IrViewDeclaration, expected: Expect) {
         let before = view.to_string();
-        PartialEvaluationPass::run(&mut view.body, &TypeRegistry::default());
+        perform_partial_evaluation(&mut view.body, &TypeRegistry::default());
         let after = view.to_string();
         let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
         expected.assert_eq(&output);
@@ -740,7 +720,7 @@ mod tests {
         let (module, registry) = builder.build_with_registry();
         let mut view = module.views.into_iter().next().unwrap();
         let before = view.to_string();
-        PartialEvaluationPass::run(&mut view.body, &registry);
+        perform_partial_evaluation(&mut view.body, &registry);
         let after = view.to_string();
         let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
         expected.assert_eq(&output);

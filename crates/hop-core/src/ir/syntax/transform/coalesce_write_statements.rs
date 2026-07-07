@@ -4,69 +4,51 @@ use crate::ir::ast::{IrStatement, StatementId, traverse_statements_mut};
 ///
 /// The `limit` parameter controls the maximum combined length of merged writes.
 /// Two writes A and B will only be merged if `len(A) + len(B) < limit`.
-pub struct WriteCoalescingPass {
-    limit: usize,
-}
+pub fn coalesce_write_statements(body: &mut Vec<IrStatement>, limit: usize) {
+    traverse_statements_mut(body, &mut |stmts| {
+        let statements = std::mem::take(stmts);
+        let mut result = Vec::new();
+        let mut pending_write: Option<(StatementId, String)> = None;
 
-impl WriteCoalescingPass {
-    /// Create a new WriteCoalescingPass with the specified limit.
-    /// Two writes will only be merged if their combined length is less than the limit.
-    pub fn with_limit(limit: usize) -> Self {
-        Self { limit }
-    }
-
-    pub fn run(&self, body: &mut Vec<IrStatement>) {
-        traverse_statements_mut(body, &mut |stmts| {
-            let statements = std::mem::take(stmts);
-            let mut result = Vec::new();
-            let mut pending_write: Option<(StatementId, String)> = None;
-
-            for statement in statements {
-                match statement {
-                    IrStatement::Write { id, content: text } => match pending_write {
-                        Some((pending_id, ref mut accumulated)) => {
-                            if accumulated.len() + text.len() < self.limit {
-                                accumulated.push_str(&text);
-                            } else {
-                                result.push(IrStatement::Write {
-                                    id: pending_id,
-                                    content: std::mem::take(accumulated),
-                                });
-                                pending_write = Some((id, text));
-                            }
-                        }
-                        None => {
+        for statement in statements {
+            match statement {
+                IrStatement::Write { id, content: text } => match pending_write {
+                    Some((pending_id, ref mut accumulated)) => {
+                        if accumulated.len() + text.len() < limit {
+                            accumulated.push_str(&text);
+                        } else {
+                            result.push(IrStatement::Write {
+                                id: pending_id,
+                                content: std::mem::take(accumulated),
+                            });
                             pending_write = Some((id, text));
                         }
-                    },
-                    other => {
-                        if let Some((write_id, text)) = pending_write.take() {
-                            result.push(IrStatement::Write {
-                                id: write_id,
-                                content: text,
-                            });
-                        }
-                        result.push(other);
                     }
+                    None => {
+                        pending_write = Some((id, text));
+                    }
+                },
+                other => {
+                    if let Some((write_id, text)) = pending_write.take() {
+                        result.push(IrStatement::Write {
+                            id: write_id,
+                            content: text,
+                        });
+                    }
+                    result.push(other);
                 }
             }
+        }
 
-            if let Some((write_id, text)) = pending_write {
-                result.push(IrStatement::Write {
-                    id: write_id,
-                    content: text,
-                });
-            }
+        if let Some((write_id, text)) = pending_write {
+            result.push(IrStatement::Write {
+                id: write_id,
+                content: text,
+            });
+        }
 
-            *stmts = result;
-        });
-    }
-}
-
-impl Default for WriteCoalescingPass {
-    fn default() -> Self {
-        Self { limit: usize::MAX }
-    }
+        *stmts = result;
+    });
 }
 
 #[cfg(test)]
@@ -80,7 +62,7 @@ mod tests {
 
     fn check(mut view: IrViewDeclaration, expected: Expect) {
         let before = view.to_string();
-        WriteCoalescingPass::default().run(&mut view.body);
+        coalesce_write_statements(&mut view.body, usize::MAX);
         let after = view.to_string();
         let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
         expected.assert_eq(&output);
@@ -364,8 +346,7 @@ mod tests {
 
     fn check_with_limit(mut view: IrViewDeclaration, limit: usize, expected: Expect) {
         let before = view.to_string();
-        let pass = WriteCoalescingPass::with_limit(limit);
-        pass.run(&mut view.body);
+        coalesce_write_statements(&mut view.body, limit);
         let after = view.to_string();
         let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
         expected.assert_eq(&output);

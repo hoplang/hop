@@ -4,86 +4,82 @@ use crate::ir::{
     ast::{IrStatement, traverse_statements_mut},
 };
 
-pub struct MatchStatementEliminationPass;
-
-impl MatchStatementEliminationPass {
-    pub fn run(body: &mut Vec<IrStatement>) {
-        traverse_statements_mut(body, &mut |stmts| {
-            let mut transformed = Vec::new();
-            for stmt in std::mem::take(stmts) {
-                match stmt {
-                    IrStatement::Match {
-                        id,
-                        match_:
-                            Match::Bool {
-                                subject,
+pub fn eliminate_match_statements(body: &mut Vec<IrStatement>) {
+    traverse_statements_mut(body, &mut |stmts| {
+        let mut transformed = Vec::new();
+        for stmt in std::mem::take(stmts) {
+            match stmt {
+                IrStatement::Match {
+                    id,
+                    match_:
+                        Match::Bool {
+                            subject,
+                            true_body,
+                            false_body,
+                        },
+                } => match *subject {
+                    IrExpr::BooleanLiteral { value: true, .. } => {
+                        transformed.extend(*true_body);
+                    }
+                    IrExpr::BooleanLiteral { value: false, .. } => {
+                        transformed.extend(*false_body);
+                    }
+                    other_subject => {
+                        transformed.push(IrStatement::Match {
+                            id,
+                            match_: Match::Bool {
+                                subject: Box::new(other_subject),
                                 true_body,
                                 false_body,
                             },
-                    } => match *subject {
-                        IrExpr::BooleanLiteral { value: true, .. } => {
-                            transformed.extend(*true_body);
-                        }
-                        IrExpr::BooleanLiteral { value: false, .. } => {
-                            transformed.extend(*false_body);
-                        }
-                        other_subject => {
-                            transformed.push(IrStatement::Match {
+                        });
+                    }
+                },
+                IrStatement::Match {
+                    id,
+                    match_:
+                        Match::Option {
+                            subject,
+                            some_arm_binding,
+                            some_arm_body,
+                            none_arm_body,
+                        },
+                } => match *subject {
+                    IrExpr::OptionLiteral { value: None, .. } => {
+                        transformed.extend(*none_arm_body);
+                    }
+                    IrExpr::OptionLiteral {
+                        value: Some(inner), ..
+                    } => match some_arm_binding {
+                        Some(var) => {
+                            transformed.push(IrStatement::Let {
                                 id,
-                                match_: Match::Bool {
-                                    subject: Box::new(other_subject),
-                                    true_body,
-                                    false_body,
-                                },
+                                var,
+                                value: *inner,
+                                body: *some_arm_body,
                             });
                         }
+                        None => {
+                            transformed.extend(*some_arm_body);
+                        }
                     },
-                    IrStatement::Match {
-                        id,
-                        match_:
-                            Match::Option {
-                                subject,
+                    other_subject => {
+                        transformed.push(IrStatement::Match {
+                            id,
+                            match_: Match::Option {
+                                subject: Box::new(other_subject),
                                 some_arm_binding,
                                 some_arm_body,
                                 none_arm_body,
                             },
-                    } => match *subject {
-                        IrExpr::OptionLiteral { value: None, .. } => {
-                            transformed.extend(*none_arm_body);
-                        }
-                        IrExpr::OptionLiteral {
-                            value: Some(inner), ..
-                        } => match some_arm_binding {
-                            Some(var) => {
-                                transformed.push(IrStatement::Let {
-                                    id,
-                                    var,
-                                    value: *inner,
-                                    body: *some_arm_body,
-                                });
-                            }
-                            None => {
-                                transformed.extend(*some_arm_body);
-                            }
-                        },
-                        other_subject => {
-                            transformed.push(IrStatement::Match {
-                                id,
-                                match_: Match::Option {
-                                    subject: Box::new(other_subject),
-                                    some_arm_binding,
-                                    some_arm_body,
-                                    none_arm_body,
-                                },
-                            });
-                        }
-                    },
-                    other => transformed.push(other),
-                }
+                        });
+                    }
+                },
+                other => transformed.push(other),
             }
-            *stmts = transformed;
-        });
-    }
+        }
+        *stmts = transformed;
+    });
 }
 
 #[cfg(test)]
@@ -96,7 +92,7 @@ mod tests {
 
     fn check(mut view: IrViewDeclaration, expected: Expect) {
         let before = view.to_string();
-        MatchStatementEliminationPass::run(&mut view.body);
+        eliminate_match_statements(&mut view.body);
         let after = view.to_string();
         let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
         expected.assert_eq(&output);

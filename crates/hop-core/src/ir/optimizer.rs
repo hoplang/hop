@@ -1,17 +1,17 @@
 use super::syntax::ast::{IrModule, IrStatement};
-use super::syntax::transform::{
-    IfStatementEliminationPass, MatchStatementEliminationPass, PartialEvaluationPass,
-    UnusedVariableDeclarationEliminationPass, WriteCoalescingPass, WriteExprSimplificationPass,
-};
 use crate::expr::typing::type_registry::TypeRegistry;
+use crate::ir::syntax::transform::{
+    coalesce_write_statements, eliminate_if_statements, eliminate_match_statements,
+    eliminate_unused_variable_declarations, perform_partial_evaluation, simplify_write_exprs,
+};
 
 fn optimize_statements(body: &mut Vec<IrStatement>, registry: &TypeRegistry) {
-    PartialEvaluationPass::run(body, registry);
-    UnusedVariableDeclarationEliminationPass::run(body);
-    IfStatementEliminationPass::run(body);
-    MatchStatementEliminationPass::run(body);
-    WriteExprSimplificationPass::run(body);
-    WriteCoalescingPass::with_limit(60).run(body);
+    perform_partial_evaluation(body, registry);
+    eliminate_unused_variable_declarations(body);
+    eliminate_if_statements(body);
+    eliminate_match_statements(body);
+    simplify_write_exprs(body);
+    coalesce_write_statements(body, 60);
 }
 
 pub fn optimize(mut module: IrModule, registry: &TypeRegistry) -> IrModule {

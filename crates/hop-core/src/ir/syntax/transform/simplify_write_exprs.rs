@@ -4,30 +4,26 @@ use crate::ir::ast::{IrStatement, traverse_statements_mut};
 
 /// A pass that simplifies WriteExpr statements with constant string expressions into a Write
 /// statement
-pub struct WriteExprSimplificationPass;
-
-impl WriteExprSimplificationPass {
-    pub fn run(body: &mut Vec<IrStatement>) {
-        traverse_statements_mut(body, &mut |stmts| {
-            for statement in stmts.iter_mut() {
-                if let IrStatement::WriteExpr {
-                    id,
-                    expr: IrExpr::StringLiteral { value: s, .. },
-                    escape,
-                } = statement
-                {
-                    let content = if *escape {
-                        let mut buf = String::new();
-                        write_escaped_html(s, &mut buf);
-                        buf
-                    } else {
-                        s.to_string()
-                    };
-                    *statement = IrStatement::Write { id: *id, content };
-                }
+pub fn simplify_write_exprs(body: &mut Vec<IrStatement>) {
+    traverse_statements_mut(body, &mut |stmts| {
+        for statement in stmts.iter_mut() {
+            if let IrStatement::WriteExpr {
+                id,
+                expr: IrExpr::StringLiteral { value: s, .. },
+                escape,
+            } = statement
+            {
+                let content = if *escape {
+                    let mut buf = String::new();
+                    write_escaped_html(s, &mut buf);
+                    buf
+                } else {
+                    s.to_string()
+                };
+                *statement = IrStatement::Write { id: *id, content };
             }
-        });
-    }
+        }
+    });
 }
 
 #[cfg(test)]
@@ -41,7 +37,7 @@ mod tests {
 
     fn check(mut view: IrViewDeclaration, expected: Expect) {
         let before = view.to_string();
-        WriteExprSimplificationPass::run(&mut view.body);
+        simplify_write_exprs(&mut view.body);
         let after = view.to_string();
         let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
         expected.assert_eq(&output);

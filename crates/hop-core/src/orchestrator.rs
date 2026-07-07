@@ -7,7 +7,7 @@ use crate::hop::inlining::transform::{
     TailwindInjection, TailwindInjector,
 };
 use crate::hop::typing::typed_ast::TypedAst;
-use crate::ir::syntax::transform::VariableRenamingPass;
+use crate::ir::syntax::variable_renaming::VariableRenamingPass;
 use crate::ir::{Compiler, IrEnumDeclaration, IrModule, IrRecordDeclaration, optimize};
 use crate::symbols::type_name::TypeName;
 use std::collections::HashMap;
