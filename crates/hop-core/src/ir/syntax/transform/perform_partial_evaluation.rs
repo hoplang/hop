@@ -1939,8 +1939,6 @@ mod tests {
 
     #[test]
     fn should_propagate_option_binding_value() {
-        use crate::expr::Type;
-
         check(
             IrModuleBuilder::new()
                 .view_no_params("Test", |t| {
@@ -1948,7 +1946,6 @@ mod tests {
                         t.write_expr_escaped(t.option_match_expr_with_binding(
                             t.var("opt"),
                             "inner",
-                            Type::String,
                             |t| t.var("inner"),
                             t.str("default"),
                         ));
@@ -1978,8 +1975,6 @@ mod tests {
 
     #[test]
     fn should_propagate_option_binding_in_nested_expression() {
-        use crate::expr::Type;
-
         // Test that the binding value propagates into nested expressions
         check(
             IrModuleBuilder::new()
@@ -1988,7 +1983,6 @@ mod tests {
                         t.write_expr_escaped(t.option_match_expr_with_binding(
                             t.var("opt"),
                             "inner",
-                            Type::String,
                             |t| {
                                 // Use the binding in an equality check and string concat
                                 t.string_concat(t.var("inner"), t.str(" world"))
@@ -2021,8 +2015,6 @@ mod tests {
 
     #[test]
     fn should_propagate_option_binding_in_equality() {
-        use crate::expr::Type;
-
         // Test that the binding value propagates into equality comparisons
         check(
             IrModuleBuilder::new()
@@ -2032,7 +2024,6 @@ mod tests {
                             t.option_match_expr_with_binding(
                                 t.var("opt"),
                                 "inner",
-                                Type::String,
                                 |t| t.eq(t.var("inner"), t.str("hello")),
                                 t.bool(false),
                             ),
@@ -2070,8 +2061,6 @@ mod tests {
 
     #[test]
     fn should_propagate_through_nested_option_match() {
-        use crate::expr::Type;
-
         // Test nested option matches using let statements to bind intermediate values
         check(
             IrModuleBuilder::new()
@@ -2083,7 +2072,6 @@ mod tests {
                             t.option_match_expr_with_binding(
                                 t.var("outer"),
                                 "inner_opt",
-                                Type::Option(Arc::new(Type::String)),
                                 |t| t.var("inner_opt"),
                                 t.none("String"),
                             ),
@@ -2092,7 +2080,6 @@ mod tests {
                                 t.write_expr_escaped(t.option_match_expr_with_binding(
                                     t.var("inner_result"),
                                     "value",
-                                    Type::String,
                                     |t| t.var("value"),
                                     t.str("inner none"),
                                 ));
@@ -2131,8 +2118,6 @@ mod tests {
 
     #[test]
     fn should_evaluate_nested_option_match_with_inline_let() {
-        use crate::expr::Type;
-
         // Test nested option match where inner match is inside a let expression in the Some arm
         check(
             IrModuleBuilder::new()
@@ -2141,14 +2126,12 @@ mod tests {
                         t.write_expr_escaped(t.option_match_expr_with_binding(
                             t.var("outer"),
                             "inner_opt",
-                            Type::Option(Arc::new(Type::String)),
                             |t| {
                                 // let inner_opt_var = inner_opt in match inner_opt_var { ... }
                                 t.let_expr("inner_opt_var", t.var("inner_opt"), |t| {
                                     t.option_match_expr_with_binding(
                                         t.var("inner_opt_var"),
                                         "value",
-                                        Type::String,
                                         |t| t.var("value"),
                                         t.str("inner none"),
                                     )

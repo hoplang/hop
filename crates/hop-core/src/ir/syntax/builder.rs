@@ -13,7 +13,7 @@ use crate::ir::ast::{
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
-use std::cell::RefCell;
+use std::cell::Cell;
 use std::collections::BTreeSet;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -189,9 +189,9 @@ impl Default for IrModuleBuilder {
 }
 
 pub struct IrBuilder {
-    next_expr_id: Rc<RefCell<ExprId>>,
-    next_node_id: Rc<RefCell<StatementId>>,
-    var_stack: RefCell<Vec<(String, Arc<Type>)>>,
+    next_expr_id: Rc<Cell<ExprId>>,
+    next_node_id: Rc<Cell<StatementId>>,
+    var_stack: Vec<(String, Arc<Type>)>,
     params: Vec<IrParameter>,
     types: TestTypes,
     statements: Vec<IrStatement>,
@@ -202,9 +202,9 @@ impl IrBuilder {
         let initial_vars = params.clone();
 
         Self {
-            next_expr_id: Rc::new(RefCell::new(1)),
-            next_node_id: Rc::new(RefCell::new(1)),
-            var_stack: RefCell::new(initial_vars),
+            next_expr_id: Rc::new(Cell::new(1)),
+            next_node_id: Rc::new(Cell::new(1)),
+            var_stack: initial_vars,
             params: params
                 .into_iter()
                 .map(|(s, t)| IrParameter {
@@ -217,11 +217,15 @@ impl IrBuilder {
         }
     }
 
-    fn new_scoped(&self) -> Self {
+    /// Create a child builder for a nested scope, with additional variable
+    /// bindings visible in that scope. The parent builder is never mutated.
+    fn scoped(&self, bindings: impl IntoIterator<Item = (String, Arc<Type>)>) -> Self {
+        let mut var_stack = self.var_stack.clone();
+        var_stack.extend(bindings);
         Self {
             next_expr_id: self.next_expr_id.clone(),
             next_node_id: self.next_node_id.clone(),
-            var_stack: self.var_stack.clone(),
+            var_stack,
             params: self.params.clone(),
             types: self.types.clone(),
             statements: Vec::new(),
@@ -237,14 +241,14 @@ impl IrBuilder {
     }
 
     fn next_expr_id(&self) -> ExprId {
-        let id = *self.next_expr_id.borrow();
-        *self.next_expr_id.borrow_mut() = id + 1;
+        let id = self.next_expr_id.get();
+        self.next_expr_id.set(id + 1);
         id
     }
 
     fn next_node_id(&self) -> StatementId {
-        let id = *self.next_node_id.borrow();
-        *self.next_node_id.borrow_mut() = id + 1;
+        let id = self.next_node_id.get();
+        self.next_node_id.set(id + 1);
         id
     }
 
@@ -273,7 +277,6 @@ impl IrBuilder {
     pub fn var(&self, name: &str) -> IrExpr {
         let typ = self
             .var_stack
-            .borrow()
             .iter()
             .rev()
             .find(|(var_name, _)| var_name == name)
@@ -283,7 +286,6 @@ impl IrBuilder {
                     "Variable '{}' not found in scope. Available variables: {:?}",
                     name,
                     self.var_stack
-                        .borrow()
                         .iter()
                         .map(|(n, _)| n.as_str())
                         .collect::<Vec<_>>()
@@ -303,9 +305,9 @@ impl IrBuilder {
             (Type::String, Type::String) => EquatableType::String,
             (Type::Int, Type::Int) => EquatableType::Int,
             (Type::Float, Type::Float) => EquatableType::Float,
-            _ => panic!(
-                "Unsupported type for equality comparison: {:?}",
-                left.as_type()
+            (l, r) => panic!(
+                "Unsupported types for equality comparison: {:?} == {:?}",
+                l, r
             ),
         };
         IrExpr::Equals {
@@ -317,6 +319,12 @@ impl IrBuilder {
     }
 
     pub fn not(&self, operand: IrExpr) -> IrExpr {
+        assert_eq!(
+            *operand.as_type(),
+            Type::Bool,
+            "BooleanNegation expects Bool operand, got: {}",
+            operand
+        );
         IrExpr::BooleanNegation {
             operand: Box::new(operand),
             id: self.next_expr_id(),
@@ -324,6 +332,18 @@ impl IrBuilder {
     }
 
     pub fn and(&self, left: IrExpr, right: IrExpr) -> IrExpr {
+        assert_eq!(
+            *left.as_type(),
+            Type::Bool,
+            "BooleanLogicalAnd expects Bool operands, got: {}",
+            left
+        );
+        assert_eq!(
+            *right.as_type(),
+            Type::Bool,
+            "BooleanLogicalAnd expects Bool operands, got: {}",
+            right
+        );
         IrExpr::BooleanLogicalAnd {
             left: Box::new(left),
             right: Box::new(right),
@@ -332,6 +352,18 @@ impl IrBuilder {
     }
 
     pub fn or(&self, left: IrExpr, right: IrExpr) -> IrExpr {
+        assert_eq!(
+            *left.as_type(),
+            Type::Bool,
+            "BooleanLogicalOr expects Bool operands, got: {}",
+            left
+        );
+        assert_eq!(
+            *right.as_type(),
+            Type::Bool,
+            "BooleanLogicalOr expects Bool operands, got: {}",
+            right
+        );
         IrExpr::BooleanLogicalOr {
             left: Box::new(left),
             right: Box::new(right),
@@ -345,6 +377,15 @@ impl IrBuilder {
             .map(|first| first.get_type())
             .expect("Cannot create empty array literal in test builder");
 
+        for element in &elements {
+            assert_eq!(
+                *element.as_type(),
+                *element_type,
+                "Array elements must all have the same type, got: {}",
+                element
+            );
+        }
+
         IrExpr::ArrayLiteral {
             elements,
             kind: Arc::new(Type::Array(element_type)),
@@ -353,6 +394,12 @@ impl IrBuilder {
     }
 
     pub fn int_to_string(&self, value: IrExpr) -> IrExpr {
+        assert_eq!(
+            *value.as_type(),
+            Type::Int,
+            "IntToString expects Int operand, got: {}",
+            value
+        );
         IrExpr::IntToString {
             value: Box::new(value),
             id: self.next_expr_id(),
@@ -363,17 +410,38 @@ impl IrBuilder {
         let name = TypeName::new(record_name).unwrap();
         let record_fields = self.types.record_fields(record_name);
 
-        for (field_name, _) in &fields {
-            if !record_fields
+        for (field_name, value) in &fields {
+            let declared_type = record_fields
                 .iter()
-                .any(|(f, _, _)| f.as_str() == *field_name)
-            {
-                panic!(
-                    "Field '{}' not found in record '{}'",
-                    field_name, record_name
-                );
-            }
+                .find(|(f, _, _)| f.as_str() == *field_name)
+                .map(|(_, t, _)| t)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "Field '{}' not found in record '{}'",
+                        field_name, record_name
+                    )
+                });
+            assert_eq!(
+                value.as_type(),
+                declared_type.as_ref(),
+                "Field '{}' of record '{}' has mismatched type, got: {}",
+                field_name,
+                record_name,
+                value
+            );
         }
+
+        let missing_fields: Vec<&str> = record_fields
+            .iter()
+            .filter(|(f, _, _)| !fields.iter().any(|(name, _)| *name == f.as_str()))
+            .map(|(f, _, _)| f.as_str())
+            .collect();
+        assert!(
+            missing_fields.is_empty(),
+            "Record '{}' is missing fields: {:?}",
+            record_name,
+            missing_fields
+        );
 
         IrExpr::RecordLiteral {
             record_name: name,
@@ -401,13 +469,52 @@ impl IrBuilder {
         let name = TypeName::new(enum_name).unwrap();
         let variants = self.types.enum_variants(enum_name);
 
-        if !variants.iter().any(|v| v.name.as_str() == variant_name) {
-            let variant_names: Vec<&str> = variants.iter().map(|v| v.name.as_str()).collect();
-            panic!(
-                "Variant '{}' not found in enum '{}'. Available variants: {:?}",
-                variant_name, enum_name, variant_names
+        let variant_fields = variants
+            .iter()
+            .find(|v| v.name.as_str() == variant_name)
+            .map(|v| &v.fields)
+            .unwrap_or_else(|| {
+                let variant_names: Vec<&str> = variants.iter().map(|v| v.name.as_str()).collect();
+                panic!(
+                    "Variant '{}' not found in enum '{}'. Available variants: {:?}",
+                    variant_name, enum_name, variant_names
+                )
+            });
+
+        for (field_name, value) in &field_values {
+            let declared_type = variant_fields
+                .iter()
+                .find(|(f, _, _)| f.as_str() == *field_name)
+                .map(|(_, t, _)| t)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "Field '{}' not found in variant '{}::{}'",
+                        field_name, enum_name, variant_name
+                    )
+                });
+            assert_eq!(
+                value.as_type(),
+                declared_type.as_ref(),
+                "Field '{}' of variant '{}::{}' has mismatched type, got: {}",
+                field_name,
+                enum_name,
+                variant_name,
+                value
             );
         }
+
+        let missing_fields: Vec<&str> = variant_fields
+            .iter()
+            .filter(|(f, _, _)| !field_values.iter().any(|(name, _)| *name == f.as_str()))
+            .map(|(f, _, _)| f.as_str())
+            .collect();
+        assert!(
+            missing_fields.is_empty(),
+            "Enum variant '{}::{}' is missing fields: {:?}",
+            enum_name,
+            variant_name,
+            missing_fields
+        );
 
         IrExpr::EnumLiteral {
             enum_name: name,
@@ -445,27 +552,42 @@ impl IrBuilder {
     /// arms is a list of (variant_name, body_expr) tuples
     pub fn match_expr(&self, subject: IrExpr, arms: Vec<(&str, IrExpr)>) -> IrExpr {
         // Get the enum type from the subject
-        let (enum_name, result_type) = match self.types.registry().resolve(subject.as_type()) {
-            Some(ResolvedType::Enum { name, .. }) => {
-                // Use the type of the first arm's body as the result type
-                let result_type = arms
-                    .first()
-                    .map(|(_, body)| body.get_type())
-                    .unwrap_or_else(|| Arc::new(Type::String));
-                (name.clone(), result_type)
-            }
-            _ => panic!("Match subject must be an enum type"),
+        let Some(ResolvedType::Enum { name, variants, .. }) =
+            self.types.registry().resolve(subject.as_type())
+        else {
+            panic!("Match subject must be an enum type")
         };
+        let enum_name = name.clone();
+
+        // Use the type of the first arm's body as the result type
+        let result_type = arms
+            .first()
+            .map(|(_, body)| body.get_type())
+            .expect("match_expr requires at least one arm");
 
         let ir_arms: Vec<EnumMatchArm<IrExpr>> = arms
             .into_iter()
-            .map(|(variant_name, body)| EnumMatchArm {
-                pattern: EnumPattern::Variant {
-                    enum_name: enum_name.clone(),
-                    variant_name: TypeName::new(variant_name).unwrap(),
-                },
-                bindings: vec![],
-                body,
+            .map(|(variant_name, body)| {
+                assert!(
+                    variants.iter().any(|v| v.name.as_str() == variant_name),
+                    "Variant '{}' not found in enum '{}'",
+                    variant_name,
+                    enum_name
+                );
+                assert_eq!(
+                    *body.as_type(),
+                    *result_type,
+                    "Match arms must all have the same type, got: {}",
+                    body
+                );
+                EnumMatchArm {
+                    pattern: EnumPattern::Variant {
+                        enum_name: enum_name.clone(),
+                        variant_name: TypeName::new(variant_name).unwrap(),
+                    },
+                    bindings: vec![],
+                    body,
+                }
             })
             .collect();
 
@@ -486,6 +608,14 @@ impl IrBuilder {
         true_body: IrExpr,
         false_body: IrExpr,
     ) -> IrExpr {
+        assert_eq!(*subject.as_type(), Type::Bool, "{}", subject);
+        assert_eq!(
+            *true_body.as_type(),
+            *false_body.as_type(),
+            "Match arms must all have the same type, got: {} and {}",
+            true_body,
+            false_body
+        );
         let result_type = true_body.get_type();
 
         IrExpr::Match {
@@ -506,6 +636,18 @@ impl IrBuilder {
         some_body: IrExpr,
         none_body: IrExpr,
     ) -> IrExpr {
+        assert!(
+            matches!(subject.as_type(), Type::Option(_)),
+            "Match subject must be an option type, got: {}",
+            subject
+        );
+        assert_eq!(
+            *some_body.as_type(),
+            *none_body.as_type(),
+            "Match arms must all have the same type, got: {} and {}",
+            some_body,
+            none_body
+        );
         let result_type = some_body.get_type();
 
         IrExpr::Match {
@@ -521,29 +663,32 @@ impl IrBuilder {
     }
 
     /// Create a match expression over an option value with a binding for the Some case.
+    /// The binding is typed with the subject's inner option type.
     /// The `some_body_fn` closure receives the builder with the binding in scope.
-    pub fn option_match_expr_with_binding<F, T>(
+    pub fn option_match_expr_with_binding<F>(
         &self,
         subject: IrExpr,
         binding_name: &str,
-        inner_type: T,
         some_body_fn: F,
         none_body: IrExpr,
     ) -> IrExpr
     where
         F: FnOnce(&Self) -> IrExpr,
-        T: Into<Arc<Type>>,
     {
-        // Push the binding onto the variable stack
-        self.var_stack
-            .borrow_mut()
-            .push((binding_name.to_string(), inner_type.into()));
+        let inner_type = match subject.as_type() {
+            Type::Option(inner) => inner.clone(),
+            _ => panic!("Match subject must be an option type, got: {}", subject),
+        };
 
-        let some_body = some_body_fn(self);
+        let some_body = some_body_fn(&self.scoped([(binding_name.to_string(), inner_type)]));
 
-        // Pop the binding from the variable stack
-        self.var_stack.borrow_mut().pop();
-
+        assert_eq!(
+            *some_body.as_type(),
+            *none_body.as_type(),
+            "Match arms must all have the same type, got: {} and {}",
+            some_body,
+            none_body
+        );
         let result_type = some_body.get_type();
 
         IrExpr::Match {
@@ -586,20 +731,9 @@ impl IrBuilder {
                     .map(|v| &v.fields)
                     .expect("Variant not found in enum");
 
-                // Create binding names and push variables to scope
                 let bindings: Vec<(FieldName, VarName)> = field_bindings
                     .iter()
                     .map(|(field_name, binding_name)| {
-                        // Add bound variable to scope
-                        let field_type = variant_fields
-                            .iter()
-                            .find(|(f, _, _)| f.as_str() == *field_name)
-                            .map(|(_, t, _)| t.clone())
-                            .expect("Field not found in variant");
-                        self.var_stack
-                            .borrow_mut()
-                            .push((binding_name.to_string(), field_type));
-
                         (
                             FieldName::new(field_name).unwrap(),
                             VarName::new(binding_name).unwrap(),
@@ -607,15 +741,28 @@ impl IrBuilder {
                     })
                     .collect();
 
-                let body = body_fn(self);
+                let scoped_vars: Vec<(String, Arc<Type>)> = field_bindings
+                    .iter()
+                    .map(|(field_name, binding_name)| {
+                        let field_type = variant_fields
+                            .iter()
+                            .find(|(f, _, _)| f.as_str() == *field_name)
+                            .map(|(_, t, _)| t.clone())
+                            .expect("Field not found in variant");
+                        (binding_name.to_string(), field_type)
+                    })
+                    .collect();
 
-                // Pop bindings from scope
-                for _ in &bindings {
-                    self.var_stack.borrow_mut().pop();
-                }
+                let body = body_fn(&self.scoped(scoped_vars));
 
-                if result_type.is_none() {
-                    result_type = Some(body.get_type());
+                match &result_type {
+                    Some(result_type) => assert_eq!(
+                        *body.as_type(),
+                        **result_type,
+                        "Match arms must all have the same type, got: {}",
+                        body
+                    ),
+                    None => result_type = Some(body.get_type()),
                 }
 
                 EnumMatchArm {
@@ -634,7 +781,7 @@ impl IrBuilder {
                 subject: Box::new(subject),
                 arms: ir_arms,
             },
-            kind: result_type.unwrap_or_else(|| Arc::new(Type::String)),
+            kind: result_type.expect("match_expr_with_bindings requires at least one arm"),
             id: self.next_expr_id(),
         }
     }
@@ -674,15 +821,7 @@ impl IrBuilder {
     {
         let value_type = value.get_type();
 
-        // Push the binding onto the variable stack
-        self.var_stack
-            .borrow_mut()
-            .push((var_name.to_string(), value_type));
-
-        let body = body_fn(self);
-
-        // Pop the binding from the variable stack
-        self.var_stack.borrow_mut().pop();
+        let body = body_fn(&self.scoped([(var_name.to_string(), value_type)]));
 
         let kind = body.get_type();
 
@@ -696,6 +835,18 @@ impl IrBuilder {
     }
 
     pub fn string_concat(&self, left: IrExpr, right: IrExpr) -> IrExpr {
+        assert_eq!(
+            *left.as_type(),
+            Type::String,
+            "StringConcat expects String operands, got: {}",
+            left
+        );
+        assert_eq!(
+            *right.as_type(),
+            Type::String,
+            "StringConcat expects String operands, got: {}",
+            right
+        );
         IrExpr::StringConcat {
             left: Box::new(left),
             right: Box::new(right),
@@ -704,6 +855,14 @@ impl IrBuilder {
     }
 
     pub fn join(&self, args: Vec<IrExpr>) -> IrExpr {
+        for arg in &args {
+            assert_eq!(
+                *arg.as_type(),
+                Type::String,
+                "join expects String arguments, got: {}",
+                arg
+            );
+        }
         match args.len() {
             0 => IrExpr::StringLiteral {
                 value: CheapString::new(String::new()),
@@ -734,6 +893,12 @@ impl IrBuilder {
     }
 
     pub fn tw_merge(&self, value: IrExpr) -> IrExpr {
+        assert_eq!(
+            *value.as_type(),
+            Type::String,
+            "TwMerge expects String operand, got: {}",
+            value
+        );
         IrExpr::TwMerge {
             operand: Box::new(value),
             id: self.next_expr_id(),
@@ -770,7 +935,7 @@ impl IrBuilder {
         F: FnOnce(&mut Self),
     {
         assert_eq!(*cond.as_type(), Type::Bool, "{}", cond);
-        let mut inner_builder = self.new_scoped();
+        let mut inner_builder = self.scoped([]);
         body_fn(&mut inner_builder);
         self.statements.push(IrStatement::If {
             id: self.next_node_id(),
@@ -788,14 +953,8 @@ impl IrBuilder {
             _ => panic!("Cannot iterate over non-array type"),
         };
 
-        self.var_stack
-            .borrow_mut()
-            .push((var.to_string(), element_type));
-
-        let mut inner_builder = self.new_scoped();
+        let mut inner_builder = self.scoped([(var.to_string(), element_type)]);
         body_fn(&mut inner_builder);
-
-        self.var_stack.borrow_mut().pop();
 
         self.statements.push(IrStatement::For {
             id: self.next_node_id(),
@@ -811,14 +970,20 @@ impl IrBuilder {
         F: FnOnce(&mut Self),
     {
         // Range loops iterate over integers
-        self.var_stack
-            .borrow_mut()
-            .push((var.to_string(), Arc::new(Type::Int)));
-
-        let mut inner_builder = self.new_scoped();
+        assert_eq!(
+            *start.as_type(),
+            Type::Int,
+            "Range bounds must be Int, got: {}",
+            start
+        );
+        assert_eq!(
+            *end.as_type(),
+            Type::Int,
+            "Range bounds must be Int, got: {}",
+            end
+        );
+        let mut inner_builder = self.scoped([(var.to_string(), Arc::new(Type::Int))]);
         body_fn(&mut inner_builder);
-
-        self.var_stack.borrow_mut().pop();
 
         self.statements.push(IrStatement::For {
             id: self.next_node_id(),
@@ -833,7 +998,19 @@ impl IrBuilder {
     where
         F: FnOnce(&mut Self),
     {
-        let mut inner_builder = self.new_scoped();
+        assert_eq!(
+            *start.as_type(),
+            Type::Int,
+            "Range bounds must be Int, got: {}",
+            start
+        );
+        assert_eq!(
+            *end.as_type(),
+            Type::Int,
+            "Range bounds must be Int, got: {}",
+            end
+        );
+        let mut inner_builder = self.scoped([]);
         body_fn(&mut inner_builder);
 
         self.statements.push(IrStatement::For {
@@ -850,14 +1027,8 @@ impl IrBuilder {
     {
         let value_type = value.get_type();
 
-        self.var_stack
-            .borrow_mut()
-            .push((var.to_string(), value_type));
-
-        let mut inner_builder = self.new_scoped();
+        let mut inner_builder = self.scoped([(var.to_string(), value_type)]);
         body_fn(&mut inner_builder);
-
-        self.var_stack.borrow_mut().pop();
 
         self.statements.push(IrStatement::Let {
             id: self.next_node_id(),
@@ -872,17 +1043,11 @@ impl IrBuilder {
         F1: FnOnce(&mut Self),
         F2: FnOnce(&mut Self),
     {
-        let mut fragment_builder = self.new_scoped();
+        let mut fragment_builder = self.scoped([]);
         fragment_body_fn(&mut fragment_builder);
 
-        self.var_stack
-            .borrow_mut()
-            .push((var.to_string(), Arc::new(Type::Fragment)));
-
-        let mut body_builder = self.new_scoped();
+        let mut body_builder = self.scoped([(var.to_string(), Arc::new(Type::Fragment))]);
         body_fn(&mut body_builder);
-
-        self.var_stack.borrow_mut().pop();
 
         self.statements.push(IrStatement::LetFragment {
             id: self.next_node_id(),
@@ -901,14 +1066,12 @@ impl IrBuilder {
         FTrue: FnOnce(&mut Self),
         FFalse: FnOnce(&mut Self),
     {
-        use crate::expr::patterns::Match;
-
         assert_eq!(*subject.as_type(), Type::Bool);
 
-        let mut true_builder = self.new_scoped();
+        let mut true_builder = self.scoped([]);
         true_body_fn(&mut true_builder);
 
-        let mut false_builder = self.new_scoped();
+        let mut false_builder = self.scoped([]);
         false_body_fn(&mut false_builder);
 
         self.statements.push(IrStatement::Match {
@@ -931,30 +1094,19 @@ impl IrBuilder {
         FSome: FnOnce(&mut Self),
         FNone: FnOnce(&mut Self),
     {
-        use crate::expr::patterns::Match;
-
         let inner_type = match subject.as_type() {
             Type::Option(inner) => inner.clone(),
             _ => panic!("Cannot match on non-option type"),
         };
 
         // Build some body with optional binding
-        let some_arm_binding = binding_var.map(|var| {
-            self.var_stack
-                .borrow_mut()
-                .push((var.to_string(), inner_type));
-            VarName::try_from(var.to_string()).unwrap()
-        });
+        let some_arm_binding = binding_var.map(|var| VarName::try_from(var.to_string()).unwrap());
 
-        let mut some_builder = self.new_scoped();
+        let mut some_builder = self.scoped(binding_var.map(|var| (var.to_string(), inner_type)));
         some_body_fn(&mut some_builder);
 
-        if binding_var.is_some() {
-            self.var_stack.borrow_mut().pop();
-        }
-
         // Build none body
-        let mut none_builder = self.new_scoped();
+        let mut none_builder = self.scoped([]);
         none_body_fn(&mut none_builder);
 
         self.statements.push(IrStatement::Match {
@@ -976,8 +1128,6 @@ impl IrBuilder {
         subject: IrExpr,
         arms: Vec<(&str, Vec<(&str, &str)>, Box<dyn FnOnce(&mut Self)>)>,
     ) {
-        use crate::expr::patterns::Match;
-
         let Some(ResolvedType::Enum { name, variants, .. }) =
             self.types.registry().resolve(subject.as_type())
         else {
@@ -995,7 +1145,6 @@ impl IrBuilder {
                     .map(|v| &v.fields)
                     .expect("Variant not found in enum");
 
-                // Create binding names and push variables to scope
                 let bindings: Vec<(FieldName, VarName)> = field_bindings
                     .iter()
                     .map(|(field_name, binding_name)| {
@@ -1006,21 +1155,19 @@ impl IrBuilder {
                     })
                     .collect();
 
-                let mut arm_builder = self.new_scoped();
+                let scoped_vars: Vec<(String, Arc<Type>)> = field_bindings
+                    .iter()
+                    .map(|(field_name, binding_name)| {
+                        let field_type = variant_fields
+                            .iter()
+                            .find(|(f, _, _)| f.as_str() == *field_name)
+                            .map(|(_, t, _)| t.clone())
+                            .expect("Field not found in variant");
+                        (binding_name.to_string(), field_type)
+                    })
+                    .collect();
 
-                // Add bound variables to the builder's stack
-                for (field_name, binding_name) in &bindings {
-                    let field_type = variant_fields
-                        .iter()
-                        .find(|(f, _, _)| f.as_str() == field_name.as_str())
-                        .map(|(_, t, _)| t.clone())
-                        .expect("Field not found in variant");
-                    arm_builder
-                        .var_stack
-                        .borrow_mut()
-                        .push((binding_name.as_str().to_string(), field_type));
-                }
-
+                let mut arm_builder = self.scoped(scoped_vars);
                 body_fn(&mut arm_builder);
 
                 EnumMatchArm {
@@ -1071,19 +1218,19 @@ impl IrBuilder {
             })
             .collect();
 
-        let mut inner_builder = self.new_scoped();
-        for (field_name, binding_name) in &ir_bindings {
-            let field_type = record_fields
-                .iter()
-                .find(|(f, _, _)| f.as_str() == field_name.as_str())
-                .map(|(_, t, _)| t.clone())
-                .expect("Field not found in record");
-            inner_builder
-                .var_stack
-                .borrow_mut()
-                .push((binding_name.as_str().to_string(), field_type));
-        }
+        let scoped_vars: Vec<(String, Arc<Type>)> = bindings
+            .iter()
+            .map(|(field_name, binding_name)| {
+                let field_type = record_fields
+                    .iter()
+                    .find(|(f, _, _)| f.as_str() == *field_name)
+                    .map(|(_, t, _)| t.clone())
+                    .expect("Field not found in record");
+                (binding_name.to_string(), field_type)
+            })
+            .collect();
 
+        let mut inner_builder = self.scoped(scoped_vars);
         body_fn(&mut inner_builder);
 
         self.statements.push(IrStatement::LetRecordDestructure {

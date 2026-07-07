@@ -1638,8 +1638,6 @@ impl Transpiler for TsTranspiler {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
     use super::*;
     use crate::ir::syntax::builder::{IrBuilder, IrModuleBuilder};
     use expect_test::{Expect, expect};
@@ -2495,13 +2493,11 @@ mod tests {
                     let outer_match = t.option_match_expr_with_binding(
                         t.var("opt"),
                         "v0",
-                        Type::Option(Arc::new(Type::Bool)),
                         |t| {
                             // Middle match on v0 (Option[Bool]): Some(v1) => innermost_match, None => "some-none"
                             t.option_match_expr_with_binding(
                                 t.var("v0"),
                                 "v1",
-                                Type::Bool,
                                 |t| {
                                     // Inner match on v1 (Bool): true => "true", false => "false"
                                     t.bool_match_expr(
