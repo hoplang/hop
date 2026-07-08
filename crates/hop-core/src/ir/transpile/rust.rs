@@ -1624,8 +1624,10 @@ impl Transpiler for RustTranspiler {
     }
 
     fn transpile_int_to_string<'a>(&mut self, arena: &'a Arena<'a>, value: &'a IrExpr) -> Doc<'a> {
-        self.transpile_expr(arena, value)
-            .append(arena.text(".to_string()"))
+        arena
+            .text("(")
+            .append(self.transpile_expr(arena, value))
+            .append(arena.text(").to_string()"))
     }
 
     fn transpile_float_to_int<'a>(&mut self, arena: &'a Arena<'a>, value: &'a IrExpr) -> Doc<'a> {
@@ -1765,7 +1767,7 @@ mod tests {
                     fn render(self) -> String {
                         let mut output = String::new();
                         for i in 1_i64..=3_i64 {
-                            output.push_str(&i.to_string());
+                            output.push_str(&(i).to_string());
                         }
                         output
                     }
@@ -2106,7 +2108,7 @@ mod tests {
                     fn render(self) -> String {
                         let Test { node } = self;
                         let mut output = String::new();
-                        output.push_str(&node.value.to_string());
+                        output.push_str(&(node.value).to_string());
                         output
                     }
                 }
@@ -2221,7 +2223,7 @@ mod tests {
                     fn render(self) -> String {
                         let mut output = String::new();
                         let node = Node { value: 2_i64, next: Some(Box::new(Node { value: 1_i64, next: None::<Box<Node>> })) };
-                        output.push_str(&node.value.to_string());
+                        output.push_str(&(node.value).to_string());
                         output
                     }
                 }
