@@ -9578,6 +9578,53 @@ mod tests {
 
     #[test]
     #[ignore]
+    fn option_is_none_as_comparison_operand() {
+        check(
+            indoc! {r#"
+                view Test {
+                  <let {o: Option[Bool] = None}>
+                    <if {true == o.is_none()}>
+                      x
+                    </if>
+                  </let>
+                }
+            "#},
+            "x",
+            expect![[r#"
+                -- ir (unoptimized) --
+                view Test() {
+                  let o = Option[Bool]::None in {
+                    if (true == o.is_none()) {
+                      write("x")
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                view Test() {
+                  if (true == Option[Bool]::None.is_none()) {
+                    write("x")
+                  }
+                }
+                -- expected output --
+                x
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
     fn top_level_text() {
         check(
             indoc! {r#"

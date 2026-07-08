@@ -1554,8 +1554,10 @@ impl Transpiler for TsTranspiler {
         arena: &'a Arena<'a>,
         option: &'a IrExpr,
     ) -> Doc<'a> {
-        self.transpile_expr(arena, option)
-            .append(arena.text(".tag === \"Some\""))
+        arena
+            .text("(")
+            .append(self.transpile_expr(arena, option))
+            .append(arena.text(".tag === \"Some\")"))
     }
 
     fn transpile_option_is_none<'a>(
@@ -1563,8 +1565,10 @@ impl Transpiler for TsTranspiler {
         arena: &'a Arena<'a>,
         option: &'a IrExpr,
     ) -> Doc<'a> {
-        self.transpile_expr(arena, option)
-            .append(arena.text(".tag === \"None\""))
+        arena
+            .text("(")
+            .append(self.transpile_expr(arena, option))
+            .append(arena.text(".tag === \"None\")"))
     }
 
     fn transpile_int_to_string<'a>(&mut self, arena: &'a Arena<'a>, value: &'a IrExpr) -> Doc<'a> {
