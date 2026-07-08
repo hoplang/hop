@@ -1536,8 +1536,10 @@ impl Transpiler for TsTranspiler {
     }
 
     fn transpile_array_is_empty<'a>(&mut self, arena: &'a Arena<'a>, array: &'a IrExpr) -> Doc<'a> {
-        self.transpile_expr(arena, array)
-            .append(arena.text(".length === 0"))
+        arena
+            .text("(")
+            .append(self.transpile_expr(arena, array))
+            .append(arena.text(".length === 0)"))
     }
 
     fn transpile_string_is_empty<'a>(
@@ -1545,8 +1547,10 @@ impl Transpiler for TsTranspiler {
         arena: &'a Arena<'a>,
         string: &'a IrExpr,
     ) -> Doc<'a> {
-        self.transpile_expr(arena, string)
-            .append(arena.text(".length === 0"))
+        arena
+            .text("(")
+            .append(self.transpile_expr(arena, string))
+            .append(arena.text(".length === 0)"))
     }
 
     fn transpile_option_is_some<'a>(

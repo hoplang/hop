@@ -9625,6 +9625,49 @@ mod tests {
 
     #[test]
     #[ignore]
+    fn string_is_empty_as_comparison_operand() {
+        check(
+            indoc! {r#"
+                view Test {
+                  <if {"a".is_empty() == "b".is_empty()}>
+                    x
+                  </if>
+                }
+            "#},
+            "x",
+            expect![[r#"
+                -- ir (unoptimized) --
+                view Test() {
+                  if ("a".is_empty() == "b".is_empty()) {
+                    write("x")
+                  }
+                }
+                -- ir (optimized) --
+                view Test() {
+                  if ("a".is_empty() == "b".is_empty()) {
+                    write("x")
+                  }
+                }
+                -- expected output --
+                x
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
     fn top_level_text() {
         check(
             indoc! {r#"
