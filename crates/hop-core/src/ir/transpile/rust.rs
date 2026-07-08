@@ -706,12 +706,22 @@ impl Transpiler for RustTranspiler {
         let var_name = var.unwrap_or("_");
 
         let doc = match source {
-            IrForSource::Array(array) => arena
-                .text("for ")
-                .append(arena.text(var_name))
-                .append(arena.text(" in "))
-                .append(self.transpile_expr(arena, array))
-                .append(arena.text(".iter() {")),
+            IrForSource::Array(array) => {
+                let iter_method = match array.as_type() {
+                    Type::Array(elem)
+                        if matches!(elem.as_ref(), Type::Bool | Type::Int | Type::Float) =>
+                    {
+                        ".iter().copied() {"
+                    }
+                    _ => ".iter() {",
+                };
+                arena
+                    .text("for ")
+                    .append(arena.text(var_name))
+                    .append(arena.text(" in "))
+                    .append(self.transpile_expr(arena, array))
+                    .append(arena.text(iter_method))
+            }
             IrForSource::RangeInclusive { start, end } => arena
                 .text("for ")
                 .append(arena.text(var_name))

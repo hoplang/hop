@@ -2490,6 +2490,54 @@ mod tests {
     }
 
     #[test]
+    fn for_loop_over_bool_array_with_if() {
+        check(
+            indoc! {r#"
+                view Test {
+                  <for {v in [true]}>
+                    <if {v}>
+                      x
+                    </if>
+                  </for>
+                }
+            "#},
+            "x",
+            expect![[r#"
+                -- ir (unoptimized) --
+                view Test() {
+                  for v in [true] {
+                    if v {
+                      write("x")
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                view Test() {
+                  for v in [true] {
+                    if v {
+                      write("x")
+                    }
+                  }
+                }
+                -- expected output --
+                x
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
     #[ignore]
     fn for_loop_with_range() {
         check(
