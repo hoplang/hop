@@ -11070,4 +11070,439 @@ mod tests {
             "#]],
         );
     }
+
+    #[test]
+    #[ignore]
+    fn option_bool_match_in_component() {
+        check(
+            indoc! {r#"
+                pub component OptBool(checked: Option[Bool]) {
+                  <match {checked}>
+                    <case {Some(true)}>
+                      <span>
+                        yes
+                      </span>
+                    </case>
+                    <case {Some(false)}>
+                      <span>
+                        no
+                      </span>
+                    </case>
+                    <case {None}>
+                    </case>
+                  </match>
+                }
+
+                view Test {
+                  <OptBool checked={Some(true)}/>
+                }
+            "#},
+            "<span>yes</span>",
+            expect![[r#"
+                -- ir (unoptimized) --
+                view Test() {
+                  let checked = Option[Bool]::Some(true) in {
+                    match checked {
+                      Some(v_1) => {
+                        match v_1 {
+                          true => {
+                            write("<span")
+                            write(">")
+                            write("yes")
+                            write("</span>")
+                          }
+                          false => {
+                            write("<span")
+                            write(">")
+                            write("no")
+                            write("</span>")
+                          }
+                        }
+                      }
+                      None => {
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                view Test() {
+                  let v_1 = true in {
+                    match v_1 {
+                      true => {
+                        write("<span>yes</span>")
+                      }
+                      false => {
+                        write("<span>no</span>")
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                <span>yes</span>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn nested_option_bool_literal_patterns() {
+        check(
+            indoc! {r#"
+                view Test {
+                  <let {x: Option[Option[Bool]] = Some(Some(true))}>
+                    <match {x}>
+                      <case {Some(Some(true))}>
+                        tt
+                      </case>
+                      <case {Some(Some(false))}>
+                        tf
+                      </case>
+                      <case {Some(None)}>
+                        some-none
+                      </case>
+                      <case {None}>
+                        none
+                      </case>
+                    </match>
+                  </let>
+                }
+            "#},
+            "tt",
+            expect![[r#"
+                -- ir (unoptimized) --
+                view Test() {
+                  let x = Option[Option[Bool]]::Some(Option[Bool]::Some(true)) in {
+                    match x {
+                      Some(v_1) => {
+                        match v_1 {
+                          Some(v_2) => {
+                            match v_2 {
+                              true => {
+                                write("tt")
+                              }
+                              false => {
+                                write("tf")
+                              }
+                            }
+                          }
+                          None => {
+                            write("some-none")
+                          }
+                        }
+                      }
+                      None => {
+                        write("none")
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                view Test() {
+                  let v_1 = Option[Bool]::Some(true) in {
+                    match v_1 {
+                      Some(v_2) => {
+                        match v_2 {
+                          true => {
+                            write("tt")
+                          }
+                          false => {
+                            write("tf")
+                          }
+                        }
+                      }
+                      None => {
+                        write("some-none")
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                tt
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn for_loop_int_comparison() {
+        check(
+            indoc! {r#"
+                view Test {
+                  <for {n in [1, 2, 3]}>
+                    <if {n > 1}>
+                      {n.to_string()}
+                    </if>
+                  </for>
+                }
+            "#},
+            "23",
+            expect![[r#"
+                -- ir (unoptimized) --
+                view Test() {
+                  for n in [1, 2, 3] {
+                    if (1 < n) {
+                      write_escaped(n.to_string())
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                view Test() {
+                  for n in [1, 2, 3] {
+                    if (1 < n) {
+                      write_escaped(n.to_string())
+                    }
+                  }
+                }
+                -- expected output --
+                23
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn for_loop_string_equality() {
+        check(
+            indoc! {r#"
+                view Test {
+                  <for {s in ["a", "b"]}>
+                    <if {s == "a"}>
+                      {s}
+                    </if>
+                  </for>
+                }
+            "#},
+            "a",
+            expect![[r#"
+                -- ir (unoptimized) --
+                view Test() {
+                  for s in ["a", "b"] {
+                    if (s == "a") {
+                      write_escaped(s)
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                view Test() {
+                  for s in ["a", "b"] {
+                    if (s == "a") {
+                      write_escaped(s)
+                    }
+                  }
+                }
+                -- expected output --
+                a
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn for_loop_float_comparison() {
+        check(
+            indoc! {r#"
+                view Test {
+                  <for {f in [1.5, 2.5]}>
+                    <if {f > 2.0}>
+                      big
+                    </if>
+                  </for>
+                }
+            "#},
+            "big",
+            expect![[r#"
+                -- ir (unoptimized) --
+                view Test() {
+                  for f in [1.5, 2.5] {
+                    if (2 < f) {
+                      write("big")
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                view Test() {
+                  for f in [1.5, 2.5] {
+                    if (2 < f) {
+                      write("big")
+                    }
+                  }
+                }
+                -- expected output --
+                big
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn for_loop_bool_logical_and() {
+        check(
+            indoc! {r#"
+                view Test {
+                  <for {flag in [true, false]}>
+                    <if {flag && true}>
+                      x
+                    </if>
+                  </for>
+                }
+            "#},
+            "x",
+            expect![[r#"
+                -- ir (unoptimized) --
+                view Test() {
+                  for flag in [true, false] {
+                    if (flag && true) {
+                      write("x")
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                view Test() {
+                  for flag in [true, false] {
+                    if (flag && true) {
+                      write("x")
+                    }
+                  }
+                }
+                -- expected output --
+                x
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn for_loop_string_used_by_value_and_by_ref() {
+        check(
+            indoc! {r#"
+                pub component Show(label: String) {
+                  <span>
+                    {label}
+                  </span>
+                }
+
+                view Test {
+                  <for {s in ["a", "b"]}>
+                    <if {s == "a"}>
+                      <Show label={s}/>
+                    </if>
+                  </for>
+                }
+            "#},
+            "<span>a</span>",
+            expect![[r#"
+                -- ir (unoptimized) --
+                view Test() {
+                  for s in ["a", "b"] {
+                    if (s == "a") {
+                      let label = s in {
+                        write("<span")
+                        write(">")
+                        write_escaped(label)
+                        write("</span>")
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                view Test() {
+                  for s in ["a", "b"] {
+                    if (s == "a") {
+                      let label = s in {
+                        write("<span>")
+                        write_escaped(label)
+                        write("</span>")
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                <span>a</span>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
 }

@@ -35,6 +35,23 @@ impl RustTranspiler {
         }
     }
 
+    /// Rebind each variable to an owned clone at the top of a loop or match
+    /// arm body.
+    fn body_with_rebinds<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        vars: &[&'a str],
+        body: &'a [IrStatement],
+    ) -> Doc<'a> {
+        let mut doc = arena.nil();
+        for v in vars {
+            doc = doc
+                .append(arena.text(format!("let {v} = {v}.clone();")))
+                .append(arena.hardline());
+        }
+        doc.append(self.transpile_statements(arena, body))
+    }
+
     /// Render a match subject in head position, parenthesizing a non-variable
     /// subject so the parser does not read its braces as the match body.
     fn transpile_match_subject<'a>(
@@ -706,22 +723,12 @@ impl Transpiler for RustTranspiler {
         let var_name = var.unwrap_or("_");
 
         let doc = match source {
-            IrForSource::Array(array) => {
-                let iter_method = match array.as_type() {
-                    Type::Array(elem)
-                        if matches!(elem.as_ref(), Type::Bool | Type::Int | Type::Float) =>
-                    {
-                        ".iter().copied() {"
-                    }
-                    _ => ".iter() {",
-                };
-                arena
-                    .text("for ")
-                    .append(arena.text(var_name))
-                    .append(arena.text(" in "))
-                    .append(self.transpile_expr(arena, array))
-                    .append(arena.text(iter_method))
-            }
+            IrForSource::Array(array) => arena
+                .text("for ")
+                .append(arena.text(var_name))
+                .append(arena.text(" in "))
+                .append(self.transpile_expr(arena, array))
+                .append(arena.text(".iter() {")),
             IrForSource::RangeInclusive { start, end } => arena
                 .text("for ")
                 .append(arena.text(var_name))
@@ -732,10 +739,17 @@ impl Transpiler for RustTranspiler {
                 .append(arena.text(" {")),
         };
 
+        // Array element bindings are references. Rebind them to owned clones so
+        // the body can use the element by value. Range loops already bind an
+        // owned i64.
+        let rebinds: Vec<&str> = match source {
+            IrForSource::Array(_) => var.into_iter().collect(),
+            IrForSource::RangeInclusive { .. } => Vec::new(),
+        };
         doc.append(
             arena
                 .hardline()
-                .append(self.transpile_statements(arena, body))
+                .append(self.body_with_rebinds(arena, &rebinds, body))
                 .nest(4),
         )
         .append(arena.hardline())
@@ -843,6 +857,8 @@ impl Transpiler for RustTranspiler {
                     Some(var) => format!("Some({})", var.as_str()),
                     None => "Some(_)".to_string(),
                 };
+                let some_rebind: Vec<&str> =
+                    some_arm_binding.iter().map(|v| v.as_str()).collect();
 
                 let some_arm = arena
                     .text(some_pattern)
@@ -850,7 +866,7 @@ impl Transpiler for RustTranspiler {
                     .append(
                         arena
                             .hardline()
-                            .append(self.transpile_statements(arena, some_arm_body))
+                            .append(self.body_with_rebinds(arena, &some_rebind, some_arm_body))
                             .nest(4),
                     )
                     .append(arena.hardline())
@@ -944,6 +960,8 @@ impl Transpiler for RustTranspiler {
                                 }
                             }
                         };
+                        let arm_rebind: Vec<&str> =
+                            arm.bindings.iter().map(|(_, var)| var.as_str()).collect();
 
                         arena
                             .text(pattern)
@@ -951,7 +969,7 @@ impl Transpiler for RustTranspiler {
                             .append(
                                 arena
                                     .hardline()
-                                    .append(self.transpile_statements(arena, &arm.body))
+                                    .append(self.body_with_rebinds(arena, &arm_rebind, &arm.body))
                                     .nest(4),
                             )
                             .append(arena.hardline())
@@ -1844,6 +1862,7 @@ mod tests {
                         let mut output = String::new();
                         match &(Some("x".to_string())) {
                             Some(value) => {
+                                let value = value.clone();
                                 output.push_str("some: ");
                                 output.push_str(&value);
                             }
@@ -1907,6 +1926,7 @@ mod tests {
                         let mut output = String::new();
                         match &opt {
                             Some(value) => {
+                                let value = value.clone();
                                 output.push_str("some: ");
                                 output.push_str(&value);
                             }
