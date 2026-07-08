@@ -104,9 +104,14 @@ impl RustTranspiler {
 
     fn transpile_expr_owned<'a>(&mut self, arena: &'a Arena<'a>, expr: &'a IrExpr) -> Doc<'a> {
         match expr {
-            IrExpr::FieldAccess { .. } | IrExpr::Var { .. } => self
-                .transpile_expr(arena, expr)
-                .append(arena.text(".clone()")),
+            IrExpr::FieldAccess { .. } | IrExpr::Var { .. } => {
+                let method = match expr.as_type() {
+                    Type::Array(_) => ".to_vec()",
+                    Type::String => ".to_string()",
+                    _ => ".clone()",
+                };
+                self.transpile_expr(arena, expr).append(arena.text(method))
+            }
             _ => self.transpile_expr(arena, expr),
         }
     }

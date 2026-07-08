@@ -10959,4 +10959,67 @@ mod tests {
             "#]],
         );
     }
+
+    #[test]
+    #[ignore]
+    fn field_access_on_record_literal_from_arg_in_if_condition() {
+        check(
+            indoc! {r#"
+                record R {
+                  f: Array[String],
+                }
+
+                component C(p: Array[String]) {
+                  <if {R {f: p}.f.is_empty()}>
+                    <C p={[]}/>
+                  </if>
+                }
+
+                view Test {
+                  <C p={["a"]}/>
+                }
+            "#},
+            "",
+            expect![[r#"
+                -- ir (unoptimized) --
+                record R {
+                  f: Array[String],
+                }
+                component C(p: Array[String]) {
+                  if R {f: p}.f.is_empty() {
+                    call C(p = [])
+                  }
+                }
+                view Test() {
+                  call C(p = ["a"])
+                }
+                -- ir (optimized) --
+                record R {
+                  f: Array[String],
+                }
+                component C(p: Array[String]) {
+                  if R {f: p}.f.is_empty() {
+                    call C(p = [])
+                  }
+                }
+                view Test() {
+                  call C(p = ["a"])
+                }
+                -- expected output --
+
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
 }
