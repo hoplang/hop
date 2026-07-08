@@ -1025,7 +1025,14 @@ impl Transpiler for RustTranspiler {
         object: &'a IrExpr,
         field: &'a FieldName,
     ) -> Doc<'a> {
-        self.transpile_expr(arena, object)
+        let object_doc = match object {
+            IrExpr::RecordLiteral { .. } | IrExpr::EnumLiteral { .. } => arena
+                .text("(")
+                .append(self.transpile_expr(arena, object))
+                .append(arena.text(")")),
+            _ => self.transpile_expr(arena, object),
+        };
+        object_doc
             .append(arena.text("."))
             .append(arena.text(Self::escape_field_name(field.as_str())))
     }

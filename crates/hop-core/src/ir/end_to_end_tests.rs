@@ -10853,4 +10853,57 @@ mod tests {
             "#]],
         );
     }
+
+    #[test]
+    #[ignore]
+    fn field_access_on_record_literal_in_if_condition() {
+        check(
+            indoc! {r#"
+                record R {
+                  f: Bool,
+                }
+
+                view Test {
+                  <if {R {f: true}.f}>
+                    x
+                  </if>
+                }
+            "#},
+            "x",
+            expect![[r#"
+                -- ir (unoptimized) --
+                record R {
+                  f: Bool,
+                }
+                view Test() {
+                  if R {f: true}.f {
+                    write("x")
+                  }
+                }
+                -- ir (optimized) --
+                record R {
+                  f: Bool,
+                }
+                view Test() {
+                  if R {f: true}.f {
+                    write("x")
+                  }
+                }
+                -- expected output --
+                x
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
 }
