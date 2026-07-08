@@ -704,9 +704,9 @@ impl Transpiler for RustTranspiler {
             IrForSource::Array(array) => arena
                 .text("for ")
                 .append(arena.text(var_name))
-                .append(arena.text(" in &"))
+                .append(arena.text(" in "))
                 .append(self.transpile_expr(arena, array))
-                .append(arena.text(" {")),
+                .append(arena.text(".iter() {")),
             IrForSource::RangeInclusive { start, end } => arena
                 .text("for ")
                 .append(arena.text(var_name))

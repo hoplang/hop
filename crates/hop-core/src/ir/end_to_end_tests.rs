@@ -10906,4 +10906,57 @@ mod tests {
             "#]],
         );
     }
+
+    #[test]
+    #[ignore]
+    fn recursive_component_with_empty_array_arg() {
+        check(
+            indoc! {r#"
+                component C(p: Array[String]) {
+                  <for {_ in p}>
+                    <C p={[]}/>
+                  </for>
+                }
+
+                view Test {
+                  <C p={["a"]}/>
+                }
+            "#},
+            "",
+            expect![[r#"
+                -- ir (unoptimized) --
+                component C(p: Array[String]) {
+                  for _ in p {
+                    call C(p = [])
+                  }
+                }
+                view Test() {
+                  call C(p = ["a"])
+                }
+                -- ir (optimized) --
+                component C(p: Array[String]) {
+                  for _ in p {
+                    call C(p = [])
+                  }
+                }
+                view Test() {
+                  call C(p = ["a"])
+                }
+                -- expected output --
+
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
 }
