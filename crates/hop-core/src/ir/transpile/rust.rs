@@ -69,14 +69,15 @@ impl RustTranspiler {
                     .text(Self::escape_field_name(field.as_str()))
                     .append(arena.text(": "))
                     .append(arena.text(var.as_str()))
+                    .append(arena.text(", "))
             }),
-            arena.text(", "),
+            arena.nil(),
         );
         arena
             .text(record_name)
             .append(arena.text(" { "))
             .append(bindings_doc)
-            .append(arena.text(", .. } = &"))
+            .append(arena.text(".. } = &"))
             .append(self.transpile_match_subject(arena, subject))
     }
 
