@@ -10817,6 +10817,66 @@ mod tests {
 
     #[test]
     #[ignore]
+    fn recursive_component_with_option_arg_used_twice() {
+        check(
+            indoc! {r#"
+                component C(x: Option[String]) {
+                  <if {x.is_none()}>
+                    <C x={x}/>
+                  </if>
+                }
+
+                view Test {
+                  <let {o: Option[String] = Some("a")}>
+                    <C x={o}/>
+                    <C x={o}/>
+                  </let>
+                }
+            "#},
+            "",
+            expect![[r#"
+                -- ir (unoptimized) --
+                component C(x: Option[String]) {
+                  if x.is_none() {
+                    call C(x = x)
+                  }
+                }
+                view Test() {
+                  let o = Option[String]::Some("a") in {
+                    call C(x = o)
+                    call C(x = o)
+                  }
+                }
+                -- ir (optimized) --
+                component C(x: Option[String]) {
+                  if x.is_none() {
+                    call C(x = x)
+                  }
+                }
+                view Test() {
+                  call C(x = Option[String]::Some("a"))
+                  call C(x = Option[String]::Some("a"))
+                }
+                -- expected output --
+
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
     fn mutually_recursive_components() {
         check(
             indoc! {r#"

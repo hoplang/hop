@@ -622,11 +622,12 @@ impl Transpiler for RustTranspiler {
         let all_args: Vec<Doc<'a>> = args
             .iter()
             .map(|arg| {
-                let arg_doc = self.transpile_expr(arena, &arg.expr);
                 if Self::passed_by_ref(arg.expr.as_type()) {
-                    arena.text("&").append(arg_doc)
+                    arena
+                        .text("&")
+                        .append(self.transpile_expr(arena, &arg.expr))
                 } else {
-                    arg_doc
+                    self.transpile_expr_owned(arena, &arg.expr)
                 }
             })
             .collect();
