@@ -1,7 +1,7 @@
 use crate::document::CheapString;
 use crate::expr::Type;
 use crate::expr::patterns::{EnumMatchArm, EnumPattern, Match};
-use crate::expr::typing::r#type::EquatableType;
+use crate::expr::typing::r#type::{ComparableType, EquatableType};
 use crate::expr::typing::type_registry::{ResolvedType, TypeRegistry};
 use crate::expr::typing::type_registry_builder::{TestTypes, TypeRegistryBuilder};
 use crate::ir::ast::{
@@ -311,6 +311,40 @@ impl IrBuilder {
             ),
         };
         IrExpr::Equals {
+            left: Box::new(left),
+            right: Box::new(right),
+            operand_types,
+            id: self.next_expr_id(),
+        }
+    }
+
+    pub fn lt(&self, left: IrExpr, right: IrExpr) -> IrExpr {
+        let operand_types = match (left.as_type(), right.as_type()) {
+            (Type::Int, Type::Int) => ComparableType::Int,
+            (Type::Float, Type::Float) => ComparableType::Float,
+            (l, r) => panic!(
+                "Unsupported types for less-than comparison: {:?} < {:?}",
+                l, r
+            ),
+        };
+        IrExpr::LessThan {
+            left: Box::new(left),
+            right: Box::new(right),
+            operand_types,
+            id: self.next_expr_id(),
+        }
+    }
+
+    pub fn lte(&self, left: IrExpr, right: IrExpr) -> IrExpr {
+        let operand_types = match (left.as_type(), right.as_type()) {
+            (Type::Int, Type::Int) => ComparableType::Int,
+            (Type::Float, Type::Float) => ComparableType::Float,
+            (l, r) => panic!(
+                "Unsupported types for less-than-or-equal comparison: {:?} <= {:?}",
+                l, r
+            ),
+        };
+        IrExpr::LessThanOrEqual {
             left: Box::new(left),
             right: Box::new(right),
             operand_types,

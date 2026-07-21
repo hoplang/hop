@@ -1148,7 +1148,10 @@ mod tests {
                     );
                 })
                 .build(),
-            vec![("maybe", Value::Some(Box::new(Value::String("x".to_string()))))],
+            vec![(
+                "maybe",
+                Value::Some(Box::new(Value::String("x".to_string()))),
+            )],
             expect![[r#"
                 -- before --
                 view Test(maybe: Option[String]) {
@@ -1241,7 +1244,10 @@ mod tests {
                     );
                 })
                 .build(),
-            vec![("maybe", Value::Some(Box::new(Value::String("x".to_string()))))],
+            vec![(
+                "maybe",
+                Value::Some(Box::new(Value::String("x".to_string()))),
+            )],
             expect![[r#"
                 -- before --
                 view Test(maybe: Option[String]) {
@@ -1253,6 +1259,126 @@ mod tests {
 
                 -- after --
                 some
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_evaluate_less_than_when_true() {
+        check(
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.write_expr(
+                        t.bool_match_expr(t.lt(t.int(2), t.int(3)), t.str("yes"), t.str("no")),
+                        false,
+                    );
+                })
+                .build(),
+            vec![],
+            expect![[r#"
+                -- before --
+                view Test() {
+                  write_expr(match (2 < 3) {true => "yes", false => "no"})
+                }
+
+                -- after --
+                yes
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_evaluate_less_than_when_false() {
+        check(
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.write_expr(
+                        t.bool_match_expr(t.lt(t.int(3), t.int(2)), t.str("yes"), t.str("no")),
+                        false,
+                    );
+                })
+                .build(),
+            vec![],
+            expect![[r#"
+                -- before --
+                view Test() {
+                  write_expr(match (3 < 2) {true => "yes", false => "no"})
+                }
+
+                -- after --
+                no
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_evaluate_less_than_or_equal_when_equal() {
+        check(
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.write_expr(
+                        t.bool_match_expr(t.lte(t.int(3), t.int(3)), t.str("yes"), t.str("no")),
+                        false,
+                    );
+                })
+                .build(),
+            vec![],
+            expect![[r#"
+                -- before --
+                view Test() {
+                  write_expr(match (3 <= 3) {true => "yes", false => "no"})
+                }
+
+                -- after --
+                yes
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_evaluate_less_than_or_equal_when_greater() {
+        check(
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.write_expr(
+                        t.bool_match_expr(t.lte(t.int(4), t.int(3)), t.str("yes"), t.str("no")),
+                        false,
+                    );
+                })
+                .build(),
+            vec![],
+            expect![[r#"
+                -- before --
+                view Test() {
+                  write_expr(match (4 <= 3) {true => "yes", false => "no"})
+                }
+
+                -- after --
+                no
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_evaluate_less_than_with_floats() {
+        check(
+            IrModuleBuilder::new()
+                .view("Test", [("a", "Float"), ("b", "Float")], |t| {
+                    t.write_expr(
+                        t.bool_match_expr(t.lt(t.var("a"), t.var("b")), t.str("yes"), t.str("no")),
+                        false,
+                    );
+                })
+                .build(),
+            vec![("a", Value::Float(1.5)), ("b", Value::Float(2.5))],
+            expect![[r#"
+                -- before --
+                view Test(a: Float, b: Float) {
+                  write_expr(match (a < b) {true => "yes", false => "no"})
+                }
+
+                -- after --
+                yes
             "#]],
         );
     }
