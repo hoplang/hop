@@ -1008,4 +1008,252 @@ mod tests {
             "#]],
         );
     }
+
+    #[test]
+    fn should_evaluate_array_is_empty_when_empty() {
+        check(
+            IrModuleBuilder::new()
+                .view("Test", [("items", "Array[String]")], |t| {
+                    t.write_expr(
+                        t.bool_match_expr(
+                            t.array_is_empty(t.var("items")),
+                            t.str("empty"),
+                            t.str("not empty"),
+                        ),
+                        false,
+                    );
+                })
+                .build(),
+            vec![("items", Value::Array(vec![]))],
+            expect![[r#"
+                -- before --
+                view Test(items: Array[String]) {
+                  write_expr(match items.is_empty() {
+                    true => "empty",
+                    false => "not empty",
+                  })
+                }
+
+                -- after --
+                empty
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_evaluate_array_is_empty_when_non_empty() {
+        check(
+            IrModuleBuilder::new()
+                .view("Test", [("items", "Array[String]")], |t| {
+                    t.write_expr(
+                        t.bool_match_expr(
+                            t.array_is_empty(t.var("items")),
+                            t.str("empty"),
+                            t.str("not empty"),
+                        ),
+                        false,
+                    );
+                })
+                .build(),
+            vec![("items", Value::Array(vec![Value::String("x".to_string())]))],
+            expect![[r#"
+                -- before --
+                view Test(items: Array[String]) {
+                  write_expr(match items.is_empty() {
+                    true => "empty",
+                    false => "not empty",
+                  })
+                }
+
+                -- after --
+                not empty
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_evaluate_string_is_empty_when_empty() {
+        check(
+            IrModuleBuilder::new()
+                .view("Test", [("name", "String")], |t| {
+                    t.write_expr(
+                        t.bool_match_expr(
+                            t.string_is_empty(t.var("name")),
+                            t.str("empty"),
+                            t.str("not empty"),
+                        ),
+                        false,
+                    );
+                })
+                .build(),
+            vec![("name", Value::String(String::new()))],
+            expect![[r#"
+                -- before --
+                view Test(name: String) {
+                  write_expr(match name.is_empty() {
+                    true => "empty",
+                    false => "not empty",
+                  })
+                }
+
+                -- after --
+                empty
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_evaluate_string_is_empty_when_non_empty() {
+        check(
+            IrModuleBuilder::new()
+                .view("Test", [("name", "String")], |t| {
+                    t.write_expr(
+                        t.bool_match_expr(
+                            t.string_is_empty(t.var("name")),
+                            t.str("empty"),
+                            t.str("not empty"),
+                        ),
+                        false,
+                    );
+                })
+                .build(),
+            vec![("name", Value::String("value".to_string()))],
+            expect![[r#"
+                -- before --
+                view Test(name: String) {
+                  write_expr(match name.is_empty() {
+                    true => "empty",
+                    false => "not empty",
+                  })
+                }
+
+                -- after --
+                not empty
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_evaluate_option_is_some_when_some() {
+        check(
+            IrModuleBuilder::new()
+                .view("Test", [("maybe", "Option[String]")], |t| {
+                    t.write_expr(
+                        t.bool_match_expr(
+                            t.option_is_some(t.var("maybe")),
+                            t.str("some"),
+                            t.str("none"),
+                        ),
+                        false,
+                    );
+                })
+                .build(),
+            vec![("maybe", Value::Some(Box::new(Value::String("x".to_string()))))],
+            expect![[r#"
+                -- before --
+                view Test(maybe: Option[String]) {
+                  write_expr(match maybe.is_some() {
+                    true => "some",
+                    false => "none",
+                  })
+                }
+
+                -- after --
+                some
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_evaluate_option_is_some_when_none() {
+        check(
+            IrModuleBuilder::new()
+                .view("Test", [("maybe", "Option[String]")], |t| {
+                    t.write_expr(
+                        t.bool_match_expr(
+                            t.option_is_some(t.var("maybe")),
+                            t.str("some"),
+                            t.str("none"),
+                        ),
+                        false,
+                    );
+                })
+                .build(),
+            vec![("maybe", Value::None)],
+            expect![[r#"
+                -- before --
+                view Test(maybe: Option[String]) {
+                  write_expr(match maybe.is_some() {
+                    true => "some",
+                    false => "none",
+                  })
+                }
+
+                -- after --
+                none
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_evaluate_option_is_none_when_none() {
+        check(
+            IrModuleBuilder::new()
+                .view("Test", [("maybe", "Option[String]")], |t| {
+                    t.write_expr(
+                        t.bool_match_expr(
+                            t.option_is_none(t.var("maybe")),
+                            t.str("none"),
+                            t.str("some"),
+                        ),
+                        false,
+                    );
+                })
+                .build(),
+            vec![("maybe", Value::None)],
+            expect![[r#"
+                -- before --
+                view Test(maybe: Option[String]) {
+                  write_expr(match maybe.is_none() {
+                    true => "none",
+                    false => "some",
+                  })
+                }
+
+                -- after --
+                none
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_evaluate_option_is_none_when_some() {
+        check(
+            IrModuleBuilder::new()
+                .view("Test", [("maybe", "Option[String]")], |t| {
+                    t.write_expr(
+                        t.bool_match_expr(
+                            t.option_is_none(t.var("maybe")),
+                            t.str("none"),
+                            t.str("some"),
+                        ),
+                        false,
+                    );
+                })
+                .build(),
+            vec![("maybe", Value::Some(Box::new(Value::String("x".to_string()))))],
+            expect![[r#"
+                -- before --
+                view Test(maybe: Option[String]) {
+                  write_expr(match maybe.is_none() {
+                    true => "none",
+                    false => "some",
+                  })
+                }
+
+                -- after --
+                some
+            "#]],
+        );
+    }
 }

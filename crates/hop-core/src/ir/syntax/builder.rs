@@ -905,6 +905,55 @@ impl IrBuilder {
         }
     }
 
+    pub fn array_is_empty(&self, operand: IrExpr) -> IrExpr {
+        assert!(
+            matches!(operand.as_type(), Type::Array(_)),
+            "ArrayIsEmpty expects Array operand, got: {}",
+            operand
+        );
+        IrExpr::ArrayIsEmpty {
+            array: Box::new(operand),
+            id: self.next_expr_id(),
+        }
+    }
+
+    pub fn string_is_empty(&self, operand: IrExpr) -> IrExpr {
+        assert_eq!(
+            *operand.as_type(),
+            Type::String,
+            "StringIsEmpty expects String operand, got: {}",
+            operand
+        );
+        IrExpr::StringIsEmpty {
+            string: Box::new(operand),
+            id: self.next_expr_id(),
+        }
+    }
+
+    pub fn option_is_some(&self, operand: IrExpr) -> IrExpr {
+        assert!(
+            matches!(operand.as_type(), Type::Option(_)),
+            "OptionIsSome expects Option operand, got: {}",
+            operand
+        );
+        IrExpr::OptionIsSome {
+            option: Box::new(operand),
+            id: self.next_expr_id(),
+        }
+    }
+
+    pub fn option_is_none(&self, operand: IrExpr) -> IrExpr {
+        assert!(
+            matches!(operand.as_type(), Type::Option(_)),
+            "OptionIsNone expects Option operand, got: {}",
+            operand
+        );
+        IrExpr::OptionIsNone {
+            option: Box::new(operand),
+            id: self.next_expr_id(),
+        }
+    }
+
     // Statement methods that auto-collect
     pub fn write(&mut self, s: &str) {
         self.statements.push(IrStatement::Write {
