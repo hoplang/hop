@@ -609,17 +609,7 @@ impl Program {
             },
         );
 
-        // The filtered module should contain exactly the requested view
-        let view = ir_module.views.first().ok_or_else(|| {
-            anyhow::anyhow!(
-                "View '{}/{}' not found after compilation",
-                document_id,
-                view_name
-            )
-        })?;
-
-        // Evaluate the view
-        ir::runtime::evaluator::evaluate_view(view, args, &ir_module.components)
+        ir::runtime::evaluator::evaluate_view(&ir_module, view_name, args)
     }
 
     /// Evaluate a view with randomly generated parameter values using the given RNG.

@@ -5,6 +5,7 @@ use crate::document_id::DocumentId;
 use crate::ir::runtime::evaluator::evaluate_view;
 use crate::orchestrator::{OrchestrateOptions, orchestrate};
 use crate::program::Program;
+use crate::symbols::type_name::TypeName;
 use expect_test::Expect;
 use std::collections::HashMap;
 use std::fs;
@@ -150,14 +151,8 @@ fn typecheck_rust(code: &str) -> Result<(), String> {
 }
 
 fn execute_evaluator(module: &super::IrModule) -> Result<String, String> {
-    let view = module
-        .views
-        .iter()
-        .find(|c| c.name.as_str() == "Test")
-        .ok_or_else(|| "Test view not found".to_string())?;
-
-    evaluate_view(view, HashMap::new(), &module.components)
-        .map_err(|e| format!("Evaluator failed: {}", e))
+    let view_name = TypeName::new("Test").unwrap();
+    evaluate_view(module, &view_name, HashMap::new()).map_err(|e| format!("Evaluator failed: {}", e))
 }
 
 fn check(hop_source: &str, expected_output: &str, expected: Expect) {

@@ -1,5 +1,6 @@
 use crate::ir::IrExpr;
 use crate::ir::runtime::value::Value;
+use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use crate::{
     expr::typing::r#type::{ComparableType, EquatableType, NumericType},
@@ -10,7 +11,9 @@ use std::collections::HashMap;
 use tailwind_merge::tw_merge;
 
 use crate::expr::patterns::{EnumPattern, Match};
-use crate::ir::syntax::ast::{IrComponentDeclaration, IrForSource, IrStatement, IrViewDeclaration};
+use crate::ir::syntax::ast::{
+    IrComponentDeclaration, IrForSource, IrModule, IrStatement,
+};
 
 /// Stack-based environment for the evaluator.
 struct Env {
@@ -36,12 +39,18 @@ impl Env {
     }
 }
 
-/// Evaluate an IR view with the given arguments
+/// Evaluate the named view of an IR module with the given arguments
 pub fn evaluate_view(
-    view: &IrViewDeclaration,
+    module: &IrModule,
+    view_name: &TypeName,
     args: HashMap<String, Value>,
-    component_defs: &[IrComponentDeclaration],
 ) -> Result<String> {
+    let view = module
+        .views
+        .iter()
+        .find(|view| &view.name == view_name)
+        .ok_or_else(|| anyhow!("View '{}' not found in module", view_name))?;
+
     let mut env = Env::new();
 
     for param in &view.parameters {
@@ -58,7 +67,7 @@ pub fn evaluate_view(
 
     // Execute body
     let mut output = String::new();
-    eval_statements(&view.body, &mut env, &mut output, component_defs)?;
+    eval_statements(&view.body, &mut env, &mut output, &module.components)?;
 
     Ok(output)
 }
@@ -790,8 +799,9 @@ mod tests {
         let before = module.to_string();
         let args_map: HashMap<String, Value> =
             args.into_iter().map(|(k, v)| (k.to_string(), v)).collect();
-        let after = evaluate_view(&module.views[0], args_map, &module.components)
-            .expect("Evaluation should succeed");
+        let view_name = module.views[0].name.clone();
+        let after =
+            evaluate_view(&module, &view_name, args_map).expect("Evaluation should succeed");
 
         let output = format!("-- before --\n{}\n-- after --\n{}\n", before, after);
         expected.assert_eq(&output);
@@ -973,7 +983,8 @@ mod tests {
             .build();
 
         // Call without providing the required argument
-        let result = evaluate_view(&module.views[0], HashMap::new(), &module.components);
+        let view_name = TypeName::new("Test").unwrap();
+        let result = evaluate_view(&module, &view_name, HashMap::new());
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.to_string().contains("Missing required parameter"));
