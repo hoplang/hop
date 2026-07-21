@@ -75,9 +75,7 @@ impl Const {
                 let variant_fields = &variants
                     .iter()
                     .find(|variant| variant.name.as_str() == variant_name.as_str())
-                    .unwrap_or_else(|| {
-                        panic!("enum {enum_name} has no variant {variant_name}")
-                    })
+                    .unwrap_or_else(|| panic!("enum {enum_name} has no variant {variant_name}"))
                     .fields;
 
                 let reconstructed_fields: Option<Vec<_>> = fields
@@ -721,33 +719,24 @@ pub fn perform_partial_evaluation(body: &mut Vec<IrStatement>, registry: &TypeRe
 
 #[cfg(test)]
 mod tests {
-    use crate::ir::ast::IrModule;
     use crate::ir::syntax::builder::IrModuleBuilder;
     use expect_test::{Expect, expect};
 
     use super::*;
 
-    fn check(mut module: IrModule, expected: Expect) {
+    /// Run the pass over every view and component in the module, using the
+    /// module's own registry so named type structure (e.g. enum variants and
+    /// fields) can be resolved during reconstruction.
+    fn check(builder: IrModuleBuilder, expected: Expect) {
+        let (mut module, registry) = builder.build_with_registry();
         let before = module.to_string();
         for view in &mut module.views {
-            perform_partial_evaluation(&mut view.body, &TypeRegistry::default());
+            perform_partial_evaluation(&mut view.body, &registry);
         }
         for component in &mut module.components {
-            perform_partial_evaluation(&mut component.body, &TypeRegistry::default());
+            perform_partial_evaluation(&mut component.body, &registry);
         }
         let after = module.to_string();
-        let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
-        expected.assert_eq(&output);
-    }
-
-    /// Run the pass on a module's first view, using the module's own registry
-    /// to resolve named type structure.
-    fn check_module(builder: IrModuleBuilder, expected: Expect) {
-        let (module, registry) = builder.build_with_registry();
-        let mut view = module.views.into_iter().next().unwrap();
-        let before = view.to_string();
-        perform_partial_evaluation(&mut view.body, &registry);
-        let after = view.to_string();
         let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
         expected.assert_eq(&output);
     }
@@ -755,13 +744,11 @@ mod tests {
     #[test]
     fn should_evaluate_simple_boolean_negation() {
         check(
-            IrModuleBuilder::new()
-                .view_no_params("Test", |t| {
-                    t.if_stmt(t.not(t.bool(false)), |t| {
-                        t.write("Should be true");
-                    });
-                })
-                .build(),
+            IrModuleBuilder::new().view_no_params("Test", |t| {
+                t.if_stmt(t.not(t.bool(false)), |t| {
+                    t.write("Should be true");
+                });
+            }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -783,13 +770,11 @@ mod tests {
     #[test]
     fn should_evaluate_double_boolean_negation() {
         check(
-            IrModuleBuilder::new()
-                .view_no_params("Test", |t| {
-                    t.if_stmt(t.not(t.not(t.bool(true))), |t| {
-                        t.write("Double negation");
-                    });
-                })
-                .build(),
+            IrModuleBuilder::new().view_no_params("Test", |t| {
+                t.if_stmt(t.not(t.not(t.bool(true))), |t| {
+                    t.write("Double negation");
+                });
+            }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -811,13 +796,11 @@ mod tests {
     #[test]
     fn should_evaluate_triple_boolean_negation() {
         check(
-            IrModuleBuilder::new()
-                .view_no_params("Test", |t| {
-                    t.if_stmt(t.not(t.not(t.not(t.bool(false)))), |t| {
-                        t.write("Triple negation");
-                    });
-                })
-                .build(),
+            IrModuleBuilder::new().view_no_params("Test", |t| {
+                t.if_stmt(t.not(t.not(t.not(t.bool(false)))), |t| {
+                    t.write("Triple negation");
+                });
+            }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -838,19 +821,17 @@ mod tests {
 
     #[test]
     fn should_evaluate_boolean_equality_comparisons() {
-        let ep = IrModuleBuilder::new()
-            .view_no_params("Test", |t| {
-                t.if_stmt(t.eq(t.bool(true), t.bool(true)), |t| {
-                    t.write("true == true");
-                });
-                t.if_stmt(t.eq(t.bool(false), t.bool(false)), |t| {
-                    t.write("false == false");
-                });
-                t.if_stmt(t.eq(t.bool(true), t.bool(false)), |t| {
-                    t.write("Should not appear");
-                });
-            })
-            .build();
+        let ep = IrModuleBuilder::new().view_no_params("Test", |t| {
+            t.if_stmt(t.eq(t.bool(true), t.bool(true)), |t| {
+                t.write("true == true");
+            });
+            t.if_stmt(t.eq(t.bool(false), t.bool(false)), |t| {
+                t.write("false == false");
+            });
+            t.if_stmt(t.eq(t.bool(true), t.bool(false)), |t| {
+                t.write("Should not appear");
+            });
+        });
         check(
             ep,
             expect![[r#"
@@ -886,16 +867,14 @@ mod tests {
     #[test]
     fn should_evaluate_equality_with_nested_negations() {
         check(
-            IrModuleBuilder::new()
-                .view_no_params("Test", |t| {
-                    t.if_stmt(
-                        t.eq(t.not(t.not(t.bool(false))), t.not(t.bool(false))),
-                        |t| {
-                            t.write("Should not appear");
-                        },
-                    );
-                })
-                .build(),
+            IrModuleBuilder::new().view_no_params("Test", |t| {
+                t.if_stmt(
+                    t.eq(t.not(t.not(t.bool(false))), t.not(t.bool(false))),
+                    |t| {
+                        t.write("Should not appear");
+                    },
+                );
+            }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -917,18 +896,16 @@ mod tests {
     #[test]
     fn should_propagate_constants_through_variables() {
         check(
-            IrModuleBuilder::new()
-                .view_no_params("Test", |t| {
-                    t.let_stmt("x", t.not(t.not(t.bool(true))), |t| {
-                        t.if_stmt(t.var("x"), |t| {
-                            t.write("x is true");
-                        });
-                        t.if_stmt(t.not(t.var("x")), |t| {
-                            t.write("x is false");
-                        });
+            IrModuleBuilder::new().view_no_params("Test", |t| {
+                t.let_stmt("x", t.not(t.not(t.bool(true))), |t| {
+                    t.if_stmt(t.var("x"), |t| {
+                        t.write("x is true");
                     });
-                })
-                .build(),
+                    t.if_stmt(t.not(t.var("x")), |t| {
+                        t.write("x is false");
+                    });
+                });
+            }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -960,20 +937,18 @@ mod tests {
     #[test]
     fn should_evaluate_equality_with_variable_operands() {
         check(
-            IrModuleBuilder::new()
-                .view_no_params("Test", |t| {
-                    t.let_stmt("x", t.bool(true), |t| {
-                        t.let_stmt("y", t.not(t.bool(true)), |t| {
-                            t.if_stmt(t.eq(t.var("x"), t.var("y")), |t| {
-                                t.write("x equals y");
-                            });
-                            t.if_stmt(t.eq(t.var("x"), t.not(t.var("y"))), |t| {
-                                t.write("x equals not y");
-                            });
+            IrModuleBuilder::new().view_no_params("Test", |t| {
+                t.let_stmt("x", t.bool(true), |t| {
+                    t.let_stmt("y", t.not(t.bool(true)), |t| {
+                        t.if_stmt(t.eq(t.var("x"), t.var("y")), |t| {
+                            t.write("x equals y");
+                        });
+                        t.if_stmt(t.eq(t.var("x"), t.not(t.var("y"))), |t| {
+                            t.write("x equals not y");
                         });
                     });
-                })
-                .build(),
+                });
+            }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -1009,13 +984,11 @@ mod tests {
     #[test]
     fn should_propagate_string_constants_through_variables() {
         check(
-            IrModuleBuilder::new()
-                .view_no_params("Test", |t| {
-                    t.let_stmt("message", t.str("Hello, World!"), |t| {
-                        t.write_expr_escaped(t.var("message"));
-                    });
-                })
-                .build(),
+            IrModuleBuilder::new().view_no_params("Test", |t| {
+                t.let_stmt("message", t.str("Hello, World!"), |t| {
+                    t.write_expr_escaped(t.var("message"));
+                });
+            }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -1037,16 +1010,14 @@ mod tests {
     #[test]
     fn should_propagate_nested_string_variables() {
         check(
-            IrModuleBuilder::new()
-                .view_no_params("Test", |t| {
-                    t.let_stmt("greeting", t.str("Hello"), |t| {
-                        t.let_stmt("name", t.str("World"), |t| {
-                            t.write_expr_escaped(t.var("greeting"));
-                            t.write_expr_escaped(t.var("name"));
-                        });
+            IrModuleBuilder::new().view_no_params("Test", |t| {
+                t.let_stmt("greeting", t.str("Hello"), |t| {
+                    t.let_stmt("name", t.str("World"), |t| {
+                        t.write_expr_escaped(t.var("greeting"));
+                        t.write_expr_escaped(t.var("name"));
                     });
-                })
-                .build(),
+                });
+            }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -1074,17 +1045,15 @@ mod tests {
     #[test]
     fn should_propagate_string_variable_to_multiple_uses() {
         check(
-            IrModuleBuilder::new()
-                .view_no_params("Test", |t| {
-                    t.let_stmt("title", t.str("Welcome"), |t| {
-                        t.write_expr_escaped(t.var("title"));
-                        t.write_expr_escaped(t.var("title"));
-                        t.let_stmt("subtitle", t.var("title"), |t| {
-                            t.write_expr_escaped(t.var("subtitle"));
-                        });
+            IrModuleBuilder::new().view_no_params("Test", |t| {
+                t.let_stmt("title", t.str("Welcome"), |t| {
+                    t.write_expr_escaped(t.var("title"));
+                    t.write_expr_escaped(t.var("title"));
+                    t.let_stmt("subtitle", t.var("title"), |t| {
+                        t.write_expr_escaped(t.var("subtitle"));
                     });
-                })
-                .build(),
+                });
+            }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -1114,23 +1083,21 @@ mod tests {
     #[test]
     fn should_evaluate_string_equality_comparisons() {
         check(
-            IrModuleBuilder::new()
-                .view_no_params("Test", |t| {
-                    t.if_stmt(t.eq(t.str("hello"), t.str("hello")), |t| {
-                        t.write("Strings are equal");
-                    });
-                    t.if_stmt(t.eq(t.str("hello"), t.str("world")), |t| {
-                        t.write("Should not appear");
-                    });
-                    t.let_stmt("greeting", t.str("hello"), |t| {
-                        t.let_stmt("message", t.str("hello"), |t| {
-                            t.if_stmt(t.eq(t.var("greeting"), t.var("message")), |t| {
-                                t.write("Variables are equal");
-                            });
+            IrModuleBuilder::new().view_no_params("Test", |t| {
+                t.if_stmt(t.eq(t.str("hello"), t.str("hello")), |t| {
+                    t.write("Strings are equal");
+                });
+                t.if_stmt(t.eq(t.str("hello"), t.str("world")), |t| {
+                    t.write("Should not appear");
+                });
+                t.let_stmt("greeting", t.str("hello"), |t| {
+                    t.let_stmt("message", t.str("hello"), |t| {
+                        t.if_stmt(t.eq(t.var("greeting"), t.var("message")), |t| {
+                            t.write("Variables are equal");
                         });
                     });
-                })
-                .build(),
+                });
+            }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -1172,14 +1139,11 @@ mod tests {
     #[test]
     fn should_evaluate_nested_string_concatenation() {
         check(
-            IrModuleBuilder::new()
-                .view_no_params("Test", |t| {
-                    t.write_expr_escaped(t.string_concat(
-                        t.string_concat(t.str("Hello"), t.str(" ")),
-                        t.str("World"),
-                    ));
-                })
-                .build(),
+            IrModuleBuilder::new().view_no_params("Test", |t| {
+                t.write_expr_escaped(
+                    t.string_concat(t.string_concat(t.str("Hello"), t.str(" ")), t.str("World")),
+                );
+            }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -1197,25 +1161,23 @@ mod tests {
     #[test]
     fn should_evaluate_string_concatenation_in_equality() {
         check(
-            IrModuleBuilder::new()
-                .view_no_params("Test", |t| {
-                    t.if_stmt(
-                        t.eq(t.string_concat(t.str("foo"), t.str("bar")), t.str("foobar")),
-                        |t| {
-                            t.write("Concatenation matches");
-                        },
-                    );
-                    t.if_stmt(
-                        t.eq(
-                            t.string_concat(t.str("hello"), t.str(" world")),
-                            t.str("hello"),
-                        ),
-                        |t| {
-                            t.write("Should not appear");
-                        },
-                    );
-                })
-                .build(),
+            IrModuleBuilder::new().view_no_params("Test", |t| {
+                t.if_stmt(
+                    t.eq(t.string_concat(t.str("foo"), t.str("bar")), t.str("foobar")),
+                    |t| {
+                        t.write("Concatenation matches");
+                    },
+                );
+                t.if_stmt(
+                    t.eq(
+                        t.string_concat(t.str("hello"), t.str(" world")),
+                        t.str("hello"),
+                    ),
+                    |t| {
+                        t.write("Should not appear");
+                    },
+                );
+            }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -1243,21 +1205,19 @@ mod tests {
     #[test]
     fn should_evaluate_string_concatenation_with_propagated_variables() {
         check(
-            IrModuleBuilder::new()
-                .view_no_params("Test", |t| {
-                    t.let_stmt("prefix", t.str("Hello"), |t| {
-                        t.let_stmt("suffix", t.string_concat(t.str(" "), t.str("World")), |t| {
-                            t.let_stmt(
-                                "full",
-                                t.string_concat(t.var("prefix"), t.var("suffix")),
-                                |t| {
-                                    t.write_expr_escaped(t.var("full"));
-                                },
-                            );
-                        });
+            IrModuleBuilder::new().view_no_params("Test", |t| {
+                t.let_stmt("prefix", t.str("Hello"), |t| {
+                    t.let_stmt("suffix", t.string_concat(t.str(" "), t.str("World")), |t| {
+                        t.let_stmt(
+                            "full",
+                            t.string_concat(t.var("prefix"), t.var("suffix")),
+                            |t| {
+                                t.write_expr_escaped(t.var("full"));
+                            },
+                        );
                     });
-                })
-                .build(),
+                });
+            }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -1286,7 +1246,7 @@ mod tests {
 
     #[test]
     fn should_evaluate_simple_match_expression() {
-        check_module(
+        check(
             IrModuleBuilder::new()
                 .enum_unit("Color", ["Red", "Blue"])
                 .view_no_params("Test", |t| {
@@ -1299,6 +1259,10 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
+                enum Color {
+                  Red,
+                  Blue,
+                }
                 view Test() {
                   let color = Color::Red in {
                     write_escaped(match color {
@@ -1309,6 +1273,10 @@ mod tests {
                 }
 
                 -- after --
+                enum Color {
+                  Red,
+                  Blue,
+                }
                 view Test() {
                   let color = Color::Red in {
                     write_escaped("red")
@@ -1320,7 +1288,7 @@ mod tests {
 
     #[test]
     fn should_evaluate_match_with_literal_subject() {
-        check_module(
+        check(
             IrModuleBuilder::new()
                 .enum_unit("Color", ["Red", "Blue"])
                 .view_no_params("Test", |t| {
@@ -1331,6 +1299,10 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
+                enum Color {
+                  Red,
+                  Blue,
+                }
                 view Test() {
                   write_escaped(match Color::Blue {
                     Color::Red => "red",
@@ -1339,6 +1311,10 @@ mod tests {
                 }
 
                 -- after --
+                enum Color {
+                  Red,
+                  Blue,
+                }
                 view Test() {
                   write_escaped("blue")
                 }
@@ -1349,22 +1325,20 @@ mod tests {
     #[test]
     fn should_inline_constant_statement_match_subject() {
         check(
-            IrModuleBuilder::new()
-                .view_no_params("Test", |t| {
-                    t.let_stmt("opt", t.some(t.str("x")), |t| {
-                        t.option_match_stmt(
-                            t.var("opt"),
-                            Some("v"),
-                            |t| {
-                                t.write_expr(t.var("v"), false);
-                            },
-                            |t| {
-                                t.write("none");
-                            },
-                        );
-                    });
-                })
-                .build(),
+            IrModuleBuilder::new().view_no_params("Test", |t| {
+                t.let_stmt("opt", t.some(t.str("x")), |t| {
+                    t.option_match_stmt(
+                        t.var("opt"),
+                        Some("v"),
+                        |t| {
+                            t.write_expr(t.var("v"), false);
+                        },
+                        |t| {
+                            t.write("none");
+                        },
+                    );
+                });
+            }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -1399,7 +1373,7 @@ mod tests {
 
     #[test]
     fn should_evaluate_match_with_variable_subject() {
-        check_module(
+        check(
             IrModuleBuilder::new()
                 .enum_unit("Color", ["Red", "Blue"])
                 .view_no_params("Test", |t| {
@@ -1412,6 +1386,10 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
+                enum Color {
+                  Red,
+                  Blue,
+                }
                 view Test() {
                   let color = Color::Blue in {
                     write_escaped(match color {
@@ -1422,6 +1400,10 @@ mod tests {
                 }
 
                 -- after --
+                enum Color {
+                  Red,
+                  Blue,
+                }
                 view Test() {
                   let color = Color::Blue in {
                     write_escaped("blue")
@@ -1433,7 +1415,7 @@ mod tests {
 
     #[test]
     fn should_evaluate_match_with_constant_arm_body() {
-        check_module(
+        check(
             IrModuleBuilder::new()
                 .enum_unit("Color", ["Red", "Blue"])
                 .view_no_params("Test", |t| {
@@ -1451,6 +1433,10 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
+                enum Color {
+                  Red,
+                  Blue,
+                }
                 view Test() {
                   let color = Color::Red in {
                     if match color {
@@ -1463,6 +1449,10 @@ mod tests {
                 }
 
                 -- after --
+                enum Color {
+                  Red,
+                  Blue,
+                }
                 view Test() {
                   let color = Color::Red in {
                     if true {
@@ -1476,7 +1466,7 @@ mod tests {
 
     #[test]
     fn should_evaluate_nested_match_in_equality() {
-        check_module(
+        check(
             IrModuleBuilder::new()
                 .enum_unit("Status", ["Active", "Inactive"])
                 .view_no_params("Test", |t| {
@@ -1497,6 +1487,10 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
+                enum Status {
+                  Active,
+                  Inactive,
+                }
                 view Test() {
                   let status = Status::Active in {
                     if (match status {
@@ -1509,6 +1503,10 @@ mod tests {
                 }
 
                 -- after --
+                enum Status {
+                  Active,
+                  Inactive,
+                }
                 view Test() {
                   let status = Status::Active in {
                     if true {
@@ -1522,7 +1520,7 @@ mod tests {
 
     #[test]
     fn should_propagate_enum_constant_through_variables() {
-        check_module(
+        check(
             IrModuleBuilder::new()
                 .enum_unit("Color", ["Red", "Blue"])
                 .view_no_params("Test", |t| {
@@ -1537,6 +1535,10 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
+                enum Color {
+                  Red,
+                  Blue,
+                }
                 view Test() {
                   let x = Color::Red in {
                     let y = x in {
@@ -1549,6 +1551,10 @@ mod tests {
                 }
 
                 -- after --
+                enum Color {
+                  Red,
+                  Blue,
+                }
                 view Test() {
                   let x = Color::Red in {
                     let y = Color::Red in {
@@ -1563,16 +1569,14 @@ mod tests {
     #[test]
     fn sibling_let_constant_propagation() {
         check(
-            IrModuleBuilder::new()
-                .view_no_params("Test", |t| {
-                    t.let_stmt("x", t.str("first"), |t| {
-                        t.write_expr_escaped(t.var("x"));
-                    });
-                    t.let_stmt("y", t.str("second"), |t| {
-                        t.write_expr_escaped(t.var("y"));
-                    });
-                })
-                .build(),
+            IrModuleBuilder::new().view_no_params("Test", |t| {
+                t.let_stmt("x", t.str("first"), |t| {
+                    t.write_expr_escaped(t.var("x"));
+                });
+                t.let_stmt("y", t.str("second"), |t| {
+                    t.write_expr_escaped(t.var("y"));
+                });
+            }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -1599,7 +1603,7 @@ mod tests {
 
     #[test]
     fn should_preserve_enum_variant_fields() {
-        check_module(
+        check(
             IrModuleBuilder::new()
                 .enum_("Msg", [("Say", vec![("text", "String")])])
                 .view_no_params("Test", |t| {
@@ -1611,11 +1615,17 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
+                enum Msg {
+                  Say {text: String},
+                }
                 view Test() {
                   let x = Msg::Say {text: "hi"} in {}
                 }
 
                 -- after --
+                enum Msg {
+                  Say {text: String},
+                }
                 view Test() {
                   let x = Msg::Say {text: "hi"} in {}
                 }
@@ -1626,13 +1636,10 @@ mod tests {
     #[test]
     fn should_evaluate_join_with_constant_strings() {
         check(
-            IrModuleBuilder::new()
-                .view_no_params("Test", |t| {
-                    let classes =
-                        t.join(vec![t.str("flex"), t.str("items-center"), t.str("gap-4")]);
-                    t.write_expr_escaped(t.tw_merge(classes));
-                })
-                .build(),
+            IrModuleBuilder::new().view_no_params("Test", |t| {
+                let classes = t.join(vec![t.str("flex"), t.str("items-center"), t.str("gap-4")]);
+                t.write_expr_escaped(t.tw_merge(classes));
+            }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -1650,12 +1657,10 @@ mod tests {
     #[test]
     fn should_evaluate_join_with_tailwind_conflicts() {
         check(
-            IrModuleBuilder::new()
-                .view_no_params("Test", |t| {
-                    let classes = t.join(vec![t.str("px-4"), t.str("py-2"), t.str("p-6")]);
-                    t.write_expr_escaped(t.tw_merge(classes));
-                })
-                .build(),
+            IrModuleBuilder::new().view_no_params("Test", |t| {
+                let classes = t.join(vec![t.str("px-4"), t.str("py-2"), t.str("p-6")]);
+                t.write_expr_escaped(t.tw_merge(classes));
+            }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -1673,16 +1678,14 @@ mod tests {
     #[test]
     fn should_evaluate_join_with_propagated_variables() {
         check(
-            IrModuleBuilder::new()
-                .view_no_params("Test", |t| {
-                    t.let_stmt("base", t.str("flex items-center"), |t| {
-                        t.let_stmt("extra", t.str("gap-4 text-red-500"), |t| {
-                            let classes = t.join(vec![t.var("base"), t.var("extra")]);
-                            t.write_expr_escaped(t.tw_merge(classes));
-                        });
+            IrModuleBuilder::new().view_no_params("Test", |t| {
+                t.let_stmt("base", t.str("flex items-center"), |t| {
+                    t.let_stmt("extra", t.str("gap-4 text-red-500"), |t| {
+                        let classes = t.join(vec![t.var("base"), t.var("extra")]);
+                        t.write_expr_escaped(t.tw_merge(classes));
                     });
-                })
-                .build(),
+                });
+            }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -1708,11 +1711,9 @@ mod tests {
     #[test]
     fn should_evaluate_empty_join() {
         check(
-            IrModuleBuilder::new()
-                .view_no_params("Test", |t| {
-                    t.write_expr_escaped(t.join(vec![]));
-                })
-                .build(),
+            IrModuleBuilder::new().view_no_params("Test", |t| {
+                t.write_expr_escaped(t.join(vec![]));
+            }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -1730,18 +1731,16 @@ mod tests {
     #[test]
     fn should_evaluate_nested_join() {
         check(
-            IrModuleBuilder::new()
-                .view_no_params("Test", |t| {
-                    // Inner join just concatenates: "px-2 p-3"
-                    // Outer join concatenates: "px-4 px-2 p-3"
-                    // tw_merge resolves conflicts: "p-3"
-                    let classes = t.join(vec![
-                        t.str("px-4"),
-                        t.join(vec![t.str("px-2"), t.str("p-3")]),
-                    ]);
-                    t.write_expr_escaped(t.tw_merge(classes));
-                })
-                .build(),
+            IrModuleBuilder::new().view_no_params("Test", |t| {
+                // Inner join just concatenates: "px-2 p-3"
+                // Outer join concatenates: "px-4 px-2 p-3"
+                // tw_merge resolves conflicts: "p-3"
+                let classes = t.join(vec![
+                    t.str("px-4"),
+                    t.join(vec![t.str("px-2"), t.str("p-3")]),
+                ]);
+                t.write_expr_escaped(t.tw_merge(classes));
+            }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -1758,7 +1757,7 @@ mod tests {
 
     #[test]
     fn should_evaluate_tw_merge_with_enum_match() {
-        check_module(
+        check(
             IrModuleBuilder::new()
                 .enum_unit("Size", ["Small", "Large"])
                 .view_no_params("Test", |t| {
@@ -1775,6 +1774,10 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
+                enum Size {
+                  Small,
+                  Large,
+                }
                 view Test() {
                   let size = Size::Large in {
                     write_escaped(tw_merge((("px-4" + " ") + match size {
@@ -1785,6 +1788,10 @@ mod tests {
                 }
 
                 -- after --
+                enum Size {
+                  Small,
+                  Large,
+                }
                 view Test() {
                   let size = Size::Large in {
                     write_escaped("px-4 text-lg")
@@ -1796,7 +1803,7 @@ mod tests {
 
     #[test]
     fn should_evaluate_join_with_enum_match_containing_join() {
-        check_module(
+        check(
             IrModuleBuilder::new()
                 .enum_unit("Size", ["Small", "Large"])
                 .view_no_params("Test", |t| {
@@ -1816,6 +1823,10 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
+                enum Size {
+                  Small,
+                  Large,
+                }
                 view Test() {
                   let size = Size::Large in {
                     write_escaped(tw_merge((("flex" + " ") + match size {
@@ -1826,6 +1837,10 @@ mod tests {
                 }
 
                 -- after --
+                enum Size {
+                  Small,
+                  Large,
+                }
                 view Test() {
                   let size = Size::Large in {
                     write_escaped("flex p-4 text-lg")
@@ -1838,17 +1853,15 @@ mod tests {
     #[test]
     fn should_evaluate_option_match_with_some() {
         check(
-            IrModuleBuilder::new()
-                .view_no_params("Test", |t| {
-                    t.let_stmt("opt", t.some(t.str("hello")), |t| {
-                        t.write_expr_escaped(t.option_match_expr(
-                            t.var("opt"),
-                            t.str("got some"),
-                            t.str("got none"),
-                        ));
-                    });
-                })
-                .build(),
+            IrModuleBuilder::new().view_no_params("Test", |t| {
+                t.let_stmt("opt", t.some(t.str("hello")), |t| {
+                    t.write_expr_escaped(t.option_match_expr(
+                        t.var("opt"),
+                        t.str("got some"),
+                        t.str("got none"),
+                    ));
+                });
+            }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -1873,17 +1886,15 @@ mod tests {
     #[test]
     fn should_evaluate_option_match_with_none() {
         check(
-            IrModuleBuilder::new()
-                .view_no_params("Test", |t| {
-                    t.let_stmt("opt", t.none("String"), |t| {
-                        t.write_expr_escaped(t.option_match_expr(
-                            t.var("opt"),
-                            t.str("got some"),
-                            t.str("got none"),
-                        ));
-                    });
-                })
-                .build(),
+            IrModuleBuilder::new().view_no_params("Test", |t| {
+                t.let_stmt("opt", t.none("String"), |t| {
+                    t.write_expr_escaped(t.option_match_expr(
+                        t.var("opt"),
+                        t.str("got some"),
+                        t.str("got none"),
+                    ));
+                });
+            }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -1908,19 +1919,17 @@ mod tests {
     #[test]
     fn should_propagate_option_constant_through_variables() {
         check(
-            IrModuleBuilder::new()
-                .view_no_params("Test", |t| {
-                    t.let_stmt("x", t.some(t.str("hello")), |t| {
-                        t.let_stmt("y", t.var("x"), |t| {
-                            t.write_expr_escaped(t.option_match_expr(
-                                t.var("y"),
-                                t.str("got some"),
-                                t.str("got none"),
-                            ));
-                        });
+            IrModuleBuilder::new().view_no_params("Test", |t| {
+                t.let_stmt("x", t.some(t.str("hello")), |t| {
+                    t.let_stmt("y", t.var("x"), |t| {
+                        t.write_expr_escaped(t.option_match_expr(
+                            t.var("y"),
+                            t.str("got some"),
+                            t.str("got none"),
+                        ));
                     });
-                })
-                .build(),
+                });
+            }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -1949,18 +1958,16 @@ mod tests {
     #[test]
     fn should_propagate_option_binding_value() {
         check(
-            IrModuleBuilder::new()
-                .view_no_params("Test", |t| {
-                    t.let_stmt("opt", t.some(t.str("hello")), |t| {
-                        t.write_expr_escaped(t.option_match_expr_with_binding(
-                            t.var("opt"),
-                            "inner",
-                            |t| t.var("inner"),
-                            t.str("default"),
-                        ));
-                    });
-                })
-                .build(),
+            IrModuleBuilder::new().view_no_params("Test", |t| {
+                t.let_stmt("opt", t.some(t.str("hello")), |t| {
+                    t.write_expr_escaped(t.option_match_expr_with_binding(
+                        t.var("opt"),
+                        "inner",
+                        |t| t.var("inner"),
+                        t.str("default"),
+                    ));
+                });
+            }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -1986,21 +1993,19 @@ mod tests {
     fn should_propagate_option_binding_in_nested_expression() {
         // Test that the binding value propagates into nested expressions
         check(
-            IrModuleBuilder::new()
-                .view_no_params("Test", |t| {
-                    t.let_stmt("opt", t.some(t.str("hello")), |t| {
-                        t.write_expr_escaped(t.option_match_expr_with_binding(
-                            t.var("opt"),
-                            "inner",
-                            |t| {
-                                // Use the binding in an equality check and string concat
-                                t.string_concat(t.var("inner"), t.str(" world"))
-                            },
-                            t.str("default"),
-                        ));
-                    });
-                })
-                .build(),
+            IrModuleBuilder::new().view_no_params("Test", |t| {
+                t.let_stmt("opt", t.some(t.str("hello")), |t| {
+                    t.write_expr_escaped(t.option_match_expr_with_binding(
+                        t.var("opt"),
+                        "inner",
+                        |t| {
+                            // Use the binding in an equality check and string concat
+                            t.string_concat(t.var("inner"), t.str(" world"))
+                        },
+                        t.str("default"),
+                    ));
+                });
+            }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -2026,23 +2031,21 @@ mod tests {
     fn should_propagate_option_binding_in_equality() {
         // Test that the binding value propagates into equality comparisons
         check(
-            IrModuleBuilder::new()
-                .view_no_params("Test", |t| {
-                    t.let_stmt("opt", t.some(t.str("hello")), |t| {
-                        t.if_stmt(
-                            t.option_match_expr_with_binding(
-                                t.var("opt"),
-                                "inner",
-                                |t| t.eq(t.var("inner"), t.str("hello")),
-                                t.bool(false),
-                            ),
-                            |t| {
-                                t.write("matched hello");
-                            },
-                        );
-                    });
-                })
-                .build(),
+            IrModuleBuilder::new().view_no_params("Test", |t| {
+                t.let_stmt("opt", t.some(t.str("hello")), |t| {
+                    t.if_stmt(
+                        t.option_match_expr_with_binding(
+                            t.var("opt"),
+                            "inner",
+                            |t| t.eq(t.var("inner"), t.str("hello")),
+                            t.bool(false),
+                        ),
+                        |t| {
+                            t.write("matched hello");
+                        },
+                    );
+                });
+            }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -2072,31 +2075,29 @@ mod tests {
     fn should_propagate_through_nested_option_match() {
         // Test nested option matches using let statements to bind intermediate values
         check(
-            IrModuleBuilder::new()
-                .view_no_params("Test", |t| {
-                    t.let_stmt("outer", t.some(t.some(t.str("nested"))), |t| {
-                        // First match extracts inner_opt from outer
-                        t.let_stmt(
-                            "inner_result",
-                            t.option_match_expr_with_binding(
-                                t.var("outer"),
-                                "inner_opt",
-                                |t| t.var("inner_opt"),
-                                t.none("String"),
-                            ),
-                            |t| {
-                                // Second match extracts value from inner_result
-                                t.write_expr_escaped(t.option_match_expr_with_binding(
-                                    t.var("inner_result"),
-                                    "value",
-                                    |t| t.var("value"),
-                                    t.str("inner none"),
-                                ));
-                            },
-                        );
-                    });
-                })
-                .build(),
+            IrModuleBuilder::new().view_no_params("Test", |t| {
+                t.let_stmt("outer", t.some(t.some(t.str("nested"))), |t| {
+                    // First match extracts inner_opt from outer
+                    t.let_stmt(
+                        "inner_result",
+                        t.option_match_expr_with_binding(
+                            t.var("outer"),
+                            "inner_opt",
+                            |t| t.var("inner_opt"),
+                            t.none("String"),
+                        ),
+                        |t| {
+                            // Second match extracts value from inner_result
+                            t.write_expr_escaped(t.option_match_expr_with_binding(
+                                t.var("inner_result"),
+                                "value",
+                                |t| t.var("value"),
+                                t.str("inner none"),
+                            ));
+                        },
+                    );
+                });
+            }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -2129,28 +2130,26 @@ mod tests {
     fn should_evaluate_nested_option_match_with_inline_let() {
         // Test nested option match where inner match is inside a let expression in the Some arm
         check(
-            IrModuleBuilder::new()
-                .view_no_params("Test", |t| {
-                    t.let_stmt("outer", t.some(t.some(t.str("nested"))), |t| {
-                        t.write_expr_escaped(t.option_match_expr_with_binding(
-                            t.var("outer"),
-                            "inner_opt",
-                            |t| {
-                                // let inner_opt_var = inner_opt in match inner_opt_var { ... }
-                                t.let_expr("inner_opt_var", t.var("inner_opt"), |t| {
-                                    t.option_match_expr_with_binding(
-                                        t.var("inner_opt_var"),
-                                        "value",
-                                        |t| t.var("value"),
-                                        t.str("inner none"),
-                                    )
-                                })
-                            },
-                            t.str("outer none"),
-                        ));
-                    });
-                })
-                .build(),
+            IrModuleBuilder::new().view_no_params("Test", |t| {
+                t.let_stmt("outer", t.some(t.some(t.str("nested"))), |t| {
+                    t.write_expr_escaped(t.option_match_expr_with_binding(
+                        t.var("outer"),
+                        "inner_opt",
+                        |t| {
+                            // let inner_opt_var = inner_opt in match inner_opt_var { ... }
+                            t.let_expr("inner_opt_var", t.var("inner_opt"), |t| {
+                                t.option_match_expr_with_binding(
+                                    t.var("inner_opt_var"),
+                                    "value",
+                                    |t| t.var("value"),
+                                    t.str("inner none"),
+                                )
+                            })
+                        },
+                        t.str("outer none"),
+                    ));
+                });
+            }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -2179,7 +2178,7 @@ mod tests {
     fn should_propagate_enum_binding_value() {
         use crate::ir::syntax::builder::IrBuilder;
 
-        check_module(
+        check(
             IrModuleBuilder::new()
                 .enum_("Msg", [("Say", vec![("text", "String")])])
                 .view_no_params("Test", |t| {
@@ -2200,6 +2199,9 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
+                enum Msg {
+                  Say {text: String},
+                }
                 view Test() {
                   let msg = Msg::Say {text: "hello"} in {
                     write_escaped(match msg {Msg::Say {text: t} => t})
@@ -2207,6 +2209,9 @@ mod tests {
                 }
 
                 -- after --
+                enum Msg {
+                  Say {text: String},
+                }
                 view Test() {
                   let msg = Msg::Say {text: "hello"} in {
                     write_escaped("hello")
@@ -2220,7 +2225,7 @@ mod tests {
     fn should_propagate_enum_binding_in_string_concat() {
         use crate::ir::syntax::builder::IrBuilder;
 
-        check_module(
+        check(
             IrModuleBuilder::new()
                 .enum_("Msg", [("Say", vec![("text", "String")])])
                 .view_no_params("Test", |t| {
@@ -2243,6 +2248,9 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
+                enum Msg {
+                  Say {text: String},
+                }
                 view Test() {
                   let msg = Msg::Say {text: "world"} in {
                     write_escaped(match msg {
@@ -2252,6 +2260,9 @@ mod tests {
                 }
 
                 -- after --
+                enum Msg {
+                  Say {text: String},
+                }
                 view Test() {
                   let msg = Msg::Say {text: "world"} in {
                     write_escaped("hello world")
@@ -2265,7 +2276,7 @@ mod tests {
     fn should_propagate_enum_binding_in_equality() {
         use crate::ir::syntax::builder::IrBuilder;
 
-        check_module(
+        check(
             IrModuleBuilder::new()
                 .enum_("Msg", [("Say", vec![("text", "String")])])
                 .view_no_params("Test", |t| {
@@ -2291,6 +2302,9 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
+                enum Msg {
+                  Say {text: String},
+                }
                 view Test() {
                   let msg = Msg::Say {text: "hello"} in {
                     if match msg {Msg::Say {text: t} => (t == "hello")} {
@@ -2300,6 +2314,9 @@ mod tests {
                 }
 
                 -- after --
+                enum Msg {
+                  Say {text: String},
+                }
                 view Test() {
                   let msg = Msg::Say {text: "hello"} in {
                     if true {
@@ -2316,7 +2333,7 @@ mod tests {
         use crate::ir::syntax::builder::IrBuilder;
 
         // Test that enum bindings work when the subject is propagated through a variable
-        check_module(
+        check(
             IrModuleBuilder::new()
                 .enum_("Msg", [("Say", vec![("text", "String")])])
                 .view_no_params("Test", |t| {
@@ -2339,6 +2356,9 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
+                enum Msg {
+                  Say {text: String},
+                }
                 view Test() {
                   let x = Msg::Say {text: "hello"} in {
                     let y = x in {
@@ -2348,6 +2368,9 @@ mod tests {
                 }
 
                 -- after --
+                enum Msg {
+                  Say {text: String},
+                }
                 view Test() {
                   let x = Msg::Say {text: "hello"} in {
                     let y = Msg::Say {text: "hello"} in {
@@ -2364,7 +2387,7 @@ mod tests {
         use crate::ir::syntax::builder::IrBuilder;
 
         // Test multiple field bindings in a single variant
-        check_module(
+        check(
             IrModuleBuilder::new()
                 .enum_(
                     "Pair",
@@ -2397,6 +2420,9 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
+                enum Pair {
+                  Values {first: String, second: String},
+                }
                 view Test() {
                   let pair = Pair::Values {first: "hello", second: "world"} in {
                     write_escaped(match pair {
@@ -2406,6 +2432,9 @@ mod tests {
                 }
 
                 -- after --
+                enum Pair {
+                  Values {first: String, second: String},
+                }
                 view Test() {
                   let pair = Pair::Values {first: "hello", second: "world"} in {
                     write_escaped("hello world")
@@ -2420,7 +2449,7 @@ mod tests {
         use crate::ir::syntax::builder::IrBuilder;
 
         // Test that when we have multiple variants, we select the correct arm
-        check_module(
+        check(
             IrModuleBuilder::new()
                 .enum_(
                     "Result",
@@ -2460,6 +2489,10 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
+                enum Result {
+                  Ok {value: String},
+                  Err {msg: String},
+                }
                 view Test() {
                   let result = Result::Ok {value: "success"} in {
                     write_escaped(match result {
@@ -2470,6 +2503,10 @@ mod tests {
                 }
 
                 -- after --
+                enum Result {
+                  Ok {value: String},
+                  Err {msg: String},
+                }
                 view Test() {
                   let result = Result::Ok {value: "success"} in {
                     write_escaped("success")
@@ -2486,7 +2523,7 @@ mod tests {
         // Two variants of the same enum both name a field "f0", but with
         // different types (Bool vs String). The subject is known to be the
         // String variant, so the Bool-binding arm is never taken.
-        check_module(
+        check(
             IrModuleBuilder::new()
                 .enum_(
                     "E",
@@ -2519,6 +2556,10 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
+                enum E {
+                  V0 {f0: Bool},
+                  V1 {f0: String},
+                }
                 view Test() {
                   let subject = E::V1 {f0: "hello"} in {
                     write_escaped(match subject {
@@ -2532,6 +2573,10 @@ mod tests {
                 }
 
                 -- after --
+                enum E {
+                  V0 {f0: Bool},
+                  V1 {f0: String},
+                }
                 view Test() {
                   let subject = E::V1 {f0: "hello"} in {
                     write_escaped("hello")
@@ -2547,7 +2592,7 @@ mod tests {
 
         // When a match expression selects an arm that returns an enum with fields,
         // those field values should propagate to subsequent matches on the result.
-        check_module(
+        check(
             IrModuleBuilder::new()
                 .enum_unit("Choice", ["A", "B"])
                 .enum_("Msg", [("Say", vec![("text", "String")])])
@@ -2591,6 +2636,13 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
+                enum Choice {
+                  A,
+                  B,
+                }
+                enum Msg {
+                  Say {text: String},
+                }
                 view Test() {
                   let choice = Choice::A in {
                     let x = match choice {
@@ -2603,6 +2655,13 @@ mod tests {
                 }
 
                 -- after --
+                enum Choice {
+                  A,
+                  B,
+                }
+                enum Msg {
+                  Say {text: String},
+                }
                 view Test() {
                   let choice = Choice::A in {
                     let x = Msg::Say {text: "hello"} in {
@@ -2617,17 +2676,15 @@ mod tests {
     #[test]
     fn should_evaluate_bool_match_with_true() {
         check(
-            IrModuleBuilder::new()
-                .view_no_params("Test", |t| {
-                    t.let_stmt("flag", t.bool(true), |t| {
-                        t.write_expr_escaped(t.bool_match_expr(
-                            t.var("flag"),
-                            t.str("yes"),
-                            t.str("no"),
-                        ));
-                    });
-                })
-                .build(),
+            IrModuleBuilder::new().view_no_params("Test", |t| {
+                t.let_stmt("flag", t.bool(true), |t| {
+                    t.write_expr_escaped(t.bool_match_expr(
+                        t.var("flag"),
+                        t.str("yes"),
+                        t.str("no"),
+                    ));
+                });
+            }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -2649,17 +2706,15 @@ mod tests {
     #[test]
     fn should_evaluate_bool_match_with_false() {
         check(
-            IrModuleBuilder::new()
-                .view_no_params("Test", |t| {
-                    t.let_stmt("flag", t.bool(false), |t| {
-                        t.write_expr_escaped(t.bool_match_expr(
-                            t.var("flag"),
-                            t.str("yes"),
-                            t.str("no"),
-                        ));
-                    });
-                })
-                .build(),
+            IrModuleBuilder::new().view_no_params("Test", |t| {
+                t.let_stmt("flag", t.bool(false), |t| {
+                    t.write_expr_escaped(t.bool_match_expr(
+                        t.var("flag"),
+                        t.str("yes"),
+                        t.str("no"),
+                    ));
+                });
+            }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -2681,19 +2736,17 @@ mod tests {
     #[test]
     fn should_propagate_bool_constant_through_variables_in_match() {
         check(
-            IrModuleBuilder::new()
-                .view_no_params("Test", |t| {
-                    t.let_stmt("x", t.bool(true), |t| {
-                        t.let_stmt("y", t.var("x"), |t| {
-                            t.write_expr_escaped(t.bool_match_expr(
-                                t.var("y"),
-                                t.str("yes"),
-                                t.str("no"),
-                            ));
-                        });
+            IrModuleBuilder::new().view_no_params("Test", |t| {
+                t.let_stmt("x", t.bool(true), |t| {
+                    t.let_stmt("y", t.var("x"), |t| {
+                        t.write_expr_escaped(t.bool_match_expr(
+                            t.var("y"),
+                            t.str("yes"),
+                            t.str("no"),
+                        ));
                     });
-                })
-                .build(),
+                });
+            }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -2719,17 +2772,15 @@ mod tests {
     #[test]
     fn should_evaluate_bool_match_with_negated_subject() {
         check(
-            IrModuleBuilder::new()
-                .view_no_params("Test", |t| {
-                    t.let_stmt("flag", t.not(t.bool(false)), |t| {
-                        t.write_expr_escaped(t.bool_match_expr(
-                            t.var("flag"),
-                            t.str("was true"),
-                            t.str("was false"),
-                        ));
-                    });
-                })
-                .build(),
+            IrModuleBuilder::new().view_no_params("Test", |t| {
+                t.let_stmt("flag", t.not(t.bool(false)), |t| {
+                    t.write_expr_escaped(t.bool_match_expr(
+                        t.var("flag"),
+                        t.str("was true"),
+                        t.str("was false"),
+                    ));
+                });
+            }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -2758,7 +2809,7 @@ mod tests {
         // Test that enum_field propagates through let expressions in match arm bodies.
         // When a match arm body is `let x = Enum(...) in x`, the field information should
         // flow from the enum literal -> let body -> let expr -> match expr.
-        check_module(
+        check(
             IrModuleBuilder::new()
                 .enum_unit("Choice", ["A", "B"])
                 .enum_("Msg", [("Say", vec![("text", "String")])])
@@ -2807,6 +2858,13 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
+                enum Choice {
+                  A,
+                  B,
+                }
+                enum Msg {
+                  Say {text: String},
+                }
                 view Test() {
                   let choice = Choice::A in {
                     let y = match choice {
@@ -2819,6 +2877,13 @@ mod tests {
                 }
 
                 -- after --
+                enum Choice {
+                  A,
+                  B,
+                }
+                enum Msg {
+                  Say {text: String},
+                }
                 view Test() {
                   let choice = Choice::A in {
                     let y = Msg::Say {text: "hello"} in {
@@ -2833,22 +2898,20 @@ mod tests {
     #[test]
     fn should_evaluate_logical_or_with_literals() {
         check(
-            IrModuleBuilder::new()
-                .view_no_params("Test", |t| {
-                    t.if_stmt(t.or(t.bool(false), t.bool(false)), |t| {
-                        t.write("false || false");
-                    });
-                    t.if_stmt(t.or(t.bool(false), t.bool(true)), |t| {
-                        t.write("false || true");
-                    });
-                    t.if_stmt(t.or(t.bool(true), t.bool(false)), |t| {
-                        t.write("true || false");
-                    });
-                    t.if_stmt(t.or(t.bool(true), t.bool(true)), |t| {
-                        t.write("true || true");
-                    });
-                })
-                .build(),
+            IrModuleBuilder::new().view_no_params("Test", |t| {
+                t.if_stmt(t.or(t.bool(false), t.bool(false)), |t| {
+                    t.write("false || false");
+                });
+                t.if_stmt(t.or(t.bool(false), t.bool(true)), |t| {
+                    t.write("false || true");
+                });
+                t.if_stmt(t.or(t.bool(true), t.bool(false)), |t| {
+                    t.write("true || false");
+                });
+                t.if_stmt(t.or(t.bool(true), t.bool(true)), |t| {
+                    t.write("true || true");
+                });
+            }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -2888,22 +2951,20 @@ mod tests {
     #[test]
     fn should_evaluate_logical_and_with_literals() {
         check(
-            IrModuleBuilder::new()
-                .view_no_params("Test", |t| {
-                    t.if_stmt(t.and(t.bool(false), t.bool(false)), |t| {
-                        t.write("false && false");
-                    });
-                    t.if_stmt(t.and(t.bool(false), t.bool(true)), |t| {
-                        t.write("false && true");
-                    });
-                    t.if_stmt(t.and(t.bool(true), t.bool(false)), |t| {
-                        t.write("true && false");
-                    });
-                    t.if_stmt(t.and(t.bool(true), t.bool(true)), |t| {
-                        t.write("true && true");
-                    });
-                })
-                .build(),
+            IrModuleBuilder::new().view_no_params("Test", |t| {
+                t.if_stmt(t.and(t.bool(false), t.bool(false)), |t| {
+                    t.write("false && false");
+                });
+                t.if_stmt(t.and(t.bool(false), t.bool(true)), |t| {
+                    t.write("false && true");
+                });
+                t.if_stmt(t.and(t.bool(true), t.bool(false)), |t| {
+                    t.write("true && false");
+                });
+                t.if_stmt(t.and(t.bool(true), t.bool(true)), |t| {
+                    t.write("true && true");
+                });
+            }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -2943,20 +3004,18 @@ mod tests {
     #[test]
     fn should_evaluate_logical_operations_with_propagated_variables() {
         check(
-            IrModuleBuilder::new()
-                .view_no_params("Test", |t| {
-                    t.let_stmt("a", t.bool(true), |t| {
-                        t.let_stmt("b", t.bool(false), |t| {
-                            t.if_stmt(t.or(t.var("a"), t.var("b")), |t| {
-                                t.write("a || b");
-                            });
-                            t.if_stmt(t.and(t.var("a"), t.var("b")), |t| {
-                                t.write("a && b");
-                            });
+            IrModuleBuilder::new().view_no_params("Test", |t| {
+                t.let_stmt("a", t.bool(true), |t| {
+                    t.let_stmt("b", t.bool(false), |t| {
+                        t.if_stmt(t.or(t.var("a"), t.var("b")), |t| {
+                            t.write("a || b");
+                        });
+                        t.if_stmt(t.and(t.var("a"), t.var("b")), |t| {
+                            t.write("a && b");
                         });
                     });
-                })
-                .build(),
+                });
+            }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -2992,20 +3051,18 @@ mod tests {
     #[test]
     fn should_evaluate_nested_logical_operations() {
         check(
-            IrModuleBuilder::new()
-                .view_no_params("Test", |t| {
-                    // (true && false) || (false || true) => false || true => true
-                    t.if_stmt(
-                        t.or(
-                            t.and(t.bool(true), t.bool(false)),
-                            t.or(t.bool(false), t.bool(true)),
-                        ),
-                        |t| {
-                            t.write("complex expression");
-                        },
-                    );
-                })
-                .build(),
+            IrModuleBuilder::new().view_no_params("Test", |t| {
+                // (true && false) || (false || true) => false || true => true
+                t.if_stmt(
+                    t.or(
+                        t.and(t.bool(true), t.bool(false)),
+                        t.or(t.bool(false), t.bool(true)),
+                    ),
+                    |t| {
+                        t.write("complex expression");
+                    },
+                );
+            }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -3027,18 +3084,16 @@ mod tests {
     #[test]
     fn should_evaluate_logical_operations_with_negation() {
         check(
-            IrModuleBuilder::new()
-                .view_no_params("Test", |t| {
-                    // !false && !false => true && true => true
-                    t.if_stmt(t.and(t.not(t.bool(false)), t.not(t.bool(false))), |t| {
-                        t.write("both negated");
-                    });
-                    // !true || false => false || false => false
-                    t.if_stmt(t.or(t.not(t.bool(true)), t.bool(false)), |t| {
-                        t.write("should not appear");
-                    });
-                })
-                .build(),
+            IrModuleBuilder::new().view_no_params("Test", |t| {
+                // !false && !false => true && true => true
+                t.if_stmt(t.and(t.not(t.bool(false)), t.not(t.bool(false))), |t| {
+                    t.write("both negated");
+                });
+                // !true || false => false || false => false
+                t.if_stmt(t.or(t.not(t.bool(true)), t.bool(false)), |t| {
+                    t.write("should not appear");
+                });
+            }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -3066,14 +3121,12 @@ mod tests {
     #[test]
     fn should_evaluate_component_invocation_args() {
         check(
-            IrModuleBuilder::new()
-                .view_no_params("Test", |t| {
-                    t.invoke_component(
-                        "Foo",
-                        vec![("x", t.not(t.bool(false))), ("y", t.str("hello"))],
-                    );
-                })
-                .build(),
+            IrModuleBuilder::new().view_no_params("Test", |t| {
+                t.invoke_component(
+                    "Foo",
+                    vec![("x", t.not(t.bool(false))), ("y", t.str("hello"))],
+                );
+            }),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -3091,13 +3144,11 @@ mod tests {
     #[test]
     fn should_evaluate_component_invocation_args_with_propagated_variables() {
         check(
-            IrModuleBuilder::new()
-                .view_no_params("Test", |t| {
-                    t.let_stmt("val", t.not(t.bool(true)), |t| {
-                        t.invoke_component("Foo", vec![("enabled", t.var("val"))]);
-                    });
-                })
-                .build(),
+            IrModuleBuilder::new().view_no_params("Test", |t| {
+                t.let_stmt("val", t.not(t.bool(true)), |t| {
+                    t.invoke_component("Foo", vec![("enabled", t.var("val"))]);
+                });
+            }),
             expect![[r#"
                 -- before --
                 view Test() {
