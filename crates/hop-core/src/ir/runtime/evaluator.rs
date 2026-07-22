@@ -6,14 +6,23 @@ use crate::{
     expr::typing::r#type::{ComparableType, EquatableType, NumericType},
     html::write_escaped_html,
 };
-use anyhow::{Result, anyhow};
 use std::collections::HashMap;
 use tailwind_merge::tw_merge;
+use thiserror::Error;
 
 use crate::expr::patterns::{EnumPattern, Match};
-use crate::ir::syntax::ast::{
-    IrComponentDeclaration, IrForSource, IrModule, IrStatement,
-};
+use crate::ir::syntax::ast::{IrComponentDeclaration, IrForSource, IrModule, IrStatement};
+
+/// Errors the evaluator can produce.
+#[derive(Debug, Error)]
+pub enum EvalError {
+    #[error("View '{view}' not found in module")]
+    ViewNotFound { view: TypeName },
+    #[error("Missing required parameter '{param}' for view '{view}'")]
+    MissingParameter { view: TypeName, param: VarName },
+    #[error("integer overflow: {operation}")]
+    IntegerOverflow { operation: String },
+}
 
 /// Stack-based environment for the evaluator.
 struct Env {
@@ -44,12 +53,14 @@ pub fn evaluate_view(
     module: &IrModule,
     view_name: &TypeName,
     args: HashMap<String, Value>,
-) -> Result<String> {
+) -> Result<String, EvalError> {
     let view = module
         .views
         .iter()
         .find(|view| &view.name == view_name)
-        .ok_or_else(|| anyhow!("View '{}' not found in module", view_name))?;
+        .ok_or_else(|| EvalError::ViewNotFound {
+            view: view_name.clone(),
+        })?;
 
     let mut env = Env::new();
 
@@ -57,11 +68,10 @@ pub fn evaluate_view(
         if let Some(value) = args.get(param.name.as_str()) {
             env.push(param.name.clone(), value.clone());
         } else {
-            return Err(anyhow!(
-                "Missing required parameter '{}' for view '{}'",
-                param.name,
-                view.name
-            ));
+            return Err(EvalError::MissingParameter {
+                view: view.name.clone(),
+                param: param.name.clone(),
+            });
         }
     }
 
@@ -78,7 +88,7 @@ fn eval_statements(
     env: &mut Env,
     output: &mut String,
     component_defs: &[IrComponentDeclaration],
-) -> Result<()> {
+) -> Result<(), EvalError> {
     for statement in statements {
         eval_statement(statement, env, output, component_defs)?;
     }
@@ -91,7 +101,7 @@ fn eval_statement(
     env: &mut Env,
     output: &mut String,
     component_defs: &[IrComponentDeclaration],
-) -> Result<()> {
+) -> Result<(), EvalError> {
     match node {
         IrStatement::Write { id: _, content } => {
             output.push_str(content);
@@ -119,7 +129,7 @@ fn eval_statement(
             body,
         } => {
             let cond_value = evaluate_expr(condition, env)?;
-            if cond_value.as_bool().unwrap_or(false) {
+            if cond_value.as_bool().expect("Expected boolean value") {
                 eval_statements(body, env, output, component_defs)?;
             }
             Ok(())
@@ -134,7 +144,10 @@ fn eval_statement(
             match source {
                 IrForSource::Array(array) => {
                     let array_value = evaluate_expr(array, env)?;
-                    let items = array_value.as_array().cloned().unwrap_or_default();
+                    let items = array_value
+                        .as_array()
+                        .cloned()
+                        .expect("Expected array value");
 
                     for item in items {
                         if let Some(var) = var {
@@ -149,8 +162,8 @@ fn eval_statement(
                 IrForSource::RangeInclusive { start, end } => {
                     let start_value = evaluate_expr(start, env)?;
                     let end_value = evaluate_expr(end, env)?;
-                    let start_int = start_value.as_i64().unwrap_or(0);
-                    let end_int = end_value.as_i64().unwrap_or(0);
+                    let start_int = start_value.as_i64().expect("Expected integer value");
+                    let end_int = end_value.as_i64().expect("Expected integer value");
 
                     for i in start_int..=end_int {
                         if let Some(var) = var {
@@ -202,7 +215,7 @@ fn eval_statement(
             let subject_value = evaluate_expr(subject, env)?;
             let rec = subject_value
                 .as_record()
-                .ok_or_else(|| anyhow!("Expected record value in destructure"))?;
+                .expect("Expected record value in destructure");
             let mut pushed = 0;
             for (field, var) in bindings {
                 if let Some(field_val) = rec.get(field) {
@@ -224,7 +237,7 @@ fn eval_statement(
                 false_body,
             } => {
                 let subject_value = evaluate_expr(subject, env)?;
-                if subject_value.as_bool().unwrap_or(false) {
+                if subject_value.as_bool().expect("Expected boolean value") {
                     eval_statements(true_body, env, output, component_defs)?;
                 } else {
                     eval_statements(false_body, env, output, component_defs)?;
@@ -252,7 +265,7 @@ fn eval_statement(
                     Value::None => {
                         eval_statements(none_arm_body, env, output, component_defs)?;
                     }
-                    _ => return Err(anyhow!("Expected Option value in match")),
+                    _ => panic!("Expected Option value in match"),
                 }
                 Ok(())
             }
@@ -264,7 +277,7 @@ fn eval_statement(
                     fields,
                 } = &subject_value
                 else {
-                    return Err(anyhow!("Expected Enum value in match"));
+                    panic!("Expected Enum value in match");
                 };
 
                 for arm in arms {
@@ -287,10 +300,7 @@ fn eval_statement(
                         return Ok(());
                     }
                 }
-                Err(anyhow!(
-                    "No matching arm for enum variant: {}",
-                    variant_name
-                ))
+                panic!("No matching arm for enum variant: {}", variant_name)
             }
         },
 
@@ -302,7 +312,7 @@ fn eval_statement(
             let component_def = component_defs
                 .iter()
                 .find(|c| c.name.as_str() == component_name.as_str())
-                .ok_or_else(|| anyhow!("Undefined component: {}", component_name.as_str()))?;
+                .unwrap_or_else(|| panic!("Undefined component: {}", component_name.as_str()));
 
             // Evaluate all argument expressions in the caller's env first,
             // so an earlier-bound parameter can't shadow a caller variable
@@ -318,11 +328,11 @@ fn eval_statement(
                     let value = evaluate_expr(&arg.expr, env)?;
                     values.push((param.name.clone(), value));
                 } else {
-                    return Err(anyhow!(
+                    panic!(
                         "Missing required parameter '{}' for component '{}'",
                         param.name,
                         component_name.as_str()
-                    ));
+                    );
                 }
             }
             for (name, value) in values {
@@ -339,12 +349,12 @@ fn eval_statement(
     }
 }
 
-fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value> {
+fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value, EvalError> {
     match expr {
-        IrExpr::Var { value: name, .. } => env
+        IrExpr::Var { value: name, .. } => Ok(env
             .lookup(name.as_str())
             .cloned()
-            .ok_or_else(|| anyhow!("Undefined variable: {}", name)),
+            .unwrap_or_else(|| panic!("Undefined variable: {}", name))),
         IrExpr::FieldAccess {
             record: object,
             field,
@@ -352,9 +362,12 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value> {
         } => {
             let obj_value = evaluate_expr(object, env)?;
             if let Some(rec) = obj_value.as_record() {
-                Ok(rec.get(field).cloned().unwrap_or(Value::None))
+                Ok(rec
+                    .get(field)
+                    .cloned()
+                    .unwrap_or_else(|| panic!("Field '{}' not found in record", field)))
             } else {
-                Err(anyhow!("Expected record for field access"))
+                panic!("Expected record for field access")
             }
         }
         IrExpr::StringLiteral { value: s, .. } => Ok(Value::String(s.to_string())),
@@ -382,12 +395,12 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value> {
 
             match (left_val, right_val) {
                 (Value::String(l), Value::String(r)) => Ok(Value::String(format!("{}{}", l, r))),
-                _ => Err(anyhow!("String concatenation requires two strings")),
+                _ => panic!("String concatenation requires two strings"),
             }
         }
         IrExpr::BooleanNegation { operand, .. } => {
             let val = evaluate_expr(operand, env)?;
-            let bool_val = val.as_bool().unwrap_or(false);
+            let bool_val = val.as_bool().expect("Expected boolean value");
             Ok(Value::Bool(!bool_val))
         }
         IrExpr::NumericNegation {
@@ -398,11 +411,17 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value> {
             let val = evaluate_expr(operand, env)?;
             match operand_type {
                 NumericType::Int => {
-                    let int_val = val.as_i64().unwrap_or(0);
-                    Ok(Value::Int(-int_val))
+                    let int_val = val.as_i64().expect("Expected integer value");
+                    let negated =
+                        int_val
+                            .checked_neg()
+                            .ok_or_else(|| EvalError::IntegerOverflow {
+                                operation: format!("-({})", int_val),
+                            })?;
+                    Ok(Value::Int(negated))
                 }
                 NumericType::Float => {
-                    let float_val = val.as_f64().unwrap_or(0.0);
+                    let float_val = val.as_f64().expect("Expected float value");
                     Ok(Value::Float(-float_val))
                 }
             }
@@ -415,8 +434,8 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value> {
         } => {
             let left_val = evaluate_expr(left, env)?;
             let right_val = evaluate_expr(right, env)?;
-            let left_bool = left_val.as_bool().unwrap_or(false);
-            let right_bool = right_val.as_bool().unwrap_or(false);
+            let left_bool = left_val.as_bool().expect("Expected boolean value");
+            let right_bool = right_val.as_bool().expect("Expected boolean value");
             Ok(Value::Bool(left_bool == right_bool))
         }
         IrExpr::Equals {
@@ -427,8 +446,8 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value> {
         } => {
             let left_val = evaluate_expr(left, env)?;
             let right_val = evaluate_expr(right, env)?;
-            let left_str = left_val.as_str().unwrap_or("");
-            let right_str = right_val.as_str().unwrap_or("");
+            let left_str = left_val.as_str().expect("Expected string value");
+            let right_str = right_val.as_str().expect("Expected string value");
             Ok(Value::Bool(left_str == right_str))
         }
         IrExpr::Equals {
@@ -439,8 +458,8 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value> {
         } => {
             let left_val = evaluate_expr(left, env)?;
             let right_val = evaluate_expr(right, env)?;
-            let left_int = left_val.as_i64().unwrap_or(0);
-            let right_int = right_val.as_i64().unwrap_or(0);
+            let left_int = left_val.as_i64().expect("Expected integer value");
+            let right_int = right_val.as_i64().expect("Expected integer value");
             Ok(Value::Bool(left_int == right_int))
         }
         IrExpr::Equals {
@@ -451,8 +470,8 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value> {
         } => {
             let left_val = evaluate_expr(left, env)?;
             let right_val = evaluate_expr(right, env)?;
-            let left_float = left_val.as_f64().unwrap_or(0.0);
-            let right_float = right_val.as_f64().unwrap_or(0.0);
+            let left_float = left_val.as_f64().expect("Expected float value");
+            let right_float = right_val.as_f64().expect("Expected float value");
             Ok(Value::Bool(left_float == right_float))
         }
         IrExpr::LessThan {
@@ -466,13 +485,13 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value> {
 
             let result = match operand_types {
                 ComparableType::Int => {
-                    let left_int = left_val.as_i64().unwrap_or(0);
-                    let right_int = right_val.as_i64().unwrap_or(0);
+                    let left_int = left_val.as_i64().expect("Expected integer value");
+                    let right_int = right_val.as_i64().expect("Expected integer value");
                     left_int < right_int
                 }
                 ComparableType::Float => {
-                    let left_float = left_val.as_f64().unwrap_or(0.0);
-                    let right_float = right_val.as_f64().unwrap_or(0.0);
+                    let left_float = left_val.as_f64().expect("Expected float value");
+                    let right_float = right_val.as_f64().expect("Expected float value");
                     left_float < right_float
                 }
             };
@@ -490,13 +509,13 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value> {
 
             let result = match operand_types {
                 ComparableType::Int => {
-                    let left_int = left_val.as_i64().unwrap_or(0);
-                    let right_int = right_val.as_i64().unwrap_or(0);
+                    let left_int = left_val.as_i64().expect("Expected integer value");
+                    let right_int = right_val.as_i64().expect("Expected integer value");
                     left_int <= right_int
                 }
                 ComparableType::Float => {
-                    let left_float = left_val.as_f64().unwrap_or(0.0);
-                    let right_float = right_val.as_f64().unwrap_or(0.0);
+                    let left_float = left_val.as_f64().expect("Expected float value");
+                    let right_float = right_val.as_f64().expect("Expected float value");
                     left_float <= right_float
                 }
             };
@@ -506,16 +525,16 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value> {
         IrExpr::BooleanLogicalAnd { left, right, .. } => {
             let left_val = evaluate_expr(left, env)?;
             let right_val = evaluate_expr(right, env)?;
-            let left_bool = left_val.as_bool().unwrap_or(false);
-            let right_bool = right_val.as_bool().unwrap_or(false);
+            let left_bool = left_val.as_bool().expect("Expected boolean value");
+            let right_bool = right_val.as_bool().expect("Expected boolean value");
             Ok(Value::Bool(left_bool && right_bool))
         }
 
         IrExpr::BooleanLogicalOr { left, right, .. } => {
             let left_val = evaluate_expr(left, env)?;
             let right_val = evaluate_expr(right, env)?;
-            let left_bool = left_val.as_bool().unwrap_or(false);
-            let right_bool = right_val.as_bool().unwrap_or(false);
+            let left_bool = left_val.as_bool().expect("Expected boolean value");
+            let right_bool = right_val.as_bool().expect("Expected boolean value");
             Ok(Value::Bool(left_bool || right_bool))
         }
 
@@ -530,13 +549,18 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value> {
 
             match operand_types {
                 NumericType::Int => {
-                    let left_int = left_val.as_i64().unwrap_or(0);
-                    let right_int = right_val.as_i64().unwrap_or(0);
-                    Ok(Value::Int(left_int + right_int))
+                    let left_int = left_val.as_i64().expect("Expected integer value");
+                    let right_int = right_val.as_i64().expect("Expected integer value");
+                    let sum = left_int.checked_add(right_int).ok_or_else(|| {
+                        EvalError::IntegerOverflow {
+                            operation: format!("{} + {}", left_int, right_int),
+                        }
+                    })?;
+                    Ok(Value::Int(sum))
                 }
                 NumericType::Float => {
-                    let left_float = left_val.as_f64().unwrap_or(0.0);
-                    let right_float = right_val.as_f64().unwrap_or(0.0);
+                    let left_float = left_val.as_f64().expect("Expected float value");
+                    let right_float = right_val.as_f64().expect("Expected float value");
                     Ok(Value::Float(left_float + right_float))
                 }
             }
@@ -553,13 +577,18 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value> {
 
             match operand_types {
                 NumericType::Int => {
-                    let left_int = left_val.as_i64().unwrap_or(0);
-                    let right_int = right_val.as_i64().unwrap_or(0);
-                    Ok(Value::Int(left_int - right_int))
+                    let left_int = left_val.as_i64().expect("Expected integer value");
+                    let right_int = right_val.as_i64().expect("Expected integer value");
+                    let difference = left_int.checked_sub(right_int).ok_or_else(|| {
+                        EvalError::IntegerOverflow {
+                            operation: format!("{} - {}", left_int, right_int),
+                        }
+                    })?;
+                    Ok(Value::Int(difference))
                 }
                 NumericType::Float => {
-                    let left_float = left_val.as_f64().unwrap_or(0.0);
-                    let right_float = right_val.as_f64().unwrap_or(0.0);
+                    let left_float = left_val.as_f64().expect("Expected float value");
+                    let right_float = right_val.as_f64().expect("Expected float value");
                     Ok(Value::Float(left_float - right_float))
                 }
             }
@@ -576,13 +605,18 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value> {
 
             match operand_types {
                 NumericType::Int => {
-                    let left_int = left_val.as_i64().unwrap_or(0);
-                    let right_int = right_val.as_i64().unwrap_or(0);
-                    Ok(Value::Int(left_int * right_int))
+                    let left_int = left_val.as_i64().expect("Expected integer value");
+                    let right_int = right_val.as_i64().expect("Expected integer value");
+                    let product = left_int.checked_mul(right_int).ok_or_else(|| {
+                        EvalError::IntegerOverflow {
+                            operation: format!("{} * {}", left_int, right_int),
+                        }
+                    })?;
+                    Ok(Value::Int(product))
                 }
                 NumericType::Float => {
-                    let left_float = left_val.as_f64().unwrap_or(0.0);
-                    let right_float = right_val.as_f64().unwrap_or(0.0);
+                    let left_float = left_val.as_f64().expect("Expected float value");
+                    let right_float = right_val.as_f64().expect("Expected float value");
                     Ok(Value::Float(left_float * right_float))
                 }
             }
@@ -615,7 +649,7 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value> {
                     fields,
                 } = &subject_val
                 else {
-                    return Err(anyhow!("Expected Enum value in match expression"));
+                    panic!("Expected Enum value in match expression");
                 };
 
                 for arm in arms {
@@ -639,10 +673,7 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value> {
                     }
                 }
 
-                Err(anyhow!(
-                    "No matching arm found for variant '{}'",
-                    variant_name
-                ))
+                panic!("No matching arm found for variant '{}'", variant_name)
             }
             Match::Bool {
                 subject,
@@ -652,7 +683,7 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value> {
                 let subject_val = evaluate_expr(subject, env)?;
                 let subject_bool = subject_val
                     .as_bool()
-                    .ok_or_else(|| anyhow!("Match subject must evaluate to a boolean"))?;
+                    .expect("Match subject must evaluate to a boolean");
 
                 if subject_bool {
                     evaluate_expr(true_body, env)
@@ -680,7 +711,7 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value> {
                         }
                     }
                     Value::None => evaluate_expr(none_arm_body, env),
-                    _ => Err(anyhow!("Expected Option value in match expression")),
+                    _ => panic!("Expected Option value in match expression"),
                 }
             }
         },
@@ -705,7 +736,7 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value> {
             let subject_value = evaluate_expr(subject, env)?;
             let rec = subject_value
                 .as_record()
-                .ok_or_else(|| anyhow!("Expected record value in destructure"))?;
+                .expect("Expected record value in destructure");
             let mut pushed = 0;
             for (field, var) in bindings {
                 if let Some(field_val) = rec.get(field) {
@@ -723,28 +754,28 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value> {
             let val = evaluate_expr(operand, env)?;
             match val {
                 Value::String(s) => Ok(Value::String(tw_merge(&s))),
-                _ => Err(anyhow!("TwMerge requires a string argument")),
+                _ => panic!("TwMerge requires a string argument"),
             }
         }
         IrExpr::ArrayLength { array, .. } => {
             let array_val = evaluate_expr(array, env)?;
             match array_val {
                 Value::Array(arr) => Ok(Value::Int(arr.len() as i64)),
-                _ => Err(anyhow!("ArrayLength requires an array argument")),
+                _ => panic!("ArrayLength requires an array argument"),
             }
         }
         IrExpr::ArrayIsEmpty { array, .. } => {
             let array_val = evaluate_expr(array, env)?;
             match array_val {
                 Value::Array(arr) => Ok(Value::Bool(arr.is_empty())),
-                _ => Err(anyhow!("ArrayIsEmpty requires an array argument")),
+                _ => panic!("ArrayIsEmpty requires an array argument"),
             }
         }
         IrExpr::StringIsEmpty { string, .. } => {
             let string_val = evaluate_expr(string, env)?;
             match string_val {
                 Value::String(s) => Ok(Value::Bool(s.is_empty())),
-                _ => Err(anyhow!("StringIsEmpty requires a string argument")),
+                _ => panic!("StringIsEmpty requires a string argument"),
             }
         }
         IrExpr::OptionIsSome { option, .. } => {
@@ -752,7 +783,7 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value> {
             match option_val {
                 Value::Some(_) => Ok(Value::Bool(true)),
                 Value::None => Ok(Value::Bool(false)),
-                _ => Err(anyhow!("OptionIsSome requires an Option argument")),
+                _ => panic!("OptionIsSome requires an Option argument"),
             }
         }
         IrExpr::OptionIsNone { option, .. } => {
@@ -760,14 +791,14 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value> {
             match option_val {
                 Value::Some(_) => Ok(Value::Bool(false)),
                 Value::None => Ok(Value::Bool(true)),
-                _ => Err(anyhow!("OptionIsNone requires an Option argument")),
+                _ => panic!("OptionIsNone requires an Option argument"),
             }
         }
         IrExpr::IntToString { value, .. } => {
             let int_val = evaluate_expr(value, env)?;
             match int_val {
                 Value::Int(n) => Ok(Value::String(n.to_string())),
-                _ => Err(anyhow!("IntToString requires an integer argument")),
+                _ => panic!("IntToString requires an integer argument"),
             }
         }
         IrExpr::FloatToInt { value, .. } => {
@@ -775,14 +806,14 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value> {
             match float_val {
                 Value::Float(f) => Ok(Value::Int(f as i64)),
                 Value::Int(i) => Ok(Value::Int(i)), // Already an int
-                _ => Err(anyhow!("FloatToInt requires a float argument")),
+                _ => panic!("FloatToInt requires a float argument"),
             }
         }
         IrExpr::IntToFloat { value, .. } => {
             let int_val = evaluate_expr(value, env)?;
             match int_val {
                 Value::Int(i) => Ok(Value::Float(i as f64)),
-                _ => Err(anyhow!("IntToFloat requires an integer argument")),
+                _ => panic!("IntToFloat requires an integer argument"),
             }
         }
     }

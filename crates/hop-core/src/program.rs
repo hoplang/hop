@@ -609,7 +609,9 @@ impl Program {
             },
         );
 
-        ir::runtime::evaluator::evaluate_view(&ir_module, view_name, args)
+        let str = ir::runtime::evaluator::evaluate_view(&ir_module, view_name, args)?;
+
+        Ok(str)
     }
 
     /// Evaluate a view with randomly generated parameter values using the given RNG.
