@@ -1689,7 +1689,7 @@ impl Transpiler for RustTranspiler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::syntax::builder::{IrBuilder, IrModuleBuilder};
+    use crate::ir::syntax::builder::IrModuleBuilder;
     use expect_test::{Expect, expect};
 
     fn check(builder: IrModuleBuilder, expected: Expect) {
@@ -2348,22 +2348,11 @@ mod tests {
                     t.invoke_component("Badge", vec![("color", t.enum_variant("Color", "Green"))]);
                 })
                 .component("Badge", [("color", "Color")], |t| {
-                    t.enum_match_stmt_with_bindings(
-                        t.var("color"),
-                        vec![
-                            ("Red", vec![], Box::new(|t: &mut IrBuilder| t.write("red"))),
-                            (
-                                "Green",
-                                vec![],
-                                Box::new(|t: &mut IrBuilder| t.write("green")),
-                            ),
-                            (
-                                "Blue",
-                                vec![],
-                                Box::new(|t: &mut IrBuilder| t.write("blue")),
-                            ),
-                        ],
-                    );
+                    t.enum_match_stmt(t.var("color"), |m| {
+                        m.arm("Red", |t| t.write("red"));
+                        m.arm("Green", |t| t.write("green"));
+                        m.arm("Blue", |t| t.write("blue"));
+                    });
                 }),
             expect![[r#"
                 -- before --

@@ -1,7 +1,7 @@
 use crate::document::CheapString;
 use crate::expr::Type;
 use crate::expr::patterns::{EnumMatchArm, EnumPattern, Match};
-use crate::expr::typing::r#type::{ComparableType, EquatableType};
+use crate::expr::typing::r#type::{ComparableType, EnumVariant, EquatableType};
 use crate::expr::typing::type_registry::{ResolvedType, TypeRegistry};
 use crate::expr::typing::type_registry_builder::{TestTypes, TypeRegistryBuilder};
 use crate::ir::ast::{
@@ -582,55 +582,37 @@ impl IrBuilder {
         }
     }
 
-    /// Create a match expression over an enum value
-    /// arms is a list of (variant_name, body_expr) tuples
-    pub fn match_expr(&self, subject: IrExpr, arms: Vec<(&str, IrExpr)>) -> IrExpr {
-        // Get the enum type from the subject
+    /// Create an exhaustive match expression over an enum value.
+    pub fn enum_match_expr<F>(&self, subject: IrExpr, arms_fn: F) -> IrExpr
+    where
+        F: FnOnce(&mut EnumMatchExprArms<'_>),
+    {
         let Some(ResolvedType::Enum { name, variants, .. }) =
             self.types.registry().resolve(subject.as_type())
         else {
             panic!("Match subject must be an enum type")
         };
-        let enum_name = name.clone();
+        let (enum_name, variants) = (name.clone(), variants.to_vec());
 
-        // Use the type of the first arm's body as the result type
-        let result_type = arms
-            .first()
-            .map(|(_, body)| body.get_type())
-            .expect("match_expr requires at least one arm");
-
-        let ir_arms: Vec<EnumMatchArm<IrExpr>> = arms
-            .into_iter()
-            .map(|(variant_name, body)| {
-                assert!(
-                    variants.iter().any(|v| v.name.as_str() == variant_name),
-                    "Variant '{}' not found in enum '{}'",
-                    variant_name,
-                    enum_name
-                );
-                assert_eq!(
-                    *body.as_type(),
-                    *result_type,
-                    "Match arms must all have the same type, got: {}",
-                    body
-                );
-                EnumMatchArm {
-                    pattern: EnumPattern::Variant {
-                        enum_name: enum_name.clone(),
-                        variant_name: TypeName::new(variant_name).unwrap(),
-                    },
-                    bindings: vec![],
-                    body,
-                }
-            })
-            .collect();
+        let mut arms = EnumMatchExprArms {
+            builder: self,
+            enum_name,
+            variants,
+            arms: Vec::new(),
+            result_type: None,
+        };
+        arms_fn(&mut arms);
+        assert_exhaustive(&arms.enum_name, &arms.variants, &arms.arms);
+        let kind = arms
+            .result_type
+            .expect("enum_match_expr requires at least one arm");
 
         IrExpr::Match {
             match_: Match::Enum {
                 subject: Box::new(subject),
-                arms: ir_arms,
+                arms: arms.arms,
             },
-            kind: result_type,
+            kind,
             id: self.next_expr_id(),
         }
     }
@@ -733,89 +715,6 @@ impl IrBuilder {
                 none_arm_body: Box::new(none_body),
             },
             kind: result_type,
-            id: self.next_expr_id(),
-        }
-    }
-
-    /// Create a match expression over an enum value with field bindings.
-    /// Each arm is a tuple of (variant_name, field_bindings, body_fn).
-    /// field_bindings is a list of (field_name, binding_name) pairs.
-    pub fn match_expr_with_bindings(
-        &self,
-        subject: IrExpr,
-        arms: Vec<(&str, Vec<(&str, &str)>, Box<dyn FnOnce(&Self) -> IrExpr>)>,
-    ) -> IrExpr {
-        let Some(ResolvedType::Enum { name, variants, .. }) =
-            self.types.registry().resolve(subject.as_type())
-        else {
-            panic!("Match subject must be an enum type")
-        };
-        let enum_name = name.clone();
-
-        // Use the type of the first arm's body as the result type (computed after building arms)
-        let mut result_type: Option<Arc<Type>> = None;
-
-        let ir_arms: Vec<EnumMatchArm<IrExpr>> = arms
-            .into_iter()
-            .map(|(variant_name, field_bindings, body_fn)| {
-                // Look up the variant to get field types
-                let variant_fields = variants
-                    .iter()
-                    .find(|v| v.name.as_str() == variant_name)
-                    .map(|v| &v.fields)
-                    .expect("Variant not found in enum");
-
-                let bindings: Vec<(FieldName, VarName)> = field_bindings
-                    .iter()
-                    .map(|(field_name, binding_name)| {
-                        (
-                            FieldName::new(field_name).unwrap(),
-                            VarName::new(binding_name).unwrap(),
-                        )
-                    })
-                    .collect();
-
-                let scoped_vars: Vec<(String, Arc<Type>)> = field_bindings
-                    .iter()
-                    .map(|(field_name, binding_name)| {
-                        let field_type = variant_fields
-                            .iter()
-                            .find(|(f, _, _)| f.as_str() == *field_name)
-                            .map(|(_, t, _)| t.clone())
-                            .expect("Field not found in variant");
-                        (binding_name.to_string(), field_type)
-                    })
-                    .collect();
-
-                let body = body_fn(&self.scoped(scoped_vars));
-
-                match &result_type {
-                    Some(result_type) => assert_eq!(
-                        *body.as_type(),
-                        **result_type,
-                        "Match arms must all have the same type, got: {}",
-                        body
-                    ),
-                    None => result_type = Some(body.get_type()),
-                }
-
-                EnumMatchArm {
-                    pattern: EnumPattern::Variant {
-                        enum_name: enum_name.clone(),
-                        variant_name: TypeName::new(variant_name).unwrap(),
-                    },
-                    bindings,
-                    body,
-                }
-            })
-            .collect();
-
-        IrExpr::Match {
-            match_: Match::Enum {
-                subject: Box::new(subject),
-                arms: ir_arms,
-            },
-            kind: result_type.expect("match_expr_with_bindings requires at least one arm"),
             id: self.next_expr_id(),
         }
     }
@@ -1203,66 +1102,27 @@ impl IrBuilder {
         });
     }
 
-    /// Create a match statement over an enum value with field bindings
-    /// arms is a list of (variant_name, field_bindings, body_fn) tuples
-    /// where field_bindings is a list of (field_name, binding_name) pairs
-    pub fn enum_match_stmt_with_bindings(
-        &mut self,
-        subject: IrExpr,
-        arms: Vec<(&str, Vec<(&str, &str)>, Box<dyn FnOnce(&mut Self)>)>,
-    ) {
+    /// Create an exhaustive match statement over an enum value.
+    pub fn enum_match_stmt<F>(&mut self, subject: IrExpr, arms_fn: F)
+    where
+        F: FnOnce(&mut EnumMatchStmtArms<'_>),
+    {
         let Some(ResolvedType::Enum { name, variants, .. }) =
             self.types.registry().resolve(subject.as_type())
         else {
             panic!("Match subject must be an enum type")
         };
-        let enum_name = name.clone();
+        let (enum_name, variants) = (name.clone(), variants.to_vec());
 
-        let ir_arms: Vec<EnumMatchArm<Vec<IrStatement>>> = arms
-            .into_iter()
-            .map(|(variant_name, field_bindings, body_fn)| {
-                // Look up the variant to get field types
-                let variant_fields = variants
-                    .iter()
-                    .find(|v| v.name.as_str() == variant_name)
-                    .map(|v| &v.fields)
-                    .expect("Variant not found in enum");
-
-                let bindings: Vec<(FieldName, VarName)> = field_bindings
-                    .iter()
-                    .map(|(field_name, binding_name)| {
-                        (
-                            FieldName::new(field_name).unwrap(),
-                            VarName::new(binding_name).unwrap(),
-                        )
-                    })
-                    .collect();
-
-                let scoped_vars: Vec<(String, Arc<Type>)> = field_bindings
-                    .iter()
-                    .map(|(field_name, binding_name)| {
-                        let field_type = variant_fields
-                            .iter()
-                            .find(|(f, _, _)| f.as_str() == *field_name)
-                            .map(|(_, t, _)| t.clone())
-                            .expect("Field not found in variant");
-                        (binding_name.to_string(), field_type)
-                    })
-                    .collect();
-
-                let mut arm_builder = self.scoped(scoped_vars);
-                body_fn(&mut arm_builder);
-
-                EnumMatchArm {
-                    pattern: EnumPattern::Variant {
-                        enum_name: enum_name.clone(),
-                        variant_name: TypeName::new(variant_name).unwrap(),
-                    },
-                    bindings,
-                    body: arm_builder.statements,
-                }
-            })
-            .collect();
+        let mut arms = EnumMatchStmtArms {
+            builder: self,
+            enum_name,
+            variants,
+            arms: Vec::new(),
+        };
+        arms_fn(&mut arms);
+        assert_exhaustive(&arms.enum_name, &arms.variants, &arms.arms);
+        let ir_arms = arms.arms;
 
         self.statements.push(IrStatement::Match {
             id: self.next_node_id(),
@@ -1341,5 +1201,170 @@ impl IrBuilder {
             component_name: TypeName::new(name).unwrap(),
             args: ir_args,
         });
+    }
+}
+
+/// Collects the arms of an [`IrBuilder::enum_match_expr`].
+pub struct EnumMatchExprArms<'a> {
+    builder: &'a IrBuilder,
+    enum_name: TypeName,
+    variants: Vec<EnumVariant>,
+    arms: Vec<EnumMatchArm<IrExpr>>,
+    result_type: Option<Arc<Type>>,
+}
+
+impl EnumMatchExprArms<'_> {
+    /// Add an arm for a variant without binding any fields.
+    pub fn arm<F>(&mut self, variant: &str, body_fn: F)
+    where
+        F: FnOnce(&IrBuilder) -> IrExpr,
+    {
+        self.arm_bound(variant, [], body_fn);
+    }
+
+    /// Add an arm for a variant, binding the given (field_name,
+    /// binding_name) pairs in the arm body's scope.
+    pub fn arm_bound<'s, F>(
+        &mut self,
+        variant: &str,
+        field_bindings: impl IntoIterator<Item = (&'s str, &'s str)>,
+        body_fn: F,
+    ) where
+        F: FnOnce(&IrBuilder) -> IrExpr,
+    {
+        let (bindings, scoped_vars) =
+            resolve_arm_bindings(&self.enum_name, &self.variants, variant, field_bindings);
+        let body = body_fn(&self.builder.scoped(scoped_vars));
+        match &self.result_type {
+            Some(result_type) => assert_eq!(
+                *body.as_type(),
+                **result_type,
+                "Match arms must all have the same type, got: {}",
+                body
+            ),
+            None => self.result_type = Some(body.get_type()),
+        }
+        self.arms.push(EnumMatchArm {
+            pattern: EnumPattern::Variant {
+                enum_name: self.enum_name.clone(),
+                variant_name: TypeName::new(variant).unwrap(),
+            },
+            bindings,
+            body,
+        });
+    }
+}
+
+/// Collects the arms of an [`IrBuilder::enum_match_stmt`].
+pub struct EnumMatchStmtArms<'a> {
+    builder: &'a IrBuilder,
+    enum_name: TypeName,
+    variants: Vec<EnumVariant>,
+    arms: Vec<EnumMatchArm<Vec<IrStatement>>>,
+}
+
+impl EnumMatchStmtArms<'_> {
+    /// Add an arm for a variant without binding any fields.
+    pub fn arm<F>(&mut self, variant: &str, body_fn: F)
+    where
+        F: FnOnce(&mut IrBuilder),
+    {
+        self.arm_bound(variant, [], body_fn);
+    }
+
+    /// Add an arm for a variant, binding the given (field_name,
+    /// binding_name) pairs in the arm body's scope.
+    pub fn arm_bound<'s, F>(
+        &mut self,
+        variant: &str,
+        field_bindings: impl IntoIterator<Item = (&'s str, &'s str)>,
+        body_fn: F,
+    ) where
+        F: FnOnce(&mut IrBuilder),
+    {
+        let (bindings, scoped_vars) =
+            resolve_arm_bindings(&self.enum_name, &self.variants, variant, field_bindings);
+        let mut arm_builder = self.builder.scoped(scoped_vars);
+        body_fn(&mut arm_builder);
+        self.arms.push(EnumMatchArm {
+            pattern: EnumPattern::Variant {
+                enum_name: self.enum_name.clone(),
+                variant_name: TypeName::new(variant).unwrap(),
+            },
+            bindings,
+            body: arm_builder.statements,
+        });
+    }
+}
+
+/// Resolve an arm's (field_name, binding_name) pairs against the variant's
+/// declared fields, yielding the IR bindings and the variables to bring
+/// into scope for the arm body.
+fn resolve_arm_bindings<'s>(
+    enum_name: &TypeName,
+    variants: &[EnumVariant],
+    variant: &str,
+    field_bindings: impl IntoIterator<Item = (&'s str, &'s str)>,
+) -> (Vec<(FieldName, VarName)>, Vec<(String, Arc<Type>)>) {
+    let variant_fields = variants
+        .iter()
+        .find(|v| v.name.as_str() == variant)
+        .map(|v| &v.fields)
+        .unwrap_or_else(|| {
+            let variant_names: Vec<&str> = variants.iter().map(|v| v.name.as_str()).collect();
+            panic!(
+                "Variant '{}' not found in enum '{}'. Available variants: {:?}",
+                variant, enum_name, variant_names
+            )
+        });
+
+    let mut bindings = Vec::new();
+    let mut scoped_vars = Vec::new();
+    for (field_name, binding_name) in field_bindings {
+        let field_type = variant_fields
+            .iter()
+            .find(|(f, _, _)| f.as_str() == field_name)
+            .map(|(_, t, _)| t.clone())
+            .unwrap_or_else(|| {
+                panic!(
+                    "Field '{}' not found in variant '{}::{}'",
+                    field_name, enum_name, variant
+                )
+            });
+        bindings.push((
+            FieldName::new(field_name).unwrap(),
+            VarName::new(binding_name).unwrap(),
+        ));
+        scoped_vars.push((binding_name.to_string(), field_type));
+    }
+    (bindings, scoped_vars)
+}
+
+/// Panic unless every variant of the enum is covered by exactly one arm.
+fn assert_exhaustive<B>(enum_name: &TypeName, variants: &[EnumVariant], arms: &[EnumMatchArm<B>]) {
+    for variant in variants {
+        let count = arms
+            .iter()
+            .filter(|arm| {
+                matches!(
+                    &arm.pattern,
+                    EnumPattern::Variant { variant_name, .. }
+                        if variant_name.as_str() == variant.name.as_str()
+                )
+            })
+            .count();
+        assert!(
+            count > 0,
+            "Match on enum '{}' is missing an arm for variant '{}'",
+            enum_name,
+            variant.name
+        );
+        assert!(
+            count == 1,
+            "Match on enum '{}' has {} arms for variant '{}'",
+            enum_name,
+            count,
+            variant.name
+        );
     }
 }

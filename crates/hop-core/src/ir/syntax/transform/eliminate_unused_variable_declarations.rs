@@ -218,7 +218,7 @@ fn collect_unused_vars(body: &[IrStatement]) -> UnusedVars {
 mod tests {
     use super::*;
     use crate::ir::ast::IrModule;
-    use crate::ir::syntax::builder::{IrBuilder, IrModuleBuilder};
+    use crate::ir::syntax::builder::IrModuleBuilder;
     use expect_test::{Expect, expect};
 
     fn check(mut module: IrModule, expected: Expect) {
@@ -814,25 +814,14 @@ mod tests {
             .view_no_params("Test", |t| {
                 t.let_stmt("element", t.enum_variant("BadgeElement", "Span"), |t| {
                     t.let_stmt("match_subject", t.var("element"), |t| {
-                        t.enum_match_stmt_with_bindings(
-                            t.var("match_subject"),
-                            vec![
-                                (
-                                    "Span",
-                                    vec![],
-                                    Box::new(|t: &mut IrBuilder| {
-                                        t.write("<span>badge</span>");
-                                    }),
-                                ),
-                                (
-                                    "Link",
-                                    vec![("href", "h")],
-                                    Box::new(|t: &mut IrBuilder| {
-                                        t.write("<a>badge</a>");
-                                    }),
-                                ),
-                            ],
-                        );
+                        t.enum_match_stmt(t.var("match_subject"), |m| {
+                            m.arm("Span", |t| {
+                                t.write("<span>badge</span>");
+                            });
+                            m.arm_bound("Link", [("href", "h")], |t| {
+                                t.write("<a>badge</a>");
+                            });
+                        });
                     });
                 });
             })
@@ -897,16 +886,11 @@ mod tests {
                         "foo",
                         t.enum_variant_with_fields("MyEnum", "Foo", vec![("value", t.var("x"))]),
                         |t| {
-                            t.enum_match_stmt_with_bindings(
-                                t.var("foo"),
-                                vec![(
-                                    "Foo",
-                                    vec![("value", "v")],
-                                    Box::new(|t: &mut IrBuilder| {
-                                        t.write_expr(t.var("v"), true);
-                                    }),
-                                )],
-                            );
+                            t.enum_match_stmt(t.var("foo"), |m| {
+                                m.arm_bound("Foo", [("value", "v")], |t| {
+                                    t.write_expr(t.var("v"), true);
+                                });
+                            });
                         },
                     );
                 });
@@ -973,25 +957,14 @@ mod tests {
                             // let match_subject = element
                             t.let_stmt("match_subject", t.var("element"), |t| {
                                 // match match_subject { Span => ..., Link(h) => ... }
-                                t.enum_match_stmt_with_bindings(
-                                    t.var("match_subject"),
-                                    vec![
-                                        (
-                                            "Span",
-                                            vec![],
-                                            Box::new(|t: &mut IrBuilder| {
-                                                t.write("<span>badge</span>");
-                                            }),
-                                        ),
-                                        (
-                                            "Link",
-                                            vec![("href", "h")],
-                                            Box::new(|t: &mut IrBuilder| {
-                                                t.write_expr(t.var("h"), true);
-                                            }),
-                                        ),
-                                    ],
-                                );
+                                t.enum_match_stmt(t.var("match_subject"), |m| {
+                                    m.arm("Span", |t| {
+                                        t.write("<span>badge</span>");
+                                    });
+                                    m.arm_bound("Link", [("href", "h")], |t| {
+                                        t.write_expr(t.var("h"), true);
+                                    });
+                                });
                             });
                         },
                     );
@@ -1511,25 +1484,14 @@ mod tests {
             .view_no_params("Test", |t| {
                 let e = t.enum_variant_with_fields("E", "A", vec![("f0", t.str("hi"))]);
                 t.let_stmt("e", e, |t| {
-                    t.enum_match_stmt_with_bindings(
-                        t.var("e"),
-                        vec![
-                            (
-                                "A",
-                                vec![("f0", "used")],
-                                Box::new(|t: &mut IrBuilder| {
-                                    t.write_expr(t.var("used"), false);
-                                }),
-                            ),
-                            (
-                                "B",
-                                vec![("f0", "unused")],
-                                Box::new(|t: &mut IrBuilder| {
-                                    t.write("no reference to unused here");
-                                }),
-                            ),
-                        ],
-                    );
+                    t.enum_match_stmt(t.var("e"), |m| {
+                        m.arm_bound("A", [("f0", "used")], |t| {
+                            t.write_expr(t.var("used"), false);
+                        });
+                        m.arm_bound("B", [("f0", "unused")], |t| {
+                            t.write("no reference to unused here");
+                        });
+                    });
                 });
             })
             .build();

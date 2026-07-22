@@ -1647,7 +1647,7 @@ impl Transpiler for TsTranspiler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::syntax::builder::{IrBuilder, IrModuleBuilder};
+    use crate::ir::syntax::builder::IrModuleBuilder;
     use expect_test::{Expect, expect};
 
     fn check(builder: IrModuleBuilder, expected: Expect) {
@@ -2336,14 +2336,11 @@ mod tests {
                 .enum_unit("Color", ["Red", "Green", "Blue"])
                 .view("ColorName", [("color", "Color")], |t| {
                     // Use match expression to convert color to string
-                    let match_result = t.match_expr(
-                        t.var("color"),
-                        vec![
-                            ("Red", t.str("red")),
-                            ("Green", t.str("green")),
-                            ("Blue", t.str("blue")),
-                        ],
-                    );
+                    let match_result = t.enum_match_expr(t.var("color"), |m| {
+                        m.arm("Red", |t| t.str("red"));
+                        m.arm("Green", |t| t.str("green"));
+                        m.arm("Blue", |t| t.str("blue"));
+                    });
                     t.write_expr_escaped(match_result);
                 }),
             expect![[r#"
@@ -3037,27 +3034,16 @@ mod tests {
                     ],
                 )
                 .view("ShowOutcome", [("r", "Outcome")], |t| {
-                    t.enum_match_stmt_with_bindings(
-                        t.var("r"),
-                        vec![
-                            (
-                                "Ok",
-                                vec![("value", "v")],
-                                Box::new(|t: &mut IrBuilder| {
-                                    t.write("Value: ");
-                                    t.write_expr(t.var("v"), false);
-                                }),
-                            ),
-                            (
-                                "Err",
-                                vec![("message", "m")],
-                                Box::new(|t: &mut IrBuilder| {
-                                    t.write("Error: ");
-                                    t.write_expr(t.var("m"), false);
-                                }),
-                            ),
-                        ],
-                    );
+                    t.enum_match_stmt(t.var("r"), |m| {
+                        m.arm_bound("Ok", [("value", "v")], |t| {
+                            t.write("Value: ");
+                            t.write_expr(t.var("v"), false);
+                        });
+                        m.arm_bound("Err", [("message", "m")], |t| {
+                            t.write("Error: ");
+                            t.write_expr(t.var("m"), false);
+                        });
+                    });
                 }),
             expect![[r#"
                 -- before --
