@@ -719,8 +719,11 @@ pub fn perform_partial_evaluation(body: &mut Vec<IrStatement>, registry: &TypeRe
 
 #[cfg(test)]
 mod tests {
+    use crate::ir::runtime::{evaluator::evaluate_view, random::random_value, value::Value};
     use crate::ir::syntax::builder::{IrModuleBodiesBuilder, IrModuleBuilder};
+    use crate::ir::syntax::random::random_ir_module;
     use expect_test::{Expect, expect};
+    use rand::{SeedableRng, rngs::StdRng};
 
     use super::*;
 
@@ -739,6 +742,56 @@ mod tests {
         let after = module.to_string();
         let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
         expected.assert_eq(&output);
+    }
+
+    #[test]
+    fn random_modules_evaluate_identically_after_partial_evaluation() {
+        for seed in 0..30 {
+            println!("seed {seed}");
+            let mut rng = StdRng::seed_from_u64(seed);
+            let (mut module, registry) = random_ir_module(&mut rng);
+
+            // Generate args up-front so the exact same values are used to
+            // evaluate before and after the pass.
+            let view_args: Vec<(TypeName, HashMap<String, Value>)> = module
+                .views
+                .iter()
+                .map(|view| {
+                    let args = view
+                        .parameters
+                        .iter()
+                        .map(|p| {
+                            (
+                                p.name.as_str().to_string(),
+                                random_value(&mut rng, &p.typ, None, &registry),
+                            )
+                        })
+                        .collect();
+                    (view.name.clone(), args)
+                })
+                .collect();
+
+            let before_module = module.to_string();
+            let before_outputs: Vec<String> = view_args
+                .iter()
+                .map(|(view_name, args)| evaluate_view(&module, view_name, args.clone()).unwrap())
+                .collect();
+
+            for view in &mut module.views {
+                perform_partial_evaluation(&mut view.body, &registry);
+            }
+            for component in &mut module.components {
+                perform_partial_evaluation(&mut component.body, &registry);
+            }
+
+            for ((view_name, args), before_output) in view_args.iter().zip(&before_outputs) {
+                let after_output = evaluate_view(&module, view_name, args.clone()).unwrap();
+                assert_eq!(
+                    before_output, &after_output,
+                    "seed {seed}, view {view_name}\n-- before --\n{before_module}\n-- after --\n{module}"
+                );
+            }
+        }
     }
 
     #[test]
