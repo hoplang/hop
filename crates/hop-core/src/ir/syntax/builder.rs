@@ -491,7 +491,11 @@ impl IrBuilder {
             .first()
             .map(|first| first.get_type())
             .expect("Cannot create empty array literal in test builder");
+        self.array_typed(element_type, elements)
+    }
 
+    /// An array literal with an explicit element type, allowing empty arrays.
+    pub fn array_typed(&self, element_type: Arc<Type>, elements: Vec<IrExpr>) -> IrExpr {
         for element in &elements {
             assert_eq!(
                 *element.as_type(),
@@ -1044,7 +1048,9 @@ impl IrBuilder {
     }
 
     /// Create a for loop over an inclusive range (start..=end)
-    pub fn for_range<F>(&mut self, var: &str, start: IrExpr, end: IrExpr, body_fn: F)
+    /// Create a for loop over an inclusive range. Passing `None` for `var`
+    /// leaves the loop variable unbound (underscore).
+    pub fn for_range<F>(&mut self, var: Option<&str>, start: IrExpr, end: IrExpr, body_fn: F)
     where
         F: FnOnce(&mut Self),
     {
@@ -1061,39 +1067,16 @@ impl IrBuilder {
             "Range bounds must be Int, got: {}",
             end
         );
-        let var = VarName::new(var).unwrap();
-        let body = self.in_scope([(var.clone(), Arc::new(Type::Int))], body_fn);
+        let var = var.map(|v| VarName::new(v).unwrap());
+        let bindings: Vec<_> = var
+            .iter()
+            .map(|v| (v.clone(), Arc::new(Type::Int)))
+            .collect();
+        let body = self.in_scope(bindings, body_fn);
 
         self.statements.push(IrStatement::For {
             id: self.next_id(),
-            var: Some(var),
-            source: IrForSource::RangeInclusive { start, end },
-            body,
-        });
-    }
-
-    /// Create a for loop over an inclusive range without binding the loop variable (underscore)
-    pub fn for_range_discarded<F>(&mut self, start: IrExpr, end: IrExpr, body_fn: F)
-    where
-        F: FnOnce(&mut Self),
-    {
-        assert_eq!(
-            *start.as_type(),
-            Type::Int,
-            "Range bounds must be Int, got: {}",
-            start
-        );
-        assert_eq!(
-            *end.as_type(),
-            Type::Int,
-            "Range bounds must be Int, got: {}",
-            end
-        );
-        let body = self.in_scope([], body_fn);
-
-        self.statements.push(IrStatement::For {
-            id: self.next_id(),
-            var: None,
+            var,
             source: IrForSource::RangeInclusive { start, end },
             body,
         });

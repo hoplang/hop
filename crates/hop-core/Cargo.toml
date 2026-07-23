@@ -21,6 +21,8 @@ regex-syntax = "0.8"
 txtar = { path = "../txtar" }
 tempfile = "3.8"
 expect-test = "1.5"
+arbitrary = "1"
+arbtest = "0.3"
 indoc = "2.0"
 
 [lints.rust]

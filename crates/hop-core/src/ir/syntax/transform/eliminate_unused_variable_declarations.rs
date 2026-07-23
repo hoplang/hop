@@ -504,7 +504,7 @@ mod tests {
             IrModuleBuilder::new()
                 .view_no_params("Test", |t| {
                     t.let_stmt("count", t.int(3), |t| {
-                        t.for_range("i", t.int(1), t.var("count"), |t| {
+                        t.for_range(Some("i"), t.int(1), t.var("count"), |t| {
                             t.write_expr(t.int_to_string(t.var("i")), false);
                         });
                     });
@@ -538,7 +538,7 @@ mod tests {
             IrModuleBuilder::new()
                 .view_no_params("Test", |t| {
                     t.let_stmt("start", t.int(1), |t| {
-                        t.for_range("i", t.var("start"), t.int(5), |t| {
+                        t.for_range(Some("i"), t.var("start"), t.int(5), |t| {
                             t.write_expr(t.int_to_string(t.var("i")), false);
                         });
                     });
@@ -572,7 +572,7 @@ mod tests {
             IrModuleBuilder::new()
                 .view_no_params("Test", |t| {
                     t.let_stmt("count", t.int(3), |t| {
-                        t.for_range_discarded(t.int(1), t.var("count"), |t| {
+                        t.for_range(None, t.int(1), t.var("count"), |t| {
                             t.write("x");
                         });
                     });

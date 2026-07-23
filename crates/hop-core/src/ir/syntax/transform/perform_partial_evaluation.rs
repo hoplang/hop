@@ -746,10 +746,9 @@ mod tests {
 
     #[test]
     fn random_modules_evaluate_identically_after_partial_evaluation() {
-        for seed in 0..30 {
-            println!("seed {seed}");
-            let mut rng = StdRng::seed_from_u64(seed);
-            let (mut module, registry) = random_ir_module(&mut rng);
+        arbtest::arbtest(|u| {
+            let (mut module, registry) = random_ir_module(u);
+            let mut rng = StdRng::seed_from_u64(u.arbitrary()?);
 
             // Generate args up-front so the exact same values are used to
             // evaluate before and after the pass.
@@ -788,10 +787,11 @@ mod tests {
                 let after_output = evaluate_view(&module, view_name, args.clone()).unwrap();
                 assert_eq!(
                     before_output, &after_output,
-                    "seed {seed}, view {view_name}\n-- before --\n{before_module}\n-- after --\n{module}"
+                    "view {view_name}\n-- before --\n{before_module}\n-- after --\n{module}"
                 );
             }
-        }
+            Ok(())
+        });
     }
 
     #[test]

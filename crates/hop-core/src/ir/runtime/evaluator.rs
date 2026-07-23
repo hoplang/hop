@@ -842,10 +842,9 @@ mod tests {
 
     #[test]
     fn random_modules_evaluate_without_panicking() {
-        for seed in 0..30 {
-            println!("seed {seed}");
-            let mut rng = StdRng::seed_from_u64(seed);
-            let (module, registry) = random_ir_module(&mut rng);
+        arbtest::arbtest(|u| {
+            let (module, registry) = random_ir_module(u);
+            let mut rng = StdRng::seed_from_u64(u.arbitrary()?);
             for view in &module.views {
                 let args: HashMap<String, Value> = view
                     .parameters
@@ -859,7 +858,8 @@ mod tests {
                     .collect();
                 evaluate_view(&module, &view.name, args).unwrap();
             }
-        }
+            Ok(())
+        });
     }
 
     #[test]

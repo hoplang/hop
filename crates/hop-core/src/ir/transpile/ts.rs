@@ -1840,7 +1840,7 @@ mod tests {
     fn for_loop_with_range() {
         check(
             IrModuleBuilder::new().view_no_params("Counter", |t| {
-                t.for_range("i", t.int(1), t.int(3), |t| {
+                t.for_range(Some("i"), t.int(1), t.int(3), |t| {
                     t.write_expr(t.int_to_string(t.var("i")), false);
                     t.write(" ");
                 });

@@ -2,8 +2,9 @@ use super::builder::{IrBuilder, IrModuleBuilder};
 use crate::expr::Type;
 use crate::expr::typing::type_registry::TypeRegistry;
 use crate::ir::ast::{IrExpr, IrModule};
-use rand::{Rng, RngExt};
+use arbitrary::Unstructured;
 use std::cell::RefCell;
+use std::ops::RangeInclusive;
 
 /// Statement/expression recursion budget.
 const DEPTH: usize = 3;
@@ -22,17 +23,17 @@ struct EnumInfo {
     variants: Vec<(String, Vec<(String, String)>)>,
 }
 
-struct IrGenerator<'a, R: Rng> {
-    rng: &'a mut R,
+struct IrGenerator<'a, 'b> {
+    u: &'a mut Unstructured<'b>,
     records: Vec<RecordInfo>,
     enums: Vec<EnumInfo>,
     next_var: usize,
 }
 
 /// Generate a random well-typed IR module.
-pub fn random_ir_module(rng: &mut impl Rng) -> (IrModule, TypeRegistry) {
+pub fn random_ir_module(u: &mut Unstructured<'_>) -> (IrModule, TypeRegistry) {
     let mut g = IrGenerator {
-        rng,
+        u,
         records: Vec::new(),
         enums: Vec::new(),
         next_var: 0,
@@ -41,9 +42,9 @@ pub fn random_ir_module(rng: &mut impl Rng) -> (IrModule, TypeRegistry) {
     let mut builder = IrModuleBuilder::new();
 
     // Generate records
-    for i in 0..g.rng.random_range(0..=3) {
+    for i in 0..g.count(0..=3) {
         let name = format!("R{i}");
-        let fields = (0..g.rng.random_range(1..=4))
+        let fields = (0..g.count(0..=4))
             .map(|j| (format!("f{j}"), g.random_type_string(2)))
             .collect::<Vec<_>>();
         builder = builder.record(&name, fields.iter().map(|(f, t)| (f.as_str(), t.as_str())));
@@ -51,11 +52,11 @@ pub fn random_ir_module(rng: &mut impl Rng) -> (IrModule, TypeRegistry) {
     }
 
     // Generate enums
-    for i in 0..g.rng.random_range(0..=3) {
+    for i in 0..g.count(0..=3) {
         let name = format!("E{i}");
-        let variants: Vec<(String, Vec<(String, String)>)> = (0..g.rng.random_range(1..=3))
+        let variants: Vec<(String, Vec<(String, String)>)> = (0..g.count(1..=3))
             .map(|j| {
-                let fields = (0..g.rng.random_range(0..=2))
+                let fields = (0..g.count(0..=2))
                     .map(|k| (format!("f{k}"), g.random_type_string(2)))
                     .collect();
                 (format!("W{j}"), fields)
@@ -76,8 +77,8 @@ pub fn random_ir_module(rng: &mut impl Rng) -> (IrModule, TypeRegistry) {
     let mut bodies = builder.types_done();
 
     // Generate views
-    for i in 0..g.rng.random_range(1..=3) {
-        let params: Vec<(String, String)> = (0..g.rng.random_range(0..=3))
+    for i in 0..g.count(1..=3) {
+        let params: Vec<(String, String)> = (0..g.count(0..=3))
             .map(|_| (g.fresh_var_name(), g.random_type_string(2)))
             .collect();
         bodies = bodies.view(
@@ -89,7 +90,28 @@ pub fn random_ir_module(rng: &mut impl Rng) -> (IrModule, TypeRegistry) {
     bodies.build_with_registry()
 }
 
-impl<R: Rng> IrGenerator<'_, R> {
+impl IrGenerator<'_, '_> {
+    /// A choice within `range`, resolving to the lower bound once the
+    /// input is exhausted.
+    fn count(&mut self, range: RangeInclusive<usize>) -> usize {
+        self.u.int_in_range(range).unwrap()
+    }
+
+    /// A choice of index into a nonempty collection of length `len`.
+    fn index(&mut self, len: usize) -> usize {
+        self.u.choose_index(len).unwrap()
+    }
+
+    fn coin(&mut self) -> bool {
+        self.u.arbitrary().unwrap()
+    }
+
+    /// A zigzag-encoded choice in `-magnitude..=magnitude`.
+    fn zigzag(&mut self, magnitude: i64) -> i64 {
+        let n = self.u.int_in_range(0..=2 * magnitude).unwrap();
+        if n % 2 == 0 { -n / 2 } else { n / 2 + 1 }
+    }
+
     fn fresh_var_name(&mut self) -> String {
         let n = self.next_var;
         self.next_var += 1;
@@ -100,7 +122,7 @@ impl<R: Rng> IrGenerator<'_, R> {
     fn random_type_string(&mut self, depth: usize) -> String {
         let named = self.records.len() + self.enums.len();
         let n = 3 + named + if depth > 0 { 2 } else { 0 };
-        match self.rng.random_range(0..n) {
+        match self.index(n) {
             0 => "Int".to_string(),
             1 => "String".to_string(),
             2 => "Bool".to_string(),
@@ -112,7 +134,7 @@ impl<R: Rng> IrGenerator<'_, R> {
     }
 
     fn stmts(&mut self, b: &mut IrBuilder, depth: usize) {
-        for _ in 0..self.rng.random_range(0..=4) {
+        for _ in 0..self.count(0..=4) {
             self.stmt(b, depth);
         }
     }
@@ -146,8 +168,8 @@ impl<R: Rng> IrGenerator<'_, R> {
                 productions.push(P::EnumMatch);
             }
         }
-        match productions.swap_remove(self.rng.random_range(0..productions.len())) {
-            P::Write => b.write(WORDS[self.rng.random_range(0..WORDS.len())]),
+        match self.u.choose(&productions).unwrap() {
+            P::Write => b.write(self.u.choose(WORDS).unwrap()),
             P::WriteExpr => {
                 let expr = self.expr(b, &Type::String, depth);
                 b.write_expr_escaped(expr);
@@ -159,10 +181,10 @@ impl<R: Rng> IrGenerator<'_, R> {
             P::ForRange => {
                 // Literal bounds only: generated arithmetic can produce huge
                 // Int values, which would make evaluation iterate forever.
-                let start = b.int(self.rng.random_range(-3..=3));
-                let end = b.int(self.rng.random_range(-3..=3));
-                let var = self.fresh_var_name();
-                b.for_range(&var, start, end, |b| self.stmts(b, depth - 1));
+                let start = b.int(self.zigzag(3));
+                let end = b.int(self.zigzag(3));
+                let var = self.coin().then(|| self.fresh_var_name());
+                b.for_range(var.as_deref(), start, end, |b| self.stmts(b, depth - 1));
             }
             P::ForLoop => {
                 let array_ty = Type::Array(b.resolve_type(&self.random_type_string(1)));
@@ -200,7 +222,7 @@ impl<R: Rng> IrGenerator<'_, R> {
             P::OptionMatch => {
                 let option_ty = Type::Option(b.resolve_type(&self.random_type_string(1)));
                 let subject = self.expr(b, &option_ty, depth);
-                let binding = self.rng.random_bool(0.5).then(|| self.fresh_var_name());
+                let binding = self.coin().then(|| self.fresh_var_name());
                 let this = RefCell::new(self);
                 b.option_match_stmt(
                     subject,
@@ -210,7 +232,7 @@ impl<R: Rng> IrGenerator<'_, R> {
                 );
             }
             P::EnumMatch => {
-                let info = self.enums[self.rng.random_range(0..self.enums.len())].clone();
+                let info = self.u.choose(&self.enums).unwrap().clone();
                 let subject_ty = b.resolve_type(&info.name);
                 let subject = self.expr(b, &subject_ty, depth);
                 b.enum_match_stmt(subject, |arms| {
@@ -302,7 +324,7 @@ impl<R: Rng> IrGenerator<'_, R> {
                 productions.extend([P::Concat, P::IntToString]);
             }
         }
-        match productions.swap_remove(self.rng.random_range(0..productions.len())) {
+        match self.u.choose(&productions).unwrap() {
             P::Lit => self.literal(b, target, depth),
             P::Var => {
                 let candidates: Vec<&str> = b
@@ -311,7 +333,7 @@ impl<R: Rng> IrGenerator<'_, R> {
                     .filter(|(_, ty)| **ty == *target)
                     .map(|(name, _)| name.as_str())
                     .collect();
-                b.var(candidates[self.rng.random_range(0..candidates.len())])
+                b.var(self.u.choose(&candidates).unwrap())
             }
             P::FieldAccess => {
                 let mut candidates: Vec<(&str, &str)> = Vec::new();
@@ -326,7 +348,7 @@ impl<R: Rng> IrGenerator<'_, R> {
                         }
                     }
                 }
-                let (var, field) = candidates[self.rng.random_range(0..candidates.len())];
+                let (var, field) = *self.u.choose(&candidates).unwrap();
                 let object = b.var(var);
                 b.field_access(object, field)
             }
@@ -346,7 +368,7 @@ impl<R: Rng> IrGenerator<'_, R> {
             P::OptionMatch => {
                 let option_ty = Type::Option(b.resolve_type(&self.random_type_string(1)));
                 let subject = self.expr(b, &option_ty, depth - 1);
-                if self.rng.random_bool(0.5) {
+                if self.coin() {
                     let binding = self.fresh_var_name();
                     let none_body = self.expr(b, target, depth - 1);
                     b.option_match_expr_with_binding(
@@ -362,7 +384,7 @@ impl<R: Rng> IrGenerator<'_, R> {
                 }
             }
             P::EnumMatch => {
-                let info = self.enums[self.rng.random_range(0..self.enums.len())].clone();
+                let info = self.u.choose(&self.enums).unwrap().clone();
                 let subject_ty = b.resolve_type(&info.name);
                 let subject = self.expr(b, &subject_ty, depth - 1);
                 b.enum_match_expr(subject, |arms| {
@@ -380,7 +402,7 @@ impl<R: Rng> IrGenerator<'_, R> {
                 })
             }
             P::Eq => {
-                let ty = match self.rng.random_range(0..3) {
+                let ty = match self.index(3) {
                     0 => Type::Int,
                     1 => Type::String,
                     _ => Type::Bool,
@@ -473,17 +495,17 @@ impl<R: Rng> IrGenerator<'_, R> {
         // Note: we use saturating_sub here since we might be forced to construct
         // something deeper than depth.
         match &target {
-            Type::String => b.str(WORDS[self.rng.random_range(0..WORDS.len())]),
-            Type::Int => b.int(self.rng.random_range(-100..=100)),
-            Type::Bool => b.bool(self.rng.random_bool(0.5)),
+            Type::String => b.str(self.u.choose(WORDS).unwrap()),
+            Type::Int => b.int(self.zigzag(100)),
+            Type::Bool => b.bool(self.coin()),
             Type::Array(inner) => {
-                let elements = (0..self.rng.random_range(1..=3))
+                let elements = (0..self.count(0..=3))
                     .map(|_| self.expr(b, inner, depth.saturating_sub(1)))
                     .collect();
-                b.array(elements)
+                b.array_typed(inner.clone(), elements)
             }
             Type::Option(inner) => {
-                if self.rng.random_bool(0.5) {
+                if self.coin() {
                     let value = self.expr(b, inner, depth.saturating_sub(1));
                     b.some(value)
                 } else {
@@ -506,8 +528,7 @@ impl<R: Rng> IrGenerator<'_, R> {
                         .find(|e| e.name == name.as_str())
                         .expect("named type must be a generated record or enum")
                         .clone();
-                    let (variant, fields) =
-                        &info.variants[self.rng.random_range(0..info.variants.len())];
+                    let (variant, fields) = self.u.choose(&info.variants).unwrap();
                     let mut values = Vec::new();
                     for (field, field_ty) in fields {
                         let ty = b.resolve_type(field_ty);
