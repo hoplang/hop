@@ -23,10 +23,17 @@ struct EnumInfo {
     variants: Vec<(String, Vec<(String, String)>)>,
 }
 
+#[derive(Clone)]
+struct ComponentInfo {
+    name: String,
+    params: Vec<(String, String)>,
+}
+
 struct IrGenerator<'a, 'b> {
     u: &'a mut Unstructured<'b>,
     records: Vec<RecordInfo>,
     enums: Vec<EnumInfo>,
+    components: Vec<ComponentInfo>,
     next_var: usize,
 }
 
@@ -36,6 +43,7 @@ pub fn random_ir_module(u: &mut Unstructured<'_>) -> (IrModule, TypeRegistry) {
         u,
         records: Vec::new(),
         enums: Vec::new(),
+        components: Vec::new(),
         next_var: 0,
     };
 
@@ -75,6 +83,20 @@ pub fn random_ir_module(u: &mut Unstructured<'_>) -> (IrModule, TypeRegistry) {
     }
 
     let mut bodies = builder.types_done();
+
+    // Generate components
+    for i in 0..g.count(0..=2) {
+        let name = format!("C{i}");
+        let params: Vec<(String, String)> = (0..g.count(0..=3))
+            .map(|_| (g.fresh_var_name(), g.random_type_string(2)))
+            .collect();
+        bodies = bodies.component(
+            &name,
+            params.iter().map(|(n, t)| (n.as_str(), t.as_str())),
+            |b| g.stmts(b, DEPTH),
+        );
+        g.components.push(ComponentInfo { name, params });
+    }
 
     // Generate views
     for i in 0..g.count(1..=3) {
@@ -144,6 +166,7 @@ impl IrGenerator<'_, '_> {
         enum P {
             Write,
             WriteExpr,
+            InvokeComponent,
             If,
             ForRange,
             ForLoop,
@@ -154,6 +177,9 @@ impl IrGenerator<'_, '_> {
             EnumMatch,
         }
         let mut productions = vec![P::Write, P::WriteExpr];
+        if !self.components.is_empty() {
+            productions.push(P::InvokeComponent);
+        }
         if depth > 0 {
             productions.extend([
                 P::If,
@@ -173,6 +199,18 @@ impl IrGenerator<'_, '_> {
             P::WriteExpr => {
                 let expr = self.expr(b, &Type::String, depth);
                 b.write_expr_escaped(expr);
+            }
+            P::InvokeComponent => {
+                let info = self.u.choose(&self.components).unwrap().clone();
+                let args = info
+                    .params
+                    .iter()
+                    .map(|(n, t)| {
+                        let ty = b.resolve_type(t);
+                        (n.as_str(), self.expr(b, &ty, depth))
+                    })
+                    .collect();
+                b.invoke_component(&info.name, args);
             }
             P::If => {
                 let condition = self.expr(b, &Type::Bool, depth);
