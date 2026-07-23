@@ -822,9 +822,11 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value, EvalError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::ast::IrModule;
+    use crate::ir::runtime::random::random_value;
     use crate::ir::syntax::builder::IrModuleBuilder;
+    use crate::ir::{ast::IrModule, syntax::random::random_ir_module};
     use expect_test::{Expect, expect};
+    use rand::{SeedableRng, rngs::StdRng};
 
     fn check(module: IrModule, args: Vec<(&str, Value)>, expected: Expect) {
         let before = module.to_string();
@@ -836,6 +838,28 @@ mod tests {
 
         let output = format!("-- before --\n{}\n-- after --\n{}\n", before, after);
         expected.assert_eq(&output);
+    }
+
+    #[test]
+    fn random_modules_evaluate_without_panicking() {
+        for seed in 0..30 {
+            println!("seed {seed}");
+            let mut rng = StdRng::seed_from_u64(seed);
+            let (module, registry) = random_ir_module(&mut rng);
+            for view in &module.views {
+                let args: HashMap<String, Value> = view
+                    .parameters
+                    .iter()
+                    .map(|p| {
+                        (
+                            p.name.as_str().to_string(),
+                            random_value(&mut rng, &p.typ, None, &registry),
+                        )
+                    })
+                    .collect();
+                evaluate_view(&module, &view.name, args).unwrap();
+            }
+        }
     }
 
     #[test]

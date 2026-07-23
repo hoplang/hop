@@ -1,7 +1,7 @@
 use crate::document::CheapString;
 use crate::expr::Type;
 use crate::expr::patterns::{EnumMatchArm, EnumPattern, Match};
-use crate::expr::typing::r#type::{ComparableType, EnumVariant, EquatableType};
+use crate::expr::typing::r#type::{ComparableType, EnumVariant, EquatableType, NumericType};
 use crate::expr::typing::type_registry::{ResolvedType, TypeRegistry};
 use crate::expr::typing::type_registry_builder::{TestTypes, TypeRegistryBuilder};
 use crate::ir::ast::{IrArgument, IrExpr, IrForSource, IrParameter, IrStatement};
@@ -266,7 +266,16 @@ impl IrBuilder {
         std::mem::replace(&mut self.statements, saved_statements)
     }
 
-    // Expression builders
+    /// In-scope variables, innermost last.
+    pub fn vars(&self) -> &[(VarName, Arc<Type>)] {
+        &self.var_stack
+    }
+
+    /// Resolve a source-syntax type string, e.g. `Array[Int]`.
+    pub fn resolve_type(&self, type_str: &str) -> Arc<Type> {
+        self.types.resolve(type_str)
+    }
+
     pub fn str(&self, s: &str) -> IrExpr {
         IrExpr::StringLiteral {
             value: CheapString::new(s.to_string()),
@@ -366,6 +375,51 @@ impl IrBuilder {
         }
     }
 
+    pub fn add(&self, left: IrExpr, right: IrExpr) -> IrExpr {
+        let operand_types = match (left.as_type(), right.as_type()) {
+            (Type::Int, Type::Int) => NumericType::Int,
+            (Type::Float, Type::Float) => NumericType::Float,
+            (l, r) => panic!("Unsupported types for addition: {:?} + {:?}", l, r),
+        };
+        IrExpr::NumericAdd {
+            left: Box::new(left),
+            right: Box::new(right),
+            operand_types,
+            id: self.next_id(),
+        }
+    }
+
+    pub fn sub(&self, left: IrExpr, right: IrExpr) -> IrExpr {
+        let operand_types = match (left.as_type(), right.as_type()) {
+            (Type::Int, Type::Int) => NumericType::Int,
+            (Type::Float, Type::Float) => NumericType::Float,
+            (l, r) => panic!("Unsupported types for subtraction: {:?} - {:?}", l, r),
+        };
+        IrExpr::NumericSubtract {
+            left: Box::new(left),
+            right: Box::new(right),
+            operand_types,
+            id: self.next_id(),
+        }
+    }
+
+    pub fn mul(&self, left: IrExpr, right: IrExpr) -> IrExpr {
+        let operand_types = match (left.as_type(), right.as_type()) {
+            (Type::Int, Type::Int) => NumericType::Int,
+            (Type::Float, Type::Float) => NumericType::Float,
+            (l, r) => panic!(
+                "Unsupported types for multiplication: {:?} * {:?}",
+                l, r
+            ),
+        };
+        IrExpr::NumericMultiply {
+            left: Box::new(left),
+            right: Box::new(right),
+            operand_types,
+            id: self.next_id(),
+        }
+    }
+
     pub fn not(&self, operand: IrExpr) -> IrExpr {
         assert_eq!(
             *operand.as_type(),
@@ -375,6 +429,19 @@ impl IrBuilder {
         );
         IrExpr::BooleanNegation {
             operand: Box::new(operand),
+            id: self.next_id(),
+        }
+    }
+
+    pub fn neg(&self, operand: IrExpr) -> IrExpr {
+        let operand_type = match operand.as_type() {
+            Type::Int => NumericType::Int,
+            Type::Float => NumericType::Float,
+            t => panic!("Unsupported type for numeric negation: -{:?}", t),
+        };
+        IrExpr::NumericNegation {
+            operand: Box::new(operand),
+            operand_type,
             id: self.next_id(),
         }
     }
@@ -589,9 +656,14 @@ impl IrBuilder {
     /// Create a None option literal, the inner type is given in source
     /// syntax, e.g. "String" or "Array[Node]"
     pub fn none(&self, inner_type: &str) -> IrExpr {
+        self.none_typed(self.types.resolve(inner_type))
+    }
+
+    /// Create a None option literal from an already-resolved inner type.
+    pub fn none_typed(&self, inner_type: Arc<Type>) -> IrExpr {
         IrExpr::OptionLiteral {
             value: None,
-            kind: Arc::new(Type::Option(self.types.resolve(inner_type))),
+            kind: Arc::new(Type::Option(inner_type)),
             id: self.next_id(),
         }
     }
@@ -848,6 +920,18 @@ impl IrBuilder {
         );
         IrExpr::TwMerge {
             operand: Box::new(value),
+            id: self.next_id(),
+        }
+    }
+
+    pub fn array_length(&self, operand: IrExpr) -> IrExpr {
+        assert!(
+            matches!(operand.as_type(), Type::Array(_)),
+            "ArrayLength expects Array operand, got: {}",
+            operand
+        );
+        IrExpr::ArrayLength {
+            array: Box::new(operand),
             id: self.next_id(),
         }
     }

@@ -2,6 +2,8 @@ pub mod ast;
 #[cfg(test)]
 pub mod builder;
 mod compiler;
+#[cfg(test)]
+pub mod random;
 pub mod transform;
 pub mod variable_renaming;
 

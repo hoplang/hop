@@ -152,7 +152,8 @@ fn typecheck_rust(code: &str) -> Result<(), String> {
 
 fn execute_evaluator(module: &super::IrModule) -> Result<String, String> {
     let view_name = TypeName::new("Test").unwrap();
-    evaluate_view(module, &view_name, HashMap::new()).map_err(|e| format!("Evaluator failed: {}", e))
+    evaluate_view(module, &view_name, HashMap::new())
+        .map_err(|e| format!("Evaluator failed: {}", e))
 }
 
 fn check(hop_source: &str, expected_output: &str, expected: Expect) {
