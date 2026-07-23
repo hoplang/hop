@@ -841,7 +841,7 @@ mod tests {
     }
 
     #[test]
-    fn random_modules_evaluate_without_panicking() {
+    fn fuzz_random_modules_evaluate_without_panicking() {
         arbtest::arbtest(|u| {
             let (module, registry) = random_ir_module(u);
             let mut rng = StdRng::seed_from_u64(u.arbitrary()?);

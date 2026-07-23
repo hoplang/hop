@@ -745,7 +745,7 @@ mod tests {
     }
 
     #[test]
-    fn random_modules_evaluate_identically_after_partial_evaluation() {
+    fn fuzz_random_modules_evaluate_identically_after_partial_evaluation() {
         arbtest::arbtest(|u| {
             let (mut module, registry) = random_ir_module(u);
             let mut rng = StdRng::seed_from_u64(u.arbitrary()?);
