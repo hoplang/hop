@@ -719,7 +719,7 @@ pub fn perform_partial_evaluation(body: &mut Vec<IrStatement>, registry: &TypeRe
 
 #[cfg(test)]
 mod tests {
-    use crate::ir::syntax::builder::IrModuleBuilder;
+    use crate::ir::syntax::builder::{IrModuleBodiesBuilder, IrModuleBuilder};
     use expect_test::{Expect, expect};
 
     use super::*;
@@ -727,8 +727,8 @@ mod tests {
     /// Run the pass over every view and component in the module, using the
     /// module's own registry so named type structure (e.g. enum variants and
     /// fields) can be resolved during reconstruction.
-    fn check(builder: IrModuleBuilder, expected: Expect) {
-        let (mut module, registry) = builder.build_with_registry();
+    fn check(builder: impl Into<IrModuleBodiesBuilder>, expected: Expect) {
+        let (mut module, registry) = builder.into().build_with_registry();
         let before = module.to_string();
         for view in &mut module.views {
             perform_partial_evaluation(&mut view.body, &registry);

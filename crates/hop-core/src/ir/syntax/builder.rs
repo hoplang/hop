@@ -4,9 +4,7 @@ use crate::expr::patterns::{EnumMatchArm, EnumPattern, Match};
 use crate::expr::typing::r#type::{ComparableType, EnumVariant, EquatableType};
 use crate::expr::typing::type_registry::{ResolvedType, TypeRegistry};
 use crate::expr::typing::type_registry_builder::{TestTypes, TypeRegistryBuilder};
-use crate::ir::ast::{
-    ExprId, IrArgument, IrExpr, IrForSource, IrParameter, IrStatement, StatementId,
-};
+use crate::ir::ast::{IrArgument, IrExpr, IrForSource, IrParameter, IrStatement};
 use crate::ir::ast::{
     IrComponentDeclaration, IrEnumDeclaration, IrModule, IrRecordDeclaration, IrViewDeclaration,
 };
@@ -14,32 +12,18 @@ use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use std::cell::Cell;
-use std::collections::BTreeSet;
 use std::rc::Rc;
 use std::sync::Arc;
 
-struct PendingView {
-    name: String,
-    params: Vec<(String, String)>,
-    body_fn: Box<dyn FnOnce(&mut IrBuilder)>,
-}
-
+/// Declares the record and enum types of a module under construction.
 pub struct IrModuleBuilder {
     types_builder: TypeRegistryBuilder,
-    record_names: BTreeSet<TypeName>,
-    enum_names: BTreeSet<TypeName>,
-    views: Vec<PendingView>,
-    components: Vec<PendingView>,
 }
 
 impl IrModuleBuilder {
     pub fn new() -> Self {
         Self {
             types_builder: TypeRegistryBuilder::new(),
-            record_names: BTreeSet::new(),
-            enum_names: BTreeSet::new(),
-            views: Vec::new(),
-            components: Vec::new(),
         }
     }
 
@@ -49,7 +33,6 @@ impl IrModuleBuilder {
         fields: impl IntoIterator<Item = (&'a str, &'a str)>,
     ) -> Self {
         self.types_builder = self.types_builder.record(name, fields);
-        self.record_names.insert(TypeName::new(name).unwrap());
         self
     }
 
@@ -60,7 +43,6 @@ impl IrModuleBuilder {
         variants: impl IntoIterator<Item = &'a str>,
     ) -> Self {
         self.types_builder = self.types_builder.enum_unit(name, variants);
-        self.enum_names.insert(TypeName::new(name).unwrap());
         self
     }
 
@@ -71,13 +53,75 @@ impl IrModuleBuilder {
         variants: impl IntoIterator<Item = (&'a str, Vec<(&'a str, &'a str)>)>,
     ) -> Self {
         self.types_builder = self.types_builder.enum_(name, variants);
-        self.enum_names.insert(TypeName::new(name).unwrap());
         self
     }
 
+    /// Freeze the declared types, enabling view and component bodies.
+    pub fn types_done(self) -> IrModuleBodiesBuilder {
+        IrModuleBodiesBuilder {
+            types: Rc::new(self.types_builder.build()),
+            next_id: Rc::new(Cell::new(1)),
+            views: Vec::new(),
+            components: Vec::new(),
+        }
+    }
+
+    pub fn view_no_params<F>(self, name: &str, body_fn: F) -> IrModuleBodiesBuilder
+    where
+        F: FnOnce(&mut IrBuilder),
+    {
+        self.types_done().view_no_params(name, body_fn)
+    }
+
+    pub fn view<'a, F>(
+        self,
+        name: &str,
+        params: impl IntoIterator<Item = (&'a str, &'a str)>,
+        body_fn: F,
+    ) -> IrModuleBodiesBuilder
+    where
+        F: FnOnce(&mut IrBuilder),
+    {
+        self.types_done().view(name, params, body_fn)
+    }
+
+    pub fn component<'a, F>(
+        self,
+        name: &str,
+        params: impl IntoIterator<Item = (&'a str, &'a str)>,
+        body_fn: F,
+    ) -> IrModuleBodiesBuilder
+    where
+        F: FnOnce(&mut IrBuilder),
+    {
+        self.types_done().component(name, params, body_fn)
+    }
+}
+
+impl Default for IrModuleBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl From<IrModuleBuilder> for IrModuleBodiesBuilder {
+    fn from(builder: IrModuleBuilder) -> Self {
+        builder.types_done()
+    }
+}
+
+/// Collects view and component bodies against a frozen set of types.
+pub struct IrModuleBodiesBuilder {
+    types: Rc<TestTypes>,
+    next_id: Rc<Cell<usize>>,
+    views: Vec<IrViewDeclaration>,
+    components: Vec<IrComponentDeclaration>,
+}
+
+impl IrModuleBodiesBuilder {
     pub fn view_no_params<F>(self, name: &str, body_fn: F) -> Self
     where
-        F: FnOnce(&mut IrBuilder) + 'static,
+        F: FnOnce(&mut IrBuilder),
     {
         self.view(name, [], body_fn)
     }
@@ -89,9 +133,14 @@ impl IrModuleBuilder {
         body_fn: F,
     ) -> Self
     where
-        F: FnOnce(&mut IrBuilder) + 'static,
+        F: FnOnce(&mut IrBuilder),
     {
-        self.views.push(Self::pending(name, params, body_fn));
+        let (parameters, body) = self.declaration(params, body_fn);
+        self.views.push(IrViewDeclaration {
+            name: TypeName::new(name).expect("Test view name should be valid"),
+            parameters,
+            body,
+        });
         self
     }
 
@@ -102,28 +151,45 @@ impl IrModuleBuilder {
         body_fn: F,
     ) -> Self
     where
-        F: FnOnce(&mut IrBuilder) + 'static,
+        F: FnOnce(&mut IrBuilder),
     {
-        self.components.push(Self::pending(name, params, body_fn));
+        let (parameters, body) = self.declaration(params, body_fn);
+        self.components.push(IrComponentDeclaration {
+            name: TypeName::new(name).expect("Test component name should be valid"),
+            parameters,
+            body,
+        });
         self
     }
 
-    fn pending<'a, F>(
-        name: &str,
+    /// Resolve parameters and run the body closure immediately.
+    fn declaration<'a, F>(
+        &self,
         params: impl IntoIterator<Item = (&'a str, &'a str)>,
         body_fn: F,
-    ) -> PendingView
+    ) -> (Vec<IrParameter>, Vec<IrStatement>)
     where
-        F: FnOnce(&mut IrBuilder) + 'static,
+        F: FnOnce(&mut IrBuilder),
     {
-        PendingView {
-            name: name.to_string(),
-            params: params
-                .into_iter()
-                .map(|(k, t)| (k.to_string(), t.to_string()))
-                .collect(),
-            body_fn: Box::new(body_fn),
-        }
+        let parameters: Vec<IrParameter> = params
+            .into_iter()
+            .map(|(name, typ)| IrParameter {
+                name: VarName::new(name).unwrap(),
+                typ: self.types.resolve(typ),
+            })
+            .collect();
+        let vars = parameters
+            .iter()
+            .map(|p| (p.name.clone(), p.typ.clone()))
+            .collect();
+        let mut builder = IrBuilder {
+            var_stack: vars,
+            types: self.types.clone(),
+            next_id: self.next_id.clone(),
+            statements: Vec::new(),
+        };
+        body_fn(&mut builder);
+        (parameters, builder.statements)
     }
 
     pub fn build(self) -> IrModule {
@@ -131,156 +197,104 @@ impl IrModuleBuilder {
     }
 
     pub fn build_with_registry(self) -> (IrModule, TypeRegistry) {
-        let types = self.types_builder.build();
-        let build_pending = |pending: Vec<PendingView>, types: &TestTypes| {
-            pending
-                .into_iter()
-                .map(|pending| {
-                    let params = pending
-                        .params
-                        .iter()
-                        .map(|(k, t)| (k.clone(), types.resolve(t)))
-                        .collect();
-                    let mut builder = IrBuilder::new(params, types.clone());
-                    (pending.body_fn)(&mut builder);
-                    builder.build(&pending.name)
-                })
-                .collect::<Vec<_>>()
-        };
-        let views = build_pending(self.views, &types);
-        let components = build_pending(self.components, &types)
-            .into_iter()
-            .map(|view| IrComponentDeclaration {
-                name: view.name,
-                parameters: view.parameters,
-                body: view.body,
-            })
-            .collect();
-        let enum_declarations = self
-            .enum_names
-            .iter()
-            .map(|name| IrEnumDeclaration {
-                name: name.clone(),
-                variants: types.enum_variants(name.as_str()).to_vec(),
-            })
-            .collect();
-        let record_declarations = self
-            .record_names
-            .iter()
-            .map(|name| IrRecordDeclaration {
-                name: name.clone(),
-                fields: types.record_fields(name.as_str()).to_vec(),
-            })
-            .collect();
-        let ir_module = IrModule {
-            views,
-            components,
+        let mut record_declarations = Vec::new();
+        let mut enum_declarations = Vec::new();
+        for (name, resolved) in self.types.declared_types() {
+            match resolved {
+                ResolvedType::Record { fields, .. } => {
+                    record_declarations.push(IrRecordDeclaration {
+                        name: name.clone(),
+                        fields: fields.to_vec(),
+                    });
+                }
+                ResolvedType::Enum { variants, .. } => {
+                    enum_declarations.push(IrEnumDeclaration {
+                        name: name.clone(),
+                        variants: variants.to_vec(),
+                    });
+                }
+                _ => unreachable!("only records and enums can be declared"),
+            }
+        }
+        let module = IrModule {
+            views: self.views,
+            components: self.components,
             records: record_declarations,
             enums: enum_declarations,
         };
-        (ir_module, types.registry().clone())
-    }
-}
-
-impl Default for IrModuleBuilder {
-    fn default() -> Self {
-        Self::new()
+        (module, self.types.registry().clone())
     }
 }
 
 pub struct IrBuilder {
-    next_expr_id: Rc<Cell<ExprId>>,
-    next_node_id: Rc<Cell<StatementId>>,
-    var_stack: Vec<(String, Arc<Type>)>,
-    params: Vec<IrParameter>,
-    types: TestTypes,
+    var_stack: Vec<(VarName, Arc<Type>)>,
+    types: Rc<TestTypes>,
+    next_id: Rc<Cell<usize>>,
     statements: Vec<IrStatement>,
 }
 
 impl IrBuilder {
-    fn new(params: Vec<(String, Arc<Type>)>, types: TestTypes) -> Self {
-        let initial_vars = params.clone();
-
-        Self {
-            next_expr_id: Rc::new(Cell::new(1)),
-            next_node_id: Rc::new(Cell::new(1)),
-            var_stack: initial_vars,
-            params: params
-                .into_iter()
-                .map(|(s, t)| IrParameter {
-                    name: VarName::try_from(s).unwrap(),
-                    typ: t,
-                })
-                .collect(),
-            types,
-            statements: Vec::new(),
-        }
+    fn next_id(&self) -> usize {
+        let id = self.next_id.get();
+        self.next_id.set(id + 1);
+        id
     }
 
-    /// Create a child builder for a nested scope, with additional variable
-    /// bindings visible in that scope. The parent builder is never mutated.
-    fn scoped(&self, bindings: impl IntoIterator<Item = (String, Arc<Type>)>) -> Self {
+    fn scoped(&self, bindings: impl IntoIterator<Item = (VarName, Arc<Type>)>) -> Self {
         let mut var_stack = self.var_stack.clone();
         var_stack.extend(bindings);
         Self {
-            next_expr_id: self.next_expr_id.clone(),
-            next_node_id: self.next_node_id.clone(),
             var_stack,
-            params: self.params.clone(),
             types: self.types.clone(),
+            next_id: self.next_id.clone(),
             statements: Vec::new(),
         }
     }
 
-    fn build(self, name: &str) -> IrViewDeclaration {
-        IrViewDeclaration {
-            name: TypeName::new(name).expect("Test component name should be valid"),
-            parameters: self.params,
-            body: self.statements,
-        }
-    }
-
-    fn next_expr_id(&self) -> ExprId {
-        let id = self.next_expr_id.get();
-        self.next_expr_id.set(id + 1);
-        id
-    }
-
-    fn next_node_id(&self) -> StatementId {
-        let id = self.next_node_id.get();
-        self.next_node_id.set(id + 1);
-        id
+    /// Run `body_fn` with `bindings` pushed onto the variable stack,
+    /// returning the statements it emitted as a separate body.
+    fn in_scope(
+        &mut self,
+        bindings: impl IntoIterator<Item = (VarName, Arc<Type>)>,
+        body_fn: impl FnOnce(&mut Self),
+    ) -> Vec<IrStatement> {
+        let saved_statements = std::mem::take(&mut self.statements);
+        let saved_vars = self.var_stack.len();
+        self.var_stack.extend(bindings);
+        body_fn(self);
+        self.var_stack.truncate(saved_vars);
+        std::mem::replace(&mut self.statements, saved_statements)
     }
 
     // Expression builders
     pub fn str(&self, s: &str) -> IrExpr {
         IrExpr::StringLiteral {
             value: CheapString::new(s.to_string()),
-            id: self.next_expr_id(),
+            id: self.next_id(),
         }
     }
 
     pub fn int(&self, n: i64) -> IrExpr {
         IrExpr::IntLiteral {
             value: n,
-            id: self.next_expr_id(),
+            id: self.next_id(),
         }
     }
 
     pub fn bool(&self, b: bool) -> IrExpr {
         IrExpr::BooleanLiteral {
             value: b,
-            id: self.next_expr_id(),
+            id: self.next_id(),
         }
     }
 
     pub fn var(&self, name: &str) -> IrExpr {
-        let typ = self
+        let (value, kind) = self
             .var_stack
             .iter()
             .rev()
-            .find(|(var_name, _)| var_name == name)
-            .map(|(_, typ)| typ.clone())
+            .find(|(var_name, _)| var_name.as_str() == name)
+            .cloned()
             .unwrap_or_else(|| {
                 panic!(
                     "Variable '{}' not found in scope. Available variables: {:?}",
@@ -293,9 +307,9 @@ impl IrBuilder {
             });
 
         IrExpr::Var {
-            value: VarName::try_from(name.to_string()).unwrap(),
-            kind: typ,
-            id: self.next_expr_id(),
+            value,
+            kind,
+            id: self.next_id(),
         }
     }
 
@@ -314,7 +328,7 @@ impl IrBuilder {
             left: Box::new(left),
             right: Box::new(right),
             operand_types,
-            id: self.next_expr_id(),
+            id: self.next_id(),
         }
     }
 
@@ -331,7 +345,7 @@ impl IrBuilder {
             left: Box::new(left),
             right: Box::new(right),
             operand_types,
-            id: self.next_expr_id(),
+            id: self.next_id(),
         }
     }
 
@@ -348,7 +362,7 @@ impl IrBuilder {
             left: Box::new(left),
             right: Box::new(right),
             operand_types,
-            id: self.next_expr_id(),
+            id: self.next_id(),
         }
     }
 
@@ -361,7 +375,7 @@ impl IrBuilder {
         );
         IrExpr::BooleanNegation {
             operand: Box::new(operand),
-            id: self.next_expr_id(),
+            id: self.next_id(),
         }
     }
 
@@ -381,7 +395,7 @@ impl IrBuilder {
         IrExpr::BooleanLogicalAnd {
             left: Box::new(left),
             right: Box::new(right),
-            id: self.next_expr_id(),
+            id: self.next_id(),
         }
     }
 
@@ -401,7 +415,7 @@ impl IrBuilder {
         IrExpr::BooleanLogicalOr {
             left: Box::new(left),
             right: Box::new(right),
-            id: self.next_expr_id(),
+            id: self.next_id(),
         }
     }
 
@@ -423,7 +437,7 @@ impl IrBuilder {
         IrExpr::ArrayLiteral {
             elements,
             kind: Arc::new(Type::Array(element_type)),
-            id: self.next_expr_id(),
+            id: self.next_id(),
         }
     }
 
@@ -436,7 +450,7 @@ impl IrBuilder {
         );
         IrExpr::IntToString {
             value: Box::new(value),
-            id: self.next_expr_id(),
+            id: self.next_id(),
         }
     }
 
@@ -484,7 +498,7 @@ impl IrBuilder {
                 .map(|(k, v)| (FieldName::new(k).unwrap(), v))
                 .collect(),
             kind: self.types.named(record_name),
-            id: self.next_expr_id(),
+            id: self.next_id(),
         }
     }
 
@@ -558,7 +572,7 @@ impl IrBuilder {
                 .map(|(k, v)| (FieldName::new(k).unwrap(), v))
                 .collect(),
             kind: self.types.named(enum_name),
-            id: self.next_expr_id(),
+            id: self.next_id(),
         }
     }
 
@@ -568,7 +582,7 @@ impl IrBuilder {
         IrExpr::OptionLiteral {
             value: Some(Box::new(inner)),
             kind: Arc::new(Type::Option(inner_type)),
-            id: self.next_expr_id(),
+            id: self.next_id(),
         }
     }
 
@@ -578,7 +592,7 @@ impl IrBuilder {
         IrExpr::OptionLiteral {
             value: None,
             kind: Arc::new(Type::Option(self.types.resolve(inner_type))),
-            id: self.next_expr_id(),
+            id: self.next_id(),
         }
     }
 
@@ -613,7 +627,7 @@ impl IrBuilder {
                 arms: arms.arms,
             },
             kind,
-            id: self.next_expr_id(),
+            id: self.next_id(),
         }
     }
 
@@ -641,7 +655,7 @@ impl IrBuilder {
                 false_body: Box::new(false_body),
             },
             kind: result_type,
-            id: self.next_expr_id(),
+            id: self.next_id(),
         }
     }
 
@@ -674,13 +688,11 @@ impl IrBuilder {
                 none_arm_body: Box::new(none_body),
             },
             kind: result_type,
-            id: self.next_expr_id(),
+            id: self.next_id(),
         }
     }
 
     /// Create a match expression over an option value with a binding for the Some case.
-    /// The binding is typed with the subject's inner option type.
-    /// The `some_body_fn` closure receives the builder with the binding in scope.
     pub fn option_match_expr_with_binding<F>(
         &self,
         subject: IrExpr,
@@ -696,7 +708,8 @@ impl IrBuilder {
             _ => panic!("Match subject must be an option type, got: {}", subject),
         };
 
-        let some_body = some_body_fn(&self.scoped([(binding_name.to_string(), inner_type)]));
+        let binding = VarName::new(binding_name).unwrap();
+        let some_body = some_body_fn(&self.scoped([(binding.clone(), inner_type)]));
 
         assert_eq!(
             *some_body.as_type(),
@@ -710,12 +723,12 @@ impl IrBuilder {
         IrExpr::Match {
             match_: Match::Option {
                 subject: Box::new(subject),
-                some_arm_binding: Some(VarName::new(binding_name).unwrap()),
+                some_arm_binding: Some(binding),
                 some_arm_body: Box::new(some_body),
                 none_arm_body: Box::new(none_body),
             },
             kind: result_type,
-            id: self.next_expr_id(),
+            id: self.next_id(),
         }
     }
 
@@ -743,7 +756,7 @@ impl IrBuilder {
             record: Box::new(object),
             field: field_name,
             kind: field_type,
-            id: self.next_expr_id(),
+            id: self.next_id(),
         }
     }
 
@@ -754,16 +767,17 @@ impl IrBuilder {
     {
         let value_type = value.get_type();
 
-        let body = body_fn(&self.scoped([(var_name.to_string(), value_type)]));
+        let var = VarName::new(var_name).unwrap();
+        let body = body_fn(&self.scoped([(var.clone(), value_type)]));
 
         let kind = body.get_type();
 
         IrExpr::Let {
-            var_name: VarName::new(var_name).unwrap(),
+            var_name: var,
             value: Box::new(value),
             body: Box::new(body),
             kind,
-            id: self.next_expr_id(),
+            id: self.next_id(),
         }
     }
 
@@ -783,7 +797,7 @@ impl IrBuilder {
         IrExpr::StringConcat {
             left: Box::new(left),
             right: Box::new(right),
-            id: self.next_expr_id(),
+            id: self.next_id(),
         }
     }
 
@@ -799,7 +813,7 @@ impl IrBuilder {
         match args.len() {
             0 => IrExpr::StringLiteral {
                 value: CheapString::new(String::new()),
-                id: self.next_expr_id(),
+                id: self.next_id(),
             },
             1 => args.into_iter().next().unwrap(),
             _ => {
@@ -810,14 +824,14 @@ impl IrBuilder {
                         left: Box::new(result),
                         right: Box::new(IrExpr::StringLiteral {
                             value: CheapString::new(" ".to_string()),
-                            id: self.next_expr_id(),
+                            id: self.next_id(),
                         }),
-                        id: self.next_expr_id(),
+                        id: self.next_id(),
                     };
                     result = IrExpr::StringConcat {
                         left: Box::new(result),
                         right: Box::new(arg),
-                        id: self.next_expr_id(),
+                        id: self.next_id(),
                     };
                 }
                 result
@@ -834,7 +848,7 @@ impl IrBuilder {
         );
         IrExpr::TwMerge {
             operand: Box::new(value),
-            id: self.next_expr_id(),
+            id: self.next_id(),
         }
     }
 
@@ -846,7 +860,7 @@ impl IrBuilder {
         );
         IrExpr::ArrayIsEmpty {
             array: Box::new(operand),
-            id: self.next_expr_id(),
+            id: self.next_id(),
         }
     }
 
@@ -859,7 +873,7 @@ impl IrBuilder {
         );
         IrExpr::StringIsEmpty {
             string: Box::new(operand),
-            id: self.next_expr_id(),
+            id: self.next_id(),
         }
     }
 
@@ -871,7 +885,7 @@ impl IrBuilder {
         );
         IrExpr::OptionIsSome {
             option: Box::new(operand),
-            id: self.next_expr_id(),
+            id: self.next_id(),
         }
     }
 
@@ -883,14 +897,14 @@ impl IrBuilder {
         );
         IrExpr::OptionIsNone {
             option: Box::new(operand),
-            id: self.next_expr_id(),
+            id: self.next_id(),
         }
     }
 
     // Statement methods that auto-collect
     pub fn write(&mut self, s: &str) {
         self.statements.push(IrStatement::Write {
-            id: self.next_node_id(),
+            id: self.next_id(),
             content: s.to_string(),
         });
     }
@@ -902,7 +916,7 @@ impl IrBuilder {
             expr
         );
         self.statements.push(IrStatement::WriteExpr {
-            id: self.next_node_id(),
+            id: self.next_id(),
             expr,
             escape,
         });
@@ -917,12 +931,11 @@ impl IrBuilder {
         F: FnOnce(&mut Self),
     {
         assert_eq!(*cond.as_type(), Type::Bool, "{}", cond);
-        let mut inner_builder = self.scoped([]);
-        body_fn(&mut inner_builder);
+        let body = self.in_scope([], body_fn);
         self.statements.push(IrStatement::If {
-            id: self.next_node_id(),
+            id: self.next_id(),
             condition: cond,
-            body: inner_builder.statements,
+            body,
         });
     }
 
@@ -935,14 +948,14 @@ impl IrBuilder {
             _ => panic!("Cannot iterate over non-array type"),
         };
 
-        let mut inner_builder = self.scoped([(var.to_string(), element_type)]);
-        body_fn(&mut inner_builder);
+        let var = VarName::new(var).unwrap();
+        let body = self.in_scope([(var.clone(), element_type)], body_fn);
 
         self.statements.push(IrStatement::For {
-            id: self.next_node_id(),
-            var: Some(VarName::try_from(var.to_string()).unwrap()),
+            id: self.next_id(),
+            var: Some(var),
             source: IrForSource::Array(array),
-            body: inner_builder.statements,
+            body,
         });
     }
 
@@ -964,14 +977,14 @@ impl IrBuilder {
             "Range bounds must be Int, got: {}",
             end
         );
-        let mut inner_builder = self.scoped([(var.to_string(), Arc::new(Type::Int))]);
-        body_fn(&mut inner_builder);
+        let var = VarName::new(var).unwrap();
+        let body = self.in_scope([(var.clone(), Arc::new(Type::Int))], body_fn);
 
         self.statements.push(IrStatement::For {
-            id: self.next_node_id(),
-            var: Some(VarName::try_from(var.to_string()).unwrap()),
+            id: self.next_id(),
+            var: Some(var),
             source: IrForSource::RangeInclusive { start, end },
-            body: inner_builder.statements,
+            body,
         });
     }
 
@@ -992,14 +1005,13 @@ impl IrBuilder {
             "Range bounds must be Int, got: {}",
             end
         );
-        let mut inner_builder = self.scoped([]);
-        body_fn(&mut inner_builder);
+        let body = self.in_scope([], body_fn);
 
         self.statements.push(IrStatement::For {
-            id: self.next_node_id(),
+            id: self.next_id(),
             var: None,
             source: IrForSource::RangeInclusive { start, end },
-            body: inner_builder.statements,
+            body,
         });
     }
 
@@ -1009,14 +1021,14 @@ impl IrBuilder {
     {
         let value_type = value.get_type();
 
-        let mut inner_builder = self.scoped([(var.to_string(), value_type)]);
-        body_fn(&mut inner_builder);
+        let var = VarName::new(var).unwrap();
+        let body = self.in_scope([(var.clone(), value_type)], body_fn);
 
         self.statements.push(IrStatement::Let {
-            id: self.next_node_id(),
-            var: VarName::try_from(var.to_string()).unwrap(),
+            id: self.next_id(),
+            var,
             value,
-            body: inner_builder.statements,
+            body,
         });
     }
 
@@ -1025,17 +1037,16 @@ impl IrBuilder {
         F1: FnOnce(&mut Self),
         F2: FnOnce(&mut Self),
     {
-        let mut fragment_builder = self.scoped([]);
-        fragment_body_fn(&mut fragment_builder);
+        let fragment_body = self.in_scope([], fragment_body_fn);
 
-        let mut body_builder = self.scoped([(var.to_string(), Arc::new(Type::Fragment))]);
-        body_fn(&mut body_builder);
+        let var = VarName::new(var).unwrap();
+        let body = self.in_scope([(var.clone(), Arc::new(Type::Fragment))], body_fn);
 
         self.statements.push(IrStatement::LetFragment {
-            id: self.next_node_id(),
-            var: VarName::try_from(var.to_string()).unwrap(),
-            fragment_body: fragment_builder.statements,
-            body: body_builder.statements,
+            id: self.next_id(),
+            var,
+            fragment_body,
+            body,
         });
     }
 
@@ -1050,18 +1061,15 @@ impl IrBuilder {
     {
         assert_eq!(*subject.as_type(), Type::Bool);
 
-        let mut true_builder = self.scoped([]);
-        true_body_fn(&mut true_builder);
-
-        let mut false_builder = self.scoped([]);
-        false_body_fn(&mut false_builder);
+        let true_body = self.in_scope([], true_body_fn);
+        let false_body = self.in_scope([], false_body_fn);
 
         self.statements.push(IrStatement::Match {
-            id: self.next_node_id(),
+            id: self.next_id(),
             match_: Match::Bool {
                 subject: Box::new(subject),
-                true_body: Box::new(true_builder.statements),
-                false_body: Box::new(false_builder.statements),
+                true_body: Box::new(true_body),
+                false_body: Box::new(false_body),
             },
         });
     }
@@ -1082,22 +1090,21 @@ impl IrBuilder {
         };
 
         // Build some body with optional binding
-        let some_arm_binding = binding_var.map(|var| VarName::try_from(var.to_string()).unwrap());
+        let some_arm_binding = binding_var.map(|var| VarName::new(var).unwrap());
 
-        let mut some_builder = self.scoped(binding_var.map(|var| (var.to_string(), inner_type)));
-        some_body_fn(&mut some_builder);
-
-        // Build none body
-        let mut none_builder = self.scoped([]);
-        none_body_fn(&mut none_builder);
+        let some_arm_body = self.in_scope(
+            some_arm_binding.clone().map(|var| (var, inner_type)),
+            some_body_fn,
+        );
+        let none_arm_body = self.in_scope([], none_body_fn);
 
         self.statements.push(IrStatement::Match {
-            id: self.next_node_id(),
+            id: self.next_id(),
             match_: Match::Option {
                 subject: Box::new(subject),
                 some_arm_binding,
-                some_arm_body: Box::new(some_builder.statements),
-                none_arm_body: Box::new(none_builder.statements),
+                some_arm_body: Box::new(some_arm_body),
+                none_arm_body: Box::new(none_arm_body),
             },
         });
     }
@@ -1125,7 +1132,7 @@ impl IrBuilder {
         let ir_arms = arms.arms;
 
         self.statements.push(IrStatement::Match {
-            id: self.next_node_id(),
+            id: self.next_id(),
             match_: Match::Enum {
                 subject: Box::new(subject),
                 arms: ir_arms,
@@ -1161,7 +1168,7 @@ impl IrBuilder {
             })
             .collect();
 
-        let scoped_vars: Vec<(String, Arc<Type>)> = bindings
+        let scoped_vars: Vec<(VarName, Arc<Type>)> = bindings
             .iter()
             .map(|(field_name, binding_name)| {
                 let field_type = record_fields
@@ -1169,24 +1176,22 @@ impl IrBuilder {
                     .find(|(f, _, _)| f.as_str() == *field_name)
                     .map(|(_, t, _)| t.clone())
                     .expect("Field not found in record");
-                (binding_name.to_string(), field_type)
+                (VarName::new(binding_name).unwrap(), field_type)
             })
             .collect();
 
-        let mut inner_builder = self.scoped(scoped_vars);
-        body_fn(&mut inner_builder);
+        let body = self.in_scope(scoped_vars, body_fn);
 
         self.statements.push(IrStatement::LetRecordDestructure {
-            id: self.next_node_id(),
+            id: self.next_id(),
             subject,
             bindings: ir_bindings,
-            body: inner_builder.statements,
+            body,
         });
     }
 
     /// Invoke a component by name with the given arguments.
-    /// No validation is done against the invoked component's params,
-    /// since components may still be pending at the point of the call.
+    /// No validation is done against the invoked component's parameters.
     pub fn invoke_component(&mut self, name: &str, args: Vec<(&str, IrExpr)>) {
         let ir_args: Vec<IrArgument> = args
             .into_iter()
@@ -1197,7 +1202,7 @@ impl IrBuilder {
             .collect();
 
         self.statements.push(IrStatement::ComponentInvocation {
-            id: self.next_node_id(),
+            id: self.next_id(),
             component_name: TypeName::new(name).unwrap(),
             args: ir_args,
         });
@@ -1257,7 +1262,7 @@ impl EnumMatchExprArms<'_> {
 
 /// Collects the arms of an [`IrBuilder::enum_match_stmt`].
 pub struct EnumMatchStmtArms<'a> {
-    builder: &'a IrBuilder,
+    builder: &'a mut IrBuilder,
     enum_name: TypeName,
     variants: Vec<EnumVariant>,
     arms: Vec<EnumMatchArm<Vec<IrStatement>>>,
@@ -1284,15 +1289,14 @@ impl EnumMatchStmtArms<'_> {
     {
         let (bindings, scoped_vars) =
             resolve_arm_bindings(&self.enum_name, &self.variants, variant, field_bindings);
-        let mut arm_builder = self.builder.scoped(scoped_vars);
-        body_fn(&mut arm_builder);
+        let body = self.builder.in_scope(scoped_vars, body_fn);
         self.arms.push(EnumMatchArm {
             pattern: EnumPattern::Variant {
                 enum_name: self.enum_name.clone(),
                 variant_name: TypeName::new(variant).unwrap(),
             },
             bindings,
-            body: arm_builder.statements,
+            body,
         });
     }
 }
@@ -1305,7 +1309,7 @@ fn resolve_arm_bindings<'s>(
     variants: &[EnumVariant],
     variant: &str,
     field_bindings: impl IntoIterator<Item = (&'s str, &'s str)>,
-) -> (Vec<(FieldName, VarName)>, Vec<(String, Arc<Type>)>) {
+) -> (Vec<(FieldName, VarName)>, Vec<(VarName, Arc<Type>)>) {
     let variant_fields = variants
         .iter()
         .find(|v| v.name.as_str() == variant)
@@ -1331,11 +1335,9 @@ fn resolve_arm_bindings<'s>(
                     field_name, enum_name, variant
                 )
             });
-        bindings.push((
-            FieldName::new(field_name).unwrap(),
-            VarName::new(binding_name).unwrap(),
-        ));
-        scoped_vars.push((binding_name.to_string(), field_type));
+        let binding = VarName::new(binding_name).unwrap();
+        bindings.push((FieldName::new(field_name).unwrap(), binding.clone()));
+        scoped_vars.push((binding, field_type));
     }
     (bindings, scoped_vars)
 }

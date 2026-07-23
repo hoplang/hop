@@ -1647,11 +1647,11 @@ impl Transpiler for TsTranspiler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::syntax::builder::IrModuleBuilder;
+    use crate::ir::syntax::builder::{IrModuleBodiesBuilder, IrModuleBuilder};
     use expect_test::{Expect, expect};
 
-    fn check(builder: IrModuleBuilder, expected: Expect) {
-        let (module, registry) = builder.build_with_registry();
+    fn check(builder: impl Into<IrModuleBodiesBuilder>, expected: Expect) {
+        let (module, registry) = builder.into().build_with_registry();
         let before = module.to_string();
         let after = TsTranspiler::new().transpile_module(&module, &registry);
         let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
