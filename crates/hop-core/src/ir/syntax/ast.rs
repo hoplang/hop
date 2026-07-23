@@ -25,14 +25,14 @@ pub struct IrParameter {
 }
 
 /// An argument passed to a component invocation in the IR.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct IrArgument {
     pub name: VarName,
     pub expr: IrExpr,
 }
 
 /// The source of iteration in a for loop - either an array or an inclusive range.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum IrForSource {
     /// Iterate over elements of an array
     Array(IrExpr),
@@ -40,7 +40,7 @@ pub enum IrForSource {
     RangeInclusive { start: IrExpr, end: IrExpr },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct IrModule {
     pub views: Vec<IrViewDeclaration>,
     pub components: Vec<IrComponentDeclaration>,
@@ -48,7 +48,7 @@ pub struct IrModule {
     pub enums: Vec<IrEnumDeclaration>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct IrViewDeclaration {
     /// Entrypoint name (e.g. Index)
     pub name: TypeName,
@@ -70,7 +70,7 @@ pub struct IrEnumDeclaration {
     pub variants: Vec<EnumVariant>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct IrComponentDeclaration {
     /// Component name (e.g. TreeView)
     pub name: TypeName,
@@ -80,7 +80,7 @@ pub struct IrComponentDeclaration {
     pub body: Vec<IrStatement>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum IrStatement {
     /// Write literal string to the output stream.
     Write { id: StatementId, content: String },
@@ -151,7 +151,7 @@ pub enum IrStatement {
 }
 
 /// IR expression type - a concrete expression type for the IR layer.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum IrExpr {
     /// A variable expression, e.g. foo
     Var {
