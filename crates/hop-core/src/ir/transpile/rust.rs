@@ -858,8 +858,7 @@ impl Transpiler for RustTranspiler {
                     Some(var) => format!("Some({})", var.as_str()),
                     None => "Some(_)".to_string(),
                 };
-                let some_rebind: Vec<&str> =
-                    some_arm_binding.iter().map(|v| v.as_str()).collect();
+                let some_rebind: Vec<&str> = some_arm_binding.iter().map(|v| v.as_str()).collect();
 
                 let some_arm = arena
                     .text(some_pattern)

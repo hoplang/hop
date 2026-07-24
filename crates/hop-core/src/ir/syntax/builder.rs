@@ -407,10 +407,7 @@ impl IrBuilder {
         let operand_types = match (left.as_type(), right.as_type()) {
             (Type::Int, Type::Int) => NumericType::Int,
             (Type::Float, Type::Float) => NumericType::Float,
-            (l, r) => panic!(
-                "Unsupported types for multiplication: {:?} * {:?}",
-                l, r
-            ),
+            (l, r) => panic!("Unsupported types for multiplication: {:?} * {:?}", l, r),
         };
         IrExpr::NumericMultiply {
             left: Box::new(left),

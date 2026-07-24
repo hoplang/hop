@@ -172,6 +172,7 @@ impl IrGenerator<'_, '_> {
             ForLoop,
             Let,
             LetFragment,
+            RecordDestructure,
             BoolMatch,
             OptionMatch,
             EnumMatch,
@@ -190,6 +191,9 @@ impl IrGenerator<'_, '_> {
                 P::BoolMatch,
                 P::OptionMatch,
             ]);
+            if !self.records.is_empty() {
+                productions.push(P::RecordDestructure);
+            }
             if !self.enums.is_empty() {
                 productions.push(P::EnumMatch);
             }
@@ -246,6 +250,25 @@ impl IrGenerator<'_, '_> {
                     &var,
                     |b| this.borrow_mut().stmts(b, depth - 1),
                     |b| this.borrow_mut().stmts(b, depth - 1),
+                );
+            }
+            P::RecordDestructure => {
+                let info = self.u.choose(&self.records).unwrap().clone();
+                let subject_ty = b.resolve_type(&info.name);
+                let subject = self.expr(b, &subject_ty, depth);
+                let mut bindings: Vec<(String, String)> = Vec::new();
+                for (field, _) in &info.fields {
+                    if self.coin() {
+                        bindings.push((field.clone(), self.fresh_var_name()));
+                    }
+                }
+                b.record_destructure_stmt(
+                    subject,
+                    bindings
+                        .iter()
+                        .map(|(f, v)| (f.as_str(), v.as_str()))
+                        .collect(),
+                    |b| self.stmts(b, depth - 1),
                 );
             }
             P::BoolMatch => {
