@@ -366,6 +366,376 @@ mod tests {
 
     #[test]
     #[ignore]
+    fn bool_binding_from_record_pattern_used_in_logical_operator() {
+        check(
+            indoc! {r#"
+                record Flag {
+                  value: Bool,
+                }
+
+                view Test {
+                  <for {f in [Flag {value: true}]}>
+                    <match {f}>
+                      <case {Flag {value: b}}>
+                        <if {b || false}>
+                          yes
+                        </if>
+                      </case>
+                    </match>
+                  </for>
+                }
+            "#},
+            "yes",
+            expect![[r#"
+                -- ir (unoptimized) --
+                record Flag {
+                  value: Bool,
+                }
+                view Test() {
+                  for f in [Flag {value: true}] {
+                    let {value: v_1} = f in {
+                      let b = v_1 in {
+                        if (b || false) {
+                          write("yes")
+                        }
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                record Flag {
+                  value: Bool,
+                }
+                view Test() {
+                  for f in [Flag {value: true}] {
+                    let {value: v_1} = f in {
+                      let b = v_1 in {
+                        if (b || false) {
+                          write("yes")
+                        }
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                yes
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn int_binding_from_record_pattern_compared_with_literal() {
+        check(
+            indoc! {r#"
+                record Count {
+                  n: Int,
+                }
+
+                view Test {
+                  <for {c in [Count {n: 57}]}>
+                    <match {c}>
+                      <case {Count {n: v}}>
+                        <if {v == 57}>
+                          eq
+                        </if>
+                      </case>
+                    </match>
+                  </for>
+                }
+            "#},
+            "eq",
+            expect![[r#"
+                -- ir (unoptimized) --
+                record Count {
+                  n: Int,
+                }
+                view Test() {
+                  for c in [Count {n: 57}] {
+                    let {n: v_1} = c in {
+                      let v = v_1 in {
+                        if (v == 57) {
+                          write("eq")
+                        }
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                record Count {
+                  n: Int,
+                }
+                view Test() {
+                  for c in [Count {n: 57}] {
+                    let {n: v_1} = c in {
+                      let v = v_1 in {
+                        if (v == 57) {
+                          write("eq")
+                        }
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                eq
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn bool_binding_from_record_pattern_as_match_expr_subject() {
+        check(
+            indoc! {r#"
+                record Flag {
+                  value: Bool,
+                }
+
+                view Test {
+                  <for {f in [Flag {value: true}]}>
+                    <match {f}>
+                      <case {Flag {value: b}}>
+                        {match b {true => "yes", false => "no"}}
+                      </case>
+                    </match>
+                  </for>
+                }
+            "#},
+            "yes",
+            expect![[r#"
+                -- ir (unoptimized) --
+                record Flag {
+                  value: Bool,
+                }
+                view Test() {
+                  for f in [Flag {value: true}] {
+                    let {value: v_1} = f in {
+                      let b = v_1 in {
+                        write_escaped(match b {
+                          true => "yes",
+                          false => "no",
+                        })
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                record Flag {
+                  value: Bool,
+                }
+                view Test() {
+                  for f in [Flag {value: true}] {
+                    let {value: v_1} = f in {
+                      let b = v_1 in {
+                        write_escaped(match b {
+                          true => "yes",
+                          false => "no",
+                        })
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                yes
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn bool_binding_from_record_pattern_as_match_statement_subject() {
+        check(
+            indoc! {r#"
+                record Flag {
+                  value: Bool,
+                }
+
+                view Test {
+                  <for {f in [Flag {value: true}]}>
+                    <match {f}>
+                      <case {Flag {value: b}}>
+                        <match {b}>
+                          <case {true}>
+                            yes
+                          </case>
+                          <case {false}>
+                            no
+                          </case>
+                        </match>
+                      </case>
+                    </match>
+                  </for>
+                }
+            "#},
+            "yes",
+            expect![[r#"
+                -- ir (unoptimized) --
+                record Flag {
+                  value: Bool,
+                }
+                view Test() {
+                  for f in [Flag {value: true}] {
+                    let {value: v_1} = f in {
+                      let b = v_1 in {
+                        match b {
+                          true => {
+                            write("yes")
+                          }
+                          false => {
+                            write("no")
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                record Flag {
+                  value: Bool,
+                }
+                view Test() {
+                  for f in [Flag {value: true}] {
+                    let {value: v_1} = f in {
+                      let b = v_1 in {
+                        match b {
+                          true => {
+                            write("yes")
+                          }
+                          false => {
+                            write("no")
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                yes
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn bool_binding_from_record_pattern_as_if_condition() {
+        check(
+            indoc! {r#"
+                record Flag {
+                  value: Bool,
+                }
+
+                view Test {
+                  <for {f in [Flag {value: true}]}>
+                    <match {f}>
+                      <case {Flag {value: b}}>
+                        <if {b}>
+                          yes
+                        </if>
+                      </case>
+                    </match>
+                  </for>
+                }
+            "#},
+            "yes",
+            expect![[r#"
+                -- ir (unoptimized) --
+                record Flag {
+                  value: Bool,
+                }
+                view Test() {
+                  for f in [Flag {value: true}] {
+                    let {value: v_1} = f in {
+                      let b = v_1 in {
+                        if b {
+                          write("yes")
+                        }
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                record Flag {
+                  value: Bool,
+                }
+                view Test() {
+                  for f in [Flag {value: true}] {
+                    let {value: v_1} = f in {
+                      let b = v_1 in {
+                        if b {
+                          write("yes")
+                        }
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                yes
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
     fn rest_spread_forwards_attribute_to_html() {
         check(
             indoc! {r#"
