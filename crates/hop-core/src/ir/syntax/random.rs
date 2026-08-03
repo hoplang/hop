@@ -9,7 +9,19 @@ use std::ops::RangeInclusive;
 /// Statement/expression recursion budget.
 const DEPTH: usize = 3;
 
-const WORDS: &[&str] = &["foo", "bar", "baz"];
+const WORDS: &[&str] = &[
+    "",
+    "foo",
+    "bar",
+    "<b>",
+    "&amp;",
+    "a\"b'c",
+    "back\\slash",
+    "`${x}`",
+    "{curly}",
+    "line\nbreak",
+    "cr\rtab\t",
+];
 
 #[derive(Clone)]
 struct RecordInfo {
