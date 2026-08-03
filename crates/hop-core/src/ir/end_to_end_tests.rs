@@ -1301,11 +1301,7 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  let count = 3 in {
-                    if (0 < count) {
-                      write("<div>positive</div>")
-                    }
-                  }
+                  write("<div>positive</div>")
                 }
                 -- expected output --
                 <div>positive</div>
@@ -1365,13 +1361,7 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  let count = 3 in {
-                    write("<div data-foo=\"bar\">")
-                    if (0 < count) {
-                      write("positive")
-                    }
-                    write("</div>")
-                  }
+                  write("<div data-foo=\"bar\">positive</div>")
                 }
                 -- expected output --
                 <div data-foo="bar">positive</div>
@@ -2007,13 +1997,7 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  let tabindex = 2 in {
-                    write("<div data-x=\"y\">")
-                    if (0 < tabindex) {
-                      write("focusable")
-                    }
-                    write("</div>")
-                  }
+                  write("<div data-x=\"y\">focusable</div>")
                 }
                 -- expected output --
                 <div data-x="y">focusable</div>
@@ -2615,9 +2599,7 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  let num = (-123) in {
-                    write_escaped(num.to_string())
-                  }
+                  write("-123")
                 }
                 -- expected output --
                 -123
@@ -2658,9 +2640,7 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  let temp = (-2.9) in {
-                    write_escaped(temp.to_int().to_string())
-                  }
+                  write("-2")
                 }
                 -- expected output --
                 -2
@@ -3344,12 +3324,7 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  if (3 < 5) {
-                    write("3 &lt; 5")
-                  }
-                  if (10 < 2) {
-                    write("10 &lt; 2")
-                  }
+                  write("3 &lt; 5")
                 }
                 -- expected output --
                 3 &lt; 5
@@ -3396,12 +3371,7 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  if (1.5 < 2.5) {
-                    write("1.5 &lt; 2.5")
-                  }
-                  if (3 < 1) {
-                    write("3.0 &lt; 1.0")
-                  }
+                  write("1.5 &lt; 2.5")
                 }
                 -- expected output --
                 1.5 &lt; 2.5
@@ -3709,13 +3679,7 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  let a = 3 in {
-                    let b = 7 in {
-                      if ((a + b) == 10) {
-                        write("correct")
-                      }
-                    }
-                  }
+                  write("correct")
                 }
                 -- expected output --
                 correct
@@ -3764,13 +3728,7 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  let a = 10 in {
-                    let b = 3 in {
-                      if ((a - b) == 7) {
-                        write("correct")
-                      }
-                    }
-                  }
+                  write("correct")
                 }
                 -- expected output --
                 correct
@@ -3819,13 +3777,7 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  let a = 4 in {
-                    let b = 5 in {
-                      if ((a * b) == 20) {
-                        write("correct")
-                      }
-                    }
-                  }
+                  write("correct")
                 }
                 -- expected output --
                 correct
@@ -4004,15 +3956,7 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  if (3 <= 5) {
-                    write("A")
-                  }
-                  if (5 <= 5) {
-                    write("B")
-                  }
-                  if (7 <= 5) {
-                    write("C")
-                  }
+                  write("AB")
                 }
                 -- expected output --
                 AB
@@ -5432,9 +5376,7 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  let count = 42 in {
-                    write_escaped(count.to_string())
-                  }
+                  write("42")
                 }
                 -- expected output --
                 42
@@ -5475,9 +5417,7 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  let num = 0 in {
-                    write_escaped(num.to_string())
-                  }
+                  write("0")
                 }
                 -- expected output --
                 0
@@ -5518,9 +5458,7 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  let count = 5 in {
-                    write_escaped(("Count: " + count.to_string()))
-                  }
+                  write("Count: 5")
                 }
                 -- expected output --
                 Count: 5
@@ -5561,9 +5499,7 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  let price = 3.7 in {
-                    write_escaped(price.to_int().to_string())
-                  }
+                  write("3")
                 }
                 -- expected output --
                 3
@@ -5604,9 +5540,7 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  let num = 5 in {
-                    write_escaped(num.to_int().to_string())
-                  }
+                  write("5")
                 }
                 -- expected output --
                 5
@@ -5870,7 +5804,7 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  write_escaped((1 + 2).to_string())
+                  write("3")
                 }
                 -- expected output --
                 3
@@ -5907,7 +5841,7 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  write_escaped(42.to_string())
+                  write("42")
                 }
                 -- expected output --
                 42
@@ -7878,13 +7812,7 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  let n = 42 in {
-                    let s = n.to_string() in {
-                      write("[")
-                      write_escaped(s)
-                      write("]")
-                    }
-                  }
+                  write("[42]")
                 }
                 -- expected output --
                 [42]
@@ -8000,7 +7928,7 @@ mod tests {
                   text: String,
                 }
                 view Test() {
-                  let l = Label {text: 42.to_string()} in {
+                  let l = Label {text: "42"} in {
                     write("[")
                     write_escaped(l.text)
                     write("]")
@@ -10409,65 +10337,59 @@ mod tests {
                   HoursAgo {count: Int},
                 }
                 view Test() {
-                  let time = TimeAgo::MinutesAgo {count: 1} in {
-                    match time {
-                      TimeAgo::MinutesAgo(count: v_1) => {
-                        let c = v_1 in {
-                          write_escaped(match (c == 1) {
-                            true => "1 minute ago",
-                            false => (c.to_string() + " minutes ago"),
-                          })
-                        }
+                  match TimeAgo::MinutesAgo {count: 1} {
+                    TimeAgo::MinutesAgo(count: v_1) => {
+                      let c = v_1 in {
+                        write_escaped(match (c == 1) {
+                          true => "1 minute ago",
+                          false => (c.to_string() + " minutes ago"),
+                        })
                       }
-                      TimeAgo::HoursAgo(count: v_2) => {
-                        let c_1 = v_2 in {
-                          write_escaped(match (c_1 == 1) {
-                            true => "1 hour ago",
-                            false => (c_1.to_string() + " hours ago"),
-                          })
-                        }
+                    }
+                    TimeAgo::HoursAgo(count: v_2) => {
+                      let c_1 = v_2 in {
+                        write_escaped(match (c_1 == 1) {
+                          true => "1 hour ago",
+                          false => (c_1.to_string() + " hours ago"),
+                        })
                       }
                     }
                   }
                   write(",")
-                  let time_2 = TimeAgo::MinutesAgo {count: 5} in {
-                    match time_2 {
-                      TimeAgo::MinutesAgo(count: v_1_3) => {
-                        let c_4 = v_1_3 in {
-                          write_escaped(match (c_4 == 1) {
-                            true => "1 minute ago",
-                            false => (c_4.to_string() + " minutes ago"),
-                          })
-                        }
+                  match TimeAgo::MinutesAgo {count: 5} {
+                    TimeAgo::MinutesAgo(count: v_1_3) => {
+                      let c_4 = v_1_3 in {
+                        write_escaped(match (c_4 == 1) {
+                          true => "1 minute ago",
+                          false => (c_4.to_string() + " minutes ago"),
+                        })
                       }
-                      TimeAgo::HoursAgo(count: v_2_5) => {
-                        let c_6 = v_2_5 in {
-                          write_escaped(match (c_6 == 1) {
-                            true => "1 hour ago",
-                            false => (c_6.to_string() + " hours ago"),
-                          })
-                        }
+                    }
+                    TimeAgo::HoursAgo(count: v_2_5) => {
+                      let c_6 = v_2_5 in {
+                        write_escaped(match (c_6 == 1) {
+                          true => "1 hour ago",
+                          false => (c_6.to_string() + " hours ago"),
+                        })
                       }
                     }
                   }
                   write(",")
-                  let time_7 = TimeAgo::HoursAgo {count: 1} in {
-                    match time_7 {
-                      TimeAgo::MinutesAgo(count: v_1_8) => {
-                        let c_9 = v_1_8 in {
-                          write_escaped(match (c_9 == 1) {
-                            true => "1 minute ago",
-                            false => (c_9.to_string() + " minutes ago"),
-                          })
-                        }
+                  match TimeAgo::HoursAgo {count: 1} {
+                    TimeAgo::MinutesAgo(count: v_1_8) => {
+                      let c_9 = v_1_8 in {
+                        write_escaped(match (c_9 == 1) {
+                          true => "1 minute ago",
+                          false => (c_9.to_string() + " minutes ago"),
+                        })
                       }
-                      TimeAgo::HoursAgo(count: v_2_10) => {
-                        let c_11 = v_2_10 in {
-                          write_escaped(match (c_11 == 1) {
-                            true => "1 hour ago",
-                            false => (c_11.to_string() + " hours ago"),
-                          })
-                        }
+                    }
+                    TimeAgo::HoursAgo(count: v_2_10) => {
+                      let c_11 = v_2_10 in {
+                        write_escaped(match (c_11 == 1) {
+                          true => "1 hour ago",
+                          false => (c_11.to_string() + " hours ago"),
+                        })
                       }
                     }
                   }

@@ -23,6 +23,11 @@ enum BinaryOp {
     StringConcat,
     LogicalOr,
     LogicalAnd,
+    NumericAdd,
+    NumericSubtract,
+    NumericMultiply,
+    LessThan,
+    LessThanOrEqual,
 }
 
 /// Unary operations that can be evaluated when the operand is constant.
@@ -30,6 +35,10 @@ enum BinaryOp {
 enum UnaryOp {
     TwMerge,
     BooleanNegation,
+    NumericNegation,
+    IntToString,
+    FloatToInt,
+    IntToFloat,
 }
 
 /// Constant values that can be tracked during partial evaluation
@@ -37,6 +46,9 @@ enum UnaryOp {
 enum Const {
     Bool(bool),
     String(CheapString),
+    Int(i32),
+    /// A float stored as its bit pattern (u64).
+    Float(u64),
     Enum {
         enum_name: TypeName,
         variant_name: TypeName,
@@ -61,6 +73,11 @@ impl Const {
             Const::Bool(b) => IrExpr::BooleanLiteral { value: *b, id },
             Const::String(s) => IrExpr::StringLiteral {
                 value: s.clone(),
+                id,
+            },
+            Const::Int(n) => IrExpr::IntLiteral { value: *n, id },
+            Const::Float(bits) => IrExpr::FloatLiteral {
+                value: f64::from_bits(*bits),
                 id,
             },
             Const::Enum {
@@ -213,6 +230,12 @@ pub fn perform_partial_evaluation(body: &mut Vec<IrStatement>, registry: &TypeRe
                     IrExpr::StringLiteral { value, .. } => {
                         initial_constants.push((expr.id(), Const::String(value.clone())));
                     }
+                    IrExpr::IntLiteral { value, .. } => {
+                        initial_constants.push((expr.id(), Const::Int(*value)));
+                    }
+                    IrExpr::FloatLiteral { value, .. } => {
+                        initial_constants.push((expr.id(), Const::Float(value.to_bits())));
+                    }
                     // Unary ops
                     IrExpr::BooleanNegation { operand, .. } => {
                         unary_operands.push((operand.id(), expr.id()));
@@ -221,6 +244,22 @@ pub fn perform_partial_evaluation(body: &mut Vec<IrStatement>, registry: &TypeRe
                     IrExpr::TwMerge { operand, .. } => {
                         unary_operands.push((operand.id(), expr.id()));
                         unary_ops.push((expr.id(), UnaryOp::TwMerge));
+                    }
+                    IrExpr::NumericNegation { operand, .. } => {
+                        unary_operands.push((operand.id(), expr.id()));
+                        unary_ops.push((expr.id(), UnaryOp::NumericNegation));
+                    }
+                    IrExpr::IntToString { value, .. } => {
+                        unary_operands.push((value.id(), expr.id()));
+                        unary_ops.push((expr.id(), UnaryOp::IntToString));
+                    }
+                    IrExpr::FloatToInt { value, .. } => {
+                        unary_operands.push((value.id(), expr.id()));
+                        unary_ops.push((expr.id(), UnaryOp::FloatToInt));
+                    }
+                    IrExpr::IntToFloat { value, .. } => {
+                        unary_operands.push((value.id(), expr.id()));
+                        unary_ops.push((expr.id(), UnaryOp::IntToFloat));
                     }
                     // Binary ops
                     IrExpr::BooleanLogicalOr { left, right, .. } => {
@@ -242,6 +281,31 @@ pub fn perform_partial_evaluation(body: &mut Vec<IrStatement>, registry: &TypeRe
                         binary_left_operands.push((left.id(), expr.id()));
                         binary_right_operands.push((right.id(), expr.id()));
                         binary_ops.push((expr.id(), BinaryOp::StringConcat));
+                    }
+                    IrExpr::NumericAdd { left, right, .. } => {
+                        binary_left_operands.push((left.id(), expr.id()));
+                        binary_right_operands.push((right.id(), expr.id()));
+                        binary_ops.push((expr.id(), BinaryOp::NumericAdd));
+                    }
+                    IrExpr::NumericSubtract { left, right, .. } => {
+                        binary_left_operands.push((left.id(), expr.id()));
+                        binary_right_operands.push((right.id(), expr.id()));
+                        binary_ops.push((expr.id(), BinaryOp::NumericSubtract));
+                    }
+                    IrExpr::NumericMultiply { left, right, .. } => {
+                        binary_left_operands.push((left.id(), expr.id()));
+                        binary_right_operands.push((right.id(), expr.id()));
+                        binary_ops.push((expr.id(), BinaryOp::NumericMultiply));
+                    }
+                    IrExpr::LessThan { left, right, .. } => {
+                        binary_left_operands.push((left.id(), expr.id()));
+                        binary_right_operands.push((right.id(), expr.id()));
+                        binary_ops.push((expr.id(), BinaryOp::LessThan));
+                    }
+                    IrExpr::LessThanOrEqual { left, right, .. } => {
+                        binary_left_operands.push((left.id(), expr.id()));
+                        binary_right_operands.push((right.id(), expr.id()));
+                        binary_ops.push((expr.id(), BinaryOp::LessThanOrEqual));
                     }
                     // Other
                     IrExpr::EnumLiteral {
@@ -355,37 +419,13 @@ pub fn perform_partial_evaluation(body: &mut Vec<IrStatement>, registry: &TypeRe
                         let_expr_bodies.push((body.id(), expr.id()));
                     }
                     IrExpr::LetRecordDestructure { .. } => {}
-                    IrExpr::LessThanOrEqual { .. } => {
-                        // Not yet implemented
-                    }
-                    IrExpr::LessThan { .. } => {
-                        // Not yet implemented
-                    }
-                    IrExpr::NumericAdd { .. } => {
-                        // Not yet implemented
-                    }
-                    IrExpr::NumericSubtract { .. } => {
-                        // Not yet implemented
-                    }
-                    IrExpr::NumericMultiply { .. } => {
-                        // Not yet implemented
-                    }
                     IrExpr::RecordLiteral { .. } => {
-                        // Not yet implemented
-                    }
-                    IrExpr::IntLiteral { .. } => {
                         // Not yet implemented
                     }
                     IrExpr::ArrayLiteral { .. } => {
                         // Not yet implemented
                     }
-                    IrExpr::FloatLiteral { .. } => {
-                        // Not yet implemented
-                    }
                     IrExpr::FieldAccess { .. } => {
-                        // Not yet implemented
-                    }
-                    IrExpr::NumericNegation { .. } => {
                         // Not yet implemented
                     }
                     IrExpr::ArrayLength { .. } => {
@@ -401,15 +441,6 @@ pub fn perform_partial_evaluation(body: &mut Vec<IrStatement>, registry: &TypeRe
                         // Not yet implemented
                     }
                     IrExpr::OptionIsNone { .. } => {
-                        // Not yet implemented
-                    }
-                    IrExpr::IntToString { .. } => {
-                        // Not yet implemented
-                    }
-                    IrExpr::FloatToInt { .. } => {
-                        // Not yet implemented
-                    }
-                    IrExpr::IntToFloat { .. } => {
                         // Not yet implemented
                     }
                     IrExpr::FragmentEmpty { .. } => {
@@ -526,6 +557,23 @@ pub fn perform_partial_evaluation(body: &mut Vec<IrStatement>, registry: &TypeRe
                             }
                             _ => unreachable!("TwMerge can only have string operands"),
                         },
+                        UnaryOp::NumericNegation => match known_val {
+                            Const::Int(n) => Const::Int(n.wrapping_neg()),
+                            Const::Float(bits) => Const::Float((-f64::from_bits(*bits)).to_bits()),
+                            _ => unreachable!("Numeric negation can only have numeric operands"),
+                        },
+                        UnaryOp::IntToString => match known_val {
+                            Const::Int(n) => Const::String(CheapString::new(n.to_string())),
+                            _ => unreachable!("IntToString can only have int operands"),
+                        },
+                        UnaryOp::FloatToInt => match known_val {
+                            Const::Float(bits) => Const::Int(f64::from_bits(*bits) as i32),
+                            _ => unreachable!("FloatToInt can only have float operands"),
+                        },
+                        UnaryOp::IntToFloat => match known_val {
+                            Const::Int(n) => Const::Float((*n as f64).to_bits()),
+                            _ => unreachable!("IntToFloat can only have int operands"),
+                        },
                     };
                     (*parent_expr_id, result)
                 },
@@ -565,7 +613,12 @@ pub fn perform_partial_evaluation(body: &mut Vec<IrStatement>, registry: &TypeRe
                  (known_left_val, known_right_val): &(Const, Const),
                  op: &BinaryOp| {
                     let result = match op {
-                        BinaryOp::Equals => Const::Bool(known_left_val == known_right_val),
+                        BinaryOp::Equals => match (known_left_val, known_right_val) {
+                            (Const::Float(l), Const::Float(r)) => {
+                                Const::Bool(f64::from_bits(*l) == f64::from_bits(*r))
+                            }
+                            _ => Const::Bool(known_left_val == known_right_val),
+                        },
                         BinaryOp::StringConcat => match (known_left_val, known_right_val) {
                             (Const::String(l), Const::String(r)) => {
                                 let s = format!("{}{}", l, r);
@@ -580,6 +633,41 @@ pub fn perform_partial_evaluation(body: &mut Vec<IrStatement>, registry: &TypeRe
                         BinaryOp::LogicalAnd => match (known_left_val, known_right_val) {
                             (Const::Bool(l), Const::Bool(r)) => Const::Bool(*l && *r),
                             _ => unreachable!("LogicalAnd can only have boolean operands"),
+                        },
+                        BinaryOp::NumericAdd => match (known_left_val, known_right_val) {
+                            (Const::Int(l), Const::Int(r)) => Const::Int(l.wrapping_add(*r)),
+                            (Const::Float(l), Const::Float(r)) => {
+                                Const::Float((f64::from_bits(*l) + f64::from_bits(*r)).to_bits())
+                            }
+                            _ => unreachable!("NumericAdd can only have numeric operands"),
+                        },
+                        BinaryOp::NumericSubtract => match (known_left_val, known_right_val) {
+                            (Const::Int(l), Const::Int(r)) => Const::Int(l.wrapping_sub(*r)),
+                            (Const::Float(l), Const::Float(r)) => {
+                                Const::Float((f64::from_bits(*l) - f64::from_bits(*r)).to_bits())
+                            }
+                            _ => unreachable!("NumericSubtract can only have numeric operands"),
+                        },
+                        BinaryOp::NumericMultiply => match (known_left_val, known_right_val) {
+                            (Const::Int(l), Const::Int(r)) => Const::Int(l.wrapping_mul(*r)),
+                            (Const::Float(l), Const::Float(r)) => {
+                                Const::Float((f64::from_bits(*l) * f64::from_bits(*r)).to_bits())
+                            }
+                            _ => unreachable!("NumericMultiply can only have numeric operands"),
+                        },
+                        BinaryOp::LessThan => match (known_left_val, known_right_val) {
+                            (Const::Int(l), Const::Int(r)) => Const::Bool(l < r),
+                            (Const::Float(l), Const::Float(r)) => {
+                                Const::Bool(f64::from_bits(*l) < f64::from_bits(*r))
+                            }
+                            _ => unreachable!("LessThan can only have numeric operands"),
+                        },
+                        BinaryOp::LessThanOrEqual => match (known_left_val, known_right_val) {
+                            (Const::Int(l), Const::Int(r)) => Const::Bool(l <= r),
+                            (Const::Float(l), Const::Float(r)) => {
+                                Const::Bool(f64::from_bits(*l) <= f64::from_bits(*r))
+                            }
+                            _ => unreachable!("LessThanOrEqual can only have numeric operands"),
                         },
                     };
                     (*parent_expr_id, result)
@@ -3129,6 +3217,291 @@ mod tests {
                   let val = false in {
                     call Foo(enabled = false)
                   }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_evaluate_int_arithmetic() {
+        check(
+            IrModuleBuilder::new().view_no_params("Test", |t| {
+                t.let_stmt(
+                    "x",
+                    t.add(t.mul(t.int(2), t.int(3)), t.sub(t.int(10), t.int(4))),
+                    |_| {},
+                );
+            }),
+            expect![[r#"
+                -- before --
+                view Test() {
+                  let x = ((2 * 3) + (10 - 4)) in {}
+                }
+
+                -- after --
+                view Test() {
+                  let x = 12 in {}
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_wrap_int_arithmetic_at_i32_boundaries() {
+        check(
+            IrModuleBuilder::new().view_no_params("Test", |t| {
+                t.let_stmt("a", t.add(t.int(i32::MAX), t.int(1)), |_| {});
+                t.let_stmt("b", t.sub(t.int(i32::MIN), t.int(1)), |_| {});
+                t.let_stmt("c", t.mul(t.int(i32::MAX), t.int(2)), |_| {});
+                t.let_stmt("d", t.neg(t.int(i32::MIN)), |_| {});
+            }),
+            expect![[r#"
+                -- before --
+                view Test() {
+                  let a = (2147483647 + 1) in {}
+                  let b = (-2147483648 - 1) in {}
+                  let c = (2147483647 * 2) in {}
+                  let d = (--2147483648) in {}
+                }
+
+                -- after --
+                view Test() {
+                  let a = -2147483648 in {}
+                  let b = 2147483647 in {}
+                  let c = -2 in {}
+                  let d = -2147483648 in {}
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_evaluate_float_arithmetic() {
+        check(
+            IrModuleBuilder::new().view_no_params("Test", |t| {
+                t.let_stmt(
+                    "x",
+                    t.add(t.mul(t.float(1.5), t.float(2.0)), t.neg(t.float(0.5))),
+                    |_| {},
+                );
+            }),
+            expect![[r#"
+                -- before --
+                view Test() {
+                  let x = ((1.5 * 2) + (-0.5)) in {}
+                }
+
+                -- after --
+                view Test() {
+                  let x = 2.5 in {}
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_propagate_nan_and_infinity_through_float_arithmetic() {
+        check(
+            IrModuleBuilder::new().view_no_params("Test", |t| {
+                t.let_stmt("a", t.add(t.float(f64::NAN), t.float(1.0)), |_| {});
+                t.let_stmt("b", t.add(t.float(f64::INFINITY), t.float(1.0)), |_| {});
+                t.let_stmt(
+                    "c",
+                    t.add(t.float(f64::INFINITY), t.float(f64::NEG_INFINITY)),
+                    |_| {},
+                );
+            }),
+            expect![[r#"
+                -- before --
+                view Test() {
+                  let a = (NaN + 1) in {}
+                  let b = (inf + 1) in {}
+                  let c = (inf + -inf) in {}
+                }
+
+                -- after --
+                view Test() {
+                  let a = NaN in {}
+                  let b = inf in {}
+                  let c = NaN in {}
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_evaluate_float_equality_with_ieee_semantics() {
+        check(
+            IrModuleBuilder::new().view_no_params("Test", |t| {
+                t.if_stmt(t.eq(t.float(f64::NAN), t.float(f64::NAN)), |t| {
+                    t.write("false");
+                });
+                t.if_stmt(t.eq(t.float(0.0), t.float(-0.0)), |t| {
+                    t.write("true");
+                });
+                t.if_stmt(t.eq(t.float(1.5), t.float(1.5)), |t| {
+                    t.write("true");
+                });
+            }),
+            expect![[r#"
+                -- before --
+                view Test() {
+                  if (NaN == NaN) {
+                    write("false")
+                  }
+                  if (0 == -0) {
+                    write("true")
+                  }
+                  if (1.5 == 1.5) {
+                    write("true")
+                  }
+                }
+
+                -- after --
+                view Test() {
+                  if false {
+                    write("false")
+                  }
+                  if true {
+                    write("true")
+                  }
+                  if true {
+                    write("true")
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_evaluate_int_to_string() {
+        check(
+            IrModuleBuilder::new().view_no_params("Test", |t| {
+                t.write_expr_escaped(t.int_to_string(t.add(t.int(40), t.int(2))));
+                t.write_expr_escaped(t.int_to_string(t.int(-7)));
+            }),
+            expect![[r#"
+                -- before --
+                view Test() {
+                  write_escaped((40 + 2).to_string())
+                  write_escaped(-7.to_string())
+                }
+
+                -- after --
+                view Test() {
+                  write_escaped("42")
+                  write_escaped("-7")
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_evaluate_numeric_conversions() {
+        check(
+            IrModuleBuilder::new().view_no_params("Test", |t| {
+                t.let_stmt("a", t.int_to_float(t.int(3)), |_| {});
+                t.let_stmt("b", t.float_to_int(t.float(3.7)), |_| {});
+                t.let_stmt("c", t.float_to_int(t.float(-3.7)), |_| {});
+            }),
+            expect![[r#"
+                -- before --
+                view Test() {
+                  let a = 3.to_float() in {}
+                  let b = 3.7.to_int() in {}
+                  let c = -3.7.to_int() in {}
+                }
+
+                -- after --
+                view Test() {
+                  let a = 3 in {}
+                  let b = 3 in {}
+                  let c = -3 in {}
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_saturate_float_to_int_conversion() {
+        check(
+            IrModuleBuilder::new().view_no_params("Test", |t| {
+                t.let_stmt("a", t.float_to_int(t.float(3000000000.0)), |_| {});
+                t.let_stmt("b", t.float_to_int(t.float(-3000000000.0)), |_| {});
+                t.let_stmt("c", t.float_to_int(t.float(f64::NAN)), |_| {});
+            }),
+            expect![[r#"
+                -- before --
+                view Test() {
+                  let a = 3000000000.to_int() in {}
+                  let b = -3000000000.to_int() in {}
+                  let c = NaN.to_int() in {}
+                }
+
+                -- after --
+                view Test() {
+                  let a = 2147483647 in {}
+                  let b = -2147483648 in {}
+                  let c = 0 in {}
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_propagate_numeric_constants_through_variables() {
+        check(
+            IrModuleBuilder::new().view_no_params("Test", |t| {
+                t.let_stmt("x", t.add(t.int(1), t.int(2)), |t| {
+                    t.let_stmt("y", t.mul(t.var("x"), t.var("x")), |t| {
+                        t.write_expr_escaped(t.int_to_string(t.var("y")));
+                    });
+                });
+            }),
+            expect![[r#"
+                -- before --
+                view Test() {
+                  let x = (1 + 2) in {
+                    let y = (x * x) in {
+                      write_escaped(y.to_string())
+                    }
+                  }
+                }
+
+                -- after --
+                view Test() {
+                  let x = 3 in {
+                    let y = 9 in {
+                      write_escaped("9")
+                    }
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_evaluate_int_match_arm_selection() {
+        check(
+            IrModuleBuilder::new().view_no_params("Test", |t| {
+                t.write_expr_escaped(t.bool_match_expr(
+                    t.lt(t.int(1), t.int(2)),
+                    t.str("less"),
+                    t.str("not less"),
+                ));
+            }),
+            expect![[r#"
+                -- before --
+                view Test() {
+                  write_escaped(match (1 < 2) {
+                    true => "less",
+                    false => "not less",
+                  })
+                }
+
+                -- after --
+                view Test() {
+                  write_escaped("less")
                 }
             "#]],
         );
