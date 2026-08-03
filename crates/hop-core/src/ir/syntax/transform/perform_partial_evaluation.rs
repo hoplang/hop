@@ -39,6 +39,9 @@ enum UnaryOp {
     IntToString,
     FloatToInt,
     IntToFloat,
+    StringIsEmpty,
+    OptionIsSome,
+    OptionIsNone,
 }
 
 /// Constant values that can be tracked during partial evaluation
@@ -434,14 +437,17 @@ pub fn perform_partial_evaluation(body: &mut Vec<IrStatement>, registry: &TypeRe
                     IrExpr::ArrayIsEmpty { .. } => {
                         // Not yet implemented
                     }
-                    IrExpr::StringIsEmpty { .. } => {
-                        // Not yet implemented
+                    IrExpr::StringIsEmpty { string, .. } => {
+                        unary_operands.push((string.id(), expr.id()));
+                        unary_ops.push((expr.id(), UnaryOp::StringIsEmpty));
                     }
-                    IrExpr::OptionIsSome { .. } => {
-                        // Not yet implemented
+                    IrExpr::OptionIsSome { option, .. } => {
+                        unary_operands.push((option.id(), expr.id()));
+                        unary_ops.push((expr.id(), UnaryOp::OptionIsSome));
                     }
-                    IrExpr::OptionIsNone { .. } => {
-                        // Not yet implemented
+                    IrExpr::OptionIsNone { option, .. } => {
+                        unary_operands.push((option.id(), expr.id()));
+                        unary_ops.push((expr.id(), UnaryOp::OptionIsNone));
                     }
                     IrExpr::FragmentEmpty { .. } => {
                         // Leaf constant, no sub-expressions to analyze
@@ -573,6 +579,18 @@ pub fn perform_partial_evaluation(body: &mut Vec<IrStatement>, registry: &TypeRe
                         UnaryOp::IntToFloat => match known_val {
                             Const::Int(n) => Const::Float((*n as f64).to_bits()),
                             _ => unreachable!("IntToFloat can only have int operands"),
+                        },
+                        UnaryOp::StringIsEmpty => match known_val {
+                            Const::String(s) => Const::Bool(s.as_str().is_empty()),
+                            _ => unreachable!("StringIsEmpty can only have string operands"),
+                        },
+                        UnaryOp::OptionIsSome => match known_val {
+                            Const::Option(inner) => Const::Bool(inner.is_some()),
+                            _ => unreachable!("OptionIsSome can only have option operands"),
+                        },
+                        UnaryOp::OptionIsNone => match known_val {
+                            Const::Option(inner) => Const::Bool(inner.is_none()),
+                            _ => unreachable!("OptionIsNone can only have option operands"),
                         },
                     };
                     (*parent_expr_id, result)
@@ -3502,6 +3520,111 @@ mod tests {
                 -- after --
                 view Test() {
                   write_escaped("less")
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_evaluate_option_is_some() {
+        check(
+            IrModuleBuilder::new().view_no_params("Test", |t| {
+                t.if_stmt(t.option_is_some(t.some(t.str("x"))), |t| {
+                    t.write("some is some");
+                });
+                t.if_stmt(t.option_is_some(t.none("String")), |t| {
+                    t.write("Should not appear");
+                });
+            }),
+            expect![[r#"
+                -- before --
+                view Test() {
+                  if Option[String]::Some("x").is_some() {
+                    write("some is some")
+                  }
+                  if Option[String]::None.is_some() {
+                    write("Should not appear")
+                  }
+                }
+
+                -- after --
+                view Test() {
+                  if true {
+                    write("some is some")
+                  }
+                  if false {
+                    write("Should not appear")
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_evaluate_option_is_none() {
+        check(
+            IrModuleBuilder::new().view_no_params("Test", |t| {
+                t.if_stmt(t.option_is_none(t.none("String")), |t| {
+                    t.write("none is none");
+                });
+                t.if_stmt(t.option_is_none(t.some(t.str("x"))), |t| {
+                    t.write("Should not appear");
+                });
+            }),
+            expect![[r#"
+                -- before --
+                view Test() {
+                  if Option[String]::None.is_none() {
+                    write("none is none")
+                  }
+                  if Option[String]::Some("x").is_none() {
+                    write("Should not appear")
+                  }
+                }
+
+                -- after --
+                view Test() {
+                  if true {
+                    write("none is none")
+                  }
+                  if false {
+                    write("Should not appear")
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_evaluate_string_is_empty() {
+        check(
+            IrModuleBuilder::new().view_no_params("Test", |t| {
+                t.if_stmt(t.string_is_empty(t.str("")), |t| {
+                    t.write("Empty");
+                });
+                t.if_stmt(t.string_is_empty(t.str("hello")), |t| {
+                    t.write("Should not appear");
+                });
+            }),
+            expect![[r#"
+                -- before --
+                view Test() {
+                  if "".is_empty() {
+                    write("Empty")
+                  }
+                  if "hello".is_empty() {
+                    write("Should not appear")
+                  }
+                }
+
+                -- after --
+                view Test() {
+                  if true {
+                    write("Empty")
+                  }
+                  if false {
+                    write("Should not appear")
+                  }
                 }
             "#]],
         );

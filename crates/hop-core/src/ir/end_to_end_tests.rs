@@ -9583,14 +9583,7 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  match "".is_empty() {
-                    true => {
-                      write("empty")
-                    }
-                    false => {
-                      write("not empty")
-                    }
-                  }
+                  write("empty")
                 }
                 -- expected output --
                 empty
@@ -9645,14 +9638,7 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  match "hello".is_empty() {
-                    true => {
-                      write("empty")
-                    }
-                    false => {
-                      write("not empty")
-                    }
-                  }
+                  write("not empty")
                 }
                 -- expected output --
                 not empty
@@ -9707,14 +9693,7 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  match Option[String]::Some("hello").is_some() {
-                    true => {
-                      write("yes")
-                    }
-                    false => {
-                      write("no")
-                    }
-                  }
+                  write("yes")
                 }
                 -- expected output --
                 yes
@@ -9769,14 +9748,7 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  match Option[String]::None.is_some() {
-                    true => {
-                      write("yes")
-                    }
-                    false => {
-                      write("no")
-                    }
-                  }
+                  write("no")
                 }
                 -- expected output --
                 no
@@ -9831,14 +9803,7 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  match Option[String]::None.is_none() {
-                    true => {
-                      write("yes")
-                    }
-                    false => {
-                      write("no")
-                    }
-                  }
+                  write("yes")
                 }
                 -- expected output --
                 yes
@@ -9893,14 +9858,7 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  match Option[String]::Some("hello").is_none() {
-                    true => {
-                      write("yes")
-                    }
-                    false => {
-                      write("no")
-                    }
-                  }
+                  write("no")
                 }
                 -- expected output --
                 no
@@ -9945,9 +9903,7 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  if (true == Option[Bool]::None.is_none()) {
-                    write("x")
-                  }
+                  write("x")
                 }
                 -- expected output --
                 x
@@ -9988,9 +9944,7 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  if ("a".is_empty() == "b".is_empty()) {
-                    write("x")
-                  }
+                  write("x")
                 }
                 -- expected output --
                 x
