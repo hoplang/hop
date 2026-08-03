@@ -35,9 +35,7 @@ impl RustTranspiler {
         }
     }
 
-    /// Rebind each variable to an owned clone at the top of a loop or match
-    /// arm body.
-    fn body_with_rebinds<'a>(
+    fn stmts_with_rebinds<'a>(
         &mut self,
         arena: &'a Arena<'a>,
         vars: &[&'a str],
@@ -50,6 +48,23 @@ impl RustTranspiler {
                 .append(arena.hardline());
         }
         doc.append(self.transpile_statements(arena, body))
+    }
+
+    fn expr_with_rebinds<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        vars: &[&'a str],
+        body: &'a IrExpr,
+    ) -> Doc<'a> {
+        if vars.is_empty() {
+            return self.transpile_expr_owned(arena, body);
+        }
+        let mut doc = arena.text("{ ");
+        for v in vars {
+            doc = doc.append(arena.text(format!("let {v} = {v}.clone(); ")));
+        }
+        doc.append(self.transpile_expr_owned(arena, body))
+            .append(arena.text(" }"))
     }
 
     /// Render a match subject in head position, parenthesizing a non-variable
@@ -750,7 +765,7 @@ impl Transpiler for RustTranspiler {
         doc.append(
             arena
                 .hardline()
-                .append(self.body_with_rebinds(arena, &rebinds, body))
+                .append(self.stmts_with_rebinds(arena, &rebinds, body))
                 .nest(4),
         )
         .append(arena.hardline())
@@ -810,12 +825,13 @@ impl Transpiler for RustTranspiler {
         bindings: &'a [(FieldName, VarName)],
         body: &'a [IrStatement],
     ) -> Doc<'a> {
+        let vars: Vec<&str> = bindings.iter().map(|(_, var)| var.as_str()).collect();
         arena
             .text("let ")
             .append(self.transpile_record_destructure_pattern(arena, subject, bindings))
             .append(arena.text(";"))
             .append(arena.hardline())
-            .append(self.transpile_statements(arena, body))
+            .append(self.stmts_with_rebinds(arena, &vars, body))
     }
 
     fn transpile_match_statement<'a>(
@@ -866,7 +882,7 @@ impl Transpiler for RustTranspiler {
                     .append(
                         arena
                             .hardline()
-                            .append(self.body_with_rebinds(arena, &some_rebind, some_arm_body))
+                            .append(self.stmts_with_rebinds(arena, &some_rebind, some_arm_body))
                             .nest(4),
                     )
                     .append(arena.hardline())
@@ -969,7 +985,7 @@ impl Transpiler for RustTranspiler {
                             .append(
                                 arena
                                     .hardline()
-                                    .append(self.body_with_rebinds(arena, &arm_rebind, &arm.body))
+                                    .append(self.stmts_with_rebinds(arena, &arm_rebind, &arm.body))
                                     .nest(4),
                             )
                             .append(arena.hardline())
@@ -1499,13 +1515,15 @@ impl Transpiler for RustTranspiler {
                     Some(var) => format!("Some({})", var.as_str()),
                     None => "Some(_)".to_string(),
                 };
+                let some_rebind: Vec<&str> = some_arm_binding.iter().map(|v| v.as_str()).collect();
+                let some_arm_doc = self.expr_with_rebinds(arena, &some_rebind, some_arm_body);
                 arena
                     .text("match &")
                     .append(self.transpile_match_subject(arena, subject))
                     .append(arena.text(" { "))
                     .append(arena.text(some_pattern))
                     .append(arena.text(" => "))
-                    .append(self.transpile_expr_owned(arena, some_arm_body))
+                    .append(some_arm_doc)
                     .append(arena.text(", None => "))
                     .append(self.transpile_expr_owned(arena, none_arm_body))
                     .append(arena.text(" }"))
@@ -1577,10 +1595,14 @@ impl Transpiler for RustTranspiler {
                         }
                     };
 
+                    let arm_rebind: Vec<&str> =
+                        arm.bindings.iter().map(|(_, var)| var.as_str()).collect();
+                    let arm_body_doc = self.expr_with_rebinds(arena, &arm_rebind, &arm.body);
+
                     doc = doc
                         .append(arena.text(pattern))
                         .append(arena.text(" => "))
-                        .append(self.transpile_expr_owned(arena, &arm.body));
+                        .append(arm_body_doc);
 
                     if i < arms.len() - 1 {
                         doc = doc.append(arena.text(", "));
@@ -1605,7 +1627,7 @@ impl Transpiler for RustTranspiler {
             .append(arena.text(" = "))
             .append(self.transpile_expr_owned(arena, value))
             .append(arena.text("; "))
-            .append(self.transpile_expr(arena, body))
+            .append(self.transpile_expr_owned(arena, body))
             .append(arena.text(" }"))
     }
 
@@ -1616,11 +1638,13 @@ impl Transpiler for RustTranspiler {
         bindings: &'a [(FieldName, VarName)],
         body: &'a IrExpr,
     ) -> Doc<'a> {
+        let vars: Vec<&str> = bindings.iter().map(|(_, var)| var.as_str()).collect();
+        let body_doc = self.expr_with_rebinds(arena, &vars, body);
         arena
             .text("{ let ")
             .append(self.transpile_record_destructure_pattern(arena, subject, bindings))
             .append(arena.text("; "))
-            .append(self.transpile_expr(arena, body))
+            .append(body_doc)
             .append(arena.text(" }"))
     }
 
