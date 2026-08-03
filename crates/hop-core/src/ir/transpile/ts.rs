@@ -84,67 +84,55 @@ impl TsTranspiler {
         }
     }
 
-    /// How to refer to a match subject in option and enum code generation, which
-    /// reads it more than once. A variable is referenced directly, anything else
-    /// is bound once to a reserved name that a hop identifier can never produce.
-    fn subject_ref(subject: &IrExpr) -> &str {
-        match subject {
-            IrExpr::Var { value, .. } => value.as_str(),
-            _ => "$subject",
-        }
-    }
-
-    /// For an option or enum statement match, a non-variable subject is bound
-    /// once inside a block so it runs only once. A variable passes through.
     fn wrap_match_subject_stmt<'a>(
         &mut self,
         arena: &'a Arena<'a>,
         subject: &'a IrExpr,
         switch_doc: Doc<'a>,
     ) -> Doc<'a> {
-        match subject {
-            IrExpr::Var { .. } => switch_doc,
-            _ => arena
-                .text("{")
-                .append(
-                    arena
-                        .hardline()
-                        .append(arena.text("const $subject = "))
-                        .append(self.transpile_expr(arena, subject))
-                        .append(arena.text(";"))
-                        .append(arena.hardline())
-                        .append(switch_doc)
-                        .nest(4),
-                )
-                .append(arena.hardline())
-                .append(arena.text("}")),
-        }
+        arena
+            .text("{")
+            .append(
+                arena
+                    .hardline()
+                    .append(arena.text("const $subject = "))
+                    .append(self.transpile_expr(arena, subject))
+                    .append(arena.text(" as "))
+                    .append(self.transpile_type(arena, subject.as_type()))
+                    .append(arena.text(";"))
+                    .append(arena.hardline())
+                    .append(switch_doc)
+                    .nest(4),
+            )
+            .append(arena.hardline())
+            .append(arena.text("}"))
     }
 
-    /// For an option or enum expression match, the switch is wrapped in an
-    /// immediately invoked function. A variable is used directly inside it,
-    /// anything else is passed in as an argument so it runs only once.
     fn wrap_match_subject_expr<'a>(
         &mut self,
         arena: &'a Arena<'a>,
         subject: &'a IrExpr,
         switch_body: Doc<'a>,
     ) -> Doc<'a> {
+        arena
+            .text("(($subject: ")
+            .append(self.transpile_type(arena, subject.as_type()))
+            .append(arena.text(") => {"))
+            .append(arena.line().append(switch_body).nest(2))
+            .append(arena.line())
+            .append(arena.text("})("))
+            .append(self.transpile_expr(arena, subject))
+            .append(arena.text(")"))
+            .group()
+    }
+
+    fn transpile_bool_subject<'a>(&mut self, arena: &'a Arena<'a>, subject: &'a IrExpr) -> Doc<'a> {
         match subject {
-            IrExpr::Var { .. } => arena
-                .text("(() => {")
-                .append(arena.line().append(switch_body).nest(2))
-                .append(arena.line())
-                .append(arena.text("})()"))
-                .group(),
+            IrExpr::BooleanLiteral { .. } => self.transpile_expr(arena, subject),
             _ => arena
-                .text("(($subject) => {")
-                .append(arena.line().append(switch_body).nest(2))
-                .append(arena.line())
-                .append(arena.text("})("))
+                .text("(")
                 .append(self.transpile_expr(arena, subject))
-                .append(arena.text(")"))
-                .group(),
+                .append(arena.text(" as boolean)")),
         }
     }
 }
@@ -631,7 +619,7 @@ impl Transpiler for TsTranspiler {
         arena
             .nil()
             .append(arena.text("if ("))
-            .append(self.transpile_expr(arena, condition))
+            .append(self.transpile_bool_subject(arena, condition))
             .append(arena.text(") {"))
             .append(
                 arena
@@ -767,7 +755,7 @@ impl Transpiler for TsTranspiler {
                 false_body,
             } => arena
                 .text("if (")
-                .append(self.transpile_expr(arena, subject))
+                .append(self.transpile_bool_subject(arena, subject))
                 .append(arena.text(") {"))
                 .append(
                     arena
@@ -794,7 +782,7 @@ impl Transpiler for TsTranspiler {
                 none_arm_body,
             } => {
                 self.needs_option = true;
-                let subject_name = Self::subject_ref(subject);
+                let subject_name = "$subject";
                 let some_case = if let Some(var_name) = some_arm_binding {
                     arena
                         .text("case \"Some\": {")
@@ -862,7 +850,7 @@ impl Transpiler for TsTranspiler {
                 )
             }
             Match::Enum { subject, arms } => {
-                let subject_name = Self::subject_ref(subject);
+                let subject_name = "$subject";
                 let case_docs: Vec<_> = arms
                     .iter()
                     .map(|arm| match &arm.pattern {
@@ -958,7 +946,10 @@ impl Transpiler for TsTranspiler {
     }
 
     fn transpile_string_literal<'a>(&mut self, arena: &'a Arena<'a>, value: &'a str) -> Doc<'a> {
-        arena.text(self.quote_string(value))
+        arena
+            .text("(")
+            .append(arena.text(self.quote_string(value)))
+            .append(arena.text(" as string)"))
     }
 
     fn transpile_fragment_empty<'a>(&mut self, arena: &'a Arena<'a>) -> Doc<'a> {
@@ -968,25 +959,31 @@ impl Transpiler for TsTranspiler {
 
     fn transpile_boolean_literal<'a>(&mut self, arena: &'a Arena<'a>, value: bool) -> Doc<'a> {
         match value {
-            true => arena.text("true"),
-            false => arena.text("false"),
+            true => arena.text("(true as boolean)"),
+            false => arena.text("(false as boolean)"),
         }
     }
 
     fn transpile_float_literal<'a>(&mut self, arena: &'a Arena<'a>, value: f64) -> Doc<'a> {
-        arena.text(format!("{}", value))
+        arena.text(format!("({} as number)", value))
     }
 
     fn transpile_int_literal<'a>(&mut self, arena: &'a Arena<'a>, value: i64) -> Doc<'a> {
-        arena.text(format!("{}", value))
+        arena.text(format!("({} as number)", value))
     }
 
     fn transpile_array_literal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
         elements: &'a [IrExpr],
-        _elem_type: &'a Type,
+        elem_type: &'a Type,
     ) -> Doc<'a> {
+        if elements.is_empty() {
+            return arena
+                .text("([] as ")
+                .append(self.transpile_array_type(arena, elem_type))
+                .append(arena.text(")"));
+        }
         let elem_docs: Vec<_> = elements
             .iter()
             .map(|e| self.transpile_expr(arena, e))
@@ -1344,7 +1341,7 @@ impl Transpiler for TsTranspiler {
     ) -> Doc<'a> {
         match match_ {
             Match::Enum { subject, arms } => {
-                let subject_name = Self::subject_ref(subject);
+                let subject_name = "$subject";
                 let case_docs: Vec<_> =
                     arms.iter()
                         .map(|arm| match &arm.pattern {
@@ -1415,7 +1412,7 @@ impl Transpiler for TsTranspiler {
                 false_body,
             } => arena
                 .text("(")
-                .append(self.transpile_expr(arena, subject))
+                .append(self.transpile_bool_subject(arena, subject))
                 .append(arena.text(" ? "))
                 .append(self.transpile_expr(arena, true_body))
                 .append(arena.text(" : "))
@@ -1428,7 +1425,7 @@ impl Transpiler for TsTranspiler {
                 none_arm_body,
             } => {
                 self.needs_option = true;
-                let subject_name = Self::subject_ref(subject);
+                let subject_name = "$subject";
                 let some_case = {
                     let body_doc = self.transpile_expr(arena, some_arm_body);
                     if let Some(var_name) = some_arm_binding {
@@ -1774,7 +1771,7 @@ mod tests {
 
                 export function ConditionalDisplay({title, show}: {title: string, show: boolean}): string {
                     let output: string = "";
-                    if (show) {
+                    if ((show as boolean)) {
                         output += "<h1>";
                         output += escapeHtml(title);
                         output += "</h1>\n";
@@ -1859,7 +1856,7 @@ mod tests {
 
                 export function Counter(): string {
                     let output: string = "";
-                    for (let i = 1; i <= 3; i++) {
+                    for (let i = (1 as number); i <= (3 as number); i++) {
                         output += (i).toString();
                         output += " ";
                     }
@@ -1907,7 +1904,7 @@ mod tests {
 
                 export function GreetingCard(): string {
                     let output: string = "";
-                    const greeting = "Hello from hop!";
+                    const greeting = ("Hello from hop!" as string);
                     output += "<div class=\"card\">\n";
                     output += "<p>";
                     output += escapeHtml(greeting);
@@ -1958,7 +1955,7 @@ mod tests {
                 export function TestMainComp(): string {
                     let output: string = "";
                     output += "<div data-hop-id=\"test/card-comp\">";
-                    const title = "Hello World";
+                    const title = ("Hello World" as string);
                     output += "<h2>";
                     output += escapeHtml(title);
                     output += "</h2>";
@@ -2144,7 +2141,7 @@ mod tests {
                 export function CreateUser(): string {
                     let output: string = "";
                     output += "<div>";
-                    output += escapeHtml(new User("John", 30).name);
+                    output += escapeHtml(new User(("John" as string), (30 as number)).name);
                     output += "</div>";
                     return output;
                 }
@@ -2321,7 +2318,7 @@ mod tests {
 
                 export function Test(): string {
                     let output: string = "";
-                    const node = new Node(2, Option.some<Node>(new Node(1, Option.none<Node>())));
+                    const node = new Node((2 as number), Option.some<Node>(new Node((1 as number), Option.none<Node>())));
                     output += escapeHtml((node.value).toString());
                     return output;
                 }
@@ -2386,13 +2383,13 @@ mod tests {
 
                 export function ColorName({color}: {color: Color.Color}): string {
                     let output: string = "";
-                    output += escapeHtml((() => {
-                      switch (color.tag) {
-                        case "Red": return "red";
-                        case "Green": return "green";
-                        case "Blue": return "blue";
+                    output += escapeHtml((($subject: Color.Color) => {
+                      switch ($subject.tag) {
+                        case "Red": return ("red" as string);
+                        case "Green": return ("green" as string);
+                        case "Blue": return ("blue" as string);
                       }
-                    })());
+                    })(color));
                     return output;
                 }
             "#]],
@@ -2426,7 +2423,7 @@ mod tests {
 
                 export function IsActive({active}: {active: boolean}): string {
                     let output: string = "";
-                    output += escapeHtml((active ? "yes" : "no"));
+                    output += escapeHtml(((active as boolean) ? ("yes" as string) : ("no" as string)));
                     return output;
                 }
             "#]],
@@ -2475,12 +2472,12 @@ mod tests {
 
                 export function CheckOption({opt}: {opt: Option.Option<number>}): string {
                     let output: string = "";
-                    output += escapeHtml((() => {
-                      switch (opt.tag) {
-                        case "Some": return "has value";
-                        case "None": return "empty";
+                    output += escapeHtml((($subject: Option.Option<number>) => {
+                      switch ($subject.tag) {
+                        case "Some": return ("has value" as string);
+                        case "None": return ("empty" as string);
                       }
-                    })());
+                    })(opt));
                     return output;
                 }
             "#]],
@@ -2560,23 +2557,23 @@ mod tests {
 
                 export function CheckNestedOption({opt}: {opt: Option.Option<Option.Option<boolean>>}): string {
                     let output: string = "";
-                    output += escapeHtml((() => {
-                      switch (opt.tag) {
+                    output += escapeHtml((($subject: Option.Option<Option.Option<boolean>>) => {
+                      switch ($subject.tag) {
                         case "Some": {
-                          const v0 = opt.value;
-                          return (() => {
-                            switch (v0.tag) {
+                          const v0 = $subject.value;
+                          return (($subject: Option.Option<boolean>) => {
+                            switch ($subject.tag) {
                               case "Some": {
-                                const v1 = v0.value;
-                                return (v1 ? "some-some-true" : "some-some-false");
+                                const v1 = $subject.value;
+                                return ((v1 as boolean) ? ("some-some-true" as string) : ("some-some-false" as string));
                               }
-                              case "None": return "some-none";
+                              case "None": return ("some-none" as string);
                             }
-                          })();
+                          })(v0);
                         }
-                        case "None": return "none";
+                        case "None": return ("none" as string);
                       }
-                    })());
+                    })(opt));
                     return output;
                 }
             "#]],
@@ -2678,17 +2675,20 @@ mod tests {
 
                 export function DisplayOption({opt}: {opt: Option.Option<string>}): string {
                     let output: string = "";
-                    switch (opt.tag) {
-                        case "Some": {
-                            const value = opt.value;
-                            output += "<span>Found: ";
-                            output += escapeHtml(value);
-                            output += "</span>";
-                            break;
-                        }
-                        case "None": {
-                            output += "<span>Nothing</span>";
-                            break;
+                    {
+                        const $subject = opt as Option.Option<string>;
+                        switch ($subject.tag) {
+                            case "Some": {
+                                const value = $subject.value;
+                                output += "<span>Found: ";
+                                output += escapeHtml(value);
+                                output += "</span>";
+                                break;
+                            }
+                            case "None": {
+                                output += "<span>Nothing</span>";
+                                break;
+                            }
                         }
                     }
                     return output;
@@ -2744,18 +2744,18 @@ mod tests {
 
                 export function TestOptionLiteral({opt1, opt2}: {opt1: Option.Option<string>, opt2: Option.Option<string>}): string {
                     let output: string = "";
-                    output += (() => {
-                      switch (opt1.tag) {
-                        case "Some": return "has value";
-                        case "None": return "empty";
+                    output += (($subject: Option.Option<string>) => {
+                      switch ($subject.tag) {
+                        case "Some": return ("has value" as string);
+                        case "None": return ("empty" as string);
                       }
-                    })();
-                    output += (() => {
-                      switch (opt2.tag) {
-                        case "Some": return "HAS";
-                        case "None": return "EMPTY";
+                    })(opt1);
+                    output += (($subject: Option.Option<string>) => {
+                      switch ($subject.tag) {
+                        case "Some": return ("HAS" as string);
+                        case "None": return ("EMPTY" as string);
                       }
-                    })();
+                    })(opt2);
                     return output;
                 }
             "#]],
@@ -2812,17 +2812,20 @@ mod tests {
 
                 export function TestInlineMatch(): string {
                     let output: string = "";
-                    const opt = Option.some<string>("world");
-                    switch (opt.tag) {
-                        case "Some": {
-                            const val = opt.value;
-                            output += "Got:";
-                            output += val;
-                            break;
-                        }
-                        case "None": {
-                            output += "Empty";
-                            break;
+                    const opt = Option.some<string>(("world" as string));
+                    {
+                        const $subject = opt as Option.Option<string>;
+                        switch ($subject.tag) {
+                            case "Some": {
+                                const val = $subject.value;
+                                output += "Got:";
+                                output += val;
+                                break;
+                            }
+                            case "None": {
+                                output += "Empty";
+                                break;
+                            }
                         }
                     }
                     return output;
@@ -2892,12 +2895,12 @@ mod tests {
                 export function Test(): string {
                     let output: string = "";
                     {
-                        const $subject = Option.some<string>("x");
+                        const $subject = Option.some<string>(("x" as string)) as Option.Option<string>;
                         switch ($subject.tag) {
                             case "Some": {
                                 const value = $subject.value;
                                 {
-                                    const $subject = Option.some<string>(value);
+                                    const $subject = Option.some<string>(value) as Option.Option<string>;
                                     switch ($subject.tag) {
                                         case "Some": {
                                             const inner = $subject.value;
@@ -2955,7 +2958,7 @@ mod tests {
 
                 export function IsActive({active}: {active: boolean}): string {
                     let output: string = "";
-                    output += escapeHtml((!(active) ? "yes" : "no"));
+                    output += escapeHtml(((!(active) as boolean) ? ("yes" as string) : ("no" as string)));
                     return output;
                 }
             "#]],
@@ -3013,8 +3016,8 @@ mod tests {
                 export function ShowOutcome({r}: {r: Outcome.Outcome}): string {
                     let output: string = "";
                     output += "<div>";
-                    const ok = Outcome.Ok(42);
-                    output += "Created Ok!";
+                    const ok = Outcome.Ok((42 as number));
+                    output += ("Created Ok!" as string);
                     output += "</div>";
                     return output;
                 }
@@ -3080,18 +3083,21 @@ mod tests {
 
                 export function ShowOutcome({r}: {r: Outcome.Outcome}): string {
                     let output: string = "";
-                    switch (r.tag) {
-                        case "Ok": {
-                            const { value: v } = r;
-                            output += "Value: ";
-                            output += v;
-                            break;
-                        }
-                        case "Err": {
-                            const { message: m } = r;
-                            output += "Error: ";
-                            output += m;
-                            break;
+                    {
+                        const $subject = r as Outcome.Outcome;
+                        switch ($subject.tag) {
+                            case "Ok": {
+                                const { value: v } = $subject;
+                                output += "Value: ";
+                                output += v;
+                                break;
+                            }
+                            case "Err": {
+                                const { message: m } = $subject;
+                                output += "Error: ";
+                                output += m;
+                                break;
+                            }
                         }
                     }
                     return output;
