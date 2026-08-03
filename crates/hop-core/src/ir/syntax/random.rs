@@ -39,6 +39,17 @@ struct IrGenerator<'a, 'b> {
 
 /// Generate a random well-typed IR module.
 pub fn random_ir_module(u: &mut Unstructured<'_>) -> (IrModule, TypeRegistry) {
+    random_ir_module_inner(u, false)
+}
+
+pub fn random_ir_module_with_test_view(u: &mut Unstructured<'_>) -> (IrModule, TypeRegistry) {
+    random_ir_module_inner(u, true)
+}
+
+fn random_ir_module_inner(
+    u: &mut Unstructured<'_>,
+    single_test_view: bool,
+) -> (IrModule, TypeRegistry) {
     let mut g = IrGenerator {
         u,
         records: Vec::new(),
@@ -99,15 +110,19 @@ pub fn random_ir_module(u: &mut Unstructured<'_>) -> (IrModule, TypeRegistry) {
     }
 
     // Generate views
-    for i in 0..g.count(1..=3) {
-        let params: Vec<(String, String)> = (0..g.count(0..=3))
-            .map(|_| (g.fresh_var_name(), g.random_type_string(2)))
-            .collect();
-        bodies = bodies.view(
-            &format!("V{i}"),
-            params.iter().map(|(n, t)| (n.as_str(), t.as_str())),
-            |b| g.stmts(b, DEPTH),
-        );
+    if single_test_view {
+        bodies = bodies.view_no_params("Test", |b| g.stmts(b, DEPTH));
+    } else {
+        for i in 0..g.count(1..=3) {
+            let params: Vec<(String, String)> = (0..g.count(0..=3))
+                .map(|_| (g.fresh_var_name(), g.random_type_string(2)))
+                .collect();
+            bodies = bodies.view(
+                &format!("V{i}"),
+                params.iter().map(|(n, t)| (n.as_str(), t.as_str())),
+                |b| g.stmts(b, DEPTH),
+            );
+        }
     }
     bodies.build_with_registry()
 }

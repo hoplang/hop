@@ -361,8 +361,58 @@ mod tests {
     use crate::asset_rewriter::{PrefixingAssetRewriter, ReplacingAssetRewriter};
 
     use super::*;
+    use crate::ir::optimize;
+    use crate::ir::syntax::random::random_ir_module_with_test_view;
     use expect_test::expect;
     use indoc::indoc;
+
+    #[test]
+    #[ignore]
+    fn fuzz_transpile_ts_renders_identically() {
+        arbtest::arbtest(|u| {
+            let (module, registry) = random_ir_module_with_test_view(u);
+            let module = optimize(module, &registry);
+            let ir = module.to_string();
+            let expected = execute_evaluator(&module)
+                .unwrap_or_else(|e| panic!("Evaluator failed:\n{e}\n\nIR:\n{ir}"))
+                .trim()
+                .to_string();
+            let ts_code = TsTranspiler::new().transpile_module(&module, &registry);
+            if let Err(e) = typecheck_typescript(&ts_code) {
+                panic!("TypeScript typecheck failed:\n{e}\n\nIR:\n{ir}\nCode:\n{ts_code}");
+            }
+            let ts_output = execute_typescript(&ts_code).unwrap_or_else(|e| {
+                panic!("TypeScript failed:\n{e}\n\nIR:\n{ir}\nCode:\n{ts_code}")
+            });
+            assert_eq!(
+                expected, ts_output,
+                "evaluator and TypeScript disagree\n\nIR:\n{ir}\nCode:\n{ts_code}"
+            );
+            Ok(())
+        });
+    }
+
+    #[test]
+    #[ignore]
+    fn fuzz_transpile_rust_renders_identically() {
+        arbtest::arbtest(|u| {
+            let (module, registry) = random_ir_module_with_test_view(u);
+            let module = optimize(module, &registry);
+            let ir = module.to_string();
+            let expected = execute_evaluator(&module)
+                .unwrap_or_else(|e| panic!("Evaluator failed:\n{e}\n\nIR:\n{ir}"))
+                .trim()
+                .to_string();
+            let rust_code = RustTranspiler::new().transpile_module(&module, &registry);
+            let rust_output = execute_rust(&rust_code)
+                .unwrap_or_else(|e| panic!("Rust failed:\n{e}\n\nIR:\n{ir}\nCode:\n{rust_code}"));
+            assert_eq!(
+                expected, rust_output,
+                "evaluator and Rust disagree\n\nIR:\n{ir}\nCode:\n{rust_code}"
+            );
+            Ok(())
+        });
+    }
 
     #[test]
     #[ignore]
