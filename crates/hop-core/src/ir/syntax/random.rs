@@ -9,6 +9,31 @@ use std::ops::RangeInclusive;
 /// Statement/expression recursion budget.
 const DEPTH: usize = 3;
 
+const FLOATS: &[f64] = &[
+    0.0,
+    -0.0,
+    0.1,
+    0.2,
+    0.3,
+    0.5,
+    -0.5,
+    1.5,
+    -2.5,
+    3.75,
+    99.75,
+    100.25,
+    2147483647.5,
+    -2147483648.5,
+    9.2e18,
+    1e300,
+    -1e300,
+    5e-324,
+    f64::MAX,
+    f64::INFINITY,
+    f64::NEG_INFINITY,
+    f64::NAN,
+];
+
 const WORDS: &[&str] = &[
     "",
     "foo",
@@ -156,7 +181,7 @@ impl IrGenerator<'_, '_> {
     }
 
     /// A zigzag-encoded choice in `-magnitude..=magnitude`.
-    fn zigzag(&mut self, magnitude: i64) -> i64 {
+    fn zigzag(&mut self, magnitude: i32) -> i32 {
         let n = self.u.int_in_range(0..=2 * magnitude).unwrap();
         if n % 2 == 0 { -n / 2 } else { n / 2 + 1 }
     }
@@ -170,14 +195,15 @@ impl IrGenerator<'_, '_> {
     /// A random source-syntax type string. E.g. `Array[String]`.
     fn random_type_string(&mut self, depth: usize) -> String {
         let named = self.records.len() + self.enums.len();
-        let n = 3 + named + if depth > 0 { 2 } else { 0 };
+        let n = 4 + named + if depth > 0 { 2 } else { 0 };
         match self.index(n) {
             0 => "Int".to_string(),
             1 => "String".to_string(),
             2 => "Bool".to_string(),
-            i if i < 3 + self.records.len() => self.records[i - 3].name.clone(),
-            i if i < 3 + named => self.enums[i - 3 - self.records.len()].name.clone(),
-            i if i == 3 + named => format!("Array[{}]", self.random_type_string(depth - 1)),
+            3 => "Float".to_string(),
+            i if i < 4 + self.records.len() => self.records[i - 4].name.clone(),
+            i if i < 4 + named => self.enums[i - 4 - self.records.len()].name.clone(),
+            i if i == 4 + named => format!("Array[{}]", self.random_type_string(depth - 1)),
             _ => format!("Option[{}]", self.random_type_string(depth - 1)),
         }
     }
@@ -359,6 +385,8 @@ impl IrGenerator<'_, '_> {
             Or,
             Concat,
             IntToString,
+            FloatToInt,
+            IntToFloat,
             OptionIsNone,
             OptionIsSome,
             StringIsEmpty,
@@ -410,7 +438,17 @@ impl IrGenerator<'_, '_> {
                 ]);
             }
             if *target == Type::Int {
-                productions.extend([P::ArrayLength, P::Neg, P::Add, P::Sub, P::Mul]);
+                productions.extend([
+                    P::ArrayLength,
+                    P::Neg,
+                    P::Add,
+                    P::Sub,
+                    P::Mul,
+                    P::FloatToInt,
+                ]);
+            }
+            if *target == Type::Float {
+                productions.extend([P::Neg, P::Add, P::Sub, P::Mul, P::IntToFloat]);
             }
             if *target == Type::String {
                 productions.extend([P::Concat, P::IntToString]);
@@ -513,23 +551,26 @@ impl IrGenerator<'_, '_> {
                 })
             }
             P::Eq => {
-                let ty = match self.index(3) {
+                let ty = match self.index(4) {
                     0 => Type::Int,
                     1 => Type::String,
-                    _ => Type::Bool,
+                    2 => Type::Bool,
+                    _ => Type::Float,
                 };
                 let left = self.expr(b, &ty, depth - 1);
                 let right = self.expr(b, &ty, depth - 1);
                 b.eq(left, right)
             }
             P::Lt => {
-                let left = self.expr(b, &Type::Int, depth - 1);
-                let right = self.expr(b, &Type::Int, depth - 1);
+                let ty = if self.coin() { Type::Int } else { Type::Float };
+                let left = self.expr(b, &ty, depth - 1);
+                let right = self.expr(b, &ty, depth - 1);
                 b.lt(left, right)
             }
             P::Lte => {
-                let left = self.expr(b, &Type::Int, depth - 1);
-                let right = self.expr(b, &Type::Int, depth - 1);
+                let ty = if self.coin() { Type::Int } else { Type::Float };
+                let left = self.expr(b, &ty, depth - 1);
+                let right = self.expr(b, &ty, depth - 1);
                 b.lte(left, right)
             }
             P::Not => {
@@ -554,6 +595,14 @@ impl IrGenerator<'_, '_> {
             P::IntToString => {
                 let operand = self.expr(b, &Type::Int, depth - 1);
                 b.int_to_string(operand)
+            }
+            P::FloatToInt => {
+                let operand = self.expr(b, &Type::Float, depth - 1);
+                b.float_to_int(operand)
+            }
+            P::IntToFloat => {
+                let operand = self.expr(b, &Type::Int, depth - 1);
+                b.int_to_float(operand)
             }
             P::OptionIsNone => {
                 let option_ty = Type::Option(b.resolve_type(&self.random_type_string(1)));
@@ -580,22 +629,22 @@ impl IrGenerator<'_, '_> {
                 b.array_length(operand)
             }
             P::Neg => {
-                let operand = self.expr(b, &Type::Int, depth - 1);
+                let operand = self.expr(b, target, depth - 1);
                 b.neg(operand)
             }
             P::Add => {
-                let left = self.expr(b, &Type::Int, depth - 1);
-                let right = self.expr(b, &Type::Int, depth - 1);
+                let left = self.expr(b, target, depth - 1);
+                let right = self.expr(b, target, depth - 1);
                 b.add(left, right)
             }
             P::Sub => {
-                let left = self.expr(b, &Type::Int, depth - 1);
-                let right = self.expr(b, &Type::Int, depth - 1);
+                let left = self.expr(b, target, depth - 1);
+                let right = self.expr(b, target, depth - 1);
                 b.sub(left, right)
             }
             P::Mul => {
-                let left = self.expr(b, &Type::Int, depth - 1);
-                let right = self.expr(b, &Type::Int, depth - 1);
+                let left = self.expr(b, target, depth - 1);
+                let right = self.expr(b, target, depth - 1);
                 b.mul(left, right)
             }
         }
@@ -607,8 +656,20 @@ impl IrGenerator<'_, '_> {
         // something deeper than depth.
         match &target {
             Type::String => b.str(self.u.choose(WORDS).unwrap()),
-            Type::Int => b.int(self.zigzag(100)),
+            Type::Int => {
+                if self.count(0..=7) == 0 {
+                    b.int(
+                        *self
+                            .u
+                            .choose(&[i32::MIN, i32::MIN + 1, i32::MAX - 1, i32::MAX])
+                            .unwrap(),
+                    )
+                } else {
+                    b.int(self.zigzag(100))
+                }
+            }
             Type::Bool => b.bool(self.coin()),
+            Type::Float => b.float(*self.u.choose(FLOATS).unwrap()),
             Type::Array(inner) => {
                 let elements = (0..self.count(0..=3))
                     .map(|_| self.expr(b, inner, depth.saturating_sub(1)))
@@ -648,8 +709,8 @@ impl IrGenerator<'_, '_> {
                     b.enum_variant_with_fields(name.as_str(), variant, values)
                 }
             }
-            Type::Float | Type::Fragment => {
-                unreachable!("Float and Fragment are never generation targets")
+            Type::Fragment => {
+                unreachable!("Fragment is never a generation target")
             }
         }
     }

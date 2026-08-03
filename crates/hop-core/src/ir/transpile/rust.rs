@@ -258,7 +258,7 @@ impl RustTranspiler {
             Type::Bool => arena.text("bool"),
             Type::String => arena.text("&str"),
             Type::Float => arena.text("f64"),
-            Type::Int => arena.text("i64"),
+            Type::Int => arena.text("i32"),
             Type::Fragment => {
                 self.needs_fragment = true;
                 arena.text("&Fragment")
@@ -1030,7 +1030,7 @@ impl Transpiler for RustTranspiler {
     }
 
     fn transpile_int_type<'a>(&mut self, arena: &'a Arena<'a>) -> Doc<'a> {
-        arena.text("i64")
+        arena.text("i32")
     }
 
     fn transpile_fragment_type<'a>(&mut self, arena: &'a Arena<'a>) -> Doc<'a> {
@@ -1107,17 +1107,24 @@ impl Transpiler for RustTranspiler {
     }
 
     fn transpile_float_literal<'a>(&mut self, arena: &'a Arena<'a>, value: f64) -> Doc<'a> {
-        // Ensure float literals have a decimal point
-        let s = value.to_string();
-        if s.contains('.') || s.contains('e') || s.contains('E') {
-            arena.text(format!("{}_f64", s))
+        let text = if value.is_nan() {
+            "f64::NAN".to_string()
+        } else if value == f64::INFINITY {
+            "f64::INFINITY".to_string()
+        } else if value == f64::NEG_INFINITY {
+            "f64::NEG_INFINITY".to_string()
         } else {
-            arena.text(format!("{}.0_f64", s))
-        }
+            format!("{:?}_f64", value)
+        };
+        arena.text(text)
     }
 
-    fn transpile_int_literal<'a>(&mut self, arena: &'a Arena<'a>, value: i64) -> Doc<'a> {
-        arena.text(format!("{}_i64", value))
+    fn transpile_int_literal<'a>(&mut self, arena: &'a Arena<'a>, value: i32) -> Doc<'a> {
+        if value == i32::MIN {
+            arena.text("i32::MIN")
+        } else {
+            arena.text(format!("{}_i32", value))
+        }
     }
 
     fn transpile_array_literal<'a>(
@@ -1259,7 +1266,14 @@ impl Transpiler for RustTranspiler {
         arena.text("!").append(self.transpile_expr(arena, operand))
     }
 
-    fn transpile_numeric_negation<'a>(
+    fn transpile_int_negation<'a>(&mut self, arena: &'a Arena<'a>, operand: &'a IrExpr) -> Doc<'a> {
+        arena
+            .text("(")
+            .append(self.transpile_expr(arena, operand))
+            .append(arena.text(").wrapping_neg()"))
+    }
+
+    fn transpile_float_negation<'a>(
         &mut self,
         arena: &'a Arena<'a>,
         operand: &'a IrExpr,
@@ -1321,7 +1335,7 @@ impl Transpiler for RustTranspiler {
         arena
             .text("(")
             .append(self.transpile_expr(arena, left))
-            .append(arena.text(" + "))
+            .append(arena.text(").wrapping_add("))
             .append(self.transpile_expr(arena, right))
             .append(arena.text(")"))
     }
@@ -1349,7 +1363,7 @@ impl Transpiler for RustTranspiler {
         arena
             .text("(")
             .append(self.transpile_expr(arena, left))
-            .append(arena.text(" - "))
+            .append(arena.text(").wrapping_sub("))
             .append(self.transpile_expr(arena, right))
             .append(arena.text(")"))
     }
@@ -1377,7 +1391,7 @@ impl Transpiler for RustTranspiler {
         arena
             .text("(")
             .append(self.transpile_expr(arena, left))
-            .append(arena.text(" * "))
+            .append(arena.text(").wrapping_mul("))
             .append(self.transpile_expr(arena, right))
             .append(arena.text(")"))
     }
@@ -1652,7 +1666,7 @@ impl Transpiler for RustTranspiler {
         arena
             .text("(")
             .append(self.transpile_expr(arena, array))
-            .append(arena.text(".len() as i64)"))
+            .append(arena.text(".len() as i32)"))
     }
 
     fn transpile_array_is_empty<'a>(&mut self, arena: &'a Arena<'a>, array: &'a IrExpr) -> Doc<'a> {
@@ -1698,7 +1712,7 @@ impl Transpiler for RustTranspiler {
         arena
             .text("(")
             .append(self.transpile_expr(arena, value))
-            .append(arena.text(" as i64)"))
+            .append(arena.text(" as i32)"))
     }
 
     fn transpile_int_to_float<'a>(&mut self, arena: &'a Arena<'a>, value: &'a IrExpr) -> Doc<'a> {
@@ -1830,7 +1844,7 @@ mod tests {
                 impl View for Test {
                     fn render(self) -> String {
                         let mut output = String::new();
-                        for i in 1_i64..=3_i64 {
+                        for i in 1_i32..=3_i32 {
                             output.push_str(&(i).to_string());
                         }
                         output
@@ -2162,7 +2176,7 @@ mod tests {
 
                 #[derive(Clone, Debug)]
                 pub struct Node {
-                    pub value: i64,
+                    pub value: i32,
                     pub next: Option<Box<Node>>,
                 }
 
@@ -2217,7 +2231,7 @@ mod tests {
 
                 #[derive(Clone, Debug)]
                 pub enum IntList {
-                    Cons { head: i64, tail: Box<IntList> },
+                    Cons { head: i32, tail: Box<IntList> },
                     Nil,
                 }
 
@@ -2279,7 +2293,7 @@ mod tests {
 
                 #[derive(Clone, Debug)]
                 pub struct Node {
-                    pub value: i64,
+                    pub value: i32,
                     pub next: Option<Box<Node>>,
                 }
 
@@ -2288,7 +2302,7 @@ mod tests {
                 impl View for Test {
                     fn render(self) -> String {
                         let mut output = String::new();
-                        let node = Node { value: 2_i64, next: Some(Box::new(Node { value: 1_i64, next: None::<Box<Node>> })) };
+                        let node = Node { value: 2_i32, next: Some(Box::new(Node { value: 1_i32, next: None::<Box<Node>> })) };
                         output.push_str(&(node.value).to_string());
                         output
                     }
@@ -2344,7 +2358,7 @@ mod tests {
 
                 #[derive(Clone, Debug)]
                 pub enum IntList {
-                    Cons { head: i64, tail: Box<IntList> },
+                    Cons { head: i32, tail: Box<IntList> },
                     Nil,
                 }
 
@@ -2353,7 +2367,7 @@ mod tests {
                 impl View for Test {
                     fn render(self) -> String {
                         let mut output = String::new();
-                        let list = IntList::Cons { head: 1_i64, tail: Box::new(IntList::Nil) };
+                        let list = IntList::Cons { head: 1_i32, tail: Box::new(IntList::Nil) };
                         output.push_str("done");
                         output
                     }

@@ -181,7 +181,7 @@ pub enum IrExpr {
     FloatLiteral { value: f64, id: ExprId },
 
     /// An integer literal expression, e.g. 42
-    IntLiteral { value: i64, id: ExprId },
+    IntLiteral { value: i32, id: ExprId },
 
     /// An array literal expression, e.g. [1, 2, 3]
     ArrayLiteral {

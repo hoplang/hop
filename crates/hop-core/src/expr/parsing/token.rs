@@ -7,7 +7,7 @@ pub enum Token {
     Identifier(CheapString),
     TypeName(CheapString),
     StringLiteral(CheapString),
-    IntLiteral(i64),
+    IntLiteral(i32),
     FloatLiteral(f64),
     Comment(CheapString),
     Reserved(CheapString),

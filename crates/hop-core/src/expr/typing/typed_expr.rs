@@ -32,7 +32,7 @@ pub enum TypedExpr {
     FloatLiteral { value: f64 },
 
     /// An integer literal expression, e.g. 42
-    IntLiteral { value: i64 },
+    IntLiteral { value: i32 },
 
     /// An array literal expression, e.g. [1, 2, 3]
     ArrayLiteral {

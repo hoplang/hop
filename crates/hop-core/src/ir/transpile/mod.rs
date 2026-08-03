@@ -184,7 +184,7 @@ pub trait Transpiler {
     fn transpile_fragment_empty<'a>(&mut self, arena: &'a Arena<'a>) -> Doc<'a>;
     fn transpile_boolean_literal<'a>(&mut self, arena: &'a Arena<'a>, value: bool) -> Doc<'a>;
     fn transpile_float_literal<'a>(&mut self, arena: &'a Arena<'a>, value: f64) -> Doc<'a>;
-    fn transpile_int_literal<'a>(&mut self, arena: &'a Arena<'a>, value: i64) -> Doc<'a>;
+    fn transpile_int_literal<'a>(&mut self, arena: &'a Arena<'a>, value: i32) -> Doc<'a>;
     fn transpile_array_literal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
@@ -240,7 +240,8 @@ pub trait Transpiler {
         right: &'a IrExpr,
     ) -> Doc<'a>;
     fn transpile_not<'a>(&mut self, arena: &'a Arena<'a>, operand: &'a IrExpr) -> Doc<'a>;
-    fn transpile_numeric_negation<'a>(
+    fn transpile_int_negation<'a>(&mut self, arena: &'a Arena<'a>, operand: &'a IrExpr) -> Doc<'a>;
+    fn transpile_float_negation<'a>(
         &mut self,
         arena: &'a Arena<'a>,
         operand: &'a IrExpr,
@@ -379,9 +380,14 @@ pub trait Transpiler {
                 self.transpile_string_concat(arena, left, right)
             }
             IrExpr::BooleanNegation { operand, .. } => self.transpile_not(arena, operand),
-            IrExpr::NumericNegation { operand, .. } => {
-                self.transpile_numeric_negation(arena, operand)
-            }
+            IrExpr::NumericNegation {
+                operand,
+                operand_type,
+                ..
+            } => match operand_type {
+                NumericType::Int => self.transpile_int_negation(arena, operand),
+                NumericType::Float => self.transpile_float_negation(arena, operand),
+            },
             IrExpr::Equals {
                 left,
                 right,

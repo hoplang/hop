@@ -19,6 +19,8 @@ pub struct TsTranspiler {
     needs_option: bool,
     /// Tracks whether escapeHtml function is used during transpilation
     needs_escape_html: bool,
+    /// Tracks whether the floatToInt helper is used during transpilation
+    needs_float_to_int: bool,
     /// Tracks whether Fragment type is used during transpilation
     needs_fragment: bool,
     /// Registry of the module currently being transpiled
@@ -31,6 +33,7 @@ impl TsTranspiler {
             use_template_literals: false,
             needs_option: false,
             needs_escape_html: false,
+            needs_float_to_int: false,
             needs_fragment: false,
             registry: TypeRegistry::default(),
         }
@@ -152,6 +155,7 @@ impl Transpiler for TsTranspiler {
         // Reset tracking flags for this module
         self.needs_option = false;
         self.needs_escape_html = false;
+        self.needs_float_to_int = false;
         self.needs_fragment = false;
         self.registry = registry.clone();
 
@@ -358,6 +362,25 @@ impl Transpiler for TsTranspiler {
                 .append(arena.line())
                 .append(arena.line());
             result = escape_fn.append(result);
+        }
+
+        if self.needs_float_to_int {
+            let float_to_int_fn = arena
+                .nil()
+                .append(arena.intersperse(
+                    [
+                        arena.text("function floatToInt(f: number): number {"),
+                        arena.text("    if (Number.isNaN(f)) return 0;"),
+                        arena.text("    if (f >= 2147483647) return 2147483647;"),
+                        arena.text("    if (f <= -2147483648) return -2147483648;"),
+                        arena.text("    return Math.trunc(f);"),
+                        arena.text("}"),
+                    ],
+                    arena.hardline(),
+                ))
+                .append(arena.line())
+                .append(arena.line());
+            result = float_to_int_fn.append(result);
         }
 
         // Prepend Option namespace if needed (after transpilation determined it's used)
@@ -965,10 +988,19 @@ impl Transpiler for TsTranspiler {
     }
 
     fn transpile_float_literal<'a>(&mut self, arena: &'a Arena<'a>, value: f64) -> Doc<'a> {
-        arena.text(format!("({} as number)", value))
+        let text = if value.is_nan() {
+            "(NaN as number)".to_string()
+        } else if value == f64::INFINITY {
+            "(Infinity as number)".to_string()
+        } else if value == f64::NEG_INFINITY {
+            "(-Infinity as number)".to_string()
+        } else {
+            format!("({:?} as number)", value)
+        };
+        arena.text(text)
     }
 
-    fn transpile_int_literal<'a>(&mut self, arena: &'a Arena<'a>, value: i64) -> Doc<'a> {
+    fn transpile_int_literal<'a>(&mut self, arena: &'a Arena<'a>, value: i32) -> Doc<'a> {
         arena.text(format!("({} as number)", value))
     }
 
@@ -1166,7 +1198,15 @@ impl Transpiler for TsTranspiler {
             .append(arena.text(")"))
     }
 
-    fn transpile_numeric_negation<'a>(
+    fn transpile_int_negation<'a>(&mut self, arena: &'a Arena<'a>, operand: &'a IrExpr) -> Doc<'a> {
+        arena
+            .nil()
+            .append(arena.text("((-("))
+            .append(self.transpile_expr(arena, operand))
+            .append(arena.text(")) | 0)"))
+    }
+
+    fn transpile_float_negation<'a>(
         &mut self,
         arena: &'a Arena<'a>,
         operand: &'a IrExpr,
@@ -1231,11 +1271,11 @@ impl Transpiler for TsTranspiler {
     ) -> Doc<'a> {
         arena
             .nil()
-            .append(arena.text("("))
+            .append(arena.text("(("))
             .append(self.transpile_expr(arena, left))
             .append(arena.text(" + "))
             .append(self.transpile_expr(arena, right))
-            .append(arena.text(")"))
+            .append(arena.text(") | 0)"))
     }
 
     fn transpile_float_add<'a>(
@@ -1261,11 +1301,11 @@ impl Transpiler for TsTranspiler {
     ) -> Doc<'a> {
         arena
             .nil()
-            .append(arena.text("("))
+            .append(arena.text("(("))
             .append(self.transpile_expr(arena, left))
             .append(arena.text(" - "))
             .append(self.transpile_expr(arena, right))
-            .append(arena.text(")"))
+            .append(arena.text(") | 0)"))
     }
 
     fn transpile_float_subtract<'a>(
@@ -1291,9 +1331,9 @@ impl Transpiler for TsTranspiler {
     ) -> Doc<'a> {
         arena
             .nil()
-            .append(arena.text("("))
+            .append(arena.text("Math.imul("))
             .append(self.transpile_expr(arena, left))
-            .append(arena.text(" * "))
+            .append(arena.text(", "))
             .append(self.transpile_expr(arena, right))
             .append(arena.text(")"))
     }
@@ -1580,8 +1620,9 @@ impl Transpiler for TsTranspiler {
     }
 
     fn transpile_float_to_int<'a>(&mut self, arena: &'a Arena<'a>, value: &'a IrExpr) -> Doc<'a> {
+        self.needs_float_to_int = true;
         arena
-            .text("Math.trunc(")
+            .text("floatToInt(")
             .append(self.transpile_expr(arena, value))
             .append(arena.text(")"))
     }

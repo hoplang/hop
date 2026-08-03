@@ -7,7 +7,7 @@ use crate::symbols::{field_name::FieldName, type_name::TypeName};
 pub enum Value {
     String(String),
     Bool(bool),
-    Int(i64),
+    Int(i32),
     Float(f64),
     Array(Vec<Value>),
     Record(HashMap<FieldName, Value>),
@@ -37,7 +37,7 @@ impl Value {
         }
     }
 
-    pub fn as_i64(&self) -> Option<i64> {
+    pub fn as_i32(&self) -> Option<i32> {
         match self {
             Value::Int(i) => Some(*i),
             _ => None,

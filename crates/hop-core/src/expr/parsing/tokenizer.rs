@@ -305,18 +305,15 @@ pub fn next(
                     }
                 }
             } else {
-                match number_string.as_str().parse::<i64>() {
+                match number_string.as_str().parse::<i32>() {
                     Ok(i) => (Token::IntLiteral(i), number_string),
-                    Err(_) => match number_string.as_str().parse::<f64>() {
-                        Ok(f) => (Token::FloatLiteral(f), number_string),
-                        Err(_) => {
-                            errors.push(ParseError::new(
-                                ParseErrorKind::InvalidNumberFormat {},
-                                number_string,
-                            ));
-                            return next(iter, errors);
-                        }
-                    },
+                    Err(_) => {
+                        errors.push(ParseError::new(
+                            ParseErrorKind::IntLiteralOutOfRange {},
+                            number_string,
+                        ));
+                        return next(iter, errors);
+                    }
                 }
             }
         }
@@ -703,6 +700,22 @@ mod tests {
                 token: Identifier("bar")
                 bar
                 ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_integer_literal_beyond_i32_range() {
+        reject(
+            "2147483647 2147483648",
+            expect![[r#"
+                token: IntLiteral(2147483647)
+                2147483647 2147483648
+                ^^^^^^^^^^
+
+                error: Integer literal is too large for Int (maximum is 2147483647)
+                2147483647 2147483648
+                           ^^^^^^^^^^
             "#]],
         );
     }

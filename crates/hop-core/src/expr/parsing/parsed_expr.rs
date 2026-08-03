@@ -40,7 +40,7 @@ pub enum ParsedExpr {
     BooleanLiteral { value: bool, range: DocumentRange },
 
     /// An integer literal expression, e.g. `42`
-    IntLiteral { value: i64, range: DocumentRange },
+    IntLiteral { value: i32, range: DocumentRange },
 
     /// A float literal expression, e.g. `2.5`
     FloatLiteral { value: f64, range: DocumentRange },

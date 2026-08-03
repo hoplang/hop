@@ -342,7 +342,7 @@ pub(crate) enum TypeErrorKind {
     MinMaxOnNonInt { found: Arc<Type> },
 
     #[error("#[examples(min = {min})] must be less than or equal to max = {max}")]
-    MinGreaterThanMax { min: i64, max: i64 },
+    MinGreaterThanMax { min: i32, max: i32 },
 
     #[error(
         "#[examples(min_len = ..., max_len = ...)] is only valid on Array fields, found {found}"
@@ -350,10 +350,10 @@ pub(crate) enum TypeErrorKind {
     MinMaxLenOnNonArray { found: Arc<Type> },
 
     #[error("#[examples(min_len = ..., max_len = ...)] must be non-negative, found {value}")]
-    NegativeLen { value: i64 },
+    NegativeLen { value: i32 },
 
     #[error("#[examples(min_len = {min_len})] must be less than or equal to max_len = {max_len}")]
-    MinLenGreaterThanMaxLen { min_len: i64, max_len: i64 },
+    MinLenGreaterThanMaxLen { min_len: i32, max_len: i32 },
 
     #[error("asset! takes exactly one argument, got {actual}")]
     AssetMacroArity { actual: usize },

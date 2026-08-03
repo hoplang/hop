@@ -283,7 +283,7 @@ impl IrBuilder {
         }
     }
 
-    pub fn int(&self, n: i64) -> IrExpr {
+    pub fn int(&self, n: i32) -> IrExpr {
         IrExpr::IntLiteral {
             value: n,
             id: self.next_id(),
@@ -293,6 +293,13 @@ impl IrBuilder {
     pub fn bool(&self, b: bool) -> IrExpr {
         IrExpr::BooleanLiteral {
             value: b,
+            id: self.next_id(),
+        }
+    }
+
+    pub fn float(&self, f: f64) -> IrExpr {
+        IrExpr::FloatLiteral {
+            value: f,
             id: self.next_id(),
         }
     }
@@ -517,6 +524,32 @@ impl IrBuilder {
             value
         );
         IrExpr::IntToString {
+            value: Box::new(value),
+            id: self.next_id(),
+        }
+    }
+
+    pub fn float_to_int(&self, value: IrExpr) -> IrExpr {
+        assert_eq!(
+            *value.as_type(),
+            Type::Float,
+            "FloatToInt expects Float operand, got: {}",
+            value
+        );
+        IrExpr::FloatToInt {
+            value: Box::new(value),
+            id: self.next_id(),
+        }
+    }
+
+    pub fn int_to_float(&self, value: IrExpr) -> IrExpr {
+        assert_eq!(
+            *value.as_type(),
+            Type::Int,
+            "IntToFloat expects Int operand, got: {}",
+            value
+        );
+        IrExpr::IntToFloat {
             value: Box::new(value),
             id: self.next_id(),
         }

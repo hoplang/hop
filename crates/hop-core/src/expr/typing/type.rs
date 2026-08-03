@@ -53,13 +53,13 @@ pub struct ExamplesAnnotation {
     /// Regex pattern for String fields.
     pub pattern: Option<String>,
     /// Minimum value for Int fields.
-    pub min: Option<i64>,
+    pub min: Option<i32>,
     /// Maximum value for Int fields.
-    pub max: Option<i64>,
+    pub max: Option<i32>,
     /// Minimum length for Array fields.
-    pub min_len: Option<i64>,
+    pub min_len: Option<i32>,
     /// Maximum length for Array fields.
-    pub max_len: Option<i64>,
+    pub max_len: Option<i32>,
 }
 
 /// An EquatableType is a type where its values can be compared

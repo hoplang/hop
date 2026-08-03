@@ -20,8 +20,6 @@ pub enum EvalError {
     ViewNotFound { view: TypeName },
     #[error("Missing required parameter '{param}' for view '{view}'")]
     MissingParameter { view: TypeName, param: VarName },
-    #[error("integer overflow: {operation}")]
-    IntegerOverflow { operation: String },
 }
 
 /// Stack-based environment for the evaluator.
@@ -162,8 +160,8 @@ fn eval_statement(
                 IrForSource::RangeInclusive { start, end } => {
                     let start_value = evaluate_expr(start, env)?;
                     let end_value = evaluate_expr(end, env)?;
-                    let start_int = start_value.as_i64().expect("Expected integer value");
-                    let end_int = end_value.as_i64().expect("Expected integer value");
+                    let start_int = start_value.as_i32().expect("Expected integer value");
+                    let end_int = end_value.as_i32().expect("Expected integer value");
 
                     for i in start_int..=end_int {
                         if let Some(var) = var {
@@ -411,14 +409,8 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value, EvalError> {
             let val = evaluate_expr(operand, env)?;
             match operand_type {
                 NumericType::Int => {
-                    let int_val = val.as_i64().expect("Expected integer value");
-                    let negated =
-                        int_val
-                            .checked_neg()
-                            .ok_or_else(|| EvalError::IntegerOverflow {
-                                operation: format!("-({})", int_val),
-                            })?;
-                    Ok(Value::Int(negated))
+                    let int_val = val.as_i32().expect("Expected integer value");
+                    Ok(Value::Int(int_val.wrapping_neg()))
                 }
                 NumericType::Float => {
                     let float_val = val.as_f64().expect("Expected float value");
@@ -458,8 +450,8 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value, EvalError> {
         } => {
             let left_val = evaluate_expr(left, env)?;
             let right_val = evaluate_expr(right, env)?;
-            let left_int = left_val.as_i64().expect("Expected integer value");
-            let right_int = right_val.as_i64().expect("Expected integer value");
+            let left_int = left_val.as_i32().expect("Expected integer value");
+            let right_int = right_val.as_i32().expect("Expected integer value");
             Ok(Value::Bool(left_int == right_int))
         }
         IrExpr::Equals {
@@ -485,8 +477,8 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value, EvalError> {
 
             let result = match operand_types {
                 ComparableType::Int => {
-                    let left_int = left_val.as_i64().expect("Expected integer value");
-                    let right_int = right_val.as_i64().expect("Expected integer value");
+                    let left_int = left_val.as_i32().expect("Expected integer value");
+                    let right_int = right_val.as_i32().expect("Expected integer value");
                     left_int < right_int
                 }
                 ComparableType::Float => {
@@ -509,8 +501,8 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value, EvalError> {
 
             let result = match operand_types {
                 ComparableType::Int => {
-                    let left_int = left_val.as_i64().expect("Expected integer value");
-                    let right_int = right_val.as_i64().expect("Expected integer value");
+                    let left_int = left_val.as_i32().expect("Expected integer value");
+                    let right_int = right_val.as_i32().expect("Expected integer value");
                     left_int <= right_int
                 }
                 ComparableType::Float => {
@@ -549,14 +541,9 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value, EvalError> {
 
             match operand_types {
                 NumericType::Int => {
-                    let left_int = left_val.as_i64().expect("Expected integer value");
-                    let right_int = right_val.as_i64().expect("Expected integer value");
-                    let sum = left_int.checked_add(right_int).ok_or_else(|| {
-                        EvalError::IntegerOverflow {
-                            operation: format!("{} + {}", left_int, right_int),
-                        }
-                    })?;
-                    Ok(Value::Int(sum))
+                    let left_int = left_val.as_i32().expect("Expected integer value");
+                    let right_int = right_val.as_i32().expect("Expected integer value");
+                    Ok(Value::Int(left_int.wrapping_add(right_int)))
                 }
                 NumericType::Float => {
                     let left_float = left_val.as_f64().expect("Expected float value");
@@ -577,14 +564,9 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value, EvalError> {
 
             match operand_types {
                 NumericType::Int => {
-                    let left_int = left_val.as_i64().expect("Expected integer value");
-                    let right_int = right_val.as_i64().expect("Expected integer value");
-                    let difference = left_int.checked_sub(right_int).ok_or_else(|| {
-                        EvalError::IntegerOverflow {
-                            operation: format!("{} - {}", left_int, right_int),
-                        }
-                    })?;
-                    Ok(Value::Int(difference))
+                    let left_int = left_val.as_i32().expect("Expected integer value");
+                    let right_int = right_val.as_i32().expect("Expected integer value");
+                    Ok(Value::Int(left_int.wrapping_sub(right_int)))
                 }
                 NumericType::Float => {
                     let left_float = left_val.as_f64().expect("Expected float value");
@@ -605,14 +587,9 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value, EvalError> {
 
             match operand_types {
                 NumericType::Int => {
-                    let left_int = left_val.as_i64().expect("Expected integer value");
-                    let right_int = right_val.as_i64().expect("Expected integer value");
-                    let product = left_int.checked_mul(right_int).ok_or_else(|| {
-                        EvalError::IntegerOverflow {
-                            operation: format!("{} * {}", left_int, right_int),
-                        }
-                    })?;
-                    Ok(Value::Int(product))
+                    let left_int = left_val.as_i32().expect("Expected integer value");
+                    let right_int = right_val.as_i32().expect("Expected integer value");
+                    Ok(Value::Int(left_int.wrapping_mul(right_int)))
                 }
                 NumericType::Float => {
                     let left_float = left_val.as_f64().expect("Expected float value");
@@ -760,7 +737,7 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value, EvalError> {
         IrExpr::ArrayLength { array, .. } => {
             let array_val = evaluate_expr(array, env)?;
             match array_val {
-                Value::Array(arr) => Ok(Value::Int(arr.len() as i64)),
+                Value::Array(arr) => Ok(Value::Int(arr.len() as i32)),
                 _ => panic!("ArrayLength requires an array argument"),
             }
         }
@@ -804,7 +781,7 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value, EvalError> {
         IrExpr::FloatToInt { value, .. } => {
             let float_val = evaluate_expr(value, env)?;
             match float_val {
-                Value::Float(f) => Ok(Value::Int(f as i64)),
+                Value::Float(f) => Ok(Value::Int(f as i32)),
                 Value::Int(i) => Ok(Value::Int(i)), // Already an int
                 _ => panic!("FloatToInt requires a float argument"),
             }
@@ -860,6 +837,117 @@ mod tests {
             }
             Ok(())
         });
+    }
+
+    #[test]
+    fn should_wrap_int_addition_at_i32_boundary() {
+        check(
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    let sum = t.add(t.int(2147483647), t.int(1));
+                    t.write_expr_escaped(t.int_to_string(sum));
+                })
+                .build(),
+            vec![],
+            expect![[r#"
+                -- before --
+                view Test() {
+                  write_escaped((2147483647 + 1).to_string())
+                }
+
+                -- after --
+                -2147483648
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_wrap_int_multiplication() {
+        check(
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    let product = t.mul(t.int(65536), t.int(65536));
+                    t.write_expr_escaped(t.int_to_string(product));
+                })
+                .build(),
+            vec![],
+            expect![[r#"
+                -- before --
+                view Test() {
+                  write_escaped((65536 * 65536).to_string())
+                }
+
+                -- after --
+                0
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_wrap_negation_of_i32_min() {
+        check(
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    let min = t.add(t.int(-2147483647), t.int(-1));
+                    let negated = t.neg(min);
+                    t.write_expr_escaped(t.int_to_string(negated));
+                })
+                .build(),
+            vec![],
+            expect![[r#"
+                -- before --
+                view Test() {
+                  write_escaped((-(-2147483647 + -1)).to_string())
+                }
+
+                -- after --
+                -2147483648
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_saturate_float_to_int() {
+        check(
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    let converted = t.float_to_int(t.float(1e19));
+                    t.write_expr_escaped(t.int_to_string(converted));
+                })
+                .build(),
+            vec![],
+            expect![[r#"
+                -- before --
+                view Test() {
+                  write_escaped(10000000000000000000.to_int().to_string())
+                }
+
+                -- after --
+                2147483647
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_convert_nan_to_zero_in_float_to_int() {
+        check(
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    let converted = t.float_to_int(t.float(f64::NAN));
+                    t.write_expr_escaped(t.int_to_string(converted));
+                })
+                .build(),
+            vec![],
+            expect![[r#"
+                -- before --
+                view Test() {
+                  write_escaped(NaN.to_int().to_string())
+                }
+
+                -- after --
+                0
+            "#]],
+        );
     }
 
     #[test]
