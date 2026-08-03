@@ -7,6 +7,8 @@ use crate::orchestrator::{OrchestrateOptions, orchestrate};
 use crate::program::Program;
 use crate::symbols::type_name::TypeName;
 use expect_test::Expect;
+use indoc::formatdoc;
+use indoc::indoc;
 use std::collections::HashMap;
 use std::fs;
 use std::process::Command;
@@ -20,10 +22,10 @@ fn execute_typescript(code: &str) -> Result<String, String> {
 
     fs::write(&module_file, code).map_err(|e| format!("Failed to write module file: {}", e))?;
 
-    let runner_code = r#"
-import { Test } from './module.ts';
-console.log(Test());
-"#;
+    let runner_code = indoc! {r#"
+      import { Test } from './module.ts';
+      console.log(Test());
+    "#};
 
     fs::write(&runner_file, runner_code)
         .map_err(|e| format!("Failed to write runner file: {}", e))?;
@@ -74,21 +76,17 @@ fn typecheck_typescript(code: &str) -> Result<(), String> {
 fn execute_rust(code: &str) -> Result<String, String> {
     let temp_dir = TempDir::new().map_err(|e| format!("Failed to create temp dir: {}", e))?;
 
-    // Create wrapper that calls the Test struct's render method
-    let main_code = format!(
-        r#"{}
-
-fn main() {{
-    print!("{{}}", Test {{}}.render());
-}}
-"#,
-        code
-    );
+    let main_code = formatdoc! {r#"
+        {code}
+        
+        fn main() {{
+            print!("{{}}", Test {{}}.render());
+        }}
+    "#};
 
     let main_rs = temp_dir.path().join("main.rs");
     fs::write(&main_rs, main_code).map_err(|e| format!("Failed to write main.rs: {}", e))?;
 
-    // Compile with rustc
     let binary_path = temp_dir.path().join("hoptest");
     let compile_output = Command::new("rustc")
         .arg("--edition=2021")
@@ -106,7 +104,6 @@ fn main() {{
         ));
     }
 
-    // Execute
     let output = Command::new(&binary_path)
         .output()
         .map_err(|e| format!("Failed to execute Rust binary: {}", e))?;
