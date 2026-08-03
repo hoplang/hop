@@ -320,6 +320,7 @@ impl IrGenerator<'_, '_> {
             Var,
             FieldAccess,
             Let,
+            RecordDestructure,
             BoolMatch,
             OptionMatch,
             EnumMatch,
@@ -361,6 +362,9 @@ impl IrGenerator<'_, '_> {
         }
         if depth > 0 {
             productions.extend([P::Let, P::BoolMatch, P::OptionMatch]);
+            if !self.records.is_empty() {
+                productions.push(P::RecordDestructure);
+            }
             if !self.enums.is_empty() {
                 productions.push(P::EnumMatch);
             }
@@ -419,6 +423,25 @@ impl IrGenerator<'_, '_> {
                 b.let_expr(&self.fresh_var_name(), value, |b| {
                     self.expr(b, target, depth - 1)
                 })
+            }
+            P::RecordDestructure => {
+                let info = self.u.choose(&self.records).unwrap().clone();
+                let subject_ty = b.resolve_type(&info.name);
+                let subject = self.expr(b, &subject_ty, depth - 1);
+                let mut bindings: Vec<(String, String)> = Vec::new();
+                for (field, _) in &info.fields {
+                    if self.coin() {
+                        bindings.push((field.clone(), self.fresh_var_name()));
+                    }
+                }
+                b.record_destructure_expr(
+                    subject,
+                    bindings
+                        .iter()
+                        .map(|(f, v)| (f.as_str(), v.as_str()))
+                        .collect(),
+                    |b| self.expr(b, target, depth - 1),
+                )
             }
             P::BoolMatch => {
                 let subject = self.expr(b, &Type::Bool, depth - 1);
