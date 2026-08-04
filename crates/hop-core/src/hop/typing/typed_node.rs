@@ -5,7 +5,6 @@ use crate::document_id::DocumentId;
 use crate::expr::TypedExpr;
 use crate::expr::patterns::{EnumPattern, Match};
 use crate::html::HtmlElement;
-use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use pretty::BoxDoc;
@@ -102,12 +101,6 @@ pub enum TypedNode {
         var: VarName,
         fragment_body: Vec<TypedNode>,
         body: Vec<TypedNode>,
-    },
-
-    LetRecordDestructure {
-        subject: TypedExpr,
-        bindings: Vec<(FieldName, VarName)>,
-        children: Vec<TypedNode>,
     },
 
     Doctype {
@@ -275,39 +268,6 @@ impl TypedNode {
                     .append(render(body))
                     .append(BoxDoc::line())
                     .append(BoxDoc::text("</let>"))
-            }
-            TypedNode::LetRecordDestructure {
-                subject,
-                bindings,
-                children,
-            } => {
-                let bindings_doc = BoxDoc::intersperse(
-                    bindings.iter().map(|(field, var)| {
-                        BoxDoc::text(field.as_str())
-                            .append(BoxDoc::text(": "))
-                            .append(BoxDoc::text(var.as_str()))
-                    }),
-                    BoxDoc::text(", "),
-                );
-                let tag = BoxDoc::text("<let {")
-                    .append(bindings_doc)
-                    .append(BoxDoc::text("} = "))
-                    .append(subject.to_doc())
-                    .append(BoxDoc::text("}>"));
-                if children.is_empty() {
-                    tag.append(BoxDoc::text("</let>"))
-                } else {
-                    tag.append(
-                        BoxDoc::line()
-                            .append(BoxDoc::intersperse(
-                                children.iter().map(|c| c.to_doc()),
-                                BoxDoc::line(),
-                            ))
-                            .nest(2),
-                    )
-                    .append(BoxDoc::line())
-                    .append(BoxDoc::text("</let>"))
-                }
             }
             TypedNode::Match { match_ } => match match_ {
                 Match::Enum { subject, arms } => {

@@ -3,7 +3,6 @@ use crate::ir::{
     IrExpr,
     ast::{IrStatement, StatementId, traverse_statements_mut},
 };
-use crate::symbols::field_name::FieldName;
 use crate::symbols::var_name::VarName;
 use std::collections::{HashMap, HashSet};
 
@@ -18,16 +17,12 @@ struct UnusedVars {
     /// distinguishes bindings in different arms even when they share a field
     /// name)
     unused_enum_bindings: HashSet<VarName>,
-    /// Record destructures with unused field bindings
-    unused_record_bindings: HashSet<(StatementId, FieldName)>,
 }
 
 /// A pass that eliminates unused variable declarations.
 /// - Unused let statements are replaced with their body
 /// - Unused Option match bindings are set to `_` (wildcard)
 /// - Unused Enum match bindings are removed from the bindings list
-/// - Unused record destructure bindings are removed; an empty destructure is
-///   replaced with its body
 pub fn eliminate_unused_variable_declarations(body: &mut Vec<IrStatement>) {
     loop {
         let unused_vars = collect_unused_vars(body);
@@ -69,34 +64,6 @@ pub fn eliminate_unused_variable_declarations(body: &mut Vec<IrStatement>) {
                         }
                         transformed.push(IrStatement::Match { id, match_ });
                     }
-                    IrStatement::LetRecordDestructure {
-                        id,
-                        subject,
-                        mut bindings,
-                        body,
-                    } => {
-                        let before = bindings.len();
-                        bindings.retain(|(field_name, _)| {
-                            !unused_vars
-                                .unused_record_bindings
-                                .contains(&(id, field_name.clone()))
-                        });
-                        if bindings.len() != before {
-                            changed = true;
-                        }
-                        if bindings.is_empty() {
-                            // An empty destructure is dropped, keeping its body.
-                            changed = true;
-                            transformed.extend(body);
-                        } else {
-                            transformed.push(IrStatement::LetRecordDestructure {
-                                id,
-                                subject,
-                                bindings,
-                                body,
-                            });
-                        }
-                    }
                     other => transformed.push(other),
                 }
             }
@@ -122,7 +89,6 @@ fn collect_unused_vars(body: &[IrStatement]) -> UnusedVars {
     let mut let_bindings: HashMap<VarName, StatementId> = HashMap::new();
     let mut option_bindings: HashMap<VarName, StatementId> = HashMap::new();
     let mut enum_bindings: HashSet<VarName> = HashSet::new();
-    let mut record_bindings: HashMap<VarName, (StatementId, FieldName)> = HashMap::new();
 
     for stmt in body {
         stmt.traverse(&mut |s| {
@@ -135,13 +101,6 @@ fn collect_unused_vars(body: &[IrStatement]) -> UnusedVars {
                         prev.is_none(),
                         "duplicate variable name `{var}` in let_vars"
                     );
-                }
-                IrStatement::LetRecordDestructure { id, bindings, .. } => {
-                    for (field_name, var_name) in bindings {
-                        let prev =
-                            record_bindings.insert(var_name.clone(), (*id, field_name.clone()));
-                        assert!(prev.is_none(), "duplicate record binding name `{var_name}`");
-                    }
                 }
                 IrStatement::Match { id, match_ } => {
                     match match_ {
@@ -200,17 +159,10 @@ fn collect_unused_vars(body: &[IrStatement]) -> UnusedVars {
         .cloned()
         .collect();
 
-    let unused_record_bindings: HashSet<(StatementId, FieldName)> = record_bindings
-        .iter()
-        .filter(|(binding_name, _)| !used_var_names.contains(*binding_name))
-        .map(|(_, (id, field_name))| (*id, field_name.clone()))
-        .collect();
-
     UnusedVars {
         unused_lets,
         unused_option_bindings,
         unused_enum_bindings,
-        unused_record_bindings,
     }
 }
 
@@ -1330,166 +1282,6 @@ mod tests {
                       }
                     }
                   }
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_eliminate_unused_record_destructure_binding() {
-        let module = IrModuleBuilder::new()
-            .record("Point", [("x", "String"), ("y", "String")])
-            .view_no_params("Test", |t| {
-                let point = t.record("Point", vec![("x", t.str("hi")), ("y", t.str("bye"))]);
-                t.record_destructure_stmt(point, vec![("x", "a"), ("y", "b")], |t| {
-                    t.write_expr(t.var("a"), false);
-                });
-            })
-            .build();
-
-        check(
-            module,
-            expect![[r#"
-                -- before --
-                record Point {
-                  x: String,
-                  y: String,
-                }
-                view Test() {
-                  let {x: a, y: b} = Point {x: "hi", y: "bye"} in {
-                    write_expr(a)
-                  }
-                }
-
-                -- after --
-                record Point {
-                  x: String,
-                  y: String,
-                }
-                view Test() {
-                  let {x: a} = Point {x: "hi", y: "bye"} in {
-                    write_expr(a)
-                  }
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_eliminate_empty_record_destructure() {
-        let module = IrModuleBuilder::new()
-            .record("Point", [("x", "String"), ("y", "String")])
-            .view_no_params("Test", |t| {
-                let point = t.record("Point", vec![("x", t.str("hi")), ("y", t.str("bye"))]);
-                t.record_destructure_stmt(point, vec![("x", "a")], |t| {
-                    t.write("no bindings used");
-                });
-            })
-            .build();
-
-        check(
-            module,
-            expect![[r#"
-                -- before --
-                record Point {
-                  x: String,
-                  y: String,
-                }
-                view Test() {
-                  let {x: a} = Point {x: "hi", y: "bye"} in {
-                    write("no bindings used")
-                  }
-                }
-
-                -- after --
-                record Point {
-                  x: String,
-                  y: String,
-                }
-                view Test() {
-                  write("no bindings used")
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_preserve_used_record_destructure_binding() {
-        let module = IrModuleBuilder::new()
-            .record("Point", [("x", "String"), ("y", "String")])
-            .view_no_params("Test", |t| {
-                let point = t.record("Point", vec![("x", t.str("hi")), ("y", t.str("bye"))]);
-                t.record_destructure_stmt(point, vec![("x", "a")], |t| {
-                    t.write_expr(t.var("a"), false);
-                });
-            })
-            .build();
-
-        check(
-            module,
-            expect![[r#"
-                -- before --
-                record Point {
-                  x: String,
-                  y: String,
-                }
-                view Test() {
-                  let {x: a} = Point {x: "hi", y: "bye"} in {
-                    write_expr(a)
-                  }
-                }
-
-                -- after --
-                record Point {
-                  x: String,
-                  y: String,
-                }
-                view Test() {
-                  let {x: a} = Point {x: "hi", y: "bye"} in {
-                    write_expr(a)
-                  }
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_eliminate_cascading_unused_record_destructure_binding() {
-        let module = IrModuleBuilder::new()
-            .record("Point", [("x", "String"), ("y", "String")])
-            .view_no_params("Test", |t| {
-                let point = t.record("Point", vec![("x", t.str("hi")), ("y", t.str("bye"))]);
-                t.record_destructure_stmt(point, vec![("x", "v")], |t| {
-                    t.let_stmt("a", t.var("v"), |t| {
-                        t.write("constant");
-                    });
-                });
-            })
-            .build();
-
-        check(
-            module,
-            expect![[r#"
-                -- before --
-                record Point {
-                  x: String,
-                  y: String,
-                }
-                view Test() {
-                  let {x: v} = Point {x: "hi", y: "bye"} in {
-                    let a = v in {
-                      write("constant")
-                    }
-                  }
-                }
-
-                -- after --
-                record Point {
-                  x: String,
-                  y: String,
-                }
-                view Test() {
-                  write("constant")
                 }
             "#]],
         );

@@ -240,7 +240,6 @@ pub fn perform_partial_evaluation(body: &mut Vec<IrStatement>, registry: &TypeRe
                     variable_bindings.insert(var.clone(), value.id());
                 }
                 IrStatement::LetFragment { .. } => {}
-                IrStatement::LetRecordDestructure { .. } => {}
                 IrStatement::For { .. } => {}
                 IrStatement::Match { .. } => {}
                 IrStatement::Write { .. }
@@ -445,7 +444,6 @@ pub fn perform_partial_evaluation(body: &mut Vec<IrStatement>, registry: &TypeRe
                         variable_bindings.insert(var_name.clone(), value.id());
                         let_expr_bodies.push((body.id(), expr.id()));
                     }
-                    IrExpr::LetRecordDestructure { .. } => {}
                     IrExpr::RecordLiteral { .. } => {
                         // Not yet implemented
                     }

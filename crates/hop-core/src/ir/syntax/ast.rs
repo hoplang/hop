@@ -126,14 +126,6 @@ pub enum IrStatement {
         body: Vec<IrStatement>,
     },
 
-    /// An irrefutable record destructure, e.g. `let { x: a, y: b } = subject in { ... }`.
-    LetRecordDestructure {
-        id: StatementId,
-        subject: IrExpr,
-        bindings: Vec<(FieldName, VarName)>,
-        body: Vec<IrStatement>,
-    },
-
     /// Render `fragment_body` into a fresh buffer and bind the result to `var`
     /// as a Fragment value, then execute `body`.
     LetFragment {
@@ -320,15 +312,6 @@ pub enum IrExpr {
         id: ExprId,
     },
 
-    /// An irrefutable record destructure, e.g. `let { x: a, y: b } = subject in body`.
-    LetRecordDestructure {
-        subject: Box<IrExpr>,
-        bindings: Vec<(FieldName, VarName)>,
-        body: Box<IrExpr>,
-        kind: Arc<Type>,
-        id: ExprId,
-    },
-
     /// Array length expression, e.g. items.len()
     ArrayLength { array: Box<IrExpr>, id: ExprId },
 
@@ -370,7 +353,6 @@ impl IrStatement {
             },
             IrStatement::Let { value, .. } => value.traverse(f),
             IrStatement::LetFragment { .. } => {}
-            IrStatement::LetRecordDestructure { subject, .. } => subject.traverse(f),
             IrStatement::Match { match_, .. } => match_.subject().traverse(f),
             IrStatement::ComponentInvocation { args, .. } => {
                 for arg in args {
@@ -396,7 +378,6 @@ impl IrStatement {
             },
             IrStatement::Let { value, .. } => value.traverse_mut(f),
             IrStatement::LetFragment { .. } => {}
-            IrStatement::LetRecordDestructure { subject, .. } => subject.traverse_mut(f),
             IrStatement::Match { match_, .. } => match_.subject_mut().traverse_mut(f),
             IrStatement::ComponentInvocation { args, .. } => {
                 for arg in args {
@@ -433,11 +414,6 @@ impl IrStatement {
                 for stmt in fragment_body {
                     stmt.traverse(f);
                 }
-                for stmt in body {
-                    stmt.traverse(f);
-                }
-            }
-            IrStatement::LetRecordDestructure { body, .. } => {
                 for stmt in body {
                     stmt.traverse(f);
                 }
@@ -551,38 +527,6 @@ impl IrStatement {
                         .nest(2)
                 })
                 .append(BoxDoc::text("}")),
-            IrStatement::LetRecordDestructure {
-                subject,
-                bindings,
-                body,
-                ..
-            } => {
-                let bindings_doc = BoxDoc::intersperse(
-                    bindings.iter().map(|(field, var)| {
-                        BoxDoc::text(field.as_str())
-                            .append(BoxDoc::text(": "))
-                            .append(BoxDoc::text(var.as_str()))
-                    }),
-                    BoxDoc::text(", "),
-                );
-                BoxDoc::text("let {")
-                    .append(bindings_doc)
-                    .append(BoxDoc::text("} = "))
-                    .append(subject.to_doc())
-                    .append(BoxDoc::text(" in {"))
-                    .append(if body.is_empty() {
-                        BoxDoc::nil()
-                    } else {
-                        BoxDoc::line()
-                            .append(BoxDoc::intersperse(
-                                body.iter().map(|stmt| stmt.to_doc()),
-                                BoxDoc::line(),
-                            ))
-                            .append(BoxDoc::line())
-                            .nest(2)
-                    })
-                    .append(BoxDoc::text("}"))
-            }
             IrStatement::Match { match_, .. } => {
                 fn body_to_doc(body: &[IrStatement]) -> BoxDoc<'_> {
                     if body.is_empty() {
@@ -746,7 +690,6 @@ impl IrExpr {
             | IrExpr::LessThan { id, .. }
             | IrExpr::LessThanOrEqual { id, .. }
             | IrExpr::Let { id, .. }
-            | IrExpr::LetRecordDestructure { id, .. }
             | IrExpr::ArrayLength { id, .. }
             | IrExpr::ArrayIsEmpty { id, .. }
             | IrExpr::StringIsEmpty { id, .. }
@@ -768,8 +711,7 @@ impl IrExpr {
             | IrExpr::EnumLiteral { kind, .. }
             | IrExpr::OptionLiteral { kind, .. }
             | IrExpr::Match { kind, .. }
-            | IrExpr::Let { kind, .. }
-            | IrExpr::LetRecordDestructure { kind, .. } => kind.clone(),
+            | IrExpr::Let { kind, .. } => kind.clone(),
 
             IrExpr::FloatLiteral { .. } | IrExpr::IntToFloat { .. } => Arc::new(Type::Float),
             IrExpr::IntLiteral { .. } => Arc::new(Type::Int),
@@ -824,8 +766,7 @@ impl IrExpr {
             | IrExpr::EnumLiteral { kind, .. }
             | IrExpr::OptionLiteral { kind, .. }
             | IrExpr::Match { kind, .. }
-            | IrExpr::Let { kind, .. }
-            | IrExpr::LetRecordDestructure { kind, .. } => kind,
+            | IrExpr::Let { kind, .. } => kind,
 
             IrExpr::FloatLiteral { .. } | IrExpr::IntToFloat { .. } => &FLOAT_TYPE,
             IrExpr::IntLiteral { .. } => &INT_TYPE,
@@ -1160,27 +1101,6 @@ impl IrExpr {
                 .append(value.to_doc())
                 .append(BoxDoc::text(" in "))
                 .append(body.to_doc()),
-            IrExpr::LetRecordDestructure {
-                subject,
-                bindings,
-                body,
-                ..
-            } => {
-                let bindings_doc = BoxDoc::intersperse(
-                    bindings.iter().map(|(field, var)| {
-                        BoxDoc::text(field.as_str())
-                            .append(BoxDoc::text(": "))
-                            .append(BoxDoc::text(var.as_str()))
-                    }),
-                    BoxDoc::text(", "),
-                );
-                BoxDoc::text("let {")
-                    .append(bindings_doc)
-                    .append(BoxDoc::text("} = "))
-                    .append(subject.to_doc())
-                    .append(BoxDoc::text(" in "))
-                    .append(body.to_doc())
-            }
             IrExpr::TwMerge { operand: value, .. } => BoxDoc::text("tw_merge(")
                 .append(value.to_doc())
                 .append(BoxDoc::text(")")),
@@ -1268,10 +1188,6 @@ impl IrExpr {
             }
             IrExpr::Let { value, body, .. } => {
                 value.traverse(f);
-                body.traverse(f);
-            }
-            IrExpr::LetRecordDestructure { subject, body, .. } => {
-                subject.traverse(f);
                 body.traverse(f);
             }
             IrExpr::OptionLiteral { value, .. } => {
@@ -1385,10 +1301,6 @@ impl IrExpr {
                 value.traverse_mut(f);
                 body.traverse_mut(f);
             }
-            IrExpr::LetRecordDestructure { subject, body, .. } => {
-                subject.traverse_mut(f);
-                body.traverse_mut(f);
-            }
             IrExpr::OptionLiteral { value, .. } => {
                 if let Some(inner) = value {
                     inner.traverse_mut(f);
@@ -1497,9 +1409,6 @@ pub fn traverse_statements_mut(
                 ..
             } => {
                 traverse_statements_mut(fragment_body, f);
-                traverse_statements_mut(body, f);
-            }
-            IrStatement::LetRecordDestructure { body, .. } => {
                 traverse_statements_mut(body, f);
             }
             IrStatement::Match { match_, .. } => {

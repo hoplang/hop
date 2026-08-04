@@ -148,6 +148,8 @@ pub struct FieldBinding {
     pub field_name: FieldName,
     /// The name to bind this field's value to, or None if wildcard pattern.
     pub bound_name: Option<VarName>,
+    /// The type of the field.
+    pub typ: Arc<Type>,
 }
 
 /// A case for an enum variant - may have multiple field bindings.
@@ -631,6 +633,7 @@ fn compile_rows(
                             } else {
                                 Some(var.name)
                             },
+                            typ: var.typ,
                         })
                         .collect();
                     EnumCase {
@@ -665,6 +668,7 @@ fn compile_rows(
                     } else {
                         Some(var.name)
                     },
+                    typ: var.typ,
                 })
                 .collect();
             Some(Decision::SwitchRecord {

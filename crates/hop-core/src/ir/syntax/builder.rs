@@ -897,59 +897,6 @@ impl IrBuilder {
         }
     }
 
-    /// Create a record destructure expression that binds record fields and
-    /// evaluates a body expression.
-    pub fn record_destructure_expr<F>(
-        &self,
-        subject: IrExpr,
-        bindings: Vec<(&str, &str)>,
-        body_fn: F,
-    ) -> IrExpr
-    where
-        F: FnOnce(&Self) -> IrExpr,
-    {
-        let Some(ResolvedType::Record {
-            fields: record_fields,
-            ..
-        }) = self.types.registry().resolve(subject.as_type())
-        else {
-            panic!("record_destructure_expr subject must be a record type")
-        };
-
-        let ir_bindings: Vec<(FieldName, VarName)> = bindings
-            .iter()
-            .map(|(field_name, binding_name)| {
-                (
-                    FieldName::new(field_name).unwrap(),
-                    VarName::new(binding_name).unwrap(),
-                )
-            })
-            .collect();
-
-        let scoped_vars: Vec<(VarName, Arc<Type>)> = bindings
-            .iter()
-            .map(|(field_name, binding_name)| {
-                let field_type = record_fields
-                    .iter()
-                    .find(|(f, _, _)| f.as_str() == *field_name)
-                    .map(|(_, t, _)| t.clone())
-                    .expect("Field not found in record");
-                (VarName::new(binding_name).unwrap(), field_type)
-            })
-            .collect();
-
-        let body = body_fn(&self.scoped(scoped_vars));
-        let kind = body.get_type();
-
-        IrExpr::LetRecordDestructure {
-            subject: Box::new(subject),
-            bindings: ir_bindings,
-            body: Box::new(body),
-            kind,
-            id: self.next_expr_id(),
-        }
-    }
-
     pub fn string_concat(&self, left: IrExpr, right: IrExpr) -> IrExpr {
         assert_eq!(
             *left.as_type(),
@@ -1301,56 +1248,6 @@ impl IrBuilder {
                 subject: Box::new(subject),
                 arms: ir_arms,
             },
-        });
-    }
-
-    /// Create a record destructure statement.
-    /// `bindings` is a list of (field_name, binding_name) pairs.
-    pub fn record_destructure_stmt<F>(
-        &mut self,
-        subject: IrExpr,
-        bindings: Vec<(&str, &str)>,
-        body_fn: F,
-    ) where
-        F: FnOnce(&mut Self),
-    {
-        let Some(ResolvedType::Record {
-            fields: record_fields,
-            ..
-        }) = self.types.registry().resolve(subject.as_type())
-        else {
-            panic!("record_destructure_stmt subject must be a record type")
-        };
-
-        let ir_bindings: Vec<(FieldName, VarName)> = bindings
-            .iter()
-            .map(|(field_name, binding_name)| {
-                (
-                    FieldName::new(field_name).unwrap(),
-                    VarName::new(binding_name).unwrap(),
-                )
-            })
-            .collect();
-
-        let scoped_vars: Vec<(VarName, Arc<Type>)> = bindings
-            .iter()
-            .map(|(field_name, binding_name)| {
-                let field_type = record_fields
-                    .iter()
-                    .find(|(f, _, _)| f.as_str() == *field_name)
-                    .map(|(_, t, _)| t.clone())
-                    .expect("Field not found in record");
-                (VarName::new(binding_name).unwrap(), field_type)
-            })
-            .collect();
-
-        let body = self.in_scope(scoped_vars, body_fn);
-
-        self.statements.push(IrStatement::LetRecordDestructure {
-            id: self.next_statement_id(),
-            subject,
-            bindings: ir_bindings,
-            body,
         });
     }
 

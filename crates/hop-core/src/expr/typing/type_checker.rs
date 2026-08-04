@@ -1783,30 +1783,53 @@ fn decision_to_typed_expr(
         }
 
         Decision::SwitchRecord { variable, case } => {
-            let subject = root_subject.unwrap_or_else(|| TypedExpr::Var {
-                value: variable.name.clone(),
-                kind: variable.typ.clone(),
-            });
+            // The variable the fields are read from: the subject itself when it
+            // is already a variable, otherwise the synthetic variable which is
+            // bound to the subject expression below.
+            let (record_name, record_typ, subject_to_bind) = match root_subject {
+                Some(TypedExpr::Var { value, kind }) => (value, kind, None),
+                Some(subject) => (variable.name.clone(), variable.typ.clone(), Some(subject)),
+                None => (variable.name.clone(), variable.typ.clone(), None),
+            };
 
-            let body = decision_to_typed_expr(&case.body, typed_bodies, result_type.clone(), None);
+            let mut body =
+                decision_to_typed_expr(&case.body, typed_bodies, result_type.clone(), None);
 
+            // Wrap with Let expressions for each field (using FieldAccess)
+            // Iterate in reverse so bindings are in the correct order
             // Skip wildcard bindings (bound_name is None)
-            let bindings: Vec<(FieldName, VarName)> = case
-                .bindings
-                .iter()
-                .filter_map(|binding| {
-                    binding
-                        .bound_name
-                        .as_ref()
-                        .map(|name| (binding.field_name.clone(), name.clone()))
-                })
-                .collect();
+            for binding in case.bindings.iter().rev() {
+                let Some(bound_name) = &binding.bound_name else {
+                    continue;
+                };
 
-            TypedExpr::LetRecordDestructure {
-                subject: Box::new(subject),
-                bindings,
-                body: Box::new(body),
-                kind: result_type,
+                // Create field access: subject.field_name
+                let field_access = TypedExpr::FieldAccess {
+                    record: Box::new(TypedExpr::Var {
+                        value: record_name.clone(),
+                        kind: record_typ.clone(),
+                    }),
+                    field: binding.field_name.clone(),
+                    kind: binding.typ.clone(),
+                };
+
+                let kind = body.get_type();
+                body = TypedExpr::Let {
+                    var: bound_name.clone(),
+                    value: Box::new(field_access),
+                    body: Box::new(body),
+                    kind,
+                };
+            }
+
+            match subject_to_bind {
+                Some(subject) => TypedExpr::Let {
+                    var: record_name,
+                    value: Box::new(subject),
+                    body: Box::new(body),
+                    kind: result_type,
+                },
+                None => body,
             }
         }
     }

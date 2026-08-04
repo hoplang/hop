@@ -192,30 +192,6 @@ fn eval_statement(
             Ok(())
         }
 
-        IrStatement::LetRecordDestructure {
-            id: _,
-            subject,
-            bindings,
-            body,
-        } => {
-            let subject_value = evaluate_expr(subject, env)?;
-            let rec = subject_value
-                .as_record()
-                .expect("Expected record value in destructure");
-            let mut pushed = 0;
-            for (field, var) in bindings {
-                if let Some(field_val) = rec.get(field) {
-                    env.push(var.clone(), field_val.clone());
-                    pushed += 1;
-                }
-            }
-            eval_statements(body, env, output, component_defs)?;
-            for _ in 0..pushed {
-                env.pop();
-            }
-            Ok(())
-        }
-
         IrStatement::Match { id: _, match_ } => match match_ {
             Match::Bool {
                 subject,
@@ -691,29 +667,6 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value, EvalError> {
             let result = evaluate_expr(body, env)?;
             env.pop();
             Ok(result)
-        }
-        IrExpr::LetRecordDestructure {
-            subject,
-            bindings,
-            body,
-            ..
-        } => {
-            let subject_value = evaluate_expr(subject, env)?;
-            let rec = subject_value
-                .as_record()
-                .expect("Expected record value in destructure");
-            let mut pushed = 0;
-            for (field, var) in bindings {
-                if let Some(field_val) = rec.get(field) {
-                    env.push(var.clone(), field_val.clone());
-                    pushed += 1;
-                }
-            }
-            let result = evaluate_expr(body, env);
-            for _ in 0..pushed {
-                env.pop();
-            }
-            result
         }
         IrExpr::TwMerge { operand, .. } => {
             let val = evaluate_expr(operand, env)?;

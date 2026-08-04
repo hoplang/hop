@@ -4,7 +4,6 @@ use crate::document::CheapString;
 use crate::expr::TypedExpr;
 use crate::expr::patterns::{EnumPattern, Match};
 use crate::html::HtmlElement;
-use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use pretty::BoxDoc;
@@ -51,12 +50,6 @@ pub enum InlinedNode {
         var: VarName,
         fragment_body: Vec<InlinedNode>,
         body: Vec<InlinedNode>,
-    },
-
-    LetRecordDestructure {
-        subject: TypedExpr,
-        bindings: Vec<(FieldName, VarName)>,
-        children: Vec<InlinedNode>,
     },
 
     Doctype {
@@ -208,39 +201,6 @@ impl InlinedNode {
                     .append(render(body))
                     .append(BoxDoc::line())
                     .append(BoxDoc::text("</let>"))
-            }
-            InlinedNode::LetRecordDestructure {
-                subject,
-                bindings,
-                children,
-            } => {
-                let bindings_doc = BoxDoc::intersperse(
-                    bindings.iter().map(|(field, var)| {
-                        BoxDoc::text(field.as_str())
-                            .append(BoxDoc::text(": "))
-                            .append(BoxDoc::text(var.as_str()))
-                    }),
-                    BoxDoc::text(", "),
-                );
-                let tag = BoxDoc::text("<let {")
-                    .append(bindings_doc)
-                    .append(BoxDoc::text("} = "))
-                    .append(subject.to_doc())
-                    .append(BoxDoc::text("}>"));
-                if children.is_empty() {
-                    tag.append(BoxDoc::text("</let>"))
-                } else {
-                    tag.append(
-                        BoxDoc::line()
-                            .append(BoxDoc::intersperse(
-                                children.iter().map(|c| c.to_doc()),
-                                BoxDoc::line(),
-                            ))
-                            .nest(2),
-                    )
-                    .append(BoxDoc::line())
-                    .append(BoxDoc::text("</let>"))
-                }
             }
             InlinedNode::Match { match_ } => match match_ {
                 Match::Enum { subject, arms } => {

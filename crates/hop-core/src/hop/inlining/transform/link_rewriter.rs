@@ -82,15 +82,6 @@ impl LinkRewriter {
                     fragment_body: Self::rewrite_links(fragment_body),
                     body: Self::rewrite_links(body),
                 },
-                InlinedNode::LetRecordDestructure {
-                    subject,
-                    bindings,
-                    children,
-                } => InlinedNode::LetRecordDestructure {
-                    subject,
-                    bindings,
-                    children: Self::rewrite_links(children),
-                },
                 InlinedNode::Match { match_ } => InlinedNode::Match {
                     match_: match match_ {
                         Match::Enum { subject, arms } => Match::Enum {

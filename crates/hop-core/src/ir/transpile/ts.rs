@@ -56,29 +56,6 @@ impl TsTranspiler {
     }
 
     // Helper method to wrap a string in the appropriate quotes
-    /// Render the `{ field: var } = subject` object-destructuring pattern.
-    fn transpile_record_destructure_pattern<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        subject: &'a IrExpr,
-        bindings: &'a [(FieldName, VarName)],
-    ) -> Doc<'a> {
-        let bindings_doc = arena.intersperse(
-            bindings.iter().map(|(field, var)| {
-                arena
-                    .text(field.as_str())
-                    .append(arena.text(": "))
-                    .append(arena.text(var.as_str()))
-            }),
-            arena.text(", "),
-        );
-        arena
-            .text("{ ")
-            .append(bindings_doc)
-            .append(arena.text(" } = "))
-            .append(self.transpile_expr(arena, subject))
-    }
-
     fn quote_string(&mut self, s: &str) -> String {
         if self.use_template_literals {
             format!("`{}`", self.escape_string(s))
@@ -725,21 +702,6 @@ impl Transpiler for TsTranspiler {
                     .nest(4),
             )
             .append(arena.text("})();"))
-            .append(arena.hardline())
-            .append(self.transpile_statements(arena, body))
-    }
-
-    fn transpile_let_record_destructure_statement<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        subject: &'a IrExpr,
-        bindings: &'a [(FieldName, VarName)],
-        body: &'a [IrStatement],
-    ) -> Doc<'a> {
-        arena
-            .text("const ")
-            .append(self.transpile_record_destructure_pattern(arena, subject, bindings))
-            .append(arena.text(";"))
             .append(arena.hardline())
             .append(self.transpile_statements(arena, body))
     }
@@ -1518,31 +1480,6 @@ impl Transpiler for TsTranspiler {
                     .append(arena.text(var.as_str()))
                     .append(arena.text(" = "))
                     .append(self.transpile_expr(arena, value))
-                    .append(arena.text(";"))
-                    .append(arena.line())
-                    .append(arena.text("return "))
-                    .append(self.transpile_expr(arena, body))
-                    .append(arena.text(";"))
-                    .nest(2),
-            )
-            .append(arena.line())
-            .append(arena.text("})()"))
-    }
-
-    fn transpile_let_record_destructure_expr<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        subject: &'a IrExpr,
-        bindings: &'a [(FieldName, VarName)],
-        body: &'a IrExpr,
-    ) -> Doc<'a> {
-        arena
-            .text("(() => {")
-            .append(
-                arena
-                    .line()
-                    .append(arena.text("const "))
-                    .append(self.transpile_record_destructure_pattern(arena, subject, bindings))
                     .append(arena.text(";"))
                     .append(arena.line())
                     .append(arena.text("return "))

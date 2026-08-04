@@ -17,7 +17,6 @@ use crate::hop::parsing::parsed_ast::{
 };
 use crate::hop::typing::definition_link::DefinitionLink;
 use crate::html::HtmlElement;
-use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use crate::type_error::{TypeError, TypeErrorKind};
@@ -2009,30 +2008,50 @@ fn decision_to_typed_nodes(
         }
 
         Decision::SwitchRecord { variable, case } => {
-            let subject = root_subject.unwrap_or_else(|| TypedExpr::Var {
-                value: variable.name.clone(),
-                kind: variable.typ.clone(),
-            });
+            // The variable the fields are read from: the subject itself when it
+            // is already a variable, otherwise the synthetic variable which is
+            // bound to the subject expression below.
+            let (record_name, record_typ, subject_to_bind) = match root_subject {
+                Some(TypedExpr::Var { value, kind }) => (value, kind, None),
+                Some(subject) => (variable.name.clone(), variable.typ.clone(), Some(subject)),
+                None => (variable.name.clone(), variable.typ.clone(), None),
+            };
 
-            let body = decision_to_typed_nodes(&case.body, typed_bodies, None);
+            let mut body = decision_to_typed_nodes(&case.body, typed_bodies, None);
 
+            // Wrap with Let nodes for each field (using FieldAccess)
+            // Iterate in reverse so bindings are in the correct order
             // Skip wildcard bindings (bound_name is None)
-            let bindings: Vec<(FieldName, VarName)> = case
-                .bindings
-                .iter()
-                .filter_map(|binding| {
-                    binding
-                        .bound_name
-                        .as_ref()
-                        .map(|name| (binding.field_name.clone(), name.clone()))
-                })
-                .collect();
+            for binding in case.bindings.iter().rev() {
+                let Some(bound_name) = &binding.bound_name else {
+                    continue;
+                };
 
-            vec![TypedNode::LetRecordDestructure {
-                subject,
-                bindings,
-                children: body,
-            }]
+                // Create field access: subject.field_name
+                let field_access = TypedExpr::FieldAccess {
+                    record: Box::new(TypedExpr::Var {
+                        value: record_name.clone(),
+                        kind: record_typ.clone(),
+                    }),
+                    field: binding.field_name.clone(),
+                    kind: binding.typ.clone(),
+                };
+
+                body = vec![TypedNode::Let {
+                    var: bound_name.clone(),
+                    value: field_access,
+                    children: body,
+                }];
+            }
+
+            match subject_to_bind {
+                Some(subject) => vec![TypedNode::Let {
+                    var: record_name,
+                    value: subject,
+                    children: body,
+                }],
+                None => body,
+            }
         }
     }
 }

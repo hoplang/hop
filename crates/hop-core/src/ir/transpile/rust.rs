@@ -83,36 +83,6 @@ impl RustTranspiler {
         }
     }
 
-    /// Render `RecordName { field: var, .. } = &subject`. Destructuring a
-    /// reference binds fields as borrows; `..` ignores unbound fields.
-    fn transpile_record_destructure_pattern<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        subject: &'a IrExpr,
-        bindings: &'a [(FieldName, VarName)],
-    ) -> Doc<'a> {
-        let record_name = match self.registry.resolve(subject.get_type().as_ref()) {
-            Some(ResolvedType::Record { name, .. }) => name.as_str().to_string(),
-            _ => unreachable!("LetRecordDestructure subject must have Record type"),
-        };
-        let bindings_doc = arena.intersperse(
-            bindings.iter().map(|(field, var)| {
-                arena
-                    .text(Self::escape_field_name(field.as_str()))
-                    .append(arena.text(": "))
-                    .append(arena.text(var.as_str()))
-                    .append(arena.text(", "))
-            }),
-            arena.nil(),
-        );
-        arena
-            .text(record_name)
-            .append(arena.text(" { "))
-            .append(bindings_doc)
-            .append(arena.text(".. } = &"))
-            .append(self.transpile_match_subject(arena, subject))
-    }
-
     fn escape_field_name(name: &str) -> String {
         match name {
             "as" | "break" | "const" | "continue" | "crate" | "else" | "enum" | "extern"
@@ -796,22 +766,6 @@ impl Transpiler for RustTranspiler {
             .append(arena.text("};"))
             .append(arena.hardline())
             .append(self.transpile_statements(arena, body))
-    }
-
-    fn transpile_let_record_destructure_statement<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        subject: &'a IrExpr,
-        bindings: &'a [(FieldName, VarName)],
-        body: &'a [IrStatement],
-    ) -> Doc<'a> {
-        let vars: Vec<&str> = bindings.iter().map(|(_, var)| var.as_str()).collect();
-        arena
-            .text("let ")
-            .append(self.transpile_record_destructure_pattern(arena, subject, bindings))
-            .append(arena.text(";"))
-            .append(arena.hardline())
-            .append(self.stmts_with_rebinds(arena, &vars, body))
     }
 
     fn transpile_match_statement<'a>(
@@ -1631,23 +1585,6 @@ impl Transpiler for RustTranspiler {
             .append(self.transpile_expr_owned(arena, value))
             .append(arena.text("; "))
             .append(self.transpile_expr_owned(arena, body))
-            .append(arena.text(" }"))
-    }
-
-    fn transpile_let_record_destructure_expr<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        subject: &'a IrExpr,
-        bindings: &'a [(FieldName, VarName)],
-        body: &'a IrExpr,
-    ) -> Doc<'a> {
-        let vars: Vec<&str> = bindings.iter().map(|(_, var)| var.as_str()).collect();
-        let body_doc = self.expr_with_rebinds(arena, &vars, body);
-        arena
-            .text("{ let ")
-            .append(self.transpile_record_destructure_pattern(arena, subject, bindings))
-            .append(arena.text("; "))
-            .append(body_doc)
             .append(arena.text(" }"))
     }
 

@@ -440,7 +440,7 @@ mod tests {
                 }
                 view Test() {
                   for f in [Flag {value: true}] {
-                    let {value: v_1} = f in {
+                    let v_1 = f.value in {
                       let b = v_1 in {
                         match (b || false) {
                           true => {
@@ -459,7 +459,7 @@ mod tests {
                 }
                 view Test() {
                   for f in [Flag {value: true}] {
-                    let {value: v_1} = f in {
+                    let v_1 = f.value in {
                       let b = v_1 in {
                         match (b || false) {
                           true => {
@@ -519,7 +519,7 @@ mod tests {
                 }
                 view Test() {
                   for c in [Count {n: 57}] {
-                    let {n: v_1} = c in {
+                    let v_1 = c.n in {
                       let v = v_1 in {
                         match (v == 57) {
                           true => {
@@ -538,7 +538,7 @@ mod tests {
                 }
                 view Test() {
                   for c in [Count {n: 57}] {
-                    let {n: v_1} = c in {
+                    let v_1 = c.n in {
                       let v = v_1 in {
                         match (v == 57) {
                           true => {
@@ -596,7 +596,7 @@ mod tests {
                 }
                 view Test() {
                   for f in [Flag {value: true}] {
-                    let {value: v_1} = f in {
+                    let v_1 = f.value in {
                       let b = v_1 in {
                         write_escaped(match b {
                           true => "yes",
@@ -612,7 +612,7 @@ mod tests {
                 }
                 view Test() {
                   for f in [Flag {value: true}] {
-                    let {value: v_1} = f in {
+                    let v_1 = f.value in {
                       let b = v_1 in {
                         write_escaped(match b {
                           true => "yes",
@@ -674,7 +674,7 @@ mod tests {
                 }
                 view Test() {
                   for f in [Flag {value: true}] {
-                    let {value: v_1} = f in {
+                    let v_1 = f.value in {
                       let b = v_1 in {
                         match b {
                           true => {
@@ -694,7 +694,7 @@ mod tests {
                 }
                 view Test() {
                   for f in [Flag {value: true}] {
-                    let {value: v_1} = f in {
+                    let v_1 = f.value in {
                       let b = v_1 in {
                         match b {
                           true => {
@@ -755,7 +755,7 @@ mod tests {
                 }
                 view Test() {
                   for f in [Flag {value: true}] {
-                    let {value: v_1} = f in {
+                    let v_1 = f.value in {
                       let b = v_1 in {
                         match b {
                           true => {
@@ -774,7 +774,7 @@ mod tests {
                 }
                 view Test() {
                   for f in [Flag {value: true}] {
-                    let {value: v_1} = f in {
+                    let v_1 = f.value in {
                       let b = v_1 in {
                         match b {
                           true => {
@@ -2153,10 +2153,10 @@ mod tests {
                   y: String,
                 }
                 view Test() {
-                  let result = let {x: v_1} = Point {
+                  let result = let v_0 = Point {
                     x: "hi",
                     y: "bye",
-                  } in let a = v_1 in a in {
+                  } in let v_1 = v_0.x in let a = v_1 in a in {
                     write("got:")
                     write_escaped(result)
                   }
@@ -2167,10 +2167,10 @@ mod tests {
                   y: String,
                 }
                 view Test() {
-                  let result = let {x: v_1} = Point {
+                  let result = let v_0 = Point {
                     x: "hi",
                     y: "bye",
-                  } in let a = v_1 in a in {
+                  } in let v_1 = v_0.x in let a = v_1 in a in {
                     write("got:")
                     write_escaped(result)
                   }
@@ -6546,7 +6546,7 @@ mod tests {
                 }
                 view Test() {
                   let person = Person {name: "Alice", age: 30} in {
-                    let {age: v_2} = person in {
+                    let v_2 = person.age in {
                       let a = v_2 in {
                         write("age:")
                         write_escaped(a.to_string())
@@ -6561,7 +6561,7 @@ mod tests {
                 }
                 view Test() {
                   let person = Person {name: "Alice", age: 30} in {
-                    let {age: v_2} = person in {
+                    let v_2 = person.age in {
                       let a = v_2 in {
                         write("age:")
                         write_escaped(a.to_string())
