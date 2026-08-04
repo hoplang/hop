@@ -358,7 +358,6 @@ mod tests {
     use crate::asset_rewriter::{PrefixingAssetRewriter, ReplacingAssetRewriter};
 
     use super::*;
-    use crate::ir::optimize;
     use crate::ir::syntax::random::random_ir_module_with_test_view;
     use expect_test::expect;
     use indoc::indoc;
@@ -368,7 +367,6 @@ mod tests {
     fn fuzz_transpile_ts_renders_identically() {
         arbtest::arbtest(|u| {
             let (module, registry) = random_ir_module_with_test_view(u);
-            let module = optimize(module, &registry);
             let ir = module.to_string();
             let expected = execute_evaluator(&module)
                 .unwrap_or_else(|e| panic!("Evaluator failed:\n{e}\n\nIR:\n{ir}"))
@@ -394,7 +392,6 @@ mod tests {
     fn fuzz_transpile_rust_renders_identically() {
         arbtest::arbtest(|u| {
             let (module, registry) = random_ir_module_with_test_view(u);
-            let module = optimize(module, &registry);
             let ir = module.to_string();
             let expected = execute_evaluator(&module)
                 .unwrap_or_else(|e| panic!("Evaluator failed:\n{e}\n\nIR:\n{ir}"))
