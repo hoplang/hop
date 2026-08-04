@@ -109,13 +109,6 @@ pub enum IrStatement {
         escape: bool,
     },
 
-    /// Execute the body if a condition holds.
-    If {
-        id: StatementId,
-        condition: IrExpr,
-        body: Vec<IrStatement>,
-    },
-
     /// Loop over an array or range.
     /// When var is None, the loop variable is discarded (underscore syntax).
     For {
@@ -368,7 +361,6 @@ impl IrStatement {
         match self {
             IrStatement::Write { .. } => {}
             IrStatement::WriteExpr { expr, .. } => expr.traverse(f),
-            IrStatement::If { condition, .. } => condition.traverse(f),
             IrStatement::For { source, .. } => match source {
                 IrForSource::Array(array) => array.traverse(f),
                 IrForSource::RangeInclusive { start, end } => {
@@ -395,7 +387,6 @@ impl IrStatement {
         match self {
             IrStatement::Write { .. } => {}
             IrStatement::WriteExpr { expr, .. } => expr.traverse_mut(f),
-            IrStatement::If { condition, .. } => condition.traverse_mut(f),
             IrStatement::For { source, .. } => match source {
                 IrForSource::Array(array) => array.traverse_mut(f),
                 IrForSource::RangeInclusive { start, end } => {
@@ -424,11 +415,6 @@ impl IrStatement {
         match self {
             IrStatement::Write { .. } => {}
             IrStatement::WriteExpr { .. } => {}
-            IrStatement::If { body, .. } => {
-                for stmt in body {
-                    stmt.traverse(f);
-                }
-            }
             IrStatement::For { body, .. } => {
                 for stmt in body {
                     stmt.traverse(f);
@@ -482,23 +468,6 @@ impl IrStatement {
                     .append(expr.to_doc())
                     .append(BoxDoc::text(")"))
             }
-            IrStatement::If {
-                condition, body, ..
-            } => BoxDoc::text("if ")
-                .append(condition.to_doc())
-                .append(BoxDoc::text(" {"))
-                .append(if body.is_empty() {
-                    BoxDoc::nil()
-                } else {
-                    BoxDoc::line()
-                        .append(BoxDoc::intersperse(
-                            body.iter().map(|stmt| stmt.to_doc()),
-                            BoxDoc::line(),
-                        ))
-                        .append(BoxDoc::line())
-                        .nest(2)
-                })
-                .append(BoxDoc::text("}")),
             IrStatement::For {
                 var, source, body, ..
             } => {
@@ -1516,9 +1485,6 @@ pub fn traverse_statements_mut(
 ) {
     for stmt in statements.iter_mut() {
         match stmt {
-            IrStatement::If { body, .. } => {
-                traverse_statements_mut(body, f);
-            }
             IrStatement::For { body, .. } => {
                 traverse_statements_mut(body, f);
             }

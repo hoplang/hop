@@ -118,8 +118,12 @@ mod tests {
                 view Test() {
                   write("Before")
                   write(" if")
-                  if true {
-                    write("Inside if")
+                  match true {
+                    true => {
+                      write("Inside if")
+                    }
+                    false => {
+                    }
                   }
                   write("After")
                   write(" if")
@@ -128,8 +132,12 @@ mod tests {
                 -- after --
                 view Test() {
                   write("Before if")
-                  if true {
-                    write("Inside if")
+                  match true {
+                    true => {
+                      write("Inside if")
+                    }
+                    false => {
+                    }
                   }
                   write("After if")
                 }
@@ -152,17 +160,25 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  if true {
-                    write("Line")
-                    write(" ")
-                    write("one")
+                  match true {
+                    true => {
+                      write("Line")
+                      write(" ")
+                      write("one")
+                    }
+                    false => {
+                    }
                   }
                 }
 
                 -- after --
                 view Test() {
-                  if true {
-                    write("Line one")
+                  match true {
+                    true => {
+                      write("Line one")
+                    }
+                    false => {
+                    }
                   }
                 }
             "#]],
@@ -265,15 +281,19 @@ mod tests {
                 view Test() {
                   write("Start")
                   write(": ")
-                  if true {
-                    write("In")
-                    write(" if")
-                    for i in ["foo"] {
-                      write("Loop")
-                      write(" body")
+                  match true {
+                    true => {
+                      write("In")
+                      write(" if")
+                      for i in ["foo"] {
+                        write("Loop")
+                        write(" body")
+                      }
+                      write("After")
+                      write(" loop")
                     }
-                    write("After")
-                    write(" loop")
+                    false => {
+                    }
                   }
                   write("End")
                   write(".")
@@ -282,12 +302,16 @@ mod tests {
                 -- after --
                 view Test() {
                   write("Start: ")
-                  if true {
-                    write("In if")
-                    for i in ["foo"] {
-                      write("Loop body")
+                  match true {
+                    true => {
+                      write("In if")
+                      for i in ["foo"] {
+                        write("Loop body")
+                      }
+                      write("After loop")
                     }
-                    write("After loop")
+                    false => {
+                    }
                   }
                   write("End.")
                 }
@@ -548,18 +572,26 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  if true {
-                    write("AAA")
-                    write("BBB")
-                    write("CCC")
+                  match true {
+                    true => {
+                      write("AAA")
+                      write("BBB")
+                      write("CCC")
+                    }
+                    false => {
+                    }
                   }
                 }
 
                 -- after --
                 view Test() {
-                  if true {
-                    write("AAABBB")
-                    write("CCC")
+                  match true {
+                    true => {
+                      write("AAABBB")
+                      write("CCC")
+                    }
+                    false => {
+                    }
                   }
                 }
             "#]],

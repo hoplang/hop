@@ -111,10 +111,14 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  if true {
-                    write_expr("Inside if")
-                    for item in ["foo"] {
-                      write_expr("Inside for")
+                  match true {
+                    true => {
+                      write_expr("Inside if")
+                      for item in ["foo"] {
+                        write_expr("Inside for")
+                      }
+                    }
+                    false => {
                     }
                   }
                   let x = "value" in {
@@ -124,10 +128,14 @@ mod tests {
 
                 -- after --
                 view Test() {
-                  if true {
-                    write("Inside if")
-                    for item in ["foo"] {
-                      write("Inside for")
+                  match true {
+                    true => {
+                      write("Inside if")
+                      for item in ["foo"] {
+                        write("Inside for")
+                      }
+                    }
+                    false => {
                     }
                   }
                   let x = "value" in {

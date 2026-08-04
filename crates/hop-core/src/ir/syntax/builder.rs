@@ -1107,16 +1107,20 @@ impl IrBuilder {
         self.write_expr(expr, true);
     }
 
+    /// Sugar for a boolean match with an empty false arm.
     pub fn if_stmt<F>(&mut self, cond: IrExpr, body_fn: F)
     where
         F: FnOnce(&mut Self),
     {
         assert_eq!(*cond.as_type(), Type::Bool, "{}", cond);
         let body = self.in_scope([], body_fn);
-        self.statements.push(IrStatement::If {
+        self.statements.push(IrStatement::Match {
             id: self.next_statement_id(),
-            condition: cond,
-            body,
+            match_: Match::Bool {
+                subject: Box::new(cond),
+                true_body: Box::new(body),
+                false_body: Box::new(Vec::new()),
+            },
         });
     }
 

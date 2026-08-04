@@ -304,8 +304,12 @@ mod tests {
                 -- before --
                 view Test() {
                   let cond = true in {
-                    if cond {
-                      write("Condition is true")
+                    match cond {
+                      true => {
+                        write("Condition is true")
+                      }
+                      false => {
+                      }
                     }
                   }
                 }
@@ -313,8 +317,12 @@ mod tests {
                 -- after --
                 view Test() {
                   let cond = true in {
-                    if cond {
-                      write("Condition is true")
+                    match cond {
+                      true => {
+                        write("Condition is true")
+                      }
+                      false => {
+                      }
                     }
                   }
                 }
@@ -337,17 +345,25 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  if true {
-                    let unused = "value" in {
-                      write("Inside if")
+                  match true {
+                    true => {
+                      let unused = "value" in {
+                        write("Inside if")
+                      }
+                    }
+                    false => {
                     }
                   }
                 }
 
                 -- after --
                 view Test() {
-                  if true {
-                    write("Inside if")
+                  match true {
+                    true => {
+                      write("Inside if")
+                    }
+                    false => {
+                    }
                   }
                 }
             "#]],
@@ -406,8 +422,12 @@ mod tests {
                 view Test() {
                   let x = true in {
                     let y = false in {
-                      if (x == y) {
-                        write("Equal")
+                      match (x == y) {
+                        true => {
+                          write("Equal")
+                        }
+                        false => {
+                        }
                       }
                     }
                   }
@@ -417,8 +437,12 @@ mod tests {
                 view Test() {
                   let x = true in {
                     let y = false in {
-                      if (x == y) {
-                        write("Equal")
+                      match (x == y) {
+                        true => {
+                          write("Equal")
+                        }
+                        false => {
+                        }
                       }
                     }
                   }

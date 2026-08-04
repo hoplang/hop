@@ -442,8 +442,12 @@ mod tests {
                   for f in [Flag {value: true}] {
                     let {value: v_1} = f in {
                       let b = v_1 in {
-                        if (b || false) {
-                          write("yes")
+                        match (b || false) {
+                          true => {
+                            write("yes")
+                          }
+                          false => {
+                          }
                         }
                       }
                     }
@@ -457,8 +461,12 @@ mod tests {
                   for f in [Flag {value: true}] {
                     let {value: v_1} = f in {
                       let b = v_1 in {
-                        if (b || false) {
-                          write("yes")
+                        match (b || false) {
+                          true => {
+                            write("yes")
+                          }
+                          false => {
+                          }
                         }
                       }
                     }
@@ -513,8 +521,12 @@ mod tests {
                   for c in [Count {n: 57}] {
                     let {n: v_1} = c in {
                       let v = v_1 in {
-                        if (v == 57) {
-                          write("eq")
+                        match (v == 57) {
+                          true => {
+                            write("eq")
+                          }
+                          false => {
+                          }
                         }
                       }
                     }
@@ -528,8 +540,12 @@ mod tests {
                   for c in [Count {n: 57}] {
                     let {n: v_1} = c in {
                       let v = v_1 in {
-                        if (v == 57) {
-                          write("eq")
+                        match (v == 57) {
+                          true => {
+                            write("eq")
+                          }
+                          false => {
+                          }
                         }
                       }
                     }
@@ -741,8 +757,12 @@ mod tests {
                   for f in [Flag {value: true}] {
                     let {value: v_1} = f in {
                       let b = v_1 in {
-                        if b {
-                          write("yes")
+                        match b {
+                          true => {
+                            write("yes")
+                          }
+                          false => {
+                          }
                         }
                       }
                     }
@@ -756,8 +776,12 @@ mod tests {
                   for f in [Flag {value: true}] {
                     let {value: v_1} = f in {
                       let b = v_1 in {
-                        if b {
-                          write("yes")
+                        match b {
+                          true => {
+                            write("yes")
+                          }
+                          false => {
+                          }
                         }
                       }
                     }
@@ -1288,11 +1312,15 @@ mod tests {
                 -- ir (unoptimized) --
                 view Test() {
                   let count = 3 in {
-                    if (0 < count) {
-                      write("<div")
-                      write(">")
-                      write("positive")
-                      write("</div>")
+                    match (0 < count) {
+                      true => {
+                        write("<div")
+                        write(">")
+                        write("positive")
+                        write("</div>")
+                      }
+                      false => {
+                      }
                     }
                   }
                 }
@@ -1350,8 +1378,12 @@ mod tests {
                     write("<div")
                     write(" data-foo=\"bar\"")
                     write(">")
-                    if (0 < count) {
-                      write("positive")
+                    match (0 < count) {
+                      true => {
+                        write("positive")
+                      }
+                      false => {
+                      }
                     }
                     write("</div>")
                   }
@@ -1986,8 +2018,12 @@ mod tests {
                     write("<div")
                     write(" data-x=\"y\"")
                     write(">")
-                    if (0 < tabindex) {
-                      write("focusable")
+                    match (0 < tabindex) {
+                      true => {
+                        write("focusable")
+                      }
+                      false => {
+                      }
                     }
                     write("</div>")
                   }
@@ -2807,11 +2843,19 @@ mod tests {
                 -- ir (unoptimized) --
                 view Test() {
                   let show = true in {
-                    if show {
-                      write("Visible")
+                    match show {
+                      true => {
+                        write("Visible")
+                      }
+                      false => {
+                      }
                     }
-                    if (!show) {
-                      write("Hidden")
+                    match (!show) {
+                      true => {
+                        write("Hidden")
+                      }
+                      false => {
+                      }
                     }
                   }
                 }
@@ -2899,16 +2943,24 @@ mod tests {
                 -- ir (unoptimized) --
                 view Test() {
                   for v in [true] {
-                    if v {
-                      write("x")
+                    match v {
+                      true => {
+                        write("x")
+                      }
+                      false => {
+                      }
                     }
                   }
                 }
                 -- ir (optimized) --
                 view Test() {
                   for v in [true] {
-                    if v {
-                      write("x")
+                    match v {
+                      true => {
+                        write("x")
+                      }
+                      false => {
+                      }
                     }
                   }
                 }
@@ -3268,8 +3320,12 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 view Test() {
-                  if (("foo" + "bar") == "foobar") {
-                    write("equals")
+                  match (("foo" + "bar") == "foobar") {
+                    true => {
+                      write("equals")
+                    }
+                    false => {
+                    }
                   }
                 }
                 -- ir (optimized) --
@@ -3312,11 +3368,19 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 view Test() {
-                  if (3 < 5) {
-                    write("3 &lt; 5")
+                  match (3 < 5) {
+                    true => {
+                      write("3 &lt; 5")
+                    }
+                    false => {
+                    }
                   }
-                  if (10 < 2) {
-                    write("10 &lt; 2")
+                  match (10 < 2) {
+                    true => {
+                      write("10 &lt; 2")
+                    }
+                    false => {
+                    }
                   }
                 }
                 -- ir (optimized) --
@@ -3359,11 +3423,19 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 view Test() {
-                  if (1.5 < 2.5) {
-                    write("1.5 &lt; 2.5")
+                  match (1.5 < 2.5) {
+                    true => {
+                      write("1.5 &lt; 2.5")
+                    }
+                    false => {
+                    }
                   }
-                  if (3 < 1) {
-                    write("3.0 &lt; 1.0")
+                  match (3 < 1) {
+                    true => {
+                      write("3.0 &lt; 1.0")
+                    }
+                    false => {
+                    }
                   }
                 }
                 -- ir (optimized) --
@@ -3527,8 +3599,12 @@ mod tests {
                 view Test() {
                   let person = Person {name: "Alice", age: 30} in {
                     write_escaped(person.name)
-                    if (person.age == 30) {
-                      write(":30")
+                    match (person.age == 30) {
+                      true => {
+                        write(":30")
+                      }
+                      false => {
+                      }
                     }
                   }
                 }
@@ -3540,8 +3616,12 @@ mod tests {
                 view Test() {
                   let person = Person {name: "Alice", age: 30} in {
                     write_escaped(person.name)
-                    if (person.age == 30) {
-                      write(":30")
+                    match (person.age == 30) {
+                      true => {
+                        write(":30")
+                      }
+                      false => {
+                      }
                     }
                   }
                 }
@@ -3668,8 +3748,12 @@ mod tests {
                 view Test() {
                   let a = 3 in {
                     let b = 7 in {
-                      if ((a + b) == 10) {
-                        write("correct")
+                      match ((a + b) == 10) {
+                        true => {
+                          write("correct")
+                        }
+                        false => {
+                        }
                       }
                     }
                   }
@@ -3717,8 +3801,12 @@ mod tests {
                 view Test() {
                   let a = 10 in {
                     let b = 3 in {
-                      if ((a - b) == 7) {
-                        write("correct")
+                      match ((a - b) == 7) {
+                        true => {
+                          write("correct")
+                        }
+                        false => {
+                        }
                       }
                     }
                   }
@@ -3766,8 +3854,12 @@ mod tests {
                 view Test() {
                   let a = 4 in {
                     let b = 5 in {
-                      if ((a * b) == 20) {
-                        write("correct")
+                      match ((a * b) == 20) {
+                        true => {
+                          write("correct")
+                        }
+                        false => {
+                        }
                       }
                     }
                   }
@@ -3822,15 +3914,23 @@ mod tests {
                 view Test() {
                   let a = true in {
                     let b = true in {
-                      if (a && b) {
-                        write("TT")
+                      match (a && b) {
+                        true => {
+                          write("TT")
+                        }
+                        false => {
+                        }
                       }
                     }
                   }
                   let c = true in {
                     let d = false in {
-                      if (c && d) {
-                        write("TF")
+                      match (c && d) {
+                        true => {
+                          write("TF")
+                        }
+                        false => {
+                        }
                       }
                     }
                   }
@@ -3885,15 +3985,23 @@ mod tests {
                 view Test() {
                   let a = false in {
                     let b = true in {
-                      if (a || b) {
-                        write("FT")
+                      match (a || b) {
+                        true => {
+                          write("FT")
+                        }
+                        false => {
+                        }
                       }
                     }
                   }
                   let c = false in {
                     let d = false in {
-                      if (c || d) {
-                        write("FF")
+                      match (c || d) {
+                        true => {
+                          write("FF")
+                        }
+                        false => {
+                        }
                       }
                     }
                   }
@@ -3941,14 +4049,26 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 view Test() {
-                  if (3 <= 5) {
-                    write("A")
+                  match (3 <= 5) {
+                    true => {
+                      write("A")
+                    }
+                    false => {
+                    }
                   }
-                  if (5 <= 5) {
-                    write("B")
+                  match (5 <= 5) {
+                    true => {
+                      write("B")
+                    }
+                    false => {
+                    }
                   }
-                  if (7 <= 5) {
-                    write("C")
+                  match (7 <= 5) {
+                    true => {
+                      write("C")
+                    }
+                    false => {
+                    }
                   }
                 }
                 -- ir (optimized) --
@@ -5033,8 +5153,12 @@ mod tests {
                 -- ir (unoptimized) --
                 view Test() {
                   let items = ["x", "y"] in {
-                    if (items.len() == 2) {
-                      write("has two")
+                    match (items.len() == 2) {
+                      true => {
+                        write("has two")
+                      }
+                      false => {
+                      }
                     }
                   }
                 }
@@ -5078,8 +5202,12 @@ mod tests {
                 -- ir (unoptimized) --
                 view Test() {
                   let items = ["a"] in {
-                    if (items.len() < 5) {
-                      write("less than 5")
+                    match (items.len() < 5) {
+                      true => {
+                        write("less than 5")
+                      }
+                      false => {
+                      }
                     }
                   }
                 }
@@ -9850,8 +9978,12 @@ mod tests {
                 -- ir (unoptimized) --
                 view Test() {
                   let o = Option[Bool]::None in {
-                    if (true == o.is_none()) {
-                      write("x")
+                    match (true == o.is_none()) {
+                      true => {
+                        write("x")
+                      }
+                      false => {
+                      }
                     }
                   }
                 }
@@ -9892,8 +10024,12 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 view Test() {
-                  if ("a".is_empty() == "b".is_empty()) {
-                    write("x")
+                  match ("a".is_empty() == "b".is_empty()) {
+                    true => {
+                      write("x")
+                    }
+                    false => {
+                    }
                   }
                 }
                 -- ir (optimized) --
@@ -10043,11 +10179,19 @@ mod tests {
                       Item::Todo(label: v_1, done: v_2) => {
                         let l = v_1 in {
                           let d = v_2 in {
-                            if d {
-                              write("[x]")
+                            match d {
+                              true => {
+                                write("[x]")
+                              }
+                              false => {
+                              }
                             }
-                            if (!d) {
-                              write("[ ]")
+                            match (!d) {
+                              true => {
+                                write("[ ]")
+                              }
+                              false => {
+                              }
                             }
                             write_escaped(l)
                           }
@@ -10061,11 +10205,19 @@ mod tests {
                       Item::Todo(label: v_1_2, done: v_2_3) => {
                         let l_4 = v_1_2 in {
                           let d_5 = v_2_3 in {
-                            if d_5 {
-                              write("[x]")
+                            match d_5 {
+                              true => {
+                                write("[x]")
+                              }
+                              false => {
+                              }
                             }
-                            if (!d_5) {
-                              write("[ ]")
+                            match (!d_5) {
+                              true => {
+                                write("[ ]")
+                              }
+                              false => {
+                              }
                             }
                             write_escaped(l_4)
                           }
@@ -10083,11 +10235,19 @@ mod tests {
                     Item::Todo(label: v_1, done: v_2) => {
                       let l = v_1 in {
                         let d = v_2 in {
-                          if d {
-                            write("[x]")
+                          match d {
+                            true => {
+                              write("[x]")
+                            }
+                            false => {
+                            }
                           }
-                          if (!d) {
-                            write("[ ]")
+                          match (!d) {
+                            true => {
+                              write("[ ]")
+                            }
+                            false => {
+                            }
                           }
                           write_escaped(l)
                         }
@@ -10099,11 +10259,19 @@ mod tests {
                     Item::Todo(label: v_1_2, done: v_2_3) => {
                       let l_4 = v_1_2 in {
                         let d_5 = v_2_3 in {
-                          if d_5 {
-                            write("[x]")
+                          match d_5 {
+                            true => {
+                              write("[x]")
+                            }
+                            false => {
+                            }
                           }
-                          if (!d_5) {
-                            write("[ ]")
+                          match (!d_5) {
+                            true => {
+                              write("[ ]")
+                            }
+                            false => {
+                            }
                           }
                           write_escaped(l_4)
                         }
@@ -11032,8 +11200,12 @@ mod tests {
                 -- ir (unoptimized) --
                 component Countdown(n: Int) {
                   write_escaped(n.to_string())
-                  if (0 < n) {
-                    call Countdown(n = (n - 1))
+                  match (0 < n) {
+                    true => {
+                      call Countdown(n = (n - 1))
+                    }
+                    false => {
+                    }
                   }
                 }
                 view Test() {
@@ -11042,8 +11214,12 @@ mod tests {
                 -- ir (optimized) --
                 component Countdown(n: Int) {
                   write_escaped(n.to_string())
-                  if (0 < n) {
-                    call Countdown(n = (n - 1))
+                  match (0 < n) {
+                    true => {
+                      call Countdown(n = (n - 1))
+                    }
+                    false => {
+                    }
                   }
                 }
                 view Test() {
@@ -11107,8 +11283,12 @@ mod tests {
                       write("x")
                     }
                   }
-                  if (0 < n) {
-                    call Loop(n = (n - 1), label = label)
+                  match (0 < n) {
+                    true => {
+                      call Loop(n = (n - 1), label = label)
+                    }
+                    false => {
+                    }
                   }
                 }
                 view Test() {
@@ -11126,8 +11306,12 @@ mod tests {
                       write("x")
                     }
                   }
-                  if (0 < n) {
-                    call Loop(n = (n - 1), label = label)
+                  match (0 < n) {
+                    true => {
+                      call Loop(n = (n - 1), label = label)
+                    }
+                    false => {
+                    }
                   }
                 }
                 view Test() {
@@ -11173,8 +11357,12 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 component C(x: Option[String]) {
-                  if x.is_none() {
-                    call C(x = x)
+                  match x.is_none() {
+                    true => {
+                      call C(x = x)
+                    }
+                    false => {
+                    }
                   }
                 }
                 view Test() {
@@ -11185,8 +11373,12 @@ mod tests {
                 }
                 -- ir (optimized) --
                 component C(x: Option[String]) {
-                  if x.is_none() {
-                    call C(x = x)
+                  match x.is_none() {
+                    true => {
+                      call C(x = x)
+                    }
+                    false => {
+                    }
                   }
                 }
                 view Test() {
@@ -11242,19 +11434,35 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 component Odd(n: Int) {
-                  if (n == 0) {
-                    write("odd")
+                  match (n == 0) {
+                    true => {
+                      write("odd")
+                    }
+                    false => {
+                    }
                   }
-                  if (0 < n) {
-                    call Even(n = (n - 1))
+                  match (0 < n) {
+                    true => {
+                      call Even(n = (n - 1))
+                    }
+                    false => {
+                    }
                   }
                 }
                 component Even(n: Int) {
-                  if (n == 0) {
-                    write("even")
+                  match (n == 0) {
+                    true => {
+                      write("even")
+                    }
+                    false => {
+                    }
                   }
-                  if (0 < n) {
-                    call Odd(n = (n - 1))
+                  match (0 < n) {
+                    true => {
+                      call Odd(n = (n - 1))
+                    }
+                    false => {
+                    }
                   }
                 }
                 view Test() {
@@ -11262,19 +11470,35 @@ mod tests {
                 }
                 -- ir (optimized) --
                 component Odd(n: Int) {
-                  if (n == 0) {
-                    write("odd")
+                  match (n == 0) {
+                    true => {
+                      write("odd")
+                    }
+                    false => {
+                    }
                   }
-                  if (0 < n) {
-                    call Even(n = (n - 1))
+                  match (0 < n) {
+                    true => {
+                      call Even(n = (n - 1))
+                    }
+                    false => {
+                    }
                   }
                 }
                 component Even(n: Int) {
-                  if (n == 0) {
-                    write("even")
+                  match (n == 0) {
+                    true => {
+                      write("even")
+                    }
+                    false => {
+                    }
                   }
-                  if (0 < n) {
-                    call Odd(n = (n - 1))
+                  match (0 < n) {
+                    true => {
+                      call Odd(n = (n - 1))
+                    }
+                    false => {
+                    }
                   }
                 }
                 view Test() {
@@ -11320,8 +11544,12 @@ mod tests {
                   f: Bool,
                 }
                 view Test() {
-                  if R {f: true}.f {
-                    write("x")
+                  match R {f: true}.f {
+                    true => {
+                      write("x")
+                    }
+                    false => {
+                    }
                   }
                 }
                 -- ir (optimized) --
@@ -11329,8 +11557,12 @@ mod tests {
                   f: Bool,
                 }
                 view Test() {
-                  if R {f: true}.f {
-                    write("x")
+                  match R {f: true}.f {
+                    true => {
+                      write("x")
+                    }
+                    false => {
+                    }
                   }
                 }
                 -- expected output --
@@ -11430,8 +11662,12 @@ mod tests {
                   f: Array[String],
                 }
                 component C(p: Array[String]) {
-                  if R {f: p}.f.is_empty() {
-                    call C(p = [])
+                  match R {f: p}.f.is_empty() {
+                    true => {
+                      call C(p = [])
+                    }
+                    false => {
+                    }
                   }
                 }
                 view Test() {
@@ -11442,8 +11678,12 @@ mod tests {
                   f: Array[String],
                 }
                 component C(p: Array[String]) {
-                  if R {f: p}.f.is_empty() {
-                    call C(p = [])
+                  match R {f: p}.f.is_empty() {
+                    true => {
+                      call C(p = [])
+                    }
+                    false => {
+                    }
                   }
                 }
                 view Test() {
@@ -11660,16 +11900,24 @@ mod tests {
                 -- ir (unoptimized) --
                 view Test() {
                   for n in [1, 2, 3] {
-                    if (1 < n) {
-                      write_escaped(n.to_string())
+                    match (1 < n) {
+                      true => {
+                        write_escaped(n.to_string())
+                      }
+                      false => {
+                      }
                     }
                   }
                 }
                 -- ir (optimized) --
                 view Test() {
                   for n in [1, 2, 3] {
-                    if (1 < n) {
-                      write_escaped(n.to_string())
+                    match (1 < n) {
+                      true => {
+                        write_escaped(n.to_string())
+                      }
+                      false => {
+                      }
                     }
                   }
                 }
@@ -11709,16 +11957,24 @@ mod tests {
                 -- ir (unoptimized) --
                 view Test() {
                   for s in ["a", "b"] {
-                    if (s == "a") {
-                      write_escaped(s)
+                    match (s == "a") {
+                      true => {
+                        write_escaped(s)
+                      }
+                      false => {
+                      }
                     }
                   }
                 }
                 -- ir (optimized) --
                 view Test() {
                   for s in ["a", "b"] {
-                    if (s == "a") {
-                      write_escaped(s)
+                    match (s == "a") {
+                      true => {
+                        write_escaped(s)
+                      }
+                      false => {
+                      }
                     }
                   }
                 }
@@ -11758,16 +12014,24 @@ mod tests {
                 -- ir (unoptimized) --
                 view Test() {
                   for f in [1.5, 2.5] {
-                    if (2 < f) {
-                      write("big")
+                    match (2 < f) {
+                      true => {
+                        write("big")
+                      }
+                      false => {
+                      }
                     }
                   }
                 }
                 -- ir (optimized) --
                 view Test() {
                   for f in [1.5, 2.5] {
-                    if (2 < f) {
-                      write("big")
+                    match (2 < f) {
+                      true => {
+                        write("big")
+                      }
+                      false => {
+                      }
                     }
                   }
                 }
@@ -11807,16 +12071,24 @@ mod tests {
                 -- ir (unoptimized) --
                 view Test() {
                   for flag in [true, false] {
-                    if (flag && true) {
-                      write("x")
+                    match (flag && true) {
+                      true => {
+                        write("x")
+                      }
+                      false => {
+                      }
                     }
                   }
                 }
                 -- ir (optimized) --
                 view Test() {
                   for flag in [true, false] {
-                    if (flag && true) {
-                      write("x")
+                    match (flag && true) {
+                      true => {
+                        write("x")
+                      }
+                      false => {
+                      }
                     }
                   }
                 }
@@ -11862,12 +12134,16 @@ mod tests {
                 -- ir (unoptimized) --
                 view Test() {
                   for s in ["a", "b"] {
-                    if (s == "a") {
-                      let label = s in {
-                        write("<span")
-                        write(">")
-                        write_escaped(label)
-                        write("</span>")
+                    match (s == "a") {
+                      true => {
+                        let label = s in {
+                          write("<span")
+                          write(">")
+                          write_escaped(label)
+                          write("</span>")
+                        }
+                      }
+                      false => {
                       }
                     }
                   }
@@ -11875,11 +12151,15 @@ mod tests {
                 -- ir (optimized) --
                 view Test() {
                   for s in ["a", "b"] {
-                    if (s == "a") {
-                      let label = s in {
-                        write("<span>")
-                        write_escaped(label)
-                        write("</span>")
+                    match (s == "a") {
+                      true => {
+                        let label = s in {
+                          write("<span>")
+                          write_escaped(label)
+                          write("</span>")
+                        }
+                      }
+                      false => {
                       }
                     }
                   }

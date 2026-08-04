@@ -243,8 +243,7 @@ pub fn perform_partial_evaluation(body: &mut Vec<IrStatement>, registry: &TypeRe
                 IrStatement::LetRecordDestructure { .. } => {}
                 IrStatement::For { .. } => {}
                 IrStatement::Match { .. } => {}
-                IrStatement::If { .. }
-                | IrStatement::Write { .. }
+                IrStatement::Write { .. }
                 | IrStatement::WriteExpr { .. }
                 | IrStatement::ComponentInvocation { .. } => {
                     // No bindings
@@ -947,15 +946,23 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  if (!false) {
-                    write("Should be true")
+                  match (!false) {
+                    true => {
+                      write("Should be true")
+                    }
+                    false => {
+                    }
                   }
                 }
 
                 -- after --
                 view Test() {
-                  if true {
-                    write("Should be true")
+                  match true {
+                    true => {
+                      write("Should be true")
+                    }
+                    false => {
+                    }
                   }
                 }
             "#]],
@@ -973,15 +980,23 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  if (!(!true)) {
-                    write("Double negation")
+                  match (!(!true)) {
+                    true => {
+                      write("Double negation")
+                    }
+                    false => {
+                    }
                   }
                 }
 
                 -- after --
                 view Test() {
-                  if true {
-                    write("Double negation")
+                  match true {
+                    true => {
+                      write("Double negation")
+                    }
+                    false => {
+                    }
                   }
                 }
             "#]],
@@ -999,15 +1014,23 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  if (!(!(!false))) {
-                    write("Triple negation")
+                  match (!(!(!false))) {
+                    true => {
+                      write("Triple negation")
+                    }
+                    false => {
+                    }
                   }
                 }
 
                 -- after --
                 view Test() {
-                  if true {
-                    write("Triple negation")
+                  match true {
+                    true => {
+                      write("Triple negation")
+                    }
+                    false => {
+                    }
                   }
                 }
             "#]],
@@ -1032,27 +1055,51 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  if (true == true) {
-                    write("true == true")
+                  match (true == true) {
+                    true => {
+                      write("true == true")
+                    }
+                    false => {
+                    }
                   }
-                  if (false == false) {
-                    write("false == false")
+                  match (false == false) {
+                    true => {
+                      write("false == false")
+                    }
+                    false => {
+                    }
                   }
-                  if (true == false) {
-                    write("Should not appear")
+                  match (true == false) {
+                    true => {
+                      write("Should not appear")
+                    }
+                    false => {
+                    }
                   }
                 }
 
                 -- after --
                 view Test() {
-                  if true {
-                    write("true == true")
+                  match true {
+                    true => {
+                      write("true == true")
+                    }
+                    false => {
+                    }
                   }
-                  if true {
-                    write("false == false")
+                  match true {
+                    true => {
+                      write("false == false")
+                    }
+                    false => {
+                    }
                   }
-                  if false {
-                    write("Should not appear")
+                  match false {
+                    true => {
+                      write("Should not appear")
+                    }
+                    false => {
+                    }
                   }
                 }
             "#]],
@@ -1073,15 +1120,23 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  if ((!(!false)) == (!false)) {
-                    write("Should not appear")
+                  match ((!(!false)) == (!false)) {
+                    true => {
+                      write("Should not appear")
+                    }
+                    false => {
+                    }
                   }
                 }
 
                 -- after --
                 view Test() {
-                  if false {
-                    write("Should not appear")
+                  match false {
+                    true => {
+                      write("Should not appear")
+                    }
+                    false => {
+                    }
                   }
                 }
             "#]],
@@ -1105,11 +1160,19 @@ mod tests {
                 -- before --
                 view Test() {
                   let x = (!(!true)) in {
-                    if x {
-                      write("x is true")
+                    match x {
+                      true => {
+                        write("x is true")
+                      }
+                      false => {
+                      }
                     }
-                    if (!x) {
-                      write("x is false")
+                    match (!x) {
+                      true => {
+                        write("x is false")
+                      }
+                      false => {
+                      }
                     }
                   }
                 }
@@ -1117,11 +1180,19 @@ mod tests {
                 -- after --
                 view Test() {
                   let x = true in {
-                    if true {
-                      write("x is true")
+                    match true {
+                      true => {
+                        write("x is true")
+                      }
+                      false => {
+                      }
                     }
-                    if false {
-                      write("x is false")
+                    match false {
+                      true => {
+                        write("x is false")
+                      }
+                      false => {
+                      }
                     }
                   }
                 }
@@ -1149,11 +1220,19 @@ mod tests {
                 view Test() {
                   let x = true in {
                     let y = (!true) in {
-                      if (x == y) {
-                        write("x equals y")
+                      match (x == y) {
+                        true => {
+                          write("x equals y")
+                        }
+                        false => {
+                        }
                       }
-                      if (x == (!y)) {
-                        write("x equals not y")
+                      match (x == (!y)) {
+                        true => {
+                          write("x equals not y")
+                        }
+                        false => {
+                        }
                       }
                     }
                   }
@@ -1163,11 +1242,19 @@ mod tests {
                 view Test() {
                   let x = true in {
                     let y = false in {
-                      if false {
-                        write("x equals y")
+                      match false {
+                        true => {
+                          write("x equals y")
+                        }
+                        false => {
+                        }
                       }
-                      if true {
-                        write("x equals not y")
+                      match true {
+                        true => {
+                          write("x equals not y")
+                        }
+                        false => {
+                        }
                       }
                     }
                   }
@@ -1296,16 +1383,28 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  if ("hello" == "hello") {
-                    write("Strings are equal")
+                  match ("hello" == "hello") {
+                    true => {
+                      write("Strings are equal")
+                    }
+                    false => {
+                    }
                   }
-                  if ("hello" == "world") {
-                    write("Should not appear")
+                  match ("hello" == "world") {
+                    true => {
+                      write("Should not appear")
+                    }
+                    false => {
+                    }
                   }
                   let greeting = "hello" in {
                     let message = "hello" in {
-                      if (greeting == message) {
-                        write("Variables are equal")
+                      match (greeting == message) {
+                        true => {
+                          write("Variables are equal")
+                        }
+                        false => {
+                        }
                       }
                     }
                   }
@@ -1313,16 +1412,28 @@ mod tests {
 
                 -- after --
                 view Test() {
-                  if true {
-                    write("Strings are equal")
+                  match true {
+                    true => {
+                      write("Strings are equal")
+                    }
+                    false => {
+                    }
                   }
-                  if false {
-                    write("Should not appear")
+                  match false {
+                    true => {
+                      write("Should not appear")
+                    }
+                    false => {
+                    }
                   }
                   let greeting = "hello" in {
                     let message = "hello" in {
-                      if true {
-                        write("Variables are equal")
+                      match true {
+                        true => {
+                          write("Variables are equal")
+                        }
+                        false => {
+                        }
                       }
                     }
                   }
@@ -1376,21 +1487,37 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  if (("foo" + "bar") == "foobar") {
-                    write("Concatenation matches")
+                  match (("foo" + "bar") == "foobar") {
+                    true => {
+                      write("Concatenation matches")
+                    }
+                    false => {
+                    }
                   }
-                  if (("hello" + " world") == "hello") {
-                    write("Should not appear")
+                  match (("hello" + " world") == "hello") {
+                    true => {
+                      write("Should not appear")
+                    }
+                    false => {
+                    }
                   }
                 }
 
                 -- after --
                 view Test() {
-                  if true {
-                    write("Concatenation matches")
+                  match true {
+                    true => {
+                      write("Concatenation matches")
+                    }
+                    false => {
+                    }
                   }
-                  if false {
-                    write("Should not appear")
+                  match false {
+                    true => {
+                      write("Should not appear")
+                    }
+                    false => {
+                    }
                   }
                 }
             "#]],
@@ -1634,11 +1761,15 @@ mod tests {
                 }
                 view Test() {
                   let color = Color::Red in {
-                    if match color {
+                    match match color {
                       Color::Red => (!false),
                       Color::Blue => false,
                     } {
-                      write("Match evaluated to true")
+                      true => {
+                        write("Match evaluated to true")
+                      }
+                      false => {
+                      }
                     }
                   }
                 }
@@ -1650,8 +1781,12 @@ mod tests {
                 }
                 view Test() {
                   let color = Color::Red in {
-                    if true {
-                      write("Match evaluated to true")
+                    match true {
+                      true => {
+                        write("Match evaluated to true")
+                      }
+                      false => {
+                      }
                     }
                   }
                 }
@@ -1688,11 +1823,15 @@ mod tests {
                 }
                 view Test() {
                   let status = Status::Active in {
-                    if (match status {
+                    match (match status {
                       Status::Active => "on",
                       Status::Inactive => "off",
                     } == "on") {
-                      write("Status is active")
+                      true => {
+                        write("Status is active")
+                      }
+                      false => {
+                      }
                     }
                   }
                 }
@@ -1704,8 +1843,12 @@ mod tests {
                 }
                 view Test() {
                   let status = Status::Active in {
-                    if true {
-                      write("Status is active")
+                    match true {
+                      true => {
+                        write("Status is active")
+                      }
+                      false => {
+                      }
                     }
                   }
                 }
@@ -2242,11 +2385,15 @@ mod tests {
                 -- before --
                 view Test() {
                   let opt = Option[String]::Some("hello") in {
-                    if match opt {
+                    match match opt {
                       Some(inner) => (inner == "hello"),
                       None => false,
                     } {
-                      write("matched hello")
+                      true => {
+                        write("matched hello")
+                      }
+                      false => {
+                      }
                     }
                   }
                 }
@@ -2254,8 +2401,12 @@ mod tests {
                 -- after --
                 view Test() {
                   let opt = Option[String]::Some("hello") in {
-                    if true {
-                      write("matched hello")
+                    match true {
+                      true => {
+                        write("matched hello")
+                      }
+                      false => {
+                      }
                     }
                   }
                 }
@@ -2480,8 +2631,12 @@ mod tests {
                 }
                 view Test() {
                   let msg = Msg::Say {text: "hello"} in {
-                    if match msg {Msg::Say {text: t} => (t == "hello")} {
-                      write("matched hello")
+                    match match msg {Msg::Say {text: t} => (t == "hello")} {
+                      true => {
+                        write("matched hello")
+                      }
+                      false => {
+                      }
                     }
                   }
                 }
@@ -2492,8 +2647,12 @@ mod tests {
                 }
                 view Test() {
                   let msg = Msg::Say {text: "hello"} in {
-                    if true {
-                      write("matched hello")
+                    match true {
+                      true => {
+                        write("matched hello")
+                      }
+                      false => {
+                      }
                     }
                   }
                 }
@@ -3024,33 +3183,65 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  if (false || false) {
-                    write("false || false")
+                  match (false || false) {
+                    true => {
+                      write("false || false")
+                    }
+                    false => {
+                    }
                   }
-                  if (false || true) {
-                    write("false || true")
+                  match (false || true) {
+                    true => {
+                      write("false || true")
+                    }
+                    false => {
+                    }
                   }
-                  if (true || false) {
-                    write("true || false")
+                  match (true || false) {
+                    true => {
+                      write("true || false")
+                    }
+                    false => {
+                    }
                   }
-                  if (true || true) {
-                    write("true || true")
+                  match (true || true) {
+                    true => {
+                      write("true || true")
+                    }
+                    false => {
+                    }
                   }
                 }
 
                 -- after --
                 view Test() {
-                  if false {
-                    write("false || false")
+                  match false {
+                    true => {
+                      write("false || false")
+                    }
+                    false => {
+                    }
                   }
-                  if true {
-                    write("false || true")
+                  match true {
+                    true => {
+                      write("false || true")
+                    }
+                    false => {
+                    }
                   }
-                  if true {
-                    write("true || false")
+                  match true {
+                    true => {
+                      write("true || false")
+                    }
+                    false => {
+                    }
                   }
-                  if true {
-                    write("true || true")
+                  match true {
+                    true => {
+                      write("true || true")
+                    }
+                    false => {
+                    }
                   }
                 }
             "#]],
@@ -3077,33 +3268,65 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  if (false && false) {
-                    write("false && false")
+                  match (false && false) {
+                    true => {
+                      write("false && false")
+                    }
+                    false => {
+                    }
                   }
-                  if (false && true) {
-                    write("false && true")
+                  match (false && true) {
+                    true => {
+                      write("false && true")
+                    }
+                    false => {
+                    }
                   }
-                  if (true && false) {
-                    write("true && false")
+                  match (true && false) {
+                    true => {
+                      write("true && false")
+                    }
+                    false => {
+                    }
                   }
-                  if (true && true) {
-                    write("true && true")
+                  match (true && true) {
+                    true => {
+                      write("true && true")
+                    }
+                    false => {
+                    }
                   }
                 }
 
                 -- after --
                 view Test() {
-                  if false {
-                    write("false && false")
+                  match false {
+                    true => {
+                      write("false && false")
+                    }
+                    false => {
+                    }
                   }
-                  if false {
-                    write("false && true")
+                  match false {
+                    true => {
+                      write("false && true")
+                    }
+                    false => {
+                    }
                   }
-                  if false {
-                    write("true && false")
+                  match false {
+                    true => {
+                      write("true && false")
+                    }
+                    false => {
+                    }
                   }
-                  if true {
-                    write("true && true")
+                  match true {
+                    true => {
+                      write("true && true")
+                    }
+                    false => {
+                    }
                   }
                 }
             "#]],
@@ -3130,11 +3353,19 @@ mod tests {
                 view Test() {
                   let a = true in {
                     let b = false in {
-                      if (a || b) {
-                        write("a || b")
+                      match (a || b) {
+                        true => {
+                          write("a || b")
+                        }
+                        false => {
+                        }
                       }
-                      if (a && b) {
-                        write("a && b")
+                      match (a && b) {
+                        true => {
+                          write("a && b")
+                        }
+                        false => {
+                        }
                       }
                     }
                   }
@@ -3144,11 +3375,19 @@ mod tests {
                 view Test() {
                   let a = true in {
                     let b = false in {
-                      if true {
-                        write("a || b")
+                      match true {
+                        true => {
+                          write("a || b")
+                        }
+                        false => {
+                        }
                       }
-                      if false {
-                        write("a && b")
+                      match false {
+                        true => {
+                          write("a && b")
+                        }
+                        false => {
+                        }
                       }
                     }
                   }
@@ -3175,15 +3414,23 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  if ((true && false) || (false || true)) {
-                    write("complex expression")
+                  match ((true && false) || (false || true)) {
+                    true => {
+                      write("complex expression")
+                    }
+                    false => {
+                    }
                   }
                 }
 
                 -- after --
                 view Test() {
-                  if true {
-                    write("complex expression")
+                  match true {
+                    true => {
+                      write("complex expression")
+                    }
+                    false => {
+                    }
                   }
                 }
             "#]],
@@ -3206,21 +3453,37 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  if ((!false) && (!false)) {
-                    write("both negated")
+                  match ((!false) && (!false)) {
+                    true => {
+                      write("both negated")
+                    }
+                    false => {
+                    }
                   }
-                  if ((!true) || false) {
-                    write("should not appear")
+                  match ((!true) || false) {
+                    true => {
+                      write("should not appear")
+                    }
+                    false => {
+                    }
                   }
                 }
 
                 -- after --
                 view Test() {
-                  if true {
-                    write("both negated")
+                  match true {
+                    true => {
+                      write("both negated")
+                    }
+                    false => {
+                    }
                   }
-                  if false {
-                    write("should not appear")
+                  match false {
+                    true => {
+                      write("should not appear")
+                    }
+                    false => {
+                    }
                   }
                 }
             "#]],
@@ -3400,27 +3663,51 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  if (NaN == NaN) {
-                    write("false")
+                  match (NaN == NaN) {
+                    true => {
+                      write("false")
+                    }
+                    false => {
+                    }
                   }
-                  if (0 == -0) {
-                    write("true")
+                  match (0 == -0) {
+                    true => {
+                      write("true")
+                    }
+                    false => {
+                    }
                   }
-                  if (1.5 == 1.5) {
-                    write("true")
+                  match (1.5 == 1.5) {
+                    true => {
+                      write("true")
+                    }
+                    false => {
+                    }
                   }
                 }
 
                 -- after --
                 view Test() {
-                  if false {
-                    write("false")
+                  match false {
+                    true => {
+                      write("false")
+                    }
+                    false => {
+                    }
                   }
-                  if true {
-                    write("true")
+                  match true {
+                    true => {
+                      write("true")
+                    }
+                    false => {
+                    }
                   }
-                  if true {
-                    write("true")
+                  match true {
+                    true => {
+                      write("true")
+                    }
+                    false => {
+                    }
                   }
                 }
             "#]],
@@ -3575,21 +3862,37 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  if Option[String]::Some("x").is_some() {
-                    write("some is some")
+                  match Option[String]::Some("x").is_some() {
+                    true => {
+                      write("some is some")
+                    }
+                    false => {
+                    }
                   }
-                  if Option[String]::None.is_some() {
-                    write("Should not appear")
+                  match Option[String]::None.is_some() {
+                    true => {
+                      write("Should not appear")
+                    }
+                    false => {
+                    }
                   }
                 }
 
                 -- after --
                 view Test() {
-                  if true {
-                    write("some is some")
+                  match true {
+                    true => {
+                      write("some is some")
+                    }
+                    false => {
+                    }
                   }
-                  if false {
-                    write("Should not appear")
+                  match false {
+                    true => {
+                      write("Should not appear")
+                    }
+                    false => {
+                    }
                   }
                 }
             "#]],
@@ -3610,21 +3913,37 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  if Option[String]::None.is_none() {
-                    write("none is none")
+                  match Option[String]::None.is_none() {
+                    true => {
+                      write("none is none")
+                    }
+                    false => {
+                    }
                   }
-                  if Option[String]::Some("x").is_none() {
-                    write("Should not appear")
+                  match Option[String]::Some("x").is_none() {
+                    true => {
+                      write("Should not appear")
+                    }
+                    false => {
+                    }
                   }
                 }
 
                 -- after --
                 view Test() {
-                  if true {
-                    write("none is none")
+                  match true {
+                    true => {
+                      write("none is none")
+                    }
+                    false => {
+                    }
                   }
-                  if false {
-                    write("Should not appear")
+                  match false {
+                    true => {
+                      write("Should not appear")
+                    }
+                    false => {
+                    }
                   }
                 }
             "#]],
@@ -3645,21 +3964,37 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  if "".is_empty() {
-                    write("Empty")
+                  match "".is_empty() {
+                    true => {
+                      write("Empty")
+                    }
+                    false => {
+                    }
                   }
-                  if "hello".is_empty() {
-                    write("Should not appear")
+                  match "hello".is_empty() {
+                    true => {
+                      write("Should not appear")
+                    }
+                    false => {
+                    }
                   }
                 }
 
                 -- after --
                 view Test() {
-                  if true {
-                    write("Empty")
+                  match true {
+                    true => {
+                      write("Empty")
+                    }
+                    false => {
+                    }
                   }
-                  if false {
-                    write("Should not appear")
+                  match false {
+                    true => {
+                      write("Should not appear")
+                    }
+                    false => {
+                    }
                   }
                 }
             "#]],
@@ -3683,21 +4018,37 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  if [].is_empty() {
-                    write("Empty")
+                  match [].is_empty() {
+                    true => {
+                      write("Empty")
+                    }
+                    false => {
+                    }
                   }
-                  if [1].is_empty() {
-                    write("Should not appear")
+                  match [1].is_empty() {
+                    true => {
+                      write("Should not appear")
+                    }
+                    false => {
+                    }
                   }
                 }
 
                 -- after --
                 view Test() {
-                  if true {
-                    write("Empty")
+                  match true {
+                    true => {
+                      write("Empty")
+                    }
+                    false => {
+                    }
                   }
-                  if false {
-                    write("Should not appear")
+                  match false {
+                    true => {
+                      write("Should not appear")
+                    }
+                    false => {
+                    }
                   }
                 }
             "#]],

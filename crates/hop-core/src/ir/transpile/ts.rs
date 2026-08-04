@@ -633,28 +633,6 @@ impl Transpiler for TsTranspiler {
         }
     }
 
-    fn transpile_if_statement<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        condition: &'a IrExpr,
-        body: &'a [IrStatement],
-    ) -> Doc<'a> {
-        arena
-            .nil()
-            .append(arena.text("if ("))
-            .append(self.transpile_bool_subject(arena, condition))
-            .append(arena.text(") {"))
-            .append(
-                arena
-                    .nil()
-                    .append(arena.hardline())
-                    .append(self.transpile_statements(arena, body))
-                    .append(arena.hardline())
-                    .nest(4),
-            )
-            .append(arena.text("}"))
-    }
-
     fn transpile_for_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
@@ -776,28 +754,37 @@ impl Transpiler for TsTranspiler {
                 subject,
                 true_body,
                 false_body,
-            } => arena
-                .text("if (")
-                .append(self.transpile_bool_subject(arena, subject))
-                .append(arena.text(") {"))
-                .append(
-                    arena
-                        .nil()
-                        .append(arena.hardline())
-                        .append(self.transpile_statements(arena, true_body))
-                        .append(arena.hardline())
-                        .nest(4),
-                )
-                .append(arena.text("} else {"))
-                .append(
-                    arena
-                        .nil()
-                        .append(arena.hardline())
-                        .append(self.transpile_statements(arena, false_body))
-                        .append(arena.hardline())
-                        .nest(4),
-                )
-                .append(arena.text("}")),
+            } => {
+                let if_doc = arena
+                    .text("if (")
+                    .append(self.transpile_bool_subject(arena, subject))
+                    .append(arena.text(") {"))
+                    .append(
+                        arena
+                            .nil()
+                            .append(arena.hardline())
+                            .append(self.transpile_statements(arena, true_body))
+                            .append(arena.hardline())
+                            .nest(4),
+                    )
+                    .append(arena.text("}"));
+                // An empty false arm emits no `else` branch.
+                if false_body.is_empty() {
+                    if_doc
+                } else {
+                    if_doc
+                        .append(arena.text(" else {"))
+                        .append(
+                            arena
+                                .nil()
+                                .append(arena.hardline())
+                                .append(self.transpile_statements(arena, false_body))
+                                .append(arena.hardline())
+                                .nest(4),
+                        )
+                        .append(arena.text("}"))
+                }
+            }
             Match::Option {
                 subject,
                 some_arm_binding,
@@ -1791,10 +1778,14 @@ mod tests {
             expect![[r#"
                 -- before --
                 view ConditionalDisplay(title: String, show: Bool) {
-                  if show {
-                    write("<h1>")
-                    write_escaped(title)
-                    write("</h1>\n")
+                  match show {
+                    true => {
+                      write("<h1>")
+                      write_escaped(title)
+                      write("</h1>\n")
+                    }
+                    false => {
+                    }
                   }
                 }
 

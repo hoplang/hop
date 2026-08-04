@@ -39,12 +39,6 @@ pub trait Transpiler {
         expr: &'a IrExpr,
         escape: bool,
     ) -> Doc<'a>;
-    fn transpile_if_statement<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        condition: &'a IrExpr,
-        body: &'a [IrStatement],
-    ) -> Doc<'a>;
     fn transpile_for_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
@@ -99,9 +93,6 @@ pub trait Transpiler {
             IrStatement::WriteExpr { expr, escape, .. } => {
                 self.transpile_write_expr_statement(arena, expr, *escape)
             }
-            IrStatement::If {
-                condition, body, ..
-            } => self.transpile_if_statement(arena, condition, body),
             IrStatement::For {
                 var, source, body, ..
             } => {

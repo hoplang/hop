@@ -135,15 +135,6 @@ impl VariableRenamingPass {
                 self.rename_expr(expr);
             }
 
-            IrStatement::If {
-                condition, body, ..
-            } => {
-                self.rename_expr(condition);
-                self.push_scope();
-                self.rename_statements(body);
-                self.pop_scope();
-            }
-
             IrStatement::For {
                 var, source, body, ..
             } => {

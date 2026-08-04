@@ -1,12 +1,10 @@
 mod coalesce_write_statements;
-mod eliminate_if_statements;
 mod eliminate_match_statements;
 mod eliminate_unused_variable_declarations;
 mod perform_partial_evaluation;
 mod simplify_write_exprs;
 
 pub use coalesce_write_statements::coalesce_write_statements;
-pub use eliminate_if_statements::eliminate_if_statements;
 pub use eliminate_match_statements::eliminate_match_statements;
 pub use eliminate_unused_variable_declarations::eliminate_unused_variable_declarations;
 pub use perform_partial_evaluation::perform_partial_evaluation;

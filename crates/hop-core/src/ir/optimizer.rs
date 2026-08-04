@@ -1,14 +1,13 @@
 use super::syntax::ast::{IrModule, IrStatement};
 use crate::expr::typing::type_registry::TypeRegistry;
 use crate::ir::syntax::transform::{
-    coalesce_write_statements, eliminate_if_statements, eliminate_match_statements,
-    eliminate_unused_variable_declarations, perform_partial_evaluation, simplify_write_exprs,
+    coalesce_write_statements, eliminate_match_statements, eliminate_unused_variable_declarations,
+    perform_partial_evaluation, simplify_write_exprs,
 };
 
 fn optimize_statements(body: &mut Vec<IrStatement>, registry: &TypeRegistry) {
     perform_partial_evaluation(body, registry);
     eliminate_unused_variable_declarations(body);
-    eliminate_if_statements(body);
     eliminate_match_statements(body);
     simplify_write_exprs(body);
     coalesce_write_statements(body, 60);
@@ -151,9 +150,13 @@ mod tests {
                   }
                 }
                 view Second() {
-                  if true {
-                    write("C")
-                    write("D")
+                  match true {
+                    true => {
+                      write("C")
+                      write("D")
+                    }
+                    false => {
+                    }
                   }
                 }
 
@@ -186,8 +189,12 @@ mod tests {
                 -- before --
                 view Test() {
                   let flag = true in {
-                    if flag {
-                      write("yes")
+                    match flag {
+                      true => {
+                        write("yes")
+                      }
+                      false => {
+                      }
                     }
                   }
                 }
@@ -310,9 +317,13 @@ mod tests {
                 view Test() {
                   let x = "hello" in {
                     let unused = x in {
-                      if true {
-                        write("A")
-                        write("B")
+                      match true {
+                        true => {
+                          write("A")
+                          write("B")
+                        }
+                        false => {
+                        }
                       }
                     }
                   }

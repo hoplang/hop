@@ -140,10 +140,13 @@ impl Compiler {
                 children,
                 ..
             } => {
-                output.push(IrStatement::If {
+                output.push(IrStatement::Match {
                     id: self.next_node_id(),
-                    condition: self.compile_expr(condition),
-                    body: self.compile_nodes(children),
+                    match_: Match::Bool {
+                        subject: Box::new(self.compile_expr(condition)),
+                        true_body: Box::new(self.compile_nodes(children)),
+                        false_body: Box::new(Vec::new()),
+                    },
                 });
             }
 
@@ -808,11 +811,15 @@ mod tests {
 
                 -- after --
                 view MainComp(show: Bool) {
-                  if show {
-                    write("<div")
-                    write(">")
-                    write("Visible")
-                    write("</div>")
+                  match show {
+                    true => {
+                      write("<div")
+                      write(">")
+                      write("Visible")
+                      write("</div>")
+                    }
+                    false => {
+                    }
                   }
                 }
             "#]],

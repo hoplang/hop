@@ -178,6 +178,63 @@ mod tests {
     }
 
     #[test]
+    fn should_eliminate_if_sugar_with_constant_subject() {
+        check(
+            IrModuleBuilder::new()
+                .view("Test", [("show", "Bool")], |t| {
+                    t.if_stmt(t.var("show"), |t| {
+                        t.write("Dynamic");
+                    });
+                    t.if_stmt(t.bool(true), |t| {
+                        t.write("Static true");
+                    });
+                    t.if_stmt(t.bool(false), |t| {
+                        t.write("Static false");
+                    });
+                })
+                .build(),
+            expect![[r#"
+                -- before --
+                view Test(show: Bool) {
+                  match show {
+                    true => {
+                      write("Dynamic")
+                    }
+                    false => {
+                    }
+                  }
+                  match true {
+                    true => {
+                      write("Static true")
+                    }
+                    false => {
+                    }
+                  }
+                  match false {
+                    true => {
+                      write("Static false")
+                    }
+                    false => {
+                    }
+                  }
+                }
+
+                -- after --
+                view Test(show: Bool) {
+                  match show {
+                    true => {
+                      write("Dynamic")
+                    }
+                    false => {
+                    }
+                  }
+                  write("Static true")
+                }
+            "#]],
+        );
+    }
+
+    #[test]
     fn should_preserve_bool_match_with_dynamic_subject() {
         check(
             IrModuleBuilder::new()

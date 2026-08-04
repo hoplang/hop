@@ -121,18 +121,6 @@ fn eval_statement(
             Ok(())
         }
 
-        IrStatement::If {
-            id: _,
-            condition,
-            body,
-        } => {
-            let cond_value = evaluate_expr(condition, env)?;
-            if cond_value.as_bool().expect("Expected boolean value") {
-                eval_statements(body, env, output, component_defs)?;
-            }
-            Ok(())
-        }
-
         IrStatement::For {
             id: _,
             var,
@@ -1009,8 +997,12 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test(show: Bool) {
-                  if show {
-                    write("<div>Visible</div>")
+                  match show {
+                    true => {
+                      write("<div>Visible</div>")
+                    }
+                    false => {
+                    }
                   }
                 }
 
@@ -1034,8 +1026,12 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test(show: Bool) {
-                  if show {
-                    write("<div>Hidden</div>")
+                  match show {
+                    true => {
+                      write("<div>Hidden</div>")
+                    }
+                    false => {
+                    }
                   }
                 }
 
