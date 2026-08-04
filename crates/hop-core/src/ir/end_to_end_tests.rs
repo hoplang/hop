@@ -4954,9 +4954,7 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  let items = ["a", "b", "c"] in {
-                    write_escaped(items.len().to_string())
-                  }
+                  write("3")
                 }
                 -- expected output --
                 3
@@ -4997,9 +4995,7 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  let items = [] in {
-                    write_escaped(items.len().to_string())
-                  }
+                  write("0")
                 }
                 -- expected output --
                 0
@@ -5044,11 +5040,7 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  let items = ["x", "y"] in {
-                    if (items.len() == 2) {
-                      write("has two")
-                    }
-                  }
+                  write("has two")
                 }
                 -- expected output --
                 has two
@@ -5093,11 +5085,7 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  let items = ["a"] in {
-                    if (items.len() < 5) {
-                      write("less than 5")
-                    }
-                  }
+                  write("less than 5")
                 }
                 -- expected output --
                 less than 5
@@ -5138,9 +5126,7 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  let numbers = [1, 2, 3, 4, 5] in {
-                    write_escaped(numbers.len().to_string())
-                  }
+                  write("5")
                 }
                 -- expected output --
                 5
@@ -5195,16 +5181,7 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  let items = [] in {
-                    match items.is_empty() {
-                      true => {
-                        write("empty")
-                      }
-                      false => {
-                        write("not empty")
-                      }
-                    }
-                  }
+                  write("empty")
                 }
                 -- expected output --
                 empty
@@ -5259,16 +5236,7 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  let items = ["a", "b"] in {
-                    match items.is_empty() {
-                      true => {
-                        write("empty")
-                      }
-                      false => {
-                        write("not empty")
-                      }
-                    }
-                  }
+                  write("not empty")
                 }
                 -- expected output --
                 not empty
@@ -5323,16 +5291,7 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  let numbers = [1, 2, 3] in {
-                    match numbers.is_empty() {
-                      true => {
-                        write("no numbers")
-                      }
-                      false => {
-                        write("has numbers")
-                      }
-                    }
-                  }
+                  write("has numbers")
                 }
                 -- expected output --
                 has numbers
@@ -5625,10 +5584,8 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  let items = ["a", "b", "c"] in {
-                    for _ in items {
-                      write("*")
-                    }
+                  for _ in ["a", "b", "c"] {
+                    write("*")
                   }
                 }
                 -- expected output --
@@ -5764,7 +5721,7 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  write_escaped([1, 2, 3].len().to_string())
+                  write("3")
                 }
                 -- expected output --
                 3

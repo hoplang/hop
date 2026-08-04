@@ -42,6 +42,8 @@ enum UnaryOp {
     StringIsEmpty,
     OptionIsSome,
     OptionIsNone,
+    ArrayIsEmpty,
+    ArrayLength,
 }
 
 /// Constant values that can be tracked during partial evaluation
@@ -60,6 +62,7 @@ enum Const {
         fields: Vec<(FieldName, ExprId)>,
     },
     Option(Option<ExprId>),
+    Array(Vec<ExprId>),
 }
 
 impl Const {
@@ -147,6 +150,30 @@ impl Const {
                 };
                 IrExpr::OptionLiteral {
                     value: inner_expr,
+                    kind,
+                    id,
+                }
+            }
+            Const::Array(element_ids) => {
+                // Extract the element type: Array<T> -> T
+                let element_kind = match &*kind {
+                    Type::Array(inner) => inner.clone(),
+                    _ => panic!("Const::Array must have array type, got {:?}", kind),
+                };
+                let elements: Option<Vec<_>> = element_ids
+                    .iter()
+                    .map(|element_id| {
+                        let element_const = known_expr_map.get(element_id)?;
+                        element_const.to_expr(
+                            *element_id,
+                            element_kind.clone(),
+                            known_expr_map,
+                            registry,
+                        )
+                    })
+                    .collect();
+                IrExpr::ArrayLiteral {
+                    elements: elements?,
                     kind,
                     id,
                 }
@@ -404,10 +431,8 @@ pub fn perform_partial_evaluation(body: &mut Vec<IrStatement>, registry: &TypeRe
                         }
                     }
                     IrExpr::OptionLiteral { value, .. } => {
-                        // Track the full Option constant with inner expression id
                         let inner_id = value.as_ref().map(|inner| inner.id());
                         initial_constants.push((expr.id(), Const::Option(inner_id)));
-                        // Track contained expr id for binding propagation
                         if let Some(inner) = value {
                             option_contained_values.push((expr.id(), inner.id()));
                         }
@@ -425,17 +450,20 @@ pub fn perform_partial_evaluation(body: &mut Vec<IrStatement>, registry: &TypeRe
                     IrExpr::RecordLiteral { .. } => {
                         // Not yet implemented
                     }
-                    IrExpr::ArrayLiteral { .. } => {
-                        // Not yet implemented
+                    IrExpr::ArrayLiteral { elements, .. } => {
+                        let element_ids: Vec<ExprId> = elements.iter().map(|e| e.id()).collect();
+                        initial_constants.push((expr.id(), Const::Array(element_ids)));
                     }
                     IrExpr::FieldAccess { .. } => {
                         // Not yet implemented
                     }
-                    IrExpr::ArrayLength { .. } => {
-                        // Not yet implemented
+                    IrExpr::ArrayLength { array, .. } => {
+                        unary_operands.push((array.id(), expr.id()));
+                        unary_ops.push((expr.id(), UnaryOp::ArrayLength));
                     }
-                    IrExpr::ArrayIsEmpty { .. } => {
-                        // Not yet implemented
+                    IrExpr::ArrayIsEmpty { array, .. } => {
+                        unary_operands.push((array.id(), expr.id()));
+                        unary_ops.push((expr.id(), UnaryOp::ArrayIsEmpty));
                     }
                     IrExpr::StringIsEmpty { string, .. } => {
                         unary_operands.push((string.id(), expr.id()));
@@ -591,6 +619,14 @@ pub fn perform_partial_evaluation(body: &mut Vec<IrStatement>, registry: &TypeRe
                         UnaryOp::OptionIsNone => match known_val {
                             Const::Option(inner) => Const::Bool(inner.is_none()),
                             _ => unreachable!("OptionIsNone can only have option operands"),
+                        },
+                        UnaryOp::ArrayIsEmpty => match known_val {
+                            Const::Array(elements) => Const::Bool(elements.is_empty()),
+                            _ => unreachable!("ArrayIsEmpty can only have array operands"),
+                        },
+                        UnaryOp::ArrayLength => match known_val {
+                            Const::Array(elements) => Const::Int(elements.len() as i32),
+                            _ => unreachable!("ArrayLength can only have array operands"),
                         },
                     };
                     (*parent_expr_id, result)
@@ -3625,6 +3661,88 @@ mod tests {
                   if false {
                     write("Should not appear")
                   }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_evaluate_array_is_empty() {
+        check(
+            IrModuleBuilder::new().view_no_params("Test", |t| {
+                t.if_stmt(
+                    t.array_is_empty(t.array_typed(Arc::new(Type::String), vec![])),
+                    |t| {
+                        t.write("Empty");
+                    },
+                );
+                t.if_stmt(t.array_is_empty(t.array(vec![t.int(1)])), |t| {
+                    t.write("Should not appear");
+                });
+            }),
+            expect![[r#"
+                -- before --
+                view Test() {
+                  if [].is_empty() {
+                    write("Empty")
+                  }
+                  if [1].is_empty() {
+                    write("Should not appear")
+                  }
+                }
+
+                -- after --
+                view Test() {
+                  if true {
+                    write("Empty")
+                  }
+                  if false {
+                    write("Should not appear")
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_evaluate_array_length() {
+        check(
+            IrModuleBuilder::new().view_no_params("Test", |t| {
+                t.write_expr_escaped(t.int_to_string(t.array_length(t.array(vec![
+                    t.str("a"),
+                    t.str("b"),
+                    t.str("c"),
+                ]))));
+            }),
+            expect![[r#"
+                -- before --
+                view Test() {
+                  write_escaped(["a", "b", "c"].len().to_string())
+                }
+
+                -- after --
+                view Test() {
+                  write_escaped("3")
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_evaluate_array_length_with_non_constant_elements() {
+        check(
+            IrModuleBuilder::new().view("Test", [("x", "Int")], |t| {
+                t.write_expr_escaped(t.int_to_string(t.array_length(t.array(vec![t.var("x")]))));
+            }),
+            expect![[r#"
+                -- before --
+                view Test(x: Int) {
+                  write_escaped([x].len().to_string())
+                }
+
+                -- after --
+                view Test(x: Int) {
+                  write_escaped("1")
                 }
             "#]],
         );
