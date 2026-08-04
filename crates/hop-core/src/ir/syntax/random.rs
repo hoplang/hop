@@ -208,6 +208,26 @@ impl IrGenerator<'_, '_> {
         }
     }
 
+    /// Plan the arms of an enum match.
+    fn enum_match_arms(
+        &mut self,
+        variants: &[(String, Vec<(String, String)>)],
+    ) -> Vec<(String, Vec<(String, String)>)> {
+        let mut remaining: Vec<&(String, Vec<(String, String)>)> = variants.iter().collect();
+        let mut arms = Vec::new();
+        while !remaining.is_empty() {
+            let (variant, fields) = remaining.swap_remove(self.index(remaining.len()));
+            let mut bindings = Vec::new();
+            for (field, _) in fields {
+                if self.coin() {
+                    bindings.push((field.clone(), self.fresh_var_name()));
+                }
+            }
+            arms.push((variant.clone(), bindings));
+        }
+        arms
+    }
+
     fn stmts(&mut self, b: &mut IrBuilder, depth: usize) {
         for _ in 0..self.count(0..=4) {
             self.stmt(b, depth);
@@ -326,12 +346,9 @@ impl IrGenerator<'_, '_> {
                 let info = self.u.choose(&self.enums).unwrap().clone();
                 let subject_ty = b.resolve_type(&info.name);
                 let subject = self.expr(b, &subject_ty, depth);
+                let arm_plan = self.enum_match_arms(&info.variants);
                 b.enum_match_stmt(subject, |arms| {
-                    for (variant, fields) in &info.variants {
-                        let bindings: Vec<(String, String)> = fields
-                            .iter()
-                            .map(|(field, _)| (field.clone(), self.fresh_var_name()))
-                            .collect();
+                    for (variant, bindings) in &arm_plan {
                         arms.arm_bound(
                             variant,
                             bindings.iter().map(|(f, v)| (f.as_str(), v.as_str())),
@@ -490,12 +507,9 @@ impl IrGenerator<'_, '_> {
                 let info = self.u.choose(&self.enums).unwrap().clone();
                 let subject_ty = b.resolve_type(&info.name);
                 let subject = self.expr(b, &subject_ty, depth - 1);
+                let arm_plan = self.enum_match_arms(&info.variants);
                 b.enum_match_expr(subject, |arms| {
-                    for (variant, fields) in &info.variants {
-                        let bindings: Vec<(String, String)> = fields
-                            .iter()
-                            .map(|(field, _)| (field.clone(), self.fresh_var_name()))
-                            .collect();
+                    for (variant, bindings) in &arm_plan {
                         arms.arm_bound(
                             variant,
                             bindings.iter().map(|(f, v)| (f.as_str(), v.as_str())),
