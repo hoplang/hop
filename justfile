@@ -6,7 +6,7 @@ build:
 
 # generate coverage for a given test
 coverage TEST:
-	nix run nixpkgs#cargo-llvm-cov -- llvm-cov --html -p hop-core --lib -- {{TEST}}
+	nix run nixpkgs#cargo-llvm-cov -- llvm-cov --html -p hop-core --lib -- {{TEST}} --include-ignored
 
 # run fuzz tests
 fuzz:
