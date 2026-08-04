@@ -1,7 +1,10 @@
 use std::collections::HashSet;
 
 use crate::expr::patterns::Match;
-use crate::ir::ast::{IrComponentDeclaration, IrExpr, IrForSource, IrStatement, IrViewDeclaration};
+use crate::ir::ast::{
+    ExprId, IrComponentDeclaration, IrExpr, IrForSource, IrStatement, IrViewDeclaration,
+    StatementId,
+};
 use crate::symbols::var_name::VarName;
 
 // Reserved keywords across all target languages (sorted for binary search)
@@ -475,12 +478,12 @@ impl VariableRenamingPass {
         for (renamed, param) in renamed_params.into_iter().zip(&comp_decl.parameters).rev() {
             if renamed != param.name {
                 comp_decl.body = vec![IrStatement::Let {
-                    id: 0, // ID will be assigned later if needed
+                    id: StatementId::new(0), // ID will be assigned later if needed
                     var: renamed,
                     value: IrExpr::Var {
                         value: param.name.clone(),
                         kind: param.typ.clone(),
-                        id: 0,
+                        id: ExprId::new(0),
                     },
                     body: std::mem::take(&mut comp_decl.body),
                 }];
@@ -506,12 +509,12 @@ impl VariableRenamingPass {
         for (renamed, param) in renamed_params.into_iter().zip(&comp_decl.parameters).rev() {
             if renamed != param.name {
                 comp_decl.body = vec![IrStatement::Let {
-                    id: 0,
+                    id: StatementId::new(0),
                     var: renamed,
                     value: IrExpr::Var {
                         value: param.name.clone(),
                         kind: param.typ.clone(),
-                        id: 0,
+                        id: ExprId::new(0),
                     },
                     body: std::mem::take(&mut comp_decl.body),
                 }];
@@ -794,16 +797,16 @@ mod tests {
         let depth = 100;
         let mut expr = IrExpr::StringLiteral {
             value: CheapString::new("start".to_string()),
-            id: 0,
+            id: ExprId::new(0),
         };
         for i in 0..depth {
             expr = IrExpr::StringConcat {
                 left: Box::new(expr),
                 right: Box::new(IrExpr::StringLiteral {
                     value: CheapString::new(format!("{}", i)),
-                    id: i + 1,
+                    id: ExprId::new(i + 1),
                 }),
-                id: i + 1000,
+                id: ExprId::new(i + 1000),
             };
         }
 

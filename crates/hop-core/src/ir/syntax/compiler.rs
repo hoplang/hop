@@ -280,13 +280,13 @@ impl Compiler {
     fn next_expr_id(&mut self) -> ExprId {
         let id = self.expr_id_counter;
         self.expr_id_counter += 1;
-        id
+        ExprId::new(id)
     }
 
     fn next_node_id(&mut self) -> StatementId {
         let id = self.node_id_counter;
         self.node_id_counter += 1;
-        id
+        StatementId::new(id)
     }
 
     /// Helper to compile an attribute to IR statements

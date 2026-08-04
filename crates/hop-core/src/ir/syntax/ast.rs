@@ -12,10 +12,24 @@ use crate::symbols::var_name::VarName;
 use pretty::BoxDoc;
 
 /// Unique identifier for each expression in the IR
-pub type ExprId = usize;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ExprId(usize);
+
+impl ExprId {
+    pub fn new(id: usize) -> Self {
+        Self(id)
+    }
+}
 
 /// Unique identifier for each statement in the IR
-pub type StatementId = usize;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct StatementId(usize);
+
+impl StatementId {
+    pub fn new(id: usize) -> Self {
+        Self(id)
+    }
+}
 
 /// A parameter declaration in the IR (used in views and components).
 #[derive(Debug, Clone, PartialEq)]

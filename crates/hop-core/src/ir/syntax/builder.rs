@@ -4,7 +4,9 @@ use crate::expr::patterns::{EnumMatchArm, EnumPattern, Match};
 use crate::expr::typing::r#type::{ComparableType, EnumVariant, EquatableType, NumericType};
 use crate::expr::typing::type_registry::{ResolvedType, TypeRegistry};
 use crate::expr::typing::type_registry_builder::{TestTypes, TypeRegistryBuilder};
-use crate::ir::ast::{IrArgument, IrExpr, IrForSource, IrParameter, IrStatement};
+use crate::ir::ast::{
+    ExprId, IrArgument, IrExpr, IrForSource, IrParameter, IrStatement, StatementId,
+};
 use crate::ir::ast::{
     IrComponentDeclaration, IrEnumDeclaration, IrModule, IrRecordDeclaration, IrViewDeclaration,
 };
@@ -240,6 +242,14 @@ impl IrBuilder {
         id
     }
 
+    fn next_expr_id(&self) -> ExprId {
+        ExprId::new(self.next_id())
+    }
+
+    fn next_statement_id(&self) -> StatementId {
+        StatementId::new(self.next_id())
+    }
+
     fn scoped(&self, bindings: impl IntoIterator<Item = (VarName, Arc<Type>)>) -> Self {
         let mut var_stack = self.var_stack.clone();
         var_stack.extend(bindings);
@@ -279,28 +289,28 @@ impl IrBuilder {
     pub fn str(&self, s: &str) -> IrExpr {
         IrExpr::StringLiteral {
             value: CheapString::new(s.to_string()),
-            id: self.next_id(),
+            id: self.next_expr_id(),
         }
     }
 
     pub fn int(&self, n: i32) -> IrExpr {
         IrExpr::IntLiteral {
             value: n,
-            id: self.next_id(),
+            id: self.next_expr_id(),
         }
     }
 
     pub fn bool(&self, b: bool) -> IrExpr {
         IrExpr::BooleanLiteral {
             value: b,
-            id: self.next_id(),
+            id: self.next_expr_id(),
         }
     }
 
     pub fn float(&self, f: f64) -> IrExpr {
         IrExpr::FloatLiteral {
             value: f,
-            id: self.next_id(),
+            id: self.next_expr_id(),
         }
     }
 
@@ -325,7 +335,7 @@ impl IrBuilder {
         IrExpr::Var {
             value,
             kind,
-            id: self.next_id(),
+            id: self.next_expr_id(),
         }
     }
 
@@ -344,7 +354,7 @@ impl IrBuilder {
             left: Box::new(left),
             right: Box::new(right),
             operand_types,
-            id: self.next_id(),
+            id: self.next_expr_id(),
         }
     }
 
@@ -361,7 +371,7 @@ impl IrBuilder {
             left: Box::new(left),
             right: Box::new(right),
             operand_types,
-            id: self.next_id(),
+            id: self.next_expr_id(),
         }
     }
 
@@ -378,7 +388,7 @@ impl IrBuilder {
             left: Box::new(left),
             right: Box::new(right),
             operand_types,
-            id: self.next_id(),
+            id: self.next_expr_id(),
         }
     }
 
@@ -392,7 +402,7 @@ impl IrBuilder {
             left: Box::new(left),
             right: Box::new(right),
             operand_types,
-            id: self.next_id(),
+            id: self.next_expr_id(),
         }
     }
 
@@ -406,7 +416,7 @@ impl IrBuilder {
             left: Box::new(left),
             right: Box::new(right),
             operand_types,
-            id: self.next_id(),
+            id: self.next_expr_id(),
         }
     }
 
@@ -420,7 +430,7 @@ impl IrBuilder {
             left: Box::new(left),
             right: Box::new(right),
             operand_types,
-            id: self.next_id(),
+            id: self.next_expr_id(),
         }
     }
 
@@ -433,7 +443,7 @@ impl IrBuilder {
         );
         IrExpr::BooleanNegation {
             operand: Box::new(operand),
-            id: self.next_id(),
+            id: self.next_expr_id(),
         }
     }
 
@@ -446,7 +456,7 @@ impl IrBuilder {
         IrExpr::NumericNegation {
             operand: Box::new(operand),
             operand_type,
-            id: self.next_id(),
+            id: self.next_expr_id(),
         }
     }
 
@@ -466,7 +476,7 @@ impl IrBuilder {
         IrExpr::BooleanLogicalAnd {
             left: Box::new(left),
             right: Box::new(right),
-            id: self.next_id(),
+            id: self.next_expr_id(),
         }
     }
 
@@ -486,7 +496,7 @@ impl IrBuilder {
         IrExpr::BooleanLogicalOr {
             left: Box::new(left),
             right: Box::new(right),
-            id: self.next_id(),
+            id: self.next_expr_id(),
         }
     }
 
@@ -512,7 +522,7 @@ impl IrBuilder {
         IrExpr::ArrayLiteral {
             elements,
             kind: Arc::new(Type::Array(element_type)),
-            id: self.next_id(),
+            id: self.next_expr_id(),
         }
     }
 
@@ -525,7 +535,7 @@ impl IrBuilder {
         );
         IrExpr::IntToString {
             value: Box::new(value),
-            id: self.next_id(),
+            id: self.next_expr_id(),
         }
     }
 
@@ -538,7 +548,7 @@ impl IrBuilder {
         );
         IrExpr::FloatToInt {
             value: Box::new(value),
-            id: self.next_id(),
+            id: self.next_expr_id(),
         }
     }
 
@@ -551,7 +561,7 @@ impl IrBuilder {
         );
         IrExpr::IntToFloat {
             value: Box::new(value),
-            id: self.next_id(),
+            id: self.next_expr_id(),
         }
     }
 
@@ -599,7 +609,7 @@ impl IrBuilder {
                 .map(|(k, v)| (FieldName::new(k).unwrap(), v))
                 .collect(),
             kind: self.types.named(record_name),
-            id: self.next_id(),
+            id: self.next_expr_id(),
         }
     }
 
@@ -673,7 +683,7 @@ impl IrBuilder {
                 .map(|(k, v)| (FieldName::new(k).unwrap(), v))
                 .collect(),
             kind: self.types.named(enum_name),
-            id: self.next_id(),
+            id: self.next_expr_id(),
         }
     }
 
@@ -683,7 +693,7 @@ impl IrBuilder {
         IrExpr::OptionLiteral {
             value: Some(Box::new(inner)),
             kind: Arc::new(Type::Option(inner_type)),
-            id: self.next_id(),
+            id: self.next_expr_id(),
         }
     }
 
@@ -698,7 +708,7 @@ impl IrBuilder {
         IrExpr::OptionLiteral {
             value: None,
             kind: Arc::new(Type::Option(inner_type)),
-            id: self.next_id(),
+            id: self.next_expr_id(),
         }
     }
 
@@ -733,7 +743,7 @@ impl IrBuilder {
                 arms: arms.arms,
             },
             kind,
-            id: self.next_id(),
+            id: self.next_expr_id(),
         }
     }
 
@@ -761,7 +771,7 @@ impl IrBuilder {
                 false_body: Box::new(false_body),
             },
             kind: result_type,
-            id: self.next_id(),
+            id: self.next_expr_id(),
         }
     }
 
@@ -794,7 +804,7 @@ impl IrBuilder {
                 none_arm_body: Box::new(none_body),
             },
             kind: result_type,
-            id: self.next_id(),
+            id: self.next_expr_id(),
         }
     }
 
@@ -834,7 +844,7 @@ impl IrBuilder {
                 none_arm_body: Box::new(none_body),
             },
             kind: result_type,
-            id: self.next_id(),
+            id: self.next_expr_id(),
         }
     }
 
@@ -862,7 +872,7 @@ impl IrBuilder {
             record: Box::new(object),
             field: field_name,
             kind: field_type,
-            id: self.next_id(),
+            id: self.next_expr_id(),
         }
     }
 
@@ -883,7 +893,7 @@ impl IrBuilder {
             value: Box::new(value),
             body: Box::new(body),
             kind,
-            id: self.next_id(),
+            id: self.next_expr_id(),
         }
     }
 
@@ -936,7 +946,7 @@ impl IrBuilder {
             bindings: ir_bindings,
             body: Box::new(body),
             kind,
-            id: self.next_id(),
+            id: self.next_expr_id(),
         }
     }
 
@@ -956,7 +966,7 @@ impl IrBuilder {
         IrExpr::StringConcat {
             left: Box::new(left),
             right: Box::new(right),
-            id: self.next_id(),
+            id: self.next_expr_id(),
         }
     }
 
@@ -972,7 +982,7 @@ impl IrBuilder {
         match args.len() {
             0 => IrExpr::StringLiteral {
                 value: CheapString::new(String::new()),
-                id: self.next_id(),
+                id: self.next_expr_id(),
             },
             1 => args.into_iter().next().unwrap(),
             _ => {
@@ -983,14 +993,14 @@ impl IrBuilder {
                         left: Box::new(result),
                         right: Box::new(IrExpr::StringLiteral {
                             value: CheapString::new(" ".to_string()),
-                            id: self.next_id(),
+                            id: self.next_expr_id(),
                         }),
-                        id: self.next_id(),
+                        id: self.next_expr_id(),
                     };
                     result = IrExpr::StringConcat {
                         left: Box::new(result),
                         right: Box::new(arg),
-                        id: self.next_id(),
+                        id: self.next_expr_id(),
                     };
                 }
                 result
@@ -1007,7 +1017,7 @@ impl IrBuilder {
         );
         IrExpr::TwMerge {
             operand: Box::new(value),
-            id: self.next_id(),
+            id: self.next_expr_id(),
         }
     }
 
@@ -1019,7 +1029,7 @@ impl IrBuilder {
         );
         IrExpr::ArrayLength {
             array: Box::new(operand),
-            id: self.next_id(),
+            id: self.next_expr_id(),
         }
     }
 
@@ -1031,7 +1041,7 @@ impl IrBuilder {
         );
         IrExpr::ArrayIsEmpty {
             array: Box::new(operand),
-            id: self.next_id(),
+            id: self.next_expr_id(),
         }
     }
 
@@ -1044,7 +1054,7 @@ impl IrBuilder {
         );
         IrExpr::StringIsEmpty {
             string: Box::new(operand),
-            id: self.next_id(),
+            id: self.next_expr_id(),
         }
     }
 
@@ -1056,7 +1066,7 @@ impl IrBuilder {
         );
         IrExpr::OptionIsSome {
             option: Box::new(operand),
-            id: self.next_id(),
+            id: self.next_expr_id(),
         }
     }
 
@@ -1068,14 +1078,14 @@ impl IrBuilder {
         );
         IrExpr::OptionIsNone {
             option: Box::new(operand),
-            id: self.next_id(),
+            id: self.next_expr_id(),
         }
     }
 
     // Statement methods that auto-collect
     pub fn write(&mut self, s: &str) {
         self.statements.push(IrStatement::Write {
-            id: self.next_id(),
+            id: self.next_statement_id(),
             content: s.to_string(),
         });
     }
@@ -1087,7 +1097,7 @@ impl IrBuilder {
             expr
         );
         self.statements.push(IrStatement::WriteExpr {
-            id: self.next_id(),
+            id: self.next_statement_id(),
             expr,
             escape,
         });
@@ -1104,7 +1114,7 @@ impl IrBuilder {
         assert_eq!(*cond.as_type(), Type::Bool, "{}", cond);
         let body = self.in_scope([], body_fn);
         self.statements.push(IrStatement::If {
-            id: self.next_id(),
+            id: self.next_statement_id(),
             condition: cond,
             body,
         });
@@ -1123,7 +1133,7 @@ impl IrBuilder {
         let body = self.in_scope([(var.clone(), element_type)], body_fn);
 
         self.statements.push(IrStatement::For {
-            id: self.next_id(),
+            id: self.next_statement_id(),
             var: Some(var),
             source: IrForSource::Array(array),
             body,
@@ -1158,7 +1168,7 @@ impl IrBuilder {
         let body = self.in_scope(bindings, body_fn);
 
         self.statements.push(IrStatement::For {
-            id: self.next_id(),
+            id: self.next_statement_id(),
             var,
             source: IrForSource::RangeInclusive { start, end },
             body,
@@ -1175,7 +1185,7 @@ impl IrBuilder {
         let body = self.in_scope([(var.clone(), value_type)], body_fn);
 
         self.statements.push(IrStatement::Let {
-            id: self.next_id(),
+            id: self.next_statement_id(),
             var,
             value,
             body,
@@ -1193,7 +1203,7 @@ impl IrBuilder {
         let body = self.in_scope([(var.clone(), Arc::new(Type::Fragment))], body_fn);
 
         self.statements.push(IrStatement::LetFragment {
-            id: self.next_id(),
+            id: self.next_statement_id(),
             var,
             fragment_body,
             body,
@@ -1215,7 +1225,7 @@ impl IrBuilder {
         let false_body = self.in_scope([], false_body_fn);
 
         self.statements.push(IrStatement::Match {
-            id: self.next_id(),
+            id: self.next_statement_id(),
             match_: Match::Bool {
                 subject: Box::new(subject),
                 true_body: Box::new(true_body),
@@ -1249,7 +1259,7 @@ impl IrBuilder {
         let none_arm_body = self.in_scope([], none_body_fn);
 
         self.statements.push(IrStatement::Match {
-            id: self.next_id(),
+            id: self.next_statement_id(),
             match_: Match::Option {
                 subject: Box::new(subject),
                 some_arm_binding,
@@ -1282,7 +1292,7 @@ impl IrBuilder {
         let ir_arms = arms.arms;
 
         self.statements.push(IrStatement::Match {
-            id: self.next_id(),
+            id: self.next_statement_id(),
             match_: Match::Enum {
                 subject: Box::new(subject),
                 arms: ir_arms,
@@ -1333,7 +1343,7 @@ impl IrBuilder {
         let body = self.in_scope(scoped_vars, body_fn);
 
         self.statements.push(IrStatement::LetRecordDestructure {
-            id: self.next_id(),
+            id: self.next_statement_id(),
             subject,
             bindings: ir_bindings,
             body,
@@ -1352,7 +1362,7 @@ impl IrBuilder {
             .collect();
 
         self.statements.push(IrStatement::ComponentInvocation {
-            id: self.next_id(),
+            id: self.next_statement_id(),
             component_name: TypeName::new(name).unwrap(),
             args: ir_args,
         });
