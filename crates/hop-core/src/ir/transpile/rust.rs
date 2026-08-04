@@ -637,40 +637,18 @@ impl Transpiler for RustTranspiler {
         expr: &'a IrExpr,
         escape: bool,
     ) -> Doc<'a> {
-        let expr_type = expr.as_type();
-
         if escape {
             self.needs_escape_html = true;
-            // HTML escaping needed
-            match expr_type {
-                Type::String => arena
-                    .text("write_escaped_html(&")
-                    .append(self.transpile_expr(arena, expr))
-                    .append(arena.text(", &mut output);")),
-                Type::Int => arena
-                    .text("write_escaped_html(&")
-                    .append(self.transpile_expr(arena, expr))
-                    .append(arena.text(".to_string(), &mut output);")),
-                _ => arena
-                    .text("write_escaped_html(&")
-                    .append(self.transpile_expr(arena, expr))
-                    .append(arena.text(", &mut output);")),
-            }
+            arena
+                .text("write_escaped_html(&")
+                .append(self.transpile_expr(arena, expr))
+                .append(arena.text(", &mut output);"))
         } else {
-            // No escaping needed
-            match expr_type {
-                Type::String => arena
-                    .text("output.push_str(&")
-                    .append(self.transpile_expr(arena, expr))
-                    .append(arena.text(");")),
+            match expr.as_type() {
                 Type::Fragment => arena
                     .text("output.push_str(&")
                     .append(self.transpile_expr(arena, expr))
                     .append(arena.text(".0);")),
-                Type::Int => arena
-                    .text("output.push_str(&")
-                    .append(self.transpile_expr(arena, expr))
-                    .append(arena.text(".to_string());")),
                 _ => arena
                     .text("output.push_str(&")
                     .append(self.transpile_expr(arena, expr))
