@@ -195,6 +195,19 @@ impl IrGenerator<'_, '_> {
         out
     }
 
+    /// Pairs of `(record, field)` where the field type is the given type.
+    fn record_fields_of_type(&self, b: &IrBuilder, target: &Type) -> Vec<(String, String)> {
+        let mut candidates = Vec::new();
+        for rec in &self.records {
+            for (field, field_ty) in &rec.fields {
+                if *b.resolve_type(field_ty) == *target {
+                    candidates.push((rec.name.clone(), field.clone()));
+                }
+            }
+        }
+        candidates
+    }
+
     fn fresh_var_name(&mut self) -> String {
         let n = self.next_var;
         self.next_var += 1;
@@ -403,21 +416,11 @@ impl IrGenerator<'_, '_> {
         if b.vars().iter().any(|(_, ty)| **ty == *target) {
             productions.push(P::Var);
         }
-        if b.vars().iter().any(|(_, var_ty)| match &**var_ty {
-            Type::Named { name, .. } => self
-                .records
-                .iter()
-                .find(|r| r.name == name.as_str())
-                .is_some_and(|rec| {
-                    rec.fields
-                        .iter()
-                        .any(|(_, field_ty)| *b.resolve_type(field_ty) == *target)
-                }),
-            _ => false,
-        }) {
-            productions.push(P::FieldAccess);
-        }
+        let record_fields = self.record_fields_of_type(b, target);
         if depth > 0 {
+            if !record_fields.is_empty() {
+                productions.push(P::FieldAccess);
+            }
             productions.extend([P::Let, P::BoolMatch, P::OptionMatch]);
             if !self.enums.is_empty() {
                 productions.push(P::EnumMatch);
@@ -465,21 +468,10 @@ impl IrGenerator<'_, '_> {
                 b.var(self.u.choose(&candidates).unwrap())
             }
             P::FieldAccess => {
-                let mut candidates: Vec<(&str, &str)> = Vec::new();
-                for (var_name, var_ty) in b.vars() {
-                    if let Type::Named { name, .. } = &**var_ty {
-                        if let Some(rec) = self.records.iter().find(|r| r.name == name.as_str()) {
-                            for (field, field_ty) in &rec.fields {
-                                if *b.resolve_type(field_ty) == *target {
-                                    candidates.push((var_name.as_str(), field.as_str()));
-                                }
-                            }
-                        }
-                    }
-                }
-                let (var, field) = *self.u.choose(&candidates).unwrap();
-                let object = b.var(var);
-                b.field_access(object, field)
+                let (record, field) = self.u.choose(&record_fields).unwrap().clone();
+                let record_ty = b.resolve_type(&record);
+                let object = self.expr(b, &record_ty, depth - 1);
+                b.field_access(object, &field)
             }
             P::Let => {
                 let value_ty = b.resolve_type(&self.random_type_string(2));
