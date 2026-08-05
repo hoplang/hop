@@ -186,6 +186,15 @@ impl IrGenerator<'_, '_> {
         if n % 2 == 0 { -n / 2 } else { n / 2 + 1 }
     }
 
+    /// A random permutation of items.
+    fn shuffled<T>(&mut self, mut items: Vec<T>) -> Vec<T> {
+        let mut out = Vec::with_capacity(items.len());
+        while !items.is_empty() {
+            out.push(items.swap_remove(self.index(items.len())));
+        }
+        out
+    }
+
     fn fresh_var_name(&mut self) -> String {
         let n = self.next_var;
         self.next_var += 1;
@@ -654,7 +663,7 @@ impl IrGenerator<'_, '_> {
             }
             Type::Named { name, .. } => {
                 if let Some(rec) = self.records.iter().find(|r| r.name == name.as_str()) {
-                    let fields = rec.fields.clone();
+                    let fields = self.shuffled(rec.fields.clone());
                     let mut values = Vec::new();
                     for (field, field_ty) in &fields {
                         let ty = b.resolve_type(field_ty);
@@ -669,8 +678,9 @@ impl IrGenerator<'_, '_> {
                         .expect("named type must be a generated record or enum")
                         .clone();
                     let (variant, fields) = self.u.choose(&info.variants).unwrap();
+                    let fields = self.shuffled(fields.clone());
                     let mut values = Vec::new();
-                    for (field, field_ty) in fields {
+                    for (field, field_ty) in &fields {
                         let ty = b.resolve_type(field_ty);
                         values.push((field.as_str(), self.expr(b, &ty, depth.saturating_sub(1))));
                     }
