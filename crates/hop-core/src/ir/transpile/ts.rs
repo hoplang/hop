@@ -209,6 +209,11 @@ impl Transpiler for TsTranspiler {
                     let param_docs: Vec<_> = variant
                         .fields
                         .iter()
+                        .map(|(field_name, _, _)| arena.text(field_name.as_str()))
+                        .collect();
+                    let param_with_type_docs: Vec<_> = variant
+                        .fields
+                        .iter()
                         .map(|(field_name, field_type, _)| {
                             arena
                                 .text(field_name.as_str())
@@ -226,9 +231,11 @@ impl Transpiler for TsTranspiler {
                     result = result
                         .append(arena.text("    export function "))
                         .append(arena.text(variant.name.as_str()))
-                        .append(arena.text("("))
+                        .append(arena.text("({"))
                         .append(arena.intersperse(param_docs, arena.text(", ")))
-                        .append(arena.text("): "))
+                        .append(arena.text("} : {"))
+                        .append(arena.intersperse(param_with_type_docs, arena.text(", ")))
+                        .append(arena.text("}): "))
                         .append(arena.text(enum_def.name.as_str()))
                         .append(arena.text(" {"))
                         .append(arena.line())
@@ -252,42 +259,90 @@ impl Transpiler for TsTranspiler {
         // Add record type definitions
         if !records.is_empty() {
             for record in records {
-                let field_docs: Vec<_> = record
-                    .fields
-                    .iter()
-                    .map(|(name, ty, _)| {
-                        arena
-                            .text("public readonly ")
-                            .append(arena.text(name.as_str()))
-                            .append(arena.text(": "))
-                            .append(self.transpile_type(arena, ty))
-                            .append(arena.text(","))
-                    })
-                    .collect();
-                result = result
-                    .append(arena.text("export class "))
-                    .append(arena.text(record.name.as_str()))
-                    .append(arena.text(" {"))
-                    .append(
-                        arena
-                            .nil()
-                            .append(arena.line())
-                            .append(arena.text("constructor("))
-                            .append(
-                                arena
-                                    .nil()
-                                    .append(arena.line())
-                                    .append(arena.intersperse(field_docs, arena.line()))
-                                    .append(arena.line())
-                                    .nest(4),
-                            )
-                            .append(arena.text(") {}"))
-                            .append(arena.line())
-                            .nest(4),
-                    )
-                    .append(arena.text("}"))
-                    .append(arena.line())
-                    .append(arena.line());
+                if record.fields.is_empty() {
+                    result = result
+                        .append(arena.text("export class "))
+                        .append(arena.text(record.name.as_str()))
+                        .append(arena.text(" {}"))
+                        .append(arena.line())
+                        .append(arena.line());
+                } else {
+                    let field_docs: Vec<_> = record
+                        .fields
+                        .iter()
+                        .map(|(name, ty, _)| {
+                            arena
+                                .text("public readonly ")
+                                .append(arena.text(name.as_str()))
+                                .append(arena.text(": "))
+                                .append(self.transpile_type(arena, ty))
+                                .append(arena.text(";"))
+                        })
+                        .collect();
+                    let param_docs: Vec<_> = record
+                        .fields
+                        .iter()
+                        .map(|(field_name, _, _)| arena.text(field_name.as_str()))
+                        .collect();
+                    let param_with_type_docs: Vec<_> = record
+                        .fields
+                        .iter()
+                        .map(|(field_name, field_type, _)| {
+                            arena
+                                .text(field_name.as_str())
+                                .append(arena.text(": "))
+                                .append(self.transpile_type(arena, field_type))
+                        })
+                        .collect();
+                    let assignment_docs: Vec<_> = record
+                        .fields
+                        .iter()
+                        .map(|(name, _, _)| {
+                            arena
+                                .text("this.")
+                                .append(arena.text(name.as_str()))
+                                .append(arena.text(" = "))
+                                .append(arena.text(name.as_str()))
+                                .append(arena.text(";"))
+                        })
+                        .collect();
+                    result = result
+                        .append(arena.text("export class "))
+                        .append(arena.text(record.name.as_str()))
+                        .append(arena.text(" {"))
+                        .append(
+                            arena
+                                .nil()
+                                .append(arena.line())
+                                .append(arena.intersperse(field_docs.clone(), arena.line()))
+                                .append(arena.line())
+                                .nest(4),
+                        )
+                        .append(
+                            arena
+                                .nil()
+                                .append(arena.line())
+                                .append(arena.text("constructor({"))
+                                .append(arena.intersperse(param_docs, arena.text(", ")))
+                                .append(arena.text("} : {"))
+                                .append(arena.intersperse(param_with_type_docs, arena.text(", ")))
+                                .append(arena.text("}) {"))
+                                .append(
+                                    arena
+                                        .nil()
+                                        .append(arena.line())
+                                        .append(arena.intersperse(assignment_docs, arena.line()))
+                                        .append(arena.line())
+                                        .nest(4),
+                                )
+                                .append(arena.text("}"))
+                                .append(arena.line())
+                                .nest(4),
+                        )
+                        .append(arena.text("}"))
+                        .append(arena.line())
+                        .append(arena.line());
+                }
             }
         }
 
@@ -982,16 +1037,27 @@ impl Transpiler for TsTranspiler {
         record_name: &'a str,
         fields: &'a [(FieldName, IrExpr)],
     ) -> Doc<'a> {
-        let field_docs: Vec<_> = fields
-            .iter()
-            .map(|(_key, value)| self.transpile_expr(arena, value))
-            .collect();
-        arena
+        let base = arena
             .text("new ")
             .append(arena.text(record_name))
-            .append(arena.text("("))
-            .append(arena.intersperse(field_docs, arena.text(", ")))
-            .append(arena.text(")"))
+            .append(arena.text("("));
+        if fields.is_empty() {
+            base.append(arena.text(")"))
+        } else {
+            let field_docs: Vec<_> = fields
+                .iter()
+                .map(|(k, field_expr)| {
+                    arena
+                        .nil()
+                        .append(arena.text(k.as_str()))
+                        .append(arena.text(": "))
+                        .append(self.transpile_expr(arena, field_expr))
+                })
+                .collect();
+            base.append("{")
+                .append(arena.intersperse(field_docs, arena.text(", ")))
+                .append(arena.text("})"))
+        }
     }
 
     fn transpile_enum_literal<'a>(
@@ -1012,10 +1078,17 @@ impl Transpiler for TsTranspiler {
         } else {
             let field_docs: Vec<_> = fields
                 .iter()
-                .map(|(_, field_expr)| self.transpile_expr(arena, field_expr))
+                .map(|(k, field_expr)| {
+                    arena
+                        .nil()
+                        .append(arena.text(k.as_str()))
+                        .append(arena.text(": "))
+                        .append(self.transpile_expr(arena, field_expr))
+                })
                 .collect();
-            base.append(arena.intersperse(field_docs, arena.text(", ")))
-                .append(arena.text(")"))
+            base.append("{")
+                .append(arena.intersperse(field_docs, arena.text(", ")))
+                .append(arena.text("})"))
         }
     }
 
@@ -2040,18 +2113,25 @@ mod tests {
                 }
 
                 export class Address {
-                    constructor(
-                        public readonly street: string,
-                        public readonly city: string,
-                    ) {}
+                    public readonly street: string;
+                    public readonly city: string;
+
+                    constructor({street, city} : {street: string, city: string}) {
+                        this.street = street;
+                        this.city = city;
+                    }
                 }
 
                 export class User {
-                    constructor(
-                        public readonly name: string,
-                        public readonly age: number,
-                        public readonly active: boolean,
-                    ) {}
+                    public readonly name: string;
+                    public readonly age: number;
+                    public readonly active: boolean;
+
+                    constructor({name, age, active} : {name: string, age: number, active: boolean}) {
+                        this.name = name;
+                        this.age = age;
+                        this.active = active;
+                    }
                 }
 
                 export function UserProfile({user}: {user: User}): string {
@@ -2101,16 +2181,19 @@ mod tests {
                 }
 
                 export class User {
-                    constructor(
-                        public readonly name: string,
-                        public readonly age: number,
-                    ) {}
+                    public readonly name: string;
+                    public readonly age: number;
+
+                    constructor({name, age} : {name: string, age: number}) {
+                        this.name = name;
+                        this.age = age;
+                    }
                 }
 
                 export function CreateUser(): string {
                     let output: string = "";
                     output += "<div>";
-                    output += escapeHtml(new User(("John" as string), (30 as number)).name);
+                    output += escapeHtml(new User({name: ("John" as string), age: (30 as number)}).name);
                     output += "</div>";
                     return output;
                 }
@@ -2160,10 +2243,13 @@ mod tests {
                 }
 
                 export class Node {
-                    constructor(
-                        public readonly value: number,
-                        public readonly next: Option.Option<Node>,
-                    ) {}
+                    public readonly value: number;
+                    public readonly next: Option.Option<Node>;
+
+                    constructor({value, next} : {value: number, next: Option.Option<Node>}) {
+                        this.value = value;
+                        this.next = next;
+                    }
                 }
 
                 export function Test({node}: {node: Node}): string {
@@ -2205,7 +2291,7 @@ mod tests {
                 export namespace IntList {
                     export type IntList = { readonly tag: "Cons", readonly head: number, readonly tail: IntList.IntList } | { readonly tag: "Nil" };
 
-                    export function Cons(head: number, tail: IntList.IntList): IntList {
+                    export function Cons({head, tail} : {head: number, tail: IntList.IntList}): IntList {
                         return { tag: "Cons", head, tail };
                     }
                     export function Nil(): IntList {
@@ -2279,15 +2365,18 @@ mod tests {
                 }
 
                 export class Node {
-                    constructor(
-                        public readonly value: number,
-                        public readonly next: Option.Option<Node>,
-                    ) {}
+                    public readonly value: number;
+                    public readonly next: Option.Option<Node>;
+
+                    constructor({value, next} : {value: number, next: Option.Option<Node>}) {
+                        this.value = value;
+                        this.next = next;
+                    }
                 }
 
                 export function Test(): string {
                     let output: string = "";
-                    const node = new Node((2 as number), Option.some<Node>(new Node((1 as number), Option.none<Node>())));
+                    const node = new Node({value: (2 as number), next: Option.some<Node>(new Node({value: (1 as number), next: Option.none<Node>()}))});
                     output += escapeHtml((node.value).toString());
                     return output;
                 }
@@ -2974,10 +3063,10 @@ mod tests {
                 export namespace Outcome {
                     export type Outcome = { readonly tag: "Ok", readonly value: number } | { readonly tag: "Err", readonly message: string };
 
-                    export function Ok(value: number): Outcome {
+                    export function Ok({value} : {value: number}): Outcome {
                         return { tag: "Ok", value };
                     }
-                    export function Err(message: string): Outcome {
+                    export function Err({message} : {message: string}): Outcome {
                         return { tag: "Err", message };
                     }
                 }
@@ -2985,7 +3074,7 @@ mod tests {
                 export function ShowOutcome({r}: {r: Outcome.Outcome}): string {
                     let output: string = "";
                     output += "<div>";
-                    const ok = Outcome.Ok((42 as number));
+                    const ok = Outcome.Ok({value: (42 as number)});
                     output += ("Created Ok!" as string);
                     output += "</div>";
                     return output;
@@ -3042,10 +3131,10 @@ mod tests {
                 export namespace Outcome {
                     export type Outcome = { readonly tag: "Ok", readonly value: string } | { readonly tag: "Err", readonly message: string };
 
-                    export function Ok(value: string): Outcome {
+                    export function Ok({value} : {value: string}): Outcome {
                         return { tag: "Ok", value };
                     }
-                    export function Err(message: string): Outcome {
+                    export function Err({message} : {message: string}): Outcome {
                         return { tag: "Err", message };
                     }
                 }

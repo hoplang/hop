@@ -3642,6 +3642,144 @@ mod tests {
 
     #[test]
     #[ignore]
+    fn record_literal_with_fields_out_of_declaration_order() {
+        check(
+            indoc! {r#"
+                record Pair {
+                  first: String,
+                  second: String,
+                }
+
+                view Test {
+                  <let {pair: Pair = Pair {second: "b", first: "a"}}>
+                    {pair.first}-{pair.second}
+                  </let>
+                }
+            "#},
+            "a-b",
+            expect![[r#"
+                -- ir (unoptimized) --
+                record Pair {
+                  first: String,
+                  second: String,
+                }
+                view Test() {
+                  let pair = Pair {second: "b", first: "a"} in {
+                    write_escaped(pair.first)
+                    write("-")
+                    write_escaped(pair.second)
+                  }
+                }
+                -- ir (optimized) --
+                record Pair {
+                  first: String,
+                  second: String,
+                }
+                view Test() {
+                  let pair = Pair {second: "b", first: "a"} in {
+                    write_escaped(pair.first)
+                    write("-")
+                    write_escaped(pair.second)
+                  }
+                }
+                -- expected output --
+                a-b
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn enum_literal_with_fields_out_of_declaration_order() {
+        check(
+            indoc! {r#"
+                enum Shape {
+                  Rect {
+                    width: String,
+                    height: String,
+                  },
+                }
+
+                view Test {
+                  <let {shape = Shape::Rect {height: "b", width: "a"}}>
+                    <match {shape}>
+                      <case {Shape::Rect {width: w, height: h}}>
+                        {w}-{h}
+                      </case>
+                    </match>
+                  </let>
+                }
+            "#},
+            "a-b",
+            expect![[r#"
+                -- ir (unoptimized) --
+                enum Shape {
+                  Rect {width: String, height: String},
+                }
+                view Test() {
+                  let shape = Shape::Rect {height: "b", width: "a"} in {
+                    match shape {
+                      Shape::Rect(width: v_1, height: v_2) => {
+                        let w = v_1 in {
+                          let h = v_2 in {
+                            write_escaped(w)
+                            write("-")
+                            write_escaped(h)
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                enum Shape {
+                  Rect {width: String, height: String},
+                }
+                view Test() {
+                  match Shape::Rect {height: "b", width: "a"} {
+                    Shape::Rect(width: v_1, height: v_2) => {
+                      let w = v_1 in {
+                        let h = v_2 in {
+                          write_escaped(w)
+                          write("-")
+                          write_escaped(h)
+                        }
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                a-b
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
     fn nested_record() {
         check(
             indoc! {r#"
