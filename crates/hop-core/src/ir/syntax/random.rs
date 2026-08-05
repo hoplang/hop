@@ -217,15 +217,18 @@ impl IrGenerator<'_, '_> {
     /// A random source-syntax type string. E.g. `Array[String]`.
     fn random_type_string(&mut self, depth: usize) -> String {
         let named = self.records.len() + self.enums.len();
-        let n = 4 + named + if depth > 0 { 2 } else { 0 };
+        let n = 5 + named + if depth > 0 { 2 } else { 0 };
         match self.index(n) {
             0 => "Int".to_string(),
             1 => "String".to_string(),
             2 => "Bool".to_string(),
             3 => "Float".to_string(),
-            i if i < 4 + self.records.len() => self.records[i - 4].name.clone(),
-            i if i < 4 + named => self.enums[i - 4 - self.records.len()].name.clone(),
-            i if i == 4 + named => format!("Array[{}]", self.random_type_string(depth - 1)),
+            4 => "Fragment".to_string(),
+            i if i < 5 + self.records.len() => self.records[i - 5].name.clone(),
+            i if i < 5 + named => self.enums[i - 5 - self.records.len()].name.clone(),
+            i if i == 5 + named => {
+                format!("Array[{}]", self.random_type_string(depth - 1))
+            }
             _ => format!("Option[{}]", self.random_type_string(depth - 1)),
         }
     }
@@ -292,8 +295,13 @@ impl IrGenerator<'_, '_> {
         match self.u.choose(&productions).unwrap() {
             P::Write => b.write(self.u.choose(WORDS).unwrap()),
             P::WriteExpr => {
-                let expr = self.expr(b, &Type::String, depth);
-                b.write_expr_escaped(expr);
+                let ty = if self.coin() {
+                    Type::String
+                } else {
+                    Type::Fragment
+                };
+                let expr = self.expr(b, &ty, depth);
+                b.write_expr(expr, self.coin());
             }
             P::InvokeComponent => {
                 let info = self.u.choose(&self.components).unwrap().clone();
@@ -679,9 +687,7 @@ impl IrGenerator<'_, '_> {
                     b.enum_variant_with_fields(name.as_str(), variant, values)
                 }
             }
-            Type::Fragment => {
-                unreachable!("Fragment is never a generation target")
-            }
+            Type::Fragment => b.fragment_empty(),
         }
     }
 }

@@ -637,23 +637,23 @@ impl Transpiler for RustTranspiler {
         expr: &'a IrExpr,
         escape: bool,
     ) -> Doc<'a> {
+        let unwrap = match expr.as_type() {
+            Type::Fragment => ".0",
+            _ => "",
+        };
         if escape {
             self.needs_escape_html = true;
             arena
                 .text("write_escaped_html(&")
                 .append(self.transpile_expr(arena, expr))
+                .append(arena.text(unwrap))
                 .append(arena.text(", &mut output);"))
         } else {
-            match expr.as_type() {
-                Type::Fragment => arena
-                    .text("output.push_str(&")
-                    .append(self.transpile_expr(arena, expr))
-                    .append(arena.text(".0);")),
-                _ => arena
-                    .text("output.push_str(&")
-                    .append(self.transpile_expr(arena, expr))
-                    .append(arena.text(");")),
-            }
+            arena
+                .text("output.push_str(&")
+                .append(self.transpile_expr(arena, expr))
+                .append(arena.text(unwrap))
+                .append(arena.text(");"))
         }
     }
 

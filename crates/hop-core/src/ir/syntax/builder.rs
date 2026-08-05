@@ -314,6 +314,12 @@ impl IrBuilder {
         }
     }
 
+    pub fn fragment_empty(&self) -> IrExpr {
+        IrExpr::FragmentEmpty {
+            id: self.next_expr_id(),
+        }
+    }
+
     pub fn var(&self, name: &str) -> IrExpr {
         let (value, kind) = self
             .var_stack
