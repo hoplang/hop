@@ -996,7 +996,7 @@ impl Transpiler for RustTranspiler {
         field: &'a FieldName,
     ) -> Doc<'a> {
         let object_doc = match object {
-            IrExpr::RecordLiteral { .. } | IrExpr::EnumLiteral { .. } => arena
+            IrExpr::RecordLiteral { .. } => arena
                 .text("(")
                 .append(self.transpile_expr(arena, object))
                 .append(arena.text(")")),
