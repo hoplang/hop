@@ -8683,6 +8683,967 @@ mod tests {
 
     #[test]
     #[ignore]
+    fn mutually_recursive_records() {
+        check(
+            indoc! {r#"
+                record Folder {
+                  name: String,
+                  parent: Option[File],
+                }
+
+                record File {
+                  owner: Option[Folder],
+                }
+
+                view Test {
+                  <let {f: Folder = Folder {name: "root", parent: None}}>
+                    {f.name}
+                  </let>
+                }
+            "#},
+            "root",
+            expect![[r#"
+                -- ir (unoptimized) --
+                record File {
+                  owner: Option[test::Folder],
+                }
+                record Folder {
+                  name: String,
+                  parent: Option[test::File],
+                }
+                view Test() {
+                  let f = Folder {
+                    name: "root",
+                    parent: Option[test::File]::None,
+                  } in {
+                    write_escaped(f.name)
+                  }
+                }
+                -- ir (optimized) --
+                record File {
+                  owner: Option[test::Folder],
+                }
+                record Folder {
+                  name: String,
+                  parent: Option[test::File],
+                }
+                view Test() {
+                  let f = Folder {
+                    name: "root",
+                    parent: Option[test::File]::None,
+                  } in {
+                    write_escaped(f.name)
+                  }
+                }
+                -- expected output --
+                root
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn three_type_recursion_cycle() {
+        check(
+            indoc! {r#"
+                enum Expr {
+                  Literal {
+                    value: String,
+                  },
+                  Wrapped {
+                    inner: Option[Node],
+                  },
+                }
+
+                record Node {
+                  next: Option[Leaf],
+                }
+
+                record Leaf {
+                  back: Option[Expr],
+                }
+
+                view Test {
+                  <let {leaf: Leaf = Leaf {back: None}}>
+                    <match {leaf.back}>
+                      <case {Some(_)}>
+                        some
+                      </case>
+                      <case {None}>
+                        none
+                      </case>
+                    </match>
+                  </let>
+                }
+            "#},
+            "none",
+            expect![[r#"
+                -- ir (unoptimized) --
+                enum Expr {
+                  Literal {value: String},
+                  Wrapped {inner: Option[test::Node]},
+                }
+                record Leaf {
+                  back: Option[test::Expr],
+                }
+                record Node {
+                  next: Option[test::Leaf],
+                }
+                view Test() {
+                  let leaf = Leaf {back: Option[test::Expr]::None} in {
+                    match leaf.back {
+                      Some(_) => {
+                        write("some")
+                      }
+                      None => {
+                        write("none")
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                enum Expr {
+                  Literal {value: String},
+                  Wrapped {inner: Option[test::Node]},
+                }
+                record Leaf {
+                  back: Option[test::Expr],
+                }
+                record Node {
+                  next: Option[test::Leaf],
+                }
+                view Test() {
+                  let leaf = Leaf {back: Option[test::Expr]::None} in {
+                    match leaf.back {
+                      Some(_) => {
+                        write("some")
+                      }
+                      None => {
+                        write("none")
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                none
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn recursive_field_from_variable() {
+        check(
+            indoc! {r#"
+                record Node {
+                  value: String,
+                  next: Option[Node],
+                }
+
+                view Test {
+                  <let {tail: Option[Node] = None}>
+                    <let {head: Node = Node {value: "head", next: tail}}>
+                      {head.value}
+                    </let>
+                  </let>
+                }
+            "#},
+            "head",
+            expect![[r#"
+                -- ir (unoptimized) --
+                record Node {
+                  value: String,
+                  next: Option[test::Node],
+                }
+                view Test() {
+                  let tail = Option[test::Node]::None in {
+                    let head = Node {value: "head", next: tail} in {
+                      write_escaped(head.value)
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                record Node {
+                  value: String,
+                  next: Option[test::Node],
+                }
+                view Test() {
+                  let head = Node {
+                    value: "head",
+                    next: Option[test::Node]::None,
+                  } in {
+                    write_escaped(head.value)
+                  }
+                }
+                -- expected output --
+                head
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn recursive_field_from_match_arms() {
+        check(
+            indoc! {r#"
+                record Node {
+                  value: String,
+                  next: Option[Node],
+                }
+
+                view Test {
+                  <let {leaf: Node = Node {value: "leaf", next: None}}>
+                    <let {
+                      head: Node = Node {
+                        value: "head",
+                        next: match true {
+                          true => Some(leaf),
+                          false => None,
+                        },
+                      },
+                    }>
+                      {head.value}
+                    </let>
+                  </let>
+                }
+            "#},
+            "head",
+            expect![[r#"
+                -- ir (unoptimized) --
+                record Node {
+                  value: String,
+                  next: Option[test::Node],
+                }
+                view Test() {
+                  let leaf = Node {
+                    value: "leaf",
+                    next: Option[test::Node]::None,
+                  } in {
+                    let head = Node {
+                      value: "head",
+                      next: match true {
+                        true => Option[test::Node]::Some(leaf),
+                        false => Option[test::Node]::None,
+                      },
+                    } in {
+                      write_escaped(head.value)
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                record Node {
+                  value: String,
+                  next: Option[test::Node],
+                }
+                view Test() {
+                  let leaf = Node {
+                    value: "leaf",
+                    next: Option[test::Node]::None,
+                  } in {
+                    let head = Node {
+                      value: "head",
+                      next: match true {
+                        true => Option[test::Node]::Some(leaf),
+                        false => Option[test::Node]::None,
+                      },
+                    } in {
+                      write_escaped(head.value)
+                    }
+                  }
+                }
+                -- expected output --
+                head
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn nested_option_recursive_field() {
+        check(
+            indoc! {r#"
+                record Node {
+                  value: String,
+                  next: Option[Option[Node]],
+                }
+
+                view Test {
+                  <let {n: Node = Node {value: "node", next: None}}>
+                    {n.value}
+                  </let>
+                }
+            "#},
+            "node",
+            expect![[r#"
+                -- ir (unoptimized) --
+                record Node {
+                  value: String,
+                  next: Option[Option[test::Node]],
+                }
+                view Test() {
+                  let n = Node {
+                    value: "node",
+                    next: Option[Option[test::Node]]::None,
+                  } in {
+                    write_escaped(n.value)
+                  }
+                }
+                -- ir (optimized) --
+                record Node {
+                  value: String,
+                  next: Option[Option[test::Node]],
+                }
+                view Test() {
+                  let n = Node {
+                    value: "node",
+                    next: Option[Option[test::Node]]::None,
+                  } in {
+                    write_escaped(n.value)
+                  }
+                }
+                -- expected output --
+                node
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn reading_a_nested_option_boxed_field() {
+        check(
+            indoc! {r#"
+                record Node {
+                  value: String,
+                  next: Option[Option[Node]],
+                }
+
+                view Test {
+                  <let {
+                    n: Node = Node {
+                      value: "head",
+                      next: Some(Some(Node {value: "tail", next: None})),
+                    },
+                  }>
+                    <match {n.next}>
+                      <case {Some(inner)}>
+                        <match {inner}>
+                          <case {Some(m)}>
+                            {m.value}
+                          </case>
+                          <case {None}>
+                            inner-none
+                          </case>
+                        </match>
+                      </case>
+                      <case {None}>
+                        outer-none
+                      </case>
+                    </match>
+                  </let>
+                }
+            "#},
+            "tail",
+            expect![[r#"
+                -- ir (unoptimized) --
+                record Node {
+                  value: String,
+                  next: Option[Option[test::Node]],
+                }
+                view Test() {
+                  let n = Node {
+                    value: "head",
+                    next: Option[Option[test::Node]]::Some(Option[test::Node]::Some(Node {
+                      value: "tail",
+                      next: Option[Option[test::Node]]::None,
+                    })),
+                  } in {
+                    match n.next {
+                      Some(v_1) => {
+                        let inner = v_1 in {
+                          match inner {
+                            Some(v_3) => {
+                              let m = v_3 in {
+                                write_escaped(m.value)
+                              }
+                            }
+                            None => {
+                              write("inner-none")
+                            }
+                          }
+                        }
+                      }
+                      None => {
+                        write("outer-none")
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                record Node {
+                  value: String,
+                  next: Option[Option[test::Node]],
+                }
+                view Test() {
+                  let n = Node {
+                    value: "head",
+                    next: Option[Option[test::Node]]::Some(Option[test::Node]::Some(Node {
+                      value: "tail",
+                      next: Option[Option[test::Node]]::None,
+                    })),
+                  } in {
+                    match n.next {
+                      Some(v_1) => {
+                        let inner = v_1 in {
+                          match inner {
+                            Some(v_3) => {
+                              let m = v_3 in {
+                                write_escaped(m.value)
+                              }
+                            }
+                            None => {
+                              write("inner-none")
+                            }
+                          }
+                        }
+                      }
+                      None => {
+                        write("outer-none")
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                tail
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn reading_a_boxed_field() {
+        check(
+            indoc! {r#"
+                record Node {
+                  value: String,
+                  next: Option[Node],
+                }
+
+                record Holder {
+                  held: Option[Node],
+                }
+
+                view Test {
+                  <let {n: Node = Node {value: "node", next: None}}>
+                    <let {h: Holder = Holder {held: n.next}}>
+                      <match {h.held}>
+                        <case {Some(_)}>
+                          some
+                        </case>
+                        <case {None}>
+                          {n.value}
+                        </case>
+                      </match>
+                    </let>
+                  </let>
+                }
+            "#},
+            "node",
+            expect![[r#"
+                -- ir (unoptimized) --
+                record Holder {
+                  held: Option[test::Node],
+                }
+                record Node {
+                  value: String,
+                  next: Option[test::Node],
+                }
+                view Test() {
+                  let n = Node {
+                    value: "node",
+                    next: Option[test::Node]::None,
+                  } in {
+                    let h = Holder {held: n.next} in {
+                      match h.held {
+                        Some(_) => {
+                          write("some")
+                        }
+                        None => {
+                          write_escaped(n.value)
+                        }
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                record Holder {
+                  held: Option[test::Node],
+                }
+                record Node {
+                  value: String,
+                  next: Option[test::Node],
+                }
+                view Test() {
+                  let n = Node {
+                    value: "node",
+                    next: Option[test::Node]::None,
+                  } in {
+                    let h = Holder {held: n.next} in {
+                      match h.held {
+                        Some(_) => {
+                          write("some")
+                        }
+                        None => {
+                          write_escaped(n.value)
+                        }
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                node
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn reading_a_directly_boxed_field() {
+        check(
+            indoc! {r#"
+                record A {
+                  b: B,
+                }
+
+                record B {
+                  name: String,
+                  a: Option[A],
+                }
+
+                view Test {
+                  <let {x: A = A {b: B {name: "b", a: None}}}>
+                    {x.b.name}
+                    <match {x.b.a}>
+                      <case {Some(_)}>
+                        some
+                      </case>
+                      <case {None}>
+                        none
+                      </case>
+                    </match>
+                  </let>
+                }
+            "#},
+            "bnone",
+            expect![[r#"
+                -- ir (unoptimized) --
+                record A {
+                  b: B,
+                }
+                record B {
+                  name: String,
+                  a: Option[test::A],
+                }
+                view Test() {
+                  let x = A {
+                    b: B {name: "b", a: Option[test::A]::None},
+                  } in {
+                    write_escaped(x.b.name)
+                    match x.b.a {
+                      Some(_) => {
+                        write("some")
+                      }
+                      None => {
+                        write("none")
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                record A {
+                  b: B,
+                }
+                record B {
+                  name: String,
+                  a: Option[test::A],
+                }
+                view Test() {
+                  let x = A {
+                    b: B {name: "b", a: Option[test::A]::None},
+                  } in {
+                    write_escaped(x.b.name)
+                    match x.b.a {
+                      Some(_) => {
+                        write("some")
+                      }
+                      None => {
+                        write("none")
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                bnone
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn matching_a_boxed_enum_field() {
+        check(
+            indoc! {r#"
+                enum Tree {
+                  Node {
+                    label: String,
+                    left: Tree,
+                    right: Option[Tree],
+                  },
+                  Leaf,
+                }
+
+                record Step {
+                  t: Tree,
+                  rest: Option[Tree],
+                }
+
+                view Test {
+                  <let {
+                    tree: Tree = Tree::Node {
+                      label: "a",
+                      left: Tree::Leaf,
+                      right: None,
+                    },
+                  }>
+                    <match {tree}>
+                      <case {Tree::Node {label: l, left: lt, right: r}}>
+                        <let {s: Step = Step {t: lt, rest: r}}>
+                          {l}
+                          <match {s.rest}>
+                            <case {Some(_)}>
+                              some
+                            </case>
+                            <case {None}>
+                              none
+                            </case>
+                          </match>
+                        </let>
+                      </case>
+                      <case {Tree::Leaf}>
+                        empty
+                      </case>
+                    </match>
+                  </let>
+                }
+            "#},
+            "anone",
+            expect![[r#"
+                -- ir (unoptimized) --
+                enum Tree {
+                  Node {label: String, left: test::Tree, right: Option[test::Tree]},
+                  Leaf,
+                }
+                record Step {
+                  t: Tree,
+                  rest: Option[test::Tree],
+                }
+                view Test() {
+                  let tree = Tree::Node {label: "a", left: Tree::Leaf, right: Option[test::Tree]::None} in {
+                    match tree {
+                      Tree::Node(label: v_1, left: v_2, right: v_3) => {
+                        let l = v_1 in {
+                          let lt = v_2 in {
+                            let r = v_3 in {
+                              let s = Step {t: lt, rest: r} in {
+                                write_escaped(l)
+                                match s.rest {
+                                  Some(_) => {
+                                    write("some")
+                                  }
+                                  None => {
+                                    write("none")
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                      Tree::Leaf => {
+                        write("empty")
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                enum Tree {
+                  Node {label: String, left: test::Tree, right: Option[test::Tree]},
+                  Leaf,
+                }
+                record Step {
+                  t: Tree,
+                  rest: Option[test::Tree],
+                }
+                view Test() {
+                  match Tree::Node {label: "a", left: Tree::Leaf, right: Option[test::Tree]::None} {
+                    Tree::Node(label: v_1, left: v_2, right: v_3) => {
+                      let l = v_1 in {
+                        let lt = v_2 in {
+                          let r = v_3 in {
+                            let s = Step {t: lt, rest: r} in {
+                              write_escaped(l)
+                              match s.rest {
+                                Some(_) => {
+                                  write("some")
+                                }
+                                None => {
+                                  write("none")
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                    Tree::Leaf => {
+                      write("empty")
+                    }
+                  }
+                }
+                -- expected output --
+                anone
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn matching_a_non_boxed_option_enum_field() {
+        check(
+            indoc! {r#"
+                enum Contact {
+                  Email {
+                    address: String,
+                    label: Option[String],
+                  },
+                  Anonymous,
+                }
+
+                view Test {
+                  <let {
+                    c: Contact = Contact::Email {
+                      address: "a@b.c",
+                      label: Some("work"),
+                    },
+                  }>
+                    <match {c}>
+                      <case {Contact::Email {address: a, label: l}}>
+                        {a}
+                        <match {l}>
+                          <case {Some(s)}>
+                            {s}
+                          </case>
+                          <case {None}>
+                            no-label
+                          </case>
+                        </match>
+                      </case>
+                      <case {Contact::Anonymous}>
+                        anon
+                      </case>
+                    </match>
+                  </let>
+                }
+            "#},
+            "a@b.cwork",
+            expect![[r#"
+                -- ir (unoptimized) --
+                enum Contact {
+                  Email {address: String, label: Option[String]},
+                  Anonymous,
+                }
+                view Test() {
+                  let c = Contact::Email {address: "a@b.c", label: Option[String]::Some("work")} in {
+                    match c {
+                      Contact::Email(address: v_1, label: v_2) => {
+                        let a = v_1 in {
+                          let l = v_2 in {
+                            write_escaped(a)
+                            match l {
+                              Some(v_4) => {
+                                let s = v_4 in {
+                                  write_escaped(s)
+                                }
+                              }
+                              None => {
+                                write("no-label")
+                              }
+                            }
+                          }
+                        }
+                      }
+                      Contact::Anonymous => {
+                        write("anon")
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                enum Contact {
+                  Email {address: String, label: Option[String]},
+                  Anonymous,
+                }
+                view Test() {
+                  match Contact::Email {address: "a@b.c", label: Option[String]::Some("work")} {
+                    Contact::Email(address: v_1, label: v_2) => {
+                      let a = v_1 in {
+                        let l = v_2 in {
+                          write_escaped(a)
+                          match l {
+                            Some(v_4) => {
+                              let s = v_4 in {
+                                write_escaped(s)
+                              }
+                            }
+                            None => {
+                              write("no-label")
+                            }
+                          }
+                        }
+                      }
+                    }
+                    Contact::Anonymous => {
+                      write("anon")
+                    }
+                  }
+                }
+                -- expected output --
+                a@b.cwork
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
     fn simple_component_call() {
         check(
             indoc! {r#"

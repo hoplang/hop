@@ -1,10 +1,11 @@
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 
 use pretty::{Arena, DocAllocator};
 
 use super::{Doc, Transpiler};
+use crate::dependency_graph::DependencyGraph;
 use crate::expr::patterns::{EnumPattern, Match};
-use crate::expr::typing::r#type::Type;
+use crate::expr::typing::r#type::{EnumVariant, Type};
 use crate::expr::typing::type_registry::{ResolvedType, TypeRegistry};
 use crate::ir::ast::{
     IrArgument, IrComponentDeclaration, IrExpr, IrForSource, IrModule, IrStatement,
@@ -19,10 +20,22 @@ pub struct RustTranspiler {
     needs_escape_html: bool,
     /// Tracks whether Fragment type is used during transpilation
     needs_fragment: bool,
-    /// Set of type names that are self-referential and need Box indirection
-    recursive_types: HashSet<TypeName>,
+    /// Field positions carrying `Box` indirection.
+    /// We box in both directions for mutually recursive types.
+    boxed_edges: HashSet<(TypeName, TypeName)>,
     /// Registry used to resolve named type structure.
     registry: TypeRegistry,
+}
+
+/// How a field value converts between the IR representation of its type and
+/// the boxed representation the field's declared type carries.
+enum BoxConversion {
+    /// The value itself is the boxed occurrence.
+    /// Wrap in `Box::new` to store, dereference to read.
+    Direct,
+    /// The `Box` sits under `Option` layers.
+    /// Map this closure over the value.
+    Mapped(String),
 }
 
 impl RustTranspiler {
@@ -30,21 +43,24 @@ impl RustTranspiler {
         Self {
             needs_escape_html: false,
             needs_fragment: false,
-            recursive_types: HashSet::new(),
+            boxed_edges: HashSet::new(),
             registry: TypeRegistry::default(),
         }
     }
 
+    /// Rebind pattern bindings, which are references into the matched value, to
+    /// owned values of the type the IR expects. Each entry is the variable and
+    /// the expression to bind it to.
     fn stmts_with_rebinds<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        vars: &[&'a str],
+        rebinds: &[(&'a str, String)],
         body: &'a [IrStatement],
     ) -> Doc<'a> {
         let mut doc = arena.nil();
-        for v in vars {
+        for (var, value) in rebinds {
             doc = doc
-                .append(arena.text(format!("let {v} = {v}.clone();")))
+                .append(arena.text(format!("let {var} = {value};")))
                 .append(arena.hardline());
         }
         doc.append(self.transpile_statements(arena, body))
@@ -53,15 +69,15 @@ impl RustTranspiler {
     fn expr_with_rebinds<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        vars: &[&'a str],
+        rebinds: &[(&'a str, String)],
         body: &'a IrExpr,
     ) -> Doc<'a> {
-        if vars.is_empty() {
+        if rebinds.is_empty() {
             return self.transpile_expr_owned(arena, body);
         }
         let mut doc = arena.text("{ ");
-        for v in vars {
-            doc = doc.append(arena.text(format!("let {v} = {v}.clone(); ")));
+        for (var, value) in rebinds {
+            doc = doc.append(arena.text(format!("let {var} = {value}; ")));
         }
         doc.append(self.transpile_expr_owned(arena, body))
             .append(arena.text(" }"))
@@ -106,6 +122,12 @@ impl RustTranspiler {
 
     fn transpile_expr_owned<'a>(&mut self, arena: &'a Arena<'a>, expr: &'a IrExpr) -> Doc<'a> {
         match expr {
+            // Unboxing a field read already produces an owned value.
+            IrExpr::FieldAccess { record, field, .. }
+                if self.field_unboxing(record, field).is_some() =>
+            {
+                self.transpile_expr(arena, expr)
+            }
             IrExpr::FieldAccess { .. } | IrExpr::Var { .. } => {
                 let method = match expr.as_type() {
                     Type::Array(_) => ".to_vec()",
@@ -118,101 +140,162 @@ impl RustTranspiler {
         }
     }
 
-    /// Compute which types are self-referential and need Box indirection
-    fn compute_recursive_types(module: &IrModule) -> HashSet<TypeName> {
-        let mut recursive = HashSet::new();
-        for record in &module.records {
-            for (_, field_type, _) in &record.fields {
-                if Self::type_needs_box(field_type, record.name.as_str()) {
-                    recursive.insert(record.name.clone());
-                    break;
-                }
+    /// Collect the named types that `t` stores inline.
+    fn inline_refs(t: &Type, out: &mut BTreeSet<TypeName>) {
+        match t {
+            Type::Named { name, .. } => {
+                out.insert(name.clone());
             }
+            Type::Option(inner) => Self::inline_refs(inner, out),
+            _ => {}
+        }
+    }
+
+    /// The field positions that need `Box` for every declared type to be
+    /// finitely sized, as `(declaring type, referenced type)` pairs.
+    fn compute_boxed_edges(module: &IrModule) -> HashSet<(TypeName, TypeName)> {
+        let mut graph = DependencyGraph::new();
+        for record in &module.records {
+            let mut refs = BTreeSet::new();
+            for (_, field_type, _) in &record.fields {
+                Self::inline_refs(field_type, &mut refs);
+            }
+            graph.set_dependencies(record.name.clone(), refs);
         }
         for enum_def in &module.enums {
-            'outer: for variant in &enum_def.variants {
+            let mut refs = BTreeSet::new();
+            for variant in &enum_def.variants {
                 for (_, field_type, _) in &variant.fields {
-                    if Self::type_needs_box(field_type, enum_def.name.as_str()) {
-                        recursive.insert(enum_def.name.clone());
-                        break 'outer;
+                    Self::inline_refs(field_type, &mut refs);
+                }
+            }
+            graph.set_dependencies(enum_def.name.clone(), refs);
+        }
+
+        let mut edges = HashSet::new();
+        for scc in graph.sorted_sccs() {
+            for owner in &scc {
+                for target in &scc {
+                    if graph.depends_on(owner, target) {
+                        edges.insert((owner.clone(), target.clone()));
                     }
                 }
             }
         }
-        recursive
+        edges
     }
 
-    /// Check if a field type contains a reference to the containing type (through Option)
-    fn type_needs_box(t: &Type, containing_type: &str) -> bool {
+    /// Whether fields of `owner` box their inline references to `target`.
+    fn boxes(&self, owner: &str, target: &TypeName) -> bool {
+        self.boxed_edges
+            .iter()
+            .any(|(o, t)| o.as_str() == owner && t == target)
+    }
+
+    /// The conversion between values of `t` and the representation a field of
+    /// `owner` declares, built around `leaf` as the innermost step. `None`
+    /// when the two representations agree.
+    fn conversion(&self, t: &Type, owner: &str, leaf: &str) -> Option<BoxConversion> {
         match t {
-            Type::Named { name, .. } => name.as_str() == containing_type,
-            Type::Option(inner) => Self::type_needs_box(inner, containing_type),
-            _ => false,
+            Type::Named { name, .. } if self.boxes(owner, name) => Some(BoxConversion::Direct),
+            Type::Option(inner) => self.conversion(inner, owner, leaf).map(|c| {
+                BoxConversion::Mapped(match c {
+                    BoxConversion::Direct => leaf.to_string(),
+                    BoxConversion::Mapped(inner) => format!("|v| v.map({inner})"),
+                })
+            }),
+            _ => None,
         }
     }
 
-    /// Transpile a type for a field definition, adding Box for self-referential fields
-    fn transpile_type_with_box<'a>(
+    /// The conversion adding the `Box` wrapping a field of `owner` expects
+    /// when a value of type `t` is stored into it.
+    fn boxing(&self, t: &Type, owner: &str) -> Option<BoxConversion> {
+        self.conversion(t, owner, "Box::new")
+    }
+
+    /// The inverse of boxing, read a field back out.
+    fn unboxing(&self, t: &Type, owner: &str) -> Option<BoxConversion> {
+        self.conversion(t, owner, "|v| *v")
+    }
+
+    /// Transpile a field type, inserting `Box` where the field needs it.
+    fn transpile_field_type<'a>(
         &mut self,
         arena: &'a Arena<'a>,
         t: &'a Type,
-        containing_type: &str,
+        owner: &str,
     ) -> Doc<'a> {
         match t {
-            Type::Named { name, .. } if name.as_str() == containing_type => arena
+            Type::Named { name, .. } if self.boxes(owner, name) => arena
                 .text("Box<")
                 .append(arena.text(name.as_str()))
                 .append(arena.text(">")),
-            Type::Option(inner) if Self::type_needs_box(inner, containing_type) => arena
+            Type::Option(inner) if self.boxing(inner, owner).is_some() => arena
                 .text("Option<")
-                .append(self.transpile_type_with_box(arena, inner, containing_type))
+                .append(self.transpile_field_type(arena, inner, owner))
                 .append(arena.text(">")),
             _ => self.transpile_type(arena, t),
         }
     }
 
-    /// Transpile an expression used as a field value of a recursive type,
-    /// adding Box::new() wrapping where needed for self-referential fields.
-    fn transpile_expr_for_recursive_field<'a>(
+    /// Transpile a value stored into a field of `owner`, adding the `Box`
+    /// wrapping the field's declared type expects. The IR is well typed, so the
+    /// value's own type is that declared type.
+    fn transpile_field_value<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        expr: &'a IrExpr,
-        recursive_type: &str,
+        owner: &str,
+        value: &'a IrExpr,
     ) -> Doc<'a> {
-        let expr_type = expr.as_type();
-        // Direct recursive type → Box::new(...)
-        match expr_type {
-            Type::Named { name, .. } if name.as_str() == recursive_type => {
-                return arena
-                    .text("Box::new(")
-                    .append(self.transpile_expr_owned(arena, expr))
-                    .append(arena.text(")"));
-            }
-            _ => {}
+        match self.boxing(value.as_type(), owner) {
+            Some(BoxConversion::Direct) => arena
+                .text("Box::new(")
+                .append(self.transpile_expr_owned(arena, value))
+                .append(arena.text(")")),
+            Some(BoxConversion::Mapped(mapper)) => self
+                .transpile_expr_owned(arena, value)
+                .append(arena.text(format!(".map({mapper})"))),
+            None => self.transpile_expr_owned(arena, value),
         }
-        // Option<RecursiveType> → special handling for Some/None
-        if let IrExpr::OptionLiteral { value, kind, .. } = expr {
-            let inner_type = match kind.as_ref() {
-                Type::Option(inner) => inner.as_ref(),
-                _ => unreachable!(),
-            };
-            if matches!(inner_type,
-                Type::Named { name, .. }
-                if name.as_str() == recursive_type)
-            {
-                return match value {
-                    Some(inner_expr) => arena
-                        .text("Some(Box::new(")
-                        .append(self.transpile_expr_owned(arena, inner_expr))
-                        .append(arena.text("))")),
-                    None => arena
-                        .text("None::<Box<")
-                        .append(self.transpile_type(arena, inner_type))
-                        .append(arena.text(">>")),
-                };
-            }
+    }
+
+    /// The conversion undoing the `Box` on reads of `field` off `object`.
+    fn field_unboxing(&self, object: &IrExpr, field: &FieldName) -> Option<BoxConversion> {
+        let Some(ResolvedType::Record { name, fields, .. }) =
+            self.registry.resolve(object.as_type())
+        else {
+            unreachable!("field access objects resolve to a record");
+        };
+        let field_type = fields
+            .iter()
+            .find(|(f, _, _)| f == field)
+            .map(|(_, t, _)| t)
+            .expect("field access fields exist on the record");
+        self.unboxing(field_type, name.as_str())
+    }
+
+    fn arm_rebind_value(
+        &self,
+        variants: &[EnumVariant],
+        pattern: &EnumPattern,
+        field: &FieldName,
+        var: &VarName,
+    ) -> String {
+        let EnumPattern::Variant {
+            enum_name,
+            variant_name,
+        } = pattern;
+        let field_type = variants
+            .iter()
+            .find(|v| v.name == *variant_name)
+            .and_then(|v| v.fields.iter().find(|(f, _, _)| f == field))
+            .map(|(_, t, _)| t);
+        match field_type.and_then(|t| self.unboxing(t, enum_name.as_str())) {
+            Some(BoxConversion::Direct) => format!("(**{var}).clone()"),
+            Some(BoxConversion::Mapped(mapper)) => format!("{var}.clone().map({mapper})"),
+            None => format!("{var}.clone()"),
         }
-        self.transpile_expr_owned(arena, expr)
     }
 
     fn passed_by_ref(t: &Type) -> bool {
@@ -261,7 +344,7 @@ impl Transpiler for RustTranspiler {
         // Reset tracking flags for this module
         self.needs_escape_html = false;
         self.needs_fragment = false;
-        self.recursive_types = Self::compute_recursive_types(module);
+        self.boxed_edges = Self::compute_boxed_edges(module);
         self.registry = registry.clone();
 
         let arena = &Arena::new();
@@ -292,20 +375,15 @@ impl Transpiler for RustTranspiler {
                         .append(arena.text(variant.name.as_str()))
                         .append(arena.text(" { "));
 
-                    let is_recursive_enum = self.recursive_types.contains(&enum_def.name);
                     let field_docs: Vec<_> = variant
                         .fields
                         .iter()
                         .map(|(field_name, field_type, _)| {
-                            let ft = if is_recursive_enum {
-                                self.transpile_type_with_box(
-                                    arena,
-                                    field_type,
-                                    enum_def.name.as_str(),
-                                )
-                            } else {
-                                self.transpile_type(arena, field_type)
-                            };
+                            let ft = self.transpile_field_type(
+                                arena,
+                                field_type,
+                                enum_def.name.as_str(),
+                            );
                             arena
                                 .text(Self::escape_field_name(field_name.as_str()))
                                 .append(arena.text(": "))
@@ -336,13 +414,8 @@ impl Transpiler for RustTranspiler {
                 .append(arena.text(" {"))
                 .append(arena.line());
 
-            let is_recursive_record = self.recursive_types.contains(&record.name);
             for (field_name, field_type, _) in &record.fields {
-                let ft = if is_recursive_record {
-                    self.transpile_type_with_box(arena, field_type, record.name.as_str())
-                } else {
-                    self.transpile_type(arena, field_type)
-                };
+                let ft = self.transpile_field_type(arena, field_type, record.name.as_str());
                 result = result
                     .append(arena.text("    pub "))
                     .append(arena.text(Self::escape_field_name(field_name.as_str())))
@@ -683,11 +756,11 @@ impl Transpiler for RustTranspiler {
                 .append(arena.text(" {")),
         };
 
-        // Array element bindings are references. Rebind them to owned clones so
-        // the body can use the element by value. Range loops already bind an
-        // owned i64.
-        let rebinds: Vec<&str> = match source {
-            IrForSource::Array(_) => var.into_iter().collect(),
+        let rebinds: Vec<(&str, String)> = match source {
+            IrForSource::Array(_) => var
+                .into_iter()
+                .map(|v| (v, format!("{}.clone()", v)))
+                .collect(),
             IrForSource::RangeInclusive { .. } => Vec::new(),
         };
         doc.append(
@@ -795,7 +868,10 @@ impl Transpiler for RustTranspiler {
                     Some(var) => format!("Some({})", var.as_str()),
                     None => "Some(_)".to_string(),
                 };
-                let some_rebind: Vec<&str> = some_arm_binding.iter().map(|v| v.as_str()).collect();
+                let some_rebind: Vec<(&str, String)> = some_arm_binding
+                    .iter()
+                    .map(|v| (v.as_str(), format!("{}.clone()", v.as_str())))
+                    .collect();
 
                 let some_arm = arena
                     .text(some_pattern)
@@ -897,8 +973,16 @@ impl Transpiler for RustTranspiler {
                                 }
                             }
                         };
-                        let arm_rebind: Vec<&str> =
-                            arm.bindings.iter().map(|(_, var)| var.as_str()).collect();
+                        let arm_rebind: Vec<(&str, String)> = arm
+                            .bindings
+                            .iter()
+                            .map(|(field, var)| {
+                                (
+                                    var.as_str(),
+                                    self.arm_rebind_value(&variants, &arm.pattern, field, var),
+                                )
+                            })
+                            .collect();
 
                         arena
                             .text(pattern)
@@ -995,6 +1079,7 @@ impl Transpiler for RustTranspiler {
         object: &'a IrExpr,
         field: &'a FieldName,
     ) -> Doc<'a> {
+        let boxed = self.field_unboxing(object, field);
         let object_doc = match object {
             IrExpr::RecordLiteral { .. } => arena
                 .text("(")
@@ -1002,9 +1087,20 @@ impl Transpiler for RustTranspiler {
                 .append(arena.text(")")),
             _ => self.transpile_expr(arena, object),
         };
-        object_doc
+        let access = object_doc
             .append(arena.text("."))
-            .append(arena.text(Self::escape_field_name(field.as_str())))
+            .append(arena.text(Self::escape_field_name(field.as_str())));
+
+        match boxed {
+            None => access,
+            Some(BoxConversion::Direct) => arena
+                .text("(*")
+                .append(access)
+                .append(arena.text(").clone()")),
+            Some(BoxConversion::Mapped(mapper)) => {
+                access.append(arena.text(format!(".clone().map({mapper})")))
+            }
+        }
     }
 
     fn transpile_string_literal<'a>(&mut self, arena: &'a Arena<'a>, value: &'a str) -> Doc<'a> {
@@ -1337,21 +1433,13 @@ impl Transpiler for RustTranspiler {
         record_name: &'a str,
         fields: &'a [(FieldName, IrExpr)],
     ) -> Doc<'a> {
-        let is_recursive = self
-            .recursive_types
-            .iter()
-            .any(|n| n.as_str() == record_name);
         if fields.is_empty() {
             arena.text(record_name).append(arena.text(" {}"))
         } else {
             let field_docs: Vec<Doc<'a>> = fields
                 .iter()
                 .map(|(name, value)| {
-                    let val_doc = if is_recursive {
-                        self.transpile_expr_for_recursive_field(arena, value, record_name)
-                    } else {
-                        self.transpile_expr_owned(arena, value)
-                    };
+                    let val_doc = self.transpile_field_value(arena, record_name, value);
                     arena
                         .text(Self::escape_field_name(name.as_str()))
                         .append(arena.text(": "))
@@ -1373,7 +1461,6 @@ impl Transpiler for RustTranspiler {
         variant_name: &'a str,
         fields: &'a [(FieldName, IrExpr)],
     ) -> Doc<'a> {
-        let is_recursive = self.recursive_types.iter().any(|n| n.as_str() == enum_name);
         if fields.is_empty() {
             arena
                 .text(enum_name)
@@ -1383,11 +1470,7 @@ impl Transpiler for RustTranspiler {
             let field_docs: Vec<Doc<'a>> = fields
                 .iter()
                 .map(|(name, value)| {
-                    let val_doc = if is_recursive {
-                        self.transpile_expr_for_recursive_field(arena, value, enum_name)
-                    } else {
-                        self.transpile_expr_owned(arena, value)
-                    };
+                    let val_doc = self.transpile_field_value(arena, enum_name, value);
                     arena
                         .text(Self::escape_field_name(name.as_str()))
                         .append(arena.text(": "))
@@ -1450,7 +1533,10 @@ impl Transpiler for RustTranspiler {
                     Some(var) => format!("Some({})", var.as_str()),
                     None => "Some(_)".to_string(),
                 };
-                let some_rebind: Vec<&str> = some_arm_binding.iter().map(|v| v.as_str()).collect();
+                let some_rebind: Vec<(&str, String)> = some_arm_binding
+                    .iter()
+                    .map(|v| (v.as_str(), format!("{}.clone()", v.as_str())))
+                    .collect();
                 let some_arm_doc = self.expr_with_rebinds(arena, &some_rebind, some_arm_body);
                 arena
                     .text("match &")
@@ -1530,8 +1616,16 @@ impl Transpiler for RustTranspiler {
                         }
                     };
 
-                    let arm_rebind: Vec<&str> =
-                        arm.bindings.iter().map(|(_, var)| var.as_str()).collect();
+                    let arm_rebind: Vec<(&str, String)> = arm
+                        .bindings
+                        .iter()
+                        .map(|(field, var)| {
+                            (
+                                var.as_str(),
+                                self.arm_rebind_value(&variants, &arm.pattern, field, var),
+                            )
+                        })
+                        .collect();
                     let arm_body_doc = self.expr_with_rebinds(arena, &arm_rebind, &arm.body);
 
                     doc = doc
@@ -1888,171 +1982,6 @@ mod tests {
     }
 
     #[test]
-    fn record_with_record_field_uses_arc() {
-        check(
-            IrModuleBuilder::new()
-                .record("Address", [("street", "String")])
-                .record("Person", [("name", "String"), ("address", "Address")])
-                .view("Test", [("person", "Person")], |t| {
-                    t.write_expr(t.field_access(t.var("person"), "name"), false);
-                }),
-            expect![[r#"
-                -- before --
-                record Address {
-                  street: String,
-                }
-                record Person {
-                  name: String,
-                  address: Address,
-                }
-                view Test(person: test::Person) {
-                  write_expr(person.name)
-                }
-
-                -- after --
-                // Code generated by the hop compiler. DO NOT EDIT.
-                #![cfg_attr(rustfmt, rustfmt_skip)]
-                #![allow(unused_parens, dead_code, clippy::all)]
-
-                pub trait View {
-                    fn render(self) -> String;
-                }
-
-                #[derive(Clone, Debug)]
-                pub struct Address {
-                    pub street: String,
-                }
-
-                #[derive(Clone, Debug)]
-                pub struct Person {
-                    pub name: String,
-                    pub address: Address,
-                }
-
-                pub struct Test {
-                    pub person: Person,
-                }
-
-                impl View for Test {
-                    fn render(self) -> String {
-                        let Test { person } = self;
-                        let mut output = String::new();
-                        output.push_str(&person.name);
-                        output
-                    }
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn enum_with_record_field_uses_arc() {
-        check(
-            IrModuleBuilder::new()
-                .record("Address", [("street", "String")])
-                .enum_(
-                    "Shape",
-                    [
-                        ("Located", vec![("location", "Address")]),
-                        ("Empty", vec![]),
-                    ],
-                )
-                .view_no_params("Test", |t| {
-                    t.write("hello");
-                }),
-            expect![[r#"
-                -- before --
-                enum Shape {
-                  Located {location: test::Address},
-                  Empty,
-                }
-                record Address {
-                  street: String,
-                }
-                view Test() {
-                  write("hello")
-                }
-
-                -- after --
-                // Code generated by the hop compiler. DO NOT EDIT.
-                #![cfg_attr(rustfmt, rustfmt_skip)]
-                #![allow(unused_parens, dead_code, clippy::all)]
-
-                pub trait View {
-                    fn render(self) -> String;
-                }
-
-                #[derive(Clone, Debug)]
-                pub enum Shape {
-                    Located { location: Address },
-                    Empty,
-                }
-
-                #[derive(Clone, Debug)]
-                pub struct Address {
-                    pub street: String,
-                }
-
-                pub struct Test {}
-
-                impl View for Test {
-                    fn render(self) -> String {
-                        let mut output = String::new();
-                        output.push_str("hello");
-                        output
-                    }
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn record_with_only_primitives_no_arc() {
-        check(
-            IrModuleBuilder::new()
-                .record("Point", [("x", "Float"), ("y", "Float")])
-                .view_no_params("Test", |t| {
-                    t.write("hello");
-                }),
-            expect![[r#"
-                -- before --
-                record Point {
-                  x: Float,
-                  y: Float,
-                }
-                view Test() {
-                  write("hello")
-                }
-
-                -- after --
-                // Code generated by the hop compiler. DO NOT EDIT.
-                #![cfg_attr(rustfmt, rustfmt_skip)]
-                #![allow(unused_parens, dead_code, clippy::all)]
-
-                pub trait View {
-                    fn render(self) -> String;
-                }
-
-                #[derive(Clone, Debug)]
-                pub struct Point {
-                    pub x: f64,
-                    pub y: f64,
-                }
-
-                pub struct Test {}
-
-                impl View for Test {
-                    fn render(self) -> String {
-                        let mut output = String::new();
-                        output.push_str("hello");
-                        output
-                    }
-                }
-            "#]],
-        );
-    }
-
-    #[test]
     fn recursive_record_boxes_recursive_field() {
         check(
             IrModuleBuilder::new()
@@ -2210,7 +2139,7 @@ mod tests {
                 impl View for Test {
                     fn render(self) -> String {
                         let mut output = String::new();
-                        let node = Node { value: 2_i32, next: Some(Box::new(Node { value: 1_i32, next: None::<Box<Node>> })) };
+                        let node = Node { value: 2_i32, next: Some(Node { value: 1_i32, next: None::<Node>.map(Box::new) }).map(Box::new) };
                         output.push_str(&(node.value).to_string());
                         output
                     }
@@ -2276,6 +2205,71 @@ mod tests {
                     fn render(self) -> String {
                         let mut output = String::new();
                         let list = IntList::Cons { head: 1_i32, tail: Box::new(IntList::Nil) };
+                        output.push_str("done");
+                        output
+                    }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn mutually_recursive_records_boxes_in_both_directions() {
+        check(
+            IrModuleBuilder::new()
+                .record("A", [("b", "B")])
+                .record("B", [("a", "Option[A]")])
+                .view_no_params("Test", |t| {
+                    let inner_b = t.record("B", vec![("a", t.none("A"))]);
+                    let a = t.record("A", vec![("b", inner_b)]);
+                    let b = t.record("B", vec![("a", t.some(a))]);
+                    t.let_stmt("b", b, |t| {
+                        t.write("done");
+                    });
+                }),
+            expect![[r#"
+                -- before --
+                record A {
+                  b: B,
+                }
+                record B {
+                  a: Option[test::A],
+                }
+                view Test() {
+                  let b = B {
+                    a: Option[test::A]::Some(A {
+                      b: B {a: Option[test::A]::None},
+                    }),
+                  } in {
+                    write("done")
+                  }
+                }
+
+                -- after --
+                // Code generated by the hop compiler. DO NOT EDIT.
+                #![cfg_attr(rustfmt, rustfmt_skip)]
+                #![allow(unused_parens, dead_code, clippy::all)]
+
+                pub trait View {
+                    fn render(self) -> String;
+                }
+
+                #[derive(Clone, Debug)]
+                pub struct A {
+                    pub b: Box<B>,
+                }
+
+                #[derive(Clone, Debug)]
+                pub struct B {
+                    pub a: Option<Box<A>>,
+                }
+
+                pub struct Test {}
+
+                impl View for Test {
+                    fn render(self) -> String {
+                        let mut output = String::new();
+                        let b = B { a: Some(A { b: Box::new(B { a: None::<A>.map(Box::new) }) }).map(Box::new) };
                         output.push_str("done");
                         output
                     }
