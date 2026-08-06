@@ -66,8 +66,19 @@ struct ComponentInfo {
     params: Vec<(String, String)>,
 }
 
+/// Which named types may be referenced at a type position.
+#[derive(Clone, Copy)]
+enum NamedTypes {
+    /// Every name the module declares, including declarations that are
+    /// not complete yet.
+    Any,
+    /// Only names whose declarations are already complete.
+    Complete,
+}
+
 struct IrGenerator<'a, 'b> {
     u: &'a mut Unstructured<'b>,
+    declared_names: Vec<String>,
     records: Vec<RecordInfo>,
     enums: Vec<EnumInfo>,
     components: Vec<ComponentInfo>,
@@ -89,31 +100,41 @@ fn random_ir_module_inner(
 ) -> (IrModule, TypeRegistry) {
     let mut g = IrGenerator {
         u,
+        declared_names: Vec::new(),
         records: Vec::new(),
         enums: Vec::new(),
         components: Vec::new(),
         next_var: 0,
     };
 
+    // Name every type before generating any field types, so that a field
+    // can refer to a type declared later or to the one being declared.
+    let record_count = g.count(0..=3);
+    let enum_count = g.count(0..=3);
+    g.declared_names = (0..record_count)
+        .map(|i| format!("R{i}"))
+        .chain((0..enum_count).map(|i| format!("E{i}")))
+        .collect();
+
     let mut builder = IrModuleBuilder::new();
 
     // Generate records
-    for i in 0..g.count(0..=3) {
+    for i in 0..record_count {
         let name = format!("R{i}");
         let fields = (0..g.count(0..=4))
-            .map(|j| (format!("f{j}"), g.random_type_string(2)))
+            .map(|j| (format!("f{j}"), g.random_field_type_string(2)))
             .collect::<Vec<_>>();
         builder = builder.record(&name, fields.iter().map(|(f, t)| (f.as_str(), t.as_str())));
         g.records.push(RecordInfo { name, fields });
     }
 
     // Generate enums
-    for i in 0..g.count(0..=3) {
+    for i in 0..enum_count {
         let name = format!("E{i}");
         let variants: Vec<(String, Vec<(String, String)>)> = (0..g.count(1..=3))
             .map(|j| {
                 let fields = (0..g.count(0..=2))
-                    .map(|k| (format!("f{k}"), g.random_type_string(2)))
+                    .map(|k| (format!("f{k}"), g.random_field_type_string(2)))
                     .collect();
                 (format!("W{j}"), fields)
             })
@@ -216,20 +237,46 @@ impl IrGenerator<'_, '_> {
 
     /// A random source-syntax type string. E.g. `Array[String]`.
     fn random_type_string(&mut self, depth: usize) -> String {
-        let named = self.records.len() + self.enums.len();
-        let n = 5 + named + if depth > 0 { 2 } else { 0 };
+        self.type_string(depth, NamedTypes::Any)
+    }
+
+    /// A random source-syntax type string for a field of the record or
+    /// enum currently being declared.
+    fn random_field_type_string(&mut self, depth: usize) -> String {
+        self.type_string(depth, NamedTypes::Complete)
+    }
+
+    fn type_string(&mut self, depth: usize, named: NamedTypes) -> String {
+        let count = self.named_type_count(named);
+        let n = 5 + count + if depth > 0 { 2 } else { 0 };
         match self.index(n) {
             0 => "Int".to_string(),
             1 => "String".to_string(),
             2 => "Bool".to_string(),
             3 => "Float".to_string(),
             4 => "Fragment".to_string(),
-            i if i < 5 + self.records.len() => self.records[i - 5].name.clone(),
-            i if i < 5 + named => self.enums[i - 5 - self.records.len()].name.clone(),
-            i if i == 5 + named => {
-                format!("Array[{}]", self.random_type_string(depth - 1))
+            i if i < 5 + count => self.named_type(named, i - 5),
+            // Array and Option guard whatever they contain, so a nested
+            // type may name any declaration.
+            i if i == 5 + count => {
+                format!("Array[{}]", self.type_string(depth - 1, NamedTypes::Any))
             }
-            _ => format!("Option[{}]", self.random_type_string(depth - 1)),
+            _ => format!("Option[{}]", self.type_string(depth - 1, NamedTypes::Any)),
+        }
+    }
+
+    fn named_type_count(&self, named: NamedTypes) -> usize {
+        match named {
+            NamedTypes::Any => self.declared_names.len(),
+            NamedTypes::Complete => self.records.len() + self.enums.len(),
+        }
+    }
+
+    fn named_type(&self, named: NamedTypes, i: usize) -> String {
+        match named {
+            NamedTypes::Any => self.declared_names[i].clone(),
+            NamedTypes::Complete if i < self.records.len() => self.records[i].name.clone(),
+            NamedTypes::Complete => self.enums[i - self.records.len()].name.clone(),
         }
     }
 
@@ -648,13 +695,14 @@ impl IrGenerator<'_, '_> {
             Type::Bool => b.bool(self.coin()),
             Type::Float => b.float(*self.u.choose(FLOATS).unwrap()),
             Type::Array(inner) => {
-                let elements = (0..self.count(0..=3))
+                let len = if depth == 0 { 0 } else { self.count(0..=3) };
+                let elements = (0..len)
                     .map(|_| self.expr(b, inner, depth.saturating_sub(1)))
                     .collect();
                 b.array_typed(inner.clone(), elements)
             }
             Type::Option(inner) => {
-                if self.coin() {
+                if depth > 0 && self.coin() {
                     let value = self.expr(b, inner, depth.saturating_sub(1));
                     b.some(value)
                 } else {

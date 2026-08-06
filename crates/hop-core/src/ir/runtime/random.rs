@@ -27,7 +27,7 @@ fn random_word(rng: &mut impl Rng) -> Value {
 
 /// Whether a value of the given type can be constructed without expanding
 /// any named type in `visiting`. Restores `visiting` before returning.
-fn can_construct(
+pub(crate) fn can_construct(
     ty: &Type,
     registry: &TypeRegistry,
     visiting: &mut Vec<(DocumentId, TypeName)>,
