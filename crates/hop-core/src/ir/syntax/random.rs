@@ -118,37 +118,48 @@ fn random_ir_module_inner(
 
     let mut builder = IrModuleBuilder::new();
 
-    // Generate records
-    for i in 0..record_count {
-        let name = format!("R{i}");
-        let fields = (0..g.count(0..=4))
-            .map(|j| (format!("f{j}"), g.random_field_type_string(2)))
-            .collect::<Vec<_>>();
-        builder = builder.record(&name, fields.iter().map(|(f, t)| (f.as_str(), t.as_str())));
-        g.records.push(RecordInfo { name, fields });
+    // Generate records and enums in a shuffled interleaved order.
+    enum Decl {
+        Record(usize),
+        Enum(usize),
     }
-
-    // Generate enums
-    for i in 0..enum_count {
-        let name = format!("E{i}");
-        let variants: Vec<(String, Vec<(String, String)>)> = (0..g.count(1..=3))
-            .map(|j| {
-                let fields = (0..g.count(0..=2))
-                    .map(|k| (format!("f{k}"), g.random_field_type_string(2)))
+    let decls: Vec<Decl> = (0..record_count)
+        .map(Decl::Record)
+        .chain((0..enum_count).map(Decl::Enum))
+        .collect();
+    for decl in g.shuffled(decls) {
+        match decl {
+            Decl::Record(i) => {
+                let name = format!("R{i}");
+                let fields = (0..g.count(0..=4))
+                    .map(|j| (format!("f{j}"), g.random_field_type_string(2)))
+                    .collect::<Vec<_>>();
+                builder =
+                    builder.record(&name, fields.iter().map(|(f, t)| (f.as_str(), t.as_str())));
+                g.records.push(RecordInfo { name, fields });
+            }
+            Decl::Enum(i) => {
+                let name = format!("E{i}");
+                let variants: Vec<(String, Vec<(String, String)>)> = (0..g.count(1..=3))
+                    .map(|j| {
+                        let fields = (0..g.count(0..=2))
+                            .map(|k| (format!("f{k}"), g.random_field_type_string(2)))
+                            .collect();
+                        (format!("W{j}"), fields)
+                    })
                     .collect();
-                (format!("W{j}"), fields)
-            })
-            .collect();
-        builder = builder.enum_(
-            &name,
-            variants.iter().map(|(v, fs)| {
-                (
-                    v.as_str(),
-                    fs.iter().map(|(f, t)| (f.as_str(), t.as_str())).collect(),
-                )
-            }),
-        );
-        g.enums.push(EnumInfo { name, variants });
+                builder = builder.enum_(
+                    &name,
+                    variants.iter().map(|(v, fs)| {
+                        (
+                            v.as_str(),
+                            fs.iter().map(|(f, t)| (f.as_str(), t.as_str())).collect(),
+                        )
+                    }),
+                );
+                g.enums.push(EnumInfo { name, variants });
+            }
+        }
     }
 
     let mut bodies = builder.types_done();
