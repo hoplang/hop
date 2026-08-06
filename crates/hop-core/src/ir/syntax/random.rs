@@ -247,21 +247,31 @@ impl IrGenerator<'_, '_> {
     }
 
     fn type_string(&mut self, depth: usize, named: NamedTypes) -> String {
-        let count = self.named_type_count(named);
-        let n = 5 + count + if depth > 0 { 2 } else { 0 };
-        match self.index(n) {
-            0 => "Int".to_string(),
-            1 => "String".to_string(),
-            2 => "Bool".to_string(),
-            3 => "Float".to_string(),
-            4 => "Fragment".to_string(),
-            i if i < 5 + count => self.named_type(named, i - 5),
-            // Array and Option guard whatever they contain, so a nested
-            // type may name any declaration.
-            i if i == 5 + count => {
-                format!("Array[{}]", self.type_string(depth - 1, NamedTypes::Any))
+        enum P {
+            Scalar,
+            Named,
+            Array,
+            Option,
+        }
+        let mut kinds = vec![P::Scalar];
+        let named_count = self.named_type_count(named);
+        if named_count > 0 {
+            kinds.push(P::Named);
+        }
+        if depth > 0 {
+            kinds.extend([P::Array, P::Option]);
+        }
+        match self.u.choose(&kinds).unwrap() {
+            P::Scalar => {
+                let scalars = ["Int", "String", "Bool", "Float", "Fragment"];
+                scalars[self.index(scalars.len())].to_string()
             }
-            _ => format!("Option[{}]", self.type_string(depth - 1, NamedTypes::Any)),
+            P::Named => {
+                let i = self.index(named_count);
+                self.named_type(named, i)
+            }
+            P::Array => format!("Array[{}]", self.type_string(depth - 1, NamedTypes::Any)),
+            P::Option => format!("Option[{}]", self.type_string(depth - 1, NamedTypes::Any)),
         }
     }
 
