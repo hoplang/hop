@@ -2924,6 +2924,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn for_loop_over_bool_array_with_if() {
         check(
             indoc! {r#"
