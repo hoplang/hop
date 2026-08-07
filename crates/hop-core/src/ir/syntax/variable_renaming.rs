@@ -12,7 +12,8 @@ use crate::symbols::var_name::VarName;
 pub struct VariableRenamingPass {
     /// Counter for generating unique variable names
     var_counter: usize,
-    /// Stack of scopes mapping original names to renamed names
+    /// Stack of scopes mapping original names to renamed names, used to resolve
+    /// references to the innermost enclosing binding
     scope_stack: Vec<Vec<(VarName, VarName)>>,
     /// Track all variable names ever used to ensure uniqueness
     all_used_names: HashSet<VarName>,
@@ -280,18 +281,24 @@ impl VariableRenamingPass {
         self.scope_stack.pop();
     }
 
-    /// Generate a fresh variable name
+    /// Generate a fresh variable name that is not already in use
     fn fresh_var(&mut self, name: &VarName) -> VarName {
-        self.var_counter += 1;
-        VarName::try_from(format!("{}_{}", name, self.var_counter)).unwrap()
+        loop {
+            self.var_counter += 1;
+            let candidate = VarName::try_from(format!("{}_{}", name, self.var_counter)).unwrap();
+            // The generated name can collide with a name that is already bound,
+            // e.g. renaming `x` to `x_1` when `x_1` is a parameter
+            if !self.all_used_names.contains(&candidate) {
+                return candidate;
+            }
+        }
     }
 
     /// Bind a variable in the current scope, renaming if necessary
     fn bind_var(&mut self, name: &VarName) -> VarName {
-        // Check if this name would shadow an existing binding or has been used before
-        let needs_renaming = self.is_name_in_scope(name) || self.all_used_names.contains(name);
-
-        let renamed = if needs_renaming {
+        // Every bound name is recorded in `all_used_names`, so this also covers
+        // the case where the name would shadow an enclosing binding
+        let renamed = if self.all_used_names.contains(name) {
             self.fresh_var(name)
         } else {
             name.clone()
@@ -306,17 +313,6 @@ impl VariableRenamingPass {
             .push((name.clone(), renamed.clone()));
 
         renamed
-    }
-
-    /// Check if a name exists in any parent scope (not the current one)
-    fn is_name_in_scope(&self, name: &VarName) -> bool {
-        // Check if name exists in any parent scope (not the current one)
-        for scope in self.scope_stack.iter().rev().skip(1) {
-            if scope.iter().any(|(k, _)| k == name) {
-                return true;
-            }
-        }
-        false
     }
 
     /// Look up the renamed version of a variable
@@ -618,6 +614,46 @@ mod tests {
                     }
                     write_escaped(item)
                     write("</div>")
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn fresh_name_does_not_collide_with_parameter() {
+        check(
+            IrModuleBuilder::new()
+                .view("Test", [("x_1", "String")], |t| {
+                    t.let_stmt("x", t.str("first"), |t| {
+                        t.write_expr_escaped(t.var("x"));
+                    });
+                    t.let_stmt("x", t.str("second"), |t| {
+                        t.write_expr_escaped(t.var("x"));
+                        t.write_expr_escaped(t.var("x_1"));
+                    });
+                })
+                .build(),
+            expect![[r#"
+                -- before --
+                view Test(x_1: String) {
+                  let x = "first" in {
+                    write_escaped(x)
+                  }
+                  let x = "second" in {
+                    write_escaped(x)
+                    write_escaped(x_1)
+                  }
+                }
+
+                -- after --
+                view Test(x_1: String) {
+                  let x = "first" in {
+                    write_escaped(x)
+                  }
+                  let x_2 = "second" in {
+                    write_escaped(x_2)
+                    write_escaped(x_1)
                   }
                 }
             "#]],
