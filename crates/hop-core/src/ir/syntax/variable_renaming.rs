@@ -2,8 +2,8 @@ use std::collections::HashSet;
 
 use crate::expr::patterns::Match;
 use crate::ir::ast::{
-    ExprId, IrComponentDeclaration, IrExpr, IrForSource, IrStatement, IrViewDeclaration,
-    StatementId,
+    ExprId, IrComponentDeclaration, IrExpr, IrForSource, IrParameter, IrStatement,
+    IrViewDeclaration, StatementId,
 };
 use crate::symbols::var_name::VarName;
 
@@ -419,27 +419,27 @@ impl VariableRenamingPass {
         name.clone()
     }
 
-    pub fn run(comp_decl: &mut IrViewDeclaration) {
+    fn run_decl(parameters: &[IrParameter], body: &mut Vec<IrStatement>) {
         let mut pass = VariableRenamingPass::new();
 
         pass.push_scope();
 
         // Create renamed parameter mappings
-        let mut renamed_params = Vec::new();
-        for param in &comp_decl.parameters {
-            let renamed = pass.bind_var(&param.name);
-            renamed_params.push(renamed);
-        }
+        let renamed_params: Vec<VarName> = parameters
+            .iter()
+            .map(|param| pass.bind_var(&param.name))
+            .collect();
 
         // Rename the body in place
-        pass.rename_statements(&mut comp_decl.body);
+        pass.rename_statements(body);
 
         pass.pop_scope();
 
         // Create Let bindings for parameters if they were renamed
-        for (renamed, param) in renamed_params.into_iter().zip(&comp_decl.parameters).rev() {
+        for (renamed, param) in renamed_params.into_iter().zip(parameters).rev() {
             if renamed != param.name {
-                comp_decl.body = vec![IrStatement::Let {
+                let inner = std::mem::take(body);
+                *body = vec![IrStatement::Let {
                     id: StatementId::new(0), // ID will be assigned later if needed
                     var: renamed,
                     value: IrExpr::Var {
@@ -447,41 +447,18 @@ impl VariableRenamingPass {
                         kind: param.typ.clone(),
                         id: ExprId::new(0),
                     },
-                    body: std::mem::take(&mut comp_decl.body),
+                    body: inner,
                 }];
             }
         }
     }
 
+    pub fn run_view(view_decl: &mut IrViewDeclaration) {
+        Self::run_decl(&view_decl.parameters, &mut view_decl.body);
+    }
+
     pub fn run_component(comp_decl: &mut IrComponentDeclaration) {
-        let mut pass = VariableRenamingPass::new();
-
-        pass.push_scope();
-
-        let mut renamed_params = Vec::new();
-        for param in &comp_decl.parameters {
-            let renamed = pass.bind_var(&param.name);
-            renamed_params.push(renamed);
-        }
-
-        pass.rename_statements(&mut comp_decl.body);
-
-        pass.pop_scope();
-
-        for (renamed, param) in renamed_params.into_iter().zip(&comp_decl.parameters).rev() {
-            if renamed != param.name {
-                comp_decl.body = vec![IrStatement::Let {
-                    id: StatementId::new(0),
-                    var: renamed,
-                    value: IrExpr::Var {
-                        value: param.name.clone(),
-                        kind: param.typ.clone(),
-                        id: ExprId::new(0),
-                    },
-                    body: std::mem::take(&mut comp_decl.body),
-                }];
-            }
-        }
+        Self::run_decl(&comp_decl.parameters, &mut comp_decl.body);
     }
 }
 
@@ -496,7 +473,7 @@ mod tests {
     fn check(mut module: IrModule, expected: Expect) {
         let before = module.to_string();
         for view in &mut module.views {
-            VariableRenamingPass::run(view);
+            VariableRenamingPass::run_view(view);
         }
         for component in &mut module.components {
             VariableRenamingPass::run_component(component);

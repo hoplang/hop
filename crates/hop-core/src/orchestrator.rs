@@ -93,7 +93,7 @@ pub fn orchestrate(
 
         // Compile to IR
         let mut e = Compiler::compile(e, options.asset_rewriter.clone());
-        VariableRenamingPass::run(&mut e);
+        VariableRenamingPass::run_view(&mut e);
 
         views.push(e);
     }
