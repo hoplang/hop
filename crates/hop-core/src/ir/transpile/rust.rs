@@ -54,7 +54,7 @@ impl RustTranspiler {
     fn stmts_with_rebinds<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        rebinds: &[(&'a str, String)],
+        rebinds: &[(String, String)],
         body: &'a [IrStatement],
     ) -> Doc<'a> {
         let mut doc = arena.nil();
@@ -69,7 +69,7 @@ impl RustTranspiler {
     fn expr_with_rebinds<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        rebinds: &[(&'a str, String)],
+        rebinds: &[(String, String)],
         body: &'a IrExpr,
     ) -> Doc<'a> {
         if rebinds.is_empty() {
@@ -99,15 +99,16 @@ impl RustTranspiler {
         }
     }
 
-    fn escape_field_name(name: &str) -> String {
+    /// Escape an identifier that Rust would otherwise read as a keyword.
+    fn escape_ident(name: &str) -> String {
         match name {
-            "as" | "break" | "const" | "continue" | "crate" | "else" | "enum" | "extern"
-            | "false" | "fn" | "for" | "if" | "impl" | "in" | "let" | "loop" | "match" | "mod"
-            | "move" | "mut" | "pub" | "ref" | "return" | "self" | "Self" | "static" | "struct"
-            | "super" | "trait" | "true" | "type" | "unsafe" | "use" | "where" | "while"
-            | "async" | "await" | "dyn" | "abstract" | "become" | "box" | "do" | "final"
-            | "macro" | "override" | "priv" | "typeof" | "unsized" | "virtual" | "yield"
-            | "try" => format!("r#{}", name),
+            "crate" | "self" | "Self" | "super" => format!("{}_", name),
+            "as" | "break" | "const" | "continue" | "else" | "enum" | "extern" | "false" | "fn"
+            | "for" | "if" | "impl" | "in" | "let" | "loop" | "match" | "mod" | "move" | "mut"
+            | "pub" | "ref" | "return" | "static" | "struct" | "trait" | "true" | "type"
+            | "unsafe" | "use" | "where" | "while" | "async" | "await" | "dyn" | "gen"
+            | "abstract" | "become" | "box" | "do" | "final" | "macro" | "override" | "priv"
+            | "typeof" | "unsized" | "virtual" | "yield" | "try" => format!("r#{}", name),
             _ => name.to_string(),
         }
     }
@@ -282,6 +283,7 @@ impl RustTranspiler {
         field: &FieldName,
         var: &VarName,
     ) -> String {
+        let var = Self::escape_ident(var.as_str());
         let EnumPattern::Variant {
             enum_name,
             variant_name,
@@ -385,7 +387,7 @@ impl Transpiler for RustTranspiler {
                                 enum_def.name.as_str(),
                             );
                             arena
-                                .text(Self::escape_field_name(field_name.as_str()))
+                                .text(Self::escape_ident(field_name.as_str()))
                                 .append(arena.text(": "))
                                 .append(ft)
                         })
@@ -418,7 +420,7 @@ impl Transpiler for RustTranspiler {
                 let ft = self.transpile_field_type(arena, field_type, record.name.as_str());
                 result = result
                     .append(arena.text("    pub "))
-                    .append(arena.text(Self::escape_field_name(field_name.as_str())))
+                    .append(arena.text(Self::escape_ident(field_name.as_str())))
                     .append(arena.text(": "))
                     .append(ft)
                     .append(arena.text(","))
@@ -544,7 +546,7 @@ impl Transpiler for RustTranspiler {
                 view.parameters.iter().map(|param| {
                     arena
                         .text("pub ")
-                        .append(arena.text(param.name.as_str()))
+                        .append(arena.text(Self::escape_ident(param.name.as_str())))
                         .append(arena.text(": "))
                         .append(self.transpile_type(arena, &param.typ))
                         .append(arena.text(","))
@@ -568,7 +570,7 @@ impl Transpiler for RustTranspiler {
             let field_names = arena.intersperse(
                 view.parameters
                     .iter()
-                    .map(|param| arena.text(param.name.as_str())),
+                    .map(|param| arena.text(Self::escape_ident(param.name.as_str()))),
                 arena.text(", "),
             );
             body = body
@@ -625,7 +627,7 @@ impl Transpiler for RustTranspiler {
             .iter()
             .map(|param| {
                 arena
-                    .text(param.name.as_str())
+                    .text(Self::escape_ident(param.name.as_str()))
                     .append(arena.text(": "))
                     .append(self.transpile_param_type(arena, &param.typ))
             })
@@ -737,7 +739,9 @@ impl Transpiler for RustTranspiler {
         source: &'a IrForSource,
         body: &'a [IrStatement],
     ) -> Doc<'a> {
-        let var_name = var.unwrap_or("_");
+        let var_name = var
+            .map(Self::escape_ident)
+            .unwrap_or_else(|| "_".to_string());
 
         let doc = match source {
             IrForSource::Array(array) => arena
@@ -756,10 +760,11 @@ impl Transpiler for RustTranspiler {
                 .append(arena.text(" {")),
         };
 
-        let rebinds: Vec<(&str, String)> = match source {
+        let rebinds: Vec<(String, String)> = match source {
             IrForSource::Array(_) => var
                 .into_iter()
-                .map(|v| (v, format!("{}.clone()", v)))
+                .map(Self::escape_ident)
+                .map(|v| (v.clone(), format!("{}.clone()", v)))
                 .collect(),
             IrForSource::RangeInclusive { .. } => Vec::new(),
         };
@@ -782,7 +787,7 @@ impl Transpiler for RustTranspiler {
     ) -> Doc<'a> {
         arena
             .text("let ")
-            .append(arena.text(var))
+            .append(arena.text(Self::escape_ident(var)))
             .append(arena.text(" = "))
             .append(self.transpile_expr_owned(arena, value))
             .append(arena.text(";"))
@@ -800,7 +805,7 @@ impl Transpiler for RustTranspiler {
         self.needs_fragment = true;
         arena
             .text("let ")
-            .append(arena.text(var))
+            .append(arena.text(Self::escape_ident(var)))
             .append(arena.text(" = {"))
             .append(
                 arena
@@ -865,12 +870,13 @@ impl Transpiler for RustTranspiler {
                 none_arm_body,
             } => {
                 let some_pattern = match some_arm_binding {
-                    Some(var) => format!("Some({})", var.as_str()),
+                    Some(var) => format!("Some({})", Self::escape_ident(var.as_str())),
                     None => "Some(_)".to_string(),
                 };
-                let some_rebind: Vec<(&str, String)> = some_arm_binding
+                let some_rebind: Vec<(String, String)> = some_arm_binding
                     .iter()
-                    .map(|v| (v.as_str(), format!("{}.clone()", v.as_str())))
+                    .map(|v| Self::escape_ident(v.as_str()))
+                    .map(|v| (v.clone(), format!("{}.clone()", v)))
                     .collect();
 
                 let some_arm = arena
@@ -948,8 +954,8 @@ impl Transpiler for RustTranspiler {
                                         .map(|(field, var)| {
                                             format!(
                                                 "{}: {}",
-                                                Self::escape_field_name(field.as_str()),
-                                                var
+                                                Self::escape_ident(field.as_str()),
+                                                Self::escape_ident(var.as_str())
                                             )
                                         })
                                         .collect();
@@ -973,12 +979,12 @@ impl Transpiler for RustTranspiler {
                                 }
                             }
                         };
-                        let arm_rebind: Vec<(&str, String)> = arm
+                        let arm_rebind: Vec<(String, String)> = arm
                             .bindings
                             .iter()
                             .map(|(field, var)| {
                                 (
-                                    var.as_str(),
+                                    Self::escape_ident(var.as_str()),
                                     self.arm_rebind_value(&variants, &arm.pattern, field, var),
                                 )
                             })
@@ -1070,7 +1076,7 @@ impl Transpiler for RustTranspiler {
     }
 
     fn transpile_var<'a>(&mut self, arena: &'a Arena<'a>, name: &'a str) -> Doc<'a> {
-        arena.text(name)
+        arena.text(Self::escape_ident(name))
     }
 
     fn transpile_field_access<'a>(
@@ -1089,7 +1095,7 @@ impl Transpiler for RustTranspiler {
         };
         let access = object_doc
             .append(arena.text("."))
-            .append(arena.text(Self::escape_field_name(field.as_str())));
+            .append(arena.text(Self::escape_ident(field.as_str())));
 
         match boxed {
             None => access,
@@ -1441,7 +1447,7 @@ impl Transpiler for RustTranspiler {
                 .map(|(name, value)| {
                     let val_doc = self.transpile_field_value(arena, record_name, value);
                     arena
-                        .text(Self::escape_field_name(name.as_str()))
+                        .text(Self::escape_ident(name.as_str()))
                         .append(arena.text(": "))
                         .append(val_doc)
                 })
@@ -1472,7 +1478,7 @@ impl Transpiler for RustTranspiler {
                 .map(|(name, value)| {
                     let val_doc = self.transpile_field_value(arena, enum_name, value);
                     arena
-                        .text(Self::escape_field_name(name.as_str()))
+                        .text(Self::escape_ident(name.as_str()))
                         .append(arena.text(": "))
                         .append(val_doc)
                 })
@@ -1530,12 +1536,13 @@ impl Transpiler for RustTranspiler {
                 none_arm_body,
             } => {
                 let some_pattern = match some_arm_binding {
-                    Some(var) => format!("Some({})", var.as_str()),
+                    Some(var) => format!("Some({})", Self::escape_ident(var.as_str())),
                     None => "Some(_)".to_string(),
                 };
-                let some_rebind: Vec<(&str, String)> = some_arm_binding
+                let some_rebind: Vec<(String, String)> = some_arm_binding
                     .iter()
-                    .map(|v| (v.as_str(), format!("{}.clone()", v.as_str())))
+                    .map(|v| Self::escape_ident(v.as_str()))
+                    .map(|v| (v.clone(), format!("{}.clone()", v)))
                     .collect();
                 let some_arm_doc = self.expr_with_rebinds(arena, &some_rebind, some_arm_body);
                 arena
@@ -1590,8 +1597,8 @@ impl Transpiler for RustTranspiler {
                                     .map(|(field, var)| {
                                         format!(
                                             "{}: {}",
-                                            Self::escape_field_name(field.as_str()),
-                                            var
+                                            Self::escape_ident(field.as_str()),
+                                            Self::escape_ident(var.as_str())
                                         )
                                     })
                                     .collect();
@@ -1616,12 +1623,12 @@ impl Transpiler for RustTranspiler {
                         }
                     };
 
-                    let arm_rebind: Vec<(&str, String)> = arm
+                    let arm_rebind: Vec<(String, String)> = arm
                         .bindings
                         .iter()
                         .map(|(field, var)| {
                             (
-                                var.as_str(),
+                                Self::escape_ident(var.as_str()),
                                 self.arm_rebind_value(&variants, &arm.pattern, field, var),
                             )
                         })
@@ -1652,7 +1659,7 @@ impl Transpiler for RustTranspiler {
     ) -> Doc<'a> {
         arena
             .text("{ let ")
-            .append(arena.text(var.as_str()))
+            .append(arena.text(Self::escape_ident(var.as_str())))
             .append(arena.text(" = "))
             .append(self.transpile_expr_owned(arena, value))
             .append(arena.text("; "))

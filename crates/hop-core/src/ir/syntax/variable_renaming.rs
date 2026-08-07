@@ -2,89 +2,13 @@ use std::collections::HashSet;
 
 use crate::expr::patterns::Match;
 use crate::ir::ast::{
-    ExprId, IrComponentDeclaration, IrExpr, IrForSource, IrParameter, IrStatement,
-    IrViewDeclaration, StatementId,
+    IrComponentDeclaration, IrExpr, IrForSource, IrParameter, IrStatement, IrViewDeclaration,
 };
 use crate::symbols::var_name::VarName;
 
-// Reserved keywords across all target languages (sorted for binary search)
-const RESERVED_KEYWORDS: &[&str] = &[
-    "and",
-    "as",
-    "assert",
-    "await",
-    "break",
-    "case",
-    "catch",
-    "chan",
-    "class",
-    "const",
-    "continue",
-    "debugger",
-    "def",
-    "default",
-    "defer",
-    "del",
-    "delete",
-    "do",
-    "elif",
-    "else",
-    "except",
-    "export",
-    "extends",
-    "fallthrough",
-    "false",
-    "finally",
-    "for",
-    "from",
-    "func",
-    "function",
-    "global",
-    "go",
-    "goto",
-    "if",
-    "import",
-    "in",
-    "instanceof",
-    "interface",
-    "is",
-    "lambda",
-    "let",
-    "map",
-    "new",
-    "nonlocal",
-    "not",
-    "null",
-    "or",
-    "package",
-    "pass",
-    "raise",
-    "range",
-    "return",
-    "select",
-    "static",
-    "struct",
-    "super",
-    "switch",
-    "this",
-    "throw",
-    "true",
-    "try",
-    "type",
-    "typeof",
-    "var",
-    "void",
-    "while",
-    "with",
-    "yield",
-];
-
 /// Variable renaming pass for the IR AST.
 ///
-/// This pass ensures:
-/// 1. All variable names are unique to avoid conflicts and shadowing
-/// 2. Variables with names that are reserved keywords in target languages
-///    (TypeScript, Rust) are renamed to avoid invalid generated code
+/// This pass ensures that all variable names are unique.
 pub struct VariableRenamingPass {
     /// Counter for generating unique variable names
     var_counter: usize,
@@ -102,10 +26,6 @@ impl Default for VariableRenamingPass {
 
 impl VariableRenamingPass {
     pub fn new() -> Self {
-        debug_assert!(
-            RESERVED_KEYWORDS.windows(2).all(|w| w[0] < w[1]),
-            "RESERVED_KEYWORDS must be sorted and have no duplicates"
-        );
         Self {
             var_counter: 0,
             scope_stack: vec![Vec::new()],
@@ -366,18 +286,10 @@ impl VariableRenamingPass {
         VarName::try_from(format!("{}_{}", name, self.var_counter)).unwrap()
     }
 
-    /// Check if a name is a reserved keyword in any target language
-    fn is_reserved_keyword(name: &str) -> bool {
-        RESERVED_KEYWORDS.binary_search(&name).is_ok()
-    }
-
     /// Bind a variable in the current scope, renaming if necessary
     fn bind_var(&mut self, name: &VarName) -> VarName {
-        // Check if this name would shadow an existing binding, has been used before,
-        // or is a reserved keyword in a target language
-        let needs_renaming = self.is_name_in_scope(name)
-            || self.all_used_names.contains(name)
-            || Self::is_reserved_keyword(name.as_str());
+        // Check if this name would shadow an existing binding or has been used before
+        let needs_renaming = self.is_name_in_scope(name) || self.all_used_names.contains(name);
 
         let renamed = if needs_renaming {
             self.fresh_var(name)
@@ -424,33 +336,15 @@ impl VariableRenamingPass {
 
         pass.push_scope();
 
-        // Create renamed parameter mappings
-        let renamed_params: Vec<VarName> = parameters
-            .iter()
-            .map(|param| pass.bind_var(&param.name))
-            .collect();
+        for param in parameters {
+            let bound = pass.bind_var(&param.name);
+            debug_assert_eq!(bound, param.name,);
+        }
 
         // Rename the body in place
         pass.rename_statements(body);
 
         pass.pop_scope();
-
-        // Create Let bindings for parameters if they were renamed
-        for (renamed, param) in renamed_params.into_iter().zip(parameters).rev() {
-            if renamed != param.name {
-                let inner = std::mem::take(body);
-                *body = vec![IrStatement::Let {
-                    id: StatementId::new(0), // ID will be assigned later if needed
-                    var: renamed,
-                    value: IrExpr::Var {
-                        value: param.name.clone(),
-                        kind: param.typ.clone(),
-                        id: ExprId::new(0),
-                    },
-                    body: inner,
-                }];
-            }
-        }
     }
 
     pub fn run_view(view_decl: &mut IrViewDeclaration) {
@@ -466,7 +360,7 @@ impl VariableRenamingPass {
 mod tests {
     use super::*;
     use crate::document::CheapString;
-    use crate::ir::ast::IrModule;
+    use crate::ir::ast::{ExprId, IrModule};
     use crate::ir::syntax::builder::IrModuleBuilder;
     use expect_test::{Expect, expect};
 
@@ -752,75 +646,5 @@ mod tests {
         let mut pass = VariableRenamingPass::new();
         pass.rename_expr(&mut expr);
         // If we get here without stack overflow, the test passes
-    }
-
-    #[test]
-    fn should_rename_reserved_keywords() {
-        // Test that reserved keywords from target languages are renamed
-        check(
-            IrModuleBuilder::new()
-                .view_no_params("Test", |t| {
-                    // `delete` is reserved in TypeScript
-                    t.let_stmt("delete", t.str("value"), |t| {
-                        t.write_expr_escaped(t.var("delete"));
-                    });
-                })
-                .build(),
-            expect![[r#"
-                -- before --
-                view Test() {
-                  let delete = "value" in {
-                    write_escaped(delete)
-                  }
-                }
-
-                -- after --
-                view Test() {
-                  let delete_1 = "value" in {
-                    write_escaped(delete_1)
-                  }
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_rename_multiple_reserved_keywords() {
-        // Test multiple reserved keywords from different target languages
-        check(
-            IrModuleBuilder::new()
-                .view_no_params("Test", |t| {
-                    // `class` is reserved in TypeScript
-                    t.let_stmt("class", t.str("ts"), |t| {
-                        t.write_expr_escaped(t.var("class"));
-                        // `const` is reserved in TypeScript and Rust
-                        t.let_stmt("const", t.str("rust"), |t| {
-                            t.write_expr_escaped(t.var("const"));
-                        });
-                    });
-                })
-                .build(),
-            expect![[r#"
-                -- before --
-                view Test() {
-                  let class = "ts" in {
-                    write_escaped(class)
-                    let const = "rust" in {
-                      write_escaped(const)
-                    }
-                  }
-                }
-
-                -- after --
-                view Test() {
-                  let class_1 = "ts" in {
-                    write_escaped(class_1)
-                    let const_2 = "rust" in {
-                      write_escaped(const_2)
-                    }
-                  }
-                }
-            "#]],
-        );
     }
 }

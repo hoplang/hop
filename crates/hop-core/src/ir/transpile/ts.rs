@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use pretty::{Arena, DocAllocator};
 
 use super::{Doc, Transpiler};
@@ -11,6 +13,81 @@ use crate::ir::ast::{
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
+
+/// Words TypeScript will not accept as a binding name in a module (reserved
+/// words, plus the ones reserved only under strict mode, which modules are).
+/// Sorted for binary search.
+const RESERVED_WORDS: &[&str] = &[
+    "arguments",
+    "await",
+    "break",
+    "case",
+    "catch",
+    "class",
+    "const",
+    "continue",
+    "debugger",
+    "default",
+    "delete",
+    "do",
+    "else",
+    "enum",
+    "eval",
+    "export",
+    "extends",
+    "false",
+    "finally",
+    "for",
+    "function",
+    "if",
+    "implements",
+    "import",
+    "in",
+    "instanceof",
+    "interface",
+    "let",
+    "new",
+    "null",
+    "package",
+    "private",
+    "protected",
+    "public",
+    "return",
+    "static",
+    "super",
+    "switch",
+    "this",
+    "throw",
+    "true",
+    "try",
+    "typeof",
+    "var",
+    "void",
+    "while",
+    "with",
+    "yield",
+];
+
+/// Rename an identifier TypeScript would reject as a binding.
+fn escape_ident(name: &str) -> Cow<'_, str> {
+    if RESERVED_WORDS.binary_search(&name).is_ok() {
+        Cow::Owned(format!("{name}_"))
+    } else {
+        Cow::Borrowed(name)
+    }
+}
+
+/// Destructuring entry for a parameter: `name` on its own, or `name: name_`
+/// when the name is not a legal binding.
+fn transpile_param_binding<'a>(arena: &'a Arena<'a>, name: &'a VarName) -> Doc<'a> {
+    match escape_ident(name.as_str()) {
+        Cow::Borrowed(_) => arena.text(name.as_str()),
+        Cow::Owned(escaped) => arena
+            .text(name.as_str())
+            .append(arena.text(": "))
+            .append(arena.text(escaped)),
+    }
+}
 
 pub struct TsTranspiler {
     /// Internal flag to use template literals instead of double quotes
@@ -75,7 +152,7 @@ impl TsTranspiler {
             .append(
                 arena
                     .hardline()
-                    .append(arena.text("const $subject = "))
+                    .append(arena.text("const subject_ = "))
                     .append(self.transpile_expr(arena, subject))
                     .append(arena.text(" as "))
                     .append(self.transpile_type(arena, subject.as_type()))
@@ -95,7 +172,7 @@ impl TsTranspiler {
         switch_body: Doc<'a>,
     ) -> Doc<'a> {
         arena
-            .text("(($subject: ")
+            .text("((subject_: ")
             .append(self.transpile_type(arena, subject.as_type()))
             .append(arena.text(") => {"))
             .append(arena.line().append(switch_body).nest(2))
@@ -503,7 +580,7 @@ impl Transpiler for TsTranspiler {
             let name_docs: Vec<_> = view
                 .parameters
                 .iter()
-                .map(|param| arena.text(param.name.as_str()))
+                .map(|param| transpile_param_binding(arena, &param.name))
                 .collect();
             let type_docs: Vec<_> = view
                 .parameters
@@ -558,7 +635,7 @@ impl Transpiler for TsTranspiler {
             let param_names: Vec<_> = component
                 .parameters
                 .iter()
-                .map(|param| arena.text(param.name.as_str()))
+                .map(|param| transpile_param_binding(arena, &param.name))
                 .collect();
 
             result = result
@@ -672,12 +749,12 @@ impl Transpiler for TsTranspiler {
         source: &'a IrForSource,
         body: &'a [IrStatement],
     ) -> Doc<'a> {
-        let var_name = var.unwrap_or("_");
+        let var_name = escape_ident(var.unwrap_or("_"));
         match source {
             IrForSource::Array(array) => arena
                 .nil()
                 .append(arena.text("for (const "))
-                .append(arena.text(var_name))
+                .append(arena.text(var_name.clone()))
                 .append(arena.text(" of "))
                 .append(self.transpile_expr(arena, array))
                 .append(arena.text(") {"))
@@ -693,11 +770,11 @@ impl Transpiler for TsTranspiler {
             IrForSource::RangeInclusive { start, end } => arena
                 .nil()
                 .append(arena.text("for (let "))
-                .append(arena.text(var_name))
+                .append(arena.text(var_name.clone()))
                 .append(arena.text(" = "))
                 .append(self.transpile_expr(arena, start))
                 .append(arena.text("; "))
-                .append(arena.text(var_name))
+                .append(arena.text(var_name.clone()))
                 .append(arena.text(" <= "))
                 .append(self.transpile_expr(arena, end))
                 .append(arena.text("; "))
@@ -724,7 +801,7 @@ impl Transpiler for TsTranspiler {
     ) -> Doc<'a> {
         arena
             .text("const ")
-            .append(arena.text(var))
+            .append(arena.text(escape_ident(var)))
             .append(arena.text(" = "))
             .append(self.transpile_expr(arena, value))
             .append(arena.text(";"))
@@ -742,7 +819,7 @@ impl Transpiler for TsTranspiler {
         self.needs_fragment = true;
         arena
             .text("const ")
-            .append(arena.text(var))
+            .append(arena.text(escape_ident(var)))
             .append(arena.text(" = (() => {"))
             .append(
                 arena
@@ -809,7 +886,7 @@ impl Transpiler for TsTranspiler {
                 none_arm_body,
             } => {
                 self.needs_option = true;
-                let subject_name = "$subject";
+                let subject_name = "subject_";
                 let some_case = if let Some(var_name) = some_arm_binding {
                     arena
                         .text("case \"Some\": {")
@@ -817,7 +894,7 @@ impl Transpiler for TsTranspiler {
                             arena
                                 .hardline()
                                 .append(arena.text("const "))
-                                .append(arena.text(var_name.as_str()))
+                                .append(arena.text(escape_ident(var_name.as_str())))
                                 .append(arena.text(" = "))
                                 .append(arena.text(subject_name))
                                 .append(arena.text(".value;"))
@@ -877,7 +954,7 @@ impl Transpiler for TsTranspiler {
                 )
             }
             Match::Enum { subject, arms } => {
-                let subject_name = "$subject";
+                let subject_name = "subject_";
                 let case_docs: Vec<_> = arms
                     .iter()
                     .map(|arm| match &arm.pattern {
@@ -896,7 +973,7 @@ impl Transpiler for TsTranspiler {
                                         arena
                                             .text(field.as_str())
                                             .append(arena.text(": "))
-                                            .append(arena.text(var.as_str()))
+                                            .append(arena.text(escape_ident(var.as_str())))
                                     })
                                     .collect();
                                 arena
@@ -956,7 +1033,7 @@ impl Transpiler for TsTranspiler {
     }
 
     fn transpile_var<'a>(&mut self, arena: &'a Arena<'a>, name: &'a str) -> Doc<'a> {
-        arena.text(name)
+        arena.text(escape_ident(name))
     }
 
     fn transpile_field_access<'a>(
@@ -1403,7 +1480,7 @@ impl Transpiler for TsTranspiler {
     ) -> Doc<'a> {
         match match_ {
             Match::Enum { subject, arms } => {
-                let subject_name = "$subject";
+                let subject_name = "subject_";
                 let case_docs: Vec<_> =
                     arms.iter()
                         .map(|arm| match &arm.pattern {
@@ -1426,7 +1503,7 @@ impl Transpiler for TsTranspiler {
                                             arena
                                                 .text(field.as_str())
                                                 .append(arena.text(": "))
-                                                .append(arena.text(var.as_str()))
+                                                .append(arena.text(escape_ident(var.as_str())))
                                         })
                                         .collect();
                                     arena
@@ -1487,7 +1564,7 @@ impl Transpiler for TsTranspiler {
                 none_arm_body,
             } => {
                 self.needs_option = true;
-                let subject_name = "$subject";
+                let subject_name = "subject_";
                 let some_case = {
                     let body_doc = self.transpile_expr(arena, some_arm_body);
                     if let Some(var_name) = some_arm_binding {
@@ -1497,7 +1574,7 @@ impl Transpiler for TsTranspiler {
                                 arena
                                     .line()
                                     .append(arena.text("const "))
-                                    .append(arena.text(var_name.as_str()))
+                                    .append(arena.text(escape_ident(var_name.as_str())))
                                     .append(arena.text(" = "))
                                     .append(arena.text(subject_name))
                                     .append(arena.text(".value;"))
@@ -1550,7 +1627,7 @@ impl Transpiler for TsTranspiler {
                 arena
                     .line()
                     .append(arena.text("const "))
-                    .append(arena.text(var.as_str()))
+                    .append(arena.text(escape_ident(var.as_str())))
                     .append(arena.text(" = "))
                     .append(self.transpile_expr(arena, value))
                     .append(arena.text(";"))
@@ -2441,8 +2518,8 @@ mod tests {
 
                 export function ColorName({color}: {color: Color.Color}): string {
                     let output: string = "";
-                    output += escapeHtml((($subject: Color.Color) => {
-                      switch ($subject.tag) {
+                    output += escapeHtml(((subject_: Color.Color) => {
+                      switch (subject_.tag) {
                         case "Red": return ("red" as string);
                         case "Green": return ("green" as string);
                         case "Blue": return ("blue" as string);
@@ -2530,8 +2607,8 @@ mod tests {
 
                 export function CheckOption({opt}: {opt: Option.Option<number>}): string {
                     let output: string = "";
-                    output += escapeHtml((($subject: Option.Option<number>) => {
-                      switch ($subject.tag) {
+                    output += escapeHtml(((subject_: Option.Option<number>) => {
+                      switch (subject_.tag) {
                         case "Some": return ("has value" as string);
                         case "None": return ("empty" as string);
                       }
@@ -2615,14 +2692,14 @@ mod tests {
 
                 export function CheckNestedOption({opt}: {opt: Option.Option<Option.Option<boolean>>}): string {
                     let output: string = "";
-                    output += escapeHtml((($subject: Option.Option<Option.Option<boolean>>) => {
-                      switch ($subject.tag) {
+                    output += escapeHtml(((subject_: Option.Option<Option.Option<boolean>>) => {
+                      switch (subject_.tag) {
                         case "Some": {
-                          const v0 = $subject.value;
-                          return (($subject: Option.Option<boolean>) => {
-                            switch ($subject.tag) {
+                          const v0 = subject_.value;
+                          return ((subject_: Option.Option<boolean>) => {
+                            switch (subject_.tag) {
                               case "Some": {
-                                const v1 = $subject.value;
+                                const v1 = subject_.value;
                                 return ((v1 as boolean) ? ("some-some-true" as string) : ("some-some-false" as string));
                               }
                               case "None": return ("some-none" as string);
@@ -2734,10 +2811,10 @@ mod tests {
                 export function DisplayOption({opt}: {opt: Option.Option<string>}): string {
                     let output: string = "";
                     {
-                        const $subject = opt as Option.Option<string>;
-                        switch ($subject.tag) {
+                        const subject_ = opt as Option.Option<string>;
+                        switch (subject_.tag) {
                             case "Some": {
-                                const value = $subject.value;
+                                const value = subject_.value;
                                 output += "<span>Found: ";
                                 output += escapeHtml(value);
                                 output += "</span>";
@@ -2802,14 +2879,14 @@ mod tests {
 
                 export function TestOptionLiteral({opt1, opt2}: {opt1: Option.Option<string>, opt2: Option.Option<string>}): string {
                     let output: string = "";
-                    output += (($subject: Option.Option<string>) => {
-                      switch ($subject.tag) {
+                    output += ((subject_: Option.Option<string>) => {
+                      switch (subject_.tag) {
                         case "Some": return ("has value" as string);
                         case "None": return ("empty" as string);
                       }
                     })(opt1);
-                    output += (($subject: Option.Option<string>) => {
-                      switch ($subject.tag) {
+                    output += ((subject_: Option.Option<string>) => {
+                      switch (subject_.tag) {
                         case "Some": return ("HAS" as string);
                         case "None": return ("EMPTY" as string);
                       }
@@ -2872,10 +2949,10 @@ mod tests {
                     let output: string = "";
                     const opt = Option.some<string>(("world" as string));
                     {
-                        const $subject = opt as Option.Option<string>;
-                        switch ($subject.tag) {
+                        const subject_ = opt as Option.Option<string>;
+                        switch (subject_.tag) {
                             case "Some": {
-                                const val = $subject.value;
+                                const val = subject_.value;
                                 output += "Got:";
                                 output += val;
                                 break;
@@ -2953,15 +3030,15 @@ mod tests {
                 export function Test(): string {
                     let output: string = "";
                     {
-                        const $subject = Option.some<string>(("x" as string)) as Option.Option<string>;
-                        switch ($subject.tag) {
+                        const subject_ = Option.some<string>(("x" as string)) as Option.Option<string>;
+                        switch (subject_.tag) {
                             case "Some": {
-                                const value = $subject.value;
+                                const value = subject_.value;
                                 {
-                                    const $subject = Option.some<string>(value) as Option.Option<string>;
-                                    switch ($subject.tag) {
+                                    const subject_ = Option.some<string>(value) as Option.Option<string>;
+                                    switch (subject_.tag) {
                                         case "Some": {
-                                            const inner = $subject.value;
+                                            const inner = subject_.value;
                                             output += inner;
                                             break;
                                         }
@@ -3142,16 +3219,16 @@ mod tests {
                 export function ShowOutcome({r}: {r: Outcome.Outcome}): string {
                     let output: string = "";
                     {
-                        const $subject = r as Outcome.Outcome;
-                        switch ($subject.tag) {
+                        const subject_ = r as Outcome.Outcome;
+                        switch (subject_.tag) {
                             case "Ok": {
-                                const { value: v } = $subject;
+                                const { value: v } = subject_;
                                 output += "Value: ";
                                 output += v;
                                 break;
                             }
                             case "Err": {
-                                const { message: m } = $subject;
+                                const { message: m } = subject_;
                                 output += "Error: ";
                                 output += m;
                                 break;

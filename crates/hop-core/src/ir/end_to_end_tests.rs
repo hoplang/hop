@@ -883,11 +883,11 @@ mod tests {
                   let v_0 = {
                     write("Hi")
                   } in {
-                    let class_1 = "p-2" in {
+                    let class = "p-2" in {
                       let children = v_0 in {
                         write("<button")
                         write(" class=\"")
-                        write_escaped(tw_merge(class_1))
+                        write_escaped(tw_merge(class))
                         write("\"")
                         write(" data-foo=\"bar\"")
                         write(">")
@@ -1507,16 +1507,16 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 view Test() {
-                  let class_1 = "x" in {
+                  let class = "x" in {
                     write("<div")
                     write(" class=\"")
-                    write_escaped(tw_merge(class_1))
+                    write_escaped(tw_merge(class))
                     write("\"")
                     write(">")
-                    let class_2 = "x" in {
+                    let class_1 = "x" in {
                       write("<span")
                       write(" class=\"")
-                      write_escaped(tw_merge(class_2))
+                      write_escaped(tw_merge(class_1))
                       write("\"")
                       write(">")
                       write("</span>")
@@ -1585,18 +1585,18 @@ mod tests {
                     write("click")
                   } in {
                     let children = v_1 in {
-                      let class_1 = "primary" in {
+                      let class = "primary" in {
                         let v_0 = {
                           write_expr(children)
                         } in {
-                          let children_2 = v_0 in {
-                            let class_3 = class_1 in {
+                          let children_1 = v_0 in {
+                            let class_2 = class in {
                               write("<div")
                               write(" class=\"")
-                              write_escaped(tw_merge(class_3))
+                              write_escaped(tw_merge(class_2))
                               write("\"")
                               write(">")
-                              write_expr(children_2)
+                              write_expr(children_1)
                               write("</div>")
                             }
                           }
@@ -1614,9 +1614,9 @@ mod tests {
                       let v_0 = {
                         write_expr(children)
                       } in {
-                        let children_2 = v_0 in {
+                        let children_1 = v_0 in {
                           write("<div class=\"primary\">")
-                          write_expr(children_2)
+                          write_expr(children_1)
                           write("</div>")
                         }
                       }
@@ -1666,10 +1666,10 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 view Test() {
-                  let class_1 = "y" in {
+                  let class = "y" in {
                     write("<span")
                     write(" class=\"")
-                    write_escaped(tw_merge(class_1))
+                    write_escaped(tw_merge(class))
                     write("\"")
                     write(">")
                     write("</span>")
@@ -1725,11 +1725,11 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 view Test() {
-                  let class_1 = "main" in {
-                    let class_2 = class_1 in {
+                  let class = "main" in {
+                    let class_1 = class in {
                       write("<div")
                       write(" class=\"")
-                      write_escaped(tw_merge(class_2))
+                      write_escaped(tw_merge(class_1))
                       write("\"")
                       write(">")
                       write("</div>")
@@ -1786,11 +1786,11 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 view Test() {
-                  let class_1 = "b" in {
-                    let class_2 = class_1 in {
+                  let class = "b" in {
+                    let class_1 = class in {
                       write("<div")
                       write(" class=\"")
-                      write_escaped(tw_merge(class_2))
+                      write_escaped(tw_merge(class_1))
                       write("\"")
                       write(">")
                       write("</div>")
@@ -7260,8 +7260,8 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 view Test() {
-                  let delete_1 = "removed" in {
-                    write_escaped(delete_1)
+                  let delete = "removed" in {
+                    write_escaped(delete)
                   }
                 }
                 -- ir (optimized) --
@@ -7302,10 +7302,10 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 view Test() {
-                  let class_1 = "my-class" in {
+                  let class = "my-class" in {
                     write("<div")
                     write(" class=\"")
-                    write_escaped(tw_merge(class_1))
+                    write_escaped(tw_merge(class))
                     write("\"")
                     write(">")
                     write("</div>")
@@ -7350,10 +7350,10 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 view Test() {
-                  let switch_1 = "on" in {
+                  let switch = "on" in {
                     write("<span")
                     write(">")
-                    write_escaped(switch_1)
+                    write_escaped(switch)
                     write("</span>")
                   }
                 }
@@ -7394,10 +7394,10 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 view Test() {
-                  let type_1 = "button" in {
+                  let type = "button" in {
                     write("<input")
                     write(" type=\"")
-                    write_escaped(type_1)
+                    write_escaped(type)
                     write("\"")
                     write(">")
                   }
@@ -7451,6 +7451,228 @@ mod tests {
                 }
                 -- expected output --
                 <label for="email">Email</label>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn view_parameter_named_typescript_reserved_keyword() {
+        check(
+            indoc! {r#"
+                view Test {
+                  ok
+                }
+
+                view Other(delete: String) {
+                  {delete}
+                }
+            "#},
+            "ok",
+            expect![[r#"
+                -- ir (unoptimized) --
+                view Test() {
+                  write("ok")
+                }
+                view Other(delete: String) {
+                  write_escaped(delete)
+                }
+                -- ir (optimized) --
+                view Test() {
+                  write("ok")
+                }
+                view Other(delete: String) {
+                  write_escaped(delete)
+                }
+                -- expected output --
+                ok
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn view_parameter_named_rust_keyword() {
+        check(
+            indoc! {r#"
+                view Test {
+                  ok
+                }
+
+                view Other(type: String) {
+                  {type}
+                }
+            "#},
+            "ok",
+            expect![[r#"
+                -- ir (unoptimized) --
+                view Test() {
+                  write("ok")
+                }
+                view Other(type: String) {
+                  write_escaped(type)
+                }
+                -- ir (optimized) --
+                view Test() {
+                  write("ok")
+                }
+                view Other(type: String) {
+                  write_escaped(type)
+                }
+                -- expected output --
+                ok
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn recursive_component_parameter_named_typescript_reserved_keyword() {
+        check(
+            indoc! {r#"
+                component Countdown(delete: Int) {
+                  {delete.to_string()}
+                  <if {0 < delete}>
+                    <Countdown delete={delete - 1}/>
+                  </if>
+                }
+
+                view Test {
+                  <Countdown delete={3}/>
+                }
+            "#},
+            "3210",
+            expect![[r#"
+                -- ir (unoptimized) --
+                component Countdown(delete: Int) {
+                  write_escaped(delete.to_string())
+                  match (0 < delete) {
+                    true => {
+                      call Countdown(delete = (delete - 1))
+                    }
+                    false => {
+                    }
+                  }
+                }
+                view Test() {
+                  call Countdown(delete = 3)
+                }
+                -- ir (optimized) --
+                component Countdown(delete: Int) {
+                  write_escaped(delete.to_string())
+                  match (0 < delete) {
+                    true => {
+                      call Countdown(delete = (delete - 1))
+                    }
+                    false => {
+                    }
+                  }
+                }
+                view Test() {
+                  call Countdown(delete = 3)
+                }
+                -- expected output --
+                3210
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn recursive_component_parameter_named_rust_keyword() {
+        check(
+            indoc! {r#"
+                component Countdown(type: Int) {
+                  {type.to_string()}
+                  <if {0 < type}>
+                    <Countdown type={type - 1}/>
+                  </if>
+                }
+
+                view Test {
+                  <Countdown type={3}/>
+                }
+            "#},
+            "3210",
+            expect![[r#"
+                -- ir (unoptimized) --
+                component Countdown(type: Int) {
+                  write_escaped(type.to_string())
+                  match (0 < type) {
+                    true => {
+                      call Countdown(type = (type - 1))
+                    }
+                    false => {
+                    }
+                  }
+                }
+                view Test() {
+                  call Countdown(type = 3)
+                }
+                -- ir (optimized) --
+                component Countdown(type: Int) {
+                  write_escaped(type.to_string())
+                  match (0 < type) {
+                    true => {
+                      call Countdown(type = (type - 1))
+                    }
+                    false => {
+                    }
+                  }
+                }
+                view Test() {
+                  call Countdown(type = 3)
+                }
+                -- expected output --
+                3210
                 -- eval (unoptimized) --
                 OK
                 -- eval (optimized) --
