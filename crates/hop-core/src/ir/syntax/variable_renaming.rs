@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use crate::expr::patterns::Match;
 use crate::ir::ast::{
-    IrComponentDeclaration, IrExpr, IrForSource, IrParameter, IrStatement, IrViewDeclaration,
+    IrComponentDeclaration, IrExpr, IrForSource, IrParameter, IrStatement, IrVar, IrViewDeclaration,
 };
 use crate::symbols::var_name::VarName;
 
@@ -68,7 +68,7 @@ impl VariableRenamingPass {
                 }
                 self.push_scope();
                 if let Some(v) = var {
-                    *v = self.bind_var(v);
+                    self.bind_var(v);
                 }
                 self.rename_statements(body);
                 self.pop_scope();
@@ -79,7 +79,7 @@ impl VariableRenamingPass {
             } => {
                 self.rename_expr(value);
                 self.push_scope();
-                *var = self.bind_var(var);
+                self.bind_var(var);
                 self.rename_statements(body);
                 self.pop_scope();
             }
@@ -93,7 +93,7 @@ impl VariableRenamingPass {
                 // fragment_body is evaluated in the outer scope (does NOT see var)
                 self.rename_statements(fragment_body);
                 self.push_scope();
-                *var = self.bind_var(var);
+                self.bind_var(var);
                 self.rename_statements(body);
                 self.pop_scope();
             }
@@ -121,7 +121,7 @@ impl VariableRenamingPass {
                     } => {
                         self.push_scope();
                         if let Some(var) = some_arm_binding {
-                            *var = self.bind_var(var);
+                            self.bind_var(var);
                         }
                         self.rename_statements(some_arm_body);
                         self.pop_scope();
@@ -133,7 +133,7 @@ impl VariableRenamingPass {
                         for arm in arms {
                             self.push_scope();
                             for (_, var) in &mut arm.bindings {
-                                *var = self.bind_var(var);
+                                self.bind_var(var);
                             }
                             self.rename_statements(&mut arm.body);
                             self.pop_scope();
@@ -148,7 +148,7 @@ impl VariableRenamingPass {
     fn rename_expr(&mut self, expr: &mut IrExpr) {
         match expr {
             IrExpr::Var { value, .. } => {
-                *value = self.lookup_var(value);
+                self.lookup_var(value);
             }
             IrExpr::FieldAccess { record, .. } => {
                 self.rename_expr(record);
@@ -195,7 +195,7 @@ impl VariableRenamingPass {
                         for arm in arms {
                             self.push_scope();
                             for (_, var) in &mut arm.bindings {
-                                *var = self.bind_var(var);
+                                self.bind_var(var);
                             }
                             self.rename_expr(&mut arm.body);
                             self.pop_scope();
@@ -217,7 +217,7 @@ impl VariableRenamingPass {
                     } => {
                         self.push_scope();
                         if let Some(var) = some_arm_binding {
-                            *var = self.bind_var(var);
+                            self.bind_var(var);
                         }
                         self.rename_expr(some_arm_body);
                         self.pop_scope();
@@ -226,14 +226,11 @@ impl VariableRenamingPass {
                 }
             }
             IrExpr::Let {
-                var_name,
-                value,
-                body,
-                ..
+                var, value, body, ..
             } => {
                 self.rename_expr(value);
                 self.push_scope();
-                *var_name = self.bind_var(var_name);
+                self.bind_var(var);
                 self.rename_expr(body);
                 self.pop_scope();
             }
@@ -294,8 +291,9 @@ impl VariableRenamingPass {
         }
     }
 
-    /// Bind a variable in the current scope, renaming if necessary
-    fn bind_var(&mut self, name: &VarName) -> VarName {
+    /// Record a binding of name in the current scope, renaming if necessary,
+    /// and return the name the binding is now known by.
+    fn bind_name(&mut self, name: &VarName) -> VarName {
         // Every bound name is recorded in `all_used_names`, so this also covers
         // the case where the name would shadow an enclosing binding
         let renamed = if self.all_used_names.contains(name) {
@@ -315,16 +313,21 @@ impl VariableRenamingPass {
         renamed
     }
 
-    /// Look up the renamed version of a variable
-    fn lookup_var(&self, name: &VarName) -> VarName {
+    /// Bind a variable in the current scope, rewriting its name in place.
+    fn bind_var(&mut self, var: &mut IrVar) {
+        var.name = self.bind_name(&var.name);
+    }
+
+    /// Rewrite a reference to point at the renamed version of its binding.
+    fn lookup_var(&self, var: &mut IrVar) {
         for scope in self.scope_stack.iter().rev() {
-            if let Some((_, renamed)) = scope.iter().find(|(k, _)| k == name) {
-                return renamed.clone();
+            if let Some((_, renamed)) = scope.iter().find(|(k, _)| k == &var.name) {
+                var.name = renamed.clone();
+                return;
             }
         }
-        // If we can't find the variable, it must be a parameter or external reference
-        // Return it unchanged
-        name.clone()
+        // If we can't find the variable, it must be a parameter or external
+        // reference. Leave it unchanged.
     }
 
     fn run_decl(parameters: &[IrParameter], body: &mut Vec<IrStatement>) {
@@ -333,8 +336,8 @@ impl VariableRenamingPass {
         pass.push_scope();
 
         for param in parameters {
-            let bound = pass.bind_var(&param.name);
-            debug_assert_eq!(bound, param.name,);
+            let bound = pass.bind_name(param.name());
+            debug_assert_eq!(&bound, param.name());
         }
 
         // Rename the body in place

@@ -8,12 +8,11 @@ use crate::expr::patterns::{EnumPattern, Match};
 use crate::expr::typing::r#type::{EnumVariant, Type};
 use crate::expr::typing::type_registry::{ResolvedType, TypeRegistry};
 use crate::ir::ast::{
-    IrArgument, IrComponentDeclaration, IrExpr, IrForSource, IrModule, IrStatement,
+    IrArgument, IrComponentDeclaration, IrExpr, IrForSource, IrModule, IrStatement, IrVar,
     IrViewDeclaration,
 };
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
-use crate::symbols::var_name::VarName;
 
 pub struct RustTranspiler {
     /// Tracks whether escape_html function is used during transpilation
@@ -281,7 +280,7 @@ impl RustTranspiler {
         variants: &[EnumVariant],
         pattern: &EnumPattern,
         field: &FieldName,
-        var: &VarName,
+        var: &IrVar,
     ) -> String {
         let var = Self::escape_ident(var.as_str());
         let EnumPattern::Variant {
@@ -546,7 +545,7 @@ impl Transpiler for RustTranspiler {
                 view.parameters.iter().map(|param| {
                     arena
                         .text("pub ")
-                        .append(arena.text(Self::escape_ident(param.name.as_str())))
+                        .append(arena.text(Self::escape_ident(param.name().as_str())))
                         .append(arena.text(": "))
                         .append(self.transpile_type(arena, &param.typ))
                         .append(arena.text(","))
@@ -570,7 +569,7 @@ impl Transpiler for RustTranspiler {
             let field_names = arena.intersperse(
                 view.parameters
                     .iter()
-                    .map(|param| arena.text(Self::escape_ident(param.name.as_str()))),
+                    .map(|param| arena.text(Self::escape_ident(param.name().as_str()))),
                 arena.text(", "),
             );
             body = body
@@ -627,7 +626,7 @@ impl Transpiler for RustTranspiler {
             .iter()
             .map(|param| {
                 arena
-                    .text(Self::escape_ident(param.name.as_str()))
+                    .text(Self::escape_ident(param.name().as_str()))
                     .append(arena.text(": "))
                     .append(self.transpile_param_type(arena, &param.typ))
             })
@@ -827,7 +826,7 @@ impl Transpiler for RustTranspiler {
     fn transpile_match_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        match_: &'a Match<IrExpr, Vec<IrStatement>>,
+        match_: &'a Match<IrExpr, Vec<IrStatement>, IrVar>,
     ) -> Doc<'a> {
         match match_ {
             Match::Bool {
@@ -1514,7 +1513,7 @@ impl Transpiler for RustTranspiler {
     fn transpile_match_expr<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        match_: &'a Match<IrExpr, IrExpr>,
+        match_: &'a Match<IrExpr, IrExpr, IrVar>,
     ) -> Doc<'a> {
         match match_ {
             Match::Bool {
@@ -1653,7 +1652,7 @@ impl Transpiler for RustTranspiler {
     fn transpile_let<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        var: &'a VarName,
+        var: &'a IrVar,
         value: &'a IrExpr,
         body: &'a IrExpr,
     ) -> Doc<'a> {

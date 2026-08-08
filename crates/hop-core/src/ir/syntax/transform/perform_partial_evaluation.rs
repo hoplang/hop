@@ -237,7 +237,7 @@ pub fn perform_partial_evaluation(body: &mut Vec<IrStatement>, registry: &TypeRe
             // Collect statement-level bindings
             match s {
                 IrStatement::Let { var, value, .. } => {
-                    variable_bindings.insert(var.clone(), value.id());
+                    variable_bindings.insert(var.name.clone(), value.id());
                 }
                 IrStatement::LetFragment { .. } => {}
                 IrStatement::For { .. } => {}
@@ -370,7 +370,7 @@ pub fn perform_partial_evaluation(body: &mut Vec<IrStatement>, registry: &TypeRe
                                 let EnumPattern::Variant { variant_name, .. } = &arm.pattern;
                                 for (field_name, binding_name) in &arm.bindings {
                                     enum_field_bindings.insert(
-                                        binding_name.clone(),
+                                        binding_name.name.clone(),
                                         (subject_id, variant_name.clone(), field_name.clone()),
                                     );
                                 }
@@ -410,17 +410,17 @@ pub fn perform_partial_evaluation(body: &mut Vec<IrStatement>, registry: &TypeRe
                             option_match_arm_entries.push(((expr.id(), true), some_arm_body.id()));
                             option_match_arm_entries.push(((expr.id(), false), none_arm_body.id()));
                             if let Some(binding) = some_arm_binding {
-                                option_bindings.insert(binding.clone(), subject_id);
+                                option_bindings.insert(binding.name.clone(), subject_id);
                             }
                         }
                     },
                     IrExpr::Var { value: name, .. } => {
-                        if let Some(def_expr_id) = variable_bindings.get(name) {
+                        if let Some(def_expr_id) = variable_bindings.get(&name.name) {
                             variable_references.push((*def_expr_id, expr.id()));
-                        } else if let Some(subject_def_id) = option_bindings.get(name) {
+                        } else if let Some(subject_def_id) = option_bindings.get(&name.name) {
                             option_binding_references.push((*subject_def_id, expr.id()));
                         } else if let Some((subject_def_id, variant_name, field_name)) =
-                            enum_field_bindings.get(name)
+                            enum_field_bindings.get(&name.name)
                         {
                             enum_binding_references.push((
                                 (*subject_def_id, variant_name.clone(), field_name.clone()),
@@ -436,12 +436,9 @@ pub fn perform_partial_evaluation(body: &mut Vec<IrStatement>, registry: &TypeRe
                         }
                     }
                     IrExpr::Let {
-                        var_name,
-                        value,
-                        body,
-                        ..
+                        var, value, body, ..
                     } => {
-                        variable_bindings.insert(var_name.clone(), value.id());
+                        variable_bindings.insert(var.name.clone(), value.id());
                         let_expr_bodies.push((body.id(), expr.id()));
                     }
                     IrExpr::RecordLiteral { .. } => {
@@ -900,7 +897,7 @@ mod tests {
                         .iter()
                         .map(|p| {
                             (
-                                p.name.as_str().to_string(),
+                                p.name().as_str().to_string(),
                                 random_value(&mut rng, &p.typ, None, &registry),
                             )
                         })

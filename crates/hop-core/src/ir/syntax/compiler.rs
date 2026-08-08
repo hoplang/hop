@@ -9,37 +9,45 @@ use crate::expr::patterns::{EnumMatchArm, Match};
 use crate::hop::inlining::inlined_node::InlinedNode;
 use crate::hop::inlining::{InlinedComponentDeclaration, InlinedViewDeclaration};
 use crate::hop::typing::typed_node::{TypedAttributeValue, TypedLoopSource};
+use crate::symbols::var_name::VarName;
 
 use super::ast::{
     ExprId, IrArgument, IrComponentDeclaration, IrExpr, IrForSource, IrParameter, IrStatement,
-    IrViewDeclaration, StatementId,
+    IrVar, IrViewDeclaration, StatementId, VarId,
 };
 
 pub struct Compiler {
     expr_id_counter: usize,
     node_id_counter: usize,
+    var_id_counter: usize,
+    scopes: Vec<Vec<(VarName, VarId)>>,
     asset_rewriter: Option<Arc<dyn AssetRewriter>>,
 }
 
 impl Compiler {
+    fn new(asset_rewriter: Option<Arc<dyn AssetRewriter>>) -> Self {
+        Compiler {
+            expr_id_counter: 0,
+            node_id_counter: 0,
+            var_id_counter: 0,
+            scopes: vec![Vec::new()],
+            asset_rewriter,
+        }
+    }
+
     pub fn compile_component_decl(
         decl: InlinedComponentDeclaration,
         asset_rewriter: Option<Arc<dyn AssetRewriter>>,
     ) -> IrComponentDeclaration {
-        let mut compiler = Compiler {
-            expr_id_counter: 0,
-            node_id_counter: 0,
-            asset_rewriter,
-        };
+        let mut compiler = Compiler::new(asset_rewriter);
 
-        let parameters = decl
-            .params
-            .into_iter()
-            .map(|param| IrParameter {
-                name: param.var_name,
+        let mut parameters = Vec::with_capacity(decl.params.len());
+        for param in decl.params {
+            parameters.push(IrParameter {
+                var: compiler.bind(&param.var_name),
                 typ: param.var_type,
-            })
-            .collect::<Vec<_>>();
+            });
+        }
 
         IrComponentDeclaration {
             name: decl.component_name,
@@ -52,26 +60,53 @@ impl Compiler {
         view: InlinedViewDeclaration,
         asset_rewriter: Option<Arc<dyn AssetRewriter>>,
     ) -> IrViewDeclaration {
-        let mut compiler = Compiler {
-            expr_id_counter: 0,
-            node_id_counter: 0,
-            asset_rewriter,
-        };
+        let mut compiler = Compiler::new(asset_rewriter);
 
-        let parameters = view
-            .params
-            .into_iter()
-            .map(|param| IrParameter {
-                name: param.var_name,
+        let mut parameters = Vec::with_capacity(view.params.len());
+        for param in view.params {
+            parameters.push(IrParameter {
+                var: compiler.bind(&param.var_name),
                 typ: param.var_type,
-            })
-            .collect::<Vec<_>>();
+            });
+        }
 
         IrViewDeclaration {
             name: view.name,
             parameters,
             body: compiler.compile_nodes(&view.children),
         }
+    }
+
+    fn next_var_id(&mut self) -> VarId {
+        let id = self.var_id_counter;
+        self.var_id_counter += 1;
+        VarId::new(id)
+    }
+
+    fn push_scope(&mut self) {
+        self.scopes.push(Vec::new());
+    }
+
+    fn pop_scope(&mut self) {
+        self.scopes.pop().expect("scope stack should not be empty");
+    }
+
+    fn bind(&mut self, name: &VarName) -> IrVar {
+        let id = self.next_var_id();
+        self.scopes
+            .last_mut()
+            .expect("scope stack should not be empty")
+            .push((name.clone(), id));
+        IrVar::new(id, name.clone())
+    }
+
+    fn resolve(&mut self, name: &VarName) -> IrVar {
+        for scope in self.scopes.iter().rev() {
+            if let Some((_, id)) = scope.iter().rev().find(|(n, _)| n == name) {
+                return IrVar::new(*id, name.clone());
+            }
+        }
+        panic!("undefined variable: {name}");
     }
 
     fn compile_nodes(&mut self, nodes: &[InlinedNode]) -> Vec<IrStatement> {
@@ -165,11 +200,16 @@ impl Compiler {
                         end: self.compile_expr(end),
                     },
                 };
+                let id = self.next_node_id();
+                self.push_scope();
+                let var = var_name.as_ref().map(|name| self.bind(name));
+                let body = self.compile_nodes(children);
+                self.pop_scope();
                 output.push(IrStatement::For {
-                    id: self.next_node_id(),
-                    var: var_name.clone(),
+                    id,
+                    var,
                     source: ir_source,
-                    body: self.compile_nodes(children),
+                    body,
                 });
             }
 
@@ -185,11 +225,17 @@ impl Compiler {
                 value,
                 children,
             } => {
+                let id = self.next_node_id();
+                let value = self.compile_expr(value);
+                self.push_scope();
+                let ir_var = self.bind(var);
+                let body = self.compile_nodes(children);
+                self.pop_scope();
                 output.push(IrStatement::Let {
-                    id: self.next_node_id(),
-                    var: var.clone(),
-                    value: self.compile_expr(value),
-                    body: self.compile_nodes(children),
+                    id,
+                    var: ir_var,
+                    value,
+                    body,
                 });
             }
 
@@ -198,11 +244,17 @@ impl Compiler {
                 fragment_body,
                 body,
             } => {
+                let id = self.next_node_id();
+                let fragment_body = self.compile_nodes(fragment_body);
+                self.push_scope();
+                let ir_var = self.bind(var);
+                let body = self.compile_nodes(body);
+                self.pop_scope();
                 output.push(IrStatement::LetFragment {
-                    id: self.next_node_id(),
-                    var: var.clone(),
-                    fragment_body: self.compile_nodes(fragment_body),
-                    body: self.compile_nodes(body),
+                    id,
+                    var: ir_var,
+                    fragment_body,
+                    body,
                 });
             }
 
@@ -222,23 +274,42 @@ impl Compiler {
                         some_arm_binding,
                         some_arm_body,
                         none_arm_body,
-                    } => Match::Option {
-                        subject: Box::new(self.compile_expr(subject)),
-                        some_arm_binding: some_arm_binding.clone(),
-                        some_arm_body: Box::new(self.compile_nodes(some_arm_body)),
-                        none_arm_body: Box::new(self.compile_nodes(none_arm_body)),
-                    },
-                    Match::Enum { subject, arms } => Match::Enum {
-                        subject: Box::new(self.compile_expr(subject)),
-                        arms: arms
+                    } => {
+                        let subject = Box::new(self.compile_expr(subject));
+                        self.push_scope();
+                        let binding = some_arm_binding.as_ref().map(|name| self.bind(name));
+                        let some_body = self.compile_nodes(some_arm_body);
+                        self.pop_scope();
+                        let none_body = self.compile_nodes(none_arm_body);
+                        Match::Option {
+                            subject,
+                            some_arm_binding: binding,
+                            some_arm_body: Box::new(some_body),
+                            none_arm_body: Box::new(none_body),
+                        }
+                    }
+                    Match::Enum { subject, arms } => {
+                        let subject = Box::new(self.compile_expr(subject));
+                        let arms = arms
                             .iter()
-                            .map(|arm| EnumMatchArm {
-                                pattern: arm.pattern.clone(),
-                                bindings: arm.bindings.clone(),
-                                body: self.compile_nodes(&arm.body),
+                            .map(|arm| {
+                                self.push_scope();
+                                let bindings = arm
+                                    .bindings
+                                    .iter()
+                                    .map(|(field, name)| (field.clone(), self.bind(name)))
+                                    .collect();
+                                let body = self.compile_nodes(&arm.body);
+                                self.pop_scope();
+                                EnumMatchArm {
+                                    pattern: arm.pattern.clone(),
+                                    bindings,
+                                    body,
+                                }
                             })
-                            .collect(),
-                    },
+                            .collect();
+                        Match::Enum { subject, arms }
+                    }
                 };
                 output.push(IrStatement::Match {
                     id: self.next_node_id(),
@@ -330,7 +401,7 @@ impl Compiler {
 
         match expr {
             TypedExpr::Var { value, kind, .. } => IrExpr::Var {
-                value: value.clone(),
+                value: self.resolve(value),
                 kind: kind.clone(),
                 id: expr_id,
             },
@@ -546,17 +617,28 @@ impl Compiler {
             },
             TypedExpr::Match { match_, kind } => {
                 let compiled_match = match match_ {
-                    Match::Enum { subject, arms } => Match::Enum {
-                        subject: Box::new(self.compile_expr(subject)),
-                        arms: arms
+                    Match::Enum { subject, arms } => {
+                        let subject = Box::new(self.compile_expr(subject));
+                        let arms = arms
                             .iter()
-                            .map(|arm| EnumMatchArm {
-                                pattern: arm.pattern.clone(),
-                                bindings: arm.bindings.clone(),
-                                body: self.compile_expr(&arm.body),
+                            .map(|arm| {
+                                self.push_scope();
+                                let bindings = arm
+                                    .bindings
+                                    .iter()
+                                    .map(|(field, name)| (field.clone(), self.bind(name)))
+                                    .collect();
+                                let body = self.compile_expr(&arm.body);
+                                self.pop_scope();
+                                EnumMatchArm {
+                                    pattern: arm.pattern.clone(),
+                                    bindings,
+                                    body,
+                                }
                             })
-                            .collect(),
-                    },
+                            .collect();
+                        Match::Enum { subject, arms }
+                    }
                     Match::Bool {
                         subject,
                         true_body,
@@ -571,12 +653,20 @@ impl Compiler {
                         some_arm_binding,
                         some_arm_body,
                         none_arm_body,
-                    } => Match::Option {
-                        subject: Box::new(self.compile_expr(subject)),
-                        some_arm_binding: some_arm_binding.clone(),
-                        some_arm_body: Box::new(self.compile_expr(some_arm_body)),
-                        none_arm_body: Box::new(self.compile_expr(none_arm_body)),
-                    },
+                    } => {
+                        let subject = Box::new(self.compile_expr(subject));
+                        self.push_scope();
+                        let binding = some_arm_binding.as_ref().map(|name| self.bind(name));
+                        let some_body = self.compile_expr(some_arm_body);
+                        self.pop_scope();
+                        let none_body = self.compile_expr(none_arm_body);
+                        Match::Option {
+                            subject,
+                            some_arm_binding: binding,
+                            some_arm_body: Box::new(some_body),
+                            none_arm_body: Box::new(none_body),
+                        }
+                    }
                 };
                 IrExpr::Match {
                     match_: compiled_match,
@@ -595,13 +685,20 @@ impl Compiler {
                 value,
                 body,
                 kind,
-            } => IrExpr::Let {
-                var_name: var.clone(),
-                value: Box::new(self.compile_expr(value)),
-                body: Box::new(self.compile_expr(body)),
-                kind: kind.clone(),
-                id: expr_id,
-            },
+            } => {
+                let value = Box::new(self.compile_expr(value));
+                self.push_scope();
+                let ir_var = self.bind(var);
+                let body = Box::new(self.compile_expr(body));
+                self.pop_scope();
+                IrExpr::Let {
+                    var: ir_var,
+                    value,
+                    body,
+                    kind: kind.clone(),
+                    id: expr_id,
+                }
+            }
             TypedExpr::ArrayLength { array } => IrExpr::ArrayLength {
                 array: Box::new(self.compile_expr(array)),
                 id: expr_id,
@@ -1060,11 +1157,7 @@ mod tests {
             };
         }
 
-        let mut compiler = Compiler {
-            expr_id_counter: 0,
-            node_id_counter: 0,
-            asset_rewriter: None,
-        };
+        let mut compiler = Compiler::new(None);
         let _result = compiler.compile_expr(&expr);
         // If we get here without stack overflow, the test passes
     }

@@ -62,7 +62,7 @@ mod tests {
                         .iter()
                         .map(|p| {
                             (
-                                p.name.as_str().to_string(),
+                                p.name().as_str().to_string(),
                                 random_value(&mut rng, &p.typ, None, &registry),
                             )
                         })

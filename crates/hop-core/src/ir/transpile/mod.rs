@@ -9,12 +9,11 @@ use crate::expr::patterns::Match;
 use crate::expr::typing::r#type::{ComparableType, EquatableType, NumericType, Type};
 use crate::expr::typing::type_registry::{ResolvedType, TypeRegistry};
 use crate::ir::ast::{
-    IrArgument, IrComponentDeclaration, IrExpr, IrForSource, IrModule, IrStatement,
+    IrArgument, IrComponentDeclaration, IrExpr, IrForSource, IrModule, IrStatement, IrVar,
     IrViewDeclaration,
 };
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
-use crate::symbols::var_name::VarName;
 
 pub type Doc<'a> = DocBuilder<'a, Arena<'a>>;
 
@@ -63,7 +62,7 @@ pub trait Transpiler {
     fn transpile_match_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        match_: &'a Match<IrExpr, Vec<IrStatement>>,
+        match_: &'a Match<IrExpr, Vec<IrStatement>, IrVar>,
     ) -> Doc<'a>;
     fn transpile_component_def<'a>(
         &mut self,
@@ -300,12 +299,12 @@ pub trait Transpiler {
     fn transpile_match_expr<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        match_: &'a Match<IrExpr, IrExpr>,
+        match_: &'a Match<IrExpr, IrExpr, IrVar>,
     ) -> Doc<'a>;
     fn transpile_let<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        var_name: &'a VarName,
+        var: &'a IrVar,
         value: &'a IrExpr,
         body: &'a IrExpr,
     ) -> Doc<'a>;
@@ -443,11 +442,8 @@ pub trait Transpiler {
             }
             IrExpr::Match { match_, .. } => self.transpile_match_expr(arena, match_),
             IrExpr::Let {
-                var_name,
-                value,
-                body,
-                ..
-            } => self.transpile_let(arena, var_name, value, body),
+                var, value, body, ..
+            } => self.transpile_let(arena, var, value, body),
             IrExpr::TwMerge { operand, .. } => self.transpile_expr(arena, operand),
             IrExpr::ArrayLength { array, .. } => self.transpile_array_length(arena, array),
             IrExpr::ArrayIsEmpty { array, .. } => self.transpile_array_is_empty(arena, array),

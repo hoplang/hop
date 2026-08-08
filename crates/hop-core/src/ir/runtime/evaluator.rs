@@ -63,12 +63,12 @@ pub fn evaluate_view(
     let mut env = Env::new();
 
     for param in &view.parameters {
-        if let Some(value) = args.get(param.name.as_str()) {
-            env.push(param.name.clone(), value.clone());
+        if let Some(value) = args.get(param.name().as_str()) {
+            env.push(param.name().clone(), value.clone());
         } else {
             return Err(EvalError::MissingParameter {
                 view: view.name.clone(),
-                param: param.name.clone(),
+                param: param.name().clone(),
             });
         }
     }
@@ -137,7 +137,7 @@ fn eval_statement(
 
                     for item in items {
                         if let Some(var) = var {
-                            env.push(var.clone(), item);
+                            env.push(var.name.clone(), item);
                         }
                         eval_statements(body, env, output, component_defs)?;
                         if var.is_some() {
@@ -153,7 +153,7 @@ fn eval_statement(
 
                     for i in start_int..=end_int {
                         if let Some(var) = var {
-                            env.push(var.clone(), Value::Int(i));
+                            env.push(var.name.clone(), Value::Int(i));
                         }
                         eval_statements(body, env, output, component_defs)?;
                         if var.is_some() {
@@ -172,7 +172,7 @@ fn eval_statement(
             body,
         } => {
             let val = evaluate_expr(value, env)?;
-            env.push(var.clone(), val);
+            env.push(var.name.clone(), val);
             eval_statements(body, env, output, component_defs)?;
             env.pop();
             Ok(())
@@ -186,7 +186,7 @@ fn eval_statement(
         } => {
             let mut captured = String::new();
             eval_statements(fragment_body, env, &mut captured, component_defs)?;
-            env.push(var.clone(), Value::String(captured));
+            env.push(var.name.clone(), Value::String(captured));
             eval_statements(body, env, output, component_defs)?;
             env.pop();
             Ok(())
@@ -217,7 +217,7 @@ fn eval_statement(
                 match subject_value {
                     Value::Some(inner) => {
                         if let Some(var) = some_arm_binding {
-                            env.push(var.clone(), *inner);
+                            env.push(var.name.clone(), *inner);
                             eval_statements(some_arm_body, env, output, component_defs)?;
                             env.pop();
                         } else {
@@ -252,7 +252,7 @@ fn eval_statement(
                         let bindings_count = arm.bindings.len();
                         for (field_name, var_name) in &arm.bindings {
                             if let Some(field_val) = fields.get(field_name) {
-                                env.push(var_name.clone(), field_val.clone());
+                                env.push(var_name.name.clone(), field_val.clone());
                             }
                         }
                         eval_statements(&arm.body, env, output, component_defs)?;
@@ -285,14 +285,14 @@ fn eval_statement(
             for param in &component_def.parameters {
                 if let Some(arg) = args
                     .iter()
-                    .find(|arg| arg.name.as_str() == param.name.as_str())
+                    .find(|arg| arg.name.as_str() == param.name().as_str())
                 {
                     let value = evaluate_expr(&arg.expr, env)?;
-                    values.push((param.name.clone(), value));
+                    values.push((param.name().clone(), value));
                 } else {
                     panic!(
                         "Missing required parameter '{}' for component '{}'",
-                        param.name,
+                        param.name(),
                         component_name.as_str()
                     );
                 }
@@ -603,7 +603,7 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value, EvalError> {
                         let bindings_count = arm.bindings.len();
                         for (field_name, var_name) in &arm.bindings {
                             if let Some(field_val) = fields.get(field_name) {
-                                env.push(var_name.clone(), field_val.clone());
+                                env.push(var_name.name.clone(), field_val.clone());
                             }
                         }
                         let result = evaluate_expr(&arm.body, env);
@@ -643,7 +643,7 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value, EvalError> {
                 match subject_val {
                     Value::Some(inner) => {
                         if let Some(var_name) = some_arm_binding {
-                            env.push(var_name.clone(), *inner);
+                            env.push(var_name.name.clone(), *inner);
                             let result = evaluate_expr(some_arm_body, env);
                             env.pop();
                             result
@@ -657,13 +657,10 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value, EvalError> {
             }
         },
         IrExpr::Let {
-            var_name,
-            value,
-            body,
-            ..
+            var, value, body, ..
         } => {
             let val = evaluate_expr(value, env)?;
-            env.push(var_name.clone(), val);
+            env.push(var.name.clone(), val);
             let result = evaluate_expr(body, env)?;
             env.pop();
             Ok(result)
@@ -769,7 +766,7 @@ mod tests {
                     .iter()
                     .map(|p| {
                         (
-                            p.name.as_str().to_string(),
+                            p.name().as_str().to_string(),
                             random_value(&mut rng, &p.typ, None, &registry),
                         )
                     })

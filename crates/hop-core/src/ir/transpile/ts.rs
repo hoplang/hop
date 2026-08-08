@@ -7,7 +7,7 @@ use crate::expr::patterns::{EnumPattern, Match};
 use crate::expr::typing::r#type::Type;
 use crate::expr::typing::type_registry::TypeRegistry;
 use crate::ir::ast::{
-    IrArgument, IrComponentDeclaration, IrExpr, IrForSource, IrModule, IrStatement,
+    IrArgument, IrComponentDeclaration, IrExpr, IrForSource, IrModule, IrStatement, IrVar,
     IrViewDeclaration,
 };
 use crate::symbols::field_name::FieldName;
@@ -580,14 +580,14 @@ impl Transpiler for TsTranspiler {
             let name_docs: Vec<_> = view
                 .parameters
                 .iter()
-                .map(|param| transpile_param_binding(arena, &param.name))
+                .map(|param| transpile_param_binding(arena, param.name()))
                 .collect();
             let type_docs: Vec<_> = view
                 .parameters
                 .iter()
                 .map(|param| {
                     arena
-                        .text(param.name.as_str())
+                        .text(param.name().as_str())
                         .append(arena.text(": "))
                         .append(self.transpile_type(arena, &param.typ))
                 })
@@ -635,7 +635,7 @@ impl Transpiler for TsTranspiler {
             let param_names: Vec<_> = component
                 .parameters
                 .iter()
-                .map(|param| transpile_param_binding(arena, &param.name))
+                .map(|param| transpile_param_binding(arena, param.name()))
                 .collect();
 
             result = result
@@ -649,7 +649,7 @@ impl Transpiler for TsTranspiler {
                 .iter()
                 .map(|param| {
                     arena
-                        .text(param.name.as_str())
+                        .text(param.name().as_str())
                         .append(arena.text(": "))
                         .append(self.transpile_type(arena, &param.typ))
                 })
@@ -841,7 +841,7 @@ impl Transpiler for TsTranspiler {
     fn transpile_match_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        match_: &'a Match<IrExpr, Vec<IrStatement>>,
+        match_: &'a Match<IrExpr, Vec<IrStatement>, IrVar>,
     ) -> Doc<'a> {
         match match_ {
             Match::Bool {
@@ -1476,7 +1476,7 @@ impl Transpiler for TsTranspiler {
     fn transpile_match_expr<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        match_: &'a Match<IrExpr, IrExpr>,
+        match_: &'a Match<IrExpr, IrExpr, IrVar>,
     ) -> Doc<'a> {
         match match_ {
             Match::Enum { subject, arms } => {
@@ -1617,7 +1617,7 @@ impl Transpiler for TsTranspiler {
     fn transpile_let<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        var: &'a VarName,
+        var: &'a IrVar,
         value: &'a IrExpr,
         body: &'a IrExpr,
     ) -> Doc<'a> {

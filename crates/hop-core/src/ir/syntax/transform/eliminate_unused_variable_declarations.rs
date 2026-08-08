@@ -53,7 +53,7 @@ pub fn eliminate_unused_variable_declarations(body: &mut Vec<IrStatement>) {
                                 for arm in arms {
                                     let before = arm.bindings.len();
                                     arm.bindings.retain(|(_, var_name)| {
-                                        !unused_vars.unused_enum_bindings.contains(var_name)
+                                        !unused_vars.unused_enum_bindings.contains(&var_name.name)
                                     });
                                     if arm.bindings.len() != before {
                                         changed = true;
@@ -96,7 +96,7 @@ fn collect_unused_vars(body: &[IrStatement]) -> UnusedVars {
                 IrStatement::Let { id, var, .. } => {
                     // Variable names are globally unique after VariableRenamingPass.
                     // If this panics, the renaming pass may not have run before this pass.
-                    let prev = let_bindings.insert(var.clone(), *id);
+                    let prev = let_bindings.insert(var.name.clone(), *id);
                     assert!(
                         prev.is_none(),
                         "duplicate variable name `{var}` in let_vars"
@@ -109,7 +109,7 @@ fn collect_unused_vars(body: &[IrStatement]) -> UnusedVars {
                             ..
                         } => {
                             if let Some(binding) = some_arm {
-                                let prev = option_bindings.insert(binding.clone(), *id);
+                                let prev = option_bindings.insert(binding.name.clone(), *id);
                                 assert!(
                                     prev.is_none(),
                                     "duplicate option binding name `{binding}`"
@@ -119,7 +119,7 @@ fn collect_unused_vars(body: &[IrStatement]) -> UnusedVars {
                         Match::Enum { arms, .. } => {
                             for arm in arms {
                                 for (_, var_name) in &arm.bindings {
-                                    let inserted = enum_bindings.insert(var_name.clone());
+                                    let inserted = enum_bindings.insert(var_name.name.clone());
                                     assert!(inserted, "duplicate enum binding name `{var_name}`");
                                 }
                             }
@@ -135,7 +135,7 @@ fn collect_unused_vars(body: &[IrStatement]) -> UnusedVars {
             // Collect variable references from all expressions
             s.traverse_exprs(&mut |e| {
                 if let IrExpr::Var { value: name, .. } = e {
-                    used_var_names.insert(name.clone());
+                    used_var_names.insert(name.name.clone());
                 }
             });
         });

@@ -15,20 +15,20 @@ pub enum EnumPattern {
 
 /// A single arm in an enum match, e.g. `Color::Red => "red"`
 #[derive(Debug, Clone, PartialEq)]
-pub struct EnumMatchArm<Body> {
+pub struct EnumMatchArm<Body, Var = VarName> {
     pub pattern: EnumPattern,
     /// Field bindings for this arm, e.g. `Result::Ok(value: v)` binds field "value" to variable "v"
-    pub bindings: Vec<(FieldName, VarName)>,
+    pub bindings: Vec<(FieldName, Var)>,
     pub body: Body,
 }
 
 /// A match that can be used for different expression and statement types.
 #[derive(Debug, Clone, PartialEq)]
-pub enum Match<Subj, Body> {
+pub enum Match<Subj, Body, Var = VarName> {
     /// An enum match, e.g. `match color { Color::Red => "red", ... }`
     Enum {
         subject: Box<Subj>,
-        arms: Vec<EnumMatchArm<Body>>,
+        arms: Vec<EnumMatchArm<Body, Var>>,
     },
 
     /// A boolean match, e.g. `match flag { true => "yes", false => "no" }`
@@ -41,13 +41,13 @@ pub enum Match<Subj, Body> {
     /// An option match, e.g. `match opt { Some(x) => x, None => "empty" }`
     Option {
         subject: Box<Subj>,
-        some_arm_binding: Option<VarName>,
+        some_arm_binding: Option<Var>,
         some_arm_body: Box<Body>,
         none_arm_body: Box<Body>,
     },
 }
 
-impl<Subj, Body> Match<Subj, Body> {
+impl<Subj, Body, Var> Match<Subj, Body, Var> {
     pub fn subject(&self) -> &Subj {
         match self {
             Match::Enum { subject, .. }

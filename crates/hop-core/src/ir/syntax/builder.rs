@@ -5,7 +5,7 @@ use crate::expr::typing::r#type::{ComparableType, EnumVariant, EquatableType, Nu
 use crate::expr::typing::type_registry::{ResolvedType, TypeRegistry};
 use crate::expr::typing::type_registry_builder::{TestTypes, TypeRegistryBuilder};
 use crate::ir::ast::{
-    ExprId, IrArgument, IrExpr, IrForSource, IrParameter, IrStatement, StatementId,
+    ExprId, IrArgument, IrExpr, IrForSource, IrParameter, IrStatement, IrVar, StatementId, VarId,
 };
 use crate::ir::ast::{
     IrComponentDeclaration, IrEnumDeclaration, IrModule, IrRecordDeclaration, IrViewDeclaration,
@@ -63,6 +63,7 @@ impl IrModuleBuilder {
         IrModuleBodiesBuilder {
             types: Rc::new(self.types_builder.build()),
             next_id: Rc::new(Cell::new(1)),
+            next_var_id: Rc::new(Cell::new(0)),
             views: Vec::new(),
             components: Vec::new(),
         }
@@ -116,6 +117,7 @@ impl From<IrModuleBuilder> for IrModuleBodiesBuilder {
 pub struct IrModuleBodiesBuilder {
     types: Rc<TestTypes>,
     next_id: Rc<Cell<usize>>,
+    next_var_id: Rc<Cell<usize>>,
     views: Vec<IrViewDeclaration>,
     components: Vec<IrComponentDeclaration>,
 }
@@ -175,19 +177,24 @@ impl IrModuleBodiesBuilder {
     {
         let parameters: Vec<IrParameter> = params
             .into_iter()
-            .map(|(name, typ)| IrParameter {
-                name: VarName::new(name).unwrap(),
-                typ: self.types.resolve(typ),
+            .map(|(name, typ)| {
+                let id = self.next_var_id.get();
+                self.next_var_id.set(id + 1);
+                IrParameter {
+                    var: IrVar::new(VarId::new(id), VarName::new(name).unwrap()),
+                    typ: self.types.resolve(typ),
+                }
             })
             .collect();
         let vars = parameters
             .iter()
-            .map(|p| (p.name.clone(), p.typ.clone()))
+            .map(|p| (p.var.clone(), p.typ.clone()))
             .collect();
         let mut builder = IrBuilder {
             var_stack: vars,
             types: self.types.clone(),
             next_id: self.next_id.clone(),
+            next_var_id: self.next_var_id.clone(),
             statements: Vec::new(),
         };
         body_fn(&mut builder);
@@ -229,9 +236,10 @@ impl IrModuleBodiesBuilder {
 }
 
 pub struct IrBuilder {
-    var_stack: Vec<(VarName, Arc<Type>)>,
+    var_stack: Vec<(IrVar, Arc<Type>)>,
     types: Rc<TestTypes>,
     next_id: Rc<Cell<usize>>,
+    next_var_id: Rc<Cell<usize>>,
     statements: Vec<IrStatement>,
 }
 
@@ -250,13 +258,20 @@ impl IrBuilder {
         StatementId::new(self.next_id())
     }
 
-    fn scoped(&self, bindings: impl IntoIterator<Item = (VarName, Arc<Type>)>) -> Self {
+    fn bind(&self, name: &str) -> IrVar {
+        let id = self.next_var_id.get();
+        self.next_var_id.set(id + 1);
+        IrVar::new(VarId::new(id), VarName::new(name).unwrap())
+    }
+
+    fn scoped(&self, bindings: impl IntoIterator<Item = (IrVar, Arc<Type>)>) -> Self {
         let mut var_stack = self.var_stack.clone();
         var_stack.extend(bindings);
         Self {
             var_stack,
             types: self.types.clone(),
             next_id: self.next_id.clone(),
+            next_var_id: self.next_var_id.clone(),
             statements: Vec::new(),
         }
     }
@@ -265,7 +280,7 @@ impl IrBuilder {
     /// returning the statements it emitted as a separate body.
     fn in_scope(
         &mut self,
-        bindings: impl IntoIterator<Item = (VarName, Arc<Type>)>,
+        bindings: impl IntoIterator<Item = (IrVar, Arc<Type>)>,
         body_fn: impl FnOnce(&mut Self),
     ) -> Vec<IrStatement> {
         let saved_statements = std::mem::take(&mut self.statements);
@@ -277,7 +292,7 @@ impl IrBuilder {
     }
 
     /// In-scope variables, innermost last.
-    pub fn vars(&self) -> &[(VarName, Arc<Type>)] {
+    pub fn vars(&self) -> &[(IrVar, Arc<Type>)] {
         &self.var_stack
     }
 
@@ -325,7 +340,7 @@ impl IrBuilder {
             .var_stack
             .iter()
             .rev()
-            .find(|(var_name, _)| var_name.as_str() == name)
+            .find(|(var, _)| var.as_str() == name)
             .cloned()
             .unwrap_or_else(|| {
                 panic!(
@@ -333,7 +348,7 @@ impl IrBuilder {
                     name,
                     self.var_stack
                         .iter()
-                        .map(|(n, _)| n.as_str())
+                        .map(|(v, _)| v.as_str())
                         .collect::<Vec<_>>()
                 )
             });
@@ -830,7 +845,7 @@ impl IrBuilder {
             _ => panic!("Match subject must be an option type, got: {}", subject),
         };
 
-        let binding = VarName::new(binding_name).unwrap();
+        let binding = self.bind(binding_name);
         let some_body = some_body_fn(&self.scoped([(binding.clone(), inner_type)]));
 
         assert_eq!(
@@ -889,13 +904,13 @@ impl IrBuilder {
     {
         let value_type = value.get_type();
 
-        let var = VarName::new(var_name).unwrap();
+        let var = self.bind(var_name);
         let body = body_fn(&self.scoped([(var.clone(), value_type)]));
 
         let kind = body.get_type();
 
         IrExpr::Let {
-            var_name: var,
+            var,
             value: Box::new(value),
             body: Box::new(body),
             kind,
@@ -1086,7 +1101,7 @@ impl IrBuilder {
             _ => panic!("Cannot iterate over non-array type"),
         };
 
-        let var = VarName::new(var).unwrap();
+        let var = self.bind(var);
         let body = self.in_scope([(var.clone(), element_type)], body_fn);
 
         self.statements.push(IrStatement::For {
@@ -1117,7 +1132,7 @@ impl IrBuilder {
             "Range bounds must be Int, got: {}",
             end
         );
-        let var = var.map(|v| VarName::new(v).unwrap());
+        let var = var.map(|v| self.bind(v));
         let bindings: Vec<_> = var
             .iter()
             .map(|v| (v.clone(), Arc::new(Type::Int)))
@@ -1138,7 +1153,7 @@ impl IrBuilder {
     {
         let value_type = value.get_type();
 
-        let var = VarName::new(var).unwrap();
+        let var = self.bind(var);
         let body = self.in_scope([(var.clone(), value_type)], body_fn);
 
         self.statements.push(IrStatement::Let {
@@ -1156,7 +1171,7 @@ impl IrBuilder {
     {
         let fragment_body = self.in_scope([], fragment_body_fn);
 
-        let var = VarName::new(var).unwrap();
+        let var = self.bind(var);
         let body = self.in_scope([(var.clone(), Arc::new(Type::Fragment))], body_fn);
 
         self.statements.push(IrStatement::LetFragment {
@@ -1207,7 +1222,7 @@ impl IrBuilder {
         };
 
         // Build some body with optional binding
-        let some_arm_binding = binding_var.map(|var| VarName::new(var).unwrap());
+        let some_arm_binding = binding_var.map(|var| self.bind(var));
 
         let some_arm_body = self.in_scope(
             some_arm_binding.clone().map(|var| (var, inner_type)),
@@ -1281,7 +1296,7 @@ pub struct EnumMatchExprArms<'a> {
     builder: &'a IrBuilder,
     enum_name: TypeName,
     variants: Vec<EnumVariant>,
-    arms: Vec<EnumMatchArm<IrExpr>>,
+    arms: Vec<EnumMatchArm<IrExpr, IrVar>>,
     result_type: Option<Arc<Type>>,
 }
 
@@ -1304,8 +1319,13 @@ impl EnumMatchExprArms<'_> {
     ) where
         F: FnOnce(&IrBuilder) -> IrExpr,
     {
-        let (bindings, scoped_vars) =
-            resolve_arm_bindings(&self.enum_name, &self.variants, variant, field_bindings);
+        let (bindings, scoped_vars) = resolve_arm_bindings(
+            self.builder,
+            &self.enum_name,
+            &self.variants,
+            variant,
+            field_bindings,
+        );
         let body = body_fn(&self.builder.scoped(scoped_vars));
         match &self.result_type {
             Some(result_type) => assert_eq!(
@@ -1332,7 +1352,7 @@ pub struct EnumMatchStmtArms<'a> {
     builder: &'a mut IrBuilder,
     enum_name: TypeName,
     variants: Vec<EnumVariant>,
-    arms: Vec<EnumMatchArm<Vec<IrStatement>>>,
+    arms: Vec<EnumMatchArm<Vec<IrStatement>, IrVar>>,
 }
 
 impl EnumMatchStmtArms<'_> {
@@ -1354,8 +1374,13 @@ impl EnumMatchStmtArms<'_> {
     ) where
         F: FnOnce(&mut IrBuilder),
     {
-        let (bindings, scoped_vars) =
-            resolve_arm_bindings(&self.enum_name, &self.variants, variant, field_bindings);
+        let (bindings, scoped_vars) = resolve_arm_bindings(
+            self.builder,
+            &self.enum_name,
+            &self.variants,
+            variant,
+            field_bindings,
+        );
         let body = self.builder.in_scope(scoped_vars, body_fn);
         self.arms.push(EnumMatchArm {
             pattern: EnumPattern::Variant {
@@ -1372,11 +1397,12 @@ impl EnumMatchStmtArms<'_> {
 /// declared fields, yielding the IR bindings and the variables to bring
 /// into scope for the arm body.
 fn resolve_arm_bindings<'s>(
+    builder: &IrBuilder,
     enum_name: &TypeName,
     variants: &[EnumVariant],
     variant: &str,
     field_bindings: impl IntoIterator<Item = (&'s str, &'s str)>,
-) -> (Vec<(FieldName, VarName)>, Vec<(VarName, Arc<Type>)>) {
+) -> (Vec<(FieldName, IrVar)>, Vec<(IrVar, Arc<Type>)>) {
     let variant_fields = variants
         .iter()
         .find(|v| v.name.as_str() == variant)
@@ -1402,7 +1428,7 @@ fn resolve_arm_bindings<'s>(
                     field_name, enum_name, variant
                 )
             });
-        let binding = VarName::new(binding_name).unwrap();
+        let binding = builder.bind(binding_name);
         bindings.push((FieldName::new(field_name).unwrap(), binding.clone()));
         scoped_vars.push((binding, field_type));
     }
@@ -1410,7 +1436,11 @@ fn resolve_arm_bindings<'s>(
 }
 
 /// Panic unless every variant of the enum is covered by exactly one arm.
-fn assert_exhaustive<B>(enum_name: &TypeName, variants: &[EnumVariant], arms: &[EnumMatchArm<B>]) {
+fn assert_exhaustive<B, V>(
+    enum_name: &TypeName,
+    variants: &[EnumVariant],
+    arms: &[EnumMatchArm<B, V>],
+) {
     for variant in variants {
         let count = arms
             .iter()

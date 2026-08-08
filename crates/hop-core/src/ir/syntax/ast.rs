@@ -31,11 +31,52 @@ impl StatementId {
     }
 }
 
+/// Identity of a bound variable in the IR.
+///
+/// Two binders are the same variable exactly when their `VarId`s are equal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct VarId(usize);
+
+impl VarId {
+    pub fn new(id: usize) -> Self {
+        Self(id)
+    }
+}
+
+/// A bound variable in the IR.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IrVar {
+    pub id: VarId,
+    pub name: VarName,
+}
+
+impl IrVar {
+    pub fn new(id: VarId, name: VarName) -> Self {
+        Self { id, name }
+    }
+
+    pub fn as_str(&self) -> &str {
+        self.name.as_str()
+    }
+}
+
+impl fmt::Display for IrVar {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.name.as_str())
+    }
+}
+
 /// A parameter declaration in the IR (used in views and components).
 #[derive(Debug, Clone, PartialEq)]
 pub struct IrParameter {
-    pub name: VarName,
+    pub var: IrVar,
     pub typ: Arc<Type>,
+}
+
+impl IrParameter {
+    pub fn name(&self) -> &VarName {
+        &self.var.name
+    }
 }
 
 /// An argument passed to a component invocation in the IR.
@@ -113,7 +154,7 @@ pub enum IrStatement {
     /// When var is None, the loop variable is discarded (underscore syntax).
     For {
         id: StatementId,
-        var: Option<VarName>,
+        var: Option<IrVar>,
         source: IrForSource,
         body: Vec<IrStatement>,
     },
@@ -121,7 +162,7 @@ pub enum IrStatement {
     /// Bind a variable to the value of an expression.
     Let {
         id: StatementId,
-        var: VarName,
+        var: IrVar,
         value: IrExpr,
         body: Vec<IrStatement>,
     },
@@ -130,7 +171,7 @@ pub enum IrStatement {
     /// as a Fragment value, then execute `body`.
     LetFragment {
         id: StatementId,
-        var: VarName,
+        var: IrVar,
         fragment_body: Vec<IrStatement>,
         body: Vec<IrStatement>,
     },
@@ -138,7 +179,7 @@ pub enum IrStatement {
     /// Match on a value and execute the corresponding branch.
     Match {
         id: StatementId,
-        match_: Match<IrExpr, Vec<IrStatement>>,
+        match_: Match<IrExpr, Vec<IrStatement>, IrVar>,
     },
 
     /// Call a component render function and write its output.
@@ -154,7 +195,7 @@ pub enum IrStatement {
 pub enum IrExpr {
     /// A variable expression, e.g. foo
     Var {
-        value: VarName,
+        value: IrVar,
         kind: Arc<Type>,
         id: ExprId,
     },
@@ -216,7 +257,7 @@ pub enum IrExpr {
 
     /// A match expression (enum, bool, or option)
     Match {
-        match_: Match<IrExpr, IrExpr>,
+        match_: Match<IrExpr, IrExpr, IrVar>,
         kind: Arc<Type>,
         id: ExprId,
     },
@@ -305,7 +346,7 @@ pub enum IrExpr {
 
     /// A let binding expression
     Let {
-        var_name: VarName,
+        var: IrVar,
         value: Box<IrExpr>,
         body: Box<IrExpr>,
         kind: Arc<Type>,
@@ -1091,12 +1132,9 @@ impl IrExpr {
                 }
             },
             IrExpr::Let {
-                var_name,
-                value,
-                body,
-                ..
+                var, value, body, ..
             } => BoxDoc::text("let ")
-                .append(BoxDoc::text(var_name.as_str()))
+                .append(BoxDoc::text(var.as_str()))
                 .append(BoxDoc::text(" = "))
                 .append(value.to_doc())
                 .append(BoxDoc::text(" in "))
@@ -1360,7 +1398,7 @@ impl<'a> IrViewDeclaration {
                     .append(BoxDoc::line_())
                     .append(BoxDoc::intersperse(
                         self.parameters.iter().map(|param| {
-                            BoxDoc::text(param.name.to_string())
+                            BoxDoc::text(param.var.name.to_string())
                                 .append(BoxDoc::text(": "))
                                 .append(param.typ.to_doc())
                         }),
@@ -1518,7 +1556,7 @@ impl<'a> IrComponentDeclaration {
                     .append(BoxDoc::line_())
                     .append(BoxDoc::intersperse(
                         self.parameters.iter().map(|param| {
-                            BoxDoc::text(param.name.to_string())
+                            BoxDoc::text(param.var.name.to_string())
                                 .append(BoxDoc::text(": "))
                                 .append(param.typ.to_doc())
                         }),
