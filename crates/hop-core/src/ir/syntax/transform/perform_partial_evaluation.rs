@@ -8,11 +8,10 @@ use crate::expr::typing::type_registry::{ResolvedType, TypeRegistry};
 use crate::ir::{
     IrExpr,
     ast::ExprId,
-    ast::{IrStatement, traverse_statements_mut},
+    ast::{IrStatement, VarId, traverse_statements_mut},
 };
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
-use crate::symbols::var_name::VarName;
 use datafrog::{Iteration, Relation};
 use tailwind_merge::tw_merge;
 
@@ -189,12 +188,11 @@ pub fn perform_partial_evaluation(body: &mut Vec<IrStatement>, registry: &TypeRe
 
     // Binding maps.
     //
-    // The VariableRenamingPass guarantees globally unique variable names,
-    // so we can collect all bindings into HashMaps without worrying about
-    // shadowing or scoping.
-    let mut variable_bindings: HashMap<VarName, ExprId> = HashMap::new();
-    let mut option_bindings: HashMap<VarName, ExprId> = HashMap::new();
-    let mut enum_field_bindings: HashMap<VarName, (ExprId, TypeName, FieldName)> = HashMap::new();
+    // Every binder within a declaration has a distinct VarId, so bindings can
+    // go into flat HashMaps without any bookkeeping of scope.
+    let mut variable_bindings: HashMap<VarId, ExprId> = HashMap::new();
+    let mut option_bindings: HashMap<VarId, ExprId> = HashMap::new();
+    let mut enum_field_bindings: HashMap<VarId, (ExprId, TypeName, FieldName)> = HashMap::new();
 
     let mut initial_constants: Vec<(ExprId, Const)> = Vec::new();
 
@@ -237,7 +235,7 @@ pub fn perform_partial_evaluation(body: &mut Vec<IrStatement>, registry: &TypeRe
             // Collect statement-level bindings
             match s {
                 IrStatement::Let { var, value, .. } => {
-                    variable_bindings.insert(var.name.clone(), value.id());
+                    variable_bindings.insert(var.id, value.id());
                 }
                 IrStatement::LetFragment { .. } => {}
                 IrStatement::For { .. } => {}
@@ -370,7 +368,7 @@ pub fn perform_partial_evaluation(body: &mut Vec<IrStatement>, registry: &TypeRe
                                 let EnumPattern::Variant { variant_name, .. } = &arm.pattern;
                                 for (field_name, binding_name) in &arm.bindings {
                                     enum_field_bindings.insert(
-                                        binding_name.name.clone(),
+                                        binding_name.id,
                                         (subject_id, variant_name.clone(), field_name.clone()),
                                     );
                                 }
@@ -410,17 +408,17 @@ pub fn perform_partial_evaluation(body: &mut Vec<IrStatement>, registry: &TypeRe
                             option_match_arm_entries.push(((expr.id(), true), some_arm_body.id()));
                             option_match_arm_entries.push(((expr.id(), false), none_arm_body.id()));
                             if let Some(binding) = some_arm_binding {
-                                option_bindings.insert(binding.name.clone(), subject_id);
+                                option_bindings.insert(binding.id, subject_id);
                             }
                         }
                     },
-                    IrExpr::Var { value: name, .. } => {
-                        if let Some(def_expr_id) = variable_bindings.get(&name.name) {
+                    IrExpr::Var { value: var, .. } => {
+                        if let Some(def_expr_id) = variable_bindings.get(&var.id) {
                             variable_references.push((*def_expr_id, expr.id()));
-                        } else if let Some(subject_def_id) = option_bindings.get(&name.name) {
+                        } else if let Some(subject_def_id) = option_bindings.get(&var.id) {
                             option_binding_references.push((*subject_def_id, expr.id()));
                         } else if let Some((subject_def_id, variant_name, field_name)) =
-                            enum_field_bindings.get(&name.name)
+                            enum_field_bindings.get(&var.id)
                         {
                             enum_binding_references.push((
                                 (*subject_def_id, variant_name.clone(), field_name.clone()),
@@ -438,7 +436,7 @@ pub fn perform_partial_evaluation(body: &mut Vec<IrStatement>, registry: &TypeRe
                     IrExpr::Let {
                         var, value, body, ..
                     } => {
-                        variable_bindings.insert(var.name.clone(), value.id());
+                        variable_bindings.insert(var.id, value.id());
                         let_expr_bodies.push((body.id(), expr.id()));
                     }
                     IrExpr::RecordLiteral { .. } => {

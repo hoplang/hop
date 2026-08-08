@@ -1,9 +1,8 @@
 use crate::expr::patterns::Match;
 use crate::ir::{
     IrExpr,
-    ast::{IrStatement, StatementId, traverse_statements_mut},
+    ast::{IrStatement, StatementId, VarId, traverse_statements_mut},
 };
-use crate::symbols::var_name::VarName;
 use std::collections::{HashMap, HashSet};
 
 /// Collected information about unused variables
@@ -12,11 +11,8 @@ struct UnusedVars {
     unused_lets: HashSet<StatementId>,
     /// Match statements with unused Option bindings
     unused_option_bindings: HashSet<StatementId>,
-    /// Enum match arm bindings that are unused, identified by variable name
-    /// (variable names are globally unique after VariableRenamingPass, so this
-    /// distinguishes bindings in different arms even when they share a field
-    /// name)
-    unused_enum_bindings: HashSet<VarName>,
+    /// Enum match arm bindings that are unused
+    unused_enum_bindings: HashSet<VarId>,
 }
 
 /// A pass that eliminates unused variable declarations.
@@ -53,7 +49,7 @@ pub fn eliminate_unused_variable_declarations(body: &mut Vec<IrStatement>) {
                                 for arm in arms {
                                     let before = arm.bindings.len();
                                     arm.bindings.retain(|(_, var_name)| {
-                                        !unused_vars.unused_enum_bindings.contains(&var_name.name)
+                                        !unused_vars.unused_enum_bindings.contains(&var_name.id)
                                     });
                                     if arm.bindings.len() != before {
                                         changed = true;
@@ -80,27 +76,24 @@ pub fn eliminate_unused_variable_declarations(body: &mut Vec<IrStatement>) {
 }
 
 /// Collect which let statements and match bindings have unused variables.
-/// Variables are globally unique after VariableRenamingPass, so we only
-/// need name-based tracking (no scope bookkeeping).
+/// Each binder within a declaration has a distinct `VarId`, so a flat table
+/// suffices here and no scope bookkeeping is needed.
 fn collect_unused_vars(body: &[IrStatement]) -> UnusedVars {
-    // All variable names that are referenced anywhere
-    let mut used_var_names: HashSet<VarName> = HashSet::new();
+    // All variables that are referenced anywhere
+    let mut used_vars: HashSet<VarId> = HashSet::new();
 
-    let mut let_bindings: HashMap<VarName, StatementId> = HashMap::new();
-    let mut option_bindings: HashMap<VarName, StatementId> = HashMap::new();
-    let mut enum_bindings: HashSet<VarName> = HashSet::new();
+    let mut let_bindings: HashMap<VarId, StatementId> = HashMap::new();
+    let mut option_bindings: HashMap<VarId, StatementId> = HashMap::new();
+    let mut enum_bindings: HashSet<VarId> = HashSet::new();
 
     for stmt in body {
         stmt.traverse(&mut |s| {
             match s {
                 IrStatement::Let { id, var, .. } => {
-                    // Variable names are globally unique after VariableRenamingPass.
-                    // If this panics, the renaming pass may not have run before this pass.
-                    let prev = let_bindings.insert(var.name.clone(), *id);
-                    assert!(
-                        prev.is_none(),
-                        "duplicate variable name `{var}` in let_vars"
-                    );
+                    // Ids come from a counter, so a duplicate means some pass
+                    // has cloned a binder without refreshing its identity.
+                    let prev = let_bindings.insert(var.id, *id);
+                    assert!(prev.is_none(), "duplicate binding of variable `{var}`");
                 }
                 IrStatement::Match { id, match_ } => {
                     match match_ {
@@ -109,18 +102,21 @@ fn collect_unused_vars(body: &[IrStatement]) -> UnusedVars {
                             ..
                         } => {
                             if let Some(binding) = some_arm {
-                                let prev = option_bindings.insert(binding.name.clone(), *id);
+                                let prev = option_bindings.insert(binding.id, *id);
                                 assert!(
                                     prev.is_none(),
-                                    "duplicate option binding name `{binding}`"
+                                    "duplicate binding of option variable `{binding}`"
                                 );
                             }
                         }
                         Match::Enum { arms, .. } => {
                             for arm in arms {
                                 for (_, var_name) in &arm.bindings {
-                                    let inserted = enum_bindings.insert(var_name.name.clone());
-                                    assert!(inserted, "duplicate enum binding name `{var_name}`");
+                                    let inserted = enum_bindings.insert(var_name.id);
+                                    assert!(
+                                        inserted,
+                                        "duplicate binding of enum variable `{var_name}`"
+                                    );
                                 }
                             }
                         }
@@ -134,8 +130,8 @@ fn collect_unused_vars(body: &[IrStatement]) -> UnusedVars {
 
             // Collect variable references from all expressions
             s.traverse_exprs(&mut |e| {
-                if let IrExpr::Var { value: name, .. } = e {
-                    used_var_names.insert(name.name.clone());
+                if let IrExpr::Var { value: var, .. } = e {
+                    used_vars.insert(var.id);
                 }
             });
         });
@@ -143,20 +139,20 @@ fn collect_unused_vars(body: &[IrStatement]) -> UnusedVars {
 
     let unused_lets: HashSet<StatementId> = let_bindings
         .iter()
-        .filter(|(name, _)| !used_var_names.contains(*name))
+        .filter(|(var, _)| !used_vars.contains(*var))
         .map(|(_, id)| *id)
         .collect();
 
     let unused_option_bindings: HashSet<StatementId> = option_bindings
         .iter()
-        .filter(|(binding_name, _)| !used_var_names.contains(*binding_name))
+        .filter(|(var, _)| !used_vars.contains(*var))
         .map(|(_, id)| *id)
         .collect();
 
-    let unused_enum_bindings: HashSet<VarName> = enum_bindings
+    let unused_enum_bindings: HashSet<VarId> = enum_bindings
         .iter()
-        .filter(|binding_name| !used_var_names.contains(*binding_name))
-        .cloned()
+        .filter(|var| !used_vars.contains(*var))
+        .copied()
         .collect();
 
     UnusedVars {
