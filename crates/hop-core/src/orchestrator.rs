@@ -7,7 +7,6 @@ use crate::hop::inlining::transform::{
     TailwindInjection, TailwindInjector,
 };
 use crate::hop::typing::typed_ast::TypedAst;
-use crate::ir::syntax::variable_renaming::VariableRenamingPass;
 use crate::ir::{Compiler, IrEnumDeclaration, IrModule, IrRecordDeclaration, optimize};
 use crate::symbols::type_name::TypeName;
 use std::collections::HashMap;
@@ -91,11 +90,7 @@ pub fn orchestrate(
             LinkRewriter::run(&mut e);
         }
 
-        // Compile to IR
-        let mut e = Compiler::compile(e, options.asset_rewriter.clone());
-        VariableRenamingPass::run_view(&mut e);
-
-        views.push(e);
+        views.push(Compiler::compile(e, options.asset_rewriter.clone()));
     }
 
     // Compile component decls
@@ -104,9 +99,10 @@ pub fn orchestrate(
         if options.disable_links {
             LinkRewriter::run_component(&mut decl);
         }
-        let mut comp = Compiler::compile_component_decl(decl, options.asset_rewriter.clone());
-        VariableRenamingPass::run_component(&mut comp);
-        components.push(comp);
+        components.push(Compiler::compile_component_decl(
+            decl,
+            options.asset_rewriter.clone(),
+        ));
     }
 
     let module = IrModule {

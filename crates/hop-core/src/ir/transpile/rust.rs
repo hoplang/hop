@@ -112,6 +112,20 @@ impl RustTranspiler {
         }
     }
 
+    /// Wrap a binding and the statements it scopes over in a block.
+    fn scoped_binding<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        binding: Doc<'a>,
+        body: Doc<'a>,
+    ) -> Doc<'a> {
+        arena
+            .text("{")
+            .append(arena.hardline().append(binding).append(body).nest(4))
+            .append(arena.hardline())
+            .append(arena.text("}"))
+    }
+
     fn escape_string(&mut self, s: &str) -> String {
         s.replace('\\', "\\\\")
             .replace('"', "\\\"")
@@ -784,14 +798,20 @@ impl Transpiler for RustTranspiler {
         value: &'a IrExpr,
         body: &'a [IrStatement],
     ) -> Doc<'a> {
-        arena
+        let binding = arena
             .text("let ")
             .append(arena.text(Self::escape_ident(var)))
             .append(arena.text(" = "))
             .append(self.transpile_expr_owned(arena, value))
-            .append(arena.text(";"))
-            .append(arena.hardline())
-            .append(self.transpile_statements(arena, body))
+            .append(arena.text(";"));
+        let body = if body.is_empty() {
+            arena.nil()
+        } else {
+            arena
+                .hardline()
+                .append(self.transpile_statements(arena, body))
+        };
+        self.scoped_binding(arena, binding, body)
     }
 
     fn transpile_let_fragment_statement<'a>(
@@ -802,7 +822,7 @@ impl Transpiler for RustTranspiler {
         body: &'a [IrStatement],
     ) -> Doc<'a> {
         self.needs_fragment = true;
-        arena
+        let binding = arena
             .text("let ")
             .append(arena.text(Self::escape_ident(var)))
             .append(arena.text(" = {"))
@@ -818,9 +838,15 @@ impl Transpiler for RustTranspiler {
                     .nest(4),
             )
             .append(arena.hardline())
-            .append(arena.text("};"))
-            .append(arena.hardline())
-            .append(self.transpile_statements(arena, body))
+            .append(arena.text("};"));
+        let body = if body.is_empty() {
+            arena.nil()
+        } else {
+            arena
+                .hardline()
+                .append(self.transpile_statements(arena, body))
+        };
+        self.scoped_binding(arena, binding, body)
     }
 
     fn transpile_match_statement<'a>(
@@ -2145,8 +2171,10 @@ mod tests {
                 impl View for Test {
                     fn render(self) -> String {
                         let mut output = String::new();
-                        let node = Node { value: 2_i32, next: Some(Node { value: 1_i32, next: None::<Node>.map(Box::new) }).map(Box::new) };
-                        output.push_str(&(node.value).to_string());
+                        {
+                            let node = Node { value: 2_i32, next: Some(Node { value: 1_i32, next: None::<Node>.map(Box::new) }).map(Box::new) };
+                            output.push_str(&(node.value).to_string());
+                        }
                         output
                     }
                 }
@@ -2210,8 +2238,10 @@ mod tests {
                 impl View for Test {
                     fn render(self) -> String {
                         let mut output = String::new();
-                        let list = IntList::Cons { head: 1_i32, tail: Box::new(IntList::Nil) };
-                        output.push_str("done");
+                        {
+                            let list = IntList::Cons { head: 1_i32, tail: Box::new(IntList::Nil) };
+                            output.push_str("done");
+                        }
                         output
                     }
                 }
@@ -2275,8 +2305,10 @@ mod tests {
                 impl View for Test {
                     fn render(self) -> String {
                         let mut output = String::new();
-                        let b = B { a: Some(A { b: Box::new(B { a: None::<A>.map(Box::new) }) }).map(Box::new) };
-                        output.push_str("done");
+                        {
+                            let b = B { a: Some(A { b: Box::new(B { a: None::<A>.map(Box::new) }) }).map(Box::new) };
+                            output.push_str("done");
+                        }
                         output
                     }
                 }
@@ -2409,12 +2441,14 @@ mod tests {
                 impl View for Test {
                     fn render(self) -> String {
                         let mut output = String::new();
-                        let v_0 = {
-                            let mut output = String::new();
-                            output.push_str("<b>hi</b>");
-                            Fragment(output)
-                        };
-                        output.push_str(&v_0.0);
+                        {
+                            let v_0 = {
+                                let mut output = String::new();
+                                output.push_str("<b>hi</b>");
+                                Fragment(output)
+                            };
+                            output.push_str(&v_0.0);
+                        }
                         output
                     }
                 }

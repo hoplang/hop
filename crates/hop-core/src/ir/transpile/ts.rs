@@ -116,6 +116,37 @@ impl TsTranspiler {
         }
     }
 
+    /// Emit a binding and the statements it scopes over as an immediately
+    /// invoked arrow function: `((x: T) => { body })(value)`.
+    fn iife_binding<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        var: &'a str,
+        param_type: Doc<'a>,
+        value: Doc<'a>,
+        body: &'a [IrStatement],
+    ) -> Doc<'a> {
+        let body = if body.is_empty() {
+            arena.nil()
+        } else {
+            arena
+                .hardline()
+                .append(self.transpile_statements(arena, body))
+                .nest(4)
+        };
+        arena
+            .text("((")
+            .append(arena.text(escape_ident(var)))
+            .append(arena.text(": "))
+            .append(param_type)
+            .append(arena.text(") => {"))
+            .append(body)
+            .append(arena.hardline())
+            .append(arena.text("})("))
+            .append(value)
+            .append(arena.text(");"))
+    }
+
     fn escape_string(&mut self, s: &str) -> String {
         if self.use_template_literals {
             // For template literals, only escape backticks and ${
@@ -752,42 +783,62 @@ impl Transpiler for TsTranspiler {
         let var_name = escape_ident(var.unwrap_or("_"));
         match source {
             IrForSource::Array(array) => arena
-                .nil()
-                .append(arena.text("for (const "))
-                .append(arena.text(var_name.clone()))
-                .append(arena.text(" of "))
-                .append(self.transpile_expr(arena, array))
-                .append(arena.text(") {"))
+                .text("{")
                 .append(
                     arena
-                        .nil()
+                        .hardline()
+                        .append(arena.text("const source_ = "))
+                        .append(self.transpile_expr(arena, array))
+                        .append(arena.text(";"))
                         .append(arena.hardline())
-                        .append(self.transpile_statements(arena, body))
-                        .append(arena.hardline())
+                        .append(arena.text("for (const "))
+                        .append(arena.text(var_name.clone()))
+                        .append(arena.text(" of source_) {"))
+                        .append(
+                            arena
+                                .nil()
+                                .append(arena.hardline())
+                                .append(self.transpile_statements(arena, body))
+                                .append(arena.hardline())
+                                .nest(4),
+                        )
+                        .append(arena.text("}"))
                         .nest(4),
                 )
+                .append(arena.hardline())
                 .append(arena.text("}")),
             IrForSource::RangeInclusive { start, end } => arena
-                .nil()
-                .append(arena.text("for (let "))
-                .append(arena.text(var_name.clone()))
-                .append(arena.text(" = "))
-                .append(self.transpile_expr(arena, start))
-                .append(arena.text("; "))
-                .append(arena.text(var_name.clone()))
-                .append(arena.text(" <= "))
-                .append(self.transpile_expr(arena, end))
-                .append(arena.text("; "))
-                .append(arena.text(var_name))
-                .append(arena.text("++) {"))
+                .text("{")
                 .append(
                     arena
-                        .nil()
+                        .hardline()
+                        .append(arena.text("const start_ = "))
+                        .append(self.transpile_expr(arena, start))
+                        .append(arena.text(";"))
                         .append(arena.hardline())
-                        .append(self.transpile_statements(arena, body))
+                        .append(arena.text("const end_ = "))
+                        .append(self.transpile_expr(arena, end))
+                        .append(arena.text(";"))
                         .append(arena.hardline())
+                        .append(arena.text("for (let "))
+                        .append(arena.text(var_name.clone()))
+                        .append(arena.text(" = start_; "))
+                        .append(arena.text(var_name.clone()))
+                        .append(arena.text(" <= end_; "))
+                        .append(arena.text(var_name))
+                        .append(arena.text("++) {"))
+                        .append(
+                            arena
+                                .nil()
+                                .append(arena.hardline())
+                                .append(self.transpile_statements(arena, body))
+                                .append(arena.hardline())
+                                .nest(4),
+                        )
+                        .append(arena.text("}"))
                         .nest(4),
                 )
+                .append(arena.hardline())
                 .append(arena.text("}")),
         }
     }
@@ -799,14 +850,9 @@ impl Transpiler for TsTranspiler {
         value: &'a IrExpr,
         body: &'a [IrStatement],
     ) -> Doc<'a> {
-        arena
-            .text("const ")
-            .append(arena.text(escape_ident(var)))
-            .append(arena.text(" = "))
-            .append(self.transpile_expr(arena, value))
-            .append(arena.text(";"))
-            .append(arena.hardline())
-            .append(self.transpile_statements(arena, body))
+        let param_type = self.transpile_type(arena, value.as_type());
+        let value = self.transpile_expr(arena, value);
+        self.iife_binding(arena, var, param_type, value, body)
     }
 
     fn transpile_let_fragment_statement<'a>(
@@ -817,10 +863,9 @@ impl Transpiler for TsTranspiler {
         body: &'a [IrStatement],
     ) -> Doc<'a> {
         self.needs_fragment = true;
-        arena
-            .text("const ")
-            .append(arena.text(escape_ident(var)))
-            .append(arena.text(" = (() => {"))
+        let param_type = self.transpile_fragment_type(arena);
+        let value = arena
+            .text("(() => {")
             .append(
                 arena
                     .nil()
@@ -833,9 +878,8 @@ impl Transpiler for TsTranspiler {
                     .append(arena.line())
                     .nest(4),
             )
-            .append(arena.text("})();"))
-            .append(arena.hardline())
-            .append(self.transpile_statements(arena, body))
+            .append(arena.text("})()"));
+        self.iife_binding(arena, var, param_type, value, body)
     }
 
     fn transpile_match_statement<'a>(
@@ -1614,6 +1658,7 @@ impl Transpiler for TsTranspiler {
         }
     }
 
+    /// A `let` in expression position.
     fn transpile_let<'a>(
         &mut self,
         arena: &'a Arena<'a>,
@@ -1621,24 +1666,26 @@ impl Transpiler for TsTranspiler {
         value: &'a IrExpr,
         body: &'a IrExpr,
     ) -> Doc<'a> {
+        let param_type = self.transpile_type(arena, value.as_type());
+        let value = self.transpile_expr(arena, value);
         arena
-            .text("(() => {")
+            .text("((")
+            .append(arena.text(escape_ident(var.as_str())))
+            .append(arena.text(": "))
+            .append(param_type)
+            .append(arena.text(") => {"))
             .append(
                 arena
                     .line()
-                    .append(arena.text("const "))
-                    .append(arena.text(escape_ident(var.as_str())))
-                    .append(arena.text(" = "))
-                    .append(self.transpile_expr(arena, value))
-                    .append(arena.text(";"))
-                    .append(arena.line())
                     .append(arena.text("return "))
                     .append(self.transpile_expr(arena, body))
                     .append(arena.text(";"))
                     .nest(2),
             )
             .append(arena.line())
-            .append(arena.text("})()"))
+            .append(arena.text("})("))
+            .append(value)
+            .append(arena.text(")"))
     }
 
     fn transpile_array_length<'a>(&mut self, arena: &'a Arena<'a>, array: &'a IrExpr) -> Doc<'a> {
@@ -1940,10 +1987,13 @@ mod tests {
                 export function ListItems({items}: {items: string[]}): string {
                     let output: string = "";
                     output += "<ul>\n";
-                    for (const item of items) {
-                        output += "<li>";
-                        output += escapeHtml(item);
-                        output += "</li>\n";
+                    {
+                        const source_ = items;
+                        for (const item of source_) {
+                            output += "<li>";
+                            output += escapeHtml(item);
+                            output += "</li>\n";
+                        }
                     }
                     output += "</ul>\n";
                     return output;
@@ -1975,9 +2025,13 @@ mod tests {
 
                 export function Counter(): string {
                     let output: string = "";
-                    for (let i = (1 as number); i <= (3 as number); i++) {
-                        output += (i).toString();
-                        output += " ";
+                    {
+                        const start_ = (1 as number);
+                        const end_ = (3 as number);
+                        for (let i = start_; i <= end_; i++) {
+                            output += (i).toString();
+                            output += " ";
+                        }
                     }
                     return output;
                 }
@@ -2023,12 +2077,13 @@ mod tests {
 
                 export function GreetingCard(): string {
                     let output: string = "";
-                    const greeting = ("Hello from hop!" as string);
-                    output += "<div class=\"card\">\n";
-                    output += "<p>";
-                    output += escapeHtml(greeting);
-                    output += "</p>\n";
-                    output += "</div>\n";
+                    ((greeting: string) => {
+                        output += "<div class=\"card\">\n";
+                        output += "<p>";
+                        output += escapeHtml(greeting);
+                        output += "</p>\n";
+                        output += "</div>\n";
+                    })(("Hello from hop!" as string));
                     return output;
                 }
             "#]],
@@ -2074,10 +2129,11 @@ mod tests {
                 export function TestMainComp(): string {
                     let output: string = "";
                     output += "<div data-hop-id=\"test/card-comp\">";
-                    const title = ("Hello World" as string);
-                    output += "<h2>";
-                    output += escapeHtml(title);
-                    output += "</h2>";
+                    ((title: string) => {
+                        output += "<h2>";
+                        output += escapeHtml(title);
+                        output += "</h2>";
+                    })(("Hello World" as string));
                     output += "</div>";
                     return output;
                 }
@@ -2453,8 +2509,9 @@ mod tests {
 
                 export function Test(): string {
                     let output: string = "";
-                    const node = new Node({value: (2 as number), next: Option.some<Node>(new Node({value: (1 as number), next: Option.none<Node>()}))});
-                    output += escapeHtml((node.value).toString());
+                    ((node: Node) => {
+                        output += escapeHtml((node.value).toString());
+                    })(new Node({value: (2 as number), next: Option.some<Node>(new Node({value: (1 as number), next: Option.none<Node>()}))}));
                     return output;
                 }
             "#]],
@@ -2743,10 +2800,9 @@ mod tests {
 
                 export function LetExpr({name}: {name: string}): string {
                     let output: string = "";
-                    output += escapeHtml((() => {
-                      const x = name;
+                    output += escapeHtml(((x: string) => {
                       return x;
-                    })());
+                    })(name));
                     return output;
                 }
             "#]],
@@ -2947,22 +3003,23 @@ mod tests {
 
                 export function TestInlineMatch(): string {
                     let output: string = "";
-                    const opt = Option.some<string>(("world" as string));
-                    {
-                        const subject_ = opt as Option.Option<string>;
-                        switch (subject_.tag) {
-                            case "Some": {
-                                const val = subject_.value;
-                                output += "Got:";
-                                output += val;
-                                break;
-                            }
-                            case "None": {
-                                output += "Empty";
-                                break;
+                    ((opt: Option.Option<string>) => {
+                        {
+                            const subject_ = opt as Option.Option<string>;
+                            switch (subject_.tag) {
+                                case "Some": {
+                                    const val = subject_.value;
+                                    output += "Got:";
+                                    output += val;
+                                    break;
+                                }
+                                case "None": {
+                                    output += "Empty";
+                                    break;
+                                }
                             }
                         }
-                    }
+                    })(Option.some<string>(("world" as string)));
                     return output;
                 }
             "#]],
@@ -3151,8 +3208,9 @@ mod tests {
                 export function ShowOutcome({r}: {r: Outcome.Outcome}): string {
                     let output: string = "";
                     output += "<div>";
-                    const ok = Outcome.Ok({value: (42 as number)});
-                    output += ("Created Ok!" as string);
+                    ((ok: Outcome.Outcome) => {
+                        output += ("Created Ok!" as string);
+                    })(Outcome.Ok({value: (42 as number)}));
                     output += "</div>";
                     return output;
                 }
@@ -3277,12 +3335,13 @@ mod tests {
 
                 export function Test(): string {
                     let output: string = "";
-                    const v_0 = (() => {
+                    ((v_0: Fragment) => {
+                        output += v_0;
+                    })((() => {
                         let output: string = "";
                         output += "<b>hi</b>";
                         return output as Fragment;
-                    })();
-                    output += v_0;
+                    })());
                     return output;
                 }
             "#]],

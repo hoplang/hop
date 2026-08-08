@@ -1176,10 +1176,10 @@ mod tests {
                 }
                 view Test() {
                   let user = User {name: "Ada"} in {
-                    let user_1 = user in {
+                    let user = user in {
                       write("<div")
                       write(">")
-                      write_escaped(user_1.name)
+                      write_escaped(user.name)
                       write("</div>")
                     }
                   }
@@ -1190,9 +1190,9 @@ mod tests {
                 }
                 view Test() {
                   let user = User {name: "Ada"} in {
-                    let user_1 = user in {
+                    let user = user in {
                       write("<div>")
-                      write_escaped(user_1.name)
+                      write_escaped(user.name)
                       write("</div>")
                     }
                   }
@@ -1513,10 +1513,10 @@ mod tests {
                     write_escaped(tw_merge(class))
                     write("\"")
                     write(">")
-                    let class_1 = "x" in {
+                    let class = "x" in {
                       write("<span")
                       write(" class=\"")
-                      write_escaped(tw_merge(class_1))
+                      write_escaped(tw_merge(class))
                       write("\"")
                       write(">")
                       write("</span>")
@@ -1589,14 +1589,14 @@ mod tests {
                         let v_0 = {
                           write_expr(children)
                         } in {
-                          let children_1 = v_0 in {
-                            let class_2 = class in {
+                          let children = v_0 in {
+                            let class = class in {
                               write("<div")
                               write(" class=\"")
-                              write_escaped(tw_merge(class_2))
+                              write_escaped(tw_merge(class))
                               write("\"")
                               write(">")
-                              write_expr(children_1)
+                              write_expr(children)
                               write("</div>")
                             }
                           }
@@ -1614,9 +1614,9 @@ mod tests {
                       let v_0 = {
                         write_expr(children)
                       } in {
-                        let children_1 = v_0 in {
+                        let children = v_0 in {
                           write("<div class=\"primary\">")
-                          write_expr(children_1)
+                          write_expr(children)
                           write("</div>")
                         }
                       }
@@ -1726,10 +1726,10 @@ mod tests {
                 -- ir (unoptimized) --
                 view Test() {
                   let class = "main" in {
-                    let class_1 = class in {
+                    let class = class in {
                       write("<div")
                       write(" class=\"")
-                      write_escaped(tw_merge(class_1))
+                      write_escaped(tw_merge(class))
                       write("\"")
                       write(">")
                       write("</div>")
@@ -1787,10 +1787,10 @@ mod tests {
                 -- ir (unoptimized) --
                 view Test() {
                   let class = "b" in {
-                    let class_1 = class in {
+                    let class = class in {
                       write("<div")
                       write(" class=\"")
-                      write_escaped(tw_merge(class_1))
+                      write_escaped(tw_merge(class))
                       write("\"")
                       write(">")
                       write("</div>")
@@ -2367,6 +2367,63 @@ mod tests {
                 }
                 -- expected output --
                 inner
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn component_binding_duplicated_by_inlining_at_two_call_sites() {
+        check(
+            indoc! {r#"
+                component Tag(text: String) {
+                  <let {label: String = text}>
+                    [{label}]
+                  </let>
+                }
+
+                view Test {
+                  <Tag text="a"/>
+                  <Tag text="b"/>
+                }
+            "#},
+            "[a][b]",
+            expect![[r#"
+                -- ir (unoptimized) --
+                view Test() {
+                  let text = "a" in {
+                    let label = text in {
+                      write("[")
+                      write_escaped(label)
+                      write("]")
+                    }
+                  }
+                  let text = "b" in {
+                    let label = text in {
+                      write("[")
+                      write_escaped(label)
+                      write("]")
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                view Test() {
+                  write("[a][b]")
+                }
+                -- expected output --
+                [a][b]
                 -- eval (unoptimized) --
                 OK
                 -- eval (optimized) --
@@ -10034,11 +10091,11 @@ mod tests {
                       let v_0 = {
                         write_expr(children)
                       } in {
-                        let children_1 = v_0 in {
+                        let children = v_0 in {
                           write("<div")
                           write(" class=\"inner\"")
                           write(">")
-                          write_expr(children_1)
+                          write_expr(children)
                           write("</div>")
                         }
                       }
@@ -10056,9 +10113,9 @@ mod tests {
                       let v_0 = {
                         write_expr(children)
                       } in {
-                        let children_1 = v_0 in {
+                        let children = v_0 in {
                           write("<div class=\"inner\">")
-                          write_expr(children_1)
+                          write_expr(children)
                           write("</div>")
                         }
                       }
@@ -10900,16 +10957,16 @@ mod tests {
                       }
                     }
                   }
-                  let title_1 = "Without" in {
-                    let children_2 = Fragment::empty() in {
+                  let title = "Without" in {
+                    let children = Fragment::empty() in {
                       write("<div")
                       write(" class=\"card\"")
                       write(">")
                       write("<h2")
                       write(">")
-                      write_escaped(title_1)
+                      write_escaped(title)
                       write("</h2>")
-                      write_expr(children_2)
+                      write_expr(children)
                       write("</div>")
                     }
                   }
@@ -10925,9 +10982,9 @@ mod tests {
                       write("</div>")
                     }
                   }
-                  let children_2 = Fragment::empty() in {
+                  let children = Fragment::empty() in {
                     write("<div class=\"card\"><h2>Without</h2>")
-                    write_expr(children_2)
+                    write_expr(children)
                     write("</div>")
                   }
                 }
@@ -11519,26 +11576,26 @@ mod tests {
                     }
                   }
                   write(",")
-                  let item_1 = Item::Todo {label: "Walk dog", done: false} in {
-                    match item_1 {
-                      Item::Todo(label: v_1_2, done: v_2_3) => {
-                        let l_4 = v_1_2 in {
-                          let d_5 = v_2_3 in {
-                            match d_5 {
+                  let item = Item::Todo {label: "Walk dog", done: false} in {
+                    match item {
+                      Item::Todo(label: v_1, done: v_2) => {
+                        let l = v_1 in {
+                          let d = v_2 in {
+                            match d {
                               true => {
                                 write("[x]")
                               }
                               false => {
                               }
                             }
-                            match (!d_5) {
+                            match (!d) {
                               true => {
                                 write("[ ]")
                               }
                               false => {
                               }
                             }
-                            write_escaped(l_4)
+                            write_escaped(l)
                           }
                         }
                       }
@@ -11575,24 +11632,24 @@ mod tests {
                   }
                   write(",")
                   match Item::Todo {label: "Walk dog", done: false} {
-                    Item::Todo(label: v_1_2, done: v_2_3) => {
-                      let l_4 = v_1_2 in {
-                        let d_5 = v_2_3 in {
-                          match d_5 {
+                    Item::Todo(label: v_1, done: v_2) => {
+                      let l = v_1 in {
+                        let d = v_2 in {
+                          match d {
                             true => {
                               write("[x]")
                             }
                             false => {
                             }
                           }
-                          match (!d_5) {
+                          match (!d) {
                             true => {
                               write("[ ]")
                             }
                             false => {
                             }
                           }
-                          write_escaped(l_4)
+                          write_escaped(l)
                         }
                       }
                     }
@@ -11674,52 +11731,52 @@ mod tests {
                         }
                       }
                       TimeAgo::HoursAgo(count: v_2) => {
-                        let c_1 = v_2 in {
-                          write_escaped(match (c_1 == 1) {
+                        let c = v_2 in {
+                          write_escaped(match (c == 1) {
                             true => "1 hour ago",
-                            false => (c_1.to_string() + " hours ago"),
+                            false => (c.to_string() + " hours ago"),
                           })
                         }
                       }
                     }
                   }
                   write(",")
-                  let time_2 = TimeAgo::MinutesAgo {count: 5} in {
-                    match time_2 {
-                      TimeAgo::MinutesAgo(count: v_1_3) => {
-                        let c_4 = v_1_3 in {
-                          write_escaped(match (c_4 == 1) {
+                  let time = TimeAgo::MinutesAgo {count: 5} in {
+                    match time {
+                      TimeAgo::MinutesAgo(count: v_1) => {
+                        let c = v_1 in {
+                          write_escaped(match (c == 1) {
                             true => "1 minute ago",
-                            false => (c_4.to_string() + " minutes ago"),
+                            false => (c.to_string() + " minutes ago"),
                           })
                         }
                       }
-                      TimeAgo::HoursAgo(count: v_2_5) => {
-                        let c_6 = v_2_5 in {
-                          write_escaped(match (c_6 == 1) {
+                      TimeAgo::HoursAgo(count: v_2) => {
+                        let c = v_2 in {
+                          write_escaped(match (c == 1) {
                             true => "1 hour ago",
-                            false => (c_6.to_string() + " hours ago"),
+                            false => (c.to_string() + " hours ago"),
                           })
                         }
                       }
                     }
                   }
                   write(",")
-                  let time_7 = TimeAgo::HoursAgo {count: 1} in {
-                    match time_7 {
-                      TimeAgo::MinutesAgo(count: v_1_8) => {
-                        let c_9 = v_1_8 in {
-                          write_escaped(match (c_9 == 1) {
+                  let time = TimeAgo::HoursAgo {count: 1} in {
+                    match time {
+                      TimeAgo::MinutesAgo(count: v_1) => {
+                        let c = v_1 in {
+                          write_escaped(match (c == 1) {
                             true => "1 minute ago",
-                            false => (c_9.to_string() + " minutes ago"),
+                            false => (c.to_string() + " minutes ago"),
                           })
                         }
                       }
-                      TimeAgo::HoursAgo(count: v_2_10) => {
-                        let c_11 = v_2_10 in {
-                          write_escaped(match (c_11 == 1) {
+                      TimeAgo::HoursAgo(count: v_2) => {
+                        let c = v_2 in {
+                          write_escaped(match (c == 1) {
                             true => "1 hour ago",
-                            false => (c_11.to_string() + " hours ago"),
+                            false => (c.to_string() + " hours ago"),
                           })
                         }
                       }
@@ -11742,48 +11799,48 @@ mod tests {
                       }
                     }
                     TimeAgo::HoursAgo(count: v_2) => {
-                      let c_1 = v_2 in {
-                        write_escaped(match (c_1 == 1) {
+                      let c = v_2 in {
+                        write_escaped(match (c == 1) {
                           true => "1 hour ago",
-                          false => (c_1.to_string() + " hours ago"),
+                          false => (c.to_string() + " hours ago"),
                         })
                       }
                     }
                   }
                   write(",")
                   match TimeAgo::MinutesAgo {count: 5} {
-                    TimeAgo::MinutesAgo(count: v_1_3) => {
-                      let c_4 = v_1_3 in {
-                        write_escaped(match (c_4 == 1) {
+                    TimeAgo::MinutesAgo(count: v_1) => {
+                      let c = v_1 in {
+                        write_escaped(match (c == 1) {
                           true => "1 minute ago",
-                          false => (c_4.to_string() + " minutes ago"),
+                          false => (c.to_string() + " minutes ago"),
                         })
                       }
                     }
-                    TimeAgo::HoursAgo(count: v_2_5) => {
-                      let c_6 = v_2_5 in {
-                        write_escaped(match (c_6 == 1) {
+                    TimeAgo::HoursAgo(count: v_2) => {
+                      let c = v_2 in {
+                        write_escaped(match (c == 1) {
                           true => "1 hour ago",
-                          false => (c_6.to_string() + " hours ago"),
+                          false => (c.to_string() + " hours ago"),
                         })
                       }
                     }
                   }
                   write(",")
                   match TimeAgo::HoursAgo {count: 1} {
-                    TimeAgo::MinutesAgo(count: v_1_8) => {
-                      let c_9 = v_1_8 in {
-                        write_escaped(match (c_9 == 1) {
+                    TimeAgo::MinutesAgo(count: v_1) => {
+                      let c = v_1 in {
+                        write_escaped(match (c == 1) {
                           true => "1 minute ago",
-                          false => (c_9.to_string() + " minutes ago"),
+                          false => (c.to_string() + " minutes ago"),
                         })
                       }
                     }
-                    TimeAgo::HoursAgo(count: v_2_10) => {
-                      let c_11 = v_2_10 in {
-                        write_escaped(match (c_11 == 1) {
+                    TimeAgo::HoursAgo(count: v_2) => {
+                      let c = v_2 in {
+                        write_escaped(match (c == 1) {
                           true => "1 hour ago",
-                          false => (c_11.to_string() + " hours ago"),
+                          false => (c.to_string() + " hours ago"),
                         })
                       }
                     }
@@ -12077,8 +12134,8 @@ mod tests {
                       }
                       match target {
                         Some(v_5) => {
-                          let t_1 = v_5 in {
-                            write_escaped(t_1.title)
+                          let t = v_5 in {
+                            write_escaped(t.title)
                           }
                         }
                         None => {
@@ -12118,8 +12175,8 @@ mod tests {
                       }
                       match target {
                         Some(v_5) => {
-                          let t_1 = v_5 in {
-                            write_escaped(t_1.title)
+                          let t = v_5 in {
+                            write_escaped(t.title)
                           }
                         }
                         None => {
@@ -12449,10 +12506,10 @@ mod tests {
                       let v_0 = {
                         write_expr(children)
                       } in {
-                        let children_1 = v_0 in {
+                        let children = v_0 in {
                           write("<em")
                           write(">")
-                          write_expr(children_1)
+                          write_expr(children)
                           write("</em>")
                         }
                       }
@@ -12470,9 +12527,9 @@ mod tests {
                       let v_0 = {
                         write_expr(children)
                       } in {
-                        let children_1 = v_0 in {
+                        let children = v_0 in {
                           write("<em>")
-                          write_expr(children_1)
+                          write_expr(children)
                           write("</em>")
                         }
                       }
