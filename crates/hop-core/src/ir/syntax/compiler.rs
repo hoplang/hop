@@ -83,6 +83,18 @@ impl Compiler {
         VarId::new(id)
     }
 
+    fn next_expr_id(&mut self) -> ExprId {
+        let id = self.expr_id_counter;
+        self.expr_id_counter += 1;
+        ExprId::new(id)
+    }
+
+    fn next_statement_id(&mut self) -> StatementId {
+        let id = self.node_id_counter;
+        self.node_id_counter += 1;
+        StatementId::new(id)
+    }
+
     fn push_scope(&mut self) {
         self.scopes.push(Vec::new());
     }
@@ -121,7 +133,7 @@ impl Compiler {
         match node {
             InlinedNode::Text { value } => {
                 output.push(IrStatement::Write {
-                    id: self.next_node_id(),
+                    id: self.next_statement_id(),
                     content: value.to_string(),
                 });
             }
@@ -129,7 +141,7 @@ impl Compiler {
             InlinedNode::TextExpression { expression } => {
                 let escape = !matches!(expression.as_type(), Type::Fragment);
                 output.push(IrStatement::WriteExpr {
-                    id: self.next_node_id(),
+                    id: self.next_statement_id(),
                     expr: self.compile_expr(expression),
                     escape,
                 });
@@ -141,7 +153,7 @@ impl Compiler {
                 children,
             } => {
                 output.push(IrStatement::Write {
-                    id: self.next_node_id(),
+                    id: self.next_statement_id(),
                     content: format!("<{}", element.as_str()),
                 });
                 for attr in attributes {
@@ -150,13 +162,13 @@ impl Compiler {
                     } else {
                         // Boolean attribute
                         output.push(IrStatement::Write {
-                            id: self.next_node_id(),
+                            id: self.next_statement_id(),
                             content: format!(" {}", attr.name.as_str()),
                         });
                     }
                 }
                 output.push(IrStatement::Write {
-                    id: self.next_node_id(),
+                    id: self.next_statement_id(),
                     content: ">".to_string(),
                 });
                 if !element.is_void() {
@@ -164,7 +176,7 @@ impl Compiler {
                         self.compile_node(child, output);
                     }
                     output.push(IrStatement::Write {
-                        id: self.next_node_id(),
+                        id: self.next_statement_id(),
                         content: format!("</{}>", element.as_str()),
                     });
                 }
@@ -176,7 +188,7 @@ impl Compiler {
                 ..
             } => {
                 output.push(IrStatement::Match {
-                    id: self.next_node_id(),
+                    id: self.next_statement_id(),
                     match_: Match::Bool {
                         subject: Box::new(self.compile_expr(condition)),
                         true_body: Box::new(self.compile_nodes(children)),
@@ -200,7 +212,7 @@ impl Compiler {
                         end: self.compile_expr(end),
                     },
                 };
-                let id = self.next_node_id();
+                let id = self.next_statement_id();
                 self.push_scope();
                 let var = var_name.as_ref().map(|name| self.bind(name));
                 let body = self.compile_nodes(children);
@@ -215,7 +227,7 @@ impl Compiler {
 
             InlinedNode::Doctype { value } => {
                 output.push(IrStatement::Write {
-                    id: self.next_node_id(),
+                    id: self.next_statement_id(),
                     content: value.to_string(),
                 });
             }
@@ -225,7 +237,7 @@ impl Compiler {
                 value,
                 children,
             } => {
-                let id = self.next_node_id();
+                let id = self.next_statement_id();
                 let value = self.compile_expr(value);
                 self.push_scope();
                 let ir_var = self.bind(var);
@@ -244,7 +256,7 @@ impl Compiler {
                 fragment_body,
                 body,
             } => {
-                let id = self.next_node_id();
+                let id = self.next_statement_id();
                 let fragment_body = self.compile_nodes(fragment_body);
                 self.push_scope();
                 let ir_var = self.bind(var);
@@ -312,7 +324,7 @@ impl Compiler {
                     }
                 };
                 output.push(IrStatement::Match {
-                    id: self.next_node_id(),
+                    id: self.next_statement_id(),
                     match_: compiled_match,
                 });
             }
@@ -330,24 +342,12 @@ impl Compiler {
                     .collect();
 
                 output.push(IrStatement::ComponentInvocation {
-                    id: self.next_node_id(),
+                    id: self.next_statement_id(),
                     component_name: component_name.clone(),
                     args: compiled_args,
                 });
             }
         }
-    }
-
-    fn next_expr_id(&mut self) -> ExprId {
-        let id = self.expr_id_counter;
-        self.expr_id_counter += 1;
-        ExprId::new(id)
-    }
-
-    fn next_node_id(&mut self) -> StatementId {
-        let id = self.node_id_counter;
-        self.node_id_counter += 1;
-        StatementId::new(id)
     }
 
     /// Helper to compile an attribute to IR statements
@@ -360,7 +360,7 @@ impl Compiler {
         match value {
             TypedAttributeValue::String(s) => {
                 output.push(IrStatement::Write {
-                    id: self.next_node_id(),
+                    id: self.next_statement_id(),
                     content: format!(" {}=\"{}\"", name.as_str(), s.as_str()),
                 });
             }
@@ -371,7 +371,7 @@ impl Compiler {
                 );
                 // String attributes: output attribute="value"
                 output.push(IrStatement::Write {
-                    id: self.next_node_id(),
+                    id: self.next_statement_id(),
                     content: format!(" {}=\"", name.as_str()),
                 });
                 // Wrap class attribute values in TwMerge for Tailwind class merging
@@ -384,12 +384,12 @@ impl Compiler {
                     self.compile_expr(expr)
                 };
                 output.push(IrStatement::WriteExpr {
-                    id: self.next_node_id(),
+                    id: self.next_statement_id(),
                     escape: true,
                     expr,
                 });
                 output.push(IrStatement::Write {
-                    id: self.next_node_id(),
+                    id: self.next_statement_id(),
                     content: "\"".to_string(),
                 });
             }
