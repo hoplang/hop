@@ -824,13 +824,15 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 view Test() {
-                  let label = "Hi" in {
-                    write("<button")
-                    write(" class=\"btn\"")
-                    write(" id=\"submit\"")
-                    write(">")
-                    write_escaped(label)
-                    write("</button>")
+                  let i__0 = "Hi" in {
+                    let label = i__0 in {
+                      write("<button")
+                      write(" class=\"btn\"")
+                      write(" id=\"submit\"")
+                      write(">")
+                      write_escaped(label)
+                      write("</button>")
+                    }
                   }
                 }
                 -- ir (optimized) --
@@ -883,16 +885,20 @@ mod tests {
                   let v_0 = {
                     write("Hi")
                   } in {
-                    let class = "p-2" in {
-                      let children = v_0 in {
-                        write("<button")
-                        write(" class=\"")
-                        write_escaped(tw_merge(class))
-                        write("\"")
-                        write(" data-foo=\"bar\"")
-                        write(">")
-                        write_expr(children)
-                        write("</button>")
+                    let i__1 = v_0 in {
+                      let i__0 = "p-2" in {
+                        let children = i__1 in {
+                          let class = i__0 in {
+                            write("<button")
+                            write(" class=\"")
+                            write_escaped(tw_merge(class))
+                            write("\"")
+                            write(" data-foo=\"bar\"")
+                            write(">")
+                            write_expr(children)
+                            write("</button>")
+                          }
+                        }
                       }
                     }
                   }
@@ -902,10 +908,12 @@ mod tests {
                   let v_0 = {
                     write("Hi")
                   } in {
-                    let children = v_0 in {
-                      write("<button class=\"p-2\" data-foo=\"bar\">")
-                      write_expr(children)
-                      write("</button>")
+                    let i__1 = v_0 in {
+                      let children = i__1 in {
+                        write("<button class=\"p-2\" data-foo=\"bar\">")
+                        write_expr(children)
+                        write("</button>")
+                      }
                     }
                   }
                 }
@@ -954,13 +962,15 @@ mod tests {
                   let v_0 = {
                     write("Hi")
                   } in {
-                    let children = v_0 in {
-                      write("<button")
-                      write(" class=\"builtin\"")
-                      write(" data-x=\"y\"")
-                      write(">")
-                      write_expr(children)
-                      write("</button>")
+                    let i__0 = v_0 in {
+                      let children = i__0 in {
+                        write("<button")
+                        write(" class=\"builtin\"")
+                        write(" data-x=\"y\"")
+                        write(">")
+                        write_expr(children)
+                        write("</button>")
+                      }
                     }
                   }
                 }
@@ -969,10 +979,12 @@ mod tests {
                   let v_0 = {
                     write("Hi")
                   } in {
-                    let children = v_0 in {
-                      write("<button class=\"builtin\" data-x=\"y\">")
-                      write_expr(children)
-                      write("</button>")
+                    let i__0 = v_0 in {
+                      let children = i__0 in {
+                        write("<button class=\"builtin\" data-x=\"y\">")
+                        write_expr(children)
+                        write("</button>")
+                      }
                     }
                   }
                 }
@@ -1062,11 +1074,13 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 view Test() {
-                  let title = "hi" in {
-                    write("<div")
-                    write(">")
-                    write_escaped(title)
-                    write("</div>")
+                  let i__0 = "hi" in {
+                    let title = i__0 in {
+                      write("<div")
+                      write(">")
+                      write_escaped(title)
+                      write("</div>")
+                    }
                   }
                 }
                 -- ir (optimized) --
@@ -1114,11 +1128,13 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 view Test() {
-                  let title = "explicit" in {
-                    write("<div")
-                    write(">")
-                    write_escaped(title)
-                    write("</div>")
+                  let i__0 = "explicit" in {
+                    let title = i__0 in {
+                      write("<div")
+                      write(">")
+                      write_escaped(title)
+                      write("</div>")
+                    }
                   }
                 }
                 -- ir (optimized) --
@@ -1176,11 +1192,13 @@ mod tests {
                 }
                 view Test() {
                   let user = User {name: "Ada"} in {
-                    let user = user in {
-                      write("<div")
-                      write(">")
-                      write_escaped(user.name)
-                      write("</div>")
+                    let i__0 = user in {
+                      let user = i__0 in {
+                        write("<div")
+                        write(">")
+                        write_escaped(user.name)
+                        write("</div>")
+                      }
                     }
                   }
                 }
@@ -1190,10 +1208,12 @@ mod tests {
                 }
                 view Test() {
                   let user = User {name: "Ada"} in {
-                    let user = user in {
-                      write("<div>")
-                      write_escaped(user.name)
-                      write("</div>")
+                    let i__0 = user in {
+                      let user = i__0 in {
+                        write("<div>")
+                        write_escaped(user.name)
+                        write("</div>")
+                      }
                     }
                   }
                 }
@@ -1248,16 +1268,20 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 view Test() {
-                  let name = "n" in {
-                    let title = "t" in {
-                      write("<div")
-                      write(">")
-                      write_escaped(name)
-                      write("<div")
-                      write(">")
-                      write_escaped(title)
-                      write("</div>")
-                      write("</div>")
+                  let i__1 = "t" in {
+                    let i__0 = "n" in {
+                      let title = i__1 in {
+                        let name = i__0 in {
+                          write("<div")
+                          write(">")
+                          write_escaped(name)
+                          write("<div")
+                          write(">")
+                          write_escaped(title)
+                          write("</div>")
+                          write("</div>")
+                        }
+                      }
                     }
                   }
                 }
@@ -1308,15 +1332,17 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 view Test() {
-                  let count = 3 in {
-                    match (0 < count) {
-                      true => {
-                        write("<div")
-                        write(">")
-                        write("positive")
-                        write("</div>")
-                      }
-                      false => {
+                  let i__0 = 3 in {
+                    let count = i__0 in {
+                      match (0 < count) {
+                        true => {
+                          write("<div")
+                          write(">")
+                          write("positive")
+                          write("</div>")
+                        }
+                        false => {
+                        }
                       }
                     }
                   }
@@ -1371,18 +1397,20 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 view Test() {
-                  let count = 3 in {
-                    write("<div")
-                    write(" data-foo=\"bar\"")
-                    write(">")
-                    match (0 < count) {
-                      true => {
-                        write("positive")
+                  let i__0 = 3 in {
+                    let count = i__0 in {
+                      write("<div")
+                      write(" data-foo=\"bar\"")
+                      write(">")
+                      match (0 < count) {
+                        true => {
+                          write("positive")
+                        }
+                        false => {
+                        }
                       }
-                      false => {
-                      }
+                      write("</div>")
                     }
-                    write("</div>")
                   }
                 }
                 -- ir (optimized) --
@@ -1439,11 +1467,13 @@ mod tests {
                   let v_0 = {
                     write("deep")
                   } in {
-                    let children = v_0 in {
-                      write("<div")
-                      write(">")
-                      write_expr(children)
-                      write("</div>")
+                    let i__0 = v_0 in {
+                      let children = i__0 in {
+                        write("<div")
+                        write(">")
+                        write_expr(children)
+                        write("</div>")
+                      }
                     }
                   }
                 }
@@ -1452,10 +1482,12 @@ mod tests {
                   let v_0 = {
                     write("deep")
                   } in {
-                    let children = v_0 in {
-                      write("<div>")
-                      write_expr(children)
-                      write("</div>")
+                    let i__0 = v_0 in {
+                      let children = i__0 in {
+                        write("<div>")
+                        write_expr(children)
+                        write("</div>")
+                      }
                     }
                   }
                 }
@@ -1507,21 +1539,25 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 view Test() {
-                  let class = "x" in {
-                    write("<div")
-                    write(" class=\"")
-                    write_escaped(tw_merge(class))
-                    write("\"")
-                    write(">")
-                    let class = "x" in {
-                      write("<span")
+                  let i__0 = "x" in {
+                    let class = i__0 in {
+                      write("<div")
                       write(" class=\"")
                       write_escaped(tw_merge(class))
                       write("\"")
                       write(">")
-                      write("</span>")
+                      let i__1 = "x" in {
+                        let class = i__1 in {
+                          write("<span")
+                          write(" class=\"")
+                          write_escaped(tw_merge(class))
+                          write("\"")
+                          write(">")
+                          write("</span>")
+                        }
+                      }
+                      write("</div>")
                     }
-                    write("</div>")
                   }
                 }
                 -- ir (optimized) --
@@ -1584,20 +1620,28 @@ mod tests {
                   let v_1 = {
                     write("click")
                   } in {
-                    let children = v_1 in {
-                      let class = "primary" in {
-                        let v_0 = {
-                          write_expr(children)
-                        } in {
-                          let children = v_0 in {
-                            let class = class in {
-                              write("<div")
-                              write(" class=\"")
-                              write_escaped(tw_merge(class))
-                              write("\"")
-                              write(">")
+                    let i__1 = "primary" in {
+                      let i__0 = v_1 in {
+                        let class = i__1 in {
+                          let children = i__0 in {
+                            let v_0 = {
                               write_expr(children)
-                              write("</div>")
+                            } in {
+                              let i__3 = class in {
+                                let i__2 = v_0 in {
+                                  let class = i__3 in {
+                                    let children = i__2 in {
+                                      write("<div")
+                                      write(" class=\"")
+                                      write_escaped(tw_merge(class))
+                                      write("\"")
+                                      write(">")
+                                      write_expr(children)
+                                      write("</div>")
+                                    }
+                                  }
+                                }
+                              }
                             }
                           }
                         }
@@ -1610,14 +1654,18 @@ mod tests {
                   let v_1 = {
                     write("click")
                   } in {
-                    let children = v_1 in {
-                      let v_0 = {
-                        write_expr(children)
-                      } in {
-                        let children = v_0 in {
-                          write("<div class=\"primary\">")
+                    let i__0 = v_1 in {
+                      let children = i__0 in {
+                        let v_0 = {
                           write_expr(children)
-                          write("</div>")
+                        } in {
+                          let i__2 = v_0 in {
+                            let children = i__2 in {
+                              write("<div class=\"primary\">")
+                              write_expr(children)
+                              write("</div>")
+                            }
+                          }
                         }
                       }
                     }
@@ -1666,13 +1714,15 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 view Test() {
-                  let class = "y" in {
-                    write("<span")
-                    write(" class=\"")
-                    write_escaped(tw_merge(class))
-                    write("\"")
-                    write(">")
-                    write("</span>")
+                  let i__0 = "y" in {
+                    let class = i__0 in {
+                      write("<span")
+                      write(" class=\"")
+                      write_escaped(tw_merge(class))
+                      write("\"")
+                      write(">")
+                      write("</span>")
+                    }
                   }
                 }
                 -- ir (optimized) --
@@ -1725,14 +1775,18 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 view Test() {
-                  let class = "main" in {
-                    let class = class in {
-                      write("<div")
-                      write(" class=\"")
-                      write_escaped(tw_merge(class))
-                      write("\"")
-                      write(">")
-                      write("</div>")
+                  let i__0 = "main" in {
+                    let class = i__0 in {
+                      let i__1 = class in {
+                        let class = i__1 in {
+                          write("<div")
+                          write(" class=\"")
+                          write_escaped(tw_merge(class))
+                          write("\"")
+                          write(">")
+                          write("</div>")
+                        }
+                      }
                     }
                   }
                 }
@@ -1786,14 +1840,18 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 view Test() {
-                  let class = "b" in {
-                    let class = class in {
-                      write("<div")
-                      write(" class=\"")
-                      write_escaped(tw_merge(class))
-                      write("\"")
-                      write(">")
-                      write("</div>")
+                  let i__0 = "b" in {
+                    let class = i__0 in {
+                      let i__1 = class in {
+                        let class = i__1 in {
+                          write("<div")
+                          write(" class=\"")
+                          write_escaped(tw_merge(class))
+                          write("\"")
+                          write(">")
+                          write("</div>")
+                        }
+                      }
                     }
                   }
                 }
@@ -1845,11 +1903,13 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 view Test() {
-                  let label = "x" in {
-                    write("<span")
-                    write(">")
-                    write_escaped(label)
-                    write("</span>")
+                  let i__0 = "x" in {
+                    let label = i__0 in {
+                      write("<span")
+                      write(">")
+                      write_escaped(label)
+                      write("</span>")
+                    }
                   }
                 }
                 -- ir (optimized) --
@@ -1904,11 +1964,13 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 view Test() {
-                  let label = "x" in {
-                    write("<span")
-                    write(">")
-                    write_escaped(label)
-                    write("</span>")
+                  let i__0 = "x" in {
+                    let label = i__0 in {
+                      write("<span")
+                      write(">")
+                      write_escaped(label)
+                      write("</span>")
+                    }
                   }
                 }
                 -- ir (optimized) --
@@ -2011,18 +2073,20 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 view Test() {
-                  let tabindex = 2 in {
-                    write("<div")
-                    write(" data-x=\"y\"")
-                    write(">")
-                    match (0 < tabindex) {
-                      true => {
-                        write("focusable")
+                  let i__0 = 2 in {
+                    let tabindex = i__0 in {
+                      write("<div")
+                      write(" data-x=\"y\"")
+                      write(">")
+                      match (0 < tabindex) {
+                        true => {
+                          write("focusable")
+                        }
+                        false => {
+                        }
                       }
-                      false => {
-                      }
+                      write("</div>")
                     }
-                    write("</div>")
                   }
                 }
                 -- ir (optimized) --
@@ -2403,18 +2467,22 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 view Test() {
-                  let text = "a" in {
-                    let label = text in {
-                      write("[")
-                      write_escaped(label)
-                      write("]")
+                  let i__0 = "a" in {
+                    let text = i__0 in {
+                      let label = text in {
+                        write("[")
+                        write_escaped(label)
+                        write("]")
+                      }
                     }
                   }
-                  let text = "b" in {
-                    let label = text in {
-                      write("[")
-                      write_escaped(label)
-                      write("]")
+                  let i__1 = "b" in {
+                    let text = i__1 in {
+                      let label = text in {
+                        write("[")
+                        write_escaped(label)
+                        write("]")
+                      }
                     }
                   }
                 }
@@ -2424,6 +2492,148 @@ mod tests {
                 }
                 -- expected output --
                 [a][b]
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn component_arguments_are_bound_simultaneously() {
+        check(
+            indoc! {r#"
+                component Swap(
+                  a: String,
+                  b: String,
+                ) {
+                  <p>
+                    {a}
+                  </p>
+                  <p>
+                    {b}
+                  </p>
+                }
+
+                view Test {
+                  <let {a: String = "A"}>
+                    <let {b: String = "B"}>
+                      <Swap a={b} b={a}/>
+                    </let>
+                  </let>
+                }
+            "#},
+            "<p>B</p><p>A</p>",
+            expect![[r#"
+                -- ir (unoptimized) --
+                view Test() {
+                  let a = "A" in {
+                    let b = "B" in {
+                      let i__1 = a in {
+                        let i__0 = b in {
+                          let b = i__1 in {
+                            let a = i__0 in {
+                              write("<p")
+                              write(">")
+                              write_escaped(a)
+                              write("</p>")
+                              write("<p")
+                              write(">")
+                              write_escaped(b)
+                              write("</p>")
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                view Test() {
+                  write("<p>B</p><p>A</p>")
+                }
+                -- expected output --
+                <p>B</p><p>A</p>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn rest_spread_attributes_are_evaluated_in_caller_scope() {
+        check(
+            indoc! {r#"
+                component Rows(
+                  items: Array[String],
+                  ...rest,
+                ) {
+                  <for {item in items}>
+                    <div ...rest>
+                      {item}
+                    </div>
+                  </for>
+                }
+
+                view Test {
+                  <let {item: String = "outer"}>
+                    <Rows items={["a", "b"]} id={item}/>
+                  </let>
+                }
+            "#},
+            r#"<div id="outer">a</div><div id="outer">b</div>"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                view Test() {
+                  let item = "outer" in {
+                    let i__1 = ["a", "b"] in {
+                      let i__0 = item in {
+                        let items = i__1 in {
+                          for item in items {
+                            write("<div")
+                            write(" id=\"")
+                            write_escaped(i__0)
+                            write("\"")
+                            write(">")
+                            write_escaped(item)
+                            write("</div>")
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                view Test() {
+                  for item in ["a", "b"] {
+                    write("<div id=\"outer\">")
+                    write_escaped(item)
+                    write("</div>")
+                  }
+                }
+                -- expected output --
+                <div id="outer">a</div><div id="outer">b</div>
                 -- eval (unoptimized) --
                 OK
                 -- eval (optimized) --
@@ -4904,16 +5114,18 @@ mod tests {
                   Blue,
                 }
                 view Test() {
-                  let color = Color::Green in {
-                    match color {
-                      Color::Red => {
-                        write("red")
-                      }
-                      Color::Green => {
-                        write("green")
-                      }
-                      Color::Blue => {
-                        write("blue")
+                  let i__0 = Color::Green in {
+                    let color = i__0 in {
+                      match color {
+                        Color::Red => {
+                          write("red")
+                        }
+                        Color::Green => {
+                          write("green")
+                        }
+                        Color::Blue => {
+                          write("blue")
+                        }
                       }
                     }
                   }
@@ -9939,10 +10151,12 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 view Test() {
-                  let name = "World" in {
-                    write("Hello, ")
-                    write_escaped(name)
-                    write("!")
+                  let i__0 = "World" in {
+                    let name = i__0 in {
+                      write("Hello, ")
+                      write_escaped(name)
+                      write("!")
+                    }
                   }
                 }
                 -- ir (optimized) --
@@ -10002,17 +10216,21 @@ mod tests {
                     write("world")
                     write("</p>")
                   } in {
-                    let title = "Hello" in {
-                      let children = v_0 in {
-                        write("<div")
-                        write(" class=\"card\"")
-                        write(">")
-                        write("<h2")
-                        write(">")
-                        write_escaped(title)
-                        write("</h2>")
-                        write_expr(children)
-                        write("</div>")
+                    let i__1 = v_0 in {
+                      let i__0 = "Hello" in {
+                        let children = i__1 in {
+                          let title = i__0 in {
+                            write("<div")
+                            write(" class=\"card\"")
+                            write(">")
+                            write("<h2")
+                            write(">")
+                            write_escaped(title)
+                            write("</h2>")
+                            write_expr(children)
+                            write("</div>")
+                          }
+                        }
                       }
                     }
                   }
@@ -10022,10 +10240,12 @@ mod tests {
                   let v_0 = {
                     write("<p>world</p>")
                   } in {
-                    let children = v_0 in {
-                      write("<div class=\"card\"><h2>Hello</h2>")
-                      write_expr(children)
-                      write("</div>")
+                    let i__1 = v_0 in {
+                      let children = i__1 in {
+                        write("<div class=\"card\"><h2>Hello</h2>")
+                        write_expr(children)
+                        write("</div>")
+                      }
                     }
                   }
                 }
@@ -10084,22 +10304,26 @@ mod tests {
                     write("hello")
                     write("</p>")
                   } in {
-                    let children = v_1 in {
-                      write("<div")
-                      write(" class=\"outer\"")
-                      write(">")
-                      let v_0 = {
-                        write_expr(children)
-                      } in {
-                        let children = v_0 in {
-                          write("<div")
-                          write(" class=\"inner\"")
-                          write(">")
+                    let i__0 = v_1 in {
+                      let children = i__0 in {
+                        write("<div")
+                        write(" class=\"outer\"")
+                        write(">")
+                        let v_0 = {
                           write_expr(children)
-                          write("</div>")
+                        } in {
+                          let i__1 = v_0 in {
+                            let children = i__1 in {
+                              write("<div")
+                              write(" class=\"inner\"")
+                              write(">")
+                              write_expr(children)
+                              write("</div>")
+                            }
+                          }
                         }
+                        write("</div>")
                       }
-                      write("</div>")
                     }
                   }
                 }
@@ -10108,18 +10332,22 @@ mod tests {
                   let v_1 = {
                     write("<p>hello</p>")
                   } in {
-                    let children = v_1 in {
-                      write("<div class=\"outer\">")
-                      let v_0 = {
-                        write_expr(children)
-                      } in {
-                        let children = v_0 in {
-                          write("<div class=\"inner\">")
+                    let i__0 = v_1 in {
+                      let children = i__0 in {
+                        write("<div class=\"outer\">")
+                        let v_0 = {
                           write_expr(children)
-                          write("</div>")
+                        } in {
+                          let i__1 = v_0 in {
+                            let children = i__1 in {
+                              write("<div class=\"inner\">")
+                              write_expr(children)
+                              write("</div>")
+                            }
+                          }
                         }
+                        write("</div>")
                       }
-                      write("</div>")
                     }
                   }
                 }
@@ -10185,14 +10413,16 @@ mod tests {
                 -- ir (unoptimized) --
                 view Test() {
                   let v_0 = {
-                    let title = "Welcome" in {
-                      write("<header")
-                      write(">")
-                      write("<h1")
-                      write(">")
-                      write_escaped(title)
-                      write("</h1>")
-                      write("</header>")
+                    let i__0 = "Welcome" in {
+                      let title = i__0 in {
+                        write("<header")
+                        write(">")
+                        write("<h1")
+                        write(">")
+                        write_escaped(title)
+                        write("</h1>")
+                        write("</header>")
+                      }
                     }
                     write("<main")
                     write(">")
@@ -10209,12 +10439,14 @@ mod tests {
                     write("</p>")
                     write("</footer>")
                   } in {
-                    let children = v_0 in {
-                      write("<div")
-                      write(" class=\"layout\"")
-                      write(">")
-                      write_expr(children)
-                      write("</div>")
+                    let i__1 = v_0 in {
+                      let children = i__1 in {
+                        write("<div")
+                        write(" class=\"layout\"")
+                        write(">")
+                        write_expr(children)
+                        write("</div>")
+                      }
                     }
                   }
                 }
@@ -10224,10 +10456,12 @@ mod tests {
                     write("<header><h1>Welcome</h1></header><main><p>Hello world</p>")
                     write("</main><footer><p>Copyright 2024</p></footer>")
                   } in {
-                    let children = v_0 in {
-                      write("<div class=\"layout\">")
-                      write_expr(children)
-                      write("</div>")
+                    let i__1 = v_0 in {
+                      let children = i__1 in {
+                        write("<div class=\"layout\">")
+                        write_expr(children)
+                        write("</div>")
+                      }
                     }
                   }
                 }
@@ -10281,17 +10515,19 @@ mod tests {
                     write("hi")
                     write("</span>")
                   } in {
-                    let children = v_0 in {
-                      write("<div")
-                      write(" class=\"first\"")
-                      write(">")
-                      write_expr(children)
-                      write("</div>")
-                      write("<div")
-                      write(" class=\"second\"")
-                      write(">")
-                      write_expr(children)
-                      write("</div>")
+                    let i__0 = v_0 in {
+                      let children = i__0 in {
+                        write("<div")
+                        write(" class=\"first\"")
+                        write(">")
+                        write_expr(children)
+                        write("</div>")
+                        write("<div")
+                        write(" class=\"second\"")
+                        write(">")
+                        write_expr(children)
+                        write("</div>")
+                      }
                     }
                   }
                 }
@@ -10300,12 +10536,14 @@ mod tests {
                   let v_0 = {
                     write("<span>hi</span>")
                   } in {
-                    let children = v_0 in {
-                      write("<div class=\"first\">")
-                      write_expr(children)
-                      write("</div><div class=\"second\">")
-                      write_expr(children)
-                      write("</div>")
+                    let i__0 = v_0 in {
+                      let children = i__0 in {
+                        write("<div class=\"first\">")
+                        write_expr(children)
+                        write("</div><div class=\"second\">")
+                        write_expr(children)
+                        write("</div>")
+                      }
                     }
                   }
                 }
@@ -10373,11 +10611,13 @@ mod tests {
                   next: Option[test::Node],
                 }
                 component NodeView(node: test::Node) {
-                  let text = node.value in {
-                    write("<strong")
-                    write(">")
-                    write_escaped(text)
-                    write("</strong>")
+                  let i__0 = node.value in {
+                    let text = i__0 in {
+                      write("<strong")
+                      write(">")
+                      write_escaped(text)
+                      write("</strong>")
+                    }
                   }
                   match node.next {
                     Some(v_1) => {
@@ -10406,10 +10646,12 @@ mod tests {
                   next: Option[test::Node],
                 }
                 component NodeView(node: test::Node) {
-                  let text = node.value in {
-                    write("<strong>")
-                    write_escaped(text)
-                    write("</strong>")
+                  let i__0 = node.value in {
+                    let text = i__0 in {
+                      write("<strong>")
+                      write_escaped(text)
+                      write("</strong>")
+                    }
                   }
                   match node.next {
                     Some(v_1) => {
@@ -10595,11 +10837,13 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 view Test() {
-                  let title = "New card" in {
-                    write("<div")
-                    write(">")
-                    write_escaped(title)
-                    write("</div>")
+                  let i__0 = "New card" in {
+                    let title = i__0 in {
+                      write("<div")
+                      write(">")
+                      write_escaped(title)
+                      write("</div>")
+                    }
                   }
                 }
                 -- ir (optimized) --
@@ -10643,11 +10887,13 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 view Test() {
-                  let title = "Custom title" in {
-                    write("<div")
-                    write(">")
-                    write_escaped(title)
-                    write("</div>")
+                  let i__0 = "Custom title" in {
+                    let title = i__0 in {
+                      write("<div")
+                      write(">")
+                      write_escaped(title)
+                      write("</div>")
+                    }
                   }
                 }
                 -- ir (optimized) --
@@ -10694,14 +10940,18 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 view Test() {
-                  let title = "Hello" in {
-                    let subtitle = "No subtitle" in {
-                      write("<div")
-                      write(">")
-                      write_escaped(title)
-                      write(" - ")
-                      write_escaped(subtitle)
-                      write("</div>")
+                  let i__1 = "No subtitle" in {
+                    let i__0 = "Hello" in {
+                      let subtitle = i__1 in {
+                        let title = i__0 in {
+                          write("<div")
+                          write(">")
+                          write_escaped(title)
+                          write(" - ")
+                          write_escaped(subtitle)
+                          write("</div>")
+                        }
+                      }
                     }
                   }
                 }
@@ -10749,14 +10999,18 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 view Test() {
-                  let title = "Hello" in {
-                    let subtitle = "World" in {
-                      write("<div")
-                      write(">")
-                      write_escaped(title)
-                      write(" - ")
-                      write_escaped(subtitle)
-                      write("</div>")
+                  let i__1 = "World" in {
+                    let i__0 = "Hello" in {
+                      let subtitle = i__1 in {
+                        let title = i__0 in {
+                          write("<div")
+                          write(">")
+                          write_escaped(title)
+                          write(" - ")
+                          write_escaped(subtitle)
+                          write("</div>")
+                        }
+                      }
                     }
                   }
                 }
@@ -10805,17 +11059,23 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 view Test() {
-                  let title = "Default" in {
-                    let subtitle = "Custom" in {
-                      let footer = "End" in {
-                        write("<div")
-                        write(">")
-                        write_escaped(title)
-                        write(" - ")
-                        write_escaped(subtitle)
-                        write(" - ")
-                        write_escaped(footer)
-                        write("</div>")
+                  let i__2 = "End" in {
+                    let i__1 = "Custom" in {
+                      let i__0 = "Default" in {
+                        let footer = i__2 in {
+                          let subtitle = i__1 in {
+                            let title = i__0 in {
+                              write("<div")
+                              write(">")
+                              write_escaped(title)
+                              write(" - ")
+                              write_escaped(subtitle)
+                              write(" - ")
+                              write_escaped(footer)
+                              write("</div>")
+                            }
+                          }
+                        }
                       }
                     }
                   }
@@ -10867,26 +11127,32 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 view Test() {
-                  let title = "Hello" in {
-                    let children = Fragment::empty() in {
-                      write("<div")
-                      write(" class=\"card\"")
-                      write(">")
-                      write("<h2")
-                      write(">")
-                      write_escaped(title)
-                      write("</h2>")
-                      write_expr(children)
-                      write("</div>")
+                  let i__1 = Fragment::empty() in {
+                    let i__0 = "Hello" in {
+                      let children = i__1 in {
+                        let title = i__0 in {
+                          write("<div")
+                          write(" class=\"card\"")
+                          write(">")
+                          write("<h2")
+                          write(">")
+                          write_escaped(title)
+                          write("</h2>")
+                          write_expr(children)
+                          write("</div>")
+                        }
+                      }
                     }
                   }
                 }
                 -- ir (optimized) --
                 view Test() {
-                  let children = Fragment::empty() in {
-                    write("<div class=\"card\"><h2>Hello</h2>")
-                    write_expr(children)
-                    write("</div>")
+                  let i__1 = Fragment::empty() in {
+                    let children = i__1 in {
+                      write("<div class=\"card\"><h2>Hello</h2>")
+                      write_expr(children)
+                      write("</div>")
+                    }
                   }
                 }
                 -- expected output --
@@ -10943,31 +11209,39 @@ mod tests {
                     write("body")
                     write("</p>")
                   } in {
-                    let title = "With" in {
-                      let children = v_0 in {
-                        write("<div")
-                        write(" class=\"card\"")
-                        write(">")
-                        write("<h2")
-                        write(">")
-                        write_escaped(title)
-                        write("</h2>")
-                        write_expr(children)
-                        write("</div>")
+                    let i__1 = v_0 in {
+                      let i__0 = "With" in {
+                        let children = i__1 in {
+                          let title = i__0 in {
+                            write("<div")
+                            write(" class=\"card\"")
+                            write(">")
+                            write("<h2")
+                            write(">")
+                            write_escaped(title)
+                            write("</h2>")
+                            write_expr(children)
+                            write("</div>")
+                          }
+                        }
                       }
                     }
                   }
-                  let title = "Without" in {
-                    let children = Fragment::empty() in {
-                      write("<div")
-                      write(" class=\"card\"")
-                      write(">")
-                      write("<h2")
-                      write(">")
-                      write_escaped(title)
-                      write("</h2>")
-                      write_expr(children)
-                      write("</div>")
+                  let i__3 = Fragment::empty() in {
+                    let i__2 = "Without" in {
+                      let children = i__3 in {
+                        let title = i__2 in {
+                          write("<div")
+                          write(" class=\"card\"")
+                          write(">")
+                          write("<h2")
+                          write(">")
+                          write_escaped(title)
+                          write("</h2>")
+                          write_expr(children)
+                          write("</div>")
+                        }
+                      }
                     }
                   }
                 }
@@ -10976,16 +11250,20 @@ mod tests {
                   let v_0 = {
                     write("<p>body</p>")
                   } in {
-                    let children = v_0 in {
-                      write("<div class=\"card\"><h2>With</h2>")
+                    let i__1 = v_0 in {
+                      let children = i__1 in {
+                        write("<div class=\"card\"><h2>With</h2>")
+                        write_expr(children)
+                        write("</div>")
+                      }
+                    }
+                  }
+                  let i__3 = Fragment::empty() in {
+                    let children = i__3 in {
+                      write("<div class=\"card\"><h2>Without</h2>")
                       write_expr(children)
                       write("</div>")
                     }
-                  }
-                  let children = Fragment::empty() in {
-                    write("<div class=\"card\"><h2>Without</h2>")
-                    write_expr(children)
-                    write("</div>")
                   }
                 }
                 -- expected output --
@@ -11550,52 +11828,56 @@ mod tests {
                   Todo {label: String, done: Bool},
                 }
                 view Test() {
-                  let item = Item::Todo {label: "Buy milk", done: true} in {
-                    match item {
-                      Item::Todo(label: v_1, done: v_2) => {
-                        let l = v_1 in {
-                          let d = v_2 in {
-                            match d {
-                              true => {
-                                write("[x]")
+                  let i__0 = Item::Todo {label: "Buy milk", done: true} in {
+                    let item = i__0 in {
+                      match item {
+                        Item::Todo(label: v_1, done: v_2) => {
+                          let l = v_1 in {
+                            let d = v_2 in {
+                              match d {
+                                true => {
+                                  write("[x]")
+                                }
+                                false => {
+                                }
                               }
-                              false => {
+                              match (!d) {
+                                true => {
+                                  write("[ ]")
+                                }
+                                false => {
+                                }
                               }
+                              write_escaped(l)
                             }
-                            match (!d) {
-                              true => {
-                                write("[ ]")
-                              }
-                              false => {
-                              }
-                            }
-                            write_escaped(l)
                           }
                         }
                       }
                     }
                   }
                   write(",")
-                  let item = Item::Todo {label: "Walk dog", done: false} in {
-                    match item {
-                      Item::Todo(label: v_1, done: v_2) => {
-                        let l = v_1 in {
-                          let d = v_2 in {
-                            match d {
-                              true => {
-                                write("[x]")
+                  let i__1 = Item::Todo {label: "Walk dog", done: false} in {
+                    let item = i__1 in {
+                      match item {
+                        Item::Todo(label: v_1, done: v_2) => {
+                          let l = v_1 in {
+                            let d = v_2 in {
+                              match d {
+                                true => {
+                                  write("[x]")
+                                }
+                                false => {
+                                }
                               }
-                              false => {
+                              match (!d) {
+                                true => {
+                                  write("[ ]")
+                                }
+                                false => {
+                                }
                               }
+                              write_escaped(l)
                             }
-                            match (!d) {
-                              true => {
-                                write("[ ]")
-                              }
-                              false => {
-                              }
-                            }
-                            write_escaped(l)
                           }
                         }
                       }
@@ -11720,64 +12002,70 @@ mod tests {
                   HoursAgo {count: Int},
                 }
                 view Test() {
-                  let time = TimeAgo::MinutesAgo {count: 1} in {
-                    match time {
-                      TimeAgo::MinutesAgo(count: v_1) => {
-                        let c = v_1 in {
-                          write_escaped(match (c == 1) {
-                            true => "1 minute ago",
-                            false => (c.to_string() + " minutes ago"),
-                          })
+                  let i__0 = TimeAgo::MinutesAgo {count: 1} in {
+                    let time = i__0 in {
+                      match time {
+                        TimeAgo::MinutesAgo(count: v_1) => {
+                          let c = v_1 in {
+                            write_escaped(match (c == 1) {
+                              true => "1 minute ago",
+                              false => (c.to_string() + " minutes ago"),
+                            })
+                          }
                         }
-                      }
-                      TimeAgo::HoursAgo(count: v_2) => {
-                        let c = v_2 in {
-                          write_escaped(match (c == 1) {
-                            true => "1 hour ago",
-                            false => (c.to_string() + " hours ago"),
-                          })
-                        }
-                      }
-                    }
-                  }
-                  write(",")
-                  let time = TimeAgo::MinutesAgo {count: 5} in {
-                    match time {
-                      TimeAgo::MinutesAgo(count: v_1) => {
-                        let c = v_1 in {
-                          write_escaped(match (c == 1) {
-                            true => "1 minute ago",
-                            false => (c.to_string() + " minutes ago"),
-                          })
-                        }
-                      }
-                      TimeAgo::HoursAgo(count: v_2) => {
-                        let c = v_2 in {
-                          write_escaped(match (c == 1) {
-                            true => "1 hour ago",
-                            false => (c.to_string() + " hours ago"),
-                          })
+                        TimeAgo::HoursAgo(count: v_2) => {
+                          let c = v_2 in {
+                            write_escaped(match (c == 1) {
+                              true => "1 hour ago",
+                              false => (c.to_string() + " hours ago"),
+                            })
+                          }
                         }
                       }
                     }
                   }
                   write(",")
-                  let time = TimeAgo::HoursAgo {count: 1} in {
-                    match time {
-                      TimeAgo::MinutesAgo(count: v_1) => {
-                        let c = v_1 in {
-                          write_escaped(match (c == 1) {
-                            true => "1 minute ago",
-                            false => (c.to_string() + " minutes ago"),
-                          })
+                  let i__1 = TimeAgo::MinutesAgo {count: 5} in {
+                    let time = i__1 in {
+                      match time {
+                        TimeAgo::MinutesAgo(count: v_1) => {
+                          let c = v_1 in {
+                            write_escaped(match (c == 1) {
+                              true => "1 minute ago",
+                              false => (c.to_string() + " minutes ago"),
+                            })
+                          }
+                        }
+                        TimeAgo::HoursAgo(count: v_2) => {
+                          let c = v_2 in {
+                            write_escaped(match (c == 1) {
+                              true => "1 hour ago",
+                              false => (c.to_string() + " hours ago"),
+                            })
+                          }
                         }
                       }
-                      TimeAgo::HoursAgo(count: v_2) => {
-                        let c = v_2 in {
-                          write_escaped(match (c == 1) {
-                            true => "1 hour ago",
-                            false => (c.to_string() + " hours ago"),
-                          })
+                    }
+                  }
+                  write(",")
+                  let i__2 = TimeAgo::HoursAgo {count: 1} in {
+                    let time = i__2 in {
+                      match time {
+                        TimeAgo::MinutesAgo(count: v_1) => {
+                          let c = v_1 in {
+                            write_escaped(match (c == 1) {
+                              true => "1 minute ago",
+                              false => (c.to_string() + " minutes ago"),
+                            })
+                          }
+                        }
+                        TimeAgo::HoursAgo(count: v_2) => {
+                          let c = v_2 in {
+                            write_escaped(match (c == 1) {
+                              true => "1 hour ago",
+                              false => (c.to_string() + " hours ago"),
+                            })
+                          }
                         }
                       }
                     }
@@ -11899,14 +12187,16 @@ mod tests {
                   Snippet {language: String, code: String},
                 }
                 view Test() {
-                  let block = CodeBlock::Snippet {language: "rust", code: "fn main()"} in {
-                    match block {
-                      CodeBlock::Snippet(code: v_2) => {
-                        let c = v_2 in {
-                          write("<code")
-                          write(">")
-                          write_escaped(c)
-                          write("</code>")
+                  let i__0 = CodeBlock::Snippet {language: "rust", code: "fn main()"} in {
+                    let block = i__0 in {
+                      match block {
+                        CodeBlock::Snippet(code: v_2) => {
+                          let c = v_2 in {
+                            write("<code")
+                            write(">")
+                            write_escaped(c)
+                            write("</code>")
+                          }
                         }
                       }
                     }
@@ -11989,28 +12279,30 @@ mod tests {
                   Button {disabled: Bool, type: String},
                 }
                 view Test() {
-                  let el = ButtonElement::Button {disabled: false, type: "submit"} in {
-                    match el {
-                      ButtonElement::Link(href: v_1) => {
-                        let h = v_1 in {
-                          write("<a")
-                          write(" href=\"")
-                          write_escaped(h)
-                          write("\"")
-                          write(">")
-                          write("link")
-                          write("</a>")
+                  let i__0 = ButtonElement::Button {disabled: false, type: "submit"} in {
+                    let el = i__0 in {
+                      match el {
+                        ButtonElement::Link(href: v_1) => {
+                          let h = v_1 in {
+                            write("<a")
+                            write(" href=\"")
+                            write_escaped(h)
+                            write("\"")
+                            write(">")
+                            write("link")
+                            write("</a>")
+                          }
                         }
-                      }
-                      ButtonElement::Button(type: v_3) => {
-                        let t = v_3 in {
-                          write("<button")
-                          write(" type=\"")
-                          write_escaped(t)
-                          write("\"")
-                          write(">")
-                          write("btn")
-                          write("</button>")
+                        ButtonElement::Button(type: v_3) => {
+                          let t = v_3 in {
+                            write("<button")
+                            write(" type=\"")
+                            write_escaped(t)
+                            write("\"")
+                            write(">")
+                            write("btn")
+                            write("</button>")
+                          }
                         }
                       }
                     }
@@ -12426,12 +12718,14 @@ mod tests {
                     write("hi")
                     write("</b>")
                   } in {
-                    let children = v_0 in {
-                      let x = children in {
-                        write("<div")
-                        write(">")
-                        write_expr(x)
-                        write("</div>")
+                    let i__0 = v_0 in {
+                      let children = i__0 in {
+                        let x = children in {
+                          write("<div")
+                          write(">")
+                          write_expr(x)
+                          write("</div>")
+                        }
                       }
                     }
                   }
@@ -12441,11 +12735,13 @@ mod tests {
                   let v_0 = {
                     write("<b>hi</b>")
                   } in {
-                    let children = v_0 in {
-                      let x = children in {
-                        write("<div>")
-                        write_expr(x)
-                        write("</div>")
+                    let i__0 = v_0 in {
+                      let children = i__0 in {
+                        let x = children in {
+                          write("<div>")
+                          write_expr(x)
+                          write("</div>")
+                        }
                       }
                     }
                   }
@@ -12500,20 +12796,24 @@ mod tests {
                   let v_1 = {
                     write("z")
                   } in {
-                    let children = v_1 in {
-                      write("<section")
-                      write(">")
-                      let v_0 = {
-                        write_expr(children)
-                      } in {
-                        let children = v_0 in {
-                          write("<em")
-                          write(">")
+                    let i__0 = v_1 in {
+                      let children = i__0 in {
+                        write("<section")
+                        write(">")
+                        let v_0 = {
                           write_expr(children)
-                          write("</em>")
+                        } in {
+                          let i__1 = v_0 in {
+                            let children = i__1 in {
+                              write("<em")
+                              write(">")
+                              write_expr(children)
+                              write("</em>")
+                            }
+                          }
                         }
+                        write("</section>")
                       }
-                      write("</section>")
                     }
                   }
                 }
@@ -12522,18 +12822,22 @@ mod tests {
                   let v_1 = {
                     write("z")
                   } in {
-                    let children = v_1 in {
-                      write("<section>")
-                      let v_0 = {
-                        write_expr(children)
-                      } in {
-                        let children = v_0 in {
-                          write("<em>")
+                    let i__0 = v_1 in {
+                      let children = i__0 in {
+                        write("<section>")
+                        let v_0 = {
                           write_expr(children)
-                          write("</em>")
+                        } in {
+                          let i__1 = v_0 in {
+                            let children = i__1 in {
+                              write("<em>")
+                              write_expr(children)
+                              write("</em>")
+                            }
+                          }
                         }
+                        write("</section>")
                       }
-                      write("</section>")
                     }
                   }
                 }
@@ -13113,25 +13417,27 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 view Test() {
-                  let checked = Option[Bool]::Some(true) in {
-                    match checked {
-                      Some(v_1) => {
-                        match v_1 {
-                          true => {
-                            write("<span")
-                            write(">")
-                            write("yes")
-                            write("</span>")
-                          }
-                          false => {
-                            write("<span")
-                            write(">")
-                            write("no")
-                            write("</span>")
+                  let i__0 = Option[Bool]::Some(true) in {
+                    let checked = i__0 in {
+                      match checked {
+                        Some(v_1) => {
+                          match v_1 {
+                            true => {
+                              write("<span")
+                              write(">")
+                              write("yes")
+                              write("</span>")
+                            }
+                            false => {
+                              write("<span")
+                              write(">")
+                              write("no")
+                              write("</span>")
+                            }
                           }
                         }
-                      }
-                      None => {
+                        None => {
+                        }
                       }
                     }
                   }
@@ -13512,11 +13818,13 @@ mod tests {
                   for s in ["a", "b"] {
                     match (s == "a") {
                       true => {
-                        let label = s in {
-                          write("<span")
-                          write(">")
-                          write_escaped(label)
-                          write("</span>")
+                        let i__0 = s in {
+                          let label = i__0 in {
+                            write("<span")
+                            write(">")
+                            write_escaped(label)
+                            write("</span>")
+                          }
                         }
                       }
                       false => {
@@ -13529,10 +13837,12 @@ mod tests {
                   for s in ["a", "b"] {
                     match (s == "a") {
                       true => {
-                        let label = s in {
-                          write("<span>")
-                          write_escaped(label)
-                          write("</span>")
+                        let i__0 = s in {
+                          let label = i__0 in {
+                            write("<span>")
+                            write_escaped(label)
+                            write("</span>")
+                          }
                         }
                       }
                       false => {

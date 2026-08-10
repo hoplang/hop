@@ -49,6 +49,20 @@ impl VarName {
         Ok(VarName { value: name })
     }
 
+    /// Mint a compiler-internal variable name `{prefix}__{i}`.
+    ///
+    /// Surface syntax cannot express consecutive underscores, so these names are
+    /// disjoint from anything a hop program can bind.
+    pub fn internal(prefix: &str, i: usize) -> Self {
+        debug_assert!(
+            Self::validate(prefix).is_ok(),
+            "internal name prefix must itself be a legal variable name: {prefix}"
+        );
+        VarName {
+            value: CheapString::new(format!("{prefix}__{i}")),
+        }
+    }
+
     /// Validate a variable name string (snake_case only)
     fn validate(name: &str) -> Result<(), InvalidVarNameError> {
         if name.is_empty() {

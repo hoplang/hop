@@ -1,10 +1,12 @@
 use super::inlined_ast::{InlinedComponentDeclaration, InlinedViewDeclaration};
 use super::inlined_node::InlinedNode;
 use crate::document_id::DocumentId;
+use crate::expr::TypedExpr;
 use crate::expr::patterns::{EnumMatchArm, Match};
 use crate::hop::typing::typed_ast::{TypedAst, TypedComponentDeclaration, TypedViewDeclaration};
-use crate::hop::typing::typed_node::{TypedAttribute, TypedNode};
+use crate::hop::typing::typed_node::{TypedAttribute, TypedAttributeValue, TypedNode};
 use crate::symbols::type_name::TypeName;
+use crate::symbols::var_name::VarName;
 use std::collections::{HashMap, HashSet};
 
 /// The Inliner transforms ASTs by replacing ComponentInvocation nodes with their
@@ -45,6 +47,8 @@ struct InlinerState<'a> {
     emitted_defs: HashSet<TypeName>,
     /// Collected component definitions for recursive components
     component_defs: Vec<InlinedComponentDeclaration>,
+    /// Counter behind the internal names minted for hoisted caller-scope values
+    var_counter: usize,
 }
 
 impl<'a> InlinerState<'a> {
@@ -53,7 +57,15 @@ impl<'a> InlinerState<'a> {
             asts,
             emitted_defs: HashSet::new(),
             component_defs: Vec::new(),
+            var_counter: 0,
         }
+    }
+
+    /// Mint a name that no binder in any inlined body can shadow.
+    fn fresh_var(&mut self) -> VarName {
+        let name = VarName::internal("i", self.var_counter);
+        self.var_counter += 1;
+        name
     }
 
     /// Emit a component definition for a recursive component (if not already emitted).
@@ -122,17 +134,58 @@ impl<'a> InlinerState<'a> {
                         args: args.clone(),
                     });
                 } else {
-                    let mut forwarded = extra_attributes.clone();
+                    let mut hoisted: Vec<(VarName, TypedExpr)> = Vec::new();
+
+                    let mut forwarded: Vec<TypedAttribute> =
+                        Vec::with_capacity(extra_attributes.len());
+                    for attribute in extra_attributes {
+                        let value = match &attribute.value {
+                            Some(TypedAttributeValue::Expression(expr)) => {
+                                let var = self.fresh_var();
+                                hoisted.push((var.clone(), expr.clone()));
+                                Some(TypedAttributeValue::Expression(TypedExpr::Var {
+                                    value: var,
+                                    kind: expr.get_type(),
+                                }))
+                            }
+                            // String and valueless attributes carry no scope.
+                            value => value.clone(),
+                        };
+                        forwarded.push(TypedAttribute {
+                            name: attribute.name.clone(),
+                            value,
+                        });
+                    }
                     if rest_spread.is_some() {
+                        // Already hoisted at the invocation that wrote them.
                         forwarded.extend_from_slice(active_rest);
                     }
 
-                    // Inline the body, then nest single-binding Lets from inside out
+                    let mut params: Vec<(VarName, TypedExpr)> = Vec::with_capacity(args.len());
+                    for binding in args {
+                        let var = self.fresh_var();
+                        hoisted.push((var.clone(), binding.expr.clone()));
+                        params.push((
+                            binding.name.clone(),
+                            TypedExpr::Var {
+                                value: var,
+                                kind: binding.expr.get_type(),
+                            },
+                        ));
+                    }
+
                     let mut children = self.inline_nodes(&component.children, &forwarded);
-                    for binding in args.iter().rev() {
+                    for (var, value) in params.into_iter() {
                         children = vec![InlinedNode::Let {
-                            var: binding.name.clone(),
-                            value: binding.expr.clone(),
+                            var,
+                            value,
+                            children,
+                        }];
+                    }
+                    for (var, value) in hoisted.into_iter() {
+                        children = vec![InlinedNode::Let {
+                            var,
+                            value,
                             children,
                         }];
                     }
@@ -366,10 +419,12 @@ mod tests {
             )],
             expect![[r#"
                 view Main() {
-                  <let {label = "Hi"}>
-                    <button class="btn" id="submit" type="button">
-                      {label}
-                    </button>
+                  <let {i__0 = "Hi"}>
+                    <let {label = i__0}>
+                      <button class="btn" id="submit" type="button">
+                        {label}
+                      </button>
+                    </let>
                   </let>
                 }
             "#]],
@@ -400,13 +455,15 @@ mod tests {
             )],
             expect![[r#"
                 view Main() {
-                  <let {title = "Hi"}>
-                    <div>
-                      <h1>
-                        {title}
-                      </h1>
-                      <div id="x"></div>
-                    </div>
+                  <let {i__0 = "Hi"}>
+                    <let {title = i__0}>
+                      <div>
+                        <h1>
+                          {title}
+                        </h1>
+                        <div id="x"></div>
+                      </div>
+                    </let>
                   </let>
                 }
             "#]],
@@ -432,10 +489,12 @@ mod tests {
             )],
             expect![[r#"
                 view Main() {
-                  <let {show = true}>
-                    <if {show}>
-                      <div id="x"></div>
-                    </if>
+                  <let {i__0 = true}>
+                    <let {show = i__0}>
+                      <if {show}>
+                        <div id="x"></div>
+                      </if>
+                    </let>
                   </let>
                 }
             "#]],
@@ -526,12 +585,14 @@ mod tests {
             )],
             expect![[r#"
                 view Main(name: String) {
-                  <let {name = name}>
-                    <div>
-                      Hello, 
-                      {name}
-                      !
-                    </div>
+                  <let {i__0 = name}>
+                    <let {name = i__0}>
+                      <div>
+                        Hello, 
+                        {name}
+                        !
+                      </div>
+                    </let>
                   </let>
                 }
             "#]],
@@ -634,10 +695,12 @@ mod tests {
                       </p>
                     }
                   }>
-                    <let {children = v_0}>
-                      <div class="card">
-                        {children}
-                      </div>
+                    <let {i__0 = v_0}>
+                      <let {children = i__0}>
+                        <div class="card">
+                          {children}
+                        </div>
+                      </let>
                     </let>
                   </let>
                 }
@@ -668,14 +731,18 @@ mod tests {
             )],
             expect![[r#"
                 view Main(title: String) {
-                  <let {label = title}>
-                    <div class="outer">
-                      <let {text = label}>
-                        <span>
-                          {text}
-                        </span>
-                      </let>
-                    </div>
+                  <let {i__0 = title}>
+                    <let {label = i__0}>
+                      <div class="outer">
+                        <let {i__1 = label}>
+                          <let {text = i__1}>
+                            <span>
+                              {text}
+                            </span>
+                          </let>
+                        </let>
+                      </div>
+                    </let>
                   </let>
                 }
             "#]],
@@ -763,10 +830,12 @@ mod tests {
             expect![[r#"
                 view Main() {
                   <div>
-                    <let {label = "Click me"}>
-                      <button>
-                        {label}
-                      </button>
+                    <let {i__0 = "Click me"}>
+                      <let {label = i__0}>
+                        <button>
+                          {label}
+                        </button>
+                      </let>
                     </let>
                   </div>
                 }
@@ -813,12 +882,14 @@ mod tests {
                 view HomePage(page_title: String) {
                   <let {
                     v_0 = {
-                      <let {title = page_title}>
-                        <header>
-                          <h1>
-                            {title}
-                          </h1>
-                        </header>
+                      <let {i__0 = page_title}>
+                        <let {title = i__0}>
+                          <header>
+                            <h1>
+                              {title}
+                            </h1>
+                          </header>
+                        </let>
                       </let>
                       <main>
                         <p>
@@ -832,10 +903,12 @@ mod tests {
                       </footer>
                     }
                   }>
-                    <let {children = v_0}>
-                      <div class="layout">
-                        {children}
-                      </div>
+                    <let {i__1 = v_0}>
+                      <let {children = i__1}>
+                        <div class="layout">
+                          {children}
+                        </div>
+                      </let>
                     </let>
                   </let>
                 }
@@ -1046,10 +1119,12 @@ mod tests {
             )],
             expect![[r#"
                 component NodeView(node: main::Node) {
-                  <let {text = node.value}>
-                    <strong>
-                      {text}
-                    </strong>
+                  <let {i__0 = node.value}>
+                    <let {text = i__0}>
+                      <strong>
+                        {text}
+                      </strong>
+                    </let>
                   </let>
                   <match {node.next}>
                     <case {Some(v_1)}>
