@@ -9,7 +9,7 @@ use std::hash::Hash;
 
 use crate::symbols::var_name::VarName;
 
-/// Counter for generating fresh variable names like "v_0", "v_1", etc.
+/// Counter for generating fresh variable names like "v__0", "v__1", etc.
 #[derive(Debug, Clone)]
 pub struct FreshVarCounter {
     counter: usize,
@@ -21,11 +21,11 @@ impl FreshVarCounter {
     }
 
     /// Generate a fresh variable name.
-    /// Returns names like "v_0", "v_1", "v_2", etc.
+    /// Returns names like "v__0", "v__1", "v__2", etc.
     pub fn fresh_var(&mut self) -> VarName {
-        let name = format!("v_{}", self.counter);
+        let name = VarName::internal("v", self.counter);
         self.counter += 1;
-        VarName::new(&name).unwrap()
+        name
     }
 }
 
@@ -61,7 +61,7 @@ impl<K: Hash + Eq + Clone, V> VariableScope<K, V> {
     }
 
     /// Generate a fresh variable name.
-    /// Returns names like "v_0", "v_1", "v_2", etc.
+    /// Returns names like "v__0", "v__1", "v__2", etc.
     pub fn fresh_var(&mut self) -> VarName {
         self.fresh_vars.fresh_var()
     }

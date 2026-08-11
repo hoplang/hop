@@ -689,13 +689,13 @@ mod tests {
             expect![[r#"
                 view Main() {
                   <let {
-                    v_0 = {
+                    v__0 = {
                       <p>
                         content
                       </p>
                     }
                   }>
-                    <let {i__0 = v_0}>
+                    <let {i__0 = v__0}>
                       <let {children = i__0}>
                         <div class="card">
                           {children}
@@ -881,7 +881,7 @@ mod tests {
             expect![[r#"
                 view HomePage(page_title: String) {
                   <let {
-                    v_0 = {
+                    v__0 = {
                       <let {i__0 = page_title}>
                         <let {title = i__0}>
                           <header>
@@ -903,7 +903,7 @@ mod tests {
                       </footer>
                     }
                   }>
-                    <let {i__1 = v_0}>
+                    <let {i__1 = v__0}>
                       <let {children = i__1}>
                         <div class="layout">
                           {children}
@@ -1070,8 +1070,8 @@ mod tests {
                     {node.value}
                   </span>
                   <match {node.next}>
-                    <case {Some(v_1)}>
-                      <let {next = v_1}>
+                    <case {Some(v__1)}>
+                      <let {next = v__1}>
                         <NodeView node={next}/>
                       </let>
                     </case>
@@ -1127,8 +1127,8 @@ mod tests {
                     </let>
                   </let>
                   <match {node.next}>
-                    <case {Some(v_1)}>
-                      <let {next = v_1}>
+                    <case {Some(v__1)}>
+                      <let {next = v__1}>
                         <NodeView node={next}/>
                       </let>
                     </case>

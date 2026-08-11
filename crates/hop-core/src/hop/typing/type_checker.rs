@@ -2381,9 +2381,9 @@ mod tests {
 
                 component Main {
                   <let {
-                    v_0 = {}
+                    v__0 = {}
                   }>
-                    <Card children={v_0}/>
+                    <Card children={v__0}/>
                   </let>
                 }
             "#]],
@@ -2436,9 +2436,9 @@ mod tests {
 
                 component Main {
                   <let {
-                    v_0 = {}
+                    v__0 = {}
                   }>
-                    <Card children={v_0}/>
+                    <Card children={v__0}/>
                   </let>
                 }
             "#]],
@@ -2510,11 +2510,11 @@ mod tests {
                 component Tree(children: Fragment) {
                   <div>
                     <let {
-                      v_0 = {
+                      v__0 = {
                         {children}
                       }
                     }>
-                      <Tree children={v_0}/>
+                      <Tree children={v__0}/>
                     </let>
                   </div>
                 }
@@ -3815,11 +3815,11 @@ mod tests {
                 -- main.hop --
                 component Bar {
                   <let {
-                    v_0 = {
+                    v__0 = {
                       Here's the content for the children
                     }
                   }>
-                    <Main children={v_0}/>
+                    <Main children={v__0}/>
                   </let>
                 }
 
@@ -4930,13 +4930,13 @@ mod tests {
 
                 component Main(t: main::Tree) {
                   <match {t.root}>
-                    <case {Node::Leaf{label: v_1}}>
-                      <let {label = v_1}>
+                    <case {Node::Leaf{label: v__1}}>
+                      <let {label = v__1}>
                         {label}
                       </let>
                     </case>
-                    <case {Node::Branch{children: v_2}}>
-                      <let {children = v_2}>
+                    <case {Node::Branch{children: v__2}}>
+                      <let {children = v__2}>
                         <for {_ in children}>
                           ...
                         </for>
@@ -5377,8 +5377,8 @@ mod tests {
                 -- main.hop --
                 component Main(x: Option[String]) {
                   <match {x}>
-                    <case {Some(v_1)}>
-                      <let {y = v_1}>
+                    <case {Some(v__1)}>
+                      <let {y = v__1}>
                         found 
                         {y}
                       </let>
@@ -5457,8 +5457,8 @@ mod tests {
 
                 component Main {
                   <match {Status::Active {name: "test"}}>
-                    <case {Status::Active{name: v_1}}>
-                      <let {n = v_1}>
+                    <case {Status::Active{name: v__1}}>
+                      <let {n = v__1}>
                         {n}
                       </let>
                     </case>
@@ -5540,8 +5540,8 @@ mod tests {
                 -- main.hop --
                 component Main(x: Option[String]) {
                   <match {x}>
-                    <case {Some(v_1)}>
-                      <let {name = v_1}>
+                    <case {Some(v__1)}>
+                      <let {name = v__1}>
                         <div class={name}></div>
                       </let>
                     </case>
@@ -5837,11 +5837,11 @@ mod tests {
                 -- main.hop --
                 component Main(x: Option[Option[String]]) {
                   <match {x}>
-                    <case {Some(v_1)}>
-                      <let {inner = v_1}>
+                    <case {Some(v__1)}>
+                      <let {inner = v__1}>
                         <match {inner}>
-                          <case {Some(v_3)}>
-                            <let {s = v_3}>
+                          <case {Some(v__3)}>
+                            <let {s = v__3}>
                               {s}
                             </let>
                           </case>
@@ -5879,8 +5879,8 @@ mod tests {
                 component Main(items: Array[Option[String]]) {
                   <for {item in items}>
                     <match {item}>
-                      <case {Some(v_1)}>
-                        <let {s = v_1}>
+                      <case {Some(v__1)}>
+                        <let {s = v__1}>
                           {s}
                         </let>
                       </case>
@@ -5947,15 +5947,15 @@ mod tests {
                 -- main.hop --
                 component Main(r1: Option[String], r2: Option[Bool]) {
                   <match {r1}>
-                    <case {Some(v_1)}>
-                      <let {bound = v_1}>
+                    <case {Some(v__1)}>
+                      <let {bound = v__1}>
                         {bound}
                       </let>
                     </case>
                     <case {None}>
                       <match {r2}>
-                        <case {Some(v_3)}>
-                          <let {bound = v_3}>
+                        <case {Some(v__3)}>
+                          <let {bound = v__3}>
                             <if {bound}>
                               yes
                             </if>
@@ -5993,8 +5993,8 @@ mod tests {
 
                 component Main(user: main::User) {
                   <match {user.name}>
-                    <case {Some(v_1)}>
-                      <let {n = v_1}>
+                    <case {Some(v__1)}>
+                      <let {n = v__1}>
                         {n}
                       </let>
                     </case>
@@ -6047,8 +6047,8 @@ mod tests {
                 component Main(show: Bool, x: Option[String]) {
                   <if {show}>
                     <match {x}>
-                      <case {Some(v_1)}>
-                        <let {v = v_1}>
+                      <case {Some(v__1)}>
+                        <let {v = v__1}>
                           {v}
                         </let>
                       </case>
@@ -6081,8 +6081,8 @@ mod tests {
                 component Main(x: Option[String]) {
                   <div>
                     <match {x}>
-                      <case {Some(v_1)}>
-                        <let {v = v_1}>
+                      <case {Some(v__1)}>
+                        <let {v = v__1}>
                           <span>
                             {v}
                           </span>
@@ -6447,11 +6447,11 @@ mod tests {
 
                 component Main {
                   <let {
-                    v_0 = {
+                    v__0 = {
                       click
                     }
                   }>
-                    <Btn children={v_0} disabled/>
+                    <Btn children={v__0} disabled/>
                   </let>
                 }
             "#]],
@@ -7470,11 +7470,11 @@ mod tests {
 
                 view Main() {
                   <let {
-                    v_0 = {
+                    v__0 = {
                       Hi
                     }
                   }>
-                    <Button class={"p-2"} children={v_0} data-foo="bar"/>
+                    <Button class={"p-2"} children={v__0} data-foo="bar"/>
                   </let>
                 }
             "#]],
@@ -7503,11 +7503,11 @@ mod tests {
 
                 view Main() {
                   <let {
-                    v_0 = {
+                    v__0 = {
                       Hi
                     }
                   }>
-                    <Button children={v_0} data-x="y"/>
+                    <Button children={v__0} data-x="y"/>
                   </let>
                 }
             "#]],
@@ -8093,11 +8093,11 @@ mod tests {
 
                 view Main() {
                   <let {
-                    v_0 = {
+                    v__0 = {
                       deep
                     }
                   }>
-                    <Baz children={v_0}/>
+                    <Baz children={v__0}/>
                   </let>
                 }
             "#]],
@@ -8188,11 +8188,11 @@ mod tests {
                 -- main.hop --
                 component Button(children: Fragment, class: String, ...rest) {
                   <let {
-                    v_0 = {
+                    v__0 = {
                       {children}
                     }
                   }>
-                    <Foo children={v_0} class={class} ...rest/>
+                    <Foo children={v__0} class={class} ...rest/>
                   </let>
                 }
 
@@ -8204,11 +8204,11 @@ mod tests {
 
                 view Main() {
                   <let {
-                    v_1 = {
+                    v__1 = {
                       click
                     }
                   }>
-                    <Button children={v_1} class={"primary"}/>
+                    <Button children={v__1} class={"primary"}/>
                   </let>
                 }
             "#]],
@@ -8707,8 +8707,8 @@ mod tests {
                 -- main.hop --
                 component Render(item: Option[Int]) {
                   <match {item}>
-                    <case {Some(v_1)}>
-                      <let {n = v_1}>
+                    <case {Some(v__1)}>
+                      <let {n = v__1}>
                         <Wrap n={n}/>
                       </let>
                     </case>

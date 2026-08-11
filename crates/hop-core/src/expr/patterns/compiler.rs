@@ -939,9 +939,9 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v_0 is false
+                v__0 is false
                   branch 1
-                v_0 is true
+                v__0 is true
                   branch 0
             "#]],
         );
@@ -1032,7 +1032,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                let b = v_0
+                let b = v__0
                 branch 0
             "#]],
         );
@@ -1050,10 +1050,10 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v_0 is Some(v_1)
-                  let item = v_1
+                v__0 is Some(v__1)
+                  let item = v__1
                   branch 0
-                v_0 is None
+                v__0 is None
                   branch 1
             "#]],
         );
@@ -1108,13 +1108,13 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v_0 is Some(v_1)
-                  v_1 is Some(v_2)
-                    let item = v_2
+                v__0 is Some(v__1)
+                  v__1 is Some(v__2)
+                    let item = v__2
                     branch 0
-                  v_1 is None
+                  v__1 is None
                     branch 1
-                v_0 is None
+                v__0 is None
                   branch 2
             "#]],
         );
@@ -1133,11 +1133,11 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v_0 is Color::Red
+                v__0 is Color::Red
                   branch 0
-                v_0 is Color::Green
+                v__0 is Color::Green
                   branch 1
-                v_0 is Color::Blue
+                v__0 is Color::Blue
                   branch 2
             "#]],
         );
@@ -1174,11 +1174,11 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v_0 is Color::Red
+                v__0 is Color::Red
                   branch 0
-                v_0 is Color::Green
+                v__0 is Color::Green
                   branch 1
-                v_0 is Color::Blue
+                v__0 is Color::Blue
                   branch 1
             "#]],
         );
@@ -1221,11 +1221,11 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v_0 is Outcome::Success{value: v_1}
-                  let v = v_1
+                v__0 is Outcome::Success{value: v__1}
+                  let v = v__1
                   branch 0
-                v_0 is Outcome::Failure{message: v_2}
-                  let m = v_2
+                v__0 is Outcome::Failure{message: v__2}
+                  let m = v__2
                   branch 1
             "#]],
         );
@@ -1246,10 +1246,10 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v_0 is Maybe::Just{value: v_1}
-                  let v = v_1
+                v__0 is Maybe::Just{value: v__1}
+                  let v = v__1
                   branch 0
-                v_0 is Maybe::Nothing
+                v__0 is Maybe::Nothing
                   branch 1
             "#]],
         );
@@ -1273,9 +1273,9 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v_0 is Outcome::Success{value: _}
+                v__0 is Outcome::Success{value: _}
                   branch 0
-                v_0 is Outcome::Failure{message: _}
+                v__0 is Outcome::Failure{message: _}
                   branch 1
             "#]],
         );
@@ -1301,14 +1301,14 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v_0 is Status::Pending{since: v_1}
-                  let s = v_1
+                v__0 is Status::Pending{since: v__1}
+                  let s = v__1
                   branch 0
-                v_0 is Status::Active{id: v_2, name: v_3}
-                  let i = v_2
-                  let n = v_3
+                v__0 is Status::Active{id: v__2, name: v__3}
+                  let i = v__2
+                  let n = v__3
                   branch 1
-                v_0 is Status::Inactive
+                v__0 is Status::Inactive
                   branch 2
             "#]],
         );
@@ -1328,10 +1328,10 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v_0 is Point3D::Coords{x: v_1, y: v_2, z: v_3}
-                  let a = v_1
-                  let b = v_2
-                  let c = v_3
+                v__0 is Point3D::Coords{x: v__1, y: v__2, z: v__3}
+                  let a = v__1
+                  let b = v__2
+                  let c = v__3
                   branch 0
             "#]],
         );
@@ -1351,7 +1351,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v_0 is Point3D::Coords{x: _, y: _, z: _}
+                v__0 is Point3D::Coords{x: _, y: _, z: _}
                   branch 0
             "#]],
         );
@@ -1371,9 +1371,9 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v_0 is Point3D::Coords{x: v_1, y: _, z: v_3}
-                  let a = v_1
-                  let c = v_3
+                v__0 is Point3D::Coords{x: v__1, y: _, z: v__3}
+                  let a = v__1
+                  let c = v__3
                   branch 0
             "#]],
         );
@@ -1420,7 +1420,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                let r = v_0
+                let r = v__0
                 branch 0
             "#]],
         );
@@ -1445,12 +1445,12 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v_0 is Status::Pending{since: v_1}
-                  let s = v_1
+                v__0 is Status::Pending{since: v__1}
+                  let s = v__1
                   branch 0
-                v_0 is Status::Active{id: v_2}
+                v__0 is Status::Active{id: v__2}
                   branch 1
-                v_0 is Status::Inactive
+                v__0 is Status::Inactive
                   branch 1
             "#]],
         );
@@ -1569,11 +1569,11 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v_0 is Container::Wrapped{inner: v_1}
-                  v_1 is Some(v_2)
-                    let v = v_2
+                v__0 is Container::Wrapped{inner: v__1}
+                  v__1 is Some(v__2)
+                    let v = v__2
                     branch 0
-                  v_1 is None
+                  v__1 is None
                     branch 1
             "#]],
         );
@@ -1610,10 +1610,10 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v_0 is Flag::Active{enabled: v_1}
-                  v_1 is false
+                v__0 is Flag::Active{enabled: v__1}
+                  v__1 is false
                     branch 1
-                  v_1 is true
+                  v__1 is true
                     branch 0
             "#]],
         );
@@ -1659,11 +1659,11 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v_0 is Rectangle::Bounds{x: v_1, y: v_2, width: v_3, height: v_4}
-                  let a = v_1
-                  let b = v_2
-                  let w = v_3
-                  let h = v_4
+                v__0 is Rectangle::Bounds{x: v__1, y: v__2, width: v__3, height: v__4}
+                  let a = v__1
+                  let b = v__2
+                  let w = v__3
+                  let h = v__4
                   branch 0
             "#]],
         );
@@ -1691,16 +1691,16 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v_0 is Event::Click{x: v_1, y: v_2}
-                  let a = v_1
-                  let b = v_2
+                v__0 is Event::Click{x: v__1, y: v__2}
+                  let a = v__1
+                  let b = v__2
                   branch 0
-                v_0 is Event::KeyPress{key: v_3}
-                  let k = v_3
+                v__0 is Event::KeyPress{key: v__3}
+                  let k = v__3
                   branch 1
-                v_0 is Event::Focus
+                v__0 is Event::Focus
                   branch 2
-                v_0 is Event::Blur
+                v__0 is Event::Blur
                   branch 3
             "#]],
         );
@@ -1717,9 +1717,9 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v_0 is User{name: v_1, age: v_2}
-                  let n = v_1
-                  let a = v_2
+                v__0 is User{name: v__1, age: v__2}
+                  let n = v__1
+                  let a = v__2
                   branch 0
             "#]],
         );
@@ -1739,16 +1739,16 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v_0 is Foo{a: v_1, b: v_2}
-                  v_2 is false
-                    v_1 is false
+                v__0 is Foo{a: v__1, b: v__2}
+                  v__2 is false
+                    v__1 is false
                       branch 3
-                    v_1 is true
+                    v__1 is true
                       branch 1
-                  v_2 is true
-                    v_1 is false
+                  v__2 is true
+                    v__1 is false
                       branch 2
-                    v_1 is true
+                    v__1 is true
                       branch 0
             "#]],
         );
@@ -1766,9 +1766,9 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v_0 is false
+                v__0 is false
                   branch 1
-                v_0 is true
+                v__0 is true
                   branch 0
             "#]],
         );
@@ -1862,10 +1862,10 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v_0 is Some(v_1)
-                  let v = v_1
+                v__0 is Some(v__1)
+                  let v = v__1
                   branch 0
-                v_0 is None
+                v__0 is None
                   branch 1
             "#]],
         );
@@ -1964,15 +1964,15 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v_0 is Some(v_1)
-                  v_1 is Some(v_2)
-                    v_2 is false
+                v__0 is Some(v__1)
+                  v__1 is Some(v__2)
+                    v__2 is false
                       branch 1
-                    v_2 is true
+                    v__2 is true
                       branch 0
-                  v_1 is None
+                  v__1 is None
                     branch 2
-                v_0 is None
+                v__0 is None
                   branch 3
             "#]],
         );
@@ -2008,7 +2008,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                let c = v_0
+                let c = v__0
                 branch 0
             "#]],
         );
@@ -2102,13 +2102,13 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v_0 is User{name: v_1, email: v_2}
-                  v_2 is Some(v_3)
-                    let n = v_1
-                    let e = v_3
+                v__0 is User{name: v__1, email: v__2}
+                  v__2 is Some(v__3)
+                    let n = v__1
+                    let e = v__3
                     branch 0
-                  v_2 is None
-                    let n = v_1
+                  v__2 is None
+                    let n = v__1
                     branch 1
             "#]],
         );
@@ -2184,12 +2184,12 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v_0 is Some(v_1)
-                  v_1 is User{name: v_2, age: v_3}
-                    let n = v_2
-                    let a = v_3
+                v__0 is Some(v__1)
+                  v__1 is User{name: v__2, age: v__3}
+                    let n = v__2
+                    let a = v__3
                     branch 0
-                v_0 is None
+                v__0 is None
                   branch 1
             "#]],
         );
@@ -2207,9 +2207,9 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v_0 is Some(_)
+                v__0 is Some(_)
                   branch 0
-                v_0 is None
+                v__0 is None
                   branch 1
             "#]],
         );
@@ -2230,9 +2230,9 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v_0 is Some(_)
+                v__0 is Some(_)
                   branch 0
-                v_0 is None
+                v__0 is None
                   branch 1
             "#]],
         );
@@ -2295,8 +2295,8 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v_0 is User{name: v_1, address: _}
-                  let n = v_1
+                v__0 is User{name: v__1, address: _}
+                  let n = v__1
                   branch 0
             "#]],
         );
@@ -2326,10 +2326,10 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v_0 is Outcome::Success{value: v_1, metadata: _}
-                  let v = v_1
+                v__0 is Outcome::Success{value: v__1, metadata: _}
+                  let v = v__1
                   branch 0
-                v_0 is Outcome::Failure{message: _}
+                v__0 is Outcome::Failure{message: _}
                   branch 1
             "#]],
         );
@@ -2350,9 +2350,9 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v_0 is Outer{middle: v_1}
-                  v_1 is Middle{name: v_2, inner: _}
-                    let n = v_2
+                v__0 is Outer{middle: v__1}
+                  v__1 is Middle{name: v__2, inner: _}
+                    let n = v__2
                     branch 0
             "#]],
         );
@@ -2390,11 +2390,11 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v_0 is IntList::Cons{head: v_1, tail: v_2}
-                  let h = v_1
-                  let t = v_2
+                v__0 is IntList::Cons{head: v__1, tail: v__2}
+                  let h = v__1
+                  let t = v__2
                   branch 0
-                v_0 is IntList::Nil
+                v__0 is IntList::Nil
                   branch 1
             "#]],
         );
@@ -2419,16 +2419,16 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v_0 is IntList::Cons{head: v_1, tail: v_2}
-                  v_2 is IntList::Cons{head: v_3, tail: v_4}
-                    let h = v_1
-                    let h2 = v_3
-                    let rest = v_4
+                v__0 is IntList::Cons{head: v__1, tail: v__2}
+                  v__2 is IntList::Cons{head: v__3, tail: v__4}
+                    let h = v__1
+                    let h2 = v__3
+                    let rest = v__4
                     branch 1
-                  v_2 is IntList::Nil
-                    let h = v_1
+                  v__2 is IntList::Nil
+                    let h = v__1
                     branch 0
-                v_0 is IntList::Nil
+                v__0 is IntList::Nil
                   branch 2
             "#]],
         );
@@ -2471,13 +2471,13 @@ mod tests {
                 }
             "},
             expect![[r#"
-                v_0 is Node{value: v_1, next: v_2}
-                  v_2 is Some(v_3)
-                    let v = v_1
-                    let n = v_3
+                v__0 is Node{value: v__1, next: v__2}
+                  v__2 is Some(v__3)
+                    let v = v__1
+                    let n = v__3
                     branch 0
-                  v_2 is None
-                    let v = v_1
+                  v__2 is None
+                    let v = v__1
                     branch 1
             "#]],
         );
