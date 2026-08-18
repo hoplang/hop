@@ -5,7 +5,8 @@ use crate::expr::typing::r#type::{ComparableType, EnumVariant, EquatableType, Nu
 use crate::expr::typing::type_registry::{ResolvedType, TypeRegistry};
 use crate::expr::typing::type_registry_builder::{TestTypes, TypeRegistryBuilder};
 use crate::ir::ast::{
-    ExprId, IrArgument, IrExpr, IrForSource, IrParameter, IrStatement, IrVar, StatementId, VarId,
+    ExprId, ExprIdCounter, IrArgument, IrExpr, IrForSource, IrParameter, IrStatement, IrVar,
+    StatementId, StatementIdCounter, VarIdCounter,
 };
 use crate::ir::ast::{
     IrComponentDeclaration, IrEnumDeclaration, IrModule, IrRecordDeclaration, IrViewDeclaration,
@@ -13,7 +14,7 @@ use crate::ir::ast::{
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
-use std::cell::Cell;
+use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -62,8 +63,9 @@ impl IrModuleBuilder {
     pub fn types_done(self) -> IrModuleBodiesBuilder {
         IrModuleBodiesBuilder {
             types: Rc::new(self.types_builder.build()),
-            next_id: Rc::new(Cell::new(1)),
-            next_var_id: Rc::new(Cell::new(0)),
+            expr_ids: Rc::new(RefCell::new(ExprIdCounter::new())),
+            statement_ids: Rc::new(RefCell::new(StatementIdCounter::new())),
+            var_ids: Rc::new(RefCell::new(VarIdCounter::new())),
             views: Vec::new(),
             components: Vec::new(),
         }
@@ -116,8 +118,9 @@ impl From<IrModuleBuilder> for IrModuleBodiesBuilder {
 /// Collects view and component bodies against a frozen set of types.
 pub struct IrModuleBodiesBuilder {
     types: Rc<TestTypes>,
-    next_id: Rc<Cell<usize>>,
-    next_var_id: Rc<Cell<usize>>,
+    expr_ids: Rc<RefCell<ExprIdCounter>>,
+    statement_ids: Rc<RefCell<StatementIdCounter>>,
+    var_ids: Rc<RefCell<VarIdCounter>>,
     views: Vec<IrViewDeclaration>,
     components: Vec<IrComponentDeclaration>,
 }
@@ -178,10 +181,9 @@ impl IrModuleBodiesBuilder {
         let parameters: Vec<IrParameter> = params
             .into_iter()
             .map(|(name, typ)| {
-                let id = self.next_var_id.get();
-                self.next_var_id.set(id + 1);
+                let id = self.var_ids.borrow_mut().next();
                 IrParameter {
-                    var: IrVar::new(VarId::new(id), VarName::new(name).unwrap()),
+                    var: IrVar::new(id, VarName::new(name).unwrap()),
                     typ: self.types.resolve(typ),
                 }
             })
@@ -193,8 +195,9 @@ impl IrModuleBodiesBuilder {
         let mut builder = IrBuilder {
             var_stack: vars,
             types: self.types.clone(),
-            next_id: self.next_id.clone(),
-            next_var_id: self.next_var_id.clone(),
+            expr_ids: self.expr_ids.clone(),
+            statement_ids: self.statement_ids.clone(),
+            var_ids: self.var_ids.clone(),
             statements: Vec::new(),
         };
         body_fn(&mut builder);
@@ -230,6 +233,7 @@ impl IrModuleBodiesBuilder {
             components: self.components,
             records: record_declarations,
             enums: enum_declarations,
+            expr_ids: *self.expr_ids.borrow(),
         };
         (module, self.types.registry().clone())
     }
@@ -238,30 +242,24 @@ impl IrModuleBodiesBuilder {
 pub struct IrBuilder {
     var_stack: Vec<(IrVar, Arc<Type>)>,
     types: Rc<TestTypes>,
-    next_id: Rc<Cell<usize>>,
-    next_var_id: Rc<Cell<usize>>,
+    expr_ids: Rc<RefCell<ExprIdCounter>>,
+    statement_ids: Rc<RefCell<StatementIdCounter>>,
+    var_ids: Rc<RefCell<VarIdCounter>>,
     statements: Vec<IrStatement>,
 }
 
 impl IrBuilder {
-    fn next_id(&self) -> usize {
-        let id = self.next_id.get();
-        self.next_id.set(id + 1);
-        id
-    }
-
     fn next_expr_id(&self) -> ExprId {
-        ExprId::new(self.next_id())
+        self.expr_ids.borrow_mut().next()
     }
 
     fn next_statement_id(&self) -> StatementId {
-        StatementId::new(self.next_id())
+        self.statement_ids.borrow_mut().next()
     }
 
     fn bind(&self, name: &str) -> IrVar {
-        let id = self.next_var_id.get();
-        self.next_var_id.set(id + 1);
-        IrVar::new(VarId::new(id), VarName::new(name).unwrap())
+        let id = self.var_ids.borrow_mut().next();
+        IrVar::new(id, VarName::new(name).unwrap())
     }
 
     fn scoped(&self, bindings: impl IntoIterator<Item = (IrVar, Arc<Type>)>) -> Self {
@@ -270,8 +268,9 @@ impl IrBuilder {
         Self {
             var_stack,
             types: self.types.clone(),
-            next_id: self.next_id.clone(),
-            next_var_id: self.next_var_id.clone(),
+            expr_ids: self.expr_ids.clone(),
+            statement_ids: self.statement_ids.clone(),
+            var_ids: self.var_ids.clone(),
             statements: Vec::new(),
         }
     }

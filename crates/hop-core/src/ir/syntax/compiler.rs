@@ -12,87 +12,86 @@ use crate::hop::typing::typed_node::{TypedAttributeValue, TypedLoopSource};
 use crate::symbols::var_name::VarName;
 
 use super::ast::{
-    ExprId, IrArgument, IrComponentDeclaration, IrExpr, IrForSource, IrParameter, IrStatement,
-    IrVar, IrViewDeclaration, StatementId, VarId,
+    ExprId, ExprIdCounter, IrArgument, IrComponentDeclaration, IrExpr, IrForSource, IrParameter,
+    IrStatement, IrVar, IrViewDeclaration, StatementId, StatementIdCounter, VarId, VarIdCounter,
 };
 
 pub struct Compiler {
-    expr_id_counter: usize,
-    node_id_counter: usize,
-    var_id_counter: usize,
+    expr_id_counter: ExprIdCounter,
+    statement_id_counter: StatementIdCounter,
+    var_id_counter: VarIdCounter,
     scopes: Vec<Vec<(VarName, VarId)>>,
     asset_rewriter: Option<Arc<dyn AssetRewriter>>,
 }
 
 impl Compiler {
-    fn new(asset_rewriter: Option<Arc<dyn AssetRewriter>>) -> Self {
+    pub fn new(asset_rewriter: Option<Arc<dyn AssetRewriter>>) -> Self {
         Compiler {
-            expr_id_counter: 0,
-            node_id_counter: 0,
-            var_id_counter: 0,
+            expr_id_counter: ExprIdCounter::new(),
+            statement_id_counter: StatementIdCounter::new(),
+            var_id_counter: VarIdCounter::new(),
             scopes: vec![Vec::new()],
             asset_rewriter,
         }
     }
 
+    pub fn into_expr_ids(self) -> ExprIdCounter {
+        self.expr_id_counter
+    }
+
     pub fn compile_component_decl(
+        &mut self,
         decl: InlinedComponentDeclaration,
-        asset_rewriter: Option<Arc<dyn AssetRewriter>>,
     ) -> IrComponentDeclaration {
-        let mut compiler = Compiler::new(asset_rewriter);
+        self.push_scope();
 
         let mut parameters = Vec::with_capacity(decl.params.len());
         for param in decl.params {
             parameters.push(IrParameter {
-                var: compiler.bind(&param.var_name),
+                var: self.bind(&param.var_name),
                 typ: param.var_type,
             });
         }
 
-        IrComponentDeclaration {
+        let declaration = IrComponentDeclaration {
             name: decl.component_name,
             parameters,
-            body: compiler.compile_nodes(&decl.children),
-        }
+            body: self.compile_nodes(&decl.children),
+        };
+        self.pop_scope();
+        declaration
     }
 
-    pub fn compile(
-        view: InlinedViewDeclaration,
-        asset_rewriter: Option<Arc<dyn AssetRewriter>>,
-    ) -> IrViewDeclaration {
-        let mut compiler = Compiler::new(asset_rewriter);
+    pub fn compile(&mut self, view: InlinedViewDeclaration) -> IrViewDeclaration {
+        self.push_scope();
 
         let mut parameters = Vec::with_capacity(view.params.len());
         for param in view.params {
             parameters.push(IrParameter {
-                var: compiler.bind(&param.var_name),
+                var: self.bind(&param.var_name),
                 typ: param.var_type,
             });
         }
 
-        IrViewDeclaration {
+        let declaration = IrViewDeclaration {
             name: view.name,
             parameters,
-            body: compiler.compile_nodes(&view.children),
-        }
+            body: self.compile_nodes(&view.children),
+        };
+        self.pop_scope();
+        declaration
     }
 
     fn next_var_id(&mut self) -> VarId {
-        let id = self.var_id_counter;
-        self.var_id_counter += 1;
-        VarId::new(id)
+        self.var_id_counter.next()
     }
 
     fn next_expr_id(&mut self) -> ExprId {
-        let id = self.expr_id_counter;
-        self.expr_id_counter += 1;
-        ExprId::new(id)
+        self.expr_id_counter.next()
     }
 
     fn next_statement_id(&mut self) -> StatementId {
-        let id = self.node_id_counter;
-        self.node_id_counter += 1;
-        StatementId::new(id)
+        self.statement_id_counter.next()
     }
 
     fn push_scope(&mut self) {
@@ -785,7 +784,7 @@ mod tests {
 
     fn check(view: InlinedViewDeclaration, expected: Expect) {
         let before = view.to_string();
-        let ir = Compiler::compile(view, None);
+        let ir = Compiler::new(None).compile(view);
         let after = ir.to_string();
         let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
         expected.assert_eq(&output);

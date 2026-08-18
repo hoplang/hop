@@ -77,6 +77,7 @@ pub fn orchestrate(
         Inliner::inline_ast_views(typed_asts, &typed_views);
 
     // Transform and compile each view
+    let mut compiler = Compiler::new(options.asset_rewriter.clone());
     let mut views = Vec::with_capacity(inlined_views.len());
     for mut e in inlined_views {
         if !options.skip_html_structure {
@@ -90,7 +91,7 @@ pub fn orchestrate(
             LinkRewriter::run(&mut e);
         }
 
-        views.push(Compiler::compile(e, options.asset_rewriter.clone()));
+        views.push(compiler.compile(e));
     }
 
     // Compile component decls
@@ -99,10 +100,7 @@ pub fn orchestrate(
         if options.disable_links {
             LinkRewriter::run_component(&mut decl);
         }
-        components.push(Compiler::compile_component_decl(
-            decl,
-            options.asset_rewriter.clone(),
-        ));
+        components.push(compiler.compile_component_decl(decl));
     }
 
     let module = IrModule {
@@ -110,6 +108,7 @@ pub fn orchestrate(
         components,
         records,
         enums,
+        expr_ids: compiler.into_expr_ids(),
     };
 
     if options.skip_optimization {

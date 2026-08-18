@@ -1,12 +1,16 @@
-use super::syntax::ast::{IrModule, IrStatement};
+use super::syntax::ast::{ExprIdCounter, IrModule, IrStatement};
 use crate::expr::typing::type_registry::TypeRegistry;
 use crate::ir::syntax::transform::{
     coalesce_write_statements, eliminate_match_statements, eliminate_unused_variable_declarations,
     perform_partial_evaluation, simplify_write_exprs,
 };
 
-fn optimize_statements(body: &mut Vec<IrStatement>, registry: &TypeRegistry) {
-    perform_partial_evaluation(body, registry);
+fn optimize_statements(
+    body: &mut Vec<IrStatement>,
+    registry: &TypeRegistry,
+    expr_ids: &mut ExprIdCounter,
+) {
+    perform_partial_evaluation(body, registry, expr_ids);
     eliminate_unused_variable_declarations(body);
     eliminate_match_statements(body);
     simplify_write_exprs(body);
@@ -14,11 +18,12 @@ fn optimize_statements(body: &mut Vec<IrStatement>, registry: &TypeRegistry) {
 }
 
 pub fn optimize(mut module: IrModule, registry: &TypeRegistry) -> IrModule {
+    let expr_ids = &mut module.expr_ids;
     for view in &mut module.views {
-        optimize_statements(&mut view.body, registry);
+        optimize_statements(&mut view.body, registry, expr_ids);
     }
     for component in &mut module.components {
-        optimize_statements(&mut component.body, registry);
+        optimize_statements(&mut component.body, registry, expr_ids);
     }
     module
 }

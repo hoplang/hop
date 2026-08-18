@@ -7,7 +7,7 @@ use crate::expr::typing::r#type::Type;
 use crate::expr::typing::type_registry::{ResolvedType, TypeRegistry};
 use crate::ir::{
     IrExpr,
-    ast::ExprId,
+    ast::{ExprId, ExprIdCounter},
     ast::{IrStatement, VarId, traverse_statements_mut},
 };
 use crate::symbols::field_name::FieldName;
@@ -66,13 +66,14 @@ enum Const {
 
 impl Const {
     /// Convert a Const back to an IrExpr. Returns None if conversion is not possible
-    /// (e.g., inner value of an Option is not in const_map).
+    /// (e.g. if inner value of an Option is not in const_map).
     fn to_expr(
         &self,
         id: ExprId,
         kind: Arc<Type>,
         known_expr_map: &HashMap<ExprId, Const>,
         registry: &TypeRegistry,
+        expr_ids: &mut ExprIdCounter,
     ) -> Option<IrExpr> {
         Some(match self {
             Const::Bool(b) => IrExpr::BooleanLiteral { value: *b, id },
@@ -115,8 +116,13 @@ impl Const {
                             });
 
                         let field_const = known_expr_map.get(field_id)?;
-                        let field_expr =
-                            field_const.to_expr(*field_id, field_type, known_expr_map, registry)?;
+                        let field_expr = field_const.to_expr(
+                            expr_ids.next(),
+                            field_type,
+                            known_expr_map,
+                            registry,
+                            expr_ids,
+                        )?;
                         Some((field_name.clone(), field_expr))
                     })
                     .collect();
@@ -140,10 +146,11 @@ impl Const {
                             _ => panic!("Const::Option must have Option type, got {:?}", kind),
                         };
                         Some(Box::new(inner_const.to_expr(
-                            *id,
+                            expr_ids.next(),
                             inner_kind,
                             known_expr_map,
                             registry,
+                            expr_ids,
                         )?))
                     }
                 };
@@ -164,10 +171,11 @@ impl Const {
                     .map(|element_id| {
                         let element_const = known_expr_map.get(element_id)?;
                         element_const.to_expr(
-                            *element_id,
+                            expr_ids.next(),
                             element_kind.clone(),
                             known_expr_map,
                             registry,
+                            expr_ids,
                         )
                     })
                     .collect();
@@ -183,7 +191,11 @@ impl Const {
 
 /// A datafrog-based partial evaluation pass that tracks and propagates
 /// constant values.
-pub fn perform_partial_evaluation(body: &mut Vec<IrStatement>, registry: &TypeRegistry) {
+pub fn perform_partial_evaluation(
+    body: &mut Vec<IrStatement>,
+    registry: &TypeRegistry,
+    expr_ids: &mut ExprIdCounter,
+) {
     let mut iteration = Iteration::new();
 
     // Binding maps.
@@ -841,7 +853,7 @@ pub fn perform_partial_evaluation(body: &mut Vec<IrStatement>, registry: &TypeRe
             s.traverse_exprs_mut(&mut |e| {
                 if let Some(known_val) = known_expr_map.get(&e.id()) {
                     if let Some(expr) =
-                        known_val.to_expr(e.id(), e.get_type(), &known_expr_map, registry)
+                        known_val.to_expr(e.id(), e.get_type(), &known_expr_map, registry, expr_ids)
                     {
                         *e = expr;
                     }
@@ -867,11 +879,12 @@ mod tests {
     fn check(builder: impl Into<IrModuleBodiesBuilder>, expected: Expect) {
         let (mut module, registry) = builder.into().build_with_registry();
         let before = module.to_string();
+        let expr_ids = &mut module.expr_ids;
         for view in &mut module.views {
-            perform_partial_evaluation(&mut view.body, &registry);
+            perform_partial_evaluation(&mut view.body, &registry, expr_ids);
         }
         for component in &mut module.components {
-            perform_partial_evaluation(&mut component.body, &registry);
+            perform_partial_evaluation(&mut component.body, &registry, expr_ids);
         }
         let after = module.to_string();
         let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
@@ -910,11 +923,12 @@ mod tests {
                 .map(|(view_name, args)| evaluate_view(&module, view_name, args.clone()).unwrap())
                 .collect();
 
+            let expr_ids = &mut module.expr_ids;
             for view in &mut module.views {
-                perform_partial_evaluation(&mut view.body, &registry);
+                perform_partial_evaluation(&mut view.body, &registry, expr_ids);
             }
             for component in &mut module.components {
-                perform_partial_evaluation(&mut component.body, &registry);
+                perform_partial_evaluation(&mut component.body, &registry, expr_ids);
             }
 
             for ((view_name, args), before_output) in view_args.iter().zip(&before_outputs) {

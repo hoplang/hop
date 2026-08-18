@@ -15,9 +15,18 @@ use pretty::BoxDoc;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ExprId(usize);
 
-impl ExprId {
-    pub fn new(id: usize) -> Self {
-        Self(id)
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ExprIdCounter(usize);
+
+impl ExprIdCounter {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn next(&mut self) -> ExprId {
+        let id = ExprId(self.0);
+        self.0 += 1;
+        id
     }
 }
 
@@ -25,9 +34,18 @@ impl ExprId {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct StatementId(usize);
 
-impl StatementId {
-    pub fn new(id: usize) -> Self {
-        Self(id)
+#[derive(Debug, Clone, Copy, Default)]
+pub struct StatementIdCounter(usize);
+
+impl StatementIdCounter {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn next(&mut self) -> StatementId {
+        let id = StatementId(self.0);
+        self.0 += 1;
+        id
     }
 }
 
@@ -37,9 +55,18 @@ impl StatementId {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct VarId(usize);
 
-impl VarId {
-    pub fn new(id: usize) -> Self {
-        Self(id)
+#[derive(Debug, Clone, Copy, Default)]
+pub struct VarIdCounter(usize);
+
+impl VarIdCounter {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn next(&mut self) -> VarId {
+        let id = VarId(self.0);
+        self.0 += 1;
+        id
     }
 }
 
@@ -101,6 +128,7 @@ pub struct IrModule {
     pub components: Vec<IrComponentDeclaration>,
     pub records: Vec<IrRecordDeclaration>,
     pub enums: Vec<IrEnumDeclaration>,
+    pub expr_ids: ExprIdCounter,
 }
 
 #[derive(Debug)]
