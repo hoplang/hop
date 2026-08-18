@@ -1,8 +1,9 @@
-use super::transpile::{RustTranspiler, Transpiler, TsTranspiler};
 use crate::asset_rewriter::AssetRewriter;
 use crate::document::Document;
 use crate::document_id::DocumentId;
+use crate::ir::IrModule;
 use crate::ir::runtime::evaluator::evaluate_view;
+use crate::ir::transpile::{RustTranspiler, Transpiler, TsTranspiler};
 use crate::orchestrator::{OrchestrateOptions, orchestrate};
 use crate::program::Program;
 use crate::symbols::type_name::TypeName;
@@ -147,7 +148,7 @@ fn typecheck_rust(code: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn execute_evaluator(module: &super::IrModule) -> Result<String, String> {
+fn execute_evaluator(module: &IrModule) -> Result<String, String> {
     let view_name = TypeName::new("Test").unwrap();
     evaluate_view(module, &view_name, HashMap::new())
         .map_err(|e| format!("Evaluator failed: {}", e))

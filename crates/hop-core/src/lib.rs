@@ -11,6 +11,9 @@ mod symbols;
 mod variable_scope;
 
 #[cfg(test)]
+mod end_to_end_tests;
+
+#[cfg(test)]
 mod simple_annotation;
 
 #[cfg(test)]
