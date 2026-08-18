@@ -80,7 +80,7 @@ impl<'a> InlinerState<'a> {
         let inlined_body = self.inline_nodes(&component.children, &[]);
 
         self.component_defs.push(InlinedComponentDeclaration {
-            component_name: component.component_name.clone(),
+            name: component.component_name.clone(),
             params: component.params.clone(),
             children: inlined_body,
         });

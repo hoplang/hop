@@ -7,7 +7,7 @@ use crate::hop::inlining::transform::{
     TailwindInjection, TailwindInjector,
 };
 use crate::hop::typing::typed_ast::TypedAst;
-use crate::ir::{Compiler, IrEnumDeclaration, IrModule, IrRecordDeclaration, optimize};
+use crate::ir::{IrModule, compile_module, optimize};
 use crate::symbols::type_name::TypeName;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -33,28 +33,6 @@ pub fn orchestrate(
     registry: &TypeRegistry,
     options: OrchestrateOptions<'_>,
 ) -> IrModule {
-    // Collect record declarations from all modules
-    let mut records: Vec<IrRecordDeclaration> = typed_asts
-        .values()
-        .flat_map(|module| module.get_records())
-        .map(|record| IrRecordDeclaration {
-            name: record.name.clone(),
-            fields: record.fields.clone(),
-        })
-        .collect();
-    records.sort_by(|a, b| a.name.cmp(&b.name));
-
-    // Collect enum declarations from all modules
-    let mut enums: Vec<IrEnumDeclaration> = typed_asts
-        .values()
-        .flat_map(|module| module.get_enums())
-        .map(|enum_decl| IrEnumDeclaration {
-            name: enum_decl.name.clone(),
-            variants: enum_decl.variants.clone(),
-        })
-        .collect();
-    enums.sort_by(|a, b| a.name.cmp(&b.name));
-
     // Take views from all modules (sorted by module ID for deterministic order)
     let mut document_ids: Vec<_> = typed_asts.keys().cloned().collect();
     document_ids.sort();
@@ -73,43 +51,46 @@ pub fn orchestrate(
         .collect();
 
     // Inline component invocations into the views
-    let (inlined_views, component_declarations) =
+    let (mut inlined_views, mut inlined_component_declarations) =
         Inliner::inline_ast_views(typed_asts, &typed_views);
 
-    // Transform and compile each view
-    let mut compiler = Compiler::new(options.asset_rewriter.clone());
-    let mut views = Vec::with_capacity(inlined_views.len());
-    for mut e in inlined_views {
+    // Transform each view
+    for view in &mut inlined_views {
         if !options.skip_html_structure {
-            DoctypeInjector::run(&mut e);
-            HtmlStructureInjector::run(&mut e);
-            MetaInjector::run(&mut e);
-            TailwindInjector::run(&mut e, options.tailwind_injection);
-            ScriptInjector::run(&mut e, options.script_src);
+            DoctypeInjector::run(view);
+            HtmlStructureInjector::run(view);
+            MetaInjector::run(view);
+            TailwindInjector::run(view, options.tailwind_injection);
+            ScriptInjector::run(view, options.script_src);
         }
         if options.disable_links {
-            LinkRewriter::run(&mut e);
+            LinkRewriter::run(view);
         }
-
-        views.push(compiler.compile(e));
     }
 
-    // Compile component decls
-    let mut components = Vec::with_capacity(component_declarations.len());
-    for mut decl in component_declarations {
-        if options.disable_links {
-            LinkRewriter::run_component(&mut decl);
+    // Transform component decls
+    if options.disable_links {
+        for decl in &mut inlined_component_declarations {
+            LinkRewriter::run_component(decl);
         }
-        components.push(compiler.compile_component_decl(decl));
     }
 
-    let module = IrModule {
-        views,
-        components,
-        records,
-        enums,
-        expr_ids: compiler.into_expr_ids(),
-    };
+    let records: Vec<_> = typed_asts
+        .values()
+        .flat_map(|module| module.get_records())
+        .collect();
+    let enums: Vec<_> = typed_asts
+        .values()
+        .flat_map(|module| module.get_enums())
+        .collect();
+
+    let module = compile_module(
+        inlined_views,
+        inlined_component_declarations,
+        &records,
+        &enums,
+        options.asset_rewriter,
+    );
 
     if options.skip_optimization {
         module

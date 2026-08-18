@@ -6,5 +6,5 @@ mod compiler;
 pub mod random;
 pub mod transform;
 
-pub use ast::{IrEnumDeclaration, IrExpr, IrModule, IrRecordDeclaration};
-pub use compiler::Compiler;
+pub use ast::{IrExpr, IrModule};
+pub use compiler::compile_module;

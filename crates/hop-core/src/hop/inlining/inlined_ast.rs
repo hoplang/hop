@@ -14,7 +14,7 @@ pub struct InlinedViewDeclaration {
 
 #[derive(Debug, Clone)]
 pub struct InlinedComponentDeclaration {
-    pub component_name: TypeName,
+    pub name: TypeName,
     pub children: Vec<InlinedNode>,
     pub params: Vec<TypedParameter>,
 }
@@ -38,7 +38,7 @@ impl InlinedComponentDeclaration {
 
         let header = BoxDoc::text("component")
             .append(BoxDoc::space())
-            .append(BoxDoc::text(self.component_name.as_str()))
+            .append(BoxDoc::text(self.name.as_str()))
             .append(params_doc)
             .append(BoxDoc::space())
             .append(BoxDoc::text("{"));

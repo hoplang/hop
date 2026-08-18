@@ -8,26 +8,80 @@ use crate::expr::TypedExpr;
 use crate::expr::patterns::{EnumMatchArm, Match};
 use crate::hop::inlining::inlined_node::InlinedNode;
 use crate::hop::inlining::{InlinedComponentDeclaration, InlinedViewDeclaration};
+use crate::hop::typing::typed_ast::{TypedEnumDeclaration, TypedRecordDeclaration};
 use crate::hop::typing::typed_node::{TypedAttributeValue, TypedLoopSource};
 use crate::symbols::var_name::VarName;
 
 use super::ast::{
-    ExprId, ExprIdCounter, IrArgument, IrComponentDeclaration, IrExpr, IrForSource, IrParameter,
-    IrStatement, IrVar, IrViewDeclaration, StatementId, StatementIdCounter, VarId, VarIdCounter,
+    ExprId, ExprIdCounter, IrArgument, IrComponentDeclaration, IrEnumDeclaration, IrExpr,
+    IrForSource, IrModule, IrParameter, IrRecordDeclaration, IrStatement, IrVar, IrViewDeclaration,
+    StatementId, StatementIdCounter, VarId, VarIdCounter,
 };
 
-pub struct Compiler {
-    expr_id_counter: ExprIdCounter,
+pub fn compile_module(
+    views: Vec<InlinedViewDeclaration>,
+    components: Vec<InlinedComponentDeclaration>,
+    records: &[&TypedRecordDeclaration],
+    enums: &[&TypedEnumDeclaration],
+    asset_rewriter: Option<Arc<dyn AssetRewriter>>,
+) -> IrModule {
+    let mut expr_ids = ExprIdCounter::new();
+    let mut compiler = Compiler::new(&mut expr_ids, asset_rewriter);
+
+    let views = views
+        .into_iter()
+        .map(|view| compiler.compile_view_decl(view))
+        .collect();
+    let components = components
+        .into_iter()
+        .map(|decl| compiler.compile_component_decl(decl))
+        .collect();
+
+    // Records and enums carry no code, so they are converted as-is. Both are
+    // sorted by name since callers collect them from an unordered set of
+    // modules and the IR must be deterministic.
+    let mut records: Vec<IrRecordDeclaration> = records
+        .iter()
+        .map(|record| IrRecordDeclaration {
+            name: record.name.clone(),
+            fields: record.fields.clone(),
+        })
+        .collect();
+    records.sort_by(|a, b| a.name.cmp(&b.name));
+
+    let mut enums: Vec<IrEnumDeclaration> = enums
+        .iter()
+        .map(|enum_decl| IrEnumDeclaration {
+            name: enum_decl.name.clone(),
+            variants: enum_decl.variants.clone(),
+        })
+        .collect();
+    enums.sort_by(|a, b| a.name.cmp(&b.name));
+
+    IrModule {
+        views,
+        components,
+        records,
+        enums,
+        expr_ids,
+    }
+}
+
+struct Compiler<'a> {
+    expr_id_counter: &'a mut ExprIdCounter,
     statement_id_counter: StatementIdCounter,
     var_id_counter: VarIdCounter,
     scopes: Vec<Vec<(VarName, VarId)>>,
     asset_rewriter: Option<Arc<dyn AssetRewriter>>,
 }
 
-impl Compiler {
-    pub fn new(asset_rewriter: Option<Arc<dyn AssetRewriter>>) -> Self {
+impl<'a> Compiler<'a> {
+    fn new(
+        expr_id_counter: &'a mut ExprIdCounter,
+        asset_rewriter: Option<Arc<dyn AssetRewriter>>,
+    ) -> Self {
         Compiler {
-            expr_id_counter: ExprIdCounter::new(),
+            expr_id_counter,
             statement_id_counter: StatementIdCounter::new(),
             var_id_counter: VarIdCounter::new(),
             scopes: vec![Vec::new()],
@@ -35,11 +89,7 @@ impl Compiler {
         }
     }
 
-    pub fn into_expr_ids(self) -> ExprIdCounter {
-        self.expr_id_counter
-    }
-
-    pub fn compile_component_decl(
+    fn compile_component_decl(
         &mut self,
         decl: InlinedComponentDeclaration,
     ) -> IrComponentDeclaration {
@@ -54,7 +104,7 @@ impl Compiler {
         }
 
         let declaration = IrComponentDeclaration {
-            name: decl.component_name,
+            name: decl.name,
             parameters,
             body: self.compile_nodes(&decl.children),
         };
@@ -62,7 +112,7 @@ impl Compiler {
         declaration
     }
 
-    pub fn compile(&mut self, view: InlinedViewDeclaration) -> IrViewDeclaration {
+    fn compile_view_decl(&mut self, view: InlinedViewDeclaration) -> IrViewDeclaration {
         self.push_scope();
 
         let mut parameters = Vec::with_capacity(view.params.len());
@@ -784,7 +834,8 @@ mod tests {
 
     fn check(view: InlinedViewDeclaration, expected: Expect) {
         let before = view.to_string();
-        let ir = Compiler::new(None).compile(view);
+        let mut expr_ids = ExprIdCounter::new();
+        let ir = Compiler::new(&mut expr_ids, None).compile_view_decl(view);
         let after = ir.to_string();
         let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
         expected.assert_eq(&output);
@@ -1156,7 +1207,8 @@ mod tests {
             };
         }
 
-        let mut compiler = Compiler::new(None);
+        let mut expr_ids = ExprIdCounter::new();
+        let mut compiler = Compiler::new(&mut expr_ids, None);
         let _result = compiler.compile_expr(&expr);
         // If we get here without stack overflow, the test passes
     }
