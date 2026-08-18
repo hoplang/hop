@@ -489,7 +489,7 @@ impl IrGenerator<'_, '_> {
             Mul,
         }
         let mut productions = vec![P::Lit];
-        if b.vars().iter().any(|(_, ty)| **ty == *target) {
+        if b.vars().iter().any(|(_, _, ty)| **ty == *target) {
             productions.push(P::Var);
         }
         let record_fields = self.record_fields_of_type(b, target);
@@ -538,8 +538,8 @@ impl IrGenerator<'_, '_> {
                 let candidates: Vec<&str> = b
                     .vars()
                     .iter()
-                    .filter(|(_, ty)| **ty == *target)
-                    .map(|(name, _)| name.as_str())
+                    .filter(|(_, _, ty)| **ty == *target)
+                    .map(|(name, _, _)| name.as_str())
                     .collect();
                 b.var(self.u.choose(&candidates).unwrap())
             }

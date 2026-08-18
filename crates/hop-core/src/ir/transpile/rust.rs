@@ -14,6 +14,16 @@ use crate::ir::ir_module::{
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 
+/// Names every variable in the generated code, derived from the IR's variable
+/// identity rather than the source name.
+///
+/// Each binder within a declaration has a distinct `VarId`, so this is unique
+/// per scope by construction: no hop identifier can shadow another, and none
+/// can collide with a Rust keyword.
+fn var_ident(var: &IrVar) -> String {
+    format!("v_{}", var.id)
+}
+
 pub struct RustTranspiler {
     /// Tracks whether escape_html function is used during transpilation
     needs_escape_html: bool,
@@ -110,20 +120,6 @@ impl RustTranspiler {
             | "typeof" | "unsized" | "virtual" | "yield" | "try" => format!("r#{}", name),
             _ => name.to_string(),
         }
-    }
-
-    /// Wrap a binding and the statements it scopes over in a block.
-    fn scoped_binding<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        binding: Doc<'a>,
-        body: Doc<'a>,
-    ) -> Doc<'a> {
-        arena
-            .text("{")
-            .append(arena.hardline().append(binding).append(body).nest(4))
-            .append(arena.hardline())
-            .append(arena.text("}"))
     }
 
     fn escape_string(&mut self, s: &str) -> String {
@@ -296,7 +292,7 @@ impl RustTranspiler {
         field: &FieldName,
         var: &IrVar,
     ) -> String {
-        let var = Self::escape_ident(var.as_str());
+        let var = var_ident(var);
         let EnumPattern::Variant {
             enum_name,
             variant_name,
@@ -581,9 +577,12 @@ impl Transpiler for RustTranspiler {
         // Destructure self into local variables
         if !view.parameters.is_empty() {
             let field_names = arena.intersperse(
-                view.parameters
-                    .iter()
-                    .map(|param| arena.text(Self::escape_ident(param.name().as_str()))),
+                view.parameters.iter().map(|param| {
+                    arena
+                        .text(Self::escape_ident(param.name().as_str()))
+                        .append(arena.text(": "))
+                        .append(arena.text(var_ident(&param.var)))
+                }),
                 arena.text(", "),
             );
             body = body
@@ -640,7 +639,7 @@ impl Transpiler for RustTranspiler {
             .iter()
             .map(|param| {
                 arena
-                    .text(Self::escape_ident(param.name().as_str()))
+                    .text(var_ident(&param.var))
                     .append(arena.text(": "))
                     .append(self.transpile_param_type(arena, &param.typ))
             })
@@ -748,13 +747,11 @@ impl Transpiler for RustTranspiler {
     fn transpile_for_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        var: Option<&'a str>,
+        var: Option<&'a IrVar>,
         source: &'a IrForSource,
         body: &'a [IrStatement],
     ) -> Doc<'a> {
-        let var_name = var
-            .map(Self::escape_ident)
-            .unwrap_or_else(|| "_".to_string());
+        let var_name = var.map_or_else(|| "_".to_string(), var_ident);
 
         let doc = match source {
             IrForSource::Array(array) => arena
@@ -776,7 +773,7 @@ impl Transpiler for RustTranspiler {
         let rebinds: Vec<(String, String)> = match source {
             IrForSource::Array(_) => var
                 .into_iter()
-                .map(Self::escape_ident)
+                .map(var_ident)
                 .map(|v| (v.clone(), format!("{}.clone()", v)))
                 .collect(),
             IrForSource::RangeInclusive { .. } => Vec::new(),
@@ -794,13 +791,13 @@ impl Transpiler for RustTranspiler {
     fn transpile_let_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        var: &'a str,
+        var: &'a IrVar,
         value: &'a IrExpr,
         body: &'a [IrStatement],
     ) -> Doc<'a> {
         let binding = arena
             .text("let ")
-            .append(arena.text(Self::escape_ident(var)))
+            .append(arena.text(var_ident(var)))
             .append(arena.text(" = "))
             .append(self.transpile_expr_owned(arena, value))
             .append(arena.text(";"));
@@ -811,20 +808,20 @@ impl Transpiler for RustTranspiler {
                 .hardline()
                 .append(self.transpile_statements(arena, body))
         };
-        self.scoped_binding(arena, binding, body)
+        binding.append(body)
     }
 
     fn transpile_let_fragment_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        var: &'a str,
+        var: &'a IrVar,
         fragment_body: &'a [IrStatement],
         body: &'a [IrStatement],
     ) -> Doc<'a> {
         self.needs_fragment = true;
         let binding = arena
             .text("let ")
-            .append(arena.text(Self::escape_ident(var)))
+            .append(arena.text(var_ident(var)))
             .append(arena.text(" = {"))
             .append(
                 arena
@@ -846,7 +843,7 @@ impl Transpiler for RustTranspiler {
                 .hardline()
                 .append(self.transpile_statements(arena, body))
         };
-        self.scoped_binding(arena, binding, body)
+        binding.append(body)
     }
 
     fn transpile_match_statement<'a>(
@@ -895,12 +892,12 @@ impl Transpiler for RustTranspiler {
                 none_arm_body,
             } => {
                 let some_pattern = match some_arm_binding {
-                    Some(var) => format!("Some({})", Self::escape_ident(var.as_str())),
+                    Some(var) => format!("Some({})", var_ident(var)),
                     None => "Some(_)".to_string(),
                 };
                 let some_rebind: Vec<(String, String)> = some_arm_binding
                     .iter()
-                    .map(|v| Self::escape_ident(v.as_str()))
+                    .map(var_ident)
                     .map(|v| (v.clone(), format!("{}.clone()", v)))
                     .collect();
 
@@ -980,7 +977,7 @@ impl Transpiler for RustTranspiler {
                                             format!(
                                                 "{}: {}",
                                                 Self::escape_ident(field.as_str()),
-                                                Self::escape_ident(var.as_str())
+                                                var_ident(var)
                                             )
                                         })
                                         .collect();
@@ -1009,7 +1006,7 @@ impl Transpiler for RustTranspiler {
                             .iter()
                             .map(|(field, var)| {
                                 (
-                                    Self::escape_ident(var.as_str()),
+                                    var_ident(var),
                                     self.arm_rebind_value(&variants, &arm.pattern, field, var),
                                 )
                             })
@@ -1100,8 +1097,8 @@ impl Transpiler for RustTranspiler {
         arena.text(name)
     }
 
-    fn transpile_var<'a>(&mut self, arena: &'a Arena<'a>, name: &'a str) -> Doc<'a> {
-        arena.text(Self::escape_ident(name))
+    fn transpile_var<'a>(&mut self, arena: &'a Arena<'a>, var: &'a IrVar) -> Doc<'a> {
+        arena.text(var_ident(var))
     }
 
     fn transpile_field_access<'a>(
@@ -1561,12 +1558,12 @@ impl Transpiler for RustTranspiler {
                 none_arm_body,
             } => {
                 let some_pattern = match some_arm_binding {
-                    Some(var) => format!("Some({})", Self::escape_ident(var.as_str())),
+                    Some(var) => format!("Some({})", var_ident(var)),
                     None => "Some(_)".to_string(),
                 };
                 let some_rebind: Vec<(String, String)> = some_arm_binding
                     .iter()
-                    .map(|v| Self::escape_ident(v.as_str()))
+                    .map(var_ident)
                     .map(|v| (v.clone(), format!("{}.clone()", v)))
                     .collect();
                 let some_arm_doc = self.expr_with_rebinds(arena, &some_rebind, some_arm_body);
@@ -1623,7 +1620,7 @@ impl Transpiler for RustTranspiler {
                                         format!(
                                             "{}: {}",
                                             Self::escape_ident(field.as_str()),
-                                            Self::escape_ident(var.as_str())
+                                            var_ident(var)
                                         )
                                     })
                                     .collect();
@@ -1653,7 +1650,7 @@ impl Transpiler for RustTranspiler {
                         .iter()
                         .map(|(field, var)| {
                             (
-                                Self::escape_ident(var.as_str()),
+                                var_ident(var),
                                 self.arm_rebind_value(&variants, &arm.pattern, field, var),
                             )
                         })
@@ -1684,7 +1681,7 @@ impl Transpiler for RustTranspiler {
     ) -> Doc<'a> {
         arena
             .text("{ let ")
-            .append(arena.text(Self::escape_ident(var.as_str())))
+            .append(arena.text(var_ident(var)))
             .append(arena.text(" = "))
             .append(self.transpile_expr_owned(arena, value))
             .append(arena.text("; "))
@@ -1811,8 +1808,8 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                view Test(show: Bool) {
-                  match show {
+                view Test(show@v0: Bool) {
+                  match v0 {
                     true => {
                       write("<h1>Visible</h1>")
                     }
@@ -1836,9 +1833,9 @@ mod tests {
 
                 impl View for Test {
                     fn render(self) -> String {
-                        let Test { show } = self;
+                        let Test { show: v_0 } = self;
                         let mut output = String::new();
-                        if show {
+                        if v_0 {
                             output.push_str("<h1>Visible</h1>");
                         }
                         output
@@ -1859,8 +1856,8 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  for i in 1..=3 {
-                    write_expr(i.to_string())
+                  for v0 in 1..=3 {
+                    write_expr(v0.to_string())
                   }
                 }
 
@@ -1878,8 +1875,8 @@ mod tests {
                 impl View for Test {
                     fn render(self) -> String {
                         let mut output = String::new();
-                        for i in 1_i32..=3_i32 {
-                            output.push_str(&(i).to_string());
+                        for v_0 in 1_i32..=3_i32 {
+                            output.push_str(&(v_0).to_string());
                         }
                         output
                     }
@@ -1908,9 +1905,9 @@ mod tests {
                 -- before --
                 view Test() {
                   match Option[String]::Some("x") {
-                    Some(value) => {
+                    Some(v0) => {
                       write("some: ")
-                      write_expr(value)
+                      write_expr(v0)
                     }
                     None => {
                       write("none")
@@ -1933,10 +1930,10 @@ mod tests {
                     fn render(self) -> String {
                         let mut output = String::new();
                         match &(Some("x".to_string())) {
-                            Some(value) => {
-                                let value = value.clone();
+                            Some(v_0) => {
+                                let v_0 = v_0.clone();
                                 output.push_str("some: ");
-                                output.push_str(&value);
+                                output.push_str(&v_0);
                             }
                             None => {
                                 output.push_str("none");
@@ -1967,11 +1964,11 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                view Test(opt: Option[String]) {
-                  match opt {
-                    Some(value) => {
+                view Test(opt@v0: Option[String]) {
+                  match v0 {
+                    Some(v1) => {
                       write("some: ")
-                      write_expr(value)
+                      write_expr(v1)
                     }
                     None => {
                       write("none")
@@ -1994,13 +1991,13 @@ mod tests {
 
                 impl View for Test {
                     fn render(self) -> String {
-                        let Test { opt } = self;
+                        let Test { opt: v_0 } = self;
                         let mut output = String::new();
-                        match &opt {
-                            Some(value) => {
-                                let value = value.clone();
+                        match &v_0 {
+                            Some(v_1) => {
+                                let v_1 = v_1.clone();
                                 output.push_str("some: ");
-                                output.push_str(&value);
+                                output.push_str(&v_1);
                             }
                             None => {
                                 output.push_str("none");
@@ -2030,8 +2027,8 @@ mod tests {
                   value: Int,
                   next: Option[test::Node],
                 }
-                view Test(node: test::Node) {
-                  write_expr(node.value.to_string())
+                view Test(node@v0: test::Node) {
+                  write_expr(v0.value.to_string())
                 }
 
                 -- after --
@@ -2055,9 +2052,9 @@ mod tests {
 
                 impl View for Test {
                     fn render(self) -> String {
-                        let Test { node } = self;
+                        let Test { node: v_0 } = self;
                         let mut output = String::new();
-                        output.push_str(&(node.value).to_string());
+                        output.push_str(&(v_0.value).to_string());
                         output
                     }
                 }
@@ -2140,14 +2137,14 @@ mod tests {
                   next: Option[test::Node],
                 }
                 view Test() {
-                  let node = Node {
+                  let v0 = Node {
                     value: 2,
                     next: Option[test::Node]::Some(Node {
                       value: 1,
                       next: Option[test::Node]::None,
                     }),
                   } in {
-                    write_expr(node.value.to_string())
+                    write_expr(v0.value.to_string())
                   }
                 }
 
@@ -2171,10 +2168,8 @@ mod tests {
                 impl View for Test {
                     fn render(self) -> String {
                         let mut output = String::new();
-                        {
-                            let node = Node { value: 2_i32, next: Some(Node { value: 1_i32, next: None::<Node>.map(Box::new) }).map(Box::new) };
-                            output.push_str(&(node.value).to_string());
-                        }
+                        let v_0 = Node { value: 2_i32, next: Some(Node { value: 1_i32, next: None::<Node>.map(Box::new) }).map(Box::new) };
+                        output.push_str(&(v_0.value).to_string());
                         output
                     }
                 }
@@ -2213,7 +2208,7 @@ mod tests {
                   Nil,
                 }
                 view Test() {
-                  let list = IntList::Cons {head: 1, tail: IntList::Nil} in {
+                  let v0 = IntList::Cons {head: 1, tail: IntList::Nil} in {
                     write("done")
                   }
                 }
@@ -2238,10 +2233,8 @@ mod tests {
                 impl View for Test {
                     fn render(self) -> String {
                         let mut output = String::new();
-                        {
-                            let list = IntList::Cons { head: 1_i32, tail: Box::new(IntList::Nil) };
-                            output.push_str("done");
-                        }
+                        let v_0 = IntList::Cons { head: 1_i32, tail: Box::new(IntList::Nil) };
+                        output.push_str("done");
                         output
                     }
                 }
@@ -2272,7 +2265,7 @@ mod tests {
                   a: Option[test::A],
                 }
                 view Test() {
-                  let b = B {
+                  let v0 = B {
                     a: Option[test::A]::Some(A {
                       b: B {a: Option[test::A]::None},
                     }),
@@ -2305,10 +2298,8 @@ mod tests {
                 impl View for Test {
                     fn render(self) -> String {
                         let mut output = String::new();
-                        {
-                            let b = B { a: Some(A { b: Box::new(B { a: None::<A>.map(Box::new) }) }).map(Box::new) };
-                            output.push_str("done");
-                        }
+                        let v_0 = B { a: Some(A { b: Box::new(B { a: None::<A>.map(Box::new) }) }).map(Box::new) };
+                        output.push_str("done");
                         output
                     }
                 }
@@ -2338,8 +2329,8 @@ mod tests {
                   Green,
                   Blue,
                 }
-                component Badge(color: test::Color) {
-                  match color {
+                component Badge(color@v0: test::Color) {
+                  match v0 {
                     Color::Red => {
                       write("red")
                     }
@@ -2371,9 +2362,9 @@ mod tests {
                     Blue,
                 }
 
-                fn render_badge(color: &Color) -> String {
+                fn render_badge(v_0: &Color) -> String {
                     let mut output = String::new();
-                    match &color {
+                    match &v_0 {
                         Color::Red => {
                             output.push_str("red");
                         }
@@ -2417,10 +2408,10 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  let v_0 = {
+                  let v0 = {
                     write("<b>hi</b>")
                   } in {
-                    write_expr(v_0)
+                    write_expr(v0)
                   }
                 }
 
@@ -2441,14 +2432,12 @@ mod tests {
                 impl View for Test {
                     fn render(self) -> String {
                         let mut output = String::new();
-                        {
-                            let v_0 = {
-                                let mut output = String::new();
-                                output.push_str("<b>hi</b>");
-                                Fragment(output)
-                            };
-                            output.push_str(&v_0.0);
-                        }
+                        let v_0 = {
+                            let mut output = String::new();
+                            output.push_str("<b>hi</b>");
+                            Fragment(output)
+                        };
+                        output.push_str(&v_0.0);
                         output
                     }
                 }

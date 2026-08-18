@@ -18,6 +18,7 @@ pub struct IrModule {
     pub records: Vec<IrRecordDeclaration>,
     pub enums: Vec<IrEnumDeclaration>,
     pub expr_ids: ExprIdCounter,
+    pub var_ids: VarIdCounter,
 }
 
 /// Unique identifier for each expression in the IR
@@ -64,6 +65,12 @@ impl StatementIdCounter {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct VarId(usize);
 
+impl fmt::Display for VarId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 pub struct VarIdCounter(usize);
 
@@ -80,38 +87,36 @@ impl VarIdCounter {
 }
 
 /// A bound variable in the IR.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct IrVar {
     pub id: VarId,
-    pub name: VarName,
 }
 
 impl IrVar {
-    pub fn new(id: VarId, name: VarName) -> Self {
-        Self { id, name }
-    }
-
-    pub fn as_str(&self) -> &str {
-        self.name.as_str()
+    pub fn new(id: VarId) -> Self {
+        Self { id }
     }
 }
 
+/// Rendered in IR dumps. Each transpiler names variables its own way, so this
+/// spelling is the IR's alone.
 impl fmt::Display for IrVar {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.name.as_str())
+        write!(f, "v{}", self.id)
     }
 }
 
 /// A parameter declaration in the IR (used in views and components).
 #[derive(Debug, Clone, PartialEq)]
 pub struct IrParameter {
+    pub name: VarName,
     pub var: IrVar,
     pub typ: Arc<Type>,
 }
 
 impl IrParameter {
     pub fn name(&self) -> &VarName {
-        &self.var.name
+        &self.name
     }
 }
 
@@ -524,7 +529,7 @@ impl IrStatement {
                         .append(end.to_doc()),
                 };
                 let var_doc = match var {
-                    Some(name) => BoxDoc::text(name.as_str()),
+                    Some(name) => BoxDoc::text(name.to_string()),
                     None => BoxDoc::text("_"),
                 };
                 BoxDoc::text("for ")
@@ -548,7 +553,7 @@ impl IrStatement {
             IrStatement::Let {
                 var, value, body, ..
             } => BoxDoc::text("let ")
-                .append(BoxDoc::text(var.as_str()))
+                .append(BoxDoc::text(var.to_string()))
                 .append(BoxDoc::text(" = "))
                 .append(value.to_doc())
                 .append(BoxDoc::text(" in {"))
@@ -570,7 +575,7 @@ impl IrStatement {
                 body,
                 ..
             } => BoxDoc::text("let ")
-                .append(BoxDoc::text(var.as_str()))
+                .append(BoxDoc::text(var.to_string()))
                 .append(BoxDoc::text(" = {"))
                 .append(if fragment_body.is_empty() {
                     BoxDoc::nil()
@@ -642,7 +647,7 @@ impl IrStatement {
                         none_arm_body,
                     } => {
                         let some_pattern = match some_arm_binding {
-                            Some(var) => format!("Some({})", var.as_str()),
+                            Some(var) => format!("Some({var})"),
                             None => "Some(_)".to_string(),
                         };
                         BoxDoc::text("match ")
@@ -877,7 +882,7 @@ impl IrExpr {
     /// Pretty-print this expression
     pub fn to_doc(&self) -> BoxDoc<'_> {
         match self {
-            IrExpr::Var { value, .. } => BoxDoc::text(value.as_str()),
+            IrExpr::Var { value, .. } => BoxDoc::text(value.to_string()),
             IrExpr::FieldAccess { record, field, .. } => record
                 .to_doc()
                 .append(BoxDoc::text("."))
@@ -1131,7 +1136,7 @@ impl IrExpr {
                 } => {
                     let some_pattern_doc = match some_arm_binding {
                         Some(name) => BoxDoc::text("Some(")
-                            .append(BoxDoc::text(name.as_str()))
+                            .append(BoxDoc::text(name.to_string()))
                             .append(BoxDoc::text(")")),
                         None => BoxDoc::text("Some(_)"),
                     };
@@ -1162,7 +1167,7 @@ impl IrExpr {
             IrExpr::Let {
                 var, value, body, ..
             } => BoxDoc::text("let ")
-                .append(BoxDoc::text(var.as_str()))
+                .append(BoxDoc::text(var.to_string()))
                 .append(BoxDoc::text(" = "))
                 .append(value.to_doc())
                 .append(BoxDoc::text(" in "))
@@ -1426,7 +1431,12 @@ impl<'a> IrViewDeclaration {
                     .append(BoxDoc::line_())
                     .append(BoxDoc::intersperse(
                         self.parameters.iter().map(|param| {
-                            BoxDoc::text(param.var.name.to_string())
+                            // Both names: uses of the parameter in the body
+                            // print as the variable, the declaration is what
+                            // callers name.
+                            BoxDoc::text(param.name.to_string())
+                                .append(BoxDoc::text("@"))
+                                .append(BoxDoc::text(param.var.to_string()))
                                 .append(BoxDoc::text(": "))
                                 .append(param.typ.to_doc())
                         }),
@@ -1584,7 +1594,9 @@ impl<'a> IrComponentDeclaration {
                     .append(BoxDoc::line_())
                     .append(BoxDoc::intersperse(
                         self.parameters.iter().map(|param| {
-                            BoxDoc::text(param.var.name.to_string())
+                            BoxDoc::text(param.name.to_string())
+                                .append(BoxDoc::text("@"))
+                                .append(BoxDoc::text(param.var.to_string()))
                                 .append(BoxDoc::text(": "))
                                 .append(param.typ.to_doc())
                         }),

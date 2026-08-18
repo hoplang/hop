@@ -114,14 +114,14 @@ mod tests {
                   match true {
                     true => {
                       write_expr("Inside if")
-                      for item in ["foo"] {
+                      for v0 in ["foo"] {
                         write_expr("Inside for")
                       }
                     }
                     false => {
                     }
                   }
-                  let x = "value" in {
+                  let v1 = "value" in {
                     write_expr("Inside let")
                   }
                 }
@@ -131,14 +131,14 @@ mod tests {
                   match true {
                     true => {
                       write("Inside if")
-                      for item in ["foo"] {
+                      for v0 in ["foo"] {
                         write("Inside for")
                       }
                     }
                     false => {
                     }
                   }
-                  let x = "value" in {
+                  let v1 = "value" in {
                     write("Inside let")
                   }
                 }
@@ -158,17 +158,17 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                view Test(x: String) {
+                view Test(x@v0: String) {
                   write("Already a Write statement")
                   write_expr("Will become Write")
-                  write_expr(x)
+                  write_expr(v0)
                 }
 
                 -- after --
-                view Test(x: String) {
+                view Test(x@v0: String) {
                   write("Already a Write statement")
                   write("Will become Write")
-                  write_expr(x)
+                  write_expr(v0)
                 }
             "#]],
         );

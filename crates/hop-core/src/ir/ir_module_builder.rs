@@ -183,14 +183,15 @@ impl IrModuleBodiesBuilder {
             .map(|(name, typ)| {
                 let id = self.var_ids.borrow_mut().next();
                 IrParameter {
-                    var: IrVar::new(id, VarName::new(name).unwrap()),
+                    name: VarName::new(name).unwrap(),
+                    var: IrVar::new(id),
                     typ: self.types.resolve(typ),
                 }
             })
             .collect();
         let vars = parameters
             .iter()
-            .map(|p| (p.var.clone(), p.typ.clone()))
+            .map(|p| (p.name.as_str().to_string(), p.var, p.typ.clone()))
             .collect();
         let mut builder = IrBuilder {
             var_stack: vars,
@@ -234,13 +235,18 @@ impl IrModuleBodiesBuilder {
             records: record_declarations,
             enums: enum_declarations,
             expr_ids: *self.expr_ids.borrow(),
+            var_ids: *self.var_ids.borrow(),
         };
         (module, self.types.registry().clone())
     }
 }
 
+/// A variable in scope, together with the name tests refer to it by. The name
+/// lives here rather than on [`IrVar`], which carries only an identity.
+type ScopedVar = (String, IrVar, Arc<Type>);
+
 pub struct IrBuilder {
-    var_stack: Vec<(IrVar, Arc<Type>)>,
+    var_stack: Vec<ScopedVar>,
     types: Rc<TestTypes>,
     expr_ids: Rc<RefCell<ExprIdCounter>>,
     statement_ids: Rc<RefCell<StatementIdCounter>>,
@@ -257,12 +263,11 @@ impl IrBuilder {
         self.statement_ids.borrow_mut().next()
     }
 
-    fn bind(&self, name: &str) -> IrVar {
-        let id = self.var_ids.borrow_mut().next();
-        IrVar::new(id, VarName::new(name).unwrap())
+    fn bind(&self) -> IrVar {
+        IrVar::new(self.var_ids.borrow_mut().next())
     }
 
-    fn scoped(&self, bindings: impl IntoIterator<Item = (IrVar, Arc<Type>)>) -> Self {
+    fn scoped(&self, bindings: impl IntoIterator<Item = ScopedVar>) -> Self {
         let mut var_stack = self.var_stack.clone();
         var_stack.extend(bindings);
         Self {
@@ -279,7 +284,7 @@ impl IrBuilder {
     /// returning the statements it emitted as a separate body.
     fn in_scope(
         &mut self,
-        bindings: impl IntoIterator<Item = (IrVar, Arc<Type>)>,
+        bindings: impl IntoIterator<Item = ScopedVar>,
         body_fn: impl FnOnce(&mut Self),
     ) -> Vec<IrStatement> {
         let saved_statements = std::mem::take(&mut self.statements);
@@ -291,7 +296,7 @@ impl IrBuilder {
     }
 
     /// In-scope variables, innermost last.
-    pub fn vars(&self) -> &[(IrVar, Arc<Type>)] {
+    pub fn vars(&self) -> &[ScopedVar] {
         &self.var_stack
     }
 
@@ -335,11 +340,11 @@ impl IrBuilder {
     }
 
     pub fn var(&self, name: &str) -> IrExpr {
-        let (value, kind) = self
+        let (_, value, kind) = self
             .var_stack
             .iter()
             .rev()
-            .find(|(var, _)| var.as_str() == name)
+            .find(|(var_name, _, _)| var_name == name)
             .cloned()
             .unwrap_or_else(|| {
                 panic!(
@@ -347,7 +352,7 @@ impl IrBuilder {
                     name,
                     self.var_stack
                         .iter()
-                        .map(|(v, _)| v.as_str())
+                        .map(|(v, _, _)| v.as_str())
                         .collect::<Vec<_>>()
                 )
             });
@@ -844,8 +849,9 @@ impl IrBuilder {
             _ => panic!("Match subject must be an option type, got: {}", subject),
         };
 
-        let binding = self.bind(binding_name);
-        let some_body = some_body_fn(&self.scoped([(binding.clone(), inner_type)]));
+        let binding = self.bind();
+        let some_body =
+            some_body_fn(&self.scoped([(binding_name.to_string(), binding, inner_type)]));
 
         assert_eq!(
             *some_body.as_type(),
@@ -903,8 +909,8 @@ impl IrBuilder {
     {
         let value_type = value.get_type();
 
-        let var = self.bind(var_name);
-        let body = body_fn(&self.scoped([(var.clone(), value_type)]));
+        let var = self.bind();
+        let body = body_fn(&self.scoped([(var_name.to_string(), var, value_type)]));
 
         let kind = body.get_type();
 
@@ -1100,8 +1106,9 @@ impl IrBuilder {
             _ => panic!("Cannot iterate over non-array type"),
         };
 
-        let var = self.bind(var);
-        let body = self.in_scope([(var.clone(), element_type)], body_fn);
+        let name = var;
+        let var = self.bind();
+        let body = self.in_scope([(name.to_string(), var, element_type)], body_fn);
 
         self.statements.push(IrStatement::For {
             id: self.next_statement_id(),
@@ -1131,10 +1138,12 @@ impl IrBuilder {
             "Range bounds must be Int, got: {}",
             end
         );
-        let var = var.map(|v| self.bind(v));
-        let bindings: Vec<_> = var
-            .iter()
-            .map(|v| (v.clone(), Arc::new(Type::Int)))
+        let name = var;
+        let var = name.map(|_| self.bind());
+        let bindings: Vec<_> = name
+            .into_iter()
+            .zip(var)
+            .map(|(name, v)| (name.to_string(), v, Arc::new(Type::Int)))
             .collect();
         let body = self.in_scope(bindings, body_fn);
 
@@ -1152,8 +1161,9 @@ impl IrBuilder {
     {
         let value_type = value.get_type();
 
-        let var = self.bind(var);
-        let body = self.in_scope([(var.clone(), value_type)], body_fn);
+        let name = var;
+        let var = self.bind();
+        let body = self.in_scope([(name.to_string(), var, value_type)], body_fn);
 
         self.statements.push(IrStatement::Let {
             id: self.next_statement_id(),
@@ -1170,8 +1180,9 @@ impl IrBuilder {
     {
         let fragment_body = self.in_scope([], fragment_body_fn);
 
-        let var = self.bind(var);
-        let body = self.in_scope([(var.clone(), Arc::new(Type::Fragment))], body_fn);
+        let name = var;
+        let var = self.bind();
+        let body = self.in_scope([(name.to_string(), var, Arc::new(Type::Fragment))], body_fn);
 
         self.statements.push(IrStatement::LetFragment {
             id: self.next_statement_id(),
@@ -1221,10 +1232,13 @@ impl IrBuilder {
         };
 
         // Build some body with optional binding
-        let some_arm_binding = binding_var.map(|var| self.bind(var));
+        let some_arm_binding = binding_var.map(|_| self.bind());
 
         let some_arm_body = self.in_scope(
-            some_arm_binding.clone().map(|var| (var, inner_type)),
+            binding_var
+                .into_iter()
+                .zip(some_arm_binding)
+                .map(|(name, var)| (name.to_string(), var, inner_type.clone())),
             some_body_fn,
         );
         let none_arm_body = self.in_scope([], none_body_fn);
@@ -1401,7 +1415,7 @@ fn resolve_arm_bindings<'s>(
     variants: &[EnumVariant],
     variant: &str,
     field_bindings: impl IntoIterator<Item = (&'s str, &'s str)>,
-) -> (Vec<(FieldName, IrVar)>, Vec<(IrVar, Arc<Type>)>) {
+) -> (Vec<(FieldName, IrVar)>, Vec<ScopedVar>) {
     let variant_fields = variants
         .iter()
         .find(|v| v.name.as_str() == variant)
@@ -1427,9 +1441,9 @@ fn resolve_arm_bindings<'s>(
                     field_name, enum_name, variant
                 )
             });
-        let binding = builder.bind(binding_name);
-        bindings.push((FieldName::new(field_name).unwrap(), binding.clone()));
-        scoped_vars.push((binding, field_type));
+        let binding = builder.bind();
+        bindings.push((FieldName::new(field_name).unwrap(), binding));
+        scoped_vars.push((binding_name.to_string(), binding, field_type));
     }
     (bindings, scoped_vars)
 }

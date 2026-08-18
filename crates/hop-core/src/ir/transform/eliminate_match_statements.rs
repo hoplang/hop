@@ -195,8 +195,8 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                view Test(show: Bool) {
-                  match show {
+                view Test(show@v0: Bool) {
+                  match v0 {
                     true => {
                       write("Dynamic")
                     }
@@ -220,8 +220,8 @@ mod tests {
                 }
 
                 -- after --
-                view Test(show: Bool) {
-                  match show {
+                view Test(show@v0: Bool) {
+                  match v0 {
                     true => {
                       write("Dynamic")
                     }
@@ -252,8 +252,8 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                view Test(show: Bool) {
-                  match show {
+                view Test(show@v0: Bool) {
+                  match v0 {
                     true => {
                       write("dynamic true")
                     }
@@ -264,8 +264,8 @@ mod tests {
                 }
 
                 -- after --
-                view Test(show: Bool) {
-                  match show {
+                view Test(show@v0: Bool) {
+                  match v0 {
                     true => {
                       write("dynamic true")
                     }
@@ -354,7 +354,7 @@ mod tests {
                 -- before --
                 view Test() {
                   match Option[String]::None {
-                    Some(x) => {
+                    Some(v0) => {
                       write("some branch")
                     }
                     None => {
@@ -390,10 +390,10 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                view Test(maybe: Option[String]) {
-                  match maybe {
-                    Some(x) => {
-                      write_expr(x)
+                view Test(maybe@v0: Option[String]) {
+                  match v0 {
+                    Some(v1) => {
+                      write_expr(v1)
                     }
                     None => {
                       write("none")
@@ -402,10 +402,10 @@ mod tests {
                 }
 
                 -- after --
-                view Test(maybe: Option[String]) {
-                  match maybe {
-                    Some(x) => {
-                      write_expr(x)
+                view Test(maybe@v0: Option[String]) {
+                  match v0 {
+                    Some(v1) => {
+                      write_expr(v1)
                     }
                     None => {
                       write("none")
@@ -437,8 +437,8 @@ mod tests {
                 -- before --
                 view Test() {
                   match Option[String]::Some("hi") {
-                    Some(x) => {
-                      write_expr(x)
+                    Some(v0) => {
+                      write_expr(v0)
                     }
                     None => {
                       write("none branch")
@@ -448,8 +448,8 @@ mod tests {
 
                 -- after --
                 view Test() {
-                  let x = "hi" in {
-                    write_expr(x)
+                  let v0 = "hi" in {
+                    write_expr(v0)
                   }
                 }
             "#]],

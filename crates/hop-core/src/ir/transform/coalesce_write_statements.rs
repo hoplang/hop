@@ -202,10 +202,10 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  for item in ["x"] {
+                  for v0 in ["x"] {
                     write("Item")
                     write(": ")
-                    write_escaped(item)
+                    write_escaped(v0)
                     write(" - ")
                     write("Done")
                   }
@@ -213,9 +213,9 @@ mod tests {
 
                 -- after --
                 view Test() {
-                  for item in ["x"] {
+                  for v0 in ["x"] {
                     write("Item: ")
-                    write_escaped(item)
+                    write_escaped(v0)
                     write(" - Done")
                   }
                 }
@@ -238,7 +238,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  let x = "value" in {
+                  let v0 = "value" in {
                     write("The")
                     write(" value")
                     write(" is")
@@ -247,7 +247,7 @@ mod tests {
 
                 -- after --
                 view Test() {
-                  let x = "value" in {
+                  let v0 = "value" in {
                     write("The value is")
                   }
                 }
@@ -285,7 +285,7 @@ mod tests {
                     true => {
                       write("In")
                       write(" if")
-                      for i in ["foo"] {
+                      for v0 in ["foo"] {
                         write("Loop")
                         write(" body")
                       }
@@ -305,7 +305,7 @@ mod tests {
                   match true {
                     true => {
                       write("In if")
-                      for i in ["foo"] {
+                      for v0 in ["foo"] {
                         write("Loop body")
                       }
                       write("After loop")
@@ -333,18 +333,18 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                view Test(x: String) {
+                view Test(x@v0: String) {
                   write("Value")
                   write(": ")
-                  write_escaped(x)
+                  write_escaped(v0)
                   write(" - ")
                   write("done")
                 }
 
                 -- after --
-                view Test(x: String) {
+                view Test(x@v0: String) {
                   write("Value: ")
-                  write_escaped(x)
+                  write_escaped(v0)
                   write(" - done")
                 }
             "#]],

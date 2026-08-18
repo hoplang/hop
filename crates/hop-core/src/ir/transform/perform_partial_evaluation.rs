@@ -1166,15 +1166,15 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  let x = (!(!true)) in {
-                    match x {
+                  let v0 = (!(!true)) in {
+                    match v0 {
                       true => {
                         write("x is true")
                       }
                       false => {
                       }
                     }
-                    match (!x) {
+                    match (!v0) {
                       true => {
                         write("x is false")
                       }
@@ -1186,7 +1186,7 @@ mod tests {
 
                 -- after --
                 view Test() {
-                  let x = true in {
+                  let v0 = true in {
                     match true {
                       true => {
                         write("x is true")
@@ -1225,16 +1225,16 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  let x = true in {
-                    let y = (!true) in {
-                      match (x == y) {
+                  let v0 = true in {
+                    let v1 = (!true) in {
+                      match (v0 == v1) {
                         true => {
                           write("x equals y")
                         }
                         false => {
                         }
                       }
-                      match (x == (!y)) {
+                      match (v0 == (!v1)) {
                         true => {
                           write("x equals not y")
                         }
@@ -1247,8 +1247,8 @@ mod tests {
 
                 -- after --
                 view Test() {
-                  let x = true in {
-                    let y = false in {
+                  let v0 = true in {
+                    let v1 = false in {
                       match false {
                         true => {
                           write("x equals y")
@@ -1281,14 +1281,14 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  let message = "Hello, World!" in {
-                    write_escaped(message)
+                  let v0 = "Hello, World!" in {
+                    write_escaped(v0)
                   }
                 }
 
                 -- after --
                 view Test() {
-                  let message = "Hello, World!" in {
+                  let v0 = "Hello, World!" in {
                     write_escaped("Hello, World!")
                   }
                 }
@@ -1310,18 +1310,18 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  let greeting = "Hello" in {
-                    let name = "World" in {
-                      write_escaped(greeting)
-                      write_escaped(name)
+                  let v0 = "Hello" in {
+                    let v1 = "World" in {
+                      write_escaped(v0)
+                      write_escaped(v1)
                     }
                   }
                 }
 
                 -- after --
                 view Test() {
-                  let greeting = "Hello" in {
-                    let name = "World" in {
+                  let v0 = "Hello" in {
+                    let v1 = "World" in {
                       write_escaped("Hello")
                       write_escaped("World")
                     }
@@ -1346,21 +1346,21 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  let title = "Welcome" in {
-                    write_escaped(title)
-                    write_escaped(title)
-                    let subtitle = title in {
-                      write_escaped(subtitle)
+                  let v0 = "Welcome" in {
+                    write_escaped(v0)
+                    write_escaped(v0)
+                    let v1 = v0 in {
+                      write_escaped(v1)
                     }
                   }
                 }
 
                 -- after --
                 view Test() {
-                  let title = "Welcome" in {
+                  let v0 = "Welcome" in {
                     write_escaped("Welcome")
                     write_escaped("Welcome")
-                    let subtitle = "Welcome" in {
+                    let v1 = "Welcome" in {
                       write_escaped("Welcome")
                     }
                   }
@@ -1404,9 +1404,9 @@ mod tests {
                     false => {
                     }
                   }
-                  let greeting = "hello" in {
-                    let message = "hello" in {
-                      match (greeting == message) {
+                  let v0 = "hello" in {
+                    let v1 = "hello" in {
+                      match (v0 == v1) {
                         true => {
                           write("Variables are equal")
                         }
@@ -1433,8 +1433,8 @@ mod tests {
                     false => {
                     }
                   }
-                  let greeting = "hello" in {
-                    let message = "hello" in {
+                  let v0 = "hello" in {
+                    let v1 = "hello" in {
                       match true {
                         true => {
                           write("Variables are equal")
@@ -1550,10 +1550,10 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  let prefix = "Hello" in {
-                    let suffix = (" " + "World") in {
-                      let full = (prefix + suffix) in {
-                        write_escaped(full)
+                  let v0 = "Hello" in {
+                    let v1 = (" " + "World") in {
+                      let v2 = (v0 + v1) in {
+                        write_escaped(v2)
                       }
                     }
                   }
@@ -1561,9 +1561,9 @@ mod tests {
 
                 -- after --
                 view Test() {
-                  let prefix = "Hello" in {
-                    let suffix = " World" in {
-                      let full = "Hello World" in {
+                  let v0 = "Hello" in {
+                    let v1 = " World" in {
+                      let v2 = "Hello World" in {
                         write_escaped("Hello World")
                       }
                     }
@@ -1593,8 +1593,8 @@ mod tests {
                   Blue,
                 }
                 view Test() {
-                  let color = Color::Red in {
-                    write_escaped(match color {
+                  let v0 = Color::Red in {
+                    write_escaped(match v0 {
                       Color::Red => "red",
                       Color::Blue => "blue",
                     })
@@ -1607,7 +1607,7 @@ mod tests {
                   Blue,
                 }
                 view Test() {
-                  let color = Color::Red in {
+                  let v0 = Color::Red in {
                     write_escaped("red")
                   }
                 }
@@ -1671,10 +1671,10 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  let opt = Option[String]::Some("x") in {
-                    match opt {
-                      Some(v) => {
-                        write_expr(v)
+                  let v0 = Option[String]::Some("x") in {
+                    match v0 {
+                      Some(v1) => {
+                        write_expr(v1)
                       }
                       None => {
                         write("none")
@@ -1685,10 +1685,10 @@ mod tests {
 
                 -- after --
                 view Test() {
-                  let opt = Option[String]::Some("x") in {
+                  let v0 = Option[String]::Some("x") in {
                     match Option[String]::Some("x") {
-                      Some(v) => {
-                        write_expr(v)
+                      Some(v1) => {
+                        write_expr(v1)
                       }
                       None => {
                         write("none")
@@ -1720,8 +1720,8 @@ mod tests {
                   Blue,
                 }
                 view Test() {
-                  let color = Color::Blue in {
-                    write_escaped(match color {
+                  let v0 = Color::Blue in {
+                    write_escaped(match v0 {
                       Color::Red => "red",
                       Color::Blue => "blue",
                     })
@@ -1734,7 +1734,7 @@ mod tests {
                   Blue,
                 }
                 view Test() {
-                  let color = Color::Blue in {
+                  let v0 = Color::Blue in {
                     write_escaped("blue")
                   }
                 }
@@ -1767,8 +1767,8 @@ mod tests {
                   Blue,
                 }
                 view Test() {
-                  let color = Color::Red in {
-                    match match color {
+                  let v0 = Color::Red in {
+                    match match v0 {
                       Color::Red => (!false),
                       Color::Blue => false,
                     } {
@@ -1787,7 +1787,7 @@ mod tests {
                   Blue,
                 }
                 view Test() {
-                  let color = Color::Red in {
+                  let v0 = Color::Red in {
                     match true {
                       true => {
                         write("Match evaluated to true")
@@ -1829,8 +1829,8 @@ mod tests {
                   Inactive,
                 }
                 view Test() {
-                  let status = Status::Active in {
-                    match (match status {
+                  let v0 = Status::Active in {
+                    match (match v0 {
                       Status::Active => "on",
                       Status::Inactive => "off",
                     } == "on") {
@@ -1849,7 +1849,7 @@ mod tests {
                   Inactive,
                 }
                 view Test() {
-                  let status = Status::Active in {
+                  let v0 = Status::Active in {
                     match true {
                       true => {
                         write("Status is active")
@@ -1885,9 +1885,9 @@ mod tests {
                   Blue,
                 }
                 view Test() {
-                  let x = Color::Red in {
-                    let y = x in {
-                      write_escaped(match y {
+                  let v0 = Color::Red in {
+                    let v1 = v0 in {
+                      write_escaped(match v1 {
                         Color::Red => "red",
                         Color::Blue => "blue",
                       })
@@ -1901,8 +1901,8 @@ mod tests {
                   Blue,
                 }
                 view Test() {
-                  let x = Color::Red in {
-                    let y = Color::Red in {
+                  let v0 = Color::Red in {
+                    let v1 = Color::Red in {
                       write_escaped("red")
                     }
                   }
@@ -1925,20 +1925,20 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  let x = "first" in {
-                    write_escaped(x)
+                  let v0 = "first" in {
+                    write_escaped(v0)
                   }
-                  let y = "second" in {
-                    write_escaped(y)
+                  let v1 = "second" in {
+                    write_escaped(v1)
                   }
                 }
 
                 -- after --
                 view Test() {
-                  let x = "first" in {
+                  let v0 = "first" in {
                     write_escaped("first")
                   }
-                  let y = "second" in {
+                  let v1 = "second" in {
                     write_escaped("second")
                   }
                 }
@@ -1964,7 +1964,7 @@ mod tests {
                   Say {text: String},
                 }
                 view Test() {
-                  let x = Msg::Say {text: "hi"} in {}
+                  let v0 = Msg::Say {text: "hi"} in {}
                 }
 
                 -- after --
@@ -1972,7 +1972,7 @@ mod tests {
                   Say {text: String},
                 }
                 view Test() {
-                  let x = Msg::Say {text: "hi"} in {}
+                  let v0 = Msg::Say {text: "hi"} in {}
                 }
             "#]],
         );
@@ -2034,17 +2034,17 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  let base = "flex items-center" in {
-                    let extra = "gap-4 text-red-500" in {
-                      write_escaped(tw_merge(((base + " ") + extra)))
+                  let v0 = "flex items-center" in {
+                    let v1 = "gap-4 text-red-500" in {
+                      write_escaped(tw_merge(((v0 + " ") + v1)))
                     }
                   }
                 }
 
                 -- after --
                 view Test() {
-                  let base = "flex items-center" in {
-                    let extra = "gap-4 text-red-500" in {
+                  let v0 = "flex items-center" in {
+                    let v1 = "gap-4 text-red-500" in {
                       write_escaped("flex items-center gap-4 text-red-500")
                     }
                   }
@@ -2124,8 +2124,8 @@ mod tests {
                   Large,
                 }
                 view Test() {
-                  let size = Size::Large in {
-                    write_escaped(tw_merge((("px-4" + " ") + match size {
+                  let v0 = Size::Large in {
+                    write_escaped(tw_merge((("px-4" + " ") + match v0 {
                       Size::Small => "text-sm",
                       Size::Large => "text-lg",
                     })))
@@ -2138,7 +2138,7 @@ mod tests {
                   Large,
                 }
                 view Test() {
-                  let size = Size::Large in {
+                  let v0 = Size::Large in {
                     write_escaped("px-4 text-lg")
                   }
                 }
@@ -2170,8 +2170,8 @@ mod tests {
                   Large,
                 }
                 view Test() {
-                  let size = Size::Large in {
-                    write_escaped(tw_merge((("flex" + " ") + match size {
+                  let v0 = Size::Large in {
+                    write_escaped(tw_merge((("flex" + " ") + match v0 {
                       Size::Small => (("p-2" + " ") + "text-sm"),
                       Size::Large => (("p-4" + " ") + "text-lg"),
                     })))
@@ -2184,7 +2184,7 @@ mod tests {
                   Large,
                 }
                 view Test() {
-                  let size = Size::Large in {
+                  let v0 = Size::Large in {
                     write_escaped("flex p-4 text-lg")
                   }
                 }
@@ -2207,8 +2207,8 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  let opt = Option[String]::Some("hello") in {
-                    write_escaped(match opt {
+                  let v0 = Option[String]::Some("hello") in {
+                    write_escaped(match v0 {
                       Some(_) => "got some",
                       None => "got none",
                     })
@@ -2217,7 +2217,7 @@ mod tests {
 
                 -- after --
                 view Test() {
-                  let opt = Option[String]::Some("hello") in {
+                  let v0 = Option[String]::Some("hello") in {
                     write_escaped("got some")
                   }
                 }
@@ -2240,8 +2240,8 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  let opt = Option[String]::None in {
-                    write_escaped(match opt {
+                  let v0 = Option[String]::None in {
+                    write_escaped(match v0 {
                       Some(_) => "got some",
                       None => "got none",
                     })
@@ -2250,7 +2250,7 @@ mod tests {
 
                 -- after --
                 view Test() {
-                  let opt = Option[String]::None in {
+                  let v0 = Option[String]::None in {
                     write_escaped("got none")
                   }
                 }
@@ -2275,9 +2275,9 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  let x = Option[String]::Some("hello") in {
-                    let y = x in {
-                      write_escaped(match y {
+                  let v0 = Option[String]::Some("hello") in {
+                    let v1 = v0 in {
+                      write_escaped(match v1 {
                         Some(_) => "got some",
                         None => "got none",
                       })
@@ -2287,8 +2287,8 @@ mod tests {
 
                 -- after --
                 view Test() {
-                  let x = Option[String]::Some("hello") in {
-                    let y = Option[String]::Some("hello") in {
+                  let v0 = Option[String]::Some("hello") in {
+                    let v1 = Option[String]::Some("hello") in {
                       write_escaped("got some")
                     }
                   }
@@ -2313,9 +2313,9 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  let opt = Option[String]::Some("hello") in {
-                    write_escaped(match opt {
-                      Some(inner) => inner,
+                  let v0 = Option[String]::Some("hello") in {
+                    write_escaped(match v0 {
+                      Some(v1) => v1,
                       None => "default",
                     })
                   }
@@ -2323,7 +2323,7 @@ mod tests {
 
                 -- after --
                 view Test() {
-                  let opt = Option[String]::Some("hello") in {
+                  let v0 = Option[String]::Some("hello") in {
                     write_escaped("hello")
                   }
                 }
@@ -2351,9 +2351,9 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  let opt = Option[String]::Some("hello") in {
-                    write_escaped(match opt {
-                      Some(inner) => (inner + " world"),
+                  let v0 = Option[String]::Some("hello") in {
+                    write_escaped(match v0 {
+                      Some(v1) => (v1 + " world"),
                       None => "default",
                     })
                   }
@@ -2361,7 +2361,7 @@ mod tests {
 
                 -- after --
                 view Test() {
-                  let opt = Option[String]::Some("hello") in {
+                  let v0 = Option[String]::Some("hello") in {
                     write_escaped("hello world")
                   }
                 }
@@ -2391,9 +2391,9 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  let opt = Option[String]::Some("hello") in {
-                    match match opt {
-                      Some(inner) => (inner == "hello"),
+                  let v0 = Option[String]::Some("hello") in {
+                    match match v0 {
+                      Some(v1) => (v1 == "hello"),
                       None => false,
                     } {
                       true => {
@@ -2407,7 +2407,7 @@ mod tests {
 
                 -- after --
                 view Test() {
-                  let opt = Option[String]::Some("hello") in {
+                  let v0 = Option[String]::Some("hello") in {
                     match true {
                       true => {
                         write("matched hello")
@@ -2451,13 +2451,13 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  let outer = Option[Option[String]]::Some(Option[String]::Some("nested")) in {
-                    let inner_result = match outer {
-                      Some(inner_opt) => inner_opt,
+                  let v0 = Option[Option[String]]::Some(Option[String]::Some("nested")) in {
+                    let v2 = match v0 {
+                      Some(v1) => v1,
                       None => Option[String]::None,
                     } in {
-                      write_escaped(match inner_result {
-                        Some(value) => value,
+                      write_escaped(match v2 {
+                        Some(v3) => v3,
                         None => "inner none",
                       })
                     }
@@ -2466,8 +2466,8 @@ mod tests {
 
                 -- after --
                 view Test() {
-                  let outer = Option[Option[String]]::Some(Option[String]::Some("nested")) in {
-                    let inner_result = Option[String]::Some("nested") in {
+                  let v0 = Option[Option[String]]::Some(Option[String]::Some("nested")) in {
+                    let v2 = Option[String]::Some("nested") in {
                       write_escaped("nested")
                     }
                   }
@@ -2503,10 +2503,10 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  let outer = Option[Option[String]]::Some(Option[String]::Some("nested")) in {
-                    write_escaped(match outer {
-                      Some(inner_opt) => let inner_opt_var = inner_opt in match inner_opt_var {
-                        Some(value) => value,
+                  let v0 = Option[Option[String]]::Some(Option[String]::Some("nested")) in {
+                    write_escaped(match v0 {
+                      Some(v1) => let v2 = v1 in match v2 {
+                        Some(v3) => v3,
                         None => "inner none",
                       },
                       None => "outer none",
@@ -2516,7 +2516,7 @@ mod tests {
 
                 -- after --
                 view Test() {
-                  let outer = Option[Option[String]]::Some(Option[String]::Some("nested")) in {
+                  let v0 = Option[Option[String]]::Some(Option[String]::Some("nested")) in {
                     write_escaped("nested")
                   }
                 }
@@ -2546,8 +2546,8 @@ mod tests {
                   Say {text: String},
                 }
                 view Test() {
-                  let msg = Msg::Say {text: "hello"} in {
-                    write_escaped(match msg {Msg::Say {text: t} => t})
+                  let v0 = Msg::Say {text: "hello"} in {
+                    write_escaped(match v0 {Msg::Say {text: v1} => v1})
                   }
                 }
 
@@ -2556,7 +2556,7 @@ mod tests {
                   Say {text: String},
                 }
                 view Test() {
-                  let msg = Msg::Say {text: "hello"} in {
+                  let v0 = Msg::Say {text: "hello"} in {
                     write_escaped("hello")
                   }
                 }
@@ -2588,9 +2588,9 @@ mod tests {
                   Say {text: String},
                 }
                 view Test() {
-                  let msg = Msg::Say {text: "world"} in {
-                    write_escaped(match msg {
-                      Msg::Say {text: t} => ("hello " + t),
+                  let v0 = Msg::Say {text: "world"} in {
+                    write_escaped(match v0 {
+                      Msg::Say {text: v1} => ("hello " + v1),
                     })
                   }
                 }
@@ -2600,7 +2600,7 @@ mod tests {
                   Say {text: String},
                 }
                 view Test() {
-                  let msg = Msg::Say {text: "world"} in {
+                  let v0 = Msg::Say {text: "world"} in {
                     write_escaped("hello world")
                   }
                 }
@@ -2637,8 +2637,10 @@ mod tests {
                   Say {text: String},
                 }
                 view Test() {
-                  let msg = Msg::Say {text: "hello"} in {
-                    match match msg {Msg::Say {text: t} => (t == "hello")} {
+                  let v0 = Msg::Say {text: "hello"} in {
+                    match match v0 {
+                      Msg::Say {text: v1} => (v1 == "hello"),
+                    } {
                       true => {
                         write("matched hello")
                       }
@@ -2653,7 +2655,7 @@ mod tests {
                   Say {text: String},
                 }
                 view Test() {
-                  let msg = Msg::Say {text: "hello"} in {
+                  let v0 = Msg::Say {text: "hello"} in {
                     match true {
                       true => {
                         write("matched hello")
@@ -2692,9 +2694,9 @@ mod tests {
                   Say {text: String},
                 }
                 view Test() {
-                  let x = Msg::Say {text: "hello"} in {
-                    let y = x in {
-                      write_escaped(match y {Msg::Say {text: t} => t})
+                  let v0 = Msg::Say {text: "hello"} in {
+                    let v1 = v0 in {
+                      write_escaped(match v1 {Msg::Say {text: v2} => v2})
                     }
                   }
                 }
@@ -2704,8 +2706,8 @@ mod tests {
                   Say {text: String},
                 }
                 view Test() {
-                  let x = Msg::Say {text: "hello"} in {
-                    let y = Msg::Say {text: "hello"} in {
+                  let v0 = Msg::Say {text: "hello"} in {
+                    let v1 = Msg::Say {text: "hello"} in {
                       write_escaped("hello")
                     }
                   }
@@ -2749,9 +2751,9 @@ mod tests {
                   Values {first: String, second: String},
                 }
                 view Test() {
-                  let pair = Pair::Values {first: "hello", second: "world"} in {
-                    write_escaped(match pair {
-                      Pair::Values {first: a, second: b} => (a + (" " + b)),
+                  let v0 = Pair::Values {first: "hello", second: "world"} in {
+                    write_escaped(match v0 {
+                      Pair::Values {first: v1, second: v2} => (v1 + (" " + v2)),
                     })
                   }
                 }
@@ -2761,7 +2763,7 @@ mod tests {
                   Values {first: String, second: String},
                 }
                 view Test() {
-                  let pair = Pair::Values {first: "hello", second: "world"} in {
+                  let v0 = Pair::Values {first: "hello", second: "world"} in {
                     write_escaped("hello world")
                   }
                 }
@@ -2806,10 +2808,10 @@ mod tests {
                   Err {msg: String},
                 }
                 view Test() {
-                  let result = Result::Ok {value: "success"} in {
-                    write_escaped(match result {
-                      Result::Ok {value: v} => v,
-                      Result::Err {msg: m} => ("error: " + m),
+                  let v0 = Result::Ok {value: "success"} in {
+                    write_escaped(match v0 {
+                      Result::Ok {value: v1} => v1,
+                      Result::Err {msg: v2} => ("error: " + v2),
                     })
                   }
                 }
@@ -2820,7 +2822,7 @@ mod tests {
                   Err {msg: String},
                 }
                 view Test() {
-                  let result = Result::Ok {value: "success"} in {
+                  let v0 = Result::Ok {value: "success"} in {
                     write_escaped("success")
                   }
                 }
@@ -2860,13 +2862,13 @@ mod tests {
                   V1 {f0: String},
                 }
                 view Test() {
-                  let subject = E::V1 {f0: "hello"} in {
-                    write_escaped(match subject {
-                      E::V0 {f0: v} => match v {
+                  let v0 = E::V1 {f0: "hello"} in {
+                    write_escaped(match v0 {
+                      E::V0 {f0: v1} => match v1 {
                         true => "yes",
                         false => "no",
                       },
-                      E::V1 {f0: w} => w,
+                      E::V1 {f0: v2} => v2,
                     })
                   }
                 }
@@ -2877,7 +2879,7 @@ mod tests {
                   V1 {f0: String},
                 }
                 view Test() {
-                  let subject = E::V1 {f0: "hello"} in {
+                  let v0 = E::V1 {f0: "hello"} in {
                     write_escaped("hello")
                   }
                 }
@@ -2931,12 +2933,12 @@ mod tests {
                   Say {text: String},
                 }
                 view Test() {
-                  let choice = Choice::A in {
-                    let x = match choice {
+                  let v0 = Choice::A in {
+                    let v1 = match v0 {
                       Choice::A => Msg::Say {text: "hello"},
                       Choice::B => Msg::Say {text: "world"},
                     } in {
-                      write_escaped(match x {Msg::Say {text: t} => t})
+                      write_escaped(match v1 {Msg::Say {text: v2} => v2})
                     }
                   }
                 }
@@ -2950,8 +2952,8 @@ mod tests {
                   Say {text: String},
                 }
                 view Test() {
-                  let choice = Choice::A in {
-                    let x = Msg::Say {text: "hello"} in {
+                  let v0 = Choice::A in {
+                    let v1 = Msg::Say {text: "hello"} in {
                       write_escaped("hello")
                     }
                   }
@@ -2975,14 +2977,14 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  let flag = true in {
-                    write_escaped(match flag {true => "yes", false => "no"})
+                  let v0 = true in {
+                    write_escaped(match v0 {true => "yes", false => "no"})
                   }
                 }
 
                 -- after --
                 view Test() {
-                  let flag = true in {
+                  let v0 = true in {
                     write_escaped("yes")
                   }
                 }
@@ -3005,14 +3007,14 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  let flag = false in {
-                    write_escaped(match flag {true => "yes", false => "no"})
+                  let v0 = false in {
+                    write_escaped(match v0 {true => "yes", false => "no"})
                   }
                 }
 
                 -- after --
                 view Test() {
-                  let flag = false in {
+                  let v0 = false in {
                     write_escaped("no")
                   }
                 }
@@ -3037,17 +3039,17 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  let x = true in {
-                    let y = x in {
-                      write_escaped(match y {true => "yes", false => "no"})
+                  let v0 = true in {
+                    let v1 = v0 in {
+                      write_escaped(match v1 {true => "yes", false => "no"})
                     }
                   }
                 }
 
                 -- after --
                 view Test() {
-                  let x = true in {
-                    let y = true in {
+                  let v0 = true in {
+                    let v1 = true in {
                       write_escaped("yes")
                     }
                   }
@@ -3071,8 +3073,8 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  let flag = (!false) in {
-                    write_escaped(match flag {
+                  let v0 = (!false) in {
+                    write_escaped(match v0 {
                       true => "was true",
                       false => "was false",
                     })
@@ -3081,7 +3083,7 @@ mod tests {
 
                 -- after --
                 view Test() {
-                  let flag = true in {
+                  let v0 = true in {
                     write_escaped("was true")
                   }
                 }
@@ -3141,12 +3143,12 @@ mod tests {
                   Say {text: String},
                 }
                 view Test() {
-                  let choice = Choice::A in {
-                    let y = match choice {
-                      Choice::A => let x = Msg::Say {text: "hello"} in x,
+                  let v0 = Choice::A in {
+                    let v2 = match v0 {
+                      Choice::A => let v1 = Msg::Say {text: "hello"} in v1,
                       Choice::B => Msg::Say {text: "world"},
                     } in {
-                      write_escaped(match y {Msg::Say {text: txt} => txt})
+                      write_escaped(match v2 {Msg::Say {text: v3} => v3})
                     }
                   }
                 }
@@ -3160,8 +3162,8 @@ mod tests {
                   Say {text: String},
                 }
                 view Test() {
-                  let choice = Choice::A in {
-                    let y = Msg::Say {text: "hello"} in {
+                  let v0 = Choice::A in {
+                    let v2 = Msg::Say {text: "hello"} in {
                       write_escaped("hello")
                     }
                   }
@@ -3358,16 +3360,16 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  let a = true in {
-                    let b = false in {
-                      match (a || b) {
+                  let v0 = true in {
+                    let v1 = false in {
+                      match (v0 || v1) {
                         true => {
                           write("a || b")
                         }
                         false => {
                         }
                       }
-                      match (a && b) {
+                      match (v0 && v1) {
                         true => {
                           write("a && b")
                         }
@@ -3380,8 +3382,8 @@ mod tests {
 
                 -- after --
                 view Test() {
-                  let a = true in {
-                    let b = false in {
+                  let v0 = true in {
+                    let v1 = false in {
                       match true {
                         true => {
                           write("a || b")
@@ -3531,14 +3533,14 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  let val = (!true) in {
-                    call Foo(enabled = val)
+                  let v0 = (!true) in {
+                    call Foo(enabled = v0)
                   }
                 }
 
                 -- after --
                 view Test() {
-                  let val = false in {
+                  let v0 = false in {
                     call Foo(enabled = false)
                   }
                 }
@@ -3559,12 +3561,12 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  let x = ((2 * 3) + (10 - 4)) in {}
+                  let v0 = ((2 * 3) + (10 - 4)) in {}
                 }
 
                 -- after --
                 view Test() {
-                  let x = 12 in {}
+                  let v0 = 12 in {}
                 }
             "#]],
         );
@@ -3582,18 +3584,18 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  let a = (2147483647 + 1) in {}
-                  let b = (-2147483648 - 1) in {}
-                  let c = (2147483647 * 2) in {}
-                  let d = (--2147483648) in {}
+                  let v0 = (2147483647 + 1) in {}
+                  let v1 = (-2147483648 - 1) in {}
+                  let v2 = (2147483647 * 2) in {}
+                  let v3 = (--2147483648) in {}
                 }
 
                 -- after --
                 view Test() {
-                  let a = -2147483648 in {}
-                  let b = 2147483647 in {}
-                  let c = -2 in {}
-                  let d = -2147483648 in {}
+                  let v0 = -2147483648 in {}
+                  let v1 = 2147483647 in {}
+                  let v2 = -2 in {}
+                  let v3 = -2147483648 in {}
                 }
             "#]],
         );
@@ -3612,12 +3614,12 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  let x = ((1.5 * 2) + (-0.5)) in {}
+                  let v0 = ((1.5 * 2) + (-0.5)) in {}
                 }
 
                 -- after --
                 view Test() {
-                  let x = 2.5 in {}
+                  let v0 = 2.5 in {}
                 }
             "#]],
         );
@@ -3638,16 +3640,16 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  let a = (NaN + 1) in {}
-                  let b = (inf + 1) in {}
-                  let c = (inf + -inf) in {}
+                  let v0 = (NaN + 1) in {}
+                  let v1 = (inf + 1) in {}
+                  let v2 = (inf + -inf) in {}
                 }
 
                 -- after --
                 view Test() {
-                  let a = NaN in {}
-                  let b = inf in {}
-                  let c = NaN in {}
+                  let v0 = NaN in {}
+                  let v1 = inf in {}
+                  let v2 = NaN in {}
                 }
             "#]],
         );
@@ -3755,16 +3757,16 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  let a = 3.to_float() in {}
-                  let b = 3.7.to_int() in {}
-                  let c = -3.7.to_int() in {}
+                  let v0 = 3.to_float() in {}
+                  let v1 = 3.7.to_int() in {}
+                  let v2 = -3.7.to_int() in {}
                 }
 
                 -- after --
                 view Test() {
-                  let a = 3 in {}
-                  let b = 3 in {}
-                  let c = -3 in {}
+                  let v0 = 3 in {}
+                  let v1 = 3 in {}
+                  let v2 = -3 in {}
                 }
             "#]],
         );
@@ -3781,16 +3783,16 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  let a = 3000000000.to_int() in {}
-                  let b = -3000000000.to_int() in {}
-                  let c = NaN.to_int() in {}
+                  let v0 = 3000000000.to_int() in {}
+                  let v1 = -3000000000.to_int() in {}
+                  let v2 = NaN.to_int() in {}
                 }
 
                 -- after --
                 view Test() {
-                  let a = 2147483647 in {}
-                  let b = -2147483648 in {}
-                  let c = 0 in {}
+                  let v0 = 2147483647 in {}
+                  let v1 = -2147483648 in {}
+                  let v2 = 0 in {}
                 }
             "#]],
         );
@@ -3809,17 +3811,17 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  let x = (1 + 2) in {
-                    let y = (x * x) in {
-                      write_escaped(y.to_string())
+                  let v0 = (1 + 2) in {
+                    let v1 = (v0 * v0) in {
+                      write_escaped(v1.to_string())
                     }
                   }
                 }
 
                 -- after --
                 view Test() {
-                  let x = 3 in {
-                    let y = 9 in {
+                  let v0 = 3 in {
+                    let v1 = 9 in {
                       write_escaped("9")
                     }
                   }
@@ -4094,12 +4096,12 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                view Test(x: Int) {
-                  write_escaped([x].len().to_string())
+                view Test(x@v0: Int) {
+                  write_escaped([v0].len().to_string())
                 }
 
                 -- after --
-                view Test(x: Int) {
+                view Test(x@v0: Int) {
                   write_escaped("1")
                 }
             "#]],

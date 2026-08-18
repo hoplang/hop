@@ -112,7 +112,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  let unused = "value" in {
+                  let v0 = "value" in {
                     write("Hello")
                     write(" ")
                     write("World")
@@ -149,7 +149,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 view First() {
-                  let unused = "x" in {
+                  let v0 = "x" in {
                     write("A")
                     write("B")
                   }
@@ -193,8 +193,8 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  let flag = true in {
-                    match flag {
+                  let v0 = true in {
+                    match v0 {
                       true => {
                         write("yes")
                       }
@@ -235,8 +235,8 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  let flag = true in {
-                    match flag {
+                  let v0 = true in {
+                    match v0 {
                       true => {
                         write("yes")
                       }
@@ -320,8 +320,8 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  let x = "hello" in {
-                    let unused = x in {
+                  let v0 = "hello" in {
+                    let v1 = v0 in {
                       match true {
                         true => {
                           write("A")

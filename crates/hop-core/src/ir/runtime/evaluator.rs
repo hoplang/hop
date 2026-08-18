@@ -924,8 +924,8 @@ mod tests {
             )],
             expect![[r#"
                 -- before --
-                view Test(content: String) {
-                  write_escaped(content)
+                view Test(content@v0: String) {
+                  write_escaped(v0)
                 }
 
                 -- after --
@@ -947,8 +947,8 @@ mod tests {
             vec![("show", Value::Bool(true))],
             expect![[r#"
                 -- before --
-                view Test(show: Bool) {
-                  match show {
+                view Test(show@v0: Bool) {
+                  match v0 {
                     true => {
                       write("<div>Visible</div>")
                     }
@@ -976,8 +976,8 @@ mod tests {
             vec![("show", Value::Bool(false))],
             expect![[r#"
                 -- before --
-                view Test(show: Bool) {
-                  match show {
+                view Test(show@v0: Bool) {
+                  match v0 {
                     true => {
                       write("<div>Hidden</div>")
                     }
@@ -1014,10 +1014,10 @@ mod tests {
             )],
             expect![[r#"
                 -- before --
-                view Test(items: Array[String]) {
-                  for item in items {
+                view Test(items@v0: Array[String]) {
+                  for v1 in v0 {
                     write("<li>")
-                    write_escaped(item)
+                    write_escaped(v1)
                     write("</li>\n")
                   }
                 }
@@ -1051,10 +1051,10 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  let v_0 = {
+                  let v0 = {
                     write("<b>hi</b>")
                   } in {
-                    write_expr(v_0)
+                    write_expr(v0)
                   }
                 }
 
@@ -1097,11 +1097,11 @@ mod tests {
             vec![("p0", Value::Int(42))],
             expect![[r#"
                 -- before --
-                component C(p0: Int, p1: Int) {
-                  write_expr(p1.to_string())
+                component C(p0@v0: Int, p1@v1: Int) {
+                  write_expr(v1.to_string())
                 }
-                view Test(p0: Int) {
-                  call C(p0 = 999, p1 = p0)
+                view Test(p0@v2: Int) {
+                  call C(p0 = 999, p1 = v2)
                 }
 
                 -- after --
@@ -1128,8 +1128,8 @@ mod tests {
             vec![("items", Value::Array(vec![]))],
             expect![[r#"
                 -- before --
-                view Test(items: Array[String]) {
-                  write_expr(match items.is_empty() {
+                view Test(items@v0: Array[String]) {
+                  write_expr(match v0.is_empty() {
                     true => "empty",
                     false => "not empty",
                   })
@@ -1159,8 +1159,8 @@ mod tests {
             vec![("items", Value::Array(vec![Value::String("x".to_string())]))],
             expect![[r#"
                 -- before --
-                view Test(items: Array[String]) {
-                  write_expr(match items.is_empty() {
+                view Test(items@v0: Array[String]) {
+                  write_expr(match v0.is_empty() {
                     true => "empty",
                     false => "not empty",
                   })
@@ -1190,8 +1190,8 @@ mod tests {
             vec![("name", Value::String(String::new()))],
             expect![[r#"
                 -- before --
-                view Test(name: String) {
-                  write_expr(match name.is_empty() {
+                view Test(name@v0: String) {
+                  write_expr(match v0.is_empty() {
                     true => "empty",
                     false => "not empty",
                   })
@@ -1221,8 +1221,8 @@ mod tests {
             vec![("name", Value::String("value".to_string()))],
             expect![[r#"
                 -- before --
-                view Test(name: String) {
-                  write_expr(match name.is_empty() {
+                view Test(name@v0: String) {
+                  write_expr(match v0.is_empty() {
                     true => "empty",
                     false => "not empty",
                   })
@@ -1255,8 +1255,8 @@ mod tests {
             )],
             expect![[r#"
                 -- before --
-                view Test(maybe: Option[String]) {
-                  write_expr(match maybe.is_some() {
+                view Test(maybe@v0: Option[String]) {
+                  write_expr(match v0.is_some() {
                     true => "some",
                     false => "none",
                   })
@@ -1286,8 +1286,8 @@ mod tests {
             vec![("maybe", Value::None)],
             expect![[r#"
                 -- before --
-                view Test(maybe: Option[String]) {
-                  write_expr(match maybe.is_some() {
+                view Test(maybe@v0: Option[String]) {
+                  write_expr(match v0.is_some() {
                     true => "some",
                     false => "none",
                   })
@@ -1317,8 +1317,8 @@ mod tests {
             vec![("maybe", Value::None)],
             expect![[r#"
                 -- before --
-                view Test(maybe: Option[String]) {
-                  write_expr(match maybe.is_none() {
+                view Test(maybe@v0: Option[String]) {
+                  write_expr(match v0.is_none() {
                     true => "none",
                     false => "some",
                   })
@@ -1351,8 +1351,8 @@ mod tests {
             )],
             expect![[r#"
                 -- before --
-                view Test(maybe: Option[String]) {
-                  write_expr(match maybe.is_none() {
+                view Test(maybe@v0: Option[String]) {
+                  write_expr(match v0.is_none() {
                     true => "none",
                     false => "some",
                   })
@@ -1474,8 +1474,8 @@ mod tests {
             vec![("a", Value::Float(1.5)), ("b", Value::Float(2.5))],
             expect![[r#"
                 -- before --
-                view Test(a: Float, b: Float) {
-                  write_expr(match (a < b) {true => "yes", false => "no"})
+                view Test(a@v0: Float, b@v1: Float) {
+                  write_expr(match (v0 < v1) {true => "yes", false => "no"})
                 }
 
                 -- after --

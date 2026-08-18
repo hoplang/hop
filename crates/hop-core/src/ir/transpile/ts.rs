@@ -1,5 +1,3 @@
-use std::borrow::Cow;
-
 use pretty::{Arena, DocAllocator};
 
 use super::{Doc, Transpiler};
@@ -7,86 +5,35 @@ use crate::expr::patterns::{EnumPattern, Match};
 use crate::expr::typing::r#type::Type;
 use crate::expr::typing::type_registry::TypeRegistry;
 use crate::ir::ir_module::{
-    IrArgument, IrComponentDeclaration, IrExpr, IrForSource, IrModule, IrStatement, IrVar,
-    IrViewDeclaration,
+    IrArgument, IrComponentDeclaration, IrExpr, IrForSource, IrModule, IrParameter, IrStatement,
+    IrVar, IrViewDeclaration, VarId, VarIdCounter,
 };
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
-use crate::symbols::var_name::VarName;
 
-/// Words TypeScript will not accept as a binding name in a module (reserved
-/// words, plus the ones reserved only under strict mode, which modules are).
-/// Sorted for binary search.
-const RESERVED_WORDS: &[&str] = &[
-    "arguments",
-    "await",
-    "break",
-    "case",
-    "catch",
-    "class",
-    "const",
-    "continue",
-    "debugger",
-    "default",
-    "delete",
-    "do",
-    "else",
-    "enum",
-    "eval",
-    "export",
-    "extends",
-    "false",
-    "finally",
-    "for",
-    "function",
-    "if",
-    "implements",
-    "import",
-    "in",
-    "instanceof",
-    "interface",
-    "let",
-    "new",
-    "null",
-    "package",
-    "private",
-    "protected",
-    "public",
-    "return",
-    "static",
-    "super",
-    "switch",
-    "this",
-    "throw",
-    "true",
-    "try",
-    "typeof",
-    "var",
-    "void",
-    "while",
-    "with",
-    "yield",
-];
-
-/// Rename an identifier TypeScript would reject as a binding.
-fn escape_ident(name: &str) -> Cow<'_, str> {
-    if RESERVED_WORDS.binary_search(&name).is_ok() {
-        Cow::Owned(format!("{name}_"))
-    } else {
-        Cow::Borrowed(name)
-    }
+/// Names every variable in the generated code, derived from the IR's variable
+/// identity rather than the source name.
+///
+/// Each binder within a declaration has a distinct `VarId`, so this is unique
+/// per scope by construction: no hop identifier can shadow another, and no name
+/// can collide with a TypeScript reserved word or with the `output` buffer.
+fn var_ident(var: &IrVar) -> String {
+    var_id_ident(var.id)
 }
 
-/// Destructuring entry for a parameter: `name` on its own, or `name: name_`
-/// when the name is not a legal binding.
-fn transpile_param_binding<'a>(arena: &'a Arena<'a>, name: &'a VarName) -> Doc<'a> {
-    match escape_ident(name.as_str()) {
-        Cow::Borrowed(_) => arena.text(name.as_str()),
-        Cow::Owned(escaped) => arena
-            .text(name.as_str())
-            .append(arena.text(": "))
-            .append(arena.text(escaped)),
-    }
+/// The generated name for a `VarId`, whether it comes from a binder in the IR
+/// or was minted by [`TsTranspiler::fresh_var`].
+fn var_id_ident(id: VarId) -> String {
+    format!("v_{id}")
+}
+
+/// Destructuring entry for a parameter: `name: v_0`. The property name stays
+/// the source name, since it is the caller-facing argument name.
+fn transpile_param_binding<'a>(arena: &'a Arena<'a>, param: &'a IrParameter) -> Doc<'a> {
+    arena
+        .text(param.name().as_str())
+        .append(arena.text(": "))
+        .append(arena.text(var_ident(&param.var)))
 }
 
 pub struct TsTranspiler {
@@ -102,6 +49,9 @@ pub struct TsTranspiler {
     needs_fragment: bool,
     /// Registry of the module currently being transpiled
     registry: TypeRegistry,
+    /// Continues the module's variable numbering, so that names the transpiler
+    /// needs for itself cannot collide with the ones bound in the IR.
+    var_ids: VarIdCounter,
 }
 
 impl TsTranspiler {
@@ -113,38 +63,35 @@ impl TsTranspiler {
             needs_float_to_int: false,
             needs_fragment: false,
             registry: TypeRegistry::default(),
+            var_ids: VarIdCounter::new(),
         }
     }
 
-    /// Emit a binding and the statements it scopes over as an immediately
-    /// invoked arrow function: `((x: T) => { body })(value)`.
-    fn iife_binding<'a>(
+    /// Emit a binding as a plain `const` declaration followed by the statements
+    /// it scopes over.
+    fn const_binding<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        var: &'a str,
-        param_type: Doc<'a>,
+        var: &'a IrVar,
+        binding_type: Doc<'a>,
         value: Doc<'a>,
         body: &'a [IrStatement],
     ) -> Doc<'a> {
-        let body = if body.is_empty() {
-            arena.nil()
-        } else {
-            arena
-                .hardline()
-                .append(self.transpile_statements(arena, body))
-                .nest(4)
-        };
-        arena
-            .text("((")
-            .append(arena.text(escape_ident(var)))
+        let declaration = arena
+            .text("const ")
+            .append(arena.text(var_ident(var)))
             .append(arena.text(": "))
-            .append(param_type)
-            .append(arena.text(") => {"))
-            .append(body)
-            .append(arena.hardline())
-            .append(arena.text("})("))
+            .append(binding_type)
+            .append(arena.text(" = "))
             .append(value)
-            .append(arena.text(");"))
+            .append(arena.text(";"));
+        if body.is_empty() {
+            declaration
+        } else {
+            declaration
+                .append(arena.hardline())
+                .append(self.transpile_statements(arena, body))
+        }
     }
 
     fn escape_string(&mut self, s: &str) -> String {
@@ -172,38 +119,113 @@ impl TsTranspiler {
         }
     }
 
-    fn wrap_match_subject_stmt<'a>(
+    /// Mint a name for a variable the generated code needs but the IR does not
+    /// bind, such as the subject of a match.
+    fn fresh_var(&mut self) -> String {
+        var_id_ident(self.var_ids.next())
+    }
+
+    /// The destructuring parameter of a view or component: the binding pattern
+    /// and the type literal that annotates it, as in `{a: v_0}: {a: string}`.
+    fn transpile_parameter_list<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        parameters: &'a [IrParameter],
+    ) -> Doc<'a> {
+        if parameters.is_empty() {
+            return arena.nil();
+        }
+        let binding_docs: Vec<_> = parameters
+            .iter()
+            .map(|param| transpile_param_binding(arena, param))
+            .collect();
+        let type_docs: Vec<_> = parameters
+            .iter()
+            .map(|param| {
+                arena
+                    .text(param.name().as_str())
+                    .append(arena.text(": "))
+                    .append(self.transpile_type(arena, &param.typ))
+            })
+            .collect();
+        let bindings = arena.intersperse(binding_docs, arena.text(",").append(arena.line()));
+        let types = arena.intersperse(type_docs, arena.text(",").append(arena.line()));
+        arena
+            .text("{")
+            .append(arena.line_().append(bindings).nest(4))
+            .append(arena.line_())
+            .append(arena.text("}: {"))
+            .append(arena.line_().append(types).nest(4))
+            .append(arena.line_())
+            .append(arena.text("}"))
+            .group()
+    }
+
+    /// The argument of a record or enum constructor call: `({a: 1, b: 2})`, or
+    /// `()` when the type has no fields.
+    fn transpile_field_object<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        base: Doc<'a>,
+        fields: &'a [(FieldName, IrExpr)],
+    ) -> Doc<'a> {
+        if fields.is_empty() {
+            return base.append(arena.text(")"));
+        }
+        let field_docs: Vec<_> = fields
+            .iter()
+            .map(|(name, value)| {
+                arena
+                    .text(name.as_str())
+                    .append(arena.text(": "))
+                    .append(self.transpile_expr(arena, value))
+            })
+            .collect();
+        base.append(arena.text("{"))
+            .append(
+                arena
+                    .line_()
+                    .append(arena.intersperse(field_docs, arena.text(",").append(arena.line())))
+                    .nest(4),
+            )
+            .append(arena.line_())
+            .append(arena.text("})"))
+            .group()
+    }
+
+    /// Bind a match subject to `name` and emit the switch over it.
+    fn bind_match_subject_stmt<'a>(
         &mut self,
         arena: &'a Arena<'a>,
         subject: &'a IrExpr,
+        name: String,
         switch_doc: Doc<'a>,
     ) -> Doc<'a> {
         arena
-            .text("{")
-            .append(
-                arena
-                    .hardline()
-                    .append(arena.text("const subject_ = "))
-                    .append(self.transpile_expr(arena, subject))
-                    .append(arena.text(" as "))
-                    .append(self.transpile_type(arena, subject.as_type()))
-                    .append(arena.text(";"))
-                    .append(arena.hardline())
-                    .append(switch_doc)
-                    .nest(4),
-            )
+            .text("const ")
+            .append(arena.text(name))
+            .append(arena.text(": "))
+            .append(self.transpile_type(arena, subject.as_type()))
+            .append(arena.text(" = "))
+            .append(self.transpile_expr(arena, subject))
+            .append(arena.text(";"))
             .append(arena.hardline())
-            .append(arena.text("}"))
+            .append(switch_doc)
     }
 
-    fn wrap_match_subject_expr<'a>(
+    /// The same in expression position, where the binding has to be an arrow
+    /// function parameter because there is no statement to declare it in.
+    fn bind_match_subject_expr<'a>(
         &mut self,
         arena: &'a Arena<'a>,
         subject: &'a IrExpr,
+        name: String,
         switch_body: Doc<'a>,
     ) -> Doc<'a> {
         arena
-            .text("((subject_: ")
+            .text("((")
+            .append(arena.text(name))
+            .append(arena.text(": "))
             .append(self.transpile_type(arena, subject.as_type()))
             .append(arena.text(") => {"))
             .append(arena.line().append(switch_body).nest(2))
@@ -243,6 +265,7 @@ impl Transpiler for TsTranspiler {
         self.needs_float_to_int = false;
         self.needs_fragment = false;
         self.registry = registry.clone();
+        self.var_ids = module.var_ids;
 
         let arena = &Arena::new();
 
@@ -601,38 +624,12 @@ impl Transpiler for TsTranspiler {
         name: &'a TypeName,
         view: &'a IrViewDeclaration,
     ) -> Doc<'a> {
-        let mut result = arena
+        let parameters = self.transpile_parameter_list(arena, &view.parameters);
+        arena
             .text("export function ")
             .append(arena.text(name.as_ref()))
-            .append(arena.text("("));
-
-        if !view.parameters.is_empty() {
-            // Destructuring pattern: {a, b, c}
-            let name_docs: Vec<_> = view
-                .parameters
-                .iter()
-                .map(|param| transpile_param_binding(arena, param.name()))
-                .collect();
-            let type_docs: Vec<_> = view
-                .parameters
-                .iter()
-                .map(|param| {
-                    arena
-                        .text(param.name().as_str())
-                        .append(arena.text(": "))
-                        .append(self.transpile_type(arena, &param.typ))
-                })
-                .collect();
-            result = result
-                .append(arena.text("{"))
-                .append(arena.intersperse(name_docs, arena.text(", ")))
-                .append(arena.text("}: {"))
-                .append(arena.intersperse(type_docs, arena.text(", ")))
-                .append(arena.text("}"));
-        }
-
-        // Function body
-        result
+            .append(arena.text("("))
+            .append(parameters)
             .append(arena.text("): string {"))
             .append(
                 arena
@@ -654,42 +651,12 @@ impl Transpiler for TsTranspiler {
         arena: &'a Arena<'a>,
         component: &'a IrComponentDeclaration,
     ) -> Doc<'a> {
-        let mut result = arena
+        let parameters = self.transpile_parameter_list(arena, &component.parameters);
+        let result = arena
             .text("function render")
             .append(arena.text(component.name.as_ref()))
-            .append(arena.text("("));
-
-        // Build parameter list
-        let has_params = !component.parameters.is_empty();
-        if has_params {
-            // Destructuring pattern: {a, b, c}
-            let param_names: Vec<_> = component
-                .parameters
-                .iter()
-                .map(|param| transpile_param_binding(arena, param.name()))
-                .collect();
-
-            result = result
-                .append(arena.text("{"))
-                .append(arena.intersperse(param_names, arena.text(", ")))
-                .append(arena.text("}: {"));
-
-            // Type annotation: {a: TypeA, b: TypeB}
-            let param_types: Vec<_> = component
-                .parameters
-                .iter()
-                .map(|param| {
-                    arena
-                        .text(param.name().as_str())
-                        .append(arena.text(": "))
-                        .append(self.transpile_type(arena, &param.typ))
-                })
-                .collect();
-
-            result = result
-                .append(arena.intersperse(param_types, arena.text(", ")))
-                .append(arena.text("}"));
-        }
+            .append(arena.text("("))
+            .append(parameters);
 
         // Function body
         let body = arena
@@ -776,94 +743,105 @@ impl Transpiler for TsTranspiler {
     fn transpile_for_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        var: Option<&'a str>,
+        var: Option<&'a IrVar>,
         source: &'a IrForSource,
         body: &'a [IrStatement],
     ) -> Doc<'a> {
-        let var_name = escape_ident(var.unwrap_or("_"));
+        let var_name = var.map_or_else(|| "_".to_string(), var_ident);
         match source {
-            IrForSource::Array(array) => arena
-                .text("{")
-                .append(
-                    arena
-                        .hardline()
-                        .append(arena.text("const source_ = "))
-                        .append(self.transpile_expr(arena, array))
-                        .append(arena.text(";"))
-                        .append(arena.hardline())
-                        .append(arena.text("for (const "))
-                        .append(arena.text(var_name.clone()))
-                        .append(arena.text(" of source_) {"))
-                        .append(
-                            arena
-                                .nil()
-                                .append(arena.hardline())
-                                .append(self.transpile_statements(arena, body))
-                                .append(arena.hardline())
-                                .nest(4),
-                        )
-                        .append(arena.text("}"))
-                        .nest(4),
-                )
-                .append(arena.hardline())
-                .append(arena.text("}")),
-            IrForSource::RangeInclusive { start, end } => arena
-                .text("{")
-                .append(
-                    arena
-                        .hardline()
-                        .append(arena.text("const start_ = "))
-                        .append(self.transpile_expr(arena, start))
-                        .append(arena.text(";"))
-                        .append(arena.hardline())
-                        .append(arena.text("const end_ = "))
-                        .append(self.transpile_expr(arena, end))
-                        .append(arena.text(";"))
-                        .append(arena.hardline())
-                        .append(arena.text("for (let "))
-                        .append(arena.text(var_name.clone()))
-                        .append(arena.text(" = start_; "))
-                        .append(arena.text(var_name.clone()))
-                        .append(arena.text(" <= end_; "))
-                        .append(arena.text(var_name))
-                        .append(arena.text("++) {"))
-                        .append(
-                            arena
-                                .nil()
-                                .append(arena.hardline())
-                                .append(self.transpile_statements(arena, body))
-                                .append(arena.hardline())
-                                .nest(4),
-                        )
-                        .append(arena.text("}"))
-                        .nest(4),
-                )
-                .append(arena.hardline())
-                .append(arena.text("}")),
+            IrForSource::Array(array) => {
+                let source_name = self.fresh_var();
+                arena
+                    .text("const ")
+                    .append(arena.text(source_name.clone()))
+                    .append(arena.text(": "))
+                    .append(self.transpile_type(arena, array.as_type()))
+                    .append(arena.text(" = "))
+                    .append(self.transpile_expr(arena, array))
+                    .append(arena.text(";"))
+                    .append(arena.hardline())
+                    .append(arena.text("for (const "))
+                    .append(arena.text(var_name))
+                    .append(arena.text(" of "))
+                    .append(arena.text(source_name))
+                    .append(arena.text(") {"))
+                    .append(
+                        arena
+                            .nil()
+                            .append(arena.hardline())
+                            .append(self.transpile_statements(arena, body))
+                            .append(arena.hardline())
+                            .nest(4),
+                    )
+                    .append(arena.text("}"))
+            }
+            IrForSource::RangeInclusive { start, end } => {
+                let start_name = self.fresh_var();
+                let end_name = self.fresh_var();
+                arena
+                    .text("const ")
+                    .append(arena.text(start_name.clone()))
+                    .append(arena.text(": "))
+                    .append(self.transpile_type(arena, start.as_type()))
+                    .append(arena.text(" = "))
+                    .append(self.transpile_expr(arena, start))
+                    .append(arena.text(";"))
+                    .append(arena.hardline())
+                    .append(arena.text("const "))
+                    .append(arena.text(end_name.clone()))
+                    .append(arena.text(": "))
+                    .append(self.transpile_type(arena, end.as_type()))
+                    .append(arena.text(" = "))
+                    .append(self.transpile_expr(arena, end))
+                    .append(arena.text(";"))
+                    .append(arena.hardline())
+                    .append(arena.text("for (let "))
+                    .append(arena.text(var_name.clone()))
+                    .append(arena.text(" = "))
+                    .append(arena.text(start_name))
+                    .append(arena.text("; "))
+                    .append(arena.text(var_name.clone()))
+                    .append(arena.text(" <= "))
+                    .append(arena.text(end_name))
+                    .append(arena.text("; "))
+                    .append(arena.text(var_name))
+                    .append(arena.text("++) {"))
+                    .append(
+                        arena
+                            .nil()
+                            .append(arena.hardline())
+                            .append(self.transpile_statements(arena, body))
+                            .append(arena.hardline())
+                            .nest(4),
+                    )
+                    .append(arena.text("}"))
+            }
         }
     }
 
     fn transpile_let_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        var: &'a str,
+        var: &'a IrVar,
         value: &'a IrExpr,
         body: &'a [IrStatement],
     ) -> Doc<'a> {
-        let param_type = self.transpile_type(arena, value.as_type());
+        let binding_type = self.transpile_type(arena, value.as_type());
         let value = self.transpile_expr(arena, value);
-        self.iife_binding(arena, var, param_type, value, body)
+        self.const_binding(arena, var, binding_type, value, body)
     }
 
     fn transpile_let_fragment_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        var: &'a str,
+        var: &'a IrVar,
         fragment_body: &'a [IrStatement],
         body: &'a [IrStatement],
     ) -> Doc<'a> {
         self.needs_fragment = true;
-        let param_type = self.transpile_fragment_type(arena);
+        let binding_type = self.transpile_fragment_type(arena);
+        // The fragment body gets its own `output` buffer, so it is built by an
+        // immediately invoked arrow function rather than inline.
         let value = arena
             .text("(() => {")
             .append(
@@ -879,7 +857,7 @@ impl Transpiler for TsTranspiler {
                     .nest(4),
             )
             .append(arena.text("})()"));
-        self.iife_binding(arena, var, param_type, value, body)
+        self.const_binding(arena, var, binding_type, value, body)
     }
 
     fn transpile_match_statement<'a>(
@@ -930,7 +908,7 @@ impl Transpiler for TsTranspiler {
                 none_arm_body,
             } => {
                 self.needs_option = true;
-                let subject_name = "subject_";
+                let subject_name = self.fresh_var();
                 let some_case = if let Some(var_name) = some_arm_binding {
                     arena
                         .text("case \"Some\": {")
@@ -938,9 +916,9 @@ impl Transpiler for TsTranspiler {
                             arena
                                 .hardline()
                                 .append(arena.text("const "))
-                                .append(arena.text(escape_ident(var_name.as_str())))
+                                .append(arena.text(var_ident(var_name)))
                                 .append(arena.text(" = "))
-                                .append(arena.text(subject_name))
+                                .append(arena.text(subject_name.clone()))
                                 .append(arena.text(".value;"))
                                 .append(arena.hardline())
                                 .append(self.transpile_statements(arena, some_arm_body))
@@ -978,9 +956,10 @@ impl Transpiler for TsTranspiler {
                     .append(arena.hardline())
                     .append(arena.text("}"));
 
-                self.wrap_match_subject_stmt(
+                self.bind_match_subject_stmt(
                     arena,
                     subject,
+                    subject_name.clone(),
                     arena
                         .text("switch (")
                         .append(arena.text(subject_name))
@@ -998,7 +977,7 @@ impl Transpiler for TsTranspiler {
                 )
             }
             Match::Enum { subject, arms } => {
-                let subject_name = "subject_";
+                let subject_name = self.fresh_var();
                 let case_docs: Vec<_> = arms
                     .iter()
                     .map(|arm| match &arm.pattern {
@@ -1017,14 +996,14 @@ impl Transpiler for TsTranspiler {
                                         arena
                                             .text(field.as_str())
                                             .append(arena.text(": "))
-                                            .append(arena.text(escape_ident(var.as_str())))
+                                            .append(arena.text(var_ident(var)))
                                     })
                                     .collect();
                                 arena
                                     .text("const { ")
                                     .append(arena.intersperse(destructure_docs, arena.text(", ")))
                                     .append(arena.text(" } = "))
-                                    .append(arena.text(subject_name))
+                                    .append(arena.text(subject_name.clone()))
                                     .append(arena.text(";"))
                                     .append(arena.hardline())
                             };
@@ -1049,12 +1028,13 @@ impl Transpiler for TsTranspiler {
                     .collect();
                 let cases = arena.intersperse(case_docs, arena.hardline());
 
-                self.wrap_match_subject_stmt(
+                self.bind_match_subject_stmt(
                     arena,
                     subject,
+                    subject_name.clone(),
                     arena
                         .text("switch (")
-                        .append(arena.text(subject_name))
+                        .append(arena.text(subject_name.clone()))
                         .append(arena.text(".tag) {"))
                         .append(arena.hardline().append(cases).nest(4))
                         .append(arena.hardline())
@@ -1076,8 +1056,8 @@ impl Transpiler for TsTranspiler {
         arena.intersperse(docs, arena.hardline())
     }
 
-    fn transpile_var<'a>(&mut self, arena: &'a Arena<'a>, name: &'a str) -> Doc<'a> {
-        arena.text(escape_ident(name))
+    fn transpile_var<'a>(&mut self, arena: &'a Arena<'a>, var: &'a IrVar) -> Doc<'a> {
+        arena.text(var_ident(var))
     }
 
     fn transpile_field_access<'a>(
@@ -1162,23 +1142,7 @@ impl Transpiler for TsTranspiler {
             .text("new ")
             .append(arena.text(record_name))
             .append(arena.text("("));
-        if fields.is_empty() {
-            base.append(arena.text(")"))
-        } else {
-            let field_docs: Vec<_> = fields
-                .iter()
-                .map(|(k, field_expr)| {
-                    arena
-                        .nil()
-                        .append(arena.text(k.as_str()))
-                        .append(arena.text(": "))
-                        .append(self.transpile_expr(arena, field_expr))
-                })
-                .collect();
-            base.append("{")
-                .append(arena.intersperse(field_docs, arena.text(", ")))
-                .append(arena.text("})"))
-        }
+        self.transpile_field_object(arena, base, fields)
     }
 
     fn transpile_enum_literal<'a>(
@@ -1194,23 +1158,7 @@ impl Transpiler for TsTranspiler {
             .append(arena.text("."))
             .append(arena.text(variant_name))
             .append(arena.text("("));
-        if fields.is_empty() {
-            base.append(arena.text(")"))
-        } else {
-            let field_docs: Vec<_> = fields
-                .iter()
-                .map(|(k, field_expr)| {
-                    arena
-                        .nil()
-                        .append(arena.text(k.as_str()))
-                        .append(arena.text(": "))
-                        .append(self.transpile_expr(arena, field_expr))
-                })
-                .collect();
-            base.append("{")
-                .append(arena.intersperse(field_docs, arena.text(", ")))
-                .append(arena.text("})"))
-        }
+        self.transpile_field_object(arena, base, fields)
     }
 
     fn transpile_string_equals<'a>(
@@ -1524,7 +1472,7 @@ impl Transpiler for TsTranspiler {
     ) -> Doc<'a> {
         match match_ {
             Match::Enum { subject, arms } => {
-                let subject_name = "subject_";
+                let subject_name = self.fresh_var();
                 let case_docs: Vec<_> =
                     arms.iter()
                         .map(|arm| match &arm.pattern {
@@ -1547,7 +1495,7 @@ impl Transpiler for TsTranspiler {
                                             arena
                                                 .text(field.as_str())
                                                 .append(arena.text(": "))
-                                                .append(arena.text(escape_ident(var.as_str())))
+                                                .append(arena.text(var_ident(var)))
                                         })
                                         .collect();
                                     arena
@@ -1563,7 +1511,7 @@ impl Transpiler for TsTranspiler {
                                                     arena.text(", "),
                                                 ))
                                                 .append(arena.text(" } = "))
-                                                .append(arena.text(subject_name))
+                                                .append(arena.text(subject_name.clone()))
                                                 .append(arena.text(";"))
                                                 .append(arena.line())
                                                 .append(arena.text("return "))
@@ -1581,13 +1529,13 @@ impl Transpiler for TsTranspiler {
 
                 let switch_body = arena
                     .text("switch (")
-                    .append(arena.text(subject_name))
+                    .append(arena.text(subject_name.clone()))
                     .append(arena.text(".tag) {"))
                     .append(arena.line().append(cases).nest(2))
                     .append(arena.line())
                     .append(arena.text("}"));
 
-                self.wrap_match_subject_expr(arena, subject, switch_body)
+                self.bind_match_subject_expr(arena, subject, subject_name, switch_body)
             }
             Match::Bool {
                 subject,
@@ -1608,7 +1556,7 @@ impl Transpiler for TsTranspiler {
                 none_arm_body,
             } => {
                 self.needs_option = true;
-                let subject_name = "subject_";
+                let subject_name = self.fresh_var();
                 let some_case = {
                     let body_doc = self.transpile_expr(arena, some_arm_body);
                     if let Some(var_name) = some_arm_binding {
@@ -1618,9 +1566,9 @@ impl Transpiler for TsTranspiler {
                                 arena
                                     .line()
                                     .append(arena.text("const "))
-                                    .append(arena.text(escape_ident(var_name.as_str())))
+                                    .append(arena.text(var_ident(var_name)))
                                     .append(arena.text(" = "))
-                                    .append(arena.text(subject_name))
+                                    .append(arena.text(subject_name.clone()))
                                     .append(arena.text(".value;"))
                                     .append(arena.line())
                                     .append(arena.text("return "))
@@ -1647,13 +1595,13 @@ impl Transpiler for TsTranspiler {
 
                 let switch_body = arena
                     .text("switch (")
-                    .append(arena.text(subject_name))
+                    .append(arena.text(subject_name.clone()))
                     .append(arena.text(".tag) {"))
                     .append(arena.line().append(cases).nest(2))
                     .append(arena.line())
                     .append(arena.text("}"));
 
-                self.wrap_match_subject_expr(arena, subject, switch_body)
+                self.bind_match_subject_expr(arena, subject, subject_name, switch_body)
             }
         }
     }
@@ -1670,7 +1618,7 @@ impl Transpiler for TsTranspiler {
         let value = self.transpile_expr(arena, value);
         arena
             .text("((")
-            .append(arena.text(escape_ident(var.as_str())))
+            .append(arena.text(var_ident(var)))
             .append(arena.text(": "))
             .append(param_type)
             .append(arena.text(") => {"))
@@ -1856,13 +1804,13 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                view UserInfo(name: String, age: String) {
+                view UserInfo(name@v0: String, age@v1: String) {
                   write("<div>\n")
                   write("<h2>Name: ")
-                  write_escaped(name)
+                  write_escaped(v0)
                   write("</h2>\n")
                   write("<p>Age: ")
-                  write_expr(age)
+                  write_expr(v1)
                   write("</p>\n")
                   write("</div>\n")
                 }
@@ -1879,14 +1827,20 @@ mod tests {
                         .replace(/'/g, '&#39;');
                 }
 
-                export function UserInfo({name, age}: {name: string, age: string}): string {
+                export function UserInfo({
+                    name: v_0,
+                    age: v_1
+                }: {
+                    name: string,
+                    age: string
+                }): string {
                     let output: string = "";
                     output += "<div>\n";
                     output += "<h2>Name: ";
-                    output += escapeHtml(name);
+                    output += escapeHtml(v_0);
                     output += "</h2>\n";
                     output += "<p>Age: ";
-                    output += age;
+                    output += v_1;
                     output += "</p>\n";
                     output += "</div>\n";
                     return output;
@@ -1911,11 +1865,11 @@ mod tests {
             ),
             expect![[r#"
                 -- before --
-                view ConditionalDisplay(title: String, show: Bool) {
-                  match show {
+                view ConditionalDisplay(title@v0: String, show@v1: Bool) {
+                  match v1 {
                     true => {
                       write("<h1>")
-                      write_escaped(title)
+                      write_escaped(v0)
                       write("</h1>\n")
                     }
                     false => {
@@ -1935,11 +1889,17 @@ mod tests {
                         .replace(/'/g, '&#39;');
                 }
 
-                export function ConditionalDisplay({title, show}: {title: string, show: boolean}): string {
+                export function ConditionalDisplay({
+                    title: v_0,
+                    show: v_1
+                }: {
+                    title: string,
+                    show: boolean
+                }): string {
                     let output: string = "";
-                    if ((show as boolean)) {
+                    if ((v_1 as boolean)) {
                         output += "<h1>";
-                        output += escapeHtml(title);
+                        output += escapeHtml(v_0);
                         output += "</h1>\n";
                     }
                     return output;
@@ -1962,11 +1922,11 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                view ListItems(items: Array[String]) {
+                view ListItems(items@v0: Array[String]) {
                   write("<ul>\n")
-                  for item in items {
+                  for v1 in v0 {
                     write("<li>")
-                    write_escaped(item)
+                    write_escaped(v1)
                     write("</li>\n")
                   }
                   write("</ul>\n")
@@ -1984,16 +1944,14 @@ mod tests {
                         .replace(/'/g, '&#39;');
                 }
 
-                export function ListItems({items}: {items: string[]}): string {
+                export function ListItems({items: v_0}: {items: string[]}): string {
                     let output: string = "";
                     output += "<ul>\n";
-                    {
-                        const source_ = items;
-                        for (const item of source_) {
-                            output += "<li>";
-                            output += escapeHtml(item);
-                            output += "</li>\n";
-                        }
+                    const v_2: string[] = v_0;
+                    for (const v_1 of v_2) {
+                        output += "<li>";
+                        output += escapeHtml(v_1);
+                        output += "</li>\n";
                     }
                     output += "</ul>\n";
                     return output;
@@ -2014,8 +1972,8 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Counter() {
-                  for i in 1..=3 {
-                    write_expr(i.to_string())
+                  for v0 in 1..=3 {
+                    write_expr(v0.to_string())
                     write(" ")
                   }
                 }
@@ -2025,13 +1983,11 @@ mod tests {
 
                 export function Counter(): string {
                     let output: string = "";
-                    {
-                        const start_ = (1 as number);
-                        const end_ = (3 as number);
-                        for (let i = start_; i <= end_; i++) {
-                            output += (i).toString();
-                            output += " ";
-                        }
+                    const v_1: number = (1 as number);
+                    const v_2: number = (3 as number);
+                    for (let v_0 = v_1; v_0 <= v_2; v_0++) {
+                        output += (v_0).toString();
+                        output += " ";
                     }
                     return output;
                 }
@@ -2054,10 +2010,10 @@ mod tests {
             expect![[r#"
                 -- before --
                 view GreetingCard() {
-                  let greeting = "Hello from hop!" in {
+                  let v0 = "Hello from hop!" in {
                     write("<div class=\"card\">\n")
                     write("<p>")
-                    write_escaped(greeting)
+                    write_escaped(v0)
                     write("</p>\n")
                     write("</div>\n")
                   }
@@ -2077,13 +2033,12 @@ mod tests {
 
                 export function GreetingCard(): string {
                     let output: string = "";
-                    ((greeting: string) => {
-                        output += "<div class=\"card\">\n";
-                        output += "<p>";
-                        output += escapeHtml(greeting);
-                        output += "</p>\n";
-                        output += "</div>\n";
-                    })(("Hello from hop!" as string));
+                    const v_0: string = ("Hello from hop!" as string);
+                    output += "<div class=\"card\">\n";
+                    output += "<p>";
+                    output += escapeHtml(v_0);
+                    output += "</p>\n";
+                    output += "</div>\n";
                     return output;
                 }
             "#]],
@@ -2106,9 +2061,9 @@ mod tests {
                 -- before --
                 view TestMainComp() {
                   write("<div data-hop-id=\"test/card-comp\">")
-                  let title = "Hello World" in {
+                  let v0 = "Hello World" in {
                     write("<h2>")
-                    write_escaped(title)
+                    write_escaped(v0)
                     write("</h2>")
                   }
                   write("</div>")
@@ -2129,11 +2084,10 @@ mod tests {
                 export function TestMainComp(): string {
                     let output: string = "";
                     output += "<div data-hop-id=\"test/card-comp\">";
-                    ((title: string) => {
-                        output += "<h2>";
-                        output += escapeHtml(title);
-                        output += "</h2>";
-                    })(("Hello World" as string));
+                    const v_0: string = ("Hello World" as string);
+                    output += "<h2>";
+                    output += escapeHtml(v_0);
+                    output += "</h2>";
                     output += "</div>";
                     return output;
                 }
@@ -2160,13 +2114,13 @@ mod tests {
             expect![[r#"
                 -- before --
                 view RenderHtml(
-                  safe_content: Fragment,
-                  user_input: String,
+                  safe_content@v0: Fragment,
+                  user_input@v1: String,
                 ) {
                   write("<div>")
-                  write_expr(safe_content)
+                  write_expr(v0)
                   write("</div><div>")
-                  write_escaped(user_input)
+                  write_escaped(v1)
                   write("</div>")
                 }
 
@@ -2189,12 +2143,18 @@ mod tests {
                         .replace(/'/g, '&#39;');
                 }
 
-                export function RenderHtml({safe_content, user_input}: {safe_content: Fragment, user_input: string}): string {
+                export function RenderHtml({
+                    safe_content: v_0,
+                    user_input: v_1
+                }: {
+                    safe_content: Fragment,
+                    user_input: string
+                }): string {
                     let output: string = "";
                     output += "<div>";
-                    output += safe_content;
+                    output += v_0;
                     output += "</div><div>";
-                    output += escapeHtml(user_input);
+                    output += escapeHtml(v_1);
                     output += "</div>";
                     return output;
                 }
@@ -2227,9 +2187,9 @@ mod tests {
                   age: Int,
                   active: Bool,
                 }
-                view UserProfile(user: test::User) {
+                view UserProfile(user@v0: test::User) {
                   write("<div>")
-                  write_escaped(user.name)
+                  write_escaped(v0.name)
                   write("</div>")
                 }
 
@@ -2267,10 +2227,10 @@ mod tests {
                     }
                 }
 
-                export function UserProfile({user}: {user: User}): string {
+                export function UserProfile({user: v_0}: {user: User}): string {
                     let output: string = "";
                     output += "<div>";
-                    output += escapeHtml(user.name);
+                    output += escapeHtml(v_0.name);
                     output += "</div>";
                     return output;
                 }
@@ -2326,7 +2286,10 @@ mod tests {
                 export function CreateUser(): string {
                     let output: string = "";
                     output += "<div>";
-                    output += escapeHtml(new User({name: ("John" as string), age: (30 as number)}).name);
+                    output += escapeHtml(new User({
+                        name: ("John" as string),
+                        age: (30 as number)
+                    }).name);
                     output += "</div>";
                     return output;
                 }
@@ -2348,8 +2311,8 @@ mod tests {
                   value: Int,
                   next: Option[test::Node],
                 }
-                view Test(node: test::Node) {
-                  write_escaped(node.value.to_string())
+                view Test(node@v0: test::Node) {
+                  write_escaped(v0.value.to_string())
                 }
 
                 -- after --
@@ -2385,9 +2348,9 @@ mod tests {
                     }
                 }
 
-                export function Test({node}: {node: Node}): string {
+                export function Test({node: v_0}: {node: Node}): string {
                     let output: string = "";
-                    output += escapeHtml((node.value).toString());
+                    output += escapeHtml((v_0.value).toString());
                     return output;
                 }
             "#]],
@@ -2463,14 +2426,14 @@ mod tests {
                   next: Option[test::Node],
                 }
                 view Test() {
-                  let node = Node {
+                  let v0 = Node {
                     value: 2,
                     next: Option[test::Node]::Some(Node {
                       value: 1,
                       next: Option[test::Node]::None,
                     }),
                   } in {
-                    write_escaped(node.value.to_string())
+                    write_escaped(v0.value.to_string())
                   }
                 }
 
@@ -2509,9 +2472,14 @@ mod tests {
 
                 export function Test(): string {
                     let output: string = "";
-                    ((node: Node) => {
-                        output += escapeHtml((node.value).toString());
-                    })(new Node({value: (2 as number), next: Option.some<Node>(new Node({value: (1 as number), next: Option.none<Node>()}))}));
+                    const v_0: Node = new Node({
+                        value: (2 as number),
+                        next: Option.some<Node>(new Node({
+                            value: (1 as number),
+                            next: Option.none<Node>()
+                        }))
+                    });
+                    output += escapeHtml((v_0.value).toString());
                     return output;
                 }
             "#]],
@@ -2539,8 +2507,8 @@ mod tests {
                   Green,
                   Blue,
                 }
-                view ColorName(color: test::Color) {
-                  write_escaped(match color {
+                view ColorName(color@v0: test::Color) {
+                  write_escaped(match v0 {
                     Color::Red => "red",
                     Color::Green => "green",
                     Color::Blue => "blue",
@@ -2573,15 +2541,15 @@ mod tests {
                     }
                 }
 
-                export function ColorName({color}: {color: Color.Color}): string {
+                export function ColorName({color: v_0}: {color: Color.Color}): string {
                     let output: string = "";
-                    output += escapeHtml(((subject_: Color.Color) => {
-                      switch (subject_.tag) {
+                    output += escapeHtml(((v_1: Color.Color) => {
+                      switch (v_1.tag) {
                         case "Red": return ("red" as string);
                         case "Green": return ("green" as string);
                         case "Blue": return ("blue" as string);
                       }
-                    })(color));
+                    })(v_0));
                     return output;
                 }
             "#]],
@@ -2597,8 +2565,8 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                view IsActive(active: Bool) {
-                  write_escaped(match active {true => "yes", false => "no"})
+                view IsActive(active@v0: Bool) {
+                  write_escaped(match v0 {true => "yes", false => "no"})
                 }
 
                 -- after --
@@ -2613,9 +2581,9 @@ mod tests {
                         .replace(/'/g, '&#39;');
                 }
 
-                export function IsActive({active}: {active: boolean}): string {
+                export function IsActive({active: v_0}: {active: boolean}): string {
                     let output: string = "";
-                    output += escapeHtml(((active as boolean) ? ("yes" as string) : ("no" as string)));
+                    output += escapeHtml(((v_0 as boolean) ? ("yes" as string) : ("no" as string)));
                     return output;
                 }
             "#]],
@@ -2632,8 +2600,8 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                view CheckOption(opt: Option[Int]) {
-                  write_escaped(match opt {
+                view CheckOption(opt@v0: Option[Int]) {
+                  write_escaped(match v0 {
                     Some(_) => "has value",
                     None => "empty",
                   })
@@ -2662,14 +2630,14 @@ mod tests {
                         .replace(/'/g, '&#39;');
                 }
 
-                export function CheckOption({opt}: {opt: Option.Option<number>}): string {
+                export function CheckOption({opt: v_0}: {opt: Option.Option<number>}): string {
                     let output: string = "";
-                    output += escapeHtml(((subject_: Option.Option<number>) => {
-                      switch (subject_.tag) {
+                    output += escapeHtml(((v_1: Option.Option<number>) => {
+                      switch (v_1.tag) {
                         case "Some": return ("has value" as string);
                         case "None": return ("empty" as string);
                       }
-                    })(opt));
+                    })(v_0));
                     return output;
                 }
             "#]],
@@ -2711,10 +2679,10 @@ mod tests {
             ),
             expect![[r#"
                 -- before --
-                view CheckNestedOption(opt: Option[Option[Bool]]) {
-                  write_escaped(match opt {
-                    Some(v0) => match v0 {
-                      Some(v1) => match v1 {
+                view CheckNestedOption(opt@v0: Option[Option[Bool]]) {
+                  write_escaped(match v0 {
+                    Some(v1) => match v1 {
+                      Some(v2) => match v2 {
                         true => "some-some-true",
                         false => "some-some-false",
                       },
@@ -2747,25 +2715,29 @@ mod tests {
                         .replace(/'/g, '&#39;');
                 }
 
-                export function CheckNestedOption({opt}: {opt: Option.Option<Option.Option<boolean>>}): string {
+                export function CheckNestedOption({
+                    opt: v_0
+                }: {
+                    opt: Option.Option<Option.Option<boolean>>
+                }): string {
                     let output: string = "";
-                    output += escapeHtml(((subject_: Option.Option<Option.Option<boolean>>) => {
-                      switch (subject_.tag) {
+                    output += escapeHtml(((v_3: Option.Option<Option.Option<boolean>>) => {
+                      switch (v_3.tag) {
                         case "Some": {
-                          const v0 = subject_.value;
-                          return ((subject_: Option.Option<boolean>) => {
-                            switch (subject_.tag) {
+                          const v_1 = v_3.value;
+                          return ((v_4: Option.Option<boolean>) => {
+                            switch (v_4.tag) {
                               case "Some": {
-                                const v1 = subject_.value;
-                                return ((v1 as boolean) ? ("some-some-true" as string) : ("some-some-false" as string));
+                                const v_2 = v_4.value;
+                                return ((v_2 as boolean) ? ("some-some-true" as string) : ("some-some-false" as string));
                               }
                               case "None": return ("some-none" as string);
                             }
-                          })(v0);
+                          })(v_1);
                         }
                         case "None": return ("none" as string);
                       }
-                    })(opt));
+                    })(v_0));
                     return output;
                 }
             "#]],
@@ -2782,8 +2754,8 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                view LetExpr(name: String) {
-                  write_escaped(let x = name in x)
+                view LetExpr(name@v0: String) {
+                  write_escaped(let v1 = v0 in v1)
                 }
 
                 -- after --
@@ -2798,11 +2770,11 @@ mod tests {
                         .replace(/'/g, '&#39;');
                 }
 
-                export function LetExpr({name}: {name: string}): string {
+                export function LetExpr({name: v_0}: {name: string}): string {
                     let output: string = "";
-                    output += escapeHtml(((x: string) => {
-                      return x;
-                    })(name));
+                    output += escapeHtml(((v_1: string) => {
+                      return v_1;
+                    })(v_0));
                     return output;
                 }
             "#]],
@@ -2828,11 +2800,11 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                view DisplayOption(opt: Option[String]) {
-                  match opt {
-                    Some(value) => {
+                view DisplayOption(opt@v0: Option[String]) {
+                  match v0 {
+                    Some(v1) => {
                       write("<span>Found: ")
-                      write_escaped(value)
+                      write_escaped(v1)
                       write("</span>")
                     }
                     None => {
@@ -2864,22 +2836,24 @@ mod tests {
                         .replace(/'/g, '&#39;');
                 }
 
-                export function DisplayOption({opt}: {opt: Option.Option<string>}): string {
+                export function DisplayOption({
+                    opt: v_0
+                }: {
+                    opt: Option.Option<string>
+                }): string {
                     let output: string = "";
-                    {
-                        const subject_ = opt as Option.Option<string>;
-                        switch (subject_.tag) {
-                            case "Some": {
-                                const value = subject_.value;
-                                output += "<span>Found: ";
-                                output += escapeHtml(value);
-                                output += "</span>";
-                                break;
-                            }
-                            case "None": {
-                                output += "<span>Nothing</span>";
-                                break;
-                            }
+                    const v_2: Option.Option<string> = v_0;
+                    switch (v_2.tag) {
+                        case "Some": {
+                            const v_1 = v_2.value;
+                            output += "<span>Found: ";
+                            output += escapeHtml(v_1);
+                            output += "</span>";
+                            break;
+                        }
+                        case "None": {
+                            output += "<span>Nothing</span>";
+                            break;
                         }
                     }
                     return output;
@@ -2909,14 +2883,14 @@ mod tests {
             expect![[r#"
                 -- before --
                 view TestOptionLiteral(
-                  opt1: Option[String],
-                  opt2: Option[String],
+                  opt1@v0: Option[String],
+                  opt2@v1: Option[String],
                 ) {
-                  write_expr(match opt1 {
+                  write_expr(match v0 {
                     Some(_) => "has value",
                     None => "empty",
                   })
-                  write_expr(match opt2 {Some(_) => "HAS", None => "EMPTY"})
+                  write_expr(match v1 {Some(_) => "HAS", None => "EMPTY"})
                 }
 
                 -- after --
@@ -2933,20 +2907,26 @@ mod tests {
                     }
                 }
 
-                export function TestOptionLiteral({opt1, opt2}: {opt1: Option.Option<string>, opt2: Option.Option<string>}): string {
+                export function TestOptionLiteral({
+                    opt1: v_0,
+                    opt2: v_1
+                }: {
+                    opt1: Option.Option<string>,
+                    opt2: Option.Option<string>
+                }): string {
                     let output: string = "";
-                    output += ((subject_: Option.Option<string>) => {
-                      switch (subject_.tag) {
+                    output += ((v_2: Option.Option<string>) => {
+                      switch (v_2.tag) {
                         case "Some": return ("has value" as string);
                         case "None": return ("empty" as string);
                       }
-                    })(opt1);
-                    output += ((subject_: Option.Option<string>) => {
-                      switch (subject_.tag) {
+                    })(v_0);
+                    output += ((v_3: Option.Option<string>) => {
+                      switch (v_3.tag) {
                         case "Some": return ("HAS" as string);
                         case "None": return ("EMPTY" as string);
                       }
-                    })(opt2);
+                    })(v_1);
                     return output;
                 }
             "#]],
@@ -2974,11 +2954,11 @@ mod tests {
             expect![[r#"
                 -- before --
                 view TestInlineMatch() {
-                  let opt = Option[String]::Some("world") in {
-                    match opt {
-                      Some(val) => {
+                  let v0 = Option[String]::Some("world") in {
+                    match v0 {
+                      Some(v1) => {
                         write("Got:")
-                        write_expr(val)
+                        write_expr(v1)
                       }
                       None => {
                         write("Empty")
@@ -3003,23 +2983,20 @@ mod tests {
 
                 export function TestInlineMatch(): string {
                     let output: string = "";
-                    ((opt: Option.Option<string>) => {
-                        {
-                            const subject_ = opt as Option.Option<string>;
-                            switch (subject_.tag) {
-                                case "Some": {
-                                    const val = subject_.value;
-                                    output += "Got:";
-                                    output += val;
-                                    break;
-                                }
-                                case "None": {
-                                    output += "Empty";
-                                    break;
-                                }
-                            }
+                    const v_0: Option.Option<string> = Option.some<string>(("world" as string));
+                    const v_2: Option.Option<string> = v_0;
+                    switch (v_2.tag) {
+                        case "Some": {
+                            const v_1 = v_2.value;
+                            output += "Got:";
+                            output += v_1;
+                            break;
                         }
-                    })(Option.some<string>(("world" as string)));
+                        case "None": {
+                            output += "Empty";
+                            break;
+                        }
+                    }
                     return output;
                 }
             "#]],
@@ -3054,10 +3031,10 @@ mod tests {
                 -- before --
                 view Test() {
                   match Option[String]::Some("x") {
-                    Some(value) => {
-                      match Option[String]::Some(value) {
-                        Some(inner) => {
-                          write_expr(inner)
+                    Some(v0) => {
+                      match Option[String]::Some(v0) {
+                        Some(v1) => {
+                          write_expr(v1)
                         }
                         None => {
                           write("none2")
@@ -3086,31 +3063,27 @@ mod tests {
 
                 export function Test(): string {
                     let output: string = "";
-                    {
-                        const subject_ = Option.some<string>(("x" as string)) as Option.Option<string>;
-                        switch (subject_.tag) {
-                            case "Some": {
-                                const value = subject_.value;
-                                {
-                                    const subject_ = Option.some<string>(value) as Option.Option<string>;
-                                    switch (subject_.tag) {
-                                        case "Some": {
-                                            const inner = subject_.value;
-                                            output += inner;
-                                            break;
-                                        }
-                                        case "None": {
-                                            output += "none2";
-                                            break;
-                                        }
-                                    }
+                    const v_2: Option.Option<string> = Option.some<string>(("x" as string));
+                    switch (v_2.tag) {
+                        case "Some": {
+                            const v_0 = v_2.value;
+                            const v_3: Option.Option<string> = Option.some<string>(v_0);
+                            switch (v_3.tag) {
+                                case "Some": {
+                                    const v_1 = v_3.value;
+                                    output += v_1;
+                                    break;
                                 }
-                                break;
+                                case "None": {
+                                    output += "none2";
+                                    break;
+                                }
                             }
-                            case "None": {
-                                output += "none1";
-                                break;
-                            }
+                            break;
+                        }
+                        case "None": {
+                            output += "none1";
+                            break;
                         }
                     }
                     return output;
@@ -3129,11 +3102,8 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                view IsActive(active: Bool) {
-                  write_escaped(match (!active) {
-                    true => "yes",
-                    false => "no",
-                  })
+                view IsActive(active@v0: Bool) {
+                  write_escaped(match (!v0) {true => "yes", false => "no"})
                 }
 
                 -- after --
@@ -3148,9 +3118,9 @@ mod tests {
                         .replace(/'/g, '&#39;');
                 }
 
-                export function IsActive({active}: {active: boolean}): string {
+                export function IsActive({active: v_0}: {active: boolean}): string {
                     let output: string = "";
-                    output += escapeHtml(((!(active) as boolean) ? ("yes" as string) : ("no" as string)));
+                    output += escapeHtml(((!(v_0) as boolean) ? ("yes" as string) : ("no" as string)));
                     return output;
                 }
             "#]],
@@ -3183,9 +3153,9 @@ mod tests {
                   Ok {value: Int},
                   Err {message: String},
                 }
-                view ShowOutcome(r: test::Outcome) {
+                view ShowOutcome(r@v0: test::Outcome) {
                   write("<div>")
-                  let ok = Outcome::Ok {value: 42} in {
+                  let v1 = Outcome::Ok {value: 42} in {
                     write_expr("Created Ok!")
                   }
                   write("</div>")
@@ -3205,12 +3175,11 @@ mod tests {
                     }
                 }
 
-                export function ShowOutcome({r}: {r: Outcome.Outcome}): string {
+                export function ShowOutcome({r: v_0}: {r: Outcome.Outcome}): string {
                     let output: string = "";
                     output += "<div>";
-                    ((ok: Outcome.Outcome) => {
-                        output += ("Created Ok!" as string);
-                    })(Outcome.Ok({value: (42 as number)}));
+                    const v_1: Outcome.Outcome = Outcome.Ok({value: (42 as number)});
+                    output += ("Created Ok!" as string);
                     output += "</div>";
                     return output;
                 }
@@ -3247,15 +3216,15 @@ mod tests {
                   Ok {value: String},
                   Err {message: String},
                 }
-                view ShowOutcome(r: test::Outcome) {
-                  match r {
-                    Outcome::Ok(value: v) => {
+                view ShowOutcome(r@v0: test::Outcome) {
+                  match v0 {
+                    Outcome::Ok(value: v1) => {
                       write("Value: ")
-                      write_expr(v)
+                      write_expr(v1)
                     }
-                    Outcome::Err(message: m) => {
+                    Outcome::Err(message: v2) => {
                       write("Error: ")
-                      write_expr(m)
+                      write_expr(v2)
                     }
                   }
                 }
@@ -3274,23 +3243,21 @@ mod tests {
                     }
                 }
 
-                export function ShowOutcome({r}: {r: Outcome.Outcome}): string {
+                export function ShowOutcome({r: v_0}: {r: Outcome.Outcome}): string {
                     let output: string = "";
-                    {
-                        const subject_ = r as Outcome.Outcome;
-                        switch (subject_.tag) {
-                            case "Ok": {
-                                const { value: v } = subject_;
-                                output += "Value: ";
-                                output += v;
-                                break;
-                            }
-                            case "Err": {
-                                const { message: m } = subject_;
-                                output += "Error: ";
-                                output += m;
-                                break;
-                            }
+                    const v_3: Outcome.Outcome = v_0;
+                    switch (v_3.tag) {
+                        case "Ok": {
+                            const { value: v_1 } = v_3;
+                            output += "Value: ";
+                            output += v_1;
+                            break;
+                        }
+                        case "Err": {
+                            const { message: v_2 } = v_3;
+                            output += "Error: ";
+                            output += v_2;
+                            break;
                         }
                     }
                     return output;
@@ -3316,10 +3283,10 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  let v_0 = {
+                  let v0 = {
                     write("<b>hi</b>")
                   } in {
-                    write_expr(v_0)
+                    write_expr(v0)
                   }
                 }
 
@@ -3335,13 +3302,12 @@ mod tests {
 
                 export function Test(): string {
                     let output: string = "";
-                    ((v_0: Fragment) => {
-                        output += v_0;
-                    })((() => {
+                    const v_0: Fragment = (() => {
                         let output: string = "";
                         output += "<b>hi</b>";
                         return output as Fragment;
-                    })());
+                    })();
+                    output += v_0;
                     return output;
                 }
             "#]],

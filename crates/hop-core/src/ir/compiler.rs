@@ -26,7 +26,14 @@ pub fn compile(
     asset_rewriter: Option<Arc<dyn AssetRewriter>>,
 ) -> IrModule {
     let mut expr_ids = ExprIdCounter::new();
-    let mut compiler = Compiler::new(&mut expr_ids, asset_rewriter);
+    let mut statement_ids = StatementIdCounter::new();
+    let mut var_ids = VarIdCounter::new();
+    let mut compiler = Compiler::new(
+        &mut expr_ids,
+        &mut statement_ids,
+        &mut var_ids,
+        asset_rewriter,
+    );
 
     let views = views
         .into_iter()
@@ -64,13 +71,14 @@ pub fn compile(
         records,
         enums,
         expr_ids,
+        var_ids,
     }
 }
 
 struct Compiler<'a> {
     expr_id_counter: &'a mut ExprIdCounter,
-    statement_id_counter: StatementIdCounter,
-    var_id_counter: VarIdCounter,
+    statement_id_counter: &'a mut StatementIdCounter,
+    var_id_counter: &'a mut VarIdCounter,
     scopes: Vec<Vec<(VarName, VarId)>>,
     asset_rewriter: Option<Arc<dyn AssetRewriter>>,
 }
@@ -78,12 +86,14 @@ struct Compiler<'a> {
 impl<'a> Compiler<'a> {
     fn new(
         expr_id_counter: &'a mut ExprIdCounter,
+        statement_id_counter: &'a mut StatementIdCounter,
+        var_id_counter: &'a mut VarIdCounter,
         asset_rewriter: Option<Arc<dyn AssetRewriter>>,
     ) -> Self {
         Compiler {
             expr_id_counter,
-            statement_id_counter: StatementIdCounter::new(),
-            var_id_counter: VarIdCounter::new(),
+            statement_id_counter,
+            var_id_counter,
             scopes: vec![Vec::new()],
             asset_rewriter,
         }
@@ -99,6 +109,7 @@ impl<'a> Compiler<'a> {
         for param in decl.params {
             parameters.push(IrParameter {
                 var: self.bind(&param.var_name),
+                name: param.var_name,
                 typ: param.var_type,
             });
         }
@@ -119,6 +130,7 @@ impl<'a> Compiler<'a> {
         for param in view.params {
             parameters.push(IrParameter {
                 var: self.bind(&param.var_name),
+                name: param.var_name,
                 typ: param.var_type,
             });
         }
@@ -158,13 +170,13 @@ impl<'a> Compiler<'a> {
             .last_mut()
             .expect("scope stack should not be empty")
             .push((name.clone(), id));
-        IrVar::new(id, name.clone())
+        IrVar::new(id)
     }
 
     fn resolve(&mut self, name: &VarName) -> IrVar {
         for scope in self.scopes.iter().rev() {
             if let Some((_, id)) = scope.iter().rev().find(|(n, _)| n == name) {
-                return IrVar::new(*id, name.clone());
+                return IrVar::new(*id);
             }
         }
         panic!("undefined variable: {name}");
@@ -835,7 +847,10 @@ mod tests {
     fn check(view: InlinedViewDeclaration, expected: Expect) {
         let before = view.to_string();
         let mut expr_ids = ExprIdCounter::new();
-        let ir = Compiler::new(&mut expr_ids, None).compile_view_decl(view);
+        let mut statement_ids = StatementIdCounter::new();
+        let mut var_ids = VarIdCounter::new();
+        let ir = Compiler::new(&mut expr_ids, &mut statement_ids, &mut var_ids, None)
+            .compile_view_decl(view);
         let after = ir.to_string();
         let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
         expected.assert_eq(&output);
@@ -876,9 +891,9 @@ mod tests {
                 }
 
                 -- after --
-                view MainComp(name: String) {
+                view MainComp(name@v0: String) {
                   write("Hello ")
-                  write_escaped(name)
+                  write_escaped(v0)
                 }
             "#]],
         );
@@ -932,8 +947,8 @@ mod tests {
                 }
 
                 -- after --
-                view MainComp(show: Bool) {
-                  match show {
+                view MainComp(show@v0: Bool) {
+                  match v0 {
                     true => {
                       write("<div")
                       write(">")
@@ -977,13 +992,13 @@ mod tests {
                 }
 
                 -- after --
-                view MainComp(items: Array[String]) {
+                view MainComp(items@v0: Array[String]) {
                   write("<ul")
                   write(">")
-                  for item in items {
+                  for v1 in v0 {
                     write("<li")
                     write(">")
-                    write_escaped(item)
+                    write_escaped(v1)
                     write("</li>")
                   }
                   write("</ul>")
@@ -1047,11 +1062,11 @@ mod tests {
                 }
 
                 -- after --
-                view MainComp(cls: String) {
+                view MainComp(cls@v0: String) {
                   write("<div")
                   write(" class=\"base\"")
                   write(" data-value=\"")
-                  write_escaped(cls)
+                  write_escaped(v0)
                   write("\"")
                   write(">")
                   write("Content")
@@ -1088,13 +1103,13 @@ mod tests {
                 }
 
                 -- after --
-                view TestComp(name: String, count: String) {
+                view TestComp(name@v0: String, count@v1: String) {
                   write("<div")
                   write(">")
                   write("Hello ")
-                  write_escaped(name)
+                  write_escaped(v0)
                   write(", count: ")
-                  write_escaped(count)
+                  write_escaped(v1)
                   write("</div>")
                 }
             "#]],
@@ -1129,8 +1144,8 @@ mod tests {
                 }
 
                 -- after --
-                view TestComp(flag: Bool) {
-                  match flag {
+                view TestComp(flag@v0: Bool) {
+                  match v0 {
                     true => {
                       write("yes")
                     }
@@ -1208,7 +1223,9 @@ mod tests {
         }
 
         let mut expr_ids = ExprIdCounter::new();
-        let mut compiler = Compiler::new(&mut expr_ids, None);
+        let mut statement_ids = StatementIdCounter::new();
+        let mut var_ids = VarIdCounter::new();
+        let mut compiler = Compiler::new(&mut expr_ids, &mut statement_ids, &mut var_ids, None);
         let _result = compiler.compile_expr(&expr);
         // If we get here without stack overflow, the test passes
     }

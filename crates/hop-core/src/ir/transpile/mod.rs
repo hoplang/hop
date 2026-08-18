@@ -41,21 +41,21 @@ pub trait Transpiler {
     fn transpile_for_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        var: Option<&'a str>,
+        var: Option<&'a IrVar>,
         source: &'a IrForSource,
         body: &'a [IrStatement],
     ) -> Doc<'a>;
     fn transpile_let_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        var: &'a str,
+        var: &'a IrVar,
         value: &'a IrExpr,
         body: &'a [IrStatement],
     ) -> Doc<'a>;
     fn transpile_let_fragment_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        var: &'a str,
+        var: &'a IrVar,
         fragment_body: &'a [IrStatement],
         body: &'a [IrStatement],
     ) -> Doc<'a>;
@@ -87,18 +87,16 @@ pub trait Transpiler {
             }
             IrStatement::For {
                 var, source, body, ..
-            } => {
-                self.transpile_for_statement(arena, var.as_ref().map(|v| v.as_str()), source, body)
-            }
+            } => self.transpile_for_statement(arena, var.as_ref(), source, body),
             IrStatement::Let {
                 var, value, body, ..
-            } => self.transpile_let_statement(arena, var.as_str(), value, body),
+            } => self.transpile_let_statement(arena, var, value, body),
             IrStatement::LetFragment {
                 var,
                 fragment_body,
                 body,
                 ..
-            } => self.transpile_let_fragment_statement(arena, var.as_str(), fragment_body, body),
+            } => self.transpile_let_fragment_statement(arena, var, fragment_body, body),
             IrStatement::Match { match_, .. } => self.transpile_match_statement(arena, match_),
             IrStatement::ComponentInvocation {
                 component_name,
@@ -150,7 +148,7 @@ pub trait Transpiler {
     }
 
     // Expression transpilation
-    fn transpile_var<'a>(&mut self, arena: &'a Arena<'a>, name: &'a str) -> Doc<'a>;
+    fn transpile_var<'a>(&mut self, arena: &'a Arena<'a>, var: &'a IrVar) -> Doc<'a>;
     fn transpile_field_access<'a>(
         &mut self,
         arena: &'a Arena<'a>,
@@ -324,7 +322,7 @@ pub trait Transpiler {
     fn transpile_int_to_float<'a>(&mut self, arena: &'a Arena<'a>, value: &'a IrExpr) -> Doc<'a>;
     fn transpile_expr<'a>(&mut self, arena: &'a Arena<'a>, expr: &'a IrExpr) -> Doc<'a> {
         match expr {
-            IrExpr::Var { value, .. } => self.transpile_var(arena, value.as_str()),
+            IrExpr::Var { value, .. } => self.transpile_var(arena, value),
             IrExpr::FieldAccess {
                 record: object,
                 field,
