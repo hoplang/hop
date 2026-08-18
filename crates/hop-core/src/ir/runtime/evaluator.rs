@@ -11,7 +11,7 @@ use tailwind_merge::tw_merge;
 use thiserror::Error;
 
 use crate::expr::patterns::{EnumPattern, Match};
-use crate::ir::syntax::ast::{IrComponentDeclaration, IrForSource, IrModule, IrStatement};
+use crate::ir::syntax::ast::{IrComponentDeclaration, IrForSource, IrModule, IrStatement, VarId};
 
 /// Errors the evaluator can produce.
 #[derive(Debug, Error)]
@@ -24,24 +24,24 @@ pub enum EvalError {
 
 /// Stack-based environment for the evaluator.
 struct Env {
-    stack: Vec<(VarName, Value)>,
+    stack: Vec<(VarId, Value)>,
 }
 
 impl Env {
     fn new() -> Self {
         Self { stack: Vec::new() }
     }
-    fn push(&mut self, key: VarName, value: Value) {
+    fn push(&mut self, key: VarId, value: Value) {
         self.stack.push((key, value));
     }
     fn pop(&mut self) {
         self.stack.pop();
     }
-    fn lookup(&self, key: &str) -> Option<&Value> {
+    fn lookup(&self, key: VarId) -> Option<&Value> {
         self.stack
             .iter()
             .rev()
-            .find(|(k, _)| k.as_str() == key)
+            .find(|(k, _)| *k == key)
             .map(|(_, v)| v)
     }
 }
@@ -64,7 +64,7 @@ pub fn evaluate_view(
 
     for param in &view.parameters {
         if let Some(value) = args.get(param.name().as_str()) {
-            env.push(param.name().clone(), value.clone());
+            env.push(param.var.id, value.clone());
         } else {
             return Err(EvalError::MissingParameter {
                 view: view.name.clone(),
@@ -137,7 +137,7 @@ fn eval_statement(
 
                     for item in items {
                         if let Some(var) = var {
-                            env.push(var.name.clone(), item);
+                            env.push(var.id, item);
                         }
                         eval_statements(body, env, output, component_defs)?;
                         if var.is_some() {
@@ -153,7 +153,7 @@ fn eval_statement(
 
                     for i in start_int..=end_int {
                         if let Some(var) = var {
-                            env.push(var.name.clone(), Value::Int(i));
+                            env.push(var.id, Value::Int(i));
                         }
                         eval_statements(body, env, output, component_defs)?;
                         if var.is_some() {
@@ -172,7 +172,7 @@ fn eval_statement(
             body,
         } => {
             let val = evaluate_expr(value, env)?;
-            env.push(var.name.clone(), val);
+            env.push(var.id, val);
             eval_statements(body, env, output, component_defs)?;
             env.pop();
             Ok(())
@@ -186,7 +186,7 @@ fn eval_statement(
         } => {
             let mut captured = String::new();
             eval_statements(fragment_body, env, &mut captured, component_defs)?;
-            env.push(var.name.clone(), Value::String(captured));
+            env.push(var.id, Value::String(captured));
             eval_statements(body, env, output, component_defs)?;
             env.pop();
             Ok(())
@@ -217,7 +217,7 @@ fn eval_statement(
                 match subject_value {
                     Value::Some(inner) => {
                         if let Some(var) = some_arm_binding {
-                            env.push(var.name.clone(), *inner);
+                            env.push(var.id, *inner);
                             eval_statements(some_arm_body, env, output, component_defs)?;
                             env.pop();
                         } else {
@@ -252,7 +252,7 @@ fn eval_statement(
                         let bindings_count = arm.bindings.len();
                         for (field_name, var_name) in &arm.bindings {
                             if let Some(field_val) = fields.get(field_name) {
-                                env.push(var_name.name.clone(), field_val.clone());
+                                env.push(var_name.id, field_val.clone());
                             }
                         }
                         eval_statements(&arm.body, env, output, component_defs)?;
@@ -288,7 +288,7 @@ fn eval_statement(
                     .find(|arg| arg.name.as_str() == param.name().as_str())
                 {
                     let value = evaluate_expr(&arg.expr, env)?;
-                    values.push((param.name().clone(), value));
+                    values.push((param.var.id, value));
                 } else {
                     panic!(
                         "Missing required parameter '{}' for component '{}'",
@@ -297,8 +297,8 @@ fn eval_statement(
                     );
                 }
             }
-            for (name, value) in values {
-                env.push(name, value);
+            for (id, value) in values {
+                env.push(id, value);
             }
 
             eval_statements(&component_def.body, env, output, component_defs)?;
@@ -313,10 +313,10 @@ fn eval_statement(
 
 fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value, EvalError> {
     match expr {
-        IrExpr::Var { value: name, .. } => Ok(env
-            .lookup(name.as_str())
+        IrExpr::Var { value: var, .. } => Ok(env
+            .lookup(var.id)
             .cloned()
-            .unwrap_or_else(|| panic!("Undefined variable: {}", name))),
+            .unwrap_or_else(|| panic!("Undefined variable: {}", var))),
         IrExpr::FieldAccess {
             record: object,
             field,
@@ -603,7 +603,7 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value, EvalError> {
                         let bindings_count = arm.bindings.len();
                         for (field_name, var_name) in &arm.bindings {
                             if let Some(field_val) = fields.get(field_name) {
-                                env.push(var_name.name.clone(), field_val.clone());
+                                env.push(var_name.id, field_val.clone());
                             }
                         }
                         let result = evaluate_expr(&arm.body, env);
@@ -643,7 +643,7 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value, EvalError> {
                 match subject_val {
                     Value::Some(inner) => {
                         if let Some(var_name) = some_arm_binding {
-                            env.push(var_name.name.clone(), *inner);
+                            env.push(var_name.id, *inner);
                             let result = evaluate_expr(some_arm_body, env);
                             env.pop();
                             result
@@ -660,7 +660,7 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value, EvalError> {
             var, value, body, ..
         } => {
             let val = evaluate_expr(value, env)?;
-            env.push(var.name.clone(), val);
+            env.push(var.id, val);
             let result = evaluate_expr(body, env)?;
             env.pop();
             Ok(result)
