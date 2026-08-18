@@ -4,11 +4,11 @@ use crate::expr::patterns::{EnumMatchArm, EnumPattern, Match};
 use crate::expr::typing::r#type::{ComparableType, EnumVariant, EquatableType, NumericType};
 use crate::expr::typing::type_registry::{ResolvedType, TypeRegistry};
 use crate::expr::typing::type_registry_builder::{TestTypes, TypeRegistryBuilder};
-use crate::ir::ast::{
+use crate::ir::ir_module::{
     ExprId, ExprIdCounter, IrArgument, IrExpr, IrForSource, IrParameter, IrStatement, IrVar,
     StatementId, StatementIdCounter, VarIdCounter,
 };
-use crate::ir::ast::{
+use crate::ir::ir_module::{
     IrComponentDeclaration, IrEnumDeclaration, IrModule, IrRecordDeclaration, IrViewDeclaration,
 };
 use crate::symbols::field_name::FieldName;
@@ -60,7 +60,7 @@ impl IrModuleBuilder {
     }
 
     /// Freeze the declared types, enabling view and component bodies.
-    pub fn types_done(self) -> IrModuleBodiesBuilder {
+    pub fn freeze(self) -> IrModuleBodiesBuilder {
         IrModuleBodiesBuilder {
             types: Rc::new(self.types_builder.build()),
             expr_ids: Rc::new(RefCell::new(ExprIdCounter::new())),
@@ -75,7 +75,7 @@ impl IrModuleBuilder {
     where
         F: FnOnce(&mut IrBuilder),
     {
-        self.types_done().view_no_params(name, body_fn)
+        self.freeze().view_no_params(name, body_fn)
     }
 
     pub fn view<'a, F>(
@@ -87,7 +87,7 @@ impl IrModuleBuilder {
     where
         F: FnOnce(&mut IrBuilder),
     {
-        self.types_done().view(name, params, body_fn)
+        self.freeze().view(name, params, body_fn)
     }
 
     pub fn component<'a, F>(
@@ -99,7 +99,7 @@ impl IrModuleBuilder {
     where
         F: FnOnce(&mut IrBuilder),
     {
-        self.types_done().component(name, params, body_fn)
+        self.freeze().component(name, params, body_fn)
     }
 }
 
@@ -111,7 +111,7 @@ impl Default for IrModuleBuilder {
 
 impl From<IrModuleBuilder> for IrModuleBodiesBuilder {
     fn from(builder: IrModuleBuilder) -> Self {
-        builder.types_done()
+        builder.freeze()
     }
 }
 

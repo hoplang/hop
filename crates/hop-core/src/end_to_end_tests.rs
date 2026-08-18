@@ -359,7 +359,7 @@ mod tests {
     use crate::asset_rewriter::{PrefixingAssetRewriter, ReplacingAssetRewriter};
 
     use super::*;
-    use crate::ir::syntax::random::random_ir_module_with_test_view;
+    use crate::ir::ir_module_generator::random_ir_module_with_test_view;
     use expect_test::expect;
     use indoc::indoc;
 

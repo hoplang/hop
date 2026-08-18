@@ -1,6 +1,6 @@
 use crate::html::write_escaped_html;
 use crate::ir::IrExpr;
-use crate::ir::ast::{IrStatement, traverse_statements_mut};
+use crate::ir::ir_module::{IrStatement, traverse_statements_mut};
 
 /// A pass that simplifies WriteExpr statements with constant string expressions into a Write
 /// statement
@@ -29,8 +29,8 @@ pub fn simplify_write_exprs(body: &mut Vec<IrStatement>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::ast::IrModule;
-    use crate::ir::syntax::builder::IrModuleBuilder;
+    use crate::ir::ir_module::IrModule;
+    use crate::ir::ir_module_builder::IrModuleBuilder;
     use expect_test::{Expect, expect};
 
     fn check(mut module: IrModule, expected: Expect) {

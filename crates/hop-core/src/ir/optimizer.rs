@@ -1,6 +1,6 @@
-use super::syntax::ast::{ExprIdCounter, IrModule, IrStatement};
+use super::ir_module::{ExprIdCounter, IrModule, IrStatement};
 use crate::expr::typing::type_registry::TypeRegistry;
-use crate::ir::syntax::transform::{
+use crate::ir::transform::{
     coalesce_write_statements, eliminate_match_statements, eliminate_unused_variable_declarations,
     perform_partial_evaluation, simplify_write_exprs,
 };
@@ -34,9 +34,9 @@ mod tests {
     use std::collections::HashMap;
 
     use super::*;
+    use crate::ir::ir_module_builder::IrModuleBuilder;
+    use crate::ir::ir_module_generator::random_ir_module;
     use crate::ir::runtime::{evaluator::evaluate_view, random::random_value, value::Value};
-    use crate::ir::syntax::builder::IrModuleBuilder;
-    use crate::ir::syntax::random::random_ir_module;
     use crate::symbols::type_name::TypeName;
     use expect_test::{Expect, expect};
     use rand::{SeedableRng, rngs::StdRng};

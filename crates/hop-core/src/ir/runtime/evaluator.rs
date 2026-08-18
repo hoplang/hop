@@ -11,40 +11,7 @@ use tailwind_merge::tw_merge;
 use thiserror::Error;
 
 use crate::expr::patterns::{EnumPattern, Match};
-use crate::ir::syntax::ast::{IrComponentDeclaration, IrForSource, IrModule, IrStatement, VarId};
-
-/// Errors the evaluator can produce.
-#[derive(Debug, Error)]
-pub enum EvalError {
-    #[error("View '{view}' not found in module")]
-    ViewNotFound { view: TypeName },
-    #[error("Missing required parameter '{param}' for view '{view}'")]
-    MissingParameter { view: TypeName, param: VarName },
-}
-
-/// Stack-based environment for the evaluator.
-struct Env {
-    stack: Vec<(VarId, Value)>,
-}
-
-impl Env {
-    fn new() -> Self {
-        Self { stack: Vec::new() }
-    }
-    fn push(&mut self, key: VarId, value: Value) {
-        self.stack.push((key, value));
-    }
-    fn pop(&mut self) {
-        self.stack.pop();
-    }
-    fn lookup(&self, key: VarId) -> Option<&Value> {
-        self.stack
-            .iter()
-            .rev()
-            .find(|(k, _)| *k == key)
-            .map(|(_, v)| v)
-    }
-}
+use crate::ir::ir_module::{IrComponentDeclaration, IrForSource, IrModule, IrStatement, VarId};
 
 /// Evaluate the named view of an IR module with the given arguments
 pub fn evaluate_view(
@@ -78,6 +45,39 @@ pub fn evaluate_view(
     eval_statements(&view.body, &mut env, &mut output, &module.components)?;
 
     Ok(output)
+}
+
+/// Errors the evaluator can produce.
+#[derive(Debug, Error)]
+pub enum EvalError {
+    #[error("View '{view}' not found in module")]
+    ViewNotFound { view: TypeName },
+    #[error("Missing required parameter '{param}' for view '{view}'")]
+    MissingParameter { view: TypeName, param: VarName },
+}
+
+/// Stack-based environment for the evaluator.
+struct Env {
+    stack: Vec<(VarId, Value)>,
+}
+
+impl Env {
+    fn new() -> Self {
+        Self { stack: Vec::new() }
+    }
+    fn push(&mut self, key: VarId, value: Value) {
+        self.stack.push((key, value));
+    }
+    fn pop(&mut self) {
+        self.stack.pop();
+    }
+    fn lookup(&self, key: VarId) -> Option<&Value> {
+        self.stack
+            .iter()
+            .rev()
+            .find(|(k, _)| *k == key)
+            .map(|(_, v)| v)
+    }
 }
 
 /// Evaluate a slice of IR statements
@@ -737,9 +737,10 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value, EvalError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ir::ir_module::IrModule;
+    use crate::ir::ir_module_builder::IrModuleBuilder;
+    use crate::ir::ir_module_generator::random_ir_module;
     use crate::ir::runtime::random::random_value;
-    use crate::ir::syntax::builder::IrModuleBuilder;
-    use crate::ir::{ast::IrModule, syntax::random::random_ir_module};
     use expect_test::{Expect, expect};
     use rand::{SeedableRng, rngs::StdRng};
 

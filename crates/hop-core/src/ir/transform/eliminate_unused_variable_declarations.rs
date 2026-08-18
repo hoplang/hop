@@ -1,7 +1,7 @@
 use crate::expr::patterns::Match;
 use crate::ir::{
     IrExpr,
-    ast::{IrStatement, StatementId, VarId, traverse_statements_mut},
+    ir_module::{IrStatement, StatementId, VarId, traverse_statements_mut},
 };
 use std::collections::{HashMap, HashSet};
 
@@ -165,8 +165,8 @@ fn collect_unused_vars(body: &[IrStatement]) -> UnusedVars {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::ast::IrModule;
-    use crate::ir::syntax::builder::IrModuleBuilder;
+    use crate::ir::ir_module::IrModule;
+    use crate::ir::ir_module_builder::IrModuleBuilder;
     use expect_test::{Expect, expect};
 
     fn check(mut module: IrModule, expected: Expect) {

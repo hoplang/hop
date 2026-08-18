@@ -6,7 +6,7 @@ use super::{Doc, Transpiler};
 use crate::expr::patterns::{EnumPattern, Match};
 use crate::expr::typing::r#type::Type;
 use crate::expr::typing::type_registry::TypeRegistry;
-use crate::ir::ast::{
+use crate::ir::ir_module::{
     IrArgument, IrComponentDeclaration, IrExpr, IrForSource, IrModule, IrStatement, IrVar,
     IrViewDeclaration,
 };
@@ -1806,7 +1806,7 @@ impl Transpiler for TsTranspiler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::syntax::builder::{IrModuleBodiesBuilder, IrModuleBuilder};
+    use crate::ir::ir_module_builder::{IrModuleBodiesBuilder, IrModuleBuilder};
     use expect_test::{Expect, expect};
 
     fn check(builder: impl Into<IrModuleBodiesBuilder>, expected: Expect) {

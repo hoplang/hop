@@ -1,7 +1,7 @@
-use super::builder::{IrBuilder, IrModuleBuilder};
 use crate::expr::Type;
 use crate::expr::typing::type_registry::TypeRegistry;
-use crate::ir::ast::{IrExpr, IrModule};
+use crate::ir::ir_module::{IrExpr, IrModule};
+use crate::ir::ir_module_builder::{IrBuilder, IrModuleBuilder};
 use arbitrary::Unstructured;
 use std::cell::RefCell;
 use std::ops::RangeInclusive;
@@ -162,7 +162,7 @@ fn random_ir_module_inner(
         }
     }
 
-    let mut bodies = builder.types_done();
+    let mut bodies = builder.freeze();
 
     // Generate components
     for i in 0..g.count(0..=2) {

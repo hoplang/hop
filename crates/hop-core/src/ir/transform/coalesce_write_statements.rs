@@ -1,4 +1,4 @@
-use crate::ir::ast::{IrStatement, StatementId, traverse_statements_mut};
+use crate::ir::ir_module::{IrStatement, StatementId, traverse_statements_mut};
 
 /// A pass that concatenates consecutive Write statements into a single Write statement.
 ///
@@ -54,8 +54,8 @@ pub fn coalesce_write_statements(body: &mut Vec<IrStatement>, limit: usize) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::ast::IrModule;
-    use crate::ir::syntax::builder::IrModuleBuilder;
+    use crate::ir::ir_module::IrModule;
+    use crate::ir::ir_module_builder::IrModuleBuilder;
     use expect_test::{Expect, expect};
 
     fn check(mut module: IrModule, expected: Expect) {

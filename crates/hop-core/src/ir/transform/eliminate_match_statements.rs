@@ -1,7 +1,7 @@
 use crate::expr::patterns::Match;
 use crate::ir::{
     IrExpr,
-    ast::{IrStatement, traverse_statements_mut},
+    ir_module::{IrStatement, traverse_statements_mut},
 };
 
 pub fn eliminate_match_statements(body: &mut Vec<IrStatement>) {
@@ -86,8 +86,8 @@ pub fn eliminate_match_statements(body: &mut Vec<IrStatement>) {
 mod tests {
     use super::*;
 
-    use crate::ir::ast::IrModule;
-    use crate::ir::syntax::builder::IrModuleBuilder;
+    use crate::ir::ir_module::IrModule;
+    use crate::ir::ir_module_builder::IrModuleBuilder;
     use expect_test::{Expect, expect};
 
     fn check(mut module: IrModule, expected: Expect) {

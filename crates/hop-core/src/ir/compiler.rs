@@ -12,13 +12,13 @@ use crate::hop::typing::typed_ast::{TypedEnumDeclaration, TypedRecordDeclaration
 use crate::hop::typing::typed_node::{TypedAttributeValue, TypedLoopSource};
 use crate::symbols::var_name::VarName;
 
-use super::ast::{
+use super::ir_module::{
     ExprId, ExprIdCounter, IrArgument, IrComponentDeclaration, IrEnumDeclaration, IrExpr,
     IrForSource, IrModule, IrParameter, IrRecordDeclaration, IrStatement, IrVar, IrViewDeclaration,
     StatementId, StatementIdCounter, VarId, VarIdCounter,
 };
 
-pub fn compile_module(
+pub fn compile(
     views: Vec<InlinedViewDeclaration>,
     components: Vec<InlinedComponentDeclaration>,
     records: &[&TypedRecordDeclaration],

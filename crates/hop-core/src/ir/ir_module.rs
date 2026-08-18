@@ -11,6 +11,15 @@ use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use pretty::BoxDoc;
 
+#[derive(Debug)]
+pub struct IrModule {
+    pub views: Vec<IrViewDeclaration>,
+    pub components: Vec<IrComponentDeclaration>,
+    pub records: Vec<IrRecordDeclaration>,
+    pub enums: Vec<IrEnumDeclaration>,
+    pub expr_ids: ExprIdCounter,
+}
+
 /// Unique identifier for each expression in the IR
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ExprId(usize);
@@ -120,15 +129,6 @@ pub enum IrForSource {
     Array(IrExpr),
     /// Iterate over an inclusive integer range
     RangeInclusive { start: IrExpr, end: IrExpr },
-}
-
-#[derive(Debug)]
-pub struct IrModule {
-    pub views: Vec<IrViewDeclaration>,
-    pub components: Vec<IrComponentDeclaration>,
-    pub records: Vec<IrRecordDeclaration>,
-    pub enums: Vec<IrEnumDeclaration>,
-    pub expr_ids: ExprIdCounter,
 }
 
 #[derive(Debug)]

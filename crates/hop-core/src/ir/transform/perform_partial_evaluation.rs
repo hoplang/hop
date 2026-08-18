@@ -7,8 +7,8 @@ use crate::expr::typing::r#type::Type;
 use crate::expr::typing::type_registry::{ResolvedType, TypeRegistry};
 use crate::ir::{
     IrExpr,
-    ast::{ExprId, ExprIdCounter},
-    ast::{IrStatement, VarId, traverse_statements_mut},
+    ir_module::{ExprId, ExprIdCounter},
+    ir_module::{IrStatement, VarId, traverse_statements_mut},
 };
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
@@ -865,9 +865,9 @@ pub fn perform_partial_evaluation(
 
 #[cfg(test)]
 mod tests {
+    use crate::ir::ir_module_builder::{IrModuleBodiesBuilder, IrModuleBuilder};
+    use crate::ir::ir_module_generator::random_ir_module;
     use crate::ir::runtime::{evaluator::evaluate_view, random::random_value, value::Value};
-    use crate::ir::syntax::builder::{IrModuleBodiesBuilder, IrModuleBuilder};
-    use crate::ir::syntax::random::random_ir_module;
     use expect_test::{Expect, expect};
     use rand::{SeedableRng, rngs::StdRng};
 

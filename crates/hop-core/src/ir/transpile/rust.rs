@@ -7,7 +7,7 @@ use crate::dependency_graph::DependencyGraph;
 use crate::expr::patterns::{EnumPattern, Match};
 use crate::expr::typing::r#type::{EnumVariant, Type};
 use crate::expr::typing::type_registry::{ResolvedType, TypeRegistry};
-use crate::ir::ast::{
+use crate::ir::ir_module::{
     IrArgument, IrComponentDeclaration, IrExpr, IrForSource, IrModule, IrStatement, IrVar,
     IrViewDeclaration,
 };
@@ -1756,7 +1756,7 @@ impl Transpiler for RustTranspiler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::syntax::builder::{IrModuleBodiesBuilder, IrModuleBuilder};
+    use crate::ir::ir_module_builder::{IrModuleBodiesBuilder, IrModuleBuilder};
     use expect_test::{Expect, expect};
 
     fn check(builder: impl Into<IrModuleBodiesBuilder>, expected: Expect) {

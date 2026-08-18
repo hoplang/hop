@@ -8,7 +8,7 @@ pub use ts::TsTranspiler;
 use crate::expr::patterns::Match;
 use crate::expr::typing::r#type::{ComparableType, EquatableType, NumericType, Type};
 use crate::expr::typing::type_registry::{ResolvedType, TypeRegistry};
-use crate::ir::ast::{
+use crate::ir::ir_module::{
     IrArgument, IrComponentDeclaration, IrExpr, IrForSource, IrModule, IrStatement, IrVar,
     IrViewDeclaration,
 };
