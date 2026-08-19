@@ -667,13 +667,6 @@ fn parse_view_declaration(
     let (name_str, name_range) =
         match expr::tokenizer::next_collecting_comments(iter, comments, errors) {
             Some((expr::Token::TypeName(name_str), range)) => (name_str, range),
-            Some((expr::Token::Reserved(name), range)) => {
-                errors.push(ParseError::new(
-                    ParseErrorKind::ReservedViewName { name },
-                    range,
-                ));
-                return None;
-            }
             Some((_, range)) => {
                 errors.push(ParseError::new(ParseErrorKind::InvalidViewName {}, range));
                 return None;
@@ -687,12 +680,24 @@ fn parse_view_declaration(
             }
         };
 
-    let Ok(name) = TypeName::new(&name_str) else {
-        errors.push(ParseError::new(
-            ParseErrorKind::InvalidViewName {},
-            name_range,
-        ));
-        return None;
+    let name = match TypeName::new(&name_str) {
+        Ok(name) => name,
+        Err(InvalidTypeNameError::Reserved(name)) => {
+            errors.push(ParseError::new(
+                ParseErrorKind::ReservedViewName {
+                    name: CheapString::new(name),
+                },
+                name_range,
+            ));
+            return None;
+        }
+        Err(_) => {
+            errors.push(ParseError::new(
+                ParseErrorKind::InvalidViewName {},
+                name_range,
+            ));
+            return None;
+        }
     };
 
     // Parse parameters (parentheses are optional if no parameters)
@@ -3702,6 +3707,25 @@ mod tests {
                     About
                   </div>
                 }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_let_binding_with_reserved_name() {
+        reject(
+            indoc! {r#"
+                view Test {
+                  <let {default: String = "x"}>
+                    <div></div>
+                  </let>
+                }
+            "#},
+            expect![[r#"
+                error: Invalid variable name 'default': Variable name is a reserved word
+                1 | view Test {
+                2 |   <let {default: String = "x"}>
+                  |         ^^^^^^^
             "#]],
         );
     }

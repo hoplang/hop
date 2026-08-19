@@ -1385,8 +1385,8 @@ mod tests {
             TypeRegistryBuilder::new().enum_(
                 "Res",
                 [
-                    ("Ok", vec![("value", "Int")]),
-                    ("Err", vec![("message", "String")]),
+                    ("Success", vec![("value", "Int")]),
+                    ("Failure", vec![("message", "String")]),
                 ],
             ),
             "Res",
@@ -1409,8 +1409,8 @@ mod tests {
             TypeRegistryBuilder::new().enum_(
                 "Res",
                 [
-                    ("Ok", vec![("value", "Int")]),
-                    ("Err", vec![("message", "String")]),
+                    ("Success", vec![("value", "Int")]),
+                    ("Failure", vec![("message", "String")]),
                 ],
             ),
             "Res",

@@ -314,7 +314,7 @@ mod tests {
     fn for_loop_with_scoped_variable() {
         check(
             build_inlined_view(
-                "List",
+                "ItemList",
                 [("items", Type::Array(Arc::new(Type::String)))],
                 |b| {
                     b.ul(vec![], |b| {
@@ -327,7 +327,7 @@ mod tests {
                 },
             ),
             expect![[r#"
-                view List(items: Array[String]) {
+                view ItemList(items: Array[String]) {
                   <ul>
                     <for {item in items}>
                       <li>

@@ -664,9 +664,21 @@ pub fn parse_match_pattern(
                                 if advance_if(iter, comments, errors, Token::Colon).is_some() {
                                     parse_match_pattern(iter, comments, errors, range)?
                                 } else {
-                                    ParsedMatchPattern::Binding {
-                                        name: VarName::new(field_name.as_str()).unwrap(),
-                                        range: field_range.clone(),
+                                    match VarName::from_cheap_string(field_name.to_cheap_string()) {
+                                        Ok(name) => ParsedMatchPattern::Binding {
+                                            name,
+                                            range: field_range.clone(),
+                                        },
+                                        Err(error) => {
+                                            errors.push(ParseError::new(
+                                                ParseErrorKind::InvalidVariableName {
+                                                    name: field_name.to_cheap_string(),
+                                                    error,
+                                                },
+                                                field_range,
+                                            ));
+                                            return None;
+                                        }
                                     }
                                 };
                             Some((field_name, field_range, pattern))
@@ -703,9 +715,21 @@ pub fn parse_match_pattern(
                     let pattern = if advance_if(iter, comments, errors, Token::Colon).is_some() {
                         parse_match_pattern(iter, comments, errors, range)?
                     } else {
-                        ParsedMatchPattern::Binding {
-                            name: VarName::new(field_name.as_str()).unwrap(),
-                            range: field_range.clone(),
+                        match VarName::new(field_name.as_str()) {
+                            Ok(name) => ParsedMatchPattern::Binding {
+                                name,
+                                range: field_range.clone(),
+                            },
+                            Err(error) => {
+                                errors.push(ParseError::new(
+                                    ParseErrorKind::InvalidVariableName {
+                                        name: field_name.to_cheap_string(),
+                                        error,
+                                    },
+                                    field_range,
+                                ));
+                                return None;
+                            }
                         }
                     };
                     Some((field_name, field_range, pattern))

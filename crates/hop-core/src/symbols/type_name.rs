@@ -3,6 +3,57 @@ use std::fmt::{self, Display};
 use crate::document::CheapString;
 use thiserror::Error;
 
+fn is_reserved(name: &str) -> bool {
+    matches!(
+        name,
+        "Any"
+            | "Arr"
+            | "Async"
+            | "Auto"
+            | "CSS"
+            | "Class"
+            | "Classes"
+            | "Client"
+            | "Comp"
+            | "Computed"
+            | "Dyn"
+            | "Dynamic"
+            | "Enum"
+            | "Err"
+            | "Error"
+            | "Fn"
+            | "Func"
+            | "Function"
+            | "Future"
+            | "HTML"
+            | "IO"
+            | "List"
+            | "Map"
+            | "Never"
+            | "Object"
+            | "Ok"
+            | "Promise"
+            | "Rec"
+            | "Record"
+            | "Result"
+            | "Runtime"
+            | "Safe"
+            | "Scope"
+            | "Scoped"
+            | "Self"
+            | "Set"
+            | "Static"
+            | "Struct"
+            | "Task"
+            | "Trusted"
+            | "Tuple"
+            | "Type"
+            | "Union"
+            | "Unknown"
+            | "Void"
+    )
+}
+
 /// Error type for invalid type names
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum InvalidTypeNameError {
@@ -14,6 +65,9 @@ pub enum InvalidTypeNameError {
 
     #[error("Type name cannot be empty")]
     Empty,
+
+    #[error("Type name is a reserved word")]
+    Reserved(String),
 }
 
 /// A TypeName represents a validated type name.
@@ -57,6 +111,10 @@ impl TypeName {
             if !c.is_ascii_alphanumeric() {
                 return Err(InvalidTypeNameError::InvalidCharacter(c));
             }
+        }
+
+        if is_reserved(name) {
+            return Err(InvalidTypeNameError::Reserved(name.to_string()));
         }
 
         Ok(())
@@ -198,5 +256,18 @@ mod tests {
     #[test]
     fn rejects_empty_type_name() {
         reject("", InvalidTypeNameError::Empty);
+    }
+
+    #[test]
+    fn rejects_reserved_type_name() {
+        reject("Error", InvalidTypeNameError::Reserved("Error".to_string()));
+        reject(
+            "Result",
+            InvalidTypeNameError::Reserved("Result".to_string()),
+        );
+        reject(
+            "Promise",
+            InvalidTypeNameError::Reserved("Promise".to_string()),
+        );
     }
 }

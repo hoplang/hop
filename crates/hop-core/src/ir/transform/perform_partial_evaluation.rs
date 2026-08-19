@@ -2777,24 +2777,24 @@ mod tests {
         check(
             IrModuleBuilder::new()
                 .enum_(
-                    "Result",
+                    "Outcome",
                     [
-                        ("Ok", vec![("value", "String")]),
-                        ("Err", vec![("msg", "String")]),
+                        ("Success", vec![("value", "String")]),
+                        ("Failure", vec![("msg", "String")]),
                     ],
                 )
                 .view_no_params("Test", |t| {
                     t.let_stmt(
                         "result",
                         t.enum_variant_with_fields(
-                            "Result",
-                            "Ok",
+                            "Outcome",
+                            "Success",
                             vec![("value", t.str("success"))],
                         ),
                         |t| {
                             t.write_expr_escaped(t.enum_match_expr(t.var("result"), |m| {
-                                m.arm_bound("Ok", [("value", "v")], |t| t.var("v"));
-                                m.arm_bound("Err", [("msg", "m")], |t| {
+                                m.arm_bound("Success", [("value", "v")], |t| t.var("v"));
+                                m.arm_bound("Failure", [("msg", "m")], |t| {
                                     t.string_concat(t.str("error: "), t.var("m"))
                                 });
                             }));
@@ -2803,26 +2803,26 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
-                enum Result {
-                  Ok {value: String},
-                  Err {msg: String},
+                enum Outcome {
+                  Success {value: String},
+                  Failure {msg: String},
                 }
                 view Test() {
-                  let v0 = Result::Ok {value: "success"} in {
+                  let v0 = Outcome::Success {value: "success"} in {
                     write_escaped(match v0 {
-                      Result::Ok {value: v1} => v1,
-                      Result::Err {msg: v2} => ("error: " + v2),
+                      Outcome::Success {value: v1} => v1,
+                      Outcome::Failure {msg: v2} => ("error: " + v2),
                     })
                   }
                 }
 
                 -- after --
-                enum Result {
-                  Ok {value: String},
-                  Err {msg: String},
+                enum Outcome {
+                  Success {value: String},
+                  Failure {msg: String},
                 }
                 view Test() {
-                  let v0 = Result::Ok {value: "success"} in {
+                  let v0 = Outcome::Success {value: "success"} in {
                     write_escaped("success")
                   }
                 }

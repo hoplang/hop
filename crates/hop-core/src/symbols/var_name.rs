@@ -3,6 +3,81 @@ use std::fmt::{self, Display};
 use crate::document::CheapString;
 use thiserror::Error;
 
+fn is_reserved(name: &str) -> bool {
+    matches!(
+        name,
+        "let"
+            | "fn"
+            | "func"
+            | "if"
+            | "else"
+            | "return"
+            | "struct"
+            | "var"
+            | "const"
+            | "assert"
+            | "comp"
+            | "and"
+            | "or"
+            | "not"
+            | "of"
+            | "while"
+            | "loop"
+            | "break"
+            | "continue"
+            | "case"
+            | "default"
+            | "try"
+            | "catch"
+            | "throw"
+            | "finally"
+            | "async"
+            | "await"
+            | "yield"
+            | "private"
+            | "mut"
+            | "impl"
+            | "trait"
+            | "interface"
+            | "as"
+            | "is"
+            | "where"
+            | "self"
+            | "this"
+            | "super"
+            | "use"
+            | "from"
+            | "export"
+            | "mod"
+            | "null"
+            | "nil"
+            | "new"
+            | "static"
+            | "defer"
+            | "extends"
+            | "implements"
+            | "namespace"
+            | "include"
+            | "newtype"
+            | "package"
+            | "internal"
+            | "undefined"
+            | "void"
+            | "final"
+            | "when"
+            | "out"
+            | "priv"
+            | "public"
+            | "val"
+            | "elif"
+            | "get"
+            | "set"
+            | "auto"
+            | "constructor"
+            | "alias"
+    )
+}
+
 /// Error type for invalid variable names
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum InvalidVarNameError {
@@ -26,6 +101,9 @@ pub enum InvalidVarNameError {
 
     #[error("Variable name cannot be empty")]
     Empty,
+
+    #[error("Variable name is a reserved word")]
+    Reserved(String),
 }
 
 /// A VarName represents a validated variable name.
@@ -106,6 +184,10 @@ impl VarName {
             } else if !c.is_ascii_lowercase() && !c.is_ascii_digit() && c != '_' {
                 return Err(InvalidVarNameError::InvalidCharacter(c));
             }
+        }
+
+        if is_reserved(name) {
+            return Err(InvalidVarNameError::Reserved(name.to_string()));
         }
 
         Ok(())
@@ -227,5 +309,18 @@ mod tests {
     #[test]
     fn rejects_camel_case_var_name() {
         reject("validName", InvalidVarNameError::NotSnakeCase('N'));
+    }
+
+    #[test]
+    fn rejects_reserved_var_name() {
+        reject("let", InvalidVarNameError::Reserved("let".to_string()));
+        reject(
+            "default",
+            InvalidVarNameError::Reserved("default".to_string()),
+        );
+        reject(
+            "constructor",
+            InvalidVarNameError::Reserved("constructor".to_string()),
+        );
     }
 }
