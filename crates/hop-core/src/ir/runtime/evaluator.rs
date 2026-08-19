@@ -251,9 +251,13 @@ fn eval_statement(
                         // Bind fields to variables
                         let bindings_count = arm.bindings.len();
                         for (field_name, var_name) in &arm.bindings {
-                            if let Some(field_val) = fields.get(field_name) {
-                                env.push(var_name.id, field_val.clone());
-                            }
+                            let field_val = fields.get(field_name).unwrap_or_else(|| {
+                                panic!(
+                                    "Field '{}' not found in enum variant '{}'",
+                                    field_name, variant_name
+                                )
+                            });
+                            env.push(var_name.id, field_val.clone());
                         }
                         eval_statements(&arm.body, env, output, component_defs)?;
                         for _ in 0..bindings_count {
@@ -602,9 +606,13 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value, EvalError> {
                         // Bind fields to variables
                         let bindings_count = arm.bindings.len();
                         for (field_name, var_name) in &arm.bindings {
-                            if let Some(field_val) = fields.get(field_name) {
-                                env.push(var_name.id, field_val.clone());
-                            }
+                            let field_val = fields.get(field_name).unwrap_or_else(|| {
+                                panic!(
+                                    "Field '{}' not found in enum variant '{}'",
+                                    field_name, variant_name
+                                )
+                            });
+                            env.push(var_name.id, field_val.clone());
                         }
                         let result = evaluate_expr(&arm.body, env);
                         for _ in 0..bindings_count {
