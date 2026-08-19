@@ -37,8 +37,6 @@ fn transpile_param_binding<'a>(arena: &'a Arena<'a>, param: &'a IrParameter) -> 
 }
 
 pub struct TsTranspiler {
-    /// Internal flag to use template literals instead of double quotes
-    use_template_literals: bool,
     /// Tracks whether Option type is used during transpilation
     needs_option: bool,
     /// Tracks whether escapeHtml function is used during transpilation
@@ -57,7 +55,6 @@ pub struct TsTranspiler {
 impl TsTranspiler {
     pub fn new() -> Self {
         Self {
-            use_template_literals: false,
             needs_option: false,
             needs_escape_html: false,
             needs_float_to_int: false,
@@ -95,28 +92,16 @@ impl TsTranspiler {
     }
 
     fn escape_string(&mut self, s: &str) -> String {
-        if self.use_template_literals {
-            // For template literals, only escape backticks and ${
-            s.replace('\\', "\\\\")
-                .replace('`', "\\`")
-                .replace("${", "\\${")
-        } else {
-            // For regular strings, escape double quotes and common escape sequences
-            s.replace('\\', "\\\\")
-                .replace('"', "\\\"")
-                .replace('\n', "\\n")
-                .replace('\r', "\\r")
-                .replace('\t', "\\t")
-        }
+        s.replace('\\', "\\\\")
+            .replace('"', "\\\"")
+            .replace('\n', "\\n")
+            .replace('\r', "\\r")
+            .replace('\t', "\\t")
     }
 
-    // Helper method to wrap a string in the appropriate quotes
+    // Helper method to wrap a string in double quotes
     fn quote_string(&mut self, s: &str) -> String {
-        if self.use_template_literals {
-            format!("`{}`", self.escape_string(s))
-        } else {
-            format!("\"{}\"", self.escape_string(s))
-        }
+        format!("\"{}\"", self.escape_string(s))
     }
 
     /// Mint a name for a variable the generated code needs but the IR does not
