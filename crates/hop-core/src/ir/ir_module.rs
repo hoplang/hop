@@ -176,7 +176,7 @@ pub enum IrStatement {
     /// Write an expression to the output stream.
     ///
     /// The typechecker guarantees that the value of the expression
-    /// will always be a string.
+    /// will always be a String or a Fragment.
     WriteExpr {
         id: StatementId,
         expr: IrExpr,
