@@ -34,7 +34,7 @@ const FLOATS: &[f64] = &[
     f64::NAN,
 ];
 
-const WORDS: &[&str] = &[
+const STRING_LITERALS: &[&str] = &[
     "",
     "foo",
     "bar",
@@ -361,7 +361,7 @@ impl IrGenerator<'_, '_> {
             }
         }
         match self.u.choose(&productions).unwrap() {
-            P::Write => b.write(self.u.choose(WORDS).unwrap()),
+            P::Write => b.write(self.u.choose(STRING_LITERALS).unwrap()),
             P::WriteExpr => {
                 let ty = if self.coin() {
                     Type::String
@@ -700,7 +700,7 @@ impl IrGenerator<'_, '_> {
         // Note: we use saturating_sub here since we might be forced to construct
         // something deeper than depth.
         match &target {
-            Type::String => b.str(self.u.choose(WORDS).unwrap()),
+            Type::String => b.str(self.u.choose(STRING_LITERALS).unwrap()),
             Type::Int => {
                 if self.count(0..=7) == 0 {
                     b.int(
