@@ -31,7 +31,7 @@ impl Project {
         }
         let canonicalized = path
             .canonicalize()
-            .with_context(|| format!("Failed to canonicalize path {:?}", &path))?;
+            .with_context(|| format!("Failed to canonicalize path {:?}", path))?;
         let config_file = canonicalized.join("hop.toml");
         if !config_file.exists() {
             anyhow::bail!("Expected to find hop.toml in {:?}", &path)
@@ -45,11 +45,11 @@ impl Project {
     pub fn find_traversing_superdirectories(start_path: &Path) -> anyhow::Result<Project> {
         let canonicalized = start_path
             .canonicalize()
-            .with_context(|| format!("Failed to canonicalize path {:?}", &start_path))?;
+            .with_context(|| format!("Failed to canonicalize path {:?}", start_path))?;
         let mut current_dir = if canonicalized.is_file() {
             canonicalized
                 .parent()
-                .ok_or_else(|| anyhow::anyhow!("Can't get parent of path {:?}", &canonicalized))?
+                .ok_or_else(|| anyhow::anyhow!("Can't get parent of path {:?}", canonicalized))?
         } else {
             &canonicalized
         };
@@ -74,7 +74,7 @@ impl Project {
     pub fn find_traversing_subdirectories(start_path: &Path) -> anyhow::Result<Project> {
         let canonicalized = start_path
             .canonicalize()
-            .with_context(|| format!("Failed to canonicalize path {:?}", &start_path))?;
+            .with_context(|| format!("Failed to canonicalize path {:?}", start_path))?;
 
         let mut paths: Vec<PathBuf> = vec![canonicalized];
 
@@ -179,7 +179,7 @@ impl Project {
                 }
 
                 let entries = std::fs::read_dir(&path)
-                    .with_context(|| format!("Failed to read directory {:?}", &path))?;
+                    .with_context(|| format!("Failed to read directory {:?}", path))?;
                 for entry in entries {
                     let p = entry.context("Failed to read directory entry")?.path();
                     paths.push(p);
