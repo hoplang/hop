@@ -14254,4 +14254,114 @@ mod tests {
             "#]],
         );
     }
+
+    #[test]
+    #[ignore]
+    fn record_named_math_does_not_shadow_the_js_math_global() {
+        check(
+            indoc! {r#"
+                record Math {
+                  x: Int,
+                }
+
+                view Test {
+                  <let {m: Math = Math {x: 4}}>
+                    <let {b: Int = 5}>
+                      {(m.x * b).to_string()}
+                    </let>
+                  </let>
+                }
+            "#},
+            r#"20"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                record Math {
+                  x: Int,
+                }
+                view Test() {
+                  let v0 = Math {x: 4} in {
+                    let v1 = 5 in {
+                      write_escaped((v0.x * v1).to_string())
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                record Math {
+                  x: Int,
+                }
+                view Test() {
+                  let v0 = Math {x: 4} in {
+                    write_escaped((v0.x * 5).to_string())
+                  }
+                }
+                -- expected output --
+                20
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn record_named_number_does_not_shadow_the_js_number_global() {
+        check(
+            indoc! {r#"
+                record Number {
+                  x: Float,
+                }
+
+                view Test {
+                  <let {n: Number = Number {x: 3.7}}>
+                    {n.x.to_int().to_string()}
+                  </let>
+                }
+            "#},
+            r#"3"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                record Number {
+                  x: Float,
+                }
+                view Test() {
+                  let v0 = Number {x: 3.7} in {
+                    write_escaped(v0.x.to_int().to_string())
+                  }
+                }
+                -- ir (optimized) --
+                record Number {
+                  x: Float,
+                }
+                view Test() {
+                  let v0 = Number {x: 3.7} in {
+                    write_escaped(v0.x.to_int().to_string())
+                  }
+                }
+                -- expected output --
+                3
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
 }

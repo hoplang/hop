@@ -508,10 +508,10 @@ impl Transpiler for TsTranspiler {
                 .append(arena.intersperse(
                     [
                         arena.text("function floatToInt(f: number): number {"),
-                        arena.text("    if (Number.isNaN(f)) return 0;"),
+                        arena.text("    if (globalThis.Number.isNaN(f)) return 0;"),
                         arena.text("    if (f >= 2147483647) return 2147483647;"),
                         arena.text("    if (f <= -2147483648) return -2147483648;"),
-                        arena.text("    return Math.trunc(f);"),
+                        arena.text("    return globalThis.Math.trunc(f);"),
                         arena.text("}"),
                     ],
                     arena.hardline(),
@@ -1069,11 +1069,11 @@ impl Transpiler for TsTranspiler {
 
     fn transpile_float_literal<'a>(&mut self, arena: &'a Arena<'a>, value: f64) -> Doc<'a> {
         let text = if value.is_nan() {
-            "(NaN as number)".to_string()
+            "(globalThis.NaN as number)".to_string()
         } else if value == f64::INFINITY {
-            "(Infinity as number)".to_string()
+            "(globalThis.Infinity as number)".to_string()
         } else if value == f64::NEG_INFINITY {
-            "(-Infinity as number)".to_string()
+            "(-globalThis.Infinity as number)".to_string()
         } else {
             format!("({:?} as number)", value)
         };
@@ -1397,7 +1397,7 @@ impl Transpiler for TsTranspiler {
     ) -> Doc<'a> {
         arena
             .nil()
-            .append(arena.text("Math.imul("))
+            .append(arena.text("globalThis.Math.imul("))
             .append(self.transpile_expr(arena, left))
             .append(arena.text(", "))
             .append(self.transpile_expr(arena, right))
