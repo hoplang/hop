@@ -330,7 +330,7 @@ pub(crate) enum TypeErrorKind {
     },
 
     #[error("Method '{method}' is not available on type {typ}")]
-    MethodNotAvailable { method: String, typ: Arc<Type> },
+    MethodNotAvailable { method: FieldName, typ: Arc<Type> },
 
     #[error("#[examples(pattern = ...)] is only valid on String fields, found {found}")]
     PatternOnNonString { found: Arc<Type> },

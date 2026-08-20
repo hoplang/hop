@@ -1515,7 +1515,7 @@ pub fn typecheck_expr(
                 }
                 _ => Err(TypeError::new(
                     TypeErrorKind::MethodNotAvailable {
-                        method: method.as_str().to_string(),
+                        method: method.clone(),
                         typ: receiver_type,
                     },
                     range.clone(),

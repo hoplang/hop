@@ -442,9 +442,8 @@ fn parse_tag_content(
                 let Some(attr) = parse_attribute(iter, errors) else {
                     continue;
                 };
-                let attr_name = attr.name().as_str().to_string();
                 if attributes.iter().any(|a| match a {
-                    TokenizedAttribute::Named { name, .. } => name.as_str() == attr_name,
+                    TokenizedAttribute::Named { name, .. } => name.as_str() == attr.name().as_str(),
                     TokenizedAttribute::Spread { .. } => false,
                 }) {
                     errors.push(ParseError::new(
