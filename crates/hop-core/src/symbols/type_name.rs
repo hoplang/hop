@@ -4,12 +4,21 @@ use crate::document::CheapString;
 use thiserror::Error;
 
 fn is_reserved(name: &str) -> bool {
+    // NOTE: Most of these type names are reserved for future use.
+    //
+    // Exceptions are Box and Vec which are emitted unqualified by the Rust transpiler.
+    // These could be unreserved in the future by using qualified names.
+    //
+    // A special case is the type name "View" which is reserved since
+    // a trait of the name View is part of the public interface
+    // emitted by the Rust transpiler.
     matches!(
         name,
         "Any"
             | "Arr"
             | "Async"
             | "Auto"
+            | "Box"
             | "CSS"
             | "Class"
             | "Classes"
@@ -50,6 +59,8 @@ fn is_reserved(name: &str) -> bool {
             | "Type"
             | "Union"
             | "Unknown"
+            | "Vec"
+            | "View"
             | "Void"
     )
 }

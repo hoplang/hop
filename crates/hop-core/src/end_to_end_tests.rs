@@ -1448,7 +1448,7 @@ mod tests {
     fn accepts_typed_field_and_open_html_tail_in_one_forward() {
         check(
             indoc! {r#"
-                component Box(
+                component A(
                   count: Int,
                   ...rest,
                 ) {
@@ -1459,12 +1459,12 @@ mod tests {
                   </div>
                 }
 
-                component Wrapper(...rest) {
-                  <Box ...rest/>
+                component B(...rest) {
+                  <A ...rest/>
                 }
 
                 view Test {
-                  <Wrapper count={3} data-foo="bar"/>
+                  <B count={3} data-foo="bar"/>
                 }
             "#},
             r#"<div data-foo="bar">positive</div>"#,
@@ -2124,7 +2124,7 @@ mod tests {
     fn accepts_param_named_like_html_attr_alongside_tail_attr() {
         check(
             indoc! {r#"
-                component Box(
+                component A(
                   tabindex: Int,
                   ...rest,
                 ) {
@@ -2135,12 +2135,12 @@ mod tests {
                   </div>
                 }
 
-                component Wrapper(...rest) {
-                  <Box ...rest/>
+                component B(...rest) {
+                  <A ...rest/>
                 }
 
                 view Test {
-                  <Wrapper tabindex={2} data-x="y"/>
+                  <B tabindex={2} data-x="y"/>
                 }
             "#},
             r#"<div data-x="y">focusable</div>"#,

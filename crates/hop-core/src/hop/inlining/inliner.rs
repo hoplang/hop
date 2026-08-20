@@ -507,12 +507,12 @@ mod tests {
             vec![(
                 "main.hop",
                 r#"
-                    component Box(...rest) {
+                    component A(...rest) {
                         <div ...rest></div>
                     }
 
                     view Main() {
-                        <Box/>
+                        <A/>
                     }
                 "#,
             )],

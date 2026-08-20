@@ -7881,22 +7881,22 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Box(id: String, ...rest) {
+                component A(id: String, ...rest) {
                     <div id={id} ...rest></div>
                 }
-                component Wrapper(...rest) {
-                    <Box ...rest/>
+                component B(...rest) {
+                    <A ...rest/>
                 }
                 view Main {
-                    <Wrapper/>
+                    <B/>
                 }
             "#},
             expect![[r#"
                 error: Component requires arguments: id
                   --> main.hop (line 8, col 6)
                 7 | view Main {
-                8 |     <Wrapper/>
-                  |      ^^^^^^^
+                8 |     <B/>
+                  |      ^
             "#]],
         );
     }
@@ -7944,23 +7944,23 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Box(count: Int, ...rest) {
+                component A(count: Int, ...rest) {
                     <div ...rest>
                         <if {count > 0}>
                             positive
                         </if>
                     </div>
                 }
-                component Wrapper(...rest) {
-                    <Box ...rest/>
+                component B(...rest) {
+                    <A ...rest/>
                 }
                 view Main {
-                    <Wrapper count={3} data-foo="bar"/>
+                    <B count={3} data-foo="bar"/>
                 }
             "#},
             expect![[r#"
                 -- main.hop --
-                component Box(count: Int, ...rest) {
+                component A(count: Int, ...rest) {
                   <div ...rest>
                     <if {(count > 0)}>
                       positive
@@ -7968,12 +7968,12 @@ mod tests {
                   </div>
                 }
 
-                component Wrapper(...rest) {
-                  <Box ...rest/>
+                component B(...rest) {
+                  <A ...rest/>
                 }
 
                 view Main() {
-                  <Wrapper count={3} data-foo="bar"/>
+                  <B count={3} data-foo="bar"/>
                 }
             "#]],
         );
@@ -8501,24 +8501,24 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Box(tabindex: Int, ...rest) {
+                component A(tabindex: Int, ...rest) {
                     <div ...rest>
                         <if {tabindex > 0}>focusable</if>
                     </div>
                 }
-                component Wrapper(...rest) {
-                    <Box ...rest/>
+                component B(...rest) {
+                    <A ...rest/>
                 }
                 view Main {
-                    <Wrapper tabindex="nope"/>
+                    <B tabindex="nope"/>
                 }
             "#},
             expect![[r#"
                 error: Mismatched type: expected `Int` got `String`
-                  --> main.hop (line 10, col 23)
+                  --> main.hop (line 10, col 17)
                  9 | view Main {
-                10 |     <Wrapper tabindex="nope"/>
-                   |                       ^^^^^^
+                10 |     <B tabindex="nope"/>
+                   |                 ^^^^^^
             "#]],
         );
     }
@@ -8528,21 +8528,21 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Box(tabindex: Int, ...rest) {
+                component A(tabindex: Int, ...rest) {
                     <div ...rest>
                         <if {tabindex > 0}>focusable</if>
                     </div>
                 }
-                component Wrapper(...rest) {
-                    <Box ...rest/>
+                component B(...rest) {
+                    <A ...rest/>
                 }
                 view Main {
-                    <Wrapper tabindex={2} data-x="y"/>
+                    <B tabindex={2} data-x="y"/>
                 }
             "#},
             expect![[r#"
                 -- main.hop --
-                component Box(tabindex: Int, ...rest) {
+                component A(tabindex: Int, ...rest) {
                   <div ...rest>
                     <if {(tabindex > 0)}>
                       focusable
@@ -8550,12 +8550,12 @@ mod tests {
                   </div>
                 }
 
-                component Wrapper(...rest) {
-                  <Box ...rest/>
+                component B(...rest) {
+                  <A ...rest/>
                 }
 
                 view Main() {
-                  <Wrapper tabindex={2} data-x="y"/>
+                  <B tabindex={2} data-x="y"/>
                 }
             "#]],
         );
