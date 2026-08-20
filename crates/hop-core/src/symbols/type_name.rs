@@ -1,69 +1,7 @@
 use std::fmt::{self, Display};
 
-use crate::document::CheapString;
+use crate::{document::CheapString, symbols::reserved::is_reserved_type_name};
 use thiserror::Error;
-
-fn is_reserved(name: &str) -> bool {
-    // NOTE: Most of these type names are reserved for future use.
-    //
-    // Exceptions are Box and Vec which are emitted unqualified by the Rust transpiler.
-    // These could be unreserved in the future by using qualified names.
-    //
-    // A special case is the type name "View" which is reserved since
-    // a trait of the name View is part of the public interface
-    // emitted by the Rust transpiler.
-    matches!(
-        name,
-        "Any"
-            | "Arr"
-            | "Async"
-            | "Auto"
-            | "Box"
-            | "CSS"
-            | "Class"
-            | "Classes"
-            | "Client"
-            | "Comp"
-            | "Computed"
-            | "Dyn"
-            | "Dynamic"
-            | "Enum"
-            | "Err"
-            | "Error"
-            | "Fn"
-            | "Func"
-            | "Function"
-            | "Future"
-            | "HTML"
-            | "IO"
-            | "List"
-            | "Map"
-            | "Never"
-            | "Object"
-            | "Ok"
-            | "Promise"
-            | "Rec"
-            | "Record"
-            | "Result"
-            | "Runtime"
-            | "Safe"
-            | "Scope"
-            | "Scoped"
-            | "Self"
-            | "Set"
-            | "Static"
-            | "Struct"
-            | "Task"
-            | "Trusted"
-            | "Tuple"
-            | "Type"
-            | "Union"
-            | "Unknown"
-            | "Vec"
-            | "View"
-            | "Void"
-    )
-}
 
 /// Error type for invalid type names
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -124,7 +62,7 @@ impl TypeName {
             }
         }
 
-        if is_reserved(name) {
+        if is_reserved_type_name(name) {
             return Err(InvalidTypeNameError::Reserved(name.to_string()));
         }
 

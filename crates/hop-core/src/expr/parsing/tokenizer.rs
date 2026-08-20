@@ -213,26 +213,27 @@ pub fn next(
                 // Wildcard
                 "_" => Token::Underscore,
                 // Keywords
-                "in" => Token::In,
-                "import" => Token::Import,
-                "true" => Token::True,
-                "false" => Token::False,
-                "record" => Token::Record,
-                "match" => Token::Match,
-                "enum" => Token::Enum,
-                "entrypoint" | "view" => Token::View,
                 "component" => Token::Component,
+                "entrypoint" | "view" => Token::View,
+                "enum" => Token::Enum,
+                "false" => Token::False,
+                "import" => Token::Import,
+                "in" => Token::In,
+                "match" => Token::Match,
                 "pub" => Token::Pub,
-                "Some" => Token::Some,
+                "record" => Token::Record,
+                "true" => Token::True,
+                // Constructors
                 "None" => Token::None,
+                "Some" => Token::Some,
                 // Types
-                "String" => Token::TypeString,
-                "Int" => Token::TypeInt,
-                "Float" => Token::TypeFloat,
-                "Bool" => Token::TypeBoolean,
-                "Fragment" => Token::TypeFragment,
                 "Array" => Token::TypeArray,
+                "Bool" => Token::TypeBoolean,
+                "Float" => Token::TypeFloat,
+                "Fragment" => Token::TypeFragment,
+                "Int" => Token::TypeInt,
                 "Option" => Token::TypeOption,
+                "String" => Token::TypeString,
                 _ => {
                     let first_char = identifier.as_str().chars().next().unwrap();
                     if first_char.is_ascii_uppercase() {

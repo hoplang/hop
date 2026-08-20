@@ -1,6 +1,6 @@
 use std::fmt::{self, Display};
 
-use crate::document::CheapString;
+use crate::{document::CheapString, symbols::reserved::is_reserved_name};
 use thiserror::Error;
 
 /// Error type for invalid field names
@@ -26,6 +26,9 @@ pub enum InvalidFieldNameError {
 
     #[error("Field name cannot be empty")]
     Empty,
+
+    #[error("Field name '{0}' is a reserved word")]
+    Reserved(String),
 }
 
 /// A FieldName represents a validated field name.
@@ -93,6 +96,10 @@ impl FieldName {
             } else if !c.is_ascii_lowercase() && !c.is_ascii_digit() && c != '_' {
                 return Err(InvalidFieldNameError::InvalidCharacter(c));
             }
+        }
+
+        if is_reserved_name(name) {
+            return Err(InvalidFieldNameError::Reserved(name.to_string()));
         }
 
         Ok(())
@@ -245,5 +252,18 @@ mod tests {
     #[test]
     fn rejects_camel_case_field_name() {
         reject("validName", InvalidFieldNameError::NotSnakeCase('N'));
+    }
+
+    #[test]
+    fn rejects_reserved_field_name() {
+        reject("let", InvalidFieldNameError::Reserved("let".to_string()));
+        reject(
+            "default",
+            InvalidFieldNameError::Reserved("default".to_string()),
+        );
+        reject(
+            "constructor",
+            InvalidFieldNameError::Reserved("constructor".to_string()),
+        );
     }
 }

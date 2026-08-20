@@ -1,82 +1,7 @@
 use std::fmt::{self, Display};
 
-use crate::document::CheapString;
+use crate::{document::CheapString, symbols::reserved::is_reserved_name};
 use thiserror::Error;
-
-fn is_reserved(name: &str) -> bool {
-    matches!(
-        name,
-        "alias"
-            | "and"
-            | "as"
-            | "assert"
-            | "async"
-            | "auto"
-            | "await"
-            | "break"
-            | "case"
-            | "catch"
-            | "comp"
-            | "const"
-            | "constructor"
-            | "continue"
-            | "default"
-            | "defer"
-            | "elif"
-            | "else"
-            | "export"
-            | "extends"
-            | "final"
-            | "finally"
-            | "fn"
-            | "from"
-            | "func"
-            | "get"
-            | "if"
-            | "impl"
-            | "implements"
-            | "include"
-            | "interface"
-            | "internal"
-            | "is"
-            | "let"
-            | "loop"
-            | "mod"
-            | "mut"
-            | "namespace"
-            | "new"
-            | "newtype"
-            | "nil"
-            | "not"
-            | "null"
-            | "of"
-            | "or"
-            | "out"
-            | "package"
-            | "priv"
-            | "private"
-            | "public"
-            | "return"
-            | "self"
-            | "set"
-            | "static"
-            | "struct"
-            | "super"
-            | "this"
-            | "throw"
-            | "trait"
-            | "try"
-            | "undefined"
-            | "use"
-            | "val"
-            | "var"
-            | "void"
-            | "when"
-            | "where"
-            | "while"
-            | "yield"
-    )
-}
 
 /// Error type for invalid variable names
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -186,7 +111,7 @@ impl VarName {
             }
         }
 
-        if is_reserved(name) {
+        if is_reserved_name(name) {
             return Err(InvalidVarNameError::Reserved(name.to_string()));
         }
 

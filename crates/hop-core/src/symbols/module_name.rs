@@ -3,6 +3,7 @@ use std::sync::Arc;
 use thiserror::Error;
 
 use crate::document_id::DocumentId;
+use crate::symbols::reserved::is_reserved_name;
 
 /// Error type for invalid module IDs
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -21,6 +22,9 @@ pub enum InvalidModuleNameError {
 
     #[error("Module name contains empty component")]
     EmptyComponent,
+
+    #[error("Module name component '{0}' is a reserved word")]
+    ReservedComponent(String),
 }
 
 /// A type-safe wrapper for module IDs in the hop system.
@@ -70,6 +74,12 @@ impl ModuleName {
                 if !c.is_alphanumeric() && c != '-' && c != '_' {
                     return Err(InvalidModuleNameError::InvalidCharacter(c));
                 }
+            }
+
+            if is_reserved_name(component) {
+                return Err(InvalidModuleNameError::ReservedComponent(
+                    component.to_string(),
+                ));
             }
         }
 
@@ -165,6 +175,18 @@ mod tests {
         reject(
             "my.component",
             InvalidModuleNameError::InvalidCharacter('.'),
+        );
+    }
+
+    #[test]
+    fn rejects_module_id_with_reserved_component() {
+        reject(
+            "mod",
+            InvalidModuleNameError::ReservedComponent("mod".to_string()),
+        );
+        reject(
+            "components::if",
+            InvalidModuleNameError::ReservedComponent("if".to_string()),
         );
     }
 }
