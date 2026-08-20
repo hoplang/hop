@@ -5082,6 +5082,89 @@ mod tests {
 
     #[test]
     #[ignore]
+    fn enum_with_field_named_tag() {
+        check(
+            indoc! {r#"
+                enum Item {
+                  Tagged {
+                    tag: String,
+                  },
+                  Plain,
+                }
+
+                view Test {
+                  <let {item: Item = Item::Tagged {tag: "news"}}>
+                    <match {item}>
+                      <case {Item::Tagged {tag: t}}>
+                        tag:{t}
+                      </case>
+                      <case {Item::Plain}>
+                        plain
+                      </case>
+                    </match>
+                  </let>
+                }
+            "#},
+            "tag:news",
+            expect![[r#"
+                -- ir (unoptimized) --
+                enum Item {
+                  Tagged {tag: String},
+                  Plain,
+                }
+                view Test() {
+                  let v0 = Item::Tagged {tag: "news"} in {
+                    match v0 {
+                      Item::Tagged(tag: v1) => {
+                        let v2 = v1 in {
+                          write("tag:")
+                          write_escaped(v2)
+                        }
+                      }
+                      Item::Plain => {
+                        write("plain")
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                enum Item {
+                  Tagged {tag: String},
+                  Plain,
+                }
+                view Test() {
+                  match Item::Tagged {tag: "news"} {
+                    Item::Tagged(tag: v1) => {
+                      let v2 = v1 in {
+                        write("tag:")
+                        write_escaped(v2)
+                      }
+                    }
+                    Item::Plain => {
+                      write("plain")
+                    }
+                  }
+                }
+                -- expected output --
+                tag:news
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
     fn enum_with_fields_match_on_expression_subject() {
         check(
             indoc! {r#"
