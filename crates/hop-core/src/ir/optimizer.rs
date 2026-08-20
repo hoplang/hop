@@ -38,6 +38,7 @@ mod tests {
     use crate::ir::ir_module_generator::random_ir_module;
     use crate::ir::runtime::{evaluator::evaluate_view, random::random_value, value::Value};
     use crate::symbols::type_name::TypeName;
+    use crate::symbols::var_name::VarName;
     use expect_test::{Expect, expect};
     use rand::{SeedableRng, rngs::StdRng};
 
@@ -58,7 +59,7 @@ mod tests {
 
             // Generate args up-front so the exact same values are used to
             // evaluate before and after the pipeline.
-            let view_args: Vec<(TypeName, HashMap<String, Value>)> = module
+            let view_args: Vec<(TypeName, HashMap<VarName, Value>)> = module
                 .views
                 .iter()
                 .map(|view| {
@@ -67,7 +68,7 @@ mod tests {
                         .iter()
                         .map(|p| {
                             (
-                                p.name().as_str().to_string(),
+                                p.name().clone(),
                                 random_value(&mut rng, &p.typ, None, &registry),
                             )
                         })

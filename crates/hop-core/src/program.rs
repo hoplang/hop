@@ -26,6 +26,7 @@ use crate::ir::runtime::random::random_value;
 use crate::orchestrator::{OrchestrateOptions, orchestrate};
 use crate::parse_error::ParseError;
 use crate::symbols::type_name::TypeName;
+use crate::symbols::var_name::VarName;
 use crate::type_error::TypeError;
 use anyhow::Result;
 use rand::Rng;
@@ -547,7 +548,7 @@ impl Program {
         &self,
         document_id: &DocumentId,
         view_name: &TypeName,
-        args: HashMap<String, ir::runtime::value::Value>,
+        args: HashMap<VarName, ir::runtime::value::Value>,
         generated_tailwind_css: Option<&str>,
         skip_optimization: bool,
         disable_links: bool,
@@ -647,7 +648,7 @@ impl Program {
             .iter()
             .map(|param| {
                 (
-                    param.var_name.as_str().to_string(),
+                    param.var_name.clone(),
                     random_value(
                         rng,
                         &param.var_type,
@@ -2458,7 +2459,7 @@ mod tests {
         // Test evaluating hello-world view with a name parameter
         let mut args = HashMap::new();
         args.insert(
-            "name".to_string(),
+            VarName::new("name").unwrap(),
             ir::runtime::value::Value::String("Alice".to_string()),
         );
 

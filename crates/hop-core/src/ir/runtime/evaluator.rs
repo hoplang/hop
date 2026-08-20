@@ -17,7 +17,7 @@ use crate::ir::ir_module::{IrComponentDeclaration, IrForSource, IrModule, IrStat
 pub fn evaluate_view(
     module: &IrModule,
     view_name: &TypeName,
-    args: HashMap<String, Value>,
+    args: HashMap<VarName, Value>,
 ) -> Result<String, EvalError> {
     let view = module
         .views
@@ -30,7 +30,7 @@ pub fn evaluate_view(
     let mut env = Env::new();
 
     for param in &view.parameters {
-        if let Some(value) = args.get(param.name().as_str()) {
+        if let Some(value) = args.get(param.name()) {
             env.push(param.var.id, value.clone());
         } else {
             return Err(EvalError::MissingParameter {
@@ -754,8 +754,10 @@ mod tests {
 
     fn check(module: IrModule, args: Vec<(&str, Value)>, expected: Expect) {
         let before = module.to_string();
-        let args_map: HashMap<String, Value> =
-            args.into_iter().map(|(k, v)| (k.to_string(), v)).collect();
+        let args_map: HashMap<VarName, Value> = args
+            .into_iter()
+            .map(|(k, v)| (VarName::new(k).unwrap(), v))
+            .collect();
         let view_name = module.views[0].name.clone();
         let after =
             evaluate_view(&module, &view_name, args_map).expect("Evaluation should succeed");
@@ -770,12 +772,12 @@ mod tests {
             let (module, registry) = random_ir_module(u);
             let mut rng = StdRng::seed_from_u64(u.arbitrary()?);
             for view in &module.views {
-                let args: HashMap<String, Value> = view
+                let args: HashMap<VarName, Value> = view
                     .parameters
                     .iter()
                     .map(|p| {
                         (
-                            p.name().as_str().to_string(),
+                            p.name().clone(),
                             random_value(&mut rng, &p.typ, None, &registry),
                         )
                     })
