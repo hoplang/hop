@@ -2013,7 +2013,7 @@ mod tests {
         reject(
             "Color::red",
             expect![[r#"
-                error: Expected type name but got red
+                error: Expected type name but got 'red'
                 Color::red
                        ^^^
             "#]],

@@ -66,7 +66,7 @@ pub enum InvalidTypeNameError {
     #[error("Type name cannot be empty")]
     Empty,
 
-    #[error("Type name is a reserved word")]
+    #[error("Type name '{0}' is a reserved word")]
     Reserved(String),
 }
 

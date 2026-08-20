@@ -45,15 +45,6 @@ pub(crate) enum ParseErrorKind {
     #[error("<{tag}> should not be closed using a closing tag")]
     ClosedVoidTag { tag: CheapString },
 
-    #[error("{error}")]
-    InvalidComponentName { error: InvalidTypeNameError },
-
-    #[error("View name must start with an uppercase letter")]
-    InvalidViewName,
-
-    #[error("'{name}' is a reserved word and cannot be used as a view name")]
-    ReservedViewName { name: CheapString },
-
     #[error("Duplicate attribute '{name}'")]
     DuplicateAttribute { name: CheapString },
 
@@ -161,10 +152,10 @@ pub(crate) enum ParseErrorKind {
     #[error("Unexpected character: '{ch}'")]
     UnexpectedCharacter { ch: char },
 
-    #[error("Expected variable name but got {actual}")]
+    #[error("Expected variable name but got '{actual}'")]
     ExpectedVariableNameButGot { actual: Token },
 
-    #[error("Expected field name but got {actual}")]
+    #[error("Expected field name but got '{actual}'")]
     ExpectedFieldNameButGot { actual: Token },
 
     #[error("Expected identifier after '.'")]
@@ -176,7 +167,7 @@ pub(crate) enum ParseErrorKind {
     #[error("Duplicate variant '{name}'")]
     DuplicateVariant { name: CheapString },
 
-    #[error("Expected type name but got {actual}")]
+    #[error("Expected type name but got '{actual}'")]
     ExpectedTypeNameButGot { actual: Token },
 
     #[error("Expected type name but got end of file")]

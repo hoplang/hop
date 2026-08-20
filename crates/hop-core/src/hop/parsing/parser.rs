@@ -11,12 +11,13 @@ use crate::document_id::DocumentId;
 use crate::expr::parsing::ParsedType;
 use crate::expr::parsing::parse_type::parse_type;
 use crate::expr::{self, ExamplesAnnotation};
+use crate::hop::parsing::parsed_ast::ParsedParameter;
 use crate::hop::parsing::token::{Token, TokenizedAttribute, TokenizedAttributeValue};
 use crate::html::HtmlElement;
 use crate::parse_error::{ParseError, ParseErrorKind};
 use crate::symbols::field_name::FieldName;
 use crate::symbols::module_name::ModuleName;
-use crate::symbols::type_name::{InvalidTypeNameError, TypeName};
+use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::iter::Peekable;
@@ -424,40 +425,25 @@ fn parse_component_declaration(
     let (name_str, name_range) =
         match expr::tokenizer::next_collecting_comments(iter, comments, errors) {
             Some((expr::Token::TypeName(name_str), range)) => (name_str, range),
-            Some((_, range)) => {
+            Some((actual, range)) => {
                 errors.push(ParseError::new(
-                    ParseErrorKind::InvalidComponentName {
-                        error: InvalidTypeNameError::DoesNotStartWithUppercase,
-                    },
+                    ParseErrorKind::ExpectedTypeNameButGot { actual },
                     range,
                 ));
                 return None;
             }
             None => {
                 errors.push(ParseError::new(
-                    ParseErrorKind::InvalidComponentName {
-                        error: InvalidTypeNameError::DoesNotStartWithUppercase,
-                    },
+                    ParseErrorKind::ExpectedTypeNameButGotEof {},
                     keyword_range,
                 ));
                 return None;
             }
         };
 
-    let component_name = match TypeName::new(&name_str) {
-        Ok(n) => n,
-        Err(error) => {
-            errors.push(ParseError::new(
-                ParseErrorKind::InvalidComponentName { error },
-                name_range,
-            ));
-            return None;
-        }
-    };
-
     // Parse parameters (parentheses are optional if no parameters)
     enum ParamItem {
-        Param(Box<parsed_ast::ParsedParameter>),
+        Param(Box<ParsedParameter>),
         Rest {
             var_name: VarName,
             range: DocumentRange,
@@ -591,6 +577,17 @@ fn parse_component_declaration(
     let start_range = pub_range.clone().unwrap_or_else(|| keyword_range.clone());
     let range = start_range.to(body_end);
 
+    let component_name = match TypeName::new(&name_str) {
+        Ok(n) => n,
+        Err(error) => {
+            errors.push(ParseError::new(
+                ParseErrorKind::InvalidTypeName { error },
+                name_range,
+            ));
+            return None;
+        }
+    };
+
     // Validate the body's rest spreads against the declared rest parameter and select the
     // single target the rest forwards into. Spreads are collected as nodes finish parsing,
     // i.e. children before their parent, so order them by source position first.
@@ -667,38 +664,21 @@ fn parse_view_declaration(
     let (name_str, name_range) =
         match expr::tokenizer::next_collecting_comments(iter, comments, errors) {
             Some((expr::Token::TypeName(name_str), range)) => (name_str, range),
-            Some((_, range)) => {
-                errors.push(ParseError::new(ParseErrorKind::InvalidViewName {}, range));
+            Some((actual, range)) => {
+                errors.push(ParseError::new(
+                    ParseErrorKind::ExpectedTypeNameButGot { actual },
+                    range,
+                ));
                 return None;
             }
             None => {
                 errors.push(ParseError::new(
-                    ParseErrorKind::InvalidViewName {},
+                    ParseErrorKind::ExpectedTypeNameButGotEof {},
                     keyword_range,
                 ));
                 return None;
             }
         };
-
-    let name = match TypeName::new(&name_str) {
-        Ok(name) => name,
-        Err(InvalidTypeNameError::Reserved(name)) => {
-            errors.push(ParseError::new(
-                ParseErrorKind::ReservedViewName {
-                    name: CheapString::new(name),
-                },
-                name_range,
-            ));
-            return None;
-        }
-        Err(_) => {
-            errors.push(ParseError::new(
-                ParseErrorKind::InvalidViewName {},
-                name_range,
-            ));
-            return None;
-        }
-    };
 
     // Parse parameters (parentheses are optional if no parameters)
     let (params, params_range) = if let Some(left_paren) =
@@ -784,6 +764,16 @@ fn parse_view_declaration(
             occ.target.spread_range().clone(),
         ));
     }
+    let name = match TypeName::new(&name_str) {
+        Ok(name) => name,
+        Err(error) => {
+            errors.push(ParseError::new(
+                ParseErrorKind::InvalidTypeName { error },
+                name_range,
+            ));
+            return None;
+        }
+    };
     Some(ParsedViewDeclaration {
         name,
         name_range,
@@ -1121,7 +1111,7 @@ fn construct_node(
                         Ok(name) => name,
                         Err(error) => {
                             errors.push(ParseError::new(
-                                ParseErrorKind::InvalidComponentName { error },
+                                ParseErrorKind::InvalidTypeName { error },
                                 tag_name.clone(),
                             ));
                             return None;
@@ -1973,7 +1963,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Expected type name but got )
+                error: Expected type name but got ')'
                 1 | component Main(data: Array[) {
                   |                            ^
 
@@ -2663,7 +2653,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Expected type name but got component
+                error: Expected type name but got 'component'
                 1 | record
                 2 | component Main {
                   | ^^^^^^^^^
@@ -3739,13 +3729,62 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: 'Error' is a reserved word and cannot be used as a view name
+                error: Type name 'Error' is a reserved word
                 1 | view Error() {
                   |      ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_component_with_reserved_name() {
+        reject(
+            indoc! {"
+                component Error() {
+                    <div>Hello</div>
+                }
+            "},
+            expect![[r#"
+                error: Type name 'Error' is a reserved word
+                1 | component Error() {
+                  |           ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_component_with_lowercase_name() {
+        reject(
+            indoc! {"
+                component card() {
+                    <div>Hello</div>
+                }
+            "},
+            expect![[r#"
+                error: Expected type name but got 'card'
+                1 | component card() {
+                  |           ^^^^
 
                 error: Unexpected text at top level
-                1 | view Error() {
-                  |           ^
+                1 | component card() {
+                  |               ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_component_invocation_with_invalid_character() {
+        reject(
+            indoc! {"
+                component Card() {
+                    <Foo-Bar />
+                }
+            "},
+            expect![[r#"
+                error: Type name contains invalid character: '-'
+                1 | component Card() {
+                2 |     <Foo-Bar />
+                  |      ^^^^^^^
             "#]],
         );
     }
@@ -3759,7 +3798,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: View name must start with an uppercase letter
+                error: Expected type name but got 'index'
                 1 | view index() {
                   |      ^^^^^
 
