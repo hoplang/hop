@@ -2,7 +2,6 @@ use std::collections::VecDeque;
 use std::iter::Peekable;
 
 use crate::document::{CheapString, DocumentCursor, DocumentRange};
-use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 
@@ -385,54 +384,26 @@ pub fn parse_primary(
         }
     };
     while let Some(dot) = advance_if(iter, comments, errors, Token::Dot) {
-        match next(iter, comments, errors) {
-            Some((Token::Identifier(field_ident), field_range)) => {
-                let field_name = match FieldName::from_cheap_string(field_ident.clone()) {
-                    Ok(name) => name,
-                    Err(error) => {
-                        errors.push(ParseError::new(
-                            ParseErrorKind::InvalidFieldName {
-                                name: field_ident,
-                                error,
-                            },
-                            field_range,
-                        ));
-                        return None;
-                    }
-                };
-                if let Some(left_paren) = advance_if(iter, comments, errors, Token::LeftParen) {
-                    let right_paren =
-                        expect_opposite(iter, comments, errors, &Token::LeftParen, &left_paren)?;
-                    let new_range = expr.range().clone().to(right_paren);
-                    expr = ParsedExpr::MethodCall {
-                        receiver: Box::new(expr),
-                        method: field_name,
-                        method_range: field_range,
-                        range: new_range,
-                    };
-                } else {
-                    let new_range = expr.range().clone().to(field_range);
-                    expr = ParsedExpr::FieldAccess {
-                        record: Box::new(expr),
-                        field: field_name,
-                        range: new_range,
-                    };
-                }
-            }
-            Some((_, token_range)) => {
-                errors.push(ParseError::new(
-                    ParseErrorKind::ExpectedIdentifierAfterDot {},
-                    token_range,
-                ));
-                return None;
-            }
-            None => {
-                errors.push(ParseError::new(
-                    ParseErrorKind::UnexpectedEndOfFieldAccess {},
-                    expr.range().clone().to(dot),
-                ));
-                return None;
-            }
+        // Range covering `expr.`, used when the field name is missing at EOF.
+        let dot_range = expr.range().clone().to(dot);
+        let (field_name, field_range) = expect_field_name(iter, comments, errors, &dot_range)?;
+        if let Some(left_paren) = advance_if(iter, comments, errors, Token::LeftParen) {
+            let right_paren =
+                expect_opposite(iter, comments, errors, &Token::LeftParen, &left_paren)?;
+            let new_range = expr.range().clone().to(right_paren);
+            expr = ParsedExpr::MethodCall {
+                receiver: Box::new(expr),
+                method: field_name,
+                method_range: field_range,
+                range: new_range,
+            };
+        } else {
+            let new_range = expr.range().clone().to(field_range);
+            expr = ParsedExpr::FieldAccess {
+                record: Box::new(expr),
+                field: field_name,
+                range: new_range,
+            };
         }
     }
     Some(expr)
@@ -1095,7 +1066,7 @@ mod tests {
         reject(
             "user == user.",
             expect![[r#"
-                error: Unexpected end of field access
+                error: Unexpected end of expression
                 user == user.
                         ^^^^^
             "#]],
@@ -1107,7 +1078,7 @@ mod tests {
         reject(
             "user.123",
             expect![[r#"
-                error: Expected identifier after '.'
+                error: Expected field name but got '123'
                 user.123
                      ^^^
             "#]],
@@ -1191,7 +1162,7 @@ mod tests {
         reject(
             "user..name",
             expect![[r#"
-                error: Expected identifier after '.'
+                error: Expected field name but got '.'
                 user..name
                      ^
             "#]],

@@ -113,9 +113,6 @@ pub(crate) enum ParseErrorKind {
     #[error("Unexpected end of expression")]
     UnexpectedEof,
 
-    #[error("Unexpected end of field access")]
-    UnexpectedEndOfFieldAccess,
-
     #[error("Unterminated string literal")]
     UnterminatedStringLiteral,
 
@@ -157,9 +154,6 @@ pub(crate) enum ParseErrorKind {
 
     #[error("Expected field name but got '{actual}'")]
     ExpectedFieldNameButGot { actual: Token },
-
-    #[error("Expected identifier after '.'")]
-    ExpectedIdentifierAfterDot,
 
     #[error("Duplicate field '{name}'")]
     DuplicateField { name: CheapString },
