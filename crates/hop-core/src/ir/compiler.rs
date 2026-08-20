@@ -420,10 +420,32 @@ impl<'a> Compiler<'a> {
     ) {
         match value {
             TypedAttributeValue::String(s) => {
-                output.push(IrStatement::Write {
-                    id: self.next_statement_id(),
-                    content: format!(" {}=\"{}\"", name.as_str(), s.as_str()),
-                });
+                if name.as_str() == "class" {
+                    output.push(IrStatement::Write {
+                        id: self.next_statement_id(),
+                        content: format!(" {}=\"", name.as_str()),
+                    });
+                    output.push(IrStatement::WriteExpr {
+                        id: self.next_statement_id(),
+                        escape: true,
+                        expr: IrExpr::TwMerge {
+                            operand: Box::new(IrExpr::StringLiteral {
+                                value: s.clone(),
+                                id: self.next_expr_id(),
+                            }),
+                            id: self.next_expr_id(),
+                        },
+                    });
+                    output.push(IrStatement::Write {
+                        id: self.next_statement_id(),
+                        content: "\"".to_string(),
+                    });
+                } else {
+                    output.push(IrStatement::Write {
+                        id: self.next_statement_id(),
+                        content: format!(" {}=\"{}\"", name.as_str(), s.as_str()),
+                    });
+                }
             }
             TypedAttributeValue::Expression(expr) => {
                 debug_assert!(
@@ -1029,7 +1051,9 @@ mod tests {
                 -- after --
                 view MainComp() {
                   write("<div")
-                  write(" class=\"base\"")
+                  write(" class=\"")
+                  write_escaped(tw_merge("base"))
+                  write("\"")
                   write(" id=\"test\"")
                   write(">")
                   write("Content")
@@ -1064,12 +1088,65 @@ mod tests {
                 -- after --
                 view MainComp(cls@v0: String) {
                   write("<div")
-                  write(" class=\"base\"")
+                  write(" class=\"")
+                  write_escaped(tw_merge("base"))
+                  write("\"")
                   write(" data-value=\"")
                   write_escaped(v0)
                   write("\"")
                   write(">")
                   write("Content")
+                  write("</div>")
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_tw_merge_both_static_and_dynamic_class_attributes() {
+        check(
+            build_inlined_view_no_params("MainComp", |t| {
+                t.div(vec![("class", t.attr_str("p-1 p-2"))], |t| {
+                    t.text("static");
+                });
+                t.div(
+                    vec![(
+                        "class",
+                        t.attr_expr(TypedExpr::StringLiteral {
+                            value: CheapString::new("p-1 p-2".to_string()),
+                        }),
+                    )],
+                    |t| {
+                        t.text("expression");
+                    },
+                );
+            }),
+            expect![[r#"
+                -- before --
+                view MainComp() {
+                  <div class="p-1 p-2">
+                    static
+                  </div>
+                  <div class={"p-1 p-2"}>
+                    expression
+                  </div>
+                }
+
+                -- after --
+                view MainComp() {
+                  write("<div")
+                  write(" class=\"")
+                  write_escaped(tw_merge("p-1 p-2"))
+                  write("\"")
+                  write(">")
+                  write("static")
+                  write("</div>")
+                  write("<div")
+                  write(" class=\"")
+                  write_escaped(tw_merge("p-1 p-2"))
+                  write("\"")
+                  write(">")
+                  write("expression")
                   write("</div>")
                 }
             "#]],
