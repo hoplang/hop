@@ -13938,4 +13938,320 @@ mod tests {
             "#]],
         );
     }
+
+    #[test]
+    #[ignore]
+    fn record_field_named_class() {
+        check(
+            indoc! {r#"
+                record Foo {
+                  class: String,
+                }
+
+                view Test {
+                  <let {foo: Foo = Foo {class: "a"}}>
+                    <div>
+                      {foo.class}
+                    </div>
+                  </let>
+                }
+            "#},
+            r#"<div>a</div>"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                record Foo {
+                  class: String,
+                }
+                view Test() {
+                  let v0 = Foo {class: "a"} in {
+                    write("<div")
+                    write(">")
+                    write_escaped(v0.class)
+                    write("</div>")
+                  }
+                }
+                -- ir (optimized) --
+                record Foo {
+                  class: String,
+                }
+                view Test() {
+                  let v0 = Foo {class: "a"} in {
+                    write("<div>")
+                    write_escaped(v0.class)
+                    write("</div>")
+                  }
+                }
+                -- expected output --
+                <div>a</div>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn record_field_named_function() {
+        check(
+            indoc! {r#"
+                record Foo {
+                  function: String,
+                }
+
+                view Test {
+                  <let {f: Foo = Foo {function: "a"}}>
+                    <div>
+                      {f.function}
+                    </div>
+                  </let>
+                }
+            "#},
+            r#"<div>a</div>"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                record Foo {
+                  function: String,
+                }
+                view Test() {
+                  let v0 = Foo {function: "a"} in {
+                    write("<div")
+                    write(">")
+                    write_escaped(v0.function)
+                    write("</div>")
+                  }
+                }
+                -- ir (optimized) --
+                record Foo {
+                  function: String,
+                }
+                view Test() {
+                  let v0 = Foo {function: "a"} in {
+                    write("<div>")
+                    write_escaped(v0.function)
+                    write("</div>")
+                  }
+                }
+                -- expected output --
+                <div>a</div>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn record_field_named_protected() {
+        check(
+            indoc! {r#"
+                record Foo {
+                  protected: String,
+                }
+
+                view Test {
+                  <let {f: Foo = Foo {protected: "a"}}>
+                    <div>
+                      {f.protected}
+                    </div>
+                  </let>
+                }
+            "#},
+            r#"<div>a</div>"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                record Foo {
+                  protected: String,
+                }
+                view Test() {
+                  let v0 = Foo {protected: "a"} in {
+                    write("<div")
+                    write(">")
+                    write_escaped(v0.protected)
+                    write("</div>")
+                  }
+                }
+                -- ir (optimized) --
+                record Foo {
+                  protected: String,
+                }
+                view Test() {
+                  let v0 = Foo {protected: "a"} in {
+                    write("<div>")
+                    write_escaped(v0.protected)
+                    write("</div>")
+                  }
+                }
+                -- expected output --
+                <div>a</div>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn record_field_named_eval() {
+        check(
+            indoc! {r#"
+                record Foo {
+                  eval: String,
+                }
+
+                view Test {
+                  <let {f: Foo = Foo {eval: "a"}}>
+                    <div>
+                      {f.eval}
+                    </div>
+                  </let>
+                }
+            "#},
+            r#"<div>a</div>"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                record Foo {
+                  eval: String,
+                }
+                view Test() {
+                  let v0 = Foo {eval: "a"} in {
+                    write("<div")
+                    write(">")
+                    write_escaped(v0.eval)
+                    write("</div>")
+                  }
+                }
+                -- ir (optimized) --
+                record Foo {
+                  eval: String,
+                }
+                view Test() {
+                  let v0 = Foo {eval: "a"} in {
+                    write("<div>")
+                    write_escaped(v0.eval)
+                    write("</div>")
+                  }
+                }
+                -- expected output --
+                <div>a</div>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn enum_payload_field_named_class() {
+        check(
+            indoc! {r#"
+                enum E {
+                  A {
+                    class: String,
+                  },
+                }
+
+                view Test {
+                  <let {e: E = E::A {class: "a"}}>
+                    <match {e}>
+                      <case {E::A {class: v}}>
+                        <div>
+                          {v}
+                        </div>
+                      </case>
+                    </match>
+                  </let>
+                }
+            "#},
+            r#"<div>a</div>"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                enum E {
+                  A {class: String},
+                }
+                view Test() {
+                  let v0 = E::A {class: "a"} in {
+                    match v0 {
+                      E::A(class: v1) => {
+                        let v2 = v1 in {
+                          write("<div")
+                          write(">")
+                          write_escaped(v2)
+                          write("</div>")
+                        }
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                enum E {
+                  A {class: String},
+                }
+                view Test() {
+                  match E::A {class: "a"} {
+                    E::A(class: v1) => {
+                      let v2 = v1 in {
+                        write("<div>")
+                        write_escaped(v2)
+                        write("</div>")
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                <div>a</div>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
 }

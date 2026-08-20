@@ -322,11 +322,6 @@ impl Transpiler for TsTranspiler {
                         .append(arena.text("    }"));
                 } else {
                     // Variant with fields: add parameters
-                    let param_docs: Vec<_> = variant
-                        .fields
-                        .iter()
-                        .map(|(field_name, _, _)| arena.text(field_name.as_str()))
-                        .collect();
                     let param_with_type_docs: Vec<_> = variant
                         .fields
                         .iter()
@@ -341,15 +336,17 @@ impl Transpiler for TsTranspiler {
                         .fields
                         .iter()
                         .map(|(field_name, _, _)| {
-                            arena.text(", ").append(arena.text(field_name.as_str()))
+                            arena
+                                .text(", ")
+                                .append(arena.text(field_name.as_str()))
+                                .append(arena.text(": init."))
+                                .append(arena.text(field_name.as_str()))
                         })
                         .collect();
                     result = result
                         .append(arena.text("    export function "))
                         .append(arena.text(variant.name.as_str()))
-                        .append(arena.text("({"))
-                        .append(arena.intersperse(param_docs, arena.text(", ")))
-                        .append(arena.text("} : {"))
+                        .append(arena.text("(init: {"))
                         .append(arena.intersperse(param_with_type_docs, arena.text(", ")))
                         .append(arena.text("}): "))
                         .append(arena.text(enum_def.name.as_str()))
@@ -395,11 +392,6 @@ impl Transpiler for TsTranspiler {
                                 .append(arena.text(";"))
                         })
                         .collect();
-                    let param_docs: Vec<_> = record
-                        .fields
-                        .iter()
-                        .map(|(field_name, _, _)| arena.text(field_name.as_str()))
-                        .collect();
                     let param_with_type_docs: Vec<_> = record
                         .fields
                         .iter()
@@ -417,7 +409,7 @@ impl Transpiler for TsTranspiler {
                             arena
                                 .text("this.")
                                 .append(arena.text(name.as_str()))
-                                .append(arena.text(" = "))
+                                .append(arena.text(" = init."))
                                 .append(arena.text(name.as_str()))
                                 .append(arena.text(";"))
                         })
@@ -438,9 +430,7 @@ impl Transpiler for TsTranspiler {
                             arena
                                 .nil()
                                 .append(arena.line())
-                                .append(arena.text("constructor({"))
-                                .append(arena.intersperse(param_docs, arena.text(", ")))
-                                .append(arena.text("} : {"))
+                                .append(arena.text("constructor(init: {"))
                                 .append(arena.intersperse(param_with_type_docs, arena.text(", ")))
                                 .append(arena.text("}) {"))
                                 .append(
@@ -2194,9 +2184,9 @@ mod tests {
                     public readonly street: string;
                     public readonly city: string;
 
-                    constructor({street, city} : {street: string, city: string}) {
-                        this.street = street;
-                        this.city = city;
+                    constructor(init: {street: string, city: string}) {
+                        this.street = init.street;
+                        this.city = init.city;
                     }
                 }
 
@@ -2205,10 +2195,10 @@ mod tests {
                     public readonly age: number;
                     public readonly active: boolean;
 
-                    constructor({name, age, active} : {name: string, age: number, active: boolean}) {
-                        this.name = name;
-                        this.age = age;
-                        this.active = active;
+                    constructor(init: {name: string, age: number, active: boolean}) {
+                        this.name = init.name;
+                        this.age = init.age;
+                        this.active = init.active;
                     }
                 }
 
@@ -2262,9 +2252,9 @@ mod tests {
                     public readonly name: string;
                     public readonly age: number;
 
-                    constructor({name, age} : {name: string, age: number}) {
-                        this.name = name;
-                        this.age = age;
+                    constructor(init: {name: string, age: number}) {
+                        this.name = init.name;
+                        this.age = init.age;
                     }
                 }
 
@@ -2327,9 +2317,9 @@ mod tests {
                     public readonly value: number;
                     public readonly next: Option.Option<Node>;
 
-                    constructor({value, next} : {value: number, next: Option.Option<Node>}) {
-                        this.value = value;
-                        this.next = next;
+                    constructor(init: {value: number, next: Option.Option<Node>}) {
+                        this.value = init.value;
+                        this.next = init.next;
                     }
                 }
 
@@ -2372,8 +2362,8 @@ mod tests {
                 export namespace IntList {
                     export type IntList = { readonly tag: "Cons", readonly head: number, readonly tail: IntList.IntList } | { readonly tag: "Nil" };
 
-                    export function Cons({head, tail} : {head: number, tail: IntList.IntList}): IntList {
-                        return { tag: "Cons", head, tail };
+                    export function Cons(init: {head: number, tail: IntList.IntList}): IntList {
+                        return { tag: "Cons", head: init.head, tail: init.tail };
                     }
                     export function Nil(): IntList {
                         return { tag: "Nil" };
@@ -2449,9 +2439,9 @@ mod tests {
                     public readonly value: number;
                     public readonly next: Option.Option<Node>;
 
-                    constructor({value, next} : {value: number, next: Option.Option<Node>}) {
-                        this.value = value;
-                        this.next = next;
+                    constructor(init: {value: number, next: Option.Option<Node>}) {
+                        this.value = init.value;
+                        this.next = init.next;
                     }
                 }
 
@@ -3155,11 +3145,11 @@ mod tests {
                 export namespace Outcome {
                     export type Outcome = { readonly tag: "Success", readonly value: number } | { readonly tag: "Failure", readonly message: string };
 
-                    export function Success({value} : {value: number}): Outcome {
-                        return { tag: "Success", value };
+                    export function Success(init: {value: number}): Outcome {
+                        return { tag: "Success", value: init.value };
                     }
-                    export function Failure({message} : {message: string}): Outcome {
-                        return { tag: "Failure", message };
+                    export function Failure(init: {message: string}): Outcome {
+                        return { tag: "Failure", message: init.message };
                     }
                 }
 
@@ -3223,11 +3213,11 @@ mod tests {
                 export namespace Outcome {
                     export type Outcome = { readonly tag: "Success", readonly value: string } | { readonly tag: "Failure", readonly message: string };
 
-                    export function Success({value} : {value: string}): Outcome {
-                        return { tag: "Success", value };
+                    export function Success(init: {value: string}): Outcome {
+                        return { tag: "Success", value: init.value };
                     }
-                    export function Failure({message} : {message: string}): Outcome {
-                        return { tag: "Failure", message };
+                    export function Failure(init: {message: string}): Outcome {
+                        return { tag: "Failure", message: init.message };
                     }
                 }
 
