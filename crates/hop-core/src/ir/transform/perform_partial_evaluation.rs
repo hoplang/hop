@@ -672,10 +672,15 @@ pub fn perform_partial_evaluation(
                  op: &BinaryOp| {
                     let result = match op {
                         BinaryOp::Equals => match (known_left_val, known_right_val) {
+                            (Const::Bool(l), Const::Bool(r)) => Const::Bool(l == r),
+                            (Const::String(l), Const::String(r)) => Const::Bool(l == r),
+                            (Const::Int(l), Const::Int(r)) => Const::Bool(l == r),
                             (Const::Float(l), Const::Float(r)) => {
                                 Const::Bool(f64::from_bits(*l) == f64::from_bits(*r))
                             }
-                            _ => Const::Bool(known_left_val == known_right_val),
+                            _ => unreachable!(
+                                "Equals can only have String, Bool, Int or Float operands"
+                            ),
                         },
                         BinaryOp::StringConcat => match (known_left_val, known_right_val) {
                             (Const::String(l), Const::String(r)) => {
