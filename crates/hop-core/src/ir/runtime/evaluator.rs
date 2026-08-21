@@ -112,7 +112,9 @@ fn eval_statement(
             escape,
         } => {
             let value = evaluate_expr(expr, env)?;
-            let s = value.to_output_string();
+            let Value::String(s) = value else {
+                panic!("WriteExpr requires a string value");
+            };
             if *escape {
                 write_escaped_html(&s, output);
             } else {
@@ -279,6 +281,24 @@ fn eval_statement(
                 .iter()
                 .find(|c| c.name.as_str() == component_name.as_str())
                 .unwrap_or_else(|| panic!("Undefined component: {}", component_name.as_str()));
+
+            for arg in args {
+                assert!(
+                    component_def
+                        .parameters
+                        .iter()
+                        .any(|p| p.name().as_str() == arg.name.as_str()),
+                    "Unknown argument '{}' for component '{}'",
+                    arg.name.as_str(),
+                    component_name.as_str()
+                );
+            }
+            assert_eq!(
+                args.len(),
+                component_def.parameters.len(),
+                "Duplicate argument for component '{}'",
+                component_name.as_str()
+            );
 
             // Evaluate all argument expressions in the caller's env first,
             // so an earlier-bound parameter can't shadow a caller variable
@@ -728,7 +748,6 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value, EvalError> {
             let float_val = evaluate_expr(value, env)?;
             match float_val {
                 Value::Float(f) => Ok(Value::Int(f as i32)),
-                Value::Int(i) => Ok(Value::Int(i)), // Already an int
                 _ => panic!("FloatToInt requires a float argument"),
             }
         }

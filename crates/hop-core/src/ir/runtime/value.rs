@@ -47,8 +47,6 @@ impl Value {
     pub fn as_f64(&self) -> Option<f64> {
         match self {
             Value::Float(f) => Some(*f),
-            // Allow Int to be read as f64 for convenience
-            Value::Int(i) => Some(*i as f64),
             _ => None,
         }
     }
@@ -64,21 +62,6 @@ impl Value {
         match self {
             Value::Record(rec) => Some(rec),
             _ => None,
-        }
-    }
-
-    /// Convert Value to a display string for output
-    pub fn to_output_string(&self) -> String {
-        match self {
-            Value::String(s) => s.clone(),
-            Value::Bool(b) => b.to_string(),
-            Value::Int(i) => i.to_string(),
-            Value::Float(f) => f.to_string(),
-            Value::Array(_) => "[array]".to_string(),
-            Value::Record(_) => "[record]".to_string(),
-            Value::Some(inner) => inner.to_output_string(),
-            Value::None => "".to_string(),
-            Value::Enum { variant_name, .. } => variant_name.to_string(),
         }
     }
 }
