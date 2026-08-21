@@ -202,6 +202,14 @@ impl<'a> InlinerState<'a> {
                 let mut attributes = attributes.clone();
                 if rest_spread.is_some() {
                     attributes.extend_from_slice(active_rest);
+                    debug_assert!(
+                        attributes
+                            .iter()
+                            .enumerate()
+                            .all(|(i, a)| attributes[i + 1..].iter().all(|b| a.name != b.name)),
+                        "rest spread produced a duplicate attribute on <{}>",
+                        element.as_str()
+                    );
                 }
                 output.push(InlinedNode::Html {
                     element: element.clone(),
