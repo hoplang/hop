@@ -249,7 +249,6 @@ pub fn perform_partial_evaluation(
                 IrStatement::Let { var, value, .. } => {
                     variable_bindings.insert(var.id, value.id());
                 }
-                IrStatement::LetFragment { .. } => {}
                 IrStatement::For { .. } => {}
                 IrStatement::Match { .. } => {}
                 IrStatement::Write { .. }
@@ -483,6 +482,10 @@ pub fn perform_partial_evaluation(
                     }
                     IrExpr::FragmentEmpty { .. } => {
                         // Leaf constant, no sub-expressions to analyze
+                    }
+                    IrExpr::Fragment { .. } => {
+                        // The statements inside are visited by the enclosing
+                        // statement traversal.
                     }
                 }
             });

@@ -8,7 +8,22 @@ use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use pretty::BoxDoc;
 
-pub use crate::hop::typing::typed_node::{TypedArgument, TypedAttribute, TypedLoopSource};
+pub use crate::hop::typing::typed_node::{TypedAttribute, TypedLoopSource};
+
+/// A value at a binding or argument position: an ordinary expression, or
+/// markup rendered into a Fragment.
+#[derive(Debug, Clone)]
+pub enum InlinedValue {
+    Expr(TypedExpr),
+    Fragment(Vec<InlinedNode>),
+}
+
+/// An argument passed to a (recursive) component invocation.
+#[derive(Debug, Clone)]
+pub struct InlinedArgument {
+    pub name: VarName,
+    pub value: InlinedValue,
+}
 
 #[derive(Debug, Clone)]
 pub enum InlinedNode {
@@ -22,7 +37,7 @@ pub enum InlinedNode {
 
     ComponentInvocation {
         component_name: TypeName,
-        args: Vec<TypedArgument>,
+        args: Vec<InlinedArgument>,
     },
 
     If {
@@ -42,14 +57,8 @@ pub enum InlinedNode {
 
     Let {
         var: VarName,
-        value: TypedExpr,
+        value: InlinedValue,
         children: Vec<InlinedNode>,
-    },
-
-    LetFragment {
-        var: VarName,
-        fragment_body: Vec<InlinedNode>,
-        body: Vec<InlinedNode>,
     },
 
     Doctype {
@@ -61,6 +70,31 @@ pub enum InlinedNode {
         attributes: Vec<TypedAttribute>,
         children: Vec<InlinedNode>,
     },
+}
+
+impl InlinedValue {
+    pub fn to_doc(&self) -> BoxDoc<'_> {
+        match self {
+            InlinedValue::Expr(expr) => expr.to_doc(),
+            InlinedValue::Fragment(nodes) => {
+                if nodes.is_empty() {
+                    BoxDoc::text("{}")
+                } else {
+                    BoxDoc::text("{")
+                        .append(
+                            BoxDoc::line()
+                                .append(BoxDoc::intersperse(
+                                    nodes.iter().map(|c| c.to_doc()),
+                                    BoxDoc::line(),
+                                ))
+                                .nest(2),
+                        )
+                        .append(BoxDoc::line())
+                        .append(BoxDoc::text("}"))
+                }
+            }
+        }
+    }
 }
 
 impl InlinedNode {
@@ -83,7 +117,7 @@ impl InlinedNode {
                         args.iter().map(|arg| {
                             BoxDoc::text(arg.name.as_str())
                                 .append(BoxDoc::text("={"))
-                                .append(arg.expr.to_doc())
+                                .append(arg.value.to_doc())
                                 .append(BoxDoc::text("}"))
                         }),
                         BoxDoc::space(),
@@ -173,34 +207,6 @@ impl InlinedNode {
                     .append(BoxDoc::line())
                     .append(BoxDoc::text("</let>"))
                 }
-            }
-            InlinedNode::LetFragment {
-                var,
-                fragment_body,
-                body,
-            } => {
-                fn render(nodes: &[InlinedNode]) -> BoxDoc<'_> {
-                    BoxDoc::line()
-                        .append(BoxDoc::intersperse(
-                            nodes.iter().map(|c| c.to_doc()),
-                            BoxDoc::line(),
-                        ))
-                        .nest(2)
-                }
-                let fragment = BoxDoc::text("{")
-                    .append(render(fragment_body))
-                    .append(BoxDoc::line())
-                    .append(BoxDoc::text("}"));
-                let binding = BoxDoc::text(var.as_str())
-                    .append(BoxDoc::text(" = "))
-                    .append(fragment);
-                BoxDoc::text("<let {")
-                    .append(BoxDoc::line().append(binding).nest(2))
-                    .append(BoxDoc::line())
-                    .append(BoxDoc::text("}>"))
-                    .append(render(body))
-                    .append(BoxDoc::line())
-                    .append(BoxDoc::text("</let>"))
             }
             InlinedNode::Match { match_ } => match match_ {
                 Match::Enum { subject, arms } => {
@@ -447,12 +453,12 @@ mod tests {
     fn component_invocation_renders_self_closing_with_args() {
         let node = InlinedNode::ComponentInvocation {
             component_name: TypeName::new("NodeView").unwrap(),
-            args: vec![TypedArgument {
+            args: vec![InlinedArgument {
                 name: VarName::new("node").unwrap(),
-                expr: TypedExpr::Var {
+                value: InlinedValue::Expr(TypedExpr::Var {
                     value: VarName::new("next").unwrap(),
                     kind: Arc::new(Type::String),
-                },
+                }),
             }],
         };
         assert_eq!(node.to_string(), "<NodeView node={next}/>");

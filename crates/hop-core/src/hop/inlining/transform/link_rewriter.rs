@@ -2,7 +2,10 @@ use crate::{
     document::CheapString,
     expr::patterns::{EnumMatchArm, Match},
     hop::{
-        inlining::{InlinedComponentDeclaration, InlinedNode, InlinedViewDeclaration},
+        inlining::{
+            InlinedComponentDeclaration, InlinedNode, InlinedViewDeclaration,
+            inlined_node::{InlinedArgument, InlinedValue},
+        },
         typing::typed_node::{TypedAttribute, TypedAttributeValue},
     },
     html::HtmlElement,
@@ -70,17 +73,21 @@ impl LinkRewriter {
                     children,
                 } => InlinedNode::Let {
                     var,
-                    value,
+                    value: Self::rewrite_value(value),
                     children: Self::rewrite_links(children),
                 },
-                InlinedNode::LetFragment {
-                    var,
-                    fragment_body,
-                    body,
-                } => InlinedNode::LetFragment {
-                    var,
-                    fragment_body: Self::rewrite_links(fragment_body),
-                    body: Self::rewrite_links(body),
+                InlinedNode::ComponentInvocation {
+                    component_name,
+                    args,
+                } => InlinedNode::ComponentInvocation {
+                    component_name,
+                    args: args
+                        .into_iter()
+                        .map(|arg| InlinedArgument {
+                            name: arg.name,
+                            value: Self::rewrite_value(arg.value),
+                        })
+                        .collect(),
                 },
                 InlinedNode::Match { match_ } => InlinedNode::Match {
                     match_: match match_ {
@@ -119,10 +126,16 @@ impl LinkRewriter {
                 },
                 node @ (InlinedNode::Text { .. }
                 | InlinedNode::TextExpression { .. }
-                | InlinedNode::ComponentInvocation { .. }
                 | InlinedNode::Doctype { .. }) => node,
             })
             .collect()
+    }
+
+    fn rewrite_value(value: InlinedValue) -> InlinedValue {
+        match value {
+            InlinedValue::Expr(expr) => InlinedValue::Expr(expr),
+            InlinedValue::Fragment(nodes) => InlinedValue::Fragment(Self::rewrite_links(nodes)),
+        }
     }
 
     pub fn run(view: &mut InlinedViewDeclaration) {

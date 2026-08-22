@@ -111,7 +111,7 @@ fn eval_statement(
             expr,
             escape,
         } => {
-            let value = evaluate_expr(expr, env)?;
+            let value = evaluate_expr(expr, env, component_defs)?;
             let Value::String(s) = value else {
                 panic!("WriteExpr requires a string value");
             };
@@ -131,7 +131,7 @@ fn eval_statement(
         } => {
             match source {
                 IrForSource::Array(array) => {
-                    let array_value = evaluate_expr(array, env)?;
+                    let array_value = evaluate_expr(array, env, component_defs)?;
                     let items = array_value
                         .as_array()
                         .cloned()
@@ -148,8 +148,8 @@ fn eval_statement(
                     }
                 }
                 IrForSource::RangeInclusive { start, end } => {
-                    let start_value = evaluate_expr(start, env)?;
-                    let end_value = evaluate_expr(end, env)?;
+                    let start_value = evaluate_expr(start, env, component_defs)?;
+                    let end_value = evaluate_expr(end, env, component_defs)?;
                     let start_int = start_value.as_i32().expect("Expected integer value");
                     let end_int = end_value.as_i32().expect("Expected integer value");
 
@@ -173,22 +173,8 @@ fn eval_statement(
             value,
             body,
         } => {
-            let val = evaluate_expr(value, env)?;
+            let val = evaluate_expr(value, env, component_defs)?;
             env.push(var.id, val);
-            eval_statements(body, env, output, component_defs)?;
-            env.pop();
-            Ok(())
-        }
-
-        IrStatement::LetFragment {
-            id: _,
-            var,
-            fragment_body,
-            body,
-        } => {
-            let mut captured = String::new();
-            eval_statements(fragment_body, env, &mut captured, component_defs)?;
-            env.push(var.id, Value::String(captured));
             eval_statements(body, env, output, component_defs)?;
             env.pop();
             Ok(())
@@ -200,7 +186,7 @@ fn eval_statement(
                 true_body,
                 false_body,
             } => {
-                let subject_value = evaluate_expr(subject, env)?;
+                let subject_value = evaluate_expr(subject, env, component_defs)?;
                 if subject_value.as_bool().expect("Expected boolean value") {
                     eval_statements(true_body, env, output, component_defs)?;
                 } else {
@@ -214,7 +200,7 @@ fn eval_statement(
                 some_arm_body,
                 none_arm_body,
             } => {
-                let subject_value = evaluate_expr(subject, env)?;
+                let subject_value = evaluate_expr(subject, env, component_defs)?;
 
                 match subject_value {
                     Value::Some(inner) => {
@@ -234,7 +220,7 @@ fn eval_statement(
                 Ok(())
             }
             Match::Enum { subject, arms } => {
-                let subject_value = evaluate_expr(subject, env)?;
+                let subject_value = evaluate_expr(subject, env, component_defs)?;
 
                 let Value::Enum {
                     variant_name,
@@ -311,7 +297,7 @@ fn eval_statement(
                     .iter()
                     .find(|arg| arg.name.as_str() == param.name().as_str())
                 {
-                    let value = evaluate_expr(&arg.expr, env)?;
+                    let value = evaluate_expr(&arg.expr, env, component_defs)?;
                     values.push((param.var.id, value));
                 } else {
                     panic!(
@@ -335,7 +321,11 @@ fn eval_statement(
     }
 }
 
-fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value, EvalError> {
+fn evaluate_expr(
+    expr: &IrExpr,
+    env: &mut Env,
+    component_defs: &[IrComponentDeclaration],
+) -> Result<Value, EvalError> {
     match expr {
         IrExpr::Var { value: var, .. } => Ok(env
             .lookup(var.id)
@@ -346,7 +336,7 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value, EvalError> {
             field,
             ..
         } => {
-            let obj_value = evaluate_expr(object, env)?;
+            let obj_value = evaluate_expr(object, env, component_defs)?;
             if let Some(rec) = obj_value.as_record() {
                 Ok(rec
                     .get(field)
@@ -358,26 +348,31 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value, EvalError> {
         }
         IrExpr::StringLiteral { value: s, .. } => Ok(Value::String(s.to_string())),
         IrExpr::FragmentEmpty { .. } => Ok(Value::String(String::new())),
+        IrExpr::Fragment { body, .. } => {
+            let mut captured = String::new();
+            eval_statements(body, env, &mut captured, component_defs)?;
+            Ok(Value::String(captured))
+        }
         IrExpr::BooleanLiteral { value: b, .. } => Ok(Value::Bool(*b)),
         IrExpr::FloatLiteral { value: f, .. } => Ok(Value::Float(*f)),
         IrExpr::IntLiteral { value: i, .. } => Ok(Value::Int(*i)),
         IrExpr::ArrayLiteral { elements, .. } => {
             let mut array = Vec::new();
             for elem in elements {
-                array.push(evaluate_expr(elem, env)?);
+                array.push(evaluate_expr(elem, env, component_defs)?);
             }
             Ok(Value::Array(array))
         }
         IrExpr::RecordLiteral { fields, .. } => {
             let mut rec = HashMap::new();
             for (key, value) in fields {
-                rec.insert(key.clone(), evaluate_expr(value, env)?);
+                rec.insert(key.clone(), evaluate_expr(value, env, component_defs)?);
             }
             Ok(Value::Record(rec))
         }
         IrExpr::StringConcat { left, right, .. } => {
-            let left_val = evaluate_expr(left, env)?;
-            let right_val = evaluate_expr(right, env)?;
+            let left_val = evaluate_expr(left, env, component_defs)?;
+            let right_val = evaluate_expr(right, env, component_defs)?;
 
             match (left_val, right_val) {
                 (Value::String(l), Value::String(r)) => Ok(Value::String(format!("{}{}", l, r))),
@@ -385,7 +380,7 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value, EvalError> {
             }
         }
         IrExpr::BooleanNegation { operand, .. } => {
-            let val = evaluate_expr(operand, env)?;
+            let val = evaluate_expr(operand, env, component_defs)?;
             let bool_val = val.as_bool().expect("Expected boolean value");
             Ok(Value::Bool(!bool_val))
         }
@@ -394,7 +389,7 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value, EvalError> {
             operand_type,
             ..
         } => {
-            let val = evaluate_expr(operand, env)?;
+            let val = evaluate_expr(operand, env, component_defs)?;
             match operand_type {
                 NumericType::Int => {
                     let int_val = val.as_i32().expect("Expected integer value");
@@ -412,8 +407,8 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value, EvalError> {
             operand_types: EquatableType::Bool,
             ..
         } => {
-            let left_val = evaluate_expr(left, env)?;
-            let right_val = evaluate_expr(right, env)?;
+            let left_val = evaluate_expr(left, env, component_defs)?;
+            let right_val = evaluate_expr(right, env, component_defs)?;
             let left_bool = left_val.as_bool().expect("Expected boolean value");
             let right_bool = right_val.as_bool().expect("Expected boolean value");
             Ok(Value::Bool(left_bool == right_bool))
@@ -424,8 +419,8 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value, EvalError> {
             operand_types: EquatableType::String,
             ..
         } => {
-            let left_val = evaluate_expr(left, env)?;
-            let right_val = evaluate_expr(right, env)?;
+            let left_val = evaluate_expr(left, env, component_defs)?;
+            let right_val = evaluate_expr(right, env, component_defs)?;
             let left_str = left_val.as_str().expect("Expected string value");
             let right_str = right_val.as_str().expect("Expected string value");
             Ok(Value::Bool(left_str == right_str))
@@ -436,8 +431,8 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value, EvalError> {
             operand_types: EquatableType::Int,
             ..
         } => {
-            let left_val = evaluate_expr(left, env)?;
-            let right_val = evaluate_expr(right, env)?;
+            let left_val = evaluate_expr(left, env, component_defs)?;
+            let right_val = evaluate_expr(right, env, component_defs)?;
             let left_int = left_val.as_i32().expect("Expected integer value");
             let right_int = right_val.as_i32().expect("Expected integer value");
             Ok(Value::Bool(left_int == right_int))
@@ -448,8 +443,8 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value, EvalError> {
             operand_types: EquatableType::Float,
             ..
         } => {
-            let left_val = evaluate_expr(left, env)?;
-            let right_val = evaluate_expr(right, env)?;
+            let left_val = evaluate_expr(left, env, component_defs)?;
+            let right_val = evaluate_expr(right, env, component_defs)?;
             let left_float = left_val.as_f64().expect("Expected float value");
             let right_float = right_val.as_f64().expect("Expected float value");
             Ok(Value::Bool(left_float == right_float))
@@ -460,8 +455,8 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value, EvalError> {
             operand_types,
             ..
         } => {
-            let left_val = evaluate_expr(left, env)?;
-            let right_val = evaluate_expr(right, env)?;
+            let left_val = evaluate_expr(left, env, component_defs)?;
+            let right_val = evaluate_expr(right, env, component_defs)?;
 
             let result = match operand_types {
                 ComparableType::Int => {
@@ -484,8 +479,8 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value, EvalError> {
             operand_types,
             ..
         } => {
-            let left_val = evaluate_expr(left, env)?;
-            let right_val = evaluate_expr(right, env)?;
+            let left_val = evaluate_expr(left, env, component_defs)?;
+            let right_val = evaluate_expr(right, env, component_defs)?;
 
             let result = match operand_types {
                 ComparableType::Int => {
@@ -503,16 +498,16 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value, EvalError> {
         }
 
         IrExpr::BooleanLogicalAnd { left, right, .. } => {
-            let left_val = evaluate_expr(left, env)?;
-            let right_val = evaluate_expr(right, env)?;
+            let left_val = evaluate_expr(left, env, component_defs)?;
+            let right_val = evaluate_expr(right, env, component_defs)?;
             let left_bool = left_val.as_bool().expect("Expected boolean value");
             let right_bool = right_val.as_bool().expect("Expected boolean value");
             Ok(Value::Bool(left_bool && right_bool))
         }
 
         IrExpr::BooleanLogicalOr { left, right, .. } => {
-            let left_val = evaluate_expr(left, env)?;
-            let right_val = evaluate_expr(right, env)?;
+            let left_val = evaluate_expr(left, env, component_defs)?;
+            let right_val = evaluate_expr(right, env, component_defs)?;
             let left_bool = left_val.as_bool().expect("Expected boolean value");
             let right_bool = right_val.as_bool().expect("Expected boolean value");
             Ok(Value::Bool(left_bool || right_bool))
@@ -524,8 +519,8 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value, EvalError> {
             operand_types,
             ..
         } => {
-            let left_val = evaluate_expr(left, env)?;
-            let right_val = evaluate_expr(right, env)?;
+            let left_val = evaluate_expr(left, env, component_defs)?;
+            let right_val = evaluate_expr(right, env, component_defs)?;
 
             match operand_types {
                 NumericType::Int => {
@@ -547,8 +542,8 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value, EvalError> {
             operand_types,
             ..
         } => {
-            let left_val = evaluate_expr(left, env)?;
-            let right_val = evaluate_expr(right, env)?;
+            let left_val = evaluate_expr(left, env, component_defs)?;
+            let right_val = evaluate_expr(right, env, component_defs)?;
 
             match operand_types {
                 NumericType::Int => {
@@ -570,8 +565,8 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value, EvalError> {
             operand_types,
             ..
         } => {
-            let left_val = evaluate_expr(left, env)?;
-            let right_val = evaluate_expr(right, env)?;
+            let left_val = evaluate_expr(left, env, component_defs)?;
+            let right_val = evaluate_expr(right, env, component_defs)?;
 
             match operand_types {
                 NumericType::Int => {
@@ -593,7 +588,7 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value, EvalError> {
         } => {
             let mut field_values = HashMap::new();
             for (field_name, field_expr) in fields {
-                let field_val = evaluate_expr(field_expr, env)?;
+                let field_val = evaluate_expr(field_expr, env, component_defs)?;
                 field_values.insert(field_name.clone(), field_val);
             }
             Ok(Value::Enum {
@@ -602,12 +597,16 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value, EvalError> {
             })
         }
         IrExpr::OptionLiteral { value, .. } => match value {
-            Some(inner) => Ok(Value::Some(Box::new(evaluate_expr(inner, env)?))),
+            Some(inner) => Ok(Value::Some(Box::new(evaluate_expr(
+                inner,
+                env,
+                component_defs,
+            )?))),
             None => Ok(Value::None),
         },
         IrExpr::Match { match_, .. } => match match_ {
             Match::Enum { subject, arms } => {
-                let subject_val = evaluate_expr(subject, env)?;
+                let subject_val = evaluate_expr(subject, env, component_defs)?;
 
                 let Value::Enum {
                     variant_name,
@@ -634,7 +633,7 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value, EvalError> {
                             });
                             env.push(var_name.id, field_val.clone());
                         }
-                        let result = evaluate_expr(&arm.body, env);
+                        let result = evaluate_expr(&arm.body, env, component_defs);
                         for _ in 0..bindings_count {
                             env.pop();
                         }
@@ -649,15 +648,15 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value, EvalError> {
                 true_body,
                 false_body,
             } => {
-                let subject_val = evaluate_expr(subject, env)?;
+                let subject_val = evaluate_expr(subject, env, component_defs)?;
                 let subject_bool = subject_val
                     .as_bool()
                     .expect("Match subject must evaluate to a boolean");
 
                 if subject_bool {
-                    evaluate_expr(true_body, env)
+                    evaluate_expr(true_body, env, component_defs)
                 } else {
-                    evaluate_expr(false_body, env)
+                    evaluate_expr(false_body, env, component_defs)
                 }
             }
             Match::Option {
@@ -666,20 +665,20 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value, EvalError> {
                 some_arm_body,
                 none_arm_body,
             } => {
-                let subject_val = evaluate_expr(subject, env)?;
+                let subject_val = evaluate_expr(subject, env, component_defs)?;
 
                 match subject_val {
                     Value::Some(inner) => {
                         if let Some(var_name) = some_arm_binding {
                             env.push(var_name.id, *inner);
-                            let result = evaluate_expr(some_arm_body, env);
+                            let result = evaluate_expr(some_arm_body, env, component_defs);
                             env.pop();
                             result
                         } else {
-                            evaluate_expr(some_arm_body, env)
+                            evaluate_expr(some_arm_body, env, component_defs)
                         }
                     }
-                    Value::None => evaluate_expr(none_arm_body, env),
+                    Value::None => evaluate_expr(none_arm_body, env, component_defs),
                     _ => panic!("Expected Option value in match expression"),
                 }
             }
@@ -687,42 +686,42 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value, EvalError> {
         IrExpr::Let {
             var, value, body, ..
         } => {
-            let val = evaluate_expr(value, env)?;
+            let val = evaluate_expr(value, env, component_defs)?;
             env.push(var.id, val);
-            let result = evaluate_expr(body, env)?;
+            let result = evaluate_expr(body, env, component_defs)?;
             env.pop();
             Ok(result)
         }
         IrExpr::TwMerge { operand, .. } => {
-            let val = evaluate_expr(operand, env)?;
+            let val = evaluate_expr(operand, env, component_defs)?;
             match val {
                 Value::String(s) => Ok(Value::String(tw_merge(&s))),
                 _ => panic!("TwMerge requires a string argument"),
             }
         }
         IrExpr::ArrayLength { array, .. } => {
-            let array_val = evaluate_expr(array, env)?;
+            let array_val = evaluate_expr(array, env, component_defs)?;
             match array_val {
                 Value::Array(arr) => Ok(Value::Int(arr.len() as i32)),
                 _ => panic!("ArrayLength requires an array argument"),
             }
         }
         IrExpr::ArrayIsEmpty { array, .. } => {
-            let array_val = evaluate_expr(array, env)?;
+            let array_val = evaluate_expr(array, env, component_defs)?;
             match array_val {
                 Value::Array(arr) => Ok(Value::Bool(arr.is_empty())),
                 _ => panic!("ArrayIsEmpty requires an array argument"),
             }
         }
         IrExpr::StringIsEmpty { string, .. } => {
-            let string_val = evaluate_expr(string, env)?;
+            let string_val = evaluate_expr(string, env, component_defs)?;
             match string_val {
                 Value::String(s) => Ok(Value::Bool(s.is_empty())),
                 _ => panic!("StringIsEmpty requires a string argument"),
             }
         }
         IrExpr::OptionIsSome { option, .. } => {
-            let option_val = evaluate_expr(option, env)?;
+            let option_val = evaluate_expr(option, env, component_defs)?;
             match option_val {
                 Value::Some(_) => Ok(Value::Bool(true)),
                 Value::None => Ok(Value::Bool(false)),
@@ -730,7 +729,7 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value, EvalError> {
             }
         }
         IrExpr::OptionIsNone { option, .. } => {
-            let option_val = evaluate_expr(option, env)?;
+            let option_val = evaluate_expr(option, env, component_defs)?;
             match option_val {
                 Value::Some(_) => Ok(Value::Bool(false)),
                 Value::None => Ok(Value::Bool(true)),
@@ -738,21 +737,21 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value, EvalError> {
             }
         }
         IrExpr::IntToString { value, .. } => {
-            let int_val = evaluate_expr(value, env)?;
+            let int_val = evaluate_expr(value, env, component_defs)?;
             match int_val {
                 Value::Int(n) => Ok(Value::String(n.to_string())),
                 _ => panic!("IntToString requires an integer argument"),
             }
         }
         IrExpr::FloatToInt { value, .. } => {
-            let float_val = evaluate_expr(value, env)?;
+            let float_val = evaluate_expr(value, env, component_defs)?;
             match float_val {
                 Value::Float(f) => Ok(Value::Int(f as i32)),
                 _ => panic!("FloatToInt requires a float argument"),
             }
         }
         IrExpr::IntToFloat { value, .. } => {
-            let int_val = evaluate_expr(value, env)?;
+            let int_val = evaluate_expr(value, env, component_defs)?;
             match int_val {
                 Value::Int(i) => Ok(Value::Float(i as f64)),
                 _ => panic!("IntToFloat requires an integer argument"),

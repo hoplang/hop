@@ -888,19 +888,17 @@ mod tests {
                   let v0 = {
                     write("Hi")
                   } in {
-                    let v1 = v0 in {
-                      let v2 = "p-2" in {
+                    let v1 = "p-2" in {
+                      let v2 = v0 in {
                         let v3 = v1 in {
-                          let v4 = v2 in {
-                            write("<button")
-                            write(" class=\"")
-                            write_escaped(tw_merge(v4))
-                            write("\"")
-                            write(" data-foo=\"bar\"")
-                            write(">")
-                            write_expr(v3)
-                            write("</button>")
-                          }
+                          write("<button")
+                          write(" class=\"")
+                          write_escaped(tw_merge(v3))
+                          write("\"")
+                          write(" data-foo=\"bar\"")
+                          write(">")
+                          write_expr(v2)
+                          write("</button>")
                         }
                       }
                     }
@@ -911,12 +909,10 @@ mod tests {
                   let v0 = {
                     write("Hi")
                   } in {
-                    let v1 = v0 in {
-                      let v3 = v1 in {
-                        write("<button class=\"p-2\" data-foo=\"bar\">")
-                        write_expr(v3)
-                        write("</button>")
-                      }
+                    let v2 = v0 in {
+                      write("<button class=\"p-2\" data-foo=\"bar\">")
+                      write_expr(v2)
+                      write("</button>")
                     }
                   }
                 }
@@ -966,16 +962,14 @@ mod tests {
                     write("Hi")
                   } in {
                     let v1 = v0 in {
-                      let v2 = v1 in {
-                        write("<button")
-                        write(" class=\"")
-                        write_escaped(tw_merge("builtin"))
-                        write("\"")
-                        write(" data-x=\"y\"")
-                        write(">")
-                        write_expr(v2)
-                        write("</button>")
-                      }
+                      write("<button")
+                      write(" class=\"")
+                      write_escaped(tw_merge("builtin"))
+                      write("\"")
+                      write(" data-x=\"y\"")
+                      write(">")
+                      write_expr(v1)
+                      write("</button>")
                     }
                   }
                 }
@@ -985,11 +979,9 @@ mod tests {
                     write("Hi")
                   } in {
                     let v1 = v0 in {
-                      let v2 = v1 in {
-                        write("<button class=\"builtin\" data-x=\"y\">")
-                        write_expr(v2)
-                        write("</button>")
-                      }
+                      write("<button class=\"builtin\" data-x=\"y\">")
+                      write_expr(v1)
+                      write("</button>")
                     }
                   }
                 }
@@ -1546,12 +1538,10 @@ mod tests {
                     write("deep")
                   } in {
                     let v1 = v0 in {
-                      let v2 = v1 in {
-                        write("<div")
-                        write(">")
-                        write_expr(v2)
-                        write("</div>")
-                      }
+                      write("<div")
+                      write(">")
+                      write_expr(v1)
+                      write("</div>")
                     }
                   }
                 }
@@ -1561,11 +1551,9 @@ mod tests {
                     write("deep")
                   } in {
                     let v1 = v0 in {
-                      let v2 = v1 in {
-                        write("<div>")
-                        write_expr(v2)
-                        write("</div>")
-                      }
+                      write("<div>")
+                      write_expr(v1)
+                      write("</div>")
                     }
                   }
                 }
@@ -1695,29 +1683,25 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 view Test() {
-                  let v0 = {
-                    write("click")
-                  } in {
-                    let v1 = "primary" in {
+                  let v0 = "primary" in {
+                    let v1 = {
+                      write("click")
+                    } in {
                       let v2 = v0 in {
                         let v3 = v1 in {
                           let v4 = v2 in {
                             let v5 = {
-                              write_expr(v4)
+                              write_expr(v3)
                             } in {
-                              let v6 = v3 in {
+                              let v6 = v4 in {
                                 let v7 = v5 in {
-                                  let v8 = v6 in {
-                                    let v9 = v7 in {
-                                      write("<div")
-                                      write(" class=\"")
-                                      write_escaped(tw_merge(v8))
-                                      write("\"")
-                                      write(">")
-                                      write_expr(v9)
-                                      write("</div>")
-                                    }
-                                  }
+                                  write("<div")
+                                  write(" class=\"")
+                                  write_escaped(tw_merge(v6))
+                                  write("\"")
+                                  write(">")
+                                  write_expr(v7)
+                                  write("</div>")
                                 }
                               }
                             }
@@ -1729,21 +1713,17 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  let v0 = {
+                  let v1 = {
                     write("click")
                   } in {
-                    let v2 = v0 in {
-                      let v4 = v2 in {
-                        let v5 = {
-                          write_expr(v4)
-                        } in {
-                          let v7 = v5 in {
-                            let v9 = v7 in {
-                              write("<div class=\"primary\">")
-                              write_expr(v9)
-                              write("</div>")
-                            }
-                          }
+                    let v3 = v1 in {
+                      let v5 = {
+                        write_expr(v3)
+                      } in {
+                        let v7 = v5 in {
+                          write("<div class=\"primary\">")
+                          write_expr(v7)
+                          write("</div>")
                         }
                       }
                     }
@@ -10374,22 +10354,20 @@ mod tests {
                     write("world")
                     write("</p>")
                   } in {
-                    let v1 = v0 in {
-                      let v2 = "Hello" in {
+                    let v1 = "Hello" in {
+                      let v2 = v0 in {
                         let v3 = v1 in {
-                          let v4 = v2 in {
-                            write("<div")
-                            write(" class=\"")
-                            write_escaped(tw_merge("card"))
-                            write("\"")
-                            write(">")
-                            write("<h2")
-                            write(">")
-                            write_escaped(v4)
-                            write("</h2>")
-                            write_expr(v3)
-                            write("</div>")
-                          }
+                          write("<div")
+                          write(" class=\"")
+                          write_escaped(tw_merge("card"))
+                          write("\"")
+                          write(">")
+                          write("<h2")
+                          write(">")
+                          write_escaped(v3)
+                          write("</h2>")
+                          write_expr(v2)
+                          write("</div>")
                         }
                       }
                     }
@@ -10400,12 +10378,10 @@ mod tests {
                   let v0 = {
                     write("<p>world</p>")
                   } in {
-                    let v1 = v0 in {
-                      let v3 = v1 in {
-                        write("<div class=\"card\"><h2>Hello</h2>")
-                        write_expr(v3)
-                        write("</div>")
-                      }
+                    let v2 = v0 in {
+                      write("<div class=\"card\"><h2>Hello</h2>")
+                      write_expr(v2)
+                      write("</div>")
                     }
                   }
                 }
@@ -10465,29 +10441,25 @@ mod tests {
                     write("</p>")
                   } in {
                     let v1 = v0 in {
-                      let v2 = v1 in {
-                        write("<div")
-                        write(" class=\"")
-                        write_escaped(tw_merge("outer"))
-                        write("\"")
-                        write(">")
-                        let v3 = {
-                          write_expr(v2)
-                        } in {
-                          let v4 = v3 in {
-                            let v5 = v4 in {
-                              write("<div")
-                              write(" class=\"")
-                              write_escaped(tw_merge("inner"))
-                              write("\"")
-                              write(">")
-                              write_expr(v5)
-                              write("</div>")
-                            }
-                          }
+                      write("<div")
+                      write(" class=\"")
+                      write_escaped(tw_merge("outer"))
+                      write("\"")
+                      write(">")
+                      let v2 = {
+                        write_expr(v1)
+                      } in {
+                        let v3 = v2 in {
+                          write("<div")
+                          write(" class=\"")
+                          write_escaped(tw_merge("inner"))
+                          write("\"")
+                          write(">")
+                          write_expr(v3)
+                          write("</div>")
                         }
-                        write("</div>")
                       }
+                      write("</div>")
                     }
                   }
                 }
@@ -10497,21 +10469,17 @@ mod tests {
                     write("<p>hello</p>")
                   } in {
                     let v1 = v0 in {
-                      let v2 = v1 in {
-                        write("<div class=\"outer\">")
-                        let v3 = {
-                          write_expr(v2)
-                        } in {
-                          let v4 = v3 in {
-                            let v5 = v4 in {
-                              write("<div class=\"inner\">")
-                              write_expr(v5)
-                              write("</div>")
-                            }
-                          }
+                      write("<div class=\"outer\">")
+                      let v2 = {
+                        write_expr(v1)
+                      } in {
+                        let v3 = v2 in {
+                          write("<div class=\"inner\">")
+                          write_expr(v3)
+                          write("</div>")
                         }
-                        write("</div>")
                       }
+                      write("</div>")
                     }
                   }
                 }
@@ -10604,15 +10572,13 @@ mod tests {
                     write("</footer>")
                   } in {
                     let v3 = v2 in {
-                      let v4 = v3 in {
-                        write("<div")
-                        write(" class=\"")
-                        write_escaped(tw_merge("layout"))
-                        write("\"")
-                        write(">")
-                        write_expr(v4)
-                        write("</div>")
-                      }
+                      write("<div")
+                      write(" class=\"")
+                      write_escaped(tw_merge("layout"))
+                      write("\"")
+                      write(">")
+                      write_expr(v3)
+                      write("</div>")
                     }
                   }
                 }
@@ -10623,11 +10589,9 @@ mod tests {
                     write("</main><footer><p>Copyright 2024</p></footer>")
                   } in {
                     let v3 = v2 in {
-                      let v4 = v3 in {
-                        write("<div class=\"layout\">")
-                        write_expr(v4)
-                        write("</div>")
-                      }
+                      write("<div class=\"layout\">")
+                      write_expr(v3)
+                      write("</div>")
                     }
                   }
                 }
@@ -10682,22 +10646,20 @@ mod tests {
                     write("</span>")
                   } in {
                     let v1 = v0 in {
-                      let v2 = v1 in {
-                        write("<div")
-                        write(" class=\"")
-                        write_escaped(tw_merge("first"))
-                        write("\"")
-                        write(">")
-                        write_expr(v2)
-                        write("</div>")
-                        write("<div")
-                        write(" class=\"")
-                        write_escaped(tw_merge("second"))
-                        write("\"")
-                        write(">")
-                        write_expr(v2)
-                        write("</div>")
-                      }
+                      write("<div")
+                      write(" class=\"")
+                      write_escaped(tw_merge("first"))
+                      write("\"")
+                      write(">")
+                      write_expr(v1)
+                      write("</div>")
+                      write("<div")
+                      write(" class=\"")
+                      write_escaped(tw_merge("second"))
+                      write("\"")
+                      write(">")
+                      write_expr(v1)
+                      write("</div>")
                     }
                   }
                 }
@@ -10707,13 +10669,11 @@ mod tests {
                     write("<span>hi</span>")
                   } in {
                     let v1 = v0 in {
-                      let v2 = v1 in {
-                        write("<div class=\"first\">")
-                        write_expr(v2)
-                        write("</div><div class=\"second\">")
-                        write_expr(v2)
-                        write("</div>")
-                      }
+                      write("<div class=\"first\">")
+                      write_expr(v1)
+                      write("</div><div class=\"second\">")
+                      write_expr(v1)
+                      write("</div>")
                     }
                   }
                 }
@@ -11381,30 +11341,9 @@ mod tests {
                     write("body")
                     write("</p>")
                   } in {
-                    let v1 = v0 in {
-                      let v2 = "With" in {
+                    let v1 = "With" in {
+                      let v2 = v0 in {
                         let v3 = v1 in {
-                          let v4 = v2 in {
-                            write("<div")
-                            write(" class=\"")
-                            write_escaped(tw_merge("card"))
-                            write("\"")
-                            write(">")
-                            write("<h2")
-                            write(">")
-                            write_escaped(v4)
-                            write("</h2>")
-                            write_expr(v3)
-                            write("</div>")
-                          }
-                        }
-                      }
-                    }
-                  }
-                  let v5 = Fragment::empty() in {
-                    let v6 = "Without" in {
-                      let v7 = v5 in {
-                        let v8 = v6 in {
                           write("<div")
                           write(" class=\"")
                           write_escaped(tw_merge("card"))
@@ -11412,9 +11351,28 @@ mod tests {
                           write(">")
                           write("<h2")
                           write(">")
-                          write_escaped(v8)
+                          write_escaped(v3)
                           write("</h2>")
-                          write_expr(v7)
+                          write_expr(v2)
+                          write("</div>")
+                        }
+                      }
+                    }
+                  }
+                  let v4 = Fragment::empty() in {
+                    let v5 = "Without" in {
+                      let v6 = v4 in {
+                        let v7 = v5 in {
+                          write("<div")
+                          write(" class=\"")
+                          write_escaped(tw_merge("card"))
+                          write("\"")
+                          write(">")
+                          write("<h2")
+                          write(">")
+                          write_escaped(v7)
+                          write("</h2>")
+                          write_expr(v6)
                           write("</div>")
                         }
                       }
@@ -11426,18 +11384,16 @@ mod tests {
                   let v0 = {
                     write("<p>body</p>")
                   } in {
-                    let v1 = v0 in {
-                      let v3 = v1 in {
-                        write("<div class=\"card\"><h2>With</h2>")
-                        write_expr(v3)
-                        write("</div>")
-                      }
+                    let v2 = v0 in {
+                      write("<div class=\"card\"><h2>With</h2>")
+                      write_expr(v2)
+                      write("</div>")
                     }
                   }
-                  let v5 = Fragment::empty() in {
-                    let v7 = v5 in {
+                  let v4 = Fragment::empty() in {
+                    let v6 = v4 in {
                       write("<div class=\"card\"><h2>Without</h2>")
-                      write_expr(v7)
+                      write_expr(v6)
                       write("</div>")
                     }
                   }
@@ -12794,56 +12750,48 @@ mod tests {
             "<div><div><b>x</b></div></div>",
             expect![[r#"
                 -- ir (unoptimized) --
-                component Nest(depth@v1: Int, children@v2: Fragment) {
-                  match (0 < v1) {
+                component Nest(depth@v0: Int, children@v1: Fragment) {
+                  match (0 < v0) {
                     true => {
                       write("<div")
                       write(">")
-                      let v3 = {
-                        write_expr(v2)
-                      } in {
-                        call Nest(depth = (v1 - 1), children = v3)
-                      }
+                      call Nest(depth = (v0 - 1), children = {
+                        write_expr(v1)
+                      })
                       write("</div>")
                     }
                     false => {
-                      write_expr(v2)
+                      write_expr(v1)
                     }
                   }
                 }
                 view Test() {
-                  let v0 = {
+                  call Nest(depth = 2, children = {
                     write("<b")
                     write(">")
                     write("x")
                     write("</b>")
-                  } in {
-                    call Nest(depth = 2, children = v0)
-                  }
+                  })
                 }
                 -- ir (optimized) --
-                component Nest(depth@v1: Int, children@v2: Fragment) {
-                  match (0 < v1) {
+                component Nest(depth@v0: Int, children@v1: Fragment) {
+                  match (0 < v0) {
                     true => {
                       write("<div>")
-                      let v3 = {
-                        write_expr(v2)
-                      } in {
-                        call Nest(depth = (v1 - 1), children = v3)
-                      }
+                      call Nest(depth = (v0 - 1), children = {
+                        write_expr(v1)
+                      })
                       write("</div>")
                     }
                     false => {
-                      write_expr(v2)
+                      write_expr(v1)
                     }
                   }
                 }
                 view Test() {
-                  let v0 = {
+                  call Nest(depth = 2, children = {
                     write("<b>x</b>")
-                  } in {
-                    call Nest(depth = 2, children = v0)
-                  }
+                  })
                 }
                 -- expected output --
                 <div><div><b>x</b></div></div>
@@ -12896,12 +12844,10 @@ mod tests {
                   } in {
                     let v1 = v0 in {
                       let v2 = v1 in {
-                        let v3 = v2 in {
-                          write("<div")
-                          write(">")
-                          write_expr(v3)
-                          write("</div>")
-                        }
+                        write("<div")
+                        write(">")
+                        write_expr(v2)
+                        write("</div>")
                       }
                     }
                   }
@@ -12913,11 +12859,9 @@ mod tests {
                   } in {
                     let v1 = v0 in {
                       let v2 = v1 in {
-                        let v3 = v2 in {
-                          write("<div>")
-                          write_expr(v3)
-                          write("</div>")
-                        }
+                        write("<div>")
+                        write_expr(v2)
+                        write("</div>")
                       }
                     }
                   }
@@ -12973,23 +12917,19 @@ mod tests {
                     write("z")
                   } in {
                     let v1 = v0 in {
-                      let v2 = v1 in {
-                        write("<section")
-                        write(">")
-                        let v3 = {
-                          write_expr(v2)
-                        } in {
-                          let v4 = v3 in {
-                            let v5 = v4 in {
-                              write("<em")
-                              write(">")
-                              write_expr(v5)
-                              write("</em>")
-                            }
-                          }
+                      write("<section")
+                      write(">")
+                      let v2 = {
+                        write_expr(v1)
+                      } in {
+                        let v3 = v2 in {
+                          write("<em")
+                          write(">")
+                          write_expr(v3)
+                          write("</em>")
                         }
-                        write("</section>")
                       }
+                      write("</section>")
                     }
                   }
                 }
@@ -12999,21 +12939,17 @@ mod tests {
                     write("z")
                   } in {
                     let v1 = v0 in {
-                      let v2 = v1 in {
-                        write("<section>")
-                        let v3 = {
-                          write_expr(v2)
-                        } in {
-                          let v4 = v3 in {
-                            let v5 = v4 in {
-                              write("<em>")
-                              write_expr(v5)
-                              write("</em>")
-                            }
-                          }
+                      write("<section>")
+                      let v2 = {
+                        write_expr(v1)
+                      } in {
+                        let v3 = v2 in {
+                          write("<em>")
+                          write_expr(v3)
+                          write("</em>")
                         }
-                        write("</section>")
                       }
+                      write("</section>")
                     }
                   }
                 }

@@ -811,41 +811,6 @@ impl Transpiler for RustTranspiler {
         binding.append(body)
     }
 
-    fn transpile_let_fragment_statement<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        var: &'a IrVar,
-        fragment_body: &'a [IrStatement],
-        body: &'a [IrStatement],
-    ) -> Doc<'a> {
-        self.needs_fragment = true;
-        let binding = arena
-            .text("let ")
-            .append(arena.text(var_ident(var)))
-            .append(arena.text(" = {"))
-            .append(
-                arena
-                    .nil()
-                    .append(arena.hardline())
-                    .append(arena.text("let mut output = String::new();"))
-                    .append(arena.hardline())
-                    .append(self.transpile_statements(arena, fragment_body))
-                    .append(arena.hardline())
-                    .append(arena.text("Fragment(output)"))
-                    .nest(4),
-            )
-            .append(arena.hardline())
-            .append(arena.text("};"));
-        let body = if body.is_empty() {
-            arena.nil()
-        } else {
-            arena
-                .hardline()
-                .append(self.transpile_statements(arena, body))
-        };
-        binding.append(body)
-    }
-
     fn transpile_match_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
@@ -1141,6 +1106,27 @@ impl Transpiler for RustTranspiler {
     fn transpile_fragment_empty<'a>(&mut self, arena: &'a Arena<'a>) -> Doc<'a> {
         self.needs_fragment = true;
         arena.text("Fragment(String::new())")
+    }
+
+    /// The fragment body renders into its own `output` buffer, so it is
+    /// emitted as a block expression that shadows `output`.
+    fn transpile_fragment<'a>(&mut self, arena: &'a Arena<'a>, body: &'a [IrStatement]) -> Doc<'a> {
+        self.needs_fragment = true;
+        arena
+            .text("{")
+            .append(
+                arena
+                    .nil()
+                    .append(arena.hardline())
+                    .append(arena.text("let mut output = String::new();"))
+                    .append(arena.hardline())
+                    .append(self.transpile_statements(arena, body))
+                    .append(arena.hardline())
+                    .append(arena.text("Fragment(output)"))
+                    .nest(4),
+            )
+            .append(arena.hardline())
+            .append(arena.text("}"))
     }
 
     fn transpile_boolean_literal<'a>(&mut self, arena: &'a Arena<'a>, value: bool) -> Doc<'a> {

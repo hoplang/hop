@@ -52,13 +52,6 @@ pub trait Transpiler {
         value: &'a IrExpr,
         body: &'a [IrStatement],
     ) -> Doc<'a>;
-    fn transpile_let_fragment_statement<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        var: &'a IrVar,
-        fragment_body: &'a [IrStatement],
-        body: &'a [IrStatement],
-    ) -> Doc<'a>;
     fn transpile_match_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
@@ -91,12 +84,6 @@ pub trait Transpiler {
             IrStatement::Let {
                 var, value, body, ..
             } => self.transpile_let_statement(arena, var, value, body),
-            IrStatement::LetFragment {
-                var,
-                fragment_body,
-                body,
-                ..
-            } => self.transpile_let_fragment_statement(arena, var, fragment_body, body),
             IrStatement::Match { match_, .. } => self.transpile_match_statement(arena, match_),
             IrStatement::ComponentInvocation {
                 component_name,
@@ -157,6 +144,7 @@ pub trait Transpiler {
     ) -> Doc<'a>;
     fn transpile_string_literal<'a>(&mut self, arena: &'a Arena<'a>, value: &'a str) -> Doc<'a>;
     fn transpile_fragment_empty<'a>(&mut self, arena: &'a Arena<'a>) -> Doc<'a>;
+    fn transpile_fragment<'a>(&mut self, arena: &'a Arena<'a>, body: &'a [IrStatement]) -> Doc<'a>;
     fn transpile_boolean_literal<'a>(&mut self, arena: &'a Arena<'a>, value: bool) -> Doc<'a>;
     fn transpile_float_literal<'a>(&mut self, arena: &'a Arena<'a>, value: f64) -> Doc<'a>;
     fn transpile_int_literal<'a>(&mut self, arena: &'a Arena<'a>, value: i32) -> Doc<'a>;
@@ -330,6 +318,7 @@ pub trait Transpiler {
             } => self.transpile_field_access(arena, object, field),
             IrExpr::StringLiteral { value, .. } => self.transpile_string_literal(arena, value),
             IrExpr::FragmentEmpty { .. } => self.transpile_fragment_empty(arena),
+            IrExpr::Fragment { body, .. } => self.transpile_fragment(arena, body),
             IrExpr::BooleanLiteral { value, .. } => self.transpile_boolean_literal(arena, *value),
             IrExpr::FloatLiteral { value, .. } => self.transpile_float_literal(arena, *value),
             IrExpr::IntLiteral { value, .. } => self.transpile_int_literal(arena, *value),

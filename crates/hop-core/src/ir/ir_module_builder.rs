@@ -339,6 +339,18 @@ impl IrBuilder {
         }
     }
 
+    pub fn fragment<F>(&self, body_fn: F) -> IrExpr
+    where
+        F: FnOnce(&mut Self),
+    {
+        let mut scope = self.scoped([]);
+        body_fn(&mut scope);
+        IrExpr::Fragment {
+            body: scope.statements,
+            id: self.next_expr_id(),
+        }
+    }
+
     pub fn var(&self, name: &str) -> IrExpr {
         let (_, value, kind) = self
             .var_stack
@@ -1178,18 +1190,8 @@ impl IrBuilder {
         F1: FnOnce(&mut Self),
         F2: FnOnce(&mut Self),
     {
-        let fragment_body = self.in_scope([], fragment_body_fn);
-
-        let name = var;
-        let var = self.bind();
-        let body = self.in_scope([(name.to_string(), var, Arc::new(Type::Fragment))], body_fn);
-
-        self.statements.push(IrStatement::LetFragment {
-            id: self.next_statement_id(),
-            var,
-            fragment_body,
-            body,
-        });
+        let value = self.fragment(fragment_body_fn);
+        self.let_stmt(var, value, body_fn);
     }
 
     pub fn bool_match_stmt<FTrue, FFalse>(

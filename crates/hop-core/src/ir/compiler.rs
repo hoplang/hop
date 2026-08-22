@@ -6,7 +6,7 @@ use crate::document_id::DocumentId;
 use crate::expr::Type;
 use crate::expr::TypedExpr;
 use crate::expr::patterns::{EnumMatchArm, Match};
-use crate::hop::inlining::inlined_node::InlinedNode;
+use crate::hop::inlining::inlined_node::{InlinedNode, InlinedValue};
 use crate::hop::inlining::{InlinedComponentDeclaration, InlinedViewDeclaration};
 use crate::hop::typing::typed_ast::{TypedEnumDeclaration, TypedRecordDeclaration};
 use crate::hop::typing::typed_node::{TypedAttributeValue, TypedLoopSource};
@@ -299,7 +299,7 @@ impl<'a> Compiler<'a> {
                 children,
             } => {
                 let id = self.next_statement_id();
-                let value = self.compile_expr(value);
+                let value = self.compile_value(value);
                 self.push_scope();
                 let ir_var = self.bind(var);
                 let body = self.compile_nodes(children);
@@ -308,25 +308,6 @@ impl<'a> Compiler<'a> {
                     id,
                     var: ir_var,
                     value,
-                    body,
-                });
-            }
-
-            InlinedNode::LetFragment {
-                var,
-                fragment_body,
-                body,
-            } => {
-                let id = self.next_statement_id();
-                let fragment_body = self.compile_nodes(fragment_body);
-                self.push_scope();
-                let ir_var = self.bind(var);
-                let body = self.compile_nodes(body);
-                self.pop_scope();
-                output.push(IrStatement::LetFragment {
-                    id,
-                    var: ir_var,
-                    fragment_body,
                     body,
                 });
             }
@@ -398,7 +379,7 @@ impl<'a> Compiler<'a> {
                     .iter()
                     .map(|arg| IrArgument {
                         name: arg.name.clone(),
-                        expr: self.compile_expr(&arg.expr),
+                        expr: self.compile_value(&arg.value),
                     })
                     .collect();
 
@@ -408,6 +389,18 @@ impl<'a> Compiler<'a> {
                     args: compiled_args,
                 });
             }
+        }
+    }
+
+    /// Compile a binding or argument value: expressions compile as usual,
+    /// fragment bodies become fragment expressions.
+    fn compile_value(&mut self, value: &InlinedValue) -> IrExpr {
+        match value {
+            InlinedValue::Expr(expr) => self.compile_expr(expr),
+            InlinedValue::Fragment(nodes) => IrExpr::Fragment {
+                body: self.compile_nodes(nodes),
+                id: self.next_expr_id(),
+            },
         }
     }
 

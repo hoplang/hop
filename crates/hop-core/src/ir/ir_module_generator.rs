@@ -337,7 +337,6 @@ impl IrGenerator<'_, '_> {
             ForRange,
             ForLoop,
             Let,
-            LetFragment,
             BoolMatch,
             OptionMatch,
             EnumMatch,
@@ -352,7 +351,6 @@ impl IrGenerator<'_, '_> {
                 P::ForRange,
                 P::ForLoop,
                 P::Let,
-                P::LetFragment,
                 P::BoolMatch,
                 P::OptionMatch,
             ]);
@@ -406,18 +404,6 @@ impl IrGenerator<'_, '_> {
                 let value = self.expr(b, &ty, depth);
                 let var = self.fresh_var_name();
                 b.let_stmt(&var, value, |b| self.stmts(b, depth - 1));
-            }
-            P::LetFragment => {
-                // The two body closures both need `&mut self`; the builder
-                // runs them sequentially, so route the reborrow through a
-                // RefCell to satisfy the borrow checker.
-                let var = self.fresh_var_name();
-                let this = RefCell::new(self);
-                b.let_fragment(
-                    &var,
-                    |b| this.borrow_mut().stmts(b, depth - 1),
-                    |b| this.borrow_mut().stmts(b, depth - 1),
-                );
             }
             P::BoolMatch => {
                 let subject = self.expr(b, &Type::Bool, depth);
@@ -487,6 +473,7 @@ impl IrGenerator<'_, '_> {
             Add,
             Sub,
             Mul,
+            Fragment,
         }
         let mut productions = vec![P::Lit];
         if b.vars().iter().any(|(_, _, ty)| **ty == *target) {
@@ -530,6 +517,9 @@ impl IrGenerator<'_, '_> {
             }
             if *target == Type::String {
                 productions.extend([P::Concat, P::IntToString]);
+            }
+            if *target == Type::Fragment {
+                productions.push(P::Fragment);
             }
         }
         match self.u.choose(&productions).unwrap() {
@@ -692,6 +682,7 @@ impl IrGenerator<'_, '_> {
                 let right = self.expr(b, target, depth - 1);
                 b.mul(left, right)
             }
+            P::Fragment => b.fragment(|b| self.stmts(b, depth - 1)),
         }
     }
 

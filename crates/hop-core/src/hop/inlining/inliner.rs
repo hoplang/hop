@@ -1,13 +1,16 @@
 use super::inlined_ast::{InlinedComponentDeclaration, InlinedViewDeclaration};
-use super::inlined_node::InlinedNode;
+use super::inlined_node::{InlinedArgument, InlinedNode, InlinedValue};
 use crate::document_id::DocumentId;
-use crate::expr::TypedExpr;
 use crate::expr::patterns::{EnumMatchArm, Match};
+use crate::expr::{Type, TypedExpr};
 use crate::hop::typing::typed_ast::{TypedAst, TypedComponentDeclaration, TypedViewDeclaration};
-use crate::hop::typing::typed_node::{TypedAttribute, TypedAttributeValue, TypedNode};
+use crate::hop::typing::typed_node::{
+    TypedArgumentValue, TypedAttribute, TypedAttributeValue, TypedNode,
+};
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 /// The Inliner transforms ASTs by replacing ComponentInvocation nodes with their
 /// inlined component declarations, using Let nodes for parameter binding and
@@ -129,12 +132,19 @@ impl<'a> InlinerState<'a> {
                     // Emit the component def if not yet emitted
                     self.emit_component_def(component);
 
+                    let args = args
+                        .iter()
+                        .map(|arg| InlinedArgument {
+                            name: arg.name.clone(),
+                            value: self.inline_argument_value(&arg.value, active_rest),
+                        })
+                        .collect();
                     output.push(InlinedNode::ComponentInvocation {
                         component_name: component_name.clone(),
-                        args: args.clone(),
+                        args,
                     });
                 } else {
-                    let mut hoisted: Vec<(VarName, TypedExpr)> = Vec::new();
+                    let mut hoisted: Vec<(VarName, InlinedValue)> = Vec::new();
 
                     let mut forwarded: Vec<TypedAttribute> =
                         Vec::with_capacity(extra_attributes.len());
@@ -142,7 +152,7 @@ impl<'a> InlinerState<'a> {
                         let value = match &attribute.value {
                             Some(TypedAttributeValue::Expression(expr)) => {
                                 let var = self.fresh_var();
-                                hoisted.push((var.clone(), expr.clone()));
+                                hoisted.push((var.clone(), InlinedValue::Expr(expr.clone())));
                                 Some(TypedAttributeValue::Expression(TypedExpr::Var {
                                     value: var,
                                     kind: expr.get_type(),
@@ -164,21 +174,22 @@ impl<'a> InlinerState<'a> {
                     let mut params: Vec<(VarName, TypedExpr)> = Vec::with_capacity(args.len());
                     for binding in args {
                         let var = self.fresh_var();
-                        hoisted.push((var.clone(), binding.expr.clone()));
-                        params.push((
-                            binding.name.clone(),
-                            TypedExpr::Var {
-                                value: var,
-                                kind: binding.expr.get_type(),
-                            },
+                        let kind = match &binding.value {
+                            TypedArgumentValue::Expr(expr) => expr.get_type(),
+                            TypedArgumentValue::Fragment(_) => Arc::new(Type::Fragment),
+                        };
+                        hoisted.push((
+                            var.clone(),
+                            self.inline_argument_value(&binding.value, active_rest),
                         ));
+                        params.push((binding.name.clone(), TypedExpr::Var { value: var, kind }));
                     }
 
                     let mut children = self.inline_nodes(&component.children, &forwarded);
                     for (var, value) in params.into_iter() {
                         children = vec![InlinedNode::Let {
                             var,
-                            value,
+                            value: InlinedValue::Expr(value),
                             children,
                         }];
                     }
@@ -308,21 +319,22 @@ impl<'a> InlinerState<'a> {
             } => {
                 output.push(InlinedNode::Let {
                     var: var.clone(),
-                    value: value.clone(),
+                    value: InlinedValue::Expr(value.clone()),
                     children: self.inline_nodes(children, active_rest),
                 });
             }
+        }
+    }
 
-            TypedNode::LetFragment {
-                var,
-                fragment_body,
-                body,
-            } => {
-                output.push(InlinedNode::LetFragment {
-                    var: var.clone(),
-                    fragment_body: self.inline_nodes(fragment_body, active_rest),
-                    body: self.inline_nodes(body, active_rest),
-                });
+    fn inline_argument_value(
+        &mut self,
+        value: &TypedArgumentValue,
+        active_rest: &[TypedAttribute],
+    ) -> InlinedValue {
+        match value {
+            TypedArgumentValue::Expr(expr) => InlinedValue::Expr(expr.clone()),
+            TypedArgumentValue::Fragment(nodes) => {
+                InlinedValue::Fragment(self.inline_nodes(nodes, active_rest))
             }
         }
     }
@@ -696,19 +708,15 @@ mod tests {
             )],
             expect![[r#"
                 view Main() {
-                  <let {
-                    v__0 = {
-                      <p>
-                        content
-                      </p>
-                    }
-                  }>
-                    <let {i__0 = v__0}>
-                      <let {children = i__0}>
-                        <div class="card">
-                          {children}
-                        </div>
-                      </let>
+                  <let {i__0 = {
+                    <p>
+                      content
+                    </p>
+                  }}>
+                    <let {children = i__0}>
+                      <div class="card">
+                        {children}
+                      </div>
                     </let>
                   </let>
                 }
@@ -888,35 +896,31 @@ mod tests {
             )],
             expect![[r#"
                 view HomePage(page_title: String) {
-                  <let {
-                    v__0 = {
-                      <let {i__0 = page_title}>
-                        <let {title = i__0}>
-                          <header>
-                            <h1>
-                              {title}
-                            </h1>
-                          </header>
-                        </let>
+                  <let {i__0 = {
+                    <let {i__1 = page_title}>
+                      <let {title = i__1}>
+                        <header>
+                          <h1>
+                            {title}
+                          </h1>
+                        </header>
                       </let>
-                      <main>
-                        <p>
-                          Welcome to the home page
-                        </p>
-                      </main>
-                      <footer>
-                        <p>
-                          Copyright 2024
-                        </p>
-                      </footer>
-                    }
-                  }>
-                    <let {i__1 = v__0}>
-                      <let {children = i__1}>
-                        <div class="layout">
-                          {children}
-                        </div>
-                      </let>
+                    </let>
+                    <main>
+                      <p>
+                        Welcome to the home page
+                      </p>
+                    </main>
+                    <footer>
+                      <p>
+                        Copyright 2024
+                      </p>
+                    </footer>
+                  }}>
+                    <let {children = i__0}>
+                      <div class="layout">
+                        {children}
+                      </div>
                     </let>
                   </let>
                 }

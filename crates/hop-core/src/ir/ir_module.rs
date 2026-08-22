@@ -200,15 +200,6 @@ pub enum IrStatement {
         body: Vec<IrStatement>,
     },
 
-    /// Render `fragment_body` into a fresh buffer and bind the result to `var`
-    /// as a Fragment value, then execute `body`.
-    LetFragment {
-        id: StatementId,
-        var: IrVar,
-        fragment_body: Vec<IrStatement>,
-        body: Vec<IrStatement>,
-    },
-
     /// Match on a value and execute the corresponding branch.
     Match {
         id: StatementId,
@@ -246,6 +237,9 @@ pub enum IrExpr {
 
     /// An empty Fragment value, i.e. Fragment::empty()
     FragmentEmpty { id: ExprId },
+
+    /// A Fragment value produced by rendering `body` into a fresh buffer.
+    Fragment { body: Vec<IrStatement>, id: ExprId },
 
     /// A boolean literal expression, e.g. true
     BooleanLiteral { value: bool, id: ExprId },
@@ -413,7 +407,8 @@ pub enum IrExpr {
 
 impl IrStatement {
     /// Traverse all expressions owned by this statement, recursively
-    /// into nested sub-expressions (does not recurse into nested statement bodies).
+    /// into nested sub-expressions (does not recurse into nested statement
+    /// bodies, including the bodies of fragment expressions).
     pub fn traverse_exprs(&self, f: &mut impl FnMut(&IrExpr)) {
         match self {
             IrStatement::Write { .. } => {}
@@ -426,7 +421,6 @@ impl IrStatement {
                 }
             },
             IrStatement::Let { value, .. } => value.traverse(f),
-            IrStatement::LetFragment { .. } => {}
             IrStatement::Match { match_, .. } => match_.subject().traverse(f),
             IrStatement::ComponentInvocation { args, .. } => {
                 for arg in args {
@@ -438,7 +432,8 @@ impl IrStatement {
 
     /// Traverse all expressions owned by this statement, recursively
     /// into nested sub-expressions with mutable access
-    /// (does not recurse into nested statement bodies).
+    /// (does not recurse into nested statement bodies, including the bodies
+    /// of fragment expressions).
     pub fn traverse_exprs_mut(&mut self, f: &mut impl FnMut(&mut IrExpr)) {
         match self {
             IrStatement::Write { .. } => {}
@@ -451,7 +446,6 @@ impl IrStatement {
                 }
             },
             IrStatement::Let { value, .. } => value.traverse_mut(f),
-            IrStatement::LetFragment { .. } => {}
             IrStatement::Match { match_, .. } => match_.subject_mut().traverse_mut(f),
             IrStatement::ComponentInvocation { args, .. } => {
                 for arg in args {
@@ -461,12 +455,23 @@ impl IrStatement {
         }
     }
 
-    /// Traverse this statement and all nested statements with a closure
+    /// Traverse this statement and all nested statements with a closure,
+    /// including statements nested inside fragment expressions.
     pub fn traverse<F>(&self, f: &mut F)
     where
         F: FnMut(&IrStatement),
     {
         f(self);
+        // Statement bodies nested inside fragment expressions. Expression
+        // traversal stops at a fragment's boundary, so the statements inside
+        // are reached here, exactly once.
+        self.traverse_exprs(&mut |e| {
+            if let IrExpr::Fragment { body, .. } = e {
+                for stmt in body {
+                    stmt.traverse(f);
+                }
+            }
+        });
         match self {
             IrStatement::Write { .. } => {}
             IrStatement::WriteExpr { .. } => {}
@@ -476,18 +481,6 @@ impl IrStatement {
                 }
             }
             IrStatement::Let { body, .. } => {
-                for stmt in body {
-                    stmt.traverse(f);
-                }
-            }
-            IrStatement::LetFragment {
-                fragment_body,
-                body,
-                ..
-            } => {
-                for stmt in fragment_body {
-                    stmt.traverse(f);
-                }
                 for stmt in body {
                     stmt.traverse(f);
                 }
@@ -557,38 +550,6 @@ impl IrStatement {
                 .append(BoxDoc::text(" = "))
                 .append(value.to_doc())
                 .append(BoxDoc::text(" in {"))
-                .append(if body.is_empty() {
-                    BoxDoc::nil()
-                } else {
-                    BoxDoc::line()
-                        .append(BoxDoc::intersperse(
-                            body.iter().map(|stmt| stmt.to_doc()),
-                            BoxDoc::line(),
-                        ))
-                        .append(BoxDoc::line())
-                        .nest(2)
-                })
-                .append(BoxDoc::text("}")),
-            IrStatement::LetFragment {
-                var,
-                fragment_body,
-                body,
-                ..
-            } => BoxDoc::text("let ")
-                .append(BoxDoc::text(var.to_string()))
-                .append(BoxDoc::text(" = {"))
-                .append(if fragment_body.is_empty() {
-                    BoxDoc::nil()
-                } else {
-                    BoxDoc::line()
-                        .append(BoxDoc::intersperse(
-                            fragment_body.iter().map(|stmt| stmt.to_doc()),
-                            BoxDoc::line(),
-                        ))
-                        .append(BoxDoc::line())
-                        .nest(2)
-                })
-                .append(BoxDoc::text("} in {"))
                 .append(if body.is_empty() {
                     BoxDoc::nil()
                 } else {
@@ -743,6 +704,7 @@ impl IrExpr {
             | IrExpr::FieldAccess { id, .. }
             | IrExpr::StringLiteral { id, .. }
             | IrExpr::FragmentEmpty { id, .. }
+            | IrExpr::Fragment { id, .. }
             | IrExpr::BooleanLiteral { id, .. }
             | IrExpr::FloatLiteral { id, .. }
             | IrExpr::IntLiteral { id, .. }
@@ -790,7 +752,7 @@ impl IrExpr {
             IrExpr::FloatLiteral { .. } | IrExpr::IntToFloat { .. } => Arc::new(Type::Float),
             IrExpr::IntLiteral { .. } => Arc::new(Type::Int),
 
-            IrExpr::FragmentEmpty { .. } => Arc::new(Type::Fragment),
+            IrExpr::FragmentEmpty { .. } | IrExpr::Fragment { .. } => Arc::new(Type::Fragment),
 
             IrExpr::StringConcat { .. }
             | IrExpr::TwMerge { .. }
@@ -845,7 +807,7 @@ impl IrExpr {
             IrExpr::FloatLiteral { .. } | IrExpr::IntToFloat { .. } => &FLOAT_TYPE,
             IrExpr::IntLiteral { .. } => &INT_TYPE,
 
-            IrExpr::FragmentEmpty { .. } => &FRAGMENT_TYPE,
+            IrExpr::FragmentEmpty { .. } | IrExpr::Fragment { .. } => &FRAGMENT_TYPE,
 
             IrExpr::StringConcat { .. }
             | IrExpr::TwMerge { .. }
@@ -889,6 +851,19 @@ impl IrExpr {
                 .append(BoxDoc::text(field.as_str())),
             IrExpr::StringLiteral { value, .. } => BoxDoc::text(format!("{:?}", value.as_str())),
             IrExpr::FragmentEmpty { .. } => BoxDoc::text("Fragment::empty()"),
+            IrExpr::Fragment { body, .. } => BoxDoc::text("{")
+                .append(if body.is_empty() {
+                    BoxDoc::nil()
+                } else {
+                    BoxDoc::line()
+                        .append(BoxDoc::intersperse(
+                            body.iter().map(|stmt| stmt.to_doc()),
+                            BoxDoc::line(),
+                        ))
+                        .append(BoxDoc::line())
+                        .nest(2)
+                })
+                .append(BoxDoc::text("}")),
             IrExpr::BooleanLiteral { value, .. } => BoxDoc::text(value.to_string()),
             IrExpr::FloatLiteral { value, .. } => BoxDoc::text(value.to_string()),
             IrExpr::IntLiteral { value, .. } => BoxDoc::text(value.to_string()),
@@ -1196,7 +1171,9 @@ impl IrExpr {
         }
     }
 
-    /// Recursively traverses this expression and all nested expressions
+    /// Recursively traverses this expression and all nested expressions.
+    /// Does not descend into the statement body of a fragment expression,
+    /// statement-level traversals own that recursion.
     pub fn traverse<F>(&self, f: &mut F)
     where
         F: FnMut(&IrExpr),
@@ -1274,6 +1251,7 @@ impl IrExpr {
             IrExpr::Var { .. }
             | IrExpr::StringLiteral { .. }
             | IrExpr::FragmentEmpty { .. }
+            | IrExpr::Fragment { .. }
             | IrExpr::BooleanLiteral { .. }
             | IrExpr::FloatLiteral { .. }
             | IrExpr::IntLiteral { .. } => {}
@@ -1307,7 +1285,9 @@ impl IrExpr {
         }
     }
 
-    /// Recursively traverses this expression and all nested expressions with mutable access
+    /// Recursively traverses this expression and all nested expressions with
+    /// mutable access. Does not descend into the statement body of a fragment
+    /// expression, statement-level traversals own that recursion.
     pub fn traverse_mut<F>(&mut self, f: &mut F)
     where
         F: FnMut(&mut IrExpr),
@@ -1385,6 +1365,7 @@ impl IrExpr {
             IrExpr::Var { .. }
             | IrExpr::StringLiteral { .. }
             | IrExpr::FragmentEmpty { .. }
+            | IrExpr::Fragment { .. }
             | IrExpr::BooleanLiteral { .. }
             | IrExpr::FloatLiteral { .. }
             | IrExpr::IntLiteral { .. } => {}
@@ -1465,26 +1446,27 @@ impl<'a> IrViewDeclaration {
     }
 }
 
-/// Traverse all statement bodies recursively and apply a closure to each `Vec<IrStatement>`.
+/// Traverse all statement bodies recursively and apply a closure to each `Vec<IrStatement>`,
+/// including the bodies of fragment expressions.
 /// Children are visited before their parents (post-order / bottom-up).
 pub fn traverse_statements_mut(
     statements: &mut Vec<IrStatement>,
     f: &mut impl FnMut(&mut Vec<IrStatement>),
 ) {
     for stmt in statements.iter_mut() {
+        // Statement bodies nested inside fragment expressions. Expression
+        // traversal stops at a fragment's boundary, so the bodies inside are
+        // reached here, exactly once.
+        stmt.traverse_exprs_mut(&mut |e| {
+            if let IrExpr::Fragment { body, .. } = e {
+                traverse_statements_mut(body, f);
+            }
+        });
         match stmt {
             IrStatement::For { body, .. } => {
                 traverse_statements_mut(body, f);
             }
             IrStatement::Let { body, .. } => {
-                traverse_statements_mut(body, f);
-            }
-            IrStatement::LetFragment {
-                fragment_body,
-                body,
-                ..
-            } => {
-                traverse_statements_mut(fragment_body, f);
                 traverse_statements_mut(body, f);
             }
             IrStatement::Match { match_, .. } => {

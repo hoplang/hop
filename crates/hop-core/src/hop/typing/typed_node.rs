@@ -51,11 +51,44 @@ impl TypedAttribute {
     }
 }
 
+/// The value of an argument passed to a component invocation: an ordinary
+/// expression, or markup rendered into a Fragment (component children).
+#[derive(Debug, Clone)]
+pub enum TypedArgumentValue {
+    Expr(TypedExpr),
+    Fragment(Vec<TypedNode>),
+}
+
+impl TypedArgumentValue {
+    pub fn to_doc(&self) -> BoxDoc<'_> {
+        match self {
+            TypedArgumentValue::Expr(expr) => expr.to_doc(),
+            TypedArgumentValue::Fragment(nodes) => {
+                if nodes.is_empty() {
+                    BoxDoc::text("{}")
+                } else {
+                    BoxDoc::text("{")
+                        .append(
+                            BoxDoc::line()
+                                .append(BoxDoc::intersperse(
+                                    nodes.iter().map(|c| c.to_doc()),
+                                    BoxDoc::line(),
+                                ))
+                                .nest(2),
+                        )
+                        .append(BoxDoc::line())
+                        .append(BoxDoc::text("}"))
+                }
+            }
+        }
+    }
+}
+
 /// An argument passed to a component invocation.
 #[derive(Debug, Clone)]
 pub struct TypedArgument {
     pub name: VarName,
-    pub expr: TypedExpr,
+    pub value: TypedArgumentValue,
 }
 
 #[derive(Debug, Clone)]
@@ -97,12 +130,6 @@ pub enum TypedNode {
         children: Vec<TypedNode>,
     },
 
-    LetFragment {
-        var: VarName,
-        fragment_body: Vec<TypedNode>,
-        body: Vec<TypedNode>,
-    },
-
     Doctype {
         value: CheapString,
     },
@@ -136,7 +163,7 @@ impl TypedNode {
                     .map(|arg| {
                         BoxDoc::text(arg.name.as_str())
                             .append(BoxDoc::text("={"))
-                            .append(arg.expr.to_doc())
+                            .append(arg.value.to_doc())
                             .append(BoxDoc::text("}"))
                     })
                     .collect();
@@ -236,38 +263,6 @@ impl TypedNode {
                     .append(BoxDoc::line())
                     .append(BoxDoc::text("</let>"))
                 }
-            }
-            TypedNode::LetFragment {
-                var,
-                fragment_body,
-                body,
-            } => {
-                fn render(nodes: &[TypedNode]) -> BoxDoc<'_> {
-                    BoxDoc::line()
-                        .append(BoxDoc::intersperse(
-                            nodes.iter().map(|c| c.to_doc()),
-                            BoxDoc::line(),
-                        ))
-                        .nest(2)
-                }
-                let fragment = if fragment_body.is_empty() {
-                    BoxDoc::text("{}")
-                } else {
-                    BoxDoc::text("{")
-                        .append(render(fragment_body))
-                        .append(BoxDoc::line())
-                        .append(BoxDoc::text("}"))
-                };
-                let binding = BoxDoc::text(var.as_str())
-                    .append(BoxDoc::text(" = "))
-                    .append(fragment);
-                BoxDoc::text("<let {")
-                    .append(BoxDoc::line().append(binding).nest(2))
-                    .append(BoxDoc::line())
-                    .append(BoxDoc::text("}>"))
-                    .append(render(body))
-                    .append(BoxDoc::line())
-                    .append(BoxDoc::text("</let>"))
             }
             TypedNode::Match { match_ } => match match_ {
                 Match::Enum { subject, arms } => {

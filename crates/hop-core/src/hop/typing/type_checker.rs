@@ -35,7 +35,8 @@ use crate::hop::typing::typed_ast::{
     TypedRecordDeclaration, TypedViewDeclaration,
 };
 use crate::hop::typing::typed_node::{
-    TypedArgument, TypedAttribute, TypedAttributeValue, TypedLoopSource, TypedNode,
+    TypedArgument, TypedArgumentValue, TypedAttribute, TypedAttributeValue, TypedLoopSource,
+    TypedNode,
 };
 
 pub fn typecheck(
@@ -1286,11 +1287,11 @@ fn typecheck_node(
                 });
             }
 
-            let (children_var, resolved_args, extra_attributes, rest_spread) = typecheck_arguments(
+            let (resolved_args, extra_attributes, rest_spread) = typecheck_arguments(
                 args,
                 &callee_params,
                 &callee_tail,
-                children.is_some(),
+                children.is_some().then_some(typed_children),
                 component_name,
                 component_name_opening_range,
                 caller_params,
@@ -1302,20 +1303,6 @@ fn typecheck_node(
                 definition_links,
                 asset_references,
             );
-
-            if let Some(var) = children_var {
-                return Some(TypedNode::LetFragment {
-                    var,
-                    fragment_body: typed_children,
-                    body: vec![TypedNode::ComponentInvocation {
-                        component_name: component_name.clone(),
-                        component_module,
-                        args: resolved_args,
-                        extra_attributes,
-                        rest_spread,
-                    }],
-                });
-            }
 
             Some(TypedNode::ComponentInvocation {
                 component_name: component_name.clone(),
@@ -1586,7 +1573,7 @@ fn typecheck_arguments(
     args: &[ParsedAttribute],
     callee_params: &[ParamEntry],
     callee_tail: &Tail,
-    has_body: bool,
+    children: Option<Vec<TypedNode>>,
     component_name: &TypeName,
     component_name_opening_range: &DocumentRange,
     caller_params: &[VarName],
@@ -1597,12 +1584,8 @@ fn typecheck_arguments(
     annotations: &mut Vec<TypeAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
     asset_references: &mut Vec<AssetReference>,
-) -> (
-    Option<VarName>,
-    Vec<TypedArgument>,
-    Vec<TypedAttribute>,
-    Option<VarName>,
-) {
+) -> (Vec<TypedArgument>, Vec<TypedAttribute>, Option<VarName>) {
+    let has_body = children.is_some();
     let children_param = callee_params
         .iter()
         .find(|p| p.name.as_str() == "children" && *p.typ == Type::Fragment);
@@ -1735,7 +1718,7 @@ fn typecheck_arguments(
 
         typed_args.push(TypedArgument {
             name: VarName::new(arg_name).unwrap(),
-            expr: typed_expr,
+            value: TypedArgumentValue::Expr(typed_expr),
         });
     }
 
@@ -1746,19 +1729,12 @@ fn typecheck_arguments(
         ));
     }
 
-    let children_var = if synthesize_children_arg {
-        let fresh = var_env.fresh_var();
+    if synthesize_children_arg {
         typed_args.push(TypedArgument {
             name: VarName::new("children").unwrap(),
-            expr: TypedExpr::Var {
-                value: fresh.clone(),
-                kind: Arc::new(Type::Fragment),
-            },
+            value: TypedArgumentValue::Fragment(children.unwrap_or_default()),
         });
-        Some(fresh)
-    } else {
-        None
-    };
+    }
 
     let missing_args: Vec<&str> = callee_params
         .iter()
@@ -1795,16 +1771,16 @@ fn typecheck_arguments(
             typed_args
                 .iter()
                 .find(|arg| arg.name.as_str() == param.name.as_str())
-                .map(|arg| arg.expr.clone())
-                .or_else(|| param.default.clone())
-                .map(|expr| TypedArgument {
+                .map(|arg| arg.value.clone())
+                .or_else(|| param.default.clone().map(TypedArgumentValue::Expr))
+                .map(|value| TypedArgument {
                     name: param.name.clone(),
-                    expr,
+                    value,
                 })
         })
         .collect();
 
-    (children_var, resolved_args, extra_attributes, rest_spread)
+    (resolved_args, extra_attributes, rest_spread)
 }
 
 fn typecheck_attributes(
@@ -2380,11 +2356,7 @@ mod tests {
                 }
 
                 component Main {
-                  <let {
-                    v__0 = {}
-                  }>
-                    <Card children={v__0}/>
-                  </let>
+                  <Card children={{}}/>
                 }
             "#]],
         );
@@ -2435,11 +2407,7 @@ mod tests {
                 }
 
                 component Main {
-                  <let {
-                    v__0 = {}
-                  }>
-                    <Card children={v__0}/>
-                  </let>
+                  <Card children={{}}/>
                 }
             "#]],
         );
@@ -2509,13 +2477,9 @@ mod tests {
                 -- main.hop --
                 component Tree(children: Fragment) {
                   <div>
-                    <let {
-                      v__0 = {
-                        {children}
-                      }
-                    }>
-                      <Tree children={v__0}/>
-                    </let>
+                    <Tree children={{
+                      {children}
+                    }}/>
                   </div>
                 }
             "#]],
@@ -3814,13 +3778,9 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 component Bar {
-                  <let {
-                    v__0 = {
-                      Here's the content for the children
-                    }
-                  }>
-                    <Main children={v__0}/>
-                  </let>
+                  <Main children={{
+                    Here's the content for the children
+                  }}/>
                 }
 
                 component Main(children: Fragment) {
@@ -6446,13 +6406,9 @@ mod tests {
                 }
 
                 component Main {
-                  <let {
-                    v__0 = {
-                      click
-                    }
-                  }>
-                    <Btn children={v__0} disabled/>
-                  </let>
+                  <Btn children={{
+                    click
+                  }} disabled/>
                 }
             "#]],
         );
@@ -7469,13 +7425,9 @@ mod tests {
                 }
 
                 view Main() {
-                  <let {
-                    v__0 = {
-                      Hi
-                    }
-                  }>
-                    <Button class={"p-2"} children={v__0} data-foo="bar"/>
-                  </let>
+                  <Button class={"p-2"} children={{
+                    Hi
+                  }} data-foo="bar"/>
                 }
             "#]],
         );
@@ -7502,13 +7454,9 @@ mod tests {
                 }
 
                 view Main() {
-                  <let {
-                    v__0 = {
-                      Hi
-                    }
-                  }>
-                    <Button children={v__0} data-x="y"/>
-                  </let>
+                  <Button children={{
+                    Hi
+                  }} data-x="y"/>
                 }
             "#]],
         );
@@ -8092,13 +8040,9 @@ mod tests {
                 }
 
                 view Main() {
-                  <let {
-                    v__0 = {
-                      deep
-                    }
-                  }>
-                    <Baz children={v__0}/>
-                  </let>
+                  <Baz children={{
+                    deep
+                  }}/>
                 }
             "#]],
         );
@@ -8187,13 +8131,9 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 component Button(children: Fragment, class: String, ...rest) {
-                  <let {
-                    v__0 = {
-                      {children}
-                    }
-                  }>
-                    <Foo children={v__0} class={class} ...rest/>
-                  </let>
+                  <Foo children={{
+                    {children}
+                  }} class={class} ...rest/>
                 }
 
                 component Foo(children: Fragment, class: String, ...rest) {
@@ -8203,13 +8143,9 @@ mod tests {
                 }
 
                 view Main() {
-                  <let {
-                    v__1 = {
-                      click
-                    }
-                  }>
-                    <Button children={v__1} class={"primary"}/>
-                  </let>
+                  <Button children={{
+                    click
+                  }} class={"primary"}/>
                 }
             "#]],
         );

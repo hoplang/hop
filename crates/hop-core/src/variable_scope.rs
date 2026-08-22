@@ -60,12 +60,6 @@ impl<K: Hash + Eq + Clone, V> VariableScope<K, V> {
         }
     }
 
-    /// Generate a fresh variable name.
-    /// Returns names like "v__0", "v__1", "v__2", etc.
-    pub fn fresh_var(&mut self) -> VarName {
-        self.fresh_vars.fresh_var()
-    }
-
     /// Returns a mutable reference to the fresh variable counter.
     pub fn fresh_var_counter(&mut self) -> &mut FreshVarCounter {
         &mut self.fresh_vars

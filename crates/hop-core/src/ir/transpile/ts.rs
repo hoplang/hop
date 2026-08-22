@@ -806,35 +806,6 @@ impl Transpiler for TsTranspiler {
         self.const_binding(arena, var, binding_type, value, body)
     }
 
-    fn transpile_let_fragment_statement<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        var: &'a IrVar,
-        fragment_body: &'a [IrStatement],
-        body: &'a [IrStatement],
-    ) -> Doc<'a> {
-        self.needs_fragment = true;
-        let binding_type = self.transpile_fragment_type(arena);
-        // The fragment body gets its own `output` buffer, so it is built by an
-        // immediately invoked arrow function rather than inline.
-        let value = arena
-            .text("(() => {")
-            .append(
-                arena
-                    .nil()
-                    .append(arena.line())
-                    .append(arena.text("let output: string = \"\";"))
-                    .append(arena.line())
-                    .append(self.transpile_statements(arena, fragment_body))
-                    .append(arena.line())
-                    .append(arena.text("return output as Fragment;"))
-                    .append(arena.line())
-                    .nest(4),
-            )
-            .append(arena.text("})()"));
-        self.const_binding(arena, var, binding_type, value, body)
-    }
-
     fn transpile_match_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
@@ -1058,6 +1029,27 @@ impl Transpiler for TsTranspiler {
     fn transpile_fragment_empty<'a>(&mut self, arena: &'a Arena<'a>) -> Doc<'a> {
         self.needs_fragment = true;
         arena.text("(\"\" as Fragment)")
+    }
+
+    /// The fragment body gets its own `output` buffer, so it is built by an
+    /// immediately invoked arrow function rather than inline.
+    fn transpile_fragment<'a>(&mut self, arena: &'a Arena<'a>, body: &'a [IrStatement]) -> Doc<'a> {
+        self.needs_fragment = true;
+        arena
+            .text("(() => {")
+            .append(
+                arena
+                    .nil()
+                    .append(arena.line())
+                    .append(arena.text("let output: string = \"\";"))
+                    .append(arena.line())
+                    .append(self.transpile_statements(arena, body))
+                    .append(arena.line())
+                    .append(arena.text("return output as Fragment;"))
+                    .append(arena.line())
+                    .nest(4),
+            )
+            .append(arena.text("})()"))
     }
 
     fn transpile_boolean_literal<'a>(&mut self, arena: &'a Arena<'a>, value: bool) -> Doc<'a> {
