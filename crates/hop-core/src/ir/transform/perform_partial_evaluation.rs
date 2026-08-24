@@ -62,6 +62,11 @@ enum Const {
     },
     Option(Option<ExprId>),
     Array(Vec<ExprId>),
+    Record {
+        record_name: TypeName,
+        /// Field expression IDs for reconstructing the record literal.
+        fields: Vec<(FieldName, ExprId)>,
+    },
 }
 
 impl Const {
@@ -185,6 +190,49 @@ impl Const {
                     id,
                 }
             }
+            Const::Record {
+                record_name,
+                fields,
+            } => {
+                // Reconstruct field expressions from const_map
+                let Some(ResolvedType::Record {
+                    fields: declared_fields,
+                    ..
+                }) = registry.resolve(&kind)
+                else {
+                    panic!("Const::Record must have record type, got {:?}", kind);
+                };
+
+                let reconstructed_fields: Option<Vec<_>> = fields
+                    .iter()
+                    .map(|(field_name, field_id)| {
+                        let field_type = declared_fields
+                            .iter()
+                            .find(|(f, _, _)| f.as_str() == field_name.as_str())
+                            .map(|(_, t, _)| t.clone())
+                            .unwrap_or_else(|| {
+                                panic!("record {record_name} has no field {}", field_name.as_str())
+                            });
+
+                        let field_const = known_expr_map.get(field_id)?;
+                        let field_expr = field_const.to_expr(
+                            expr_ids.next(),
+                            field_type,
+                            known_expr_map,
+                            registry,
+                            expr_ids,
+                        )?;
+                        Some((field_name.clone(), field_expr))
+                    })
+                    .collect();
+
+                IrExpr::RecordLiteral {
+                    record_name: record_name.clone(),
+                    fields: reconstructed_fields?,
+                    kind: kind.clone(),
+                    id,
+                }
+            }
         })
     }
 }
@@ -238,6 +286,12 @@ pub fn perform_partial_evaluation(
 
     // Enum field values: (enum_expr_id => (variant_name, field_name, field_expr_id))
     let mut enum_fields: Vec<(ExprId, (TypeName, FieldName, ExprId))> = Vec::new();
+
+    // Record field values: (record_expr_id => (field_name, field_expr_id))
+    let mut record_fields: Vec<(ExprId, (FieldName, ExprId))> = Vec::new();
+
+    // Field accesses: ((record_expr_id, field_name) => access_expr_id)
+    let mut field_access_entries: Vec<((ExprId, FieldName), ExprId)> = Vec::new();
 
     // Options contained values: (option_expr_id => contained_expr_id)
     let mut option_contained_values: Vec<(ExprId, ExprId)> = Vec::new();
@@ -450,15 +504,34 @@ pub fn perform_partial_evaluation(
                         variable_bindings.insert(var.id, value.id());
                         let_expr_bodies.push((body.id(), expr.id()));
                     }
-                    IrExpr::RecordLiteral { .. } => {
-                        // Not yet implemented
+                    IrExpr::RecordLiteral {
+                        record_name,
+                        fields,
+                        ..
+                    } => {
+                        // Track record as constant (field IDs for reconstruction)
+                        let field_ids: Vec<(FieldName, ExprId)> = fields
+                            .iter()
+                            .map(|(name, expr)| (name.clone(), expr.id()))
+                            .collect();
+                        initial_constants.push((
+                            expr.id(),
+                            Const::Record {
+                                record_name: record_name.clone(),
+                                fields: field_ids.clone(),
+                            },
+                        ));
+                        // Track field values for field access propagation
+                        for (field_name, field_id) in field_ids {
+                            record_fields.push((expr.id(), (field_name, field_id)));
+                        }
                     }
                     IrExpr::ArrayLiteral { elements, .. } => {
                         let element_ids: Vec<ExprId> = elements.iter().map(|e| e.id()).collect();
                         initial_constants.push((expr.id(), Const::Array(element_ids)));
                     }
-                    IrExpr::FieldAccess { .. } => {
-                        // Not yet implemented
+                    IrExpr::FieldAccess { record, field, .. } => {
+                        field_access_entries.push(((record.id(), field.clone()), expr.id()));
                     }
                     IrExpr::ArrayLength { array, .. } => {
                         unary_operands.push((array.id(), expr.id()));
@@ -565,6 +638,24 @@ pub fn perform_partial_evaluation(
 
     // Enum binding uses: ((subject_def_expr_id, variant_name, field_name) => binding_var_expr_id)
     let enum_binding_use = Relation::from_vec(enum_binding_references);
+
+    // Record field expression ids: (record_expr_id => (field_name, field_expr_id))
+    // Used for propagating through variable bindings
+    let record_field = iteration.variable::<(ExprId, (FieldName, ExprId))>("record_field");
+    record_field.extend(record_fields.clone());
+
+    // Record field keyed by (expr_id, field_name): ((record_expr_id, field_name) => field_expr_id)
+    // Used for joining with field accesses.
+    let record_field_keyed =
+        iteration.variable::<((ExprId, FieldName), ExprId)>("record_field_keyed");
+    record_field_keyed.extend(
+        record_fields
+            .into_iter()
+            .map(|(expr_id, (field_name, field_id))| ((expr_id, field_name), field_id)),
+    );
+
+    // Field access uses: ((record_expr_id, field_name) => access_expr_id)
+    let field_access_use = Relation::from_vec(field_access_entries);
 
     // Constant propagation: `propagate_to(x, y)` means "y computes the same value as x".
     let propagate_to = iteration.variable::<(ExprId, ExprId)>("propagate_to");
@@ -779,6 +870,20 @@ pub fn perform_partial_evaluation(
                     )
                 },
             );
+            propagate_to.from_join(
+                &record_field_keyed,
+                &field_access_use,
+                |_key: &(ExprId, FieldName), field_id: &ExprId, access_expr_id: &ExprId| {
+                    (*field_id, *access_expr_id)
+                },
+            );
+            record_field.from_join(
+                &record_field,
+                &propagate_to,
+                |_source: &ExprId,
+                 (field_name, field_id): &(FieldName, ExprId),
+                 target: &ExprId| { (*target, (field_name.clone(), *field_id)) },
+            );
         }
 
         // Keep enum_field_keyed in sync with enum_field
@@ -789,6 +894,13 @@ pub fn perform_partial_evaluation(
                     ((target, variant_name.clone(), field_name.clone()), field_id)
                 },
             );
+        }
+
+        // Keep record_field_keyed in sync with record_field
+        {
+            record_field_keyed.from_map(&record_field, |&(target, (ref field_name, field_id))| {
+                ((target, field_name.clone()), field_id)
+            });
         }
 
         // Evaluate IrExpr::Match over Option
@@ -4112,6 +4224,254 @@ mod tests {
                 -- after --
                 view Test(x@v0: Int) {
                   write_escaped("1")
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_evaluate_field_access_on_record_literal() {
+        check(
+            IrModuleBuilder::new()
+                .record("User", [("name", "String")])
+                .view_no_params("Test", |t| {
+                    t.write_expr_escaped(
+                        t.field_access(t.record("User", vec![("name", t.str("John"))]), "name"),
+                    );
+                }),
+            expect![[r#"
+                -- before --
+                record User {
+                  name: String,
+                }
+                view Test() {
+                  write_escaped(User {name: "John"}.name)
+                }
+
+                -- after --
+                record User {
+                  name: String,
+                }
+                view Test() {
+                  write_escaped("John")
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_propagate_record_field_through_variables() {
+        check(
+            IrModuleBuilder::new()
+                .record("User", [("name", "String")])
+                .view_no_params("Test", |t| {
+                    t.let_stmt(
+                        "user",
+                        t.record("User", vec![("name", t.str("John"))]),
+                        |t| {
+                            t.write_expr_escaped(t.field_access(t.var("user"), "name"));
+                        },
+                    );
+                }),
+            expect![[r#"
+                -- before --
+                record User {
+                  name: String,
+                }
+                view Test() {
+                  let v0 = User {name: "John"} in {
+                    write_escaped(v0.name)
+                  }
+                }
+
+                -- after --
+                record User {
+                  name: String,
+                }
+                view Test() {
+                  let v0 = User {name: "John"} in {
+                    write_escaped("John")
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_evaluate_field_access_with_non_constant_sibling_field() {
+        check(
+            IrModuleBuilder::new()
+                .record("User", [("name", "String"), ("email", "String")])
+                .view("Test", [("email", "String")], |t| {
+                    t.let_stmt(
+                        "user",
+                        t.record(
+                            "User",
+                            vec![("name", t.str("John")), ("email", t.var("email"))],
+                        ),
+                        |t| {
+                            t.write_expr_escaped(t.field_access(t.var("user"), "name"));
+                            t.write_expr_escaped(t.field_access(t.var("user"), "email"));
+                        },
+                    );
+                }),
+            expect![[r#"
+                -- before --
+                record User {
+                  name: String,
+                  email: String,
+                }
+                view Test(email@v0: String) {
+                  let v1 = User {name: "John", email: v0} in {
+                    write_escaped(v1.name)
+                    write_escaped(v1.email)
+                  }
+                }
+
+                -- after --
+                record User {
+                  name: String,
+                  email: String,
+                }
+                view Test(email@v0: String) {
+                  let v1 = User {name: "John", email: v0} in {
+                    write_escaped("John")
+                    write_escaped(v1.email)
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_evaluate_nested_record_field_access() {
+        check(
+            IrModuleBuilder::new()
+                .record("Address", [("city", "String")])
+                .record("User", [("address", "Address")])
+                .view_no_params("Test", |t| {
+                    t.let_stmt(
+                        "user",
+                        t.record(
+                            "User",
+                            vec![(
+                                "address",
+                                t.record("Address", vec![("city", t.str("Paris"))]),
+                            )],
+                        ),
+                        |t| {
+                            t.write_expr_escaped(
+                                t.field_access(t.field_access(t.var("user"), "address"), "city"),
+                            );
+                        },
+                    );
+                }),
+            expect![[r#"
+                -- before --
+                record Address {
+                  city: String,
+                }
+                record User {
+                  address: Address,
+                }
+                view Test() {
+                  let v0 = User {address: Address {city: "Paris"}} in {
+                    write_escaped(v0.address.city)
+                  }
+                }
+
+                -- after --
+                record Address {
+                  city: String,
+                }
+                record User {
+                  address: Address,
+                }
+                view Test() {
+                  let v0 = User {address: Address {city: "Paris"}} in {
+                    write_escaped("Paris")
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_propagate_record_constant_through_variables() {
+        check(
+            IrModuleBuilder::new()
+                .record("User", [("name", "String")])
+                .view_no_params("Test", |t| {
+                    t.let_stmt("x", t.record("User", vec![("name", t.str("John"))]), |t| {
+                        t.let_stmt("y", t.var("x"), |t| {
+                            t.write_expr_escaped(t.field_access(t.var("y"), "name"));
+                        });
+                    });
+                }),
+            expect![[r#"
+                -- before --
+                record User {
+                  name: String,
+                }
+                view Test() {
+                  let v0 = User {name: "John"} in {
+                    let v1 = v0 in {
+                      write_escaped(v1.name)
+                    }
+                  }
+                }
+
+                -- after --
+                record User {
+                  name: String,
+                }
+                view Test() {
+                  let v0 = User {name: "John"} in {
+                    let v1 = User {name: "John"} in {
+                      write_escaped("John")
+                    }
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_evaluate_field_access_in_string_concat() {
+        check(
+            IrModuleBuilder::new()
+                .record("User", [("name", "String")])
+                .view_no_params("Test", |t| {
+                    t.let_stmt(
+                        "user",
+                        t.record("User", vec![("name", t.str("John"))]),
+                        |t| {
+                            t.write_expr_escaped(t.string_concat(
+                                t.str("Hello "),
+                                t.field_access(t.var("user"), "name"),
+                            ));
+                        },
+                    );
+                }),
+            expect![[r#"
+                -- before --
+                record User {
+                  name: String,
+                }
+                view Test() {
+                  let v0 = User {name: "John"} in {
+                    write_escaped(("Hello " + v0.name))
+                  }
+                }
+
+                -- after --
+                record User {
+                  name: String,
+                }
+                view Test() {
+                  let v0 = User {name: "John"} in {
+                    write_escaped("Hello John")
+                  }
                 }
             "#]],
         );
