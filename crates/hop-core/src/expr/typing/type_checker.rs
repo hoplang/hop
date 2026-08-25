@@ -1027,7 +1027,7 @@ pub fn typecheck_expr(
                 .map(|(name, typ, _)| (name.clone(), typ.clone()))
                 .collect::<HashMap<_, _>>();
 
-            // Check for unknown fields and type mismatches
+            // Check for unknown fields, duplicate fields, and type mismatches
             let mut typed_fields = Vec::new();
             let mut provided_fields = HashSet::new();
 
@@ -1042,6 +1042,16 @@ pub fn typecheck_expr(
                         field_value.range().clone(),
                     )
                 })?;
+
+                if !provided_fields.insert(field_name.clone()) {
+                    return Err(TypeError::new(
+                        TypeErrorKind::RecordDuplicateField {
+                            field_name: field_name.clone(),
+                            record_name: record_name.clone(),
+                        },
+                        field_value.range().clone(),
+                    ));
+                }
 
                 // Type check the field value with expected type for bidirectional checking
                 let typed_value = typecheck_expr(
@@ -1068,7 +1078,6 @@ pub fn typecheck_expr(
                     ));
                 }
 
-                provided_fields.insert(field_name.clone());
                 typed_fields.push((field_name.clone(), typed_value));
             }
 
@@ -1174,6 +1183,17 @@ pub fn typecheck_expr(
 
                     match expected_field {
                         Some((_, expected_type, _)) => {
+                            if !provided_field_names.insert(field_name.clone()) {
+                                return Err(TypeError::new(
+                                    TypeErrorKind::EnumVariantDuplicateField {
+                                        enum_name: enum_name.clone(),
+                                        variant_name: variant_name.clone(),
+                                        field_name: field_name.clone(),
+                                    },
+                                    field_name_range.clone(),
+                                ));
+                            }
+
                             // Type check the field expression
                             let typed_field_expr = typecheck_expr(
                                 field_expr,
@@ -1201,7 +1221,6 @@ pub fn typecheck_expr(
                                 ));
                             }
 
-                            provided_field_names.insert(field_name.clone());
                             typed_fields.push((field_name.clone(), typed_field_expr));
                         }
                         None => {
@@ -2990,6 +3009,34 @@ mod tests {
         );
     }
 
+    #[test]
+    fn rejects_record_literal_with_duplicate_field() {
+        reject(
+            TypeRegistryBuilder::new().record("User", [("name", "String")]),
+            &[],
+            r#"User {name: "John", name: "Jane"}"#,
+            expect![[r#"
+                error: Duplicate field 'name' in record literal for 'User'
+                User {name: "John", name: "Jane"}
+                                          ^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_record_literal_with_duplicate_field_of_wrong_type() {
+        reject(
+            TypeRegistryBuilder::new().record("User", [("name", "String")]),
+            &[],
+            r#"User {name: "John", name: 42}"#,
+            expect![[r#"
+                error: Duplicate field 'name' in record literal for 'User'
+                User {name: "John", name: 42}
+                                          ^^
+            "#]],
+        );
+    }
+
     ///////////////////////////////////////////////////////////////////////////
     // ENUMS                                                                 //
     ///////////////////////////////////////////////////////////////////////////
@@ -3221,6 +3268,23 @@ mod tests {
             &[],
             "Point::XY {x: 10, y: 20}",
             expect!["test::Point"],
+        );
+    }
+
+    #[test]
+    fn rejects_enum_variant_with_duplicate_field() {
+        reject(
+            TypeRegistryBuilder::new().enum_(
+                "Point",
+                [("XY", vec![("x", "Int"), ("y", "Int")]), ("Origin", vec![])],
+            ),
+            &[],
+            "Point::XY {x: 1, x: 2, y: 3}",
+            expect![[r#"
+                error: Duplicate field 'x' in enum variant literal for 'Point::XY'
+                Point::XY {x: 1, x: 2, y: 3}
+                                 ^
+            "#]],
         );
     }
 
