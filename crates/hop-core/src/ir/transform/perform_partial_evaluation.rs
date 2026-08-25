@@ -553,9 +553,6 @@ pub fn perform_partial_evaluation(
                         unary_operands.push((option.id(), expr.id()));
                         unary_ops.push((expr.id(), UnaryOp::OptionIsNone));
                     }
-                    IrExpr::FragmentEmpty { .. } => {
-                        // Leaf constant, no sub-expressions to analyze
-                    }
                     IrExpr::Fragment { .. } => {
                         // The statements inside are visited by the enclosing
                         // statement traversal.

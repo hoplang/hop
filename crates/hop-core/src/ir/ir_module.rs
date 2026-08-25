@@ -235,9 +235,6 @@ pub enum IrExpr {
     /// A string literal expression, e.g. "foo bar"
     StringLiteral { value: CheapString, id: ExprId },
 
-    /// An empty Fragment value, i.e. Fragment::empty()
-    FragmentEmpty { id: ExprId },
-
     /// A Fragment value produced by rendering `body` into a fresh buffer.
     Fragment { body: Vec<IrStatement>, id: ExprId },
 
@@ -703,7 +700,6 @@ impl IrExpr {
             IrExpr::Var { id, .. }
             | IrExpr::FieldAccess { id, .. }
             | IrExpr::StringLiteral { id, .. }
-            | IrExpr::FragmentEmpty { id, .. }
             | IrExpr::Fragment { id, .. }
             | IrExpr::BooleanLiteral { id, .. }
             | IrExpr::FloatLiteral { id, .. }
@@ -752,7 +748,7 @@ impl IrExpr {
             IrExpr::FloatLiteral { .. } | IrExpr::IntToFloat { .. } => Arc::new(Type::Float),
             IrExpr::IntLiteral { .. } => Arc::new(Type::Int),
 
-            IrExpr::FragmentEmpty { .. } | IrExpr::Fragment { .. } => Arc::new(Type::Fragment),
+            IrExpr::Fragment { .. } => Arc::new(Type::Fragment),
 
             IrExpr::StringConcat { .. }
             | IrExpr::TwMerge { .. }
@@ -807,7 +803,7 @@ impl IrExpr {
             IrExpr::FloatLiteral { .. } | IrExpr::IntToFloat { .. } => &FLOAT_TYPE,
             IrExpr::IntLiteral { .. } => &INT_TYPE,
 
-            IrExpr::FragmentEmpty { .. } | IrExpr::Fragment { .. } => &FRAGMENT_TYPE,
+            IrExpr::Fragment { .. } => &FRAGMENT_TYPE,
 
             IrExpr::StringConcat { .. }
             | IrExpr::TwMerge { .. }
@@ -850,7 +846,7 @@ impl IrExpr {
                 .append(BoxDoc::text("."))
                 .append(BoxDoc::text(field.as_str())),
             IrExpr::StringLiteral { value, .. } => BoxDoc::text(format!("{:?}", value.as_str())),
-            IrExpr::FragmentEmpty { .. } => BoxDoc::text("Fragment::empty()"),
+
             IrExpr::Fragment { body, .. } => BoxDoc::text("{")
                 .append(if body.is_empty() {
                     BoxDoc::nil()
@@ -1250,7 +1246,6 @@ impl IrExpr {
             }
             IrExpr::Var { .. }
             | IrExpr::StringLiteral { .. }
-            | IrExpr::FragmentEmpty { .. }
             | IrExpr::Fragment { .. }
             | IrExpr::BooleanLiteral { .. }
             | IrExpr::FloatLiteral { .. }
@@ -1364,7 +1359,6 @@ impl IrExpr {
             }
             IrExpr::Var { .. }
             | IrExpr::StringLiteral { .. }
-            | IrExpr::FragmentEmpty { .. }
             | IrExpr::Fragment { .. }
             | IrExpr::BooleanLiteral { .. }
             | IrExpr::FloatLiteral { .. }

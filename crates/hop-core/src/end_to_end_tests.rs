@@ -11092,7 +11092,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 view Test() {
-                  let v0 = Fragment::empty() in {
+                  let v0 = {} in {
                     let v1 = "Hello" in {
                       let v2 = v0 in {
                         let v3 = v1 in {
@@ -11114,7 +11114,7 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  let v0 = Fragment::empty() in {
+                  let v0 = {} in {
                     let v2 = v0 in {
                       write("<div class=\"card\"><h2>Hello</h2>")
                       write_expr(v2)
@@ -11194,7 +11194,7 @@ mod tests {
                       }
                     }
                   }
-                  let v4 = Fragment::empty() in {
+                  let v4 = {} in {
                     let v5 = "Without" in {
                       let v6 = v4 in {
                         let v7 = v5 in {
@@ -11225,7 +11225,7 @@ mod tests {
                       write("</div>")
                     }
                   }
-                  let v4 = Fragment::empty() in {
+                  let v4 = {} in {
                     let v6 = v4 in {
                       write("<div class=\"card\"><h2>Without</h2>")
                       write_expr(v6)

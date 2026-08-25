@@ -347,7 +347,6 @@ fn evaluate_expr(
             }
         }
         IrExpr::StringLiteral { value: s, .. } => Ok(Value::String(s.to_string())),
-        IrExpr::FragmentEmpty { .. } => Ok(Value::String(String::new())),
         IrExpr::Fragment { body, .. } => {
             let mut captured = String::new();
             eval_statements(body, env, &mut captured, component_defs)?;

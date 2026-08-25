@@ -1026,11 +1026,6 @@ impl Transpiler for TsTranspiler {
             .append(arena.text(" as string)"))
     }
 
-    fn transpile_fragment_empty<'a>(&mut self, arena: &'a Arena<'a>) -> Doc<'a> {
-        self.needs_fragment = true;
-        arena.text("(\"\" as Fragment)")
-    }
-
     /// The fragment body gets its own `output` buffer, so it is built by an
     /// immediately invoked arrow function rather than inline.
     fn transpile_fragment<'a>(&mut self, arena: &'a Arena<'a>, body: &'a [IrStatement]) -> Doc<'a> {

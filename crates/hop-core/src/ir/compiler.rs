@@ -755,7 +755,10 @@ impl<'a> Compiler<'a> {
                 kind: kind.clone(),
                 id: expr_id,
             },
-            TypedExpr::FragmentEmpty => IrExpr::FragmentEmpty { id: expr_id },
+            TypedExpr::FragmentEmpty => IrExpr::Fragment {
+                body: Vec::new(),
+                id: expr_id,
+            },
             TypedExpr::Let {
                 var,
                 value,

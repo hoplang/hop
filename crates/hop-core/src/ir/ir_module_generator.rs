@@ -747,7 +747,7 @@ impl IrGenerator<'_, '_> {
                     b.enum_variant_with_fields(name.as_str(), variant, values)
                 }
             }
-            Type::Fragment => b.fragment_empty(),
+            Type::Fragment => b.fragment(|_b| {}),
         }
     }
 }

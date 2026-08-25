@@ -1112,11 +1112,6 @@ impl Transpiler for RustTranspiler {
             .append(arena.text("\".to_string()"))
     }
 
-    fn transpile_fragment_empty<'a>(&mut self, arena: &'a Arena<'a>) -> Doc<'a> {
-        self.needs_fragment = true;
-        arena.text("Fragment(String::new())")
-    }
-
     /// The fragment body renders into its own `output` buffer, so it is
     /// emitted as a block expression that shadows `output`.
     fn transpile_fragment<'a>(&mut self, arena: &'a Arena<'a>, body: &'a [IrStatement]) -> Doc<'a> {

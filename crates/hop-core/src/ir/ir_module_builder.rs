@@ -333,12 +333,6 @@ impl IrBuilder {
         }
     }
 
-    pub fn fragment_empty(&self) -> IrExpr {
-        IrExpr::FragmentEmpty {
-            id: self.next_expr_id(),
-        }
-    }
-
     pub fn fragment<F>(&self, body_fn: F) -> IrExpr
     where
         F: FnOnce(&mut Self),
