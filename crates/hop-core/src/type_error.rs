@@ -245,6 +245,12 @@ pub(crate) enum TypeErrorKind {
         record_name: TypeName,
     },
 
+    #[error("Mismatched type for spread: expected `{expected}` got `{found}`")]
+    RecordSpreadTypeMismatch {
+        expected: Arc<Type>,
+        found: Arc<Type>,
+    },
+
     #[error("Enum type '{enum_name}' is not defined")]
     UndefinedEnum { enum_name: TypeName },
 

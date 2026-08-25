@@ -972,6 +972,7 @@ pub fn typecheck_expr(
             record_name,
             record_name_range,
             fields,
+            spread,
             range,
         } => {
             // Check if the record type is defined
@@ -1027,6 +1028,36 @@ pub fn typecheck_expr(
                 .map(|(name, typ, _)| (name.clone(), typ.clone()))
                 .collect::<HashMap<_, _>>();
 
+            // The spread subject must have exactly the record type being
+            // constructed. It is checked before the explicit fields since it
+            // is evaluated first.
+            let typed_spread = match spread {
+                Some(subject) => {
+                    let typed_subject = typecheck_expr(
+                        subject,
+                        Some(&record_type),
+                        var_env,
+                        type_env,
+                        registry,
+                        annotations,
+                        definition_links,
+                        asset_references,
+                    )?;
+                    let subject_type = typed_subject.get_type();
+                    if *subject_type != *record_type {
+                        return Err(TypeError::new(
+                            TypeErrorKind::RecordSpreadTypeMismatch {
+                                expected: record_type.clone(),
+                                found: subject_type,
+                            },
+                            subject.range().clone(),
+                        ));
+                    }
+                    Some(typed_subject)
+                }
+                None => None,
+            };
+
             // Check for unknown fields, duplicate fields, and type mismatches
             let mut typed_fields = Vec::new();
             let mut provided_fields = HashSet::new();
@@ -1081,26 +1112,87 @@ pub fn typecheck_expr(
                 typed_fields.push((field_name.clone(), typed_value));
             }
 
-            // Check for missing fields
-            let missing_fields = expected_fields
-                .keys()
-                .filter(|name| !provided_fields.contains(name))
-                .cloned()
-                .collect::<Vec<_>>();
-            if !missing_fields.is_empty() {
-                return Err(TypeError::new(
-                    TypeErrorKind::RecordMissingFields {
-                        record_name: record_name.clone(),
-                        missing_fields,
-                    },
-                    range.clone(),
-                ));
+            let Some(typed_spread) = typed_spread else {
+                // Check for missing fields
+                let missing_fields = expected_fields
+                    .keys()
+                    .filter(|name| !provided_fields.contains(name))
+                    .cloned()
+                    .collect::<Vec<_>>();
+                if !missing_fields.is_empty() {
+                    return Err(TypeError::new(
+                        TypeErrorKind::RecordMissingFields {
+                            record_name: record_name.clone(),
+                            missing_fields,
+                        },
+                        range.clone(),
+                    ));
+                }
+
+                return Ok(TypedExpr::RecordLiteral {
+                    record_name: record_name.clone(),
+                    fields: typed_fields,
+                    kind: record_type,
+                });
+            };
+
+            // Desugar the spread: complete the literal with a field access on
+            // the subject for every field not supplied explicitly, so that
+            // downstream passes see only a plain record literal.
+
+            // Every field is explicit: the spread fills nothing, and since
+            // expressions are pure, dropping the subject is unobservable.
+            if record_fields
+                .iter()
+                .all(|(name, _, _)| provided_fields.contains(name))
+            {
+                return Ok(TypedExpr::RecordLiteral {
+                    record_name: record_name.clone(),
+                    fields: typed_fields,
+                    kind: record_type,
+                });
             }
 
-            Ok(TypedExpr::RecordLiteral {
+            // The variable the filled-in fields are read from: the subject
+            // itself when it is already a variable, otherwise a fresh
+            // variable which is bound to the subject expression below.
+            let (subject_var, subject_to_bind) = match typed_spread {
+                TypedExpr::Var { value, .. } => (value, None),
+                subject => (var_env.fresh_var_counter().fresh_var(), Some(subject)),
+            };
+
+            // Lay out the fields in declaration order.
+            let mut explicit: HashMap<FieldName, TypedExpr> = typed_fields.into_iter().collect();
+            let all_fields = record_fields
+                .iter()
+                .map(|(name, typ, _)| {
+                    let value = explicit
+                        .remove(name)
+                        .unwrap_or_else(|| TypedExpr::FieldAccess {
+                            record: Box::new(TypedExpr::Var {
+                                value: subject_var.clone(),
+                                kind: record_type.clone(),
+                            }),
+                            field: name.clone(),
+                            kind: typ.clone(),
+                        });
+                    (name.clone(), value)
+                })
+                .collect();
+
+            let literal = TypedExpr::RecordLiteral {
                 record_name: record_name.clone(),
-                fields: typed_fields,
-                kind: record_type,
+                fields: all_fields,
+                kind: record_type.clone(),
+            };
+            Ok(match subject_to_bind {
+                Some(subject) => TypedExpr::Let {
+                    var: subject_var,
+                    value: Box::new(subject),
+                    body: Box::new(literal),
+                    kind: record_type,
+                },
+                None => literal,
             })
         }
         ParsedExpr::EnumLiteral {
@@ -3033,6 +3125,110 @@ mod tests {
                 error: Duplicate field 'name' in record literal for 'User'
                 User {name: "John", name: 42}
                                           ^^
+            "#]],
+        );
+    }
+
+    ///////////////////////////////////////////////////////////////////////////
+    // FUNCTIONAL RECORD UPDATE                                              //
+    ///////////////////////////////////////////////////////////////////////////
+
+    #[test]
+    fn accepts_record_literal_with_spread_completing_missing_fields() {
+        accept(
+            TypeRegistryBuilder::new().record("User", [("name", "String"), ("age", "Int")]),
+            &[("user", "User")],
+            r#"User {...user, name: "Jane"}"#,
+            expect!["test::User"],
+        );
+    }
+
+    #[test]
+    fn accepts_record_literal_with_only_spread() {
+        accept(
+            TypeRegistryBuilder::new().record("User", [("name", "String"), ("age", "Int")]),
+            &[("user", "User")],
+            "User {...user}",
+            expect!["test::User"],
+        );
+    }
+
+    #[test]
+    fn accepts_record_literal_with_spread_of_field_access() {
+        accept(
+            TypeRegistryBuilder::new()
+                .record("State", [("query", "String"), ("page", "Int")])
+                .record("App", [("state", "State")]),
+            &[("app", "App")],
+            "State {...app.state, page: 1}",
+            expect!["test::State"],
+        );
+    }
+
+    #[test]
+    fn accepts_record_literal_with_spread_and_all_fields_overridden() {
+        accept(
+            TypeRegistryBuilder::new().record("User", [("name", "String"), ("age", "Int")]),
+            &[("user", "User")],
+            r#"User {...user, name: "Jane", age: 30}"#,
+            expect!["test::User"],
+        );
+    }
+
+    #[test]
+    fn rejects_record_literal_with_spread_of_different_record_type() {
+        reject(
+            TypeRegistryBuilder::new()
+                .record("User", [("name", "String")])
+                .record("Admin", [("name", "String")]),
+            &[("admin", "Admin")],
+            r#"User {...admin, name: "Jane"}"#,
+            expect![[r#"
+                error: Mismatched type for spread: expected `test::User` got `test::Admin`
+                User {...admin, name: "Jane"}
+                         ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_record_literal_with_spread_of_non_record_type() {
+        reject(
+            TypeRegistryBuilder::new().record("User", [("name", "String")]),
+            &[("name", "String")],
+            "User {...name}",
+            expect![[r#"
+                error: Mismatched type for spread: expected `test::User` got `String`
+                User {...name}
+                         ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_record_literal_with_spread_and_unknown_field() {
+        reject(
+            TypeRegistryBuilder::new().record("User", [("name", "String")]),
+            &[("user", "User")],
+            r#"User {...user, email: "john@example.com"}"#,
+            expect![[r#"
+                error: Unknown field 'email' in record 'User'
+                User {...user, email: "john@example.com"}
+                                      ^^^^^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_record_literal_with_spread_and_duplicate_field() {
+        reject(
+            TypeRegistryBuilder::new().record("User", [("name", "String"), ("age", "Int")]),
+            &[("user", "User")],
+            r#"User {...user, name: "John", name: "Jane"}"#,
+            expect![[r#"
+                error: Duplicate field 'name' in record literal for 'User'
+                User {...user, name: "John", name: "Jane"}
+                                                   ^^^^^^
             "#]],
         );
     }

@@ -920,14 +920,21 @@ fn format_expr<'a>(
         ParsedExpr::RecordLiteral {
             record_name,
             fields,
+            spread,
             ..
         } => {
-            if fields.is_empty() {
+            if fields.is_empty() && spread.is_none() {
                 arena.text(record_name.as_str()).append(arena.text(" {}"))
             } else {
+                // The spread is canonicalized to first position.
                 let mut fields_doc = arena.nil();
+                if let Some(subject) = spread {
+                    fields_doc = fields_doc
+                        .append(arena.text("..."))
+                        .append(format_expr(arena, subject, comments));
+                }
                 for (i, (key, value)) in fields.iter().enumerate() {
-                    if i > 0 {
+                    if i > 0 || spread.is_some() {
                         fields_doc = fields_doc.append(arena.text(",")).append(arena.line());
                     }
                     fields_doc = fields_doc
@@ -2241,6 +2248,117 @@ mod tests {
 
                 component Main {
                   <let {user: User = User {name: "Alice", age: 30}}>
+                    {user.name}
+                  </let>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn record_literal_spread_to_doc() {
+        check(
+            indoc! {r#"
+                record User { name: String, age: Int }
+                component Main(base: User) {
+                  <let {user: User = User {...base, name: "Alice"}}>
+                    {user.name}
+                  </let>
+                }
+            "#},
+            expect![[r#"
+                record User {
+                  name: String,
+                  age: Int,
+                }
+
+                component Main(base: User) {
+                  <let {user: User = User {...base, name: "Alice"}}>
+                    {user.name}
+                  </let>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn record_literal_spread_is_canonicalized_to_first_position() {
+        check(
+            indoc! {r#"
+                record User { name: String, age: Int }
+                component Main(base: User) {
+                  <let {user: User = User {name: "Alice", ...base}}>
+                    {user.name}
+                  </let>
+                }
+            "#},
+            expect![[r#"
+                record User {
+                  name: String,
+                  age: Int,
+                }
+
+                component Main(base: User) {
+                  <let {user: User = User {...base, name: "Alice"}}>
+                    {user.name}
+                  </let>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn record_literal_with_only_spread_to_doc() {
+        check(
+            indoc! {r#"
+                record User { name: String, age: Int }
+                component Main(base: User) {
+                  <let {user: User = User {...base}}>
+                    {user.name}
+                  </let>
+                }
+            "#},
+            expect![[r#"
+                record User {
+                  name: String,
+                  age: Int,
+                }
+
+                component Main(base: User) {
+                  <let {user: User = User {...base}}>
+                    {user.name}
+                  </let>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn record_literal_spread_wraps_to_multiple_lines() {
+        check(
+            indoc! {r#"
+                record User { name: String, age: Int, email: String }
+                component Main(base: User) {
+                  <let {user: User = User {...base, name: "Alexandra", email: "alexandra@example.com"}}>
+                    {user.name}
+                  </let>
+                }
+            "#},
+            expect![[r#"
+                record User {
+                  name: String,
+                  age: Int,
+                  email: String,
+                }
+
+                component Main(base: User) {
+                  <let {
+                    user: User = User {
+                      ...base,
+                      name: "Alexandra",
+                      email: "alexandra@example.com",
+                    },
+                  }>
                     {user.name}
                   </let>
                 }

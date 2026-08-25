@@ -2,6 +2,7 @@ use std::collections::VecDeque;
 use std::iter::Peekable;
 
 use crate::document::{CheapString, DocumentCursor, DocumentRange};
+use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 
@@ -451,8 +452,12 @@ fn parse_record_literal(
     name: TypeName,
     name_range: DocumentRange,
 ) -> Option<ParsedExpr> {
+    enum Entry {
+        Field(FieldName, ParsedExpr),
+        Spread(ParsedExpr, DocumentRange),
+    }
     let left_delim = expect_token(iter, comments, errors, range, &Token::LeftBrace)?;
-    let (fields, right_delim) = parse_delimited_list(
+    let (entries, right_delim) = parse_delimited_list(
         iter,
         comments,
         errors,
@@ -460,15 +465,41 @@ fn parse_record_literal(
         &Token::LeftBrace,
         &left_delim,
         |iter, comments, errors, range| {
+            if let Some(spread_range) = advance_if(iter, comments, errors, Token::DotDotDot) {
+                let subject = parse_logical(iter, comments, errors, range)?;
+                let spread_range = spread_range.to(subject.range().clone());
+                return Some(Entry::Spread(subject, spread_range));
+            }
             let (field_name, _) = expect_field_name(iter, comments, errors, range)?;
             expect_token(iter, comments, errors, range, &Token::Colon)?;
-            Some((field_name, parse_logical(iter, comments, errors, range)?))
+            Some(Entry::Field(
+                field_name,
+                parse_logical(iter, comments, errors, range)?,
+            ))
         },
     )?;
+    let mut fields = Vec::new();
+    let mut spread = None;
+    for entry in entries {
+        match entry {
+            Entry::Field(field_name, value) => fields.push((field_name, value)),
+            Entry::Spread(subject, spread_range) => {
+                if spread.is_some() {
+                    errors.push(ParseError::new(
+                        ParseErrorKind::DuplicateSpreadInRecordLiteral,
+                        spread_range,
+                    ));
+                    return None;
+                }
+                spread = Some(Box::new(subject));
+            }
+        }
+    }
     Some(ParsedExpr::RecordLiteral {
         record_name: name,
         record_name_range: name_range.clone(),
         fields,
+        spread,
         range: name_range.to(right_delim),
     })
 }
@@ -484,29 +515,37 @@ fn parse_enum_literal(
     expect_token(iter, comments, errors, range, &Token::ColonColon)?;
     let (variant_name, variant_range) = expect_type_name(iter, comments, errors, range)?;
     let constructor_range = enum_name_range.clone().to(variant_range.clone());
-    let (fields, end_range) =
-        if let Some(left_delim) = advance_if(iter, comments, errors, Token::LeftBrace) {
-            parse_delimited_list(
-                iter,
-                comments,
-                errors,
-                range,
-                &Token::LeftBrace,
-                &left_delim,
-                |iter, comments, errors, range| {
-                    let (field_name, field_name_range) =
-                        expect_field_name(iter, comments, errors, range)?;
-                    expect_token(iter, comments, errors, range, &Token::Colon)?;
-                    Some((
-                        field_name,
-                        field_name_range,
-                        parse_logical(iter, comments, errors, range)?,
-                    ))
-                },
-            )?
-        } else {
-            (Vec::new(), variant_range)
-        };
+    let (fields, end_range) = if let Some(left_delim) =
+        advance_if(iter, comments, errors, Token::LeftBrace)
+    {
+        parse_delimited_list(
+            iter,
+            comments,
+            errors,
+            range,
+            &Token::LeftBrace,
+            &left_delim,
+            |iter, comments, errors, range| {
+                if let Some(spread_range) = advance_if(iter, comments, errors, Token::DotDotDot) {
+                    errors.push(ParseError::new(
+                        ParseErrorKind::SpreadNotAllowedInEnumLiteral,
+                        spread_range,
+                    ));
+                    return None;
+                }
+                let (field_name, field_name_range) =
+                    expect_field_name(iter, comments, errors, range)?;
+                expect_token(iter, comments, errors, range, &Token::Colon)?;
+                Some((
+                    field_name,
+                    field_name_range,
+                    parse_logical(iter, comments, errors, range)?,
+                ))
+            },
+        )?
+    } else {
+        (Vec::new(), variant_range)
+    };
     Some(ParsedExpr::EnumLiteral {
         enum_name,
         variant_name,
@@ -909,6 +948,92 @@ mod tests {
             r#"User {name: "John",}"#,
             expect![[r#"
                 User {name: "John"}
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_record_literal_with_spread_first() {
+        accept(
+            r#"User {...base, name: "John"}"#,
+            expect![[r#"
+                User {...base, name: "John"}
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_record_literal_with_spread_last_canonicalized_to_first() {
+        accept(
+            r#"User {name: "John", ...base}"#,
+            expect![[r#"
+                User {...base, name: "John"}
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_record_literal_with_only_spread() {
+        accept(
+            "User {...base}",
+            expect![[r#"
+                User {...base}
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_record_literal_with_spread_of_field_access() {
+        accept(
+            "State {...app.state, page: 1}",
+            expect![[r#"
+                State {...app.state, page: 1}
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_record_literal_with_spread_and_trailing_comma() {
+        accept(
+            r#"User {...base, name: "John",}"#,
+            expect![[r#"
+                User {...base, name: "John"}
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_record_literal_with_two_spreads() {
+        reject(
+            "User {...a, ...b}",
+            expect![[r#"
+                error: At most one spread is allowed in a record literal
+                User {...a, ...b}
+                            ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_record_literal_with_spread_missing_subject() {
+        reject(
+            "User {...}",
+            expect![[r#"
+                error: Unexpected token '}'
+                User {...}
+                         ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_record_pattern_with_spread() {
+        reject(
+            r#"match x {User {...y} => "a"}"#,
+            expect![[r#"
+                error: Expected field name but got '...'
+                match x {User {...y} => "a"}
+                               ^^^
             "#]],
         );
     }
@@ -2039,6 +2164,18 @@ mod tests {
             r#"Outcome::Success {value: x + 1}"#,
             expect![[r#"
                 Outcome::Success {value: x + 1}
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_enum_literal_with_spread() {
+        reject(
+            "Outcome::Success {...other, value: 42}",
+            expect![[r#"
+                error: Spread is not allowed in an enum variant literal
+                Outcome::Success {...other, value: 42}
+                                  ^^^
             "#]],
         );
     }

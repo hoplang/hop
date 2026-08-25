@@ -6625,6 +6625,130 @@ mod tests {
     }
 
     #[test]
+    fn desugars_record_spread_of_variable_into_field_accesses() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                record User { name: String, age: Int }
+                component Main(user: User) {
+                  <let {updated = User {...user, name: "Jane"}}>
+                    <div>{updated.name}</div>
+                  </let>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                record User {
+                  name: String,
+                  age: Int,
+                }
+
+                component Main(user: main::User) {
+                  <let {updated = User {name: "Jane", age: user.age}}>
+                    <div>
+                      {updated.name}
+                    </div>
+                  </let>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn desugars_record_spread_of_expression_into_let_binding() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                record State { query: String, page: Int }
+                record App { state: State }
+                component Main(app: App) {
+                  <let {next = State {...app.state, page: 1}}>
+                    <div>{next.query}</div>
+                  </let>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                record State {
+                  query: String,
+                  page: Int,
+                }
+
+                record App {
+                  state: main::State,
+                }
+
+                component Main(app: main::App) {
+                  <let {next = let v__0 = app.state in State {query: v__0.query, page: 1}}>
+                    <div>
+                      {next.query}
+                    </div>
+                  </let>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn desugars_record_spread_with_all_fields_overridden_into_plain_literal() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                record User { name: String, age: Int }
+                component Main(user: User) {
+                  <let {updated = User {...user, name: "Jane", age: 30}}>
+                    <div>{updated.name}</div>
+                  </let>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                record User {
+                  name: String,
+                  age: Int,
+                }
+
+                component Main(user: main::User) {
+                  <let {updated = User {name: "Jane", age: 30}}>
+                    <div>
+                      {updated.name}
+                    </div>
+                  </let>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_record_spread_of_different_record_type() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                record User { name: String }
+                record Admin { name: String }
+                component Main(admin: Admin) {
+                  <let {user = User {...admin}}>
+                    <div>{user.name}</div>
+                  </let>
+                }
+            "#},
+            expect![[r#"
+                error: Mismatched type for spread: expected `main::User` got `main::Admin`
+                  --> main.hop (line 4, col 25)
+                3 | component Main(admin: Admin) {
+                4 |   <let {user = User {...admin}}>
+                  |                         ^^^^^
+
+                error: Undefined variable: user
+                  --> main.hop (line 5, col 11)
+                4 |   <let {user = User {...admin}}>
+                5 |     <div>{user.name}</div>
+                  |           ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
     fn accepts_mixed_annotated_and_inferred_bindings() {
         accept(
             indoc! {r#"

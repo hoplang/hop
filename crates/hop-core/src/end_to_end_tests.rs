@@ -14198,4 +14198,446 @@ mod tests {
             "#]],
         );
     }
+
+    #[test]
+    #[ignore]
+    fn record_spread_fills_fields_from_subject() {
+        check(
+            indoc! {r#"
+                record State {
+                  query: String,
+                  page: Int,
+                }
+
+                view Test {
+                  <let {base = State {query: "a", page: 1}}>
+                    <let {next = State {...base, page: 2}}>
+                      {next.query}
+                      {next.page.to_string()}
+                    </let>
+                  </let>
+                }
+            "#},
+            r#"a 2"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                record State {
+                  query: String,
+                  page: Int,
+                }
+                view Test() {
+                  let v0 = State {query: "a", page: 1} in {
+                    let v1 = State {query: v0.query, page: 2} in {
+                      write_escaped(v1.query)
+                      write(" ")
+                      write_escaped(v1.page.to_string())
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                record State {
+                  query: String,
+                  page: Int,
+                }
+                view Test() {
+                  write("a 2")
+                }
+                -- expected output --
+                a 2
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn record_spread_with_all_fields_overridden() {
+        check(
+            indoc! {r#"
+                record State {
+                  query: String,
+                  page: Int,
+                }
+
+                view Test {
+                  <let {base = State {query: "a", page: 1}}>
+                    <let {next = State {...base, query: "b", page: 2}}>
+                      {next.query}
+                      {next.page.to_string()}
+                    </let>
+                  </let>
+                }
+            "#},
+            r#"b 2"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                record State {
+                  query: String,
+                  page: Int,
+                }
+                view Test() {
+                  let v0 = State {query: "a", page: 1} in {
+                    let v1 = State {query: "b", page: 2} in {
+                      write_escaped(v1.query)
+                      write(" ")
+                      write_escaped(v1.page.to_string())
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                record State {
+                  query: String,
+                  page: Int,
+                }
+                view Test() {
+                  write("b 2")
+                }
+                -- expected output --
+                b 2
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn record_spread_field_access_folds_through_literal() {
+        check(
+            indoc! {r#"
+                record State {
+                  query: String,
+                  page: Int,
+                }
+
+                view Test {
+                  <for {s in [State {query: "a", page: 7}]}>
+                    {State {...s, query: "x"}.query}
+                    {State {...s, query: "x"}.page.to_string()}
+                  </for>
+                }
+            "#},
+            r#"x 7"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                record State {
+                  query: String,
+                  page: Int,
+                }
+                view Test() {
+                  for v0 in [State {query: "a", page: 7}] {
+                    write_escaped(State {query: "x", page: v0.page}.query)
+                    write(" ")
+                    write_escaped(State {
+                      query: "x",
+                      page: v0.page,
+                    }.page.to_string())
+                  }
+                }
+                -- ir (optimized) --
+                record State {
+                  query: String,
+                  page: Int,
+                }
+                view Test() {
+                  for v0 in [State {query: "a", page: 7}] {
+                    write("x ")
+                    write_escaped(State {
+                      query: "x",
+                      page: v0.page,
+                    }.page.to_string())
+                  }
+                }
+                -- expected output --
+                x 7
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn record_spread_in_match_arm_passed_as_component_prop() {
+        check(
+            indoc! {r#"
+                record Item {
+                  label: String,
+                  selected: Bool,
+                }
+
+                component Row(item: Item) {
+                  <div>
+                    {item.label}
+                  </div>
+                }
+
+                view Test {
+                  <for {item in [Item {label: "a", selected: false}]}>
+                    <match {item.selected}>
+                      <case {true}>
+                        <Row item={Item {...item, label: "on"}}/>
+                      </case>
+                      <case {false}>
+                        <Row item={Item {...item, label: "off"}}/>
+                      </case>
+                    </match>
+                  </for>
+                }
+            "#},
+            r#"<div>off</div>"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                record Item {
+                  label: String,
+                  selected: Bool,
+                }
+                view Test() {
+                  for v0 in [Item {label: "a", selected: false}] {
+                    match v0.selected {
+                      true => {
+                        let v1 = Item {
+                          label: "on",
+                          selected: v0.selected,
+                        } in {
+                          let v2 = v1 in {
+                            write("<div")
+                            write(">")
+                            write_escaped(v2.label)
+                            write("</div>")
+                          }
+                        }
+                      }
+                      false => {
+                        let v3 = Item {
+                          label: "off",
+                          selected: v0.selected,
+                        } in {
+                          let v4 = v3 in {
+                            write("<div")
+                            write(">")
+                            write_escaped(v4.label)
+                            write("</div>")
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                record Item {
+                  label: String,
+                  selected: Bool,
+                }
+                view Test() {
+                  for v0 in [Item {label: "a", selected: false}] {
+                    match v0.selected {
+                      true => {
+                        write("<div>on</div>")
+                      }
+                      false => {
+                        write("<div>off</div>")
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                <div>off</div>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn record_spread_nested_update() {
+        check(
+            indoc! {r#"
+                record Settings {
+                  theme: String,
+                  compact: Bool,
+                }
+
+                record State {
+                  query: String,
+                  settings: Settings,
+                }
+
+                component Dark(s: State) {
+                  <let {t = Settings {...s.settings, theme: "dark"}}>
+                    <let {next = State {...s, settings: t}}>
+                      {next.query}
+                      {next.settings.theme}
+                    </let>
+                  </let>
+                }
+
+                view Test {
+                  <let {s = Settings {theme: "light", compact: true}}>
+                    <Dark s={State {query: "q", settings: s}}/>
+                  </let>
+                }
+            "#},
+            r#"q dark"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                record Settings {
+                  theme: String,
+                  compact: Bool,
+                }
+                record State {
+                  query: String,
+                  settings: Settings,
+                }
+                view Test() {
+                  let v0 = Settings {theme: "light", compact: true} in {
+                    let v1 = State {query: "q", settings: v0} in {
+                      let v2 = v1 in {
+                        let v4 = let v3 = v2.settings in Settings {
+                          theme: "dark",
+                          compact: v3.compact,
+                        } in {
+                          let v5 = State {
+                            query: v2.query,
+                            settings: v4,
+                          } in {
+                            write_escaped(v5.query)
+                            write(" ")
+                            write_escaped(v5.settings.theme)
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                record Settings {
+                  theme: String,
+                  compact: Bool,
+                }
+                record State {
+                  query: String,
+                  settings: Settings,
+                }
+                view Test() {
+                  write("q dark")
+                }
+                -- expected output --
+                q dark
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn record_spread_of_record_literal_subject() {
+        check(
+            indoc! {r#"
+                record Foo {
+                  x: String,
+                  y: String,
+                }
+
+                view Test {
+                  {Foo {...Foo {x: "bar", y: "baz"}, y: "foo"}.x}
+                  {Foo {...Foo {x: "bar", y: "baz"}, y: "foo"}.y}
+                }
+            "#},
+            r#"bar foo"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                record Foo {
+                  x: String,
+                  y: String,
+                }
+                view Test() {
+                  write_escaped(let v0 = Foo {x: "bar", y: "baz"} in Foo {
+                    x: v0.x,
+                    y: "foo",
+                  }.x)
+                  write(" ")
+                  write_escaped(let v1 = Foo {x: "bar", y: "baz"} in Foo {
+                    x: v1.x,
+                    y: "foo",
+                  }.y)
+                }
+                -- ir (optimized) --
+                record Foo {
+                  x: String,
+                  y: String,
+                }
+                view Test() {
+                  write("bar foo")
+                }
+                -- expected output --
+                bar foo
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
 }

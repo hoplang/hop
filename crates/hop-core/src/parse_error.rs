@@ -211,4 +211,10 @@ pub(crate) enum ParseErrorKind {
 
     #[error("Spread '...{name}' does not refer to a declared rest parameter")]
     SpreadNotDeclaredRest { name: VarName },
+
+    #[error("At most one spread is allowed in a record literal")]
+    DuplicateSpreadInRecordLiteral,
+
+    #[error("Spread is not allowed in an enum variant literal")]
+    SpreadNotAllowedInEnumLiteral,
 }

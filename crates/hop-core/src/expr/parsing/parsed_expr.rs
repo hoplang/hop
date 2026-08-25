@@ -56,6 +56,7 @@ pub enum ParsedExpr {
         record_name: TypeName,
         record_name_range: DocumentRange,
         fields: Vec<(FieldName, Self)>,
+        spread: Option<Box<Self>>,
         range: DocumentRange,
     },
 
@@ -388,21 +389,27 @@ impl ParsedExpr {
             ParsedExpr::RecordLiteral {
                 record_name,
                 fields,
+                spread,
                 ..
             } => {
-                if fields.is_empty() {
+                if fields.is_empty() && spread.is_none() {
                     BoxDoc::text(record_name.as_str()).append(BoxDoc::text(" {}"))
                 } else {
+                    // The spread is canonicalized to first position.
+                    let entries = spread
+                        .iter()
+                        .map(|subject| BoxDoc::text("...").append(subject.to_doc()))
+                        .chain(fields.iter().map(|(key, value)| {
+                            BoxDoc::text(key.as_str())
+                                .append(BoxDoc::text(": "))
+                                .append(value.to_doc())
+                        }));
                     BoxDoc::text(record_name.as_str())
                         .append(BoxDoc::text(" {"))
                         .append(
                             BoxDoc::line_()
                                 .append(BoxDoc::intersperse(
-                                    fields.iter().map(|(key, value)| {
-                                        BoxDoc::text(key.as_str())
-                                            .append(BoxDoc::text(": "))
-                                            .append(value.to_doc())
-                                    }),
+                                    entries,
                                     BoxDoc::text(",").append(BoxDoc::line()),
                                 ))
                                 .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
