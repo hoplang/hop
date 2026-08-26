@@ -275,7 +275,7 @@ pub enum IrExpr {
 
     /// A VariableReference expression.
     ///
-    /// Reads the value bound by the innermost active binder.
+    /// Reads the value bound by its binder.
     ///
     /// The kind field must match the binder's type.
     VariableReference {

@@ -27,11 +27,11 @@ pub fn evaluate_view(
             view: view_name.clone(),
         })?;
 
-    let mut env = Env::new();
+    let mut env = VariableEnv::new();
 
     for param in &view.parameters {
         if let Some(value) = args.get(param.name()) {
-            env.push(param.var.id, value.clone());
+            env.insert(param.var.id, value.clone());
         } else {
             return Err(EvalError::MissingParameter {
                 view: view.name.clone(),
@@ -56,34 +56,43 @@ pub enum EvalError {
     MissingParameter { view: TypeName, param: VarName },
 }
 
-/// Stack-based environment for the evaluator.
-struct Env {
-    stack: Vec<(VarId, Value)>,
+/// Variable environment for the evaluator.
+struct VariableEnv {
+    map: HashMap<VarId, Value>,
 }
 
-impl Env {
+impl VariableEnv {
     fn new() -> Self {
-        Self { stack: Vec::new() }
+        Self {
+            map: HashMap::new(),
+        }
     }
-    fn push(&mut self, key: VarId, value: Value) {
-        self.stack.push((key, value));
+    /// Insert a binding into the environment.
+    ///
+    /// Panics if the binding already exists in the environment.
+    fn insert(&mut self, key: VarId, value: Value) {
+        assert_eq!(self.map.insert(key, value), None);
     }
-    fn pop(&mut self) {
-        self.stack.pop();
+
+    /// Remove a binding from the environment.
+    ///
+    /// Panics if the binding does not exist in the environment.
+    fn remove(&mut self, key: &VarId) {
+        assert!(self.map.remove(key).is_some());
     }
-    fn lookup(&self, key: VarId) -> Option<&Value> {
-        self.stack
-            .iter()
-            .rev()
-            .find(|(k, _)| *k == key)
-            .map(|(_, v)| v)
+
+    /// Get a value from the environment.
+    ///
+    /// Panics if the binding does not exist in the environment.
+    fn get(&self, key: &VarId) -> &Value {
+        self.map.get(key).unwrap()
     }
 }
 
 /// Evaluate a slice of IR statements
 fn eval_statements(
     statements: &[IrStatement],
-    env: &mut Env,
+    env: &mut VariableEnv,
     output: &mut String,
     component_defs: &[IrComponentDeclaration],
 ) -> Result<(), EvalError> {
@@ -96,7 +105,7 @@ fn eval_statements(
 /// Evaluate a single IR node
 fn eval_statement(
     node: &IrStatement,
-    env: &mut Env,
+    env: &mut VariableEnv,
     output: &mut String,
     component_defs: &[IrComponentDeclaration],
 ) -> Result<(), EvalError> {
@@ -140,11 +149,11 @@ fn eval_statement(
 
                     for item in items {
                         if let Some(var) = var {
-                            env.push(var.id, item);
+                            env.insert(var.id, item);
                         }
                         eval_statements(body, env, output, component_defs)?;
-                        if var.is_some() {
-                            env.pop();
+                        if let Some(var) = var {
+                            env.remove(&var.id);
                         }
                     }
                 }
@@ -156,11 +165,11 @@ fn eval_statement(
 
                     for i in start_int..=end_int {
                         if let Some(var) = var {
-                            env.push(var.id, Value::Int(i));
+                            env.insert(var.id, Value::Int(i));
                         }
                         eval_statements(body, env, output, component_defs)?;
-                        if var.is_some() {
-                            env.pop();
+                        if let Some(var) = var {
+                            env.remove(&var.id);
                         }
                     }
                 }
@@ -175,9 +184,9 @@ fn eval_statement(
             body,
         } => {
             let val = evaluate_expr(value, env, component_defs)?;
-            env.push(var.id, val);
+            env.insert(var.id, val);
             eval_statements(body, env, output, component_defs)?;
-            env.pop();
+            env.remove(&var.id);
             Ok(())
         }
 
@@ -206,9 +215,9 @@ fn eval_statement(
                 match subject_value {
                     Value::Some(inner) => {
                         if let Some(var) = some_arm_binding {
-                            env.push(var.id, *inner);
+                            env.insert(var.id, *inner);
                             eval_statements(some_arm_body, env, output, component_defs)?;
-                            env.pop();
+                            env.remove(&var.id);
                         } else {
                             eval_statements(some_arm_body, env, output, component_defs)?;
                         }
@@ -238,7 +247,6 @@ fn eval_statement(
                     } = &arm.pattern;
                     if variant_name == pattern_variant {
                         // Bind fields to variables
-                        let bindings_count = arm.bindings.len();
                         for (field_name, var_name) in &arm.bindings {
                             let field_val = fields.get(field_name).unwrap_or_else(|| {
                                 panic!(
@@ -246,11 +254,11 @@ fn eval_statement(
                                     field_name, variant_name
                                 )
                             });
-                            env.push(var_name.id, field_val.clone());
+                            env.insert(var_name.id, field_val.clone());
                         }
                         eval_statements(&arm.body, env, output, component_defs)?;
-                        for _ in 0..bindings_count {
-                            env.pop();
+                        for (_, var_name) in &arm.bindings {
+                            env.remove(&var_name.id);
                         }
                         return Ok(());
                     }
@@ -287,19 +295,14 @@ fn eval_statement(
                 component_name.as_str()
             );
 
-            // Evaluate all argument expressions in the caller's env first,
-            // so an earlier-bound parameter can't shadow a caller variable
-            // that a later argument expression refers to. Only after every
-            // value is computed do we bind them onto the env.
-            let bind_count = component_def.parameters.len();
-            let mut values = Vec::with_capacity(bind_count);
+            let mut callee_env = VariableEnv::new();
             for param in &component_def.parameters {
                 if let Some(arg) = args
                     .iter()
                     .find(|arg| arg.name.as_str() == param.name().as_str())
                 {
                     let value = evaluate_expr(&arg.expr, env, component_defs)?;
-                    values.push((param.var.id, value));
+                    callee_env.insert(param.var.id, value);
                 } else {
                     panic!(
                         "Missing required parameter '{}' for component '{}'",
@@ -308,30 +311,19 @@ fn eval_statement(
                     );
                 }
             }
-            for (id, value) in values {
-                env.push(id, value);
-            }
 
-            eval_statements(&component_def.body, env, output, component_defs)?;
-
-            for _ in 0..bind_count {
-                env.pop();
-            }
-            Ok(())
+            eval_statements(&component_def.body, &mut callee_env, output, component_defs)
         }
     }
 }
 
 fn evaluate_expr(
     expr: &IrExpr,
-    env: &mut Env,
+    env: &mut VariableEnv,
     component_defs: &[IrComponentDeclaration],
 ) -> Result<Value, EvalError> {
     match expr {
-        IrExpr::VariableReference { value: var, .. } => Ok(env
-            .lookup(var.id)
-            .cloned()
-            .unwrap_or_else(|| panic!("Undefined variable: {}", var))),
+        IrExpr::VariableReference { value: var, .. } => Ok(env.get(&var.id).clone()),
         IrExpr::FieldAccess {
             record: object,
             field,
@@ -623,7 +615,6 @@ fn evaluate_expr(
                     } = &arm.pattern;
                     if variant_name == pattern_variant {
                         // Bind fields to variables
-                        let bindings_count = arm.bindings.len();
                         for (field_name, var_name) in &arm.bindings {
                             let field_val = fields.get(field_name).unwrap_or_else(|| {
                                 panic!(
@@ -631,11 +622,11 @@ fn evaluate_expr(
                                     field_name, variant_name
                                 )
                             });
-                            env.push(var_name.id, field_val.clone());
+                            env.insert(var_name.id, field_val.clone());
                         }
                         let result = evaluate_expr(&arm.body, env, component_defs);
-                        for _ in 0..bindings_count {
-                            env.pop();
+                        for (_, var_name) in &arm.bindings {
+                            env.remove(&var_name.id);
                         }
                         return result;
                     }
@@ -670,9 +661,9 @@ fn evaluate_expr(
                 match subject_val {
                     Value::Some(inner) => {
                         if let Some(var_name) = some_arm_binding {
-                            env.push(var_name.id, *inner);
+                            env.insert(var_name.id, *inner);
                             let result = evaluate_expr(some_arm_body, env, component_defs);
-                            env.pop();
+                            env.remove(&var_name.id);
                             result
                         } else {
                             evaluate_expr(some_arm_body, env, component_defs)
@@ -687,9 +678,9 @@ fn evaluate_expr(
             var, value, body, ..
         } => {
             let val = evaluate_expr(value, env, component_defs)?;
-            env.push(var.id, val);
+            env.insert(var.id, val);
             let result = evaluate_expr(body, env, component_defs)?;
-            env.pop();
+            env.remove(&var.id);
             Ok(result)
         }
         IrExpr::TwMerge { operand, .. } => {
