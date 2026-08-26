@@ -306,7 +306,8 @@ pub fn perform_partial_evaluation(
                 IrStatement::For { .. } => {}
                 IrStatement::Match { .. } => {}
                 IrStatement::Write { .. }
-                | IrStatement::WriteExpr { .. }
+                | IrStatement::WriteString { .. }
+                | IrStatement::WriteFragment { .. }
                 | IrStatement::ComponentInvocation { .. } => {
                     // No bindings
                 }
@@ -553,7 +554,7 @@ pub fn perform_partial_evaluation(
                         unary_operands.push((option.id(), expr.id()));
                         unary_ops.push((expr.id(), UnaryOp::OptionIsNone));
                     }
-                    IrExpr::Fragment { .. } => {
+                    IrExpr::FragmentLiteral { .. } => {
                         // The statements inside are visited by the enclosing
                         // statement traversal.
                     }
@@ -1393,21 +1394,21 @@ mod tests {
         check(
             IrModuleBuilder::new().view_no_params("Test", |t| {
                 t.let_stmt("message", t.str("Hello, World!"), |t| {
-                    t.write_expr_escaped(t.var("message"));
+                    t.write_string(t.var("message"));
                 });
             }),
             expect![[r#"
                 -- before --
                 view Test() {
                   let v0 = "Hello, World!" in {
-                    write_escaped(v0)
+                    write_string(v0)
                   }
                 }
 
                 -- after --
                 view Test() {
                   let v0 = "Hello, World!" in {
-                    write_escaped("Hello, World!")
+                    write_string("Hello, World!")
                   }
                 }
             "#]],
@@ -1420,8 +1421,8 @@ mod tests {
             IrModuleBuilder::new().view_no_params("Test", |t| {
                 t.let_stmt("greeting", t.str("Hello"), |t| {
                     t.let_stmt("name", t.str("World"), |t| {
-                        t.write_expr_escaped(t.var("greeting"));
-                        t.write_expr_escaped(t.var("name"));
+                        t.write_string(t.var("greeting"));
+                        t.write_string(t.var("name"));
                     });
                 });
             }),
@@ -1430,8 +1431,8 @@ mod tests {
                 view Test() {
                   let v0 = "Hello" in {
                     let v1 = "World" in {
-                      write_escaped(v0)
-                      write_escaped(v1)
+                      write_string(v0)
+                      write_string(v1)
                     }
                   }
                 }
@@ -1440,8 +1441,8 @@ mod tests {
                 view Test() {
                   let v0 = "Hello" in {
                     let v1 = "World" in {
-                      write_escaped("Hello")
-                      write_escaped("World")
+                      write_string("Hello")
+                      write_string("World")
                     }
                   }
                 }
@@ -1454,10 +1455,10 @@ mod tests {
         check(
             IrModuleBuilder::new().view_no_params("Test", |t| {
                 t.let_stmt("title", t.str("Welcome"), |t| {
-                    t.write_expr_escaped(t.var("title"));
-                    t.write_expr_escaped(t.var("title"));
+                    t.write_string(t.var("title"));
+                    t.write_string(t.var("title"));
                     t.let_stmt("subtitle", t.var("title"), |t| {
-                        t.write_expr_escaped(t.var("subtitle"));
+                        t.write_string(t.var("subtitle"));
                     });
                 });
             }),
@@ -1465,10 +1466,10 @@ mod tests {
                 -- before --
                 view Test() {
                   let v0 = "Welcome" in {
-                    write_escaped(v0)
-                    write_escaped(v0)
+                    write_string(v0)
+                    write_string(v0)
                     let v1 = v0 in {
-                      write_escaped(v1)
+                      write_string(v1)
                     }
                   }
                 }
@@ -1476,10 +1477,10 @@ mod tests {
                 -- after --
                 view Test() {
                   let v0 = "Welcome" in {
-                    write_escaped("Welcome")
-                    write_escaped("Welcome")
+                    write_string("Welcome")
+                    write_string("Welcome")
                     let v1 = "Welcome" in {
-                      write_escaped("Welcome")
+                      write_string("Welcome")
                     }
                   }
                 }
@@ -1571,19 +1572,19 @@ mod tests {
     fn should_evaluate_nested_string_concatenation() {
         check(
             IrModuleBuilder::new().view_no_params("Test", |t| {
-                t.write_expr_escaped(
+                t.write_string(
                     t.string_concat(t.string_concat(t.str("Hello"), t.str(" ")), t.str("World")),
                 );
             }),
             expect![[r#"
                 -- before --
                 view Test() {
-                  write_escaped((("Hello" + " ") + "World"))
+                  write_string((("Hello" + " ") + "World"))
                 }
 
                 -- after --
                 view Test() {
-                  write_escaped("Hello World")
+                  write_string("Hello World")
                 }
             "#]],
         );
@@ -1659,7 +1660,7 @@ mod tests {
                             "full",
                             t.string_concat(t.var("prefix"), t.var("suffix")),
                             |t| {
-                                t.write_expr_escaped(t.var("full"));
+                                t.write_string(t.var("full"));
                             },
                         );
                     });
@@ -1671,7 +1672,7 @@ mod tests {
                   let v0 = "Hello" in {
                     let v1 = (" " + "World") in {
                       let v2 = (v0 + v1) in {
-                        write_escaped(v2)
+                        write_string(v2)
                       }
                     }
                   }
@@ -1682,7 +1683,7 @@ mod tests {
                   let v0 = "Hello" in {
                     let v1 = " World" in {
                       let v2 = "Hello World" in {
-                        write_escaped("Hello World")
+                        write_string("Hello World")
                       }
                     }
                   }
@@ -1698,7 +1699,7 @@ mod tests {
                 .enum_unit("Color", ["Red", "Blue"])
                 .view_no_params("Test", |t| {
                     t.let_stmt("color", t.enum_variant("Color", "Red"), |t| {
-                        t.write_expr_escaped(t.enum_match_expr(t.var("color"), |m| {
+                        t.write_string(t.enum_match_expr(t.var("color"), |m| {
                             m.arm("Red", |t| t.str("red"));
                             m.arm("Blue", |t| t.str("blue"));
                         }));
@@ -1712,7 +1713,7 @@ mod tests {
                 }
                 view Test() {
                   let v0 = Color::Red in {
-                    write_escaped(match v0 {
+                    write_string(match v0 {
                       Color::Red => "red",
                       Color::Blue => "blue",
                     })
@@ -1726,7 +1727,7 @@ mod tests {
                 }
                 view Test() {
                   let v0 = Color::Red in {
-                    write_escaped("red")
+                    write_string("red")
                   }
                 }
             "#]],
@@ -1739,7 +1740,7 @@ mod tests {
             IrModuleBuilder::new()
                 .enum_unit("Color", ["Red", "Blue"])
                 .view_no_params("Test", |t| {
-                    t.write_expr_escaped(t.enum_match_expr(t.enum_variant("Color", "Blue"), |m| {
+                    t.write_string(t.enum_match_expr(t.enum_variant("Color", "Blue"), |m| {
                         m.arm("Red", |t| t.str("red"));
                         m.arm("Blue", |t| t.str("blue"));
                     }));
@@ -1751,7 +1752,7 @@ mod tests {
                   Blue,
                 }
                 view Test() {
-                  write_escaped(match Color::Blue {
+                  write_string(match Color::Blue {
                     Color::Red => "red",
                     Color::Blue => "blue",
                   })
@@ -1763,7 +1764,7 @@ mod tests {
                   Blue,
                 }
                 view Test() {
-                  write_escaped("blue")
+                  write_string("blue")
                 }
             "#]],
         );
@@ -1778,7 +1779,7 @@ mod tests {
                         t.var("opt"),
                         Some("v"),
                         |t| {
-                            t.write_expr(t.var("v"), false);
+                            t.write_string(t.var("v"));
                         },
                         |t| {
                             t.write("none");
@@ -1792,7 +1793,7 @@ mod tests {
                   let v0 = Option[String]::Some("x") in {
                     match v0 {
                       Some(v1) => {
-                        write_expr(v1)
+                        write_string(v1)
                       }
                       None => {
                         write("none")
@@ -1806,7 +1807,7 @@ mod tests {
                   let v0 = Option[String]::Some("x") in {
                     match Option[String]::Some("x") {
                       Some(v1) => {
-                        write_expr(v1)
+                        write_string(v1)
                       }
                       None => {
                         write("none")
@@ -1825,7 +1826,7 @@ mod tests {
                 .enum_unit("Color", ["Red", "Blue"])
                 .view_no_params("Test", |t| {
                     t.let_stmt("color", t.enum_variant("Color", "Blue"), |t| {
-                        t.write_expr_escaped(t.enum_match_expr(t.var("color"), |m| {
+                        t.write_string(t.enum_match_expr(t.var("color"), |m| {
                             m.arm("Red", |t| t.str("red"));
                             m.arm("Blue", |t| t.str("blue"));
                         }));
@@ -1839,7 +1840,7 @@ mod tests {
                 }
                 view Test() {
                   let v0 = Color::Blue in {
-                    write_escaped(match v0 {
+                    write_string(match v0 {
                       Color::Red => "red",
                       Color::Blue => "blue",
                     })
@@ -1853,7 +1854,7 @@ mod tests {
                 }
                 view Test() {
                   let v0 = Color::Blue in {
-                    write_escaped("blue")
+                    write_string("blue")
                   }
                 }
             "#]],
@@ -1989,7 +1990,7 @@ mod tests {
                 .view_no_params("Test", |t| {
                     t.let_stmt("x", t.enum_variant("Color", "Red"), |t| {
                         t.let_stmt("y", t.var("x"), |t| {
-                            t.write_expr_escaped(t.enum_match_expr(t.var("y"), |m| {
+                            t.write_string(t.enum_match_expr(t.var("y"), |m| {
                                 m.arm("Red", |t| t.str("red"));
                                 m.arm("Blue", |t| t.str("blue"));
                             }));
@@ -2005,7 +2006,7 @@ mod tests {
                 view Test() {
                   let v0 = Color::Red in {
                     let v1 = v0 in {
-                      write_escaped(match v1 {
+                      write_string(match v1 {
                         Color::Red => "red",
                         Color::Blue => "blue",
                       })
@@ -2021,7 +2022,7 @@ mod tests {
                 view Test() {
                   let v0 = Color::Red in {
                     let v1 = Color::Red in {
-                      write_escaped("red")
+                      write_string("red")
                     }
                   }
                 }
@@ -2034,30 +2035,30 @@ mod tests {
         check(
             IrModuleBuilder::new().view_no_params("Test", |t| {
                 t.let_stmt("x", t.str("first"), |t| {
-                    t.write_expr_escaped(t.var("x"));
+                    t.write_string(t.var("x"));
                 });
                 t.let_stmt("y", t.str("second"), |t| {
-                    t.write_expr_escaped(t.var("y"));
+                    t.write_string(t.var("y"));
                 });
             }),
             expect![[r#"
                 -- before --
                 view Test() {
                   let v0 = "first" in {
-                    write_escaped(v0)
+                    write_string(v0)
                   }
                   let v1 = "second" in {
-                    write_escaped(v1)
+                    write_string(v1)
                   }
                 }
 
                 -- after --
                 view Test() {
                   let v0 = "first" in {
-                    write_escaped("first")
+                    write_string("first")
                   }
                   let v1 = "second" in {
-                    write_escaped("second")
+                    write_string("second")
                   }
                 }
             "#]],
@@ -2101,17 +2102,17 @@ mod tests {
         check(
             IrModuleBuilder::new().view_no_params("Test", |t| {
                 let classes = t.join(vec![t.str("flex"), t.str("items-center"), t.str("gap-4")]);
-                t.write_expr_escaped(t.tw_merge(classes));
+                t.write_string(t.tw_merge(classes));
             }),
             expect![[r#"
                 -- before --
                 view Test() {
-                  write_escaped(tw_merge((((("flex" + " ") + "items-center") + " ") + "gap-4")))
+                  write_string(tw_merge((((("flex" + " ") + "items-center") + " ") + "gap-4")))
                 }
 
                 -- after --
                 view Test() {
-                  write_escaped("flex items-center gap-4")
+                  write_string("flex items-center gap-4")
                 }
             "#]],
         );
@@ -2122,17 +2123,17 @@ mod tests {
         check(
             IrModuleBuilder::new().view_no_params("Test", |t| {
                 let classes = t.join(vec![t.str("px-4"), t.str("py-2"), t.str("p-6")]);
-                t.write_expr_escaped(t.tw_merge(classes));
+                t.write_string(t.tw_merge(classes));
             }),
             expect![[r#"
                 -- before --
                 view Test() {
-                  write_escaped(tw_merge((((("px-4" + " ") + "py-2") + " ") + "p-6")))
+                  write_string(tw_merge((((("px-4" + " ") + "py-2") + " ") + "p-6")))
                 }
 
                 -- after --
                 view Test() {
-                  write_escaped("p-6")
+                  write_string("p-6")
                 }
             "#]],
         );
@@ -2145,7 +2146,7 @@ mod tests {
                 t.let_stmt("base", t.str("flex items-center"), |t| {
                     t.let_stmt("extra", t.str("gap-4 text-red-500"), |t| {
                         let classes = t.join(vec![t.var("base"), t.var("extra")]);
-                        t.write_expr_escaped(t.tw_merge(classes));
+                        t.write_string(t.tw_merge(classes));
                     });
                 });
             }),
@@ -2154,7 +2155,7 @@ mod tests {
                 view Test() {
                   let v0 = "flex items-center" in {
                     let v1 = "gap-4 text-red-500" in {
-                      write_escaped(tw_merge(((v0 + " ") + v1)))
+                      write_string(tw_merge(((v0 + " ") + v1)))
                     }
                   }
                 }
@@ -2163,7 +2164,7 @@ mod tests {
                 view Test() {
                   let v0 = "flex items-center" in {
                     let v1 = "gap-4 text-red-500" in {
-                      write_escaped("flex items-center gap-4 text-red-500")
+                      write_string("flex items-center gap-4 text-red-500")
                     }
                   }
                 }
@@ -2175,17 +2176,17 @@ mod tests {
     fn should_evaluate_empty_join() {
         check(
             IrModuleBuilder::new().view_no_params("Test", |t| {
-                t.write_expr_escaped(t.join(vec![]));
+                t.write_string(t.join(vec![]));
             }),
             expect![[r#"
                 -- before --
                 view Test() {
-                  write_escaped("")
+                  write_string("")
                 }
 
                 -- after --
                 view Test() {
-                  write_escaped("")
+                  write_string("")
                 }
             "#]],
         );
@@ -2202,17 +2203,17 @@ mod tests {
                     t.str("px-4"),
                     t.join(vec![t.str("px-2"), t.str("p-3")]),
                 ]);
-                t.write_expr_escaped(t.tw_merge(classes));
+                t.write_string(t.tw_merge(classes));
             }),
             expect![[r#"
                 -- before --
                 view Test() {
-                  write_escaped(tw_merge((("px-4" + " ") + (("px-2" + " ") + "p-3"))))
+                  write_string(tw_merge((("px-4" + " ") + (("px-2" + " ") + "p-3"))))
                 }
 
                 -- after --
                 view Test() {
-                  write_escaped("p-3")
+                  write_string("p-3")
                 }
             "#]],
         );
@@ -2232,7 +2233,7 @@ mod tests {
                                 m.arm("Large", |t| t.str("text-lg"));
                             }),
                         ]);
-                        t.write_expr_escaped(t.tw_merge(classes));
+                        t.write_string(t.tw_merge(classes));
                     });
                 }),
             expect![[r#"
@@ -2243,7 +2244,7 @@ mod tests {
                 }
                 view Test() {
                   let v0 = Size::Large in {
-                    write_escaped(tw_merge((("px-4" + " ") + match v0 {
+                    write_string(tw_merge((("px-4" + " ") + match v0 {
                       Size::Small => "text-sm",
                       Size::Large => "text-lg",
                     })))
@@ -2257,7 +2258,7 @@ mod tests {
                 }
                 view Test() {
                   let v0 = Size::Large in {
-                    write_escaped("px-4 text-lg")
+                    write_string("px-4 text-lg")
                   }
                 }
             "#]],
@@ -2278,7 +2279,7 @@ mod tests {
                                 m.arm("Large", |t| t.join(vec![t.str("p-4"), t.str("text-lg")]));
                             }),
                         ]);
-                        t.write_expr_escaped(t.tw_merge(classes));
+                        t.write_string(t.tw_merge(classes));
                     });
                 }),
             expect![[r#"
@@ -2289,7 +2290,7 @@ mod tests {
                 }
                 view Test() {
                   let v0 = Size::Large in {
-                    write_escaped(tw_merge((("flex" + " ") + match v0 {
+                    write_string(tw_merge((("flex" + " ") + match v0 {
                       Size::Small => (("p-2" + " ") + "text-sm"),
                       Size::Large => (("p-4" + " ") + "text-lg"),
                     })))
@@ -2303,7 +2304,7 @@ mod tests {
                 }
                 view Test() {
                   let v0 = Size::Large in {
-                    write_escaped("flex p-4 text-lg")
+                    write_string("flex p-4 text-lg")
                   }
                 }
             "#]],
@@ -2315,7 +2316,7 @@ mod tests {
         check(
             IrModuleBuilder::new().view_no_params("Test", |t| {
                 t.let_stmt("opt", t.some(t.str("hello")), |t| {
-                    t.write_expr_escaped(t.option_match_expr(
+                    t.write_string(t.option_match_expr(
                         t.var("opt"),
                         t.str("got some"),
                         t.str("got none"),
@@ -2326,7 +2327,7 @@ mod tests {
                 -- before --
                 view Test() {
                   let v0 = Option[String]::Some("hello") in {
-                    write_escaped(match v0 {
+                    write_string(match v0 {
                       Some(_) => "got some",
                       None => "got none",
                     })
@@ -2336,7 +2337,7 @@ mod tests {
                 -- after --
                 view Test() {
                   let v0 = Option[String]::Some("hello") in {
-                    write_escaped("got some")
+                    write_string("got some")
                   }
                 }
             "#]],
@@ -2348,7 +2349,7 @@ mod tests {
         check(
             IrModuleBuilder::new().view_no_params("Test", |t| {
                 t.let_stmt("opt", t.none("String"), |t| {
-                    t.write_expr_escaped(t.option_match_expr(
+                    t.write_string(t.option_match_expr(
                         t.var("opt"),
                         t.str("got some"),
                         t.str("got none"),
@@ -2359,7 +2360,7 @@ mod tests {
                 -- before --
                 view Test() {
                   let v0 = Option[String]::None in {
-                    write_escaped(match v0 {
+                    write_string(match v0 {
                       Some(_) => "got some",
                       None => "got none",
                     })
@@ -2369,7 +2370,7 @@ mod tests {
                 -- after --
                 view Test() {
                   let v0 = Option[String]::None in {
-                    write_escaped("got none")
+                    write_string("got none")
                   }
                 }
             "#]],
@@ -2382,7 +2383,7 @@ mod tests {
             IrModuleBuilder::new().view_no_params("Test", |t| {
                 t.let_stmt("x", t.some(t.str("hello")), |t| {
                     t.let_stmt("y", t.var("x"), |t| {
-                        t.write_expr_escaped(t.option_match_expr(
+                        t.write_string(t.option_match_expr(
                             t.var("y"),
                             t.str("got some"),
                             t.str("got none"),
@@ -2395,7 +2396,7 @@ mod tests {
                 view Test() {
                   let v0 = Option[String]::Some("hello") in {
                     let v1 = v0 in {
-                      write_escaped(match v1 {
+                      write_string(match v1 {
                         Some(_) => "got some",
                         None => "got none",
                       })
@@ -2407,7 +2408,7 @@ mod tests {
                 view Test() {
                   let v0 = Option[String]::Some("hello") in {
                     let v1 = Option[String]::Some("hello") in {
-                      write_escaped("got some")
+                      write_string("got some")
                     }
                   }
                 }
@@ -2420,7 +2421,7 @@ mod tests {
         check(
             IrModuleBuilder::new().view_no_params("Test", |t| {
                 t.let_stmt("opt", t.some(t.str("hello")), |t| {
-                    t.write_expr_escaped(t.option_match_expr_with_binding(
+                    t.write_string(t.option_match_expr_with_binding(
                         t.var("opt"),
                         "inner",
                         |t| t.var("inner"),
@@ -2432,7 +2433,7 @@ mod tests {
                 -- before --
                 view Test() {
                   let v0 = Option[String]::Some("hello") in {
-                    write_escaped(match v0 {
+                    write_string(match v0 {
                       Some(v1) => v1,
                       None => "default",
                     })
@@ -2442,7 +2443,7 @@ mod tests {
                 -- after --
                 view Test() {
                   let v0 = Option[String]::Some("hello") in {
-                    write_escaped("hello")
+                    write_string("hello")
                   }
                 }
             "#]],
@@ -2455,7 +2456,7 @@ mod tests {
         check(
             IrModuleBuilder::new().view_no_params("Test", |t| {
                 t.let_stmt("opt", t.some(t.str("hello")), |t| {
-                    t.write_expr_escaped(t.option_match_expr_with_binding(
+                    t.write_string(t.option_match_expr_with_binding(
                         t.var("opt"),
                         "inner",
                         |t| {
@@ -2470,7 +2471,7 @@ mod tests {
                 -- before --
                 view Test() {
                   let v0 = Option[String]::Some("hello") in {
-                    write_escaped(match v0 {
+                    write_string(match v0 {
                       Some(v1) => (v1 + " world"),
                       None => "default",
                     })
@@ -2480,7 +2481,7 @@ mod tests {
                 -- after --
                 view Test() {
                   let v0 = Option[String]::Some("hello") in {
-                    write_escaped("hello world")
+                    write_string("hello world")
                   }
                 }
             "#]],
@@ -2556,7 +2557,7 @@ mod tests {
                         ),
                         |t| {
                             // Second match extracts value from inner_result
-                            t.write_expr_escaped(t.option_match_expr_with_binding(
+                            t.write_string(t.option_match_expr_with_binding(
                                 t.var("inner_result"),
                                 "value",
                                 |t| t.var("value"),
@@ -2574,7 +2575,7 @@ mod tests {
                       Some(v1) => v1,
                       None => Option[String]::None,
                     } in {
-                      write_escaped(match v2 {
+                      write_string(match v2 {
                         Some(v3) => v3,
                         None => "inner none",
                       })
@@ -2586,7 +2587,7 @@ mod tests {
                 view Test() {
                   let v0 = Option[Option[String]]::Some(Option[String]::Some("nested")) in {
                     let v2 = Option[String]::Some("nested") in {
-                      write_escaped("nested")
+                      write_string("nested")
                     }
                   }
                 }
@@ -2600,7 +2601,7 @@ mod tests {
         check(
             IrModuleBuilder::new().view_no_params("Test", |t| {
                 t.let_stmt("outer", t.some(t.some(t.str("nested"))), |t| {
-                    t.write_expr_escaped(t.option_match_expr_with_binding(
+                    t.write_string(t.option_match_expr_with_binding(
                         t.var("outer"),
                         "inner_opt",
                         |t| {
@@ -2622,7 +2623,7 @@ mod tests {
                 -- before --
                 view Test() {
                   let v0 = Option[Option[String]]::Some(Option[String]::Some("nested")) in {
-                    write_escaped(match v0 {
+                    write_string(match v0 {
                       Some(v1) => let v2 = v1 in match v2 {
                         Some(v3) => v3,
                         None => "inner none",
@@ -2635,7 +2636,7 @@ mod tests {
                 -- after --
                 view Test() {
                   let v0 = Option[Option[String]]::Some(Option[String]::Some("nested")) in {
-                    write_escaped("nested")
+                    write_string("nested")
                   }
                 }
             "#]],
@@ -2652,7 +2653,7 @@ mod tests {
                         "msg",
                         t.enum_variant_with_fields("Msg", "Say", vec![("text", t.str("hello"))]),
                         |t| {
-                            t.write_expr_escaped(t.enum_match_expr(t.var("msg"), |m| {
+                            t.write_string(t.enum_match_expr(t.var("msg"), |m| {
                                 m.arm_bound("Say", [("text", "t")], |t| t.var("t"));
                             }));
                         },
@@ -2665,7 +2666,7 @@ mod tests {
                 }
                 view Test() {
                   let v0 = Msg::Say {text: "hello"} in {
-                    write_escaped(match v0 {Msg::Say {text: v1} => v1})
+                    write_string(match v0 {Msg::Say {text: v1} => v1})
                   }
                 }
 
@@ -2675,7 +2676,7 @@ mod tests {
                 }
                 view Test() {
                   let v0 = Msg::Say {text: "hello"} in {
-                    write_escaped("hello")
+                    write_string("hello")
                   }
                 }
             "#]],
@@ -2692,7 +2693,7 @@ mod tests {
                         "msg",
                         t.enum_variant_with_fields("Msg", "Say", vec![("text", t.str("world"))]),
                         |t| {
-                            t.write_expr_escaped(t.enum_match_expr(t.var("msg"), |m| {
+                            t.write_string(t.enum_match_expr(t.var("msg"), |m| {
                                 m.arm_bound("Say", [("text", "t")], |t| {
                                     t.string_concat(t.str("hello "), t.var("t"))
                                 });
@@ -2707,7 +2708,7 @@ mod tests {
                 }
                 view Test() {
                   let v0 = Msg::Say {text: "world"} in {
-                    write_escaped(match v0 {
+                    write_string(match v0 {
                       Msg::Say {text: v1} => ("hello " + v1),
                     })
                   }
@@ -2719,7 +2720,7 @@ mod tests {
                 }
                 view Test() {
                   let v0 = Msg::Say {text: "world"} in {
-                    write_escaped("hello world")
+                    write_string("hello world")
                   }
                 }
             "#]],
@@ -2799,7 +2800,7 @@ mod tests {
                         t.enum_variant_with_fields("Msg", "Say", vec![("text", t.str("hello"))]),
                         |t| {
                             t.let_stmt("y", t.var("x"), |t| {
-                                t.write_expr_escaped(t.enum_match_expr(t.var("y"), |m| {
+                                t.write_string(t.enum_match_expr(t.var("y"), |m| {
                                     m.arm_bound("Say", [("text", "t")], |t| t.var("t"));
                                 }));
                             });
@@ -2814,7 +2815,7 @@ mod tests {
                 view Test() {
                   let v0 = Msg::Say {text: "hello"} in {
                     let v1 = v0 in {
-                      write_escaped(match v1 {Msg::Say {text: v2} => v2})
+                      write_string(match v1 {Msg::Say {text: v2} => v2})
                     }
                   }
                 }
@@ -2826,7 +2827,7 @@ mod tests {
                 view Test() {
                   let v0 = Msg::Say {text: "hello"} in {
                     let v1 = Msg::Say {text: "hello"} in {
-                      write_escaped("hello")
+                      write_string("hello")
                     }
                   }
                 }
@@ -2852,7 +2853,7 @@ mod tests {
                             vec![("first", t.str("hello")), ("second", t.str("world"))],
                         ),
                         |t| {
-                            t.write_expr_escaped(t.enum_match_expr(t.var("pair"), |m| {
+                            t.write_string(t.enum_match_expr(t.var("pair"), |m| {
                                 m.arm_bound("Values", [("first", "a"), ("second", "b")], |t| {
                                     t.string_concat(
                                         t.var("a"),
@@ -2870,7 +2871,7 @@ mod tests {
                 }
                 view Test() {
                   let v0 = Pair::Values {first: "hello", second: "world"} in {
-                    write_escaped(match v0 {
+                    write_string(match v0 {
                       Pair::Values {first: v1, second: v2} => (v1 + (" " + v2)),
                     })
                   }
@@ -2882,7 +2883,7 @@ mod tests {
                 }
                 view Test() {
                   let v0 = Pair::Values {first: "hello", second: "world"} in {
-                    write_escaped("hello world")
+                    write_string("hello world")
                   }
                 }
             "#]],
@@ -2910,7 +2911,7 @@ mod tests {
                             vec![("value", t.str("success"))],
                         ),
                         |t| {
-                            t.write_expr_escaped(t.enum_match_expr(t.var("result"), |m| {
+                            t.write_string(t.enum_match_expr(t.var("result"), |m| {
                                 m.arm_bound("Success", [("value", "v")], |t| t.var("v"));
                                 m.arm_bound("Failure", [("msg", "m")], |t| {
                                     t.string_concat(t.str("error: "), t.var("m"))
@@ -2927,7 +2928,7 @@ mod tests {
                 }
                 view Test() {
                   let v0 = Outcome::Success {value: "success"} in {
-                    write_escaped(match v0 {
+                    write_string(match v0 {
                       Outcome::Success {value: v1} => v1,
                       Outcome::Failure {msg: v2} => ("error: " + v2),
                     })
@@ -2941,7 +2942,7 @@ mod tests {
                 }
                 view Test() {
                   let v0 = Outcome::Success {value: "success"} in {
-                    write_escaped("success")
+                    write_string("success")
                   }
                 }
             "#]],
@@ -2964,7 +2965,7 @@ mod tests {
                         "subject",
                         t.enum_variant_with_fields("E", "V1", vec![("f0", t.str("hello"))]),
                         |t| {
-                            t.write_expr_escaped(t.enum_match_expr(t.var("subject"), |m| {
+                            t.write_string(t.enum_match_expr(t.var("subject"), |m| {
                                 m.arm_bound("V0", [("f0", "v")], |t| {
                                     t.bool_match_expr(t.var("v"), t.str("yes"), t.str("no"))
                                 });
@@ -2981,7 +2982,7 @@ mod tests {
                 }
                 view Test() {
                   let v0 = E::V1 {f0: "hello"} in {
-                    write_escaped(match v0 {
+                    write_string(match v0 {
                       E::V0 {f0: v1} => match v1 {
                         true => "yes",
                         false => "no",
@@ -2998,7 +2999,7 @@ mod tests {
                 }
                 view Test() {
                   let v0 = E::V1 {f0: "hello"} in {
-                    write_escaped("hello")
+                    write_string("hello")
                   }
                 }
             "#]],
@@ -3034,7 +3035,7 @@ mod tests {
                                 });
                             }),
                             |t| {
-                                t.write_expr_escaped(t.enum_match_expr(t.var("x"), |m| {
+                                t.write_string(t.enum_match_expr(t.var("x"), |m| {
                                     m.arm_bound("Say", [("text", "t")], |t| t.var("t"));
                                 }));
                             },
@@ -3056,7 +3057,7 @@ mod tests {
                       Choice::A => Msg::Say {text: "hello"},
                       Choice::B => Msg::Say {text: "world"},
                     } in {
-                      write_escaped(match v1 {Msg::Say {text: v2} => v2})
+                      write_string(match v1 {Msg::Say {text: v2} => v2})
                     }
                   }
                 }
@@ -3072,7 +3073,7 @@ mod tests {
                 view Test() {
                   let v0 = Choice::A in {
                     let v1 = Msg::Say {text: "hello"} in {
-                      write_escaped("hello")
+                      write_string("hello")
                     }
                   }
                 }
@@ -3085,25 +3086,21 @@ mod tests {
         check(
             IrModuleBuilder::new().view_no_params("Test", |t| {
                 t.let_stmt("flag", t.bool(true), |t| {
-                    t.write_expr_escaped(t.bool_match_expr(
-                        t.var("flag"),
-                        t.str("yes"),
-                        t.str("no"),
-                    ));
+                    t.write_string(t.bool_match_expr(t.var("flag"), t.str("yes"), t.str("no")));
                 });
             }),
             expect![[r#"
                 -- before --
                 view Test() {
                   let v0 = true in {
-                    write_escaped(match v0 {true => "yes", false => "no"})
+                    write_string(match v0 {true => "yes", false => "no"})
                   }
                 }
 
                 -- after --
                 view Test() {
                   let v0 = true in {
-                    write_escaped("yes")
+                    write_string("yes")
                   }
                 }
             "#]],
@@ -3115,25 +3112,21 @@ mod tests {
         check(
             IrModuleBuilder::new().view_no_params("Test", |t| {
                 t.let_stmt("flag", t.bool(false), |t| {
-                    t.write_expr_escaped(t.bool_match_expr(
-                        t.var("flag"),
-                        t.str("yes"),
-                        t.str("no"),
-                    ));
+                    t.write_string(t.bool_match_expr(t.var("flag"), t.str("yes"), t.str("no")));
                 });
             }),
             expect![[r#"
                 -- before --
                 view Test() {
                   let v0 = false in {
-                    write_escaped(match v0 {true => "yes", false => "no"})
+                    write_string(match v0 {true => "yes", false => "no"})
                   }
                 }
 
                 -- after --
                 view Test() {
                   let v0 = false in {
-                    write_escaped("no")
+                    write_string("no")
                   }
                 }
             "#]],
@@ -3146,11 +3139,7 @@ mod tests {
             IrModuleBuilder::new().view_no_params("Test", |t| {
                 t.let_stmt("x", t.bool(true), |t| {
                     t.let_stmt("y", t.var("x"), |t| {
-                        t.write_expr_escaped(t.bool_match_expr(
-                            t.var("y"),
-                            t.str("yes"),
-                            t.str("no"),
-                        ));
+                        t.write_string(t.bool_match_expr(t.var("y"), t.str("yes"), t.str("no")));
                     });
                 });
             }),
@@ -3159,7 +3148,7 @@ mod tests {
                 view Test() {
                   let v0 = true in {
                     let v1 = v0 in {
-                      write_escaped(match v1 {true => "yes", false => "no"})
+                      write_string(match v1 {true => "yes", false => "no"})
                     }
                   }
                 }
@@ -3168,7 +3157,7 @@ mod tests {
                 view Test() {
                   let v0 = true in {
                     let v1 = true in {
-                      write_escaped("yes")
+                      write_string("yes")
                     }
                   }
                 }
@@ -3181,7 +3170,7 @@ mod tests {
         check(
             IrModuleBuilder::new().view_no_params("Test", |t| {
                 t.let_stmt("flag", t.not(t.bool(false)), |t| {
-                    t.write_expr_escaped(t.bool_match_expr(
+                    t.write_string(t.bool_match_expr(
                         t.var("flag"),
                         t.str("was true"),
                         t.str("was false"),
@@ -3192,7 +3181,7 @@ mod tests {
                 -- before --
                 view Test() {
                   let v0 = (!false) in {
-                    write_escaped(match v0 {
+                    write_string(match v0 {
                       true => "was true",
                       false => "was false",
                     })
@@ -3202,7 +3191,7 @@ mod tests {
                 -- after --
                 view Test() {
                   let v0 = true in {
-                    write_escaped("was true")
+                    write_string("was true")
                   }
                 }
             "#]],
@@ -3244,7 +3233,7 @@ mod tests {
                                 });
                             }),
                             |t| {
-                                t.write_expr_escaped(t.enum_match_expr(t.var("y"), |m| {
+                                t.write_string(t.enum_match_expr(t.var("y"), |m| {
                                     m.arm_bound("Say", [("text", "txt")], |t| t.var("txt"));
                                 }));
                             },
@@ -3266,7 +3255,7 @@ mod tests {
                       Choice::A => let v1 = Msg::Say {text: "hello"} in v1,
                       Choice::B => Msg::Say {text: "world"},
                     } in {
-                      write_escaped(match v2 {Msg::Say {text: v3} => v3})
+                      write_string(match v2 {Msg::Say {text: v3} => v3})
                     }
                   }
                 }
@@ -3282,7 +3271,7 @@ mod tests {
                 view Test() {
                   let v0 = Choice::A in {
                     let v2 = Msg::Say {text: "hello"} in {
-                      write_escaped("hello")
+                      write_string("hello")
                     }
                   }
                 }
@@ -3845,20 +3834,20 @@ mod tests {
     fn should_evaluate_int_to_string() {
         check(
             IrModuleBuilder::new().view_no_params("Test", |t| {
-                t.write_expr_escaped(t.int_to_string(t.add(t.int(40), t.int(2))));
-                t.write_expr_escaped(t.int_to_string(t.int(-7)));
+                t.write_string(t.int_to_string(t.add(t.int(40), t.int(2))));
+                t.write_string(t.int_to_string(t.int(-7)));
             }),
             expect![[r#"
                 -- before --
                 view Test() {
-                  write_escaped((40 + 2).to_string())
-                  write_escaped(-7.to_string())
+                  write_string((40 + 2).to_string())
+                  write_string(-7.to_string())
                 }
 
                 -- after --
                 view Test() {
-                  write_escaped("42")
-                  write_escaped("-7")
+                  write_string("42")
+                  write_string("-7")
                 }
             "#]],
         );
@@ -3922,7 +3911,7 @@ mod tests {
             IrModuleBuilder::new().view_no_params("Test", |t| {
                 t.let_stmt("x", t.add(t.int(1), t.int(2)), |t| {
                     t.let_stmt("y", t.mul(t.var("x"), t.var("x")), |t| {
-                        t.write_expr_escaped(t.int_to_string(t.var("y")));
+                        t.write_string(t.int_to_string(t.var("y")));
                     });
                 });
             }),
@@ -3931,7 +3920,7 @@ mod tests {
                 view Test() {
                   let v0 = (1 + 2) in {
                     let v1 = (v0 * v0) in {
-                      write_escaped(v1.to_string())
+                      write_string(v1.to_string())
                     }
                   }
                 }
@@ -3940,7 +3929,7 @@ mod tests {
                 view Test() {
                   let v0 = 3 in {
                     let v1 = 9 in {
-                      write_escaped("9")
+                      write_string("9")
                     }
                   }
                 }
@@ -3952,7 +3941,7 @@ mod tests {
     fn should_evaluate_int_match_arm_selection() {
         check(
             IrModuleBuilder::new().view_no_params("Test", |t| {
-                t.write_expr_escaped(t.bool_match_expr(
+                t.write_string(t.bool_match_expr(
                     t.lt(t.int(1), t.int(2)),
                     t.str("less"),
                     t.str("not less"),
@@ -3961,7 +3950,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  write_escaped(match (1 < 2) {
+                  write_string(match (1 < 2) {
                     true => "less",
                     false => "not less",
                   })
@@ -3969,7 +3958,7 @@ mod tests {
 
                 -- after --
                 view Test() {
-                  write_escaped("less")
+                  write_string("less")
                 }
             "#]],
         );
@@ -4186,7 +4175,7 @@ mod tests {
     fn should_evaluate_array_length() {
         check(
             IrModuleBuilder::new().view_no_params("Test", |t| {
-                t.write_expr_escaped(t.int_to_string(t.array_length(t.array(vec![
+                t.write_string(t.int_to_string(t.array_length(t.array(vec![
                     t.str("a"),
                     t.str("b"),
                     t.str("c"),
@@ -4195,12 +4184,12 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test() {
-                  write_escaped(["a", "b", "c"].len().to_string())
+                  write_string(["a", "b", "c"].len().to_string())
                 }
 
                 -- after --
                 view Test() {
-                  write_escaped("3")
+                  write_string("3")
                 }
             "#]],
         );
@@ -4210,17 +4199,17 @@ mod tests {
     fn should_evaluate_array_length_with_non_constant_elements() {
         check(
             IrModuleBuilder::new().view("Test", [("x", "Int")], |t| {
-                t.write_expr_escaped(t.int_to_string(t.array_length(t.array(vec![t.var("x")]))));
+                t.write_string(t.int_to_string(t.array_length(t.array(vec![t.var("x")]))));
             }),
             expect![[r#"
                 -- before --
                 view Test(x@v0: Int) {
-                  write_escaped([v0].len().to_string())
+                  write_string([v0].len().to_string())
                 }
 
                 -- after --
                 view Test(x@v0: Int) {
-                  write_escaped("1")
+                  write_string("1")
                 }
             "#]],
         );
@@ -4232,7 +4221,7 @@ mod tests {
             IrModuleBuilder::new()
                 .record("User", [("name", "String")])
                 .view_no_params("Test", |t| {
-                    t.write_expr_escaped(
+                    t.write_string(
                         t.field_access(t.record("User", vec![("name", t.str("John"))]), "name"),
                     );
                 }),
@@ -4242,7 +4231,7 @@ mod tests {
                   name: String,
                 }
                 view Test() {
-                  write_escaped(User {name: "John"}.name)
+                  write_string(User {name: "John"}.name)
                 }
 
                 -- after --
@@ -4250,7 +4239,7 @@ mod tests {
                   name: String,
                 }
                 view Test() {
-                  write_escaped("John")
+                  write_string("John")
                 }
             "#]],
         );
@@ -4266,7 +4255,7 @@ mod tests {
                         "user",
                         t.record("User", vec![("name", t.str("John"))]),
                         |t| {
-                            t.write_expr_escaped(t.field_access(t.var("user"), "name"));
+                            t.write_string(t.field_access(t.var("user"), "name"));
                         },
                     );
                 }),
@@ -4277,7 +4266,7 @@ mod tests {
                 }
                 view Test() {
                   let v0 = User {name: "John"} in {
-                    write_escaped(v0.name)
+                    write_string(v0.name)
                   }
                 }
 
@@ -4287,7 +4276,7 @@ mod tests {
                 }
                 view Test() {
                   let v0 = User {name: "John"} in {
-                    write_escaped("John")
+                    write_string("John")
                   }
                 }
             "#]],
@@ -4307,8 +4296,8 @@ mod tests {
                             vec![("name", t.str("John")), ("email", t.var("email"))],
                         ),
                         |t| {
-                            t.write_expr_escaped(t.field_access(t.var("user"), "name"));
-                            t.write_expr_escaped(t.field_access(t.var("user"), "email"));
+                            t.write_string(t.field_access(t.var("user"), "name"));
+                            t.write_string(t.field_access(t.var("user"), "email"));
                         },
                     );
                 }),
@@ -4320,8 +4309,8 @@ mod tests {
                 }
                 view Test(email@v0: String) {
                   let v1 = User {name: "John", email: v0} in {
-                    write_escaped(v1.name)
-                    write_escaped(v1.email)
+                    write_string(v1.name)
+                    write_string(v1.email)
                   }
                 }
 
@@ -4332,8 +4321,8 @@ mod tests {
                 }
                 view Test(email@v0: String) {
                   let v1 = User {name: "John", email: v0} in {
-                    write_escaped("John")
-                    write_escaped(v1.email)
+                    write_string("John")
+                    write_string(v1.email)
                   }
                 }
             "#]],
@@ -4357,7 +4346,7 @@ mod tests {
                             )],
                         ),
                         |t| {
-                            t.write_expr_escaped(
+                            t.write_string(
                                 t.field_access(t.field_access(t.var("user"), "address"), "city"),
                             );
                         },
@@ -4373,7 +4362,7 @@ mod tests {
                 }
                 view Test() {
                   let v0 = User {address: Address {city: "Paris"}} in {
-                    write_escaped(v0.address.city)
+                    write_string(v0.address.city)
                   }
                 }
 
@@ -4386,7 +4375,7 @@ mod tests {
                 }
                 view Test() {
                   let v0 = User {address: Address {city: "Paris"}} in {
-                    write_escaped("Paris")
+                    write_string("Paris")
                   }
                 }
             "#]],
@@ -4401,7 +4390,7 @@ mod tests {
                 .view_no_params("Test", |t| {
                     t.let_stmt("x", t.record("User", vec![("name", t.str("John"))]), |t| {
                         t.let_stmt("y", t.var("x"), |t| {
-                            t.write_expr_escaped(t.field_access(t.var("y"), "name"));
+                            t.write_string(t.field_access(t.var("y"), "name"));
                         });
                     });
                 }),
@@ -4413,7 +4402,7 @@ mod tests {
                 view Test() {
                   let v0 = User {name: "John"} in {
                     let v1 = v0 in {
-                      write_escaped(v1.name)
+                      write_string(v1.name)
                     }
                   }
                 }
@@ -4425,7 +4414,7 @@ mod tests {
                 view Test() {
                   let v0 = User {name: "John"} in {
                     let v1 = User {name: "John"} in {
-                      write_escaped("John")
+                      write_string("John")
                     }
                   }
                 }
@@ -4443,7 +4432,7 @@ mod tests {
                         "user",
                         t.record("User", vec![("name", t.str("John"))]),
                         |t| {
-                            t.write_expr_escaped(t.string_concat(
+                            t.write_string(t.string_concat(
                                 t.str("Hello "),
                                 t.field_access(t.var("user"), "name"),
                             ));
@@ -4457,7 +4446,7 @@ mod tests {
                 }
                 view Test() {
                   let v0 = User {name: "John"} in {
-                    write_escaped(("Hello " + v0.name))
+                    write_string(("Hello " + v0.name))
                   }
                 }
 
@@ -4467,7 +4456,7 @@ mod tests {
                 }
                 view Test() {
                   let v0 = User {name: "John"} in {
-                    write_escaped("Hello John")
+                    write_string("Hello John")
                   }
                 }
             "#]],

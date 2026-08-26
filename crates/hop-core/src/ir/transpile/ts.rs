@@ -693,26 +693,29 @@ impl Transpiler for TsTranspiler {
             .append(arena.text(";"))
     }
 
-    fn transpile_write_expr_statement<'a>(
+    fn transpile_write_string_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
         expr: &'a IrExpr,
-        escape: bool,
     ) -> Doc<'a> {
-        if escape {
-            self.needs_escape_html = true;
-            arena
-                .nil()
-                .append(arena.text("output += escapeHtml("))
-                .append(self.transpile_expr(arena, expr))
-                .append(arena.text(");"))
-        } else {
-            arena
-                .nil()
-                .append(arena.text("output += "))
-                .append(self.transpile_expr(arena, expr))
-                .append(arena.text(";"))
-        }
+        self.needs_escape_html = true;
+        arena
+            .nil()
+            .append(arena.text("output += escapeHtml("))
+            .append(self.transpile_expr(arena, expr))
+            .append(arena.text(");"))
+    }
+
+    fn transpile_write_fragment_statement<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        expr: &'a IrExpr,
+    ) -> Doc<'a> {
+        arena
+            .nil()
+            .append(arena.text("output += "))
+            .append(self.transpile_expr(arena, expr))
+            .append(arena.text(";"))
     }
 
     fn transpile_for_statement<'a>(
@@ -1757,10 +1760,10 @@ mod tests {
             IrModuleBuilder::new().view("UserInfo", [("name", "String"), ("age", "String")], |t| {
                 t.write("<div>\n");
                 t.write("<h2>Name: ");
-                t.write_expr_escaped(t.var("name"));
+                t.write_string(t.var("name"));
                 t.write("</h2>\n");
                 t.write("<p>Age: ");
-                t.write_expr(t.var("age"), false);
+                t.write_string(t.var("age"));
                 t.write("</p>\n");
                 t.write("</div>\n");
             }),
@@ -1769,10 +1772,10 @@ mod tests {
                 view UserInfo(name@v0: String, age@v1: String) {
                   write("<div>\n")
                   write("<h2>Name: ")
-                  write_escaped(v0)
+                  write_string(v0)
                   write("</h2>\n")
                   write("<p>Age: ")
-                  write_expr(v1)
+                  write_string(v1)
                   write("</p>\n")
                   write("</div>\n")
                 }
@@ -1802,7 +1805,7 @@ mod tests {
                     output += escapeHtml(v_0);
                     output += "</h2>\n";
                     output += "<p>Age: ";
-                    output += v_1;
+                    output += escapeHtml(v_1);
                     output += "</p>\n";
                     output += "</div>\n";
                     return output;
@@ -1820,7 +1823,7 @@ mod tests {
                 |t| {
                     t.if_stmt(t.var("show"), |t| {
                         t.write("<h1>");
-                        t.write_expr_escaped(t.var("title"));
+                        t.write_string(t.var("title"));
                         t.write("</h1>\n");
                     });
                 },
@@ -1831,7 +1834,7 @@ mod tests {
                   match v1 {
                     true => {
                       write("<h1>")
-                      write_escaped(v0)
+                      write_string(v0)
                       write("</h1>\n")
                     }
                     false => {
@@ -1877,7 +1880,7 @@ mod tests {
                 t.write("<ul>\n");
                 t.for_loop("item", t.var("items"), |t| {
                     t.write("<li>");
-                    t.write_expr_escaped(t.var("item"));
+                    t.write_string(t.var("item"));
                     t.write("</li>\n");
                 });
                 t.write("</ul>\n");
@@ -1888,7 +1891,7 @@ mod tests {
                   write("<ul>\n")
                   for v1 in v0 {
                     write("<li>")
-                    write_escaped(v1)
+                    write_string(v1)
                     write("</li>\n")
                   }
                   write("</ul>\n")
@@ -1927,7 +1930,7 @@ mod tests {
         check(
             IrModuleBuilder::new().view_no_params("Counter", |t| {
                 t.for_range(Some("i"), t.int(1), t.int(3), |t| {
-                    t.write_expr(t.int_to_string(t.var("i")), false);
+                    t.write_string(t.int_to_string(t.var("i")));
                     t.write(" ");
                 });
             }),
@@ -1935,7 +1938,7 @@ mod tests {
                 -- before --
                 view Counter() {
                   for v0 in 1..=3 {
-                    write_expr(v0.to_string())
+                    write_string(v0.to_string())
                     write(" ")
                   }
                 }
@@ -1943,12 +1946,21 @@ mod tests {
                 -- after --
                 // Code generated by the hop compiler. DO NOT EDIT.
 
+                function escapeHtml(str: string): string {
+                    return str
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;');
+                }
+
                 export function Counter(): string {
                     let output: string = "";
                     const v_1: number = (1 as number);
                     const v_2: number = (3 as number);
                     for (let v_0 = v_1; v_0 <= v_2; v_0++) {
-                        output += (v_0).toString();
+                        output += escapeHtml((v_0).toString());
                         output += " ";
                     }
                     return output;
@@ -1964,7 +1976,7 @@ mod tests {
                 t.let_stmt("greeting", t.str("Hello from hop!"), |t| {
                     t.write("<div class=\"card\">\n");
                     t.write("<p>");
-                    t.write_expr_escaped(t.var("greeting"));
+                    t.write_string(t.var("greeting"));
                     t.write("</p>\n");
                     t.write("</div>\n");
                 });
@@ -1975,7 +1987,7 @@ mod tests {
                   let v0 = "Hello from hop!" in {
                     write("<div class=\"card\">\n")
                     write("<p>")
-                    write_escaped(v0)
+                    write_string(v0)
                     write("</p>\n")
                     write("</div>\n")
                   }
@@ -2014,7 +2026,7 @@ mod tests {
                 t.write("<div data-hop-id=\"test/card-comp\">");
                 t.let_stmt("title", t.str("Hello World"), |t| {
                     t.write("<h2>");
-                    t.write_expr_escaped(t.var("title"));
+                    t.write_string(t.var("title"));
                     t.write("</h2>");
                 });
                 t.write("</div>");
@@ -2025,7 +2037,7 @@ mod tests {
                   write("<div data-hop-id=\"test/card-comp\">")
                   let v0 = "Hello World" in {
                     write("<h2>")
-                    write_escaped(v0)
+                    write_string(v0)
                     write("</h2>")
                   }
                   write("</div>")
@@ -2065,11 +2077,9 @@ mod tests {
                 [("safe_content", "Fragment"), ("user_input", "String")],
                 |t| {
                     t.write("<div>");
-                    // Fragment should not be escaped
-                    t.write_expr(t.var("safe_content"), false);
+                    t.write_fragment(t.var("safe_content"));
                     t.write("</div><div>");
-                    // Regular strings should be escaped
-                    t.write_expr_escaped(t.var("user_input"));
+                    t.write_string(t.var("user_input"));
                     t.write("</div>");
                 },
             ),
@@ -2080,9 +2090,9 @@ mod tests {
                   user_input@v1: String,
                 ) {
                   write("<div>")
-                  write_expr(v0)
+                  write_fragment(v0)
                   write("</div><div>")
-                  write_escaped(v1)
+                  write_string(v1)
                   write("</div>")
                 }
 
@@ -2135,7 +2145,7 @@ mod tests {
                 .record("Address", [("street", "String"), ("city", "String")])
                 .view("UserProfile", [("user", "User")], |t| {
                     t.write("<div>");
-                    t.write_expr_escaped(t.field_access(t.var("user"), "name"));
+                    t.write_string(t.field_access(t.var("user"), "name"));
                     t.write("</div>");
                 }),
             expect![[r#"
@@ -2151,7 +2161,7 @@ mod tests {
                 }
                 view UserProfile(user@v0: test::User) {
                   write("<div>")
-                  write_escaped(v0.name)
+                  write_string(v0.name)
                   write("</div>")
                 }
 
@@ -2208,7 +2218,7 @@ mod tests {
                 .view_no_params("CreateUser", |t| {
                     t.write("<div>");
                     let user = t.record("User", vec![("name", t.str("John")), ("age", t.int(30))]);
-                    t.write_expr_escaped(t.field_access(user, "name"));
+                    t.write_string(t.field_access(user, "name"));
                     t.write("</div>");
                 }),
             expect![[r#"
@@ -2219,7 +2229,7 @@ mod tests {
                 }
                 view CreateUser() {
                   write("<div>")
-                  write_escaped(User {name: "John", age: 30}.name)
+                  write_string(User {name: "John", age: 30}.name)
                   write("</div>")
                 }
 
@@ -2265,7 +2275,7 @@ mod tests {
             IrModuleBuilder::new()
                 .record("Node", [("value", "Int"), ("next", "Option[Node]")])
                 .view("Test", [("node", "Node")], |t| {
-                    t.write_expr_escaped(t.int_to_string(t.field_access(t.var("node"), "value")));
+                    t.write_string(t.int_to_string(t.field_access(t.var("node"), "value")));
                 }),
             expect![[r#"
                 -- before --
@@ -2274,7 +2284,7 @@ mod tests {
                   next: Option[test::Node],
                 }
                 view Test(node@v0: test::Node) {
-                  write_escaped(v0.value.to_string())
+                  write_string(v0.value.to_string())
                 }
 
                 -- after --
@@ -2376,9 +2386,7 @@ mod tests {
                         t.record("Node", vec![("value", t.int(1)), ("next", t.none("Node"))]);
                     let node = t.record("Node", vec![("value", t.int(2)), ("next", t.some(inner))]);
                     t.let_stmt("node", node, |t| {
-                        t.write_expr_escaped(
-                            t.int_to_string(t.field_access(t.var("node"), "value")),
-                        );
+                        t.write_string(t.int_to_string(t.field_access(t.var("node"), "value")));
                     });
                 }),
             expect![[r#"
@@ -2395,7 +2403,7 @@ mod tests {
                       next: Option[test::Node]::None,
                     }),
                   } in {
-                    write_escaped(v0.value.to_string())
+                    write_string(v0.value.to_string())
                   }
                 }
 
@@ -2460,7 +2468,7 @@ mod tests {
                         m.arm("Green", |t| t.str("green"));
                         m.arm("Blue", |t| t.str("blue"));
                     });
-                    t.write_expr_escaped(match_result);
+                    t.write_string(match_result);
                 }),
             expect![[r#"
                 -- before --
@@ -2470,7 +2478,7 @@ mod tests {
                   Blue,
                 }
                 view ColorName(color@v0: test::Color) {
-                  write_escaped(match v0 {
+                  write_string(match v0 {
                     Color::Red => "red",
                     Color::Green => "green",
                     Color::Blue => "blue",
@@ -2523,12 +2531,12 @@ mod tests {
         check(
             IrModuleBuilder::new().view("IsActive", [("active", "Bool")], |t| {
                 let match_result = t.bool_match_expr(t.var("active"), t.str("yes"), t.str("no"));
-                t.write_expr_escaped(match_result);
+                t.write_string(match_result);
             }),
             expect![[r#"
                 -- before --
                 view IsActive(active@v0: Bool) {
-                  write_escaped(match v0 {true => "yes", false => "no"})
+                  write_string(match v0 {true => "yes", false => "no"})
                 }
 
                 -- after --
@@ -2558,12 +2566,12 @@ mod tests {
             IrModuleBuilder::new().view("CheckOption", [("opt", "Option[Int]")], |t| {
                 let match_result =
                     t.option_match_expr(t.var("opt"), t.str("has value"), t.str("empty"));
-                t.write_expr_escaped(match_result);
+                t.write_string(match_result);
             }),
             expect![[r#"
                 -- before --
                 view CheckOption(opt@v0: Option[Int]) {
-                  write_escaped(match v0 {
+                  write_string(match v0 {
                     Some(_) => "has value",
                     None => "empty",
                   })
@@ -2636,13 +2644,13 @@ mod tests {
                         t.str("none"),
                     );
 
-                    t.write_expr_escaped(outer_match);
+                    t.write_string(outer_match);
                 },
             ),
             expect![[r#"
                 -- before --
                 view CheckNestedOption(opt@v0: Option[Option[Bool]]) {
-                  write_escaped(match v0 {
+                  write_string(match v0 {
                     Some(v1) => match v1 {
                       Some(v2) => match v2 {
                         true => "some-some-true",
@@ -2712,12 +2720,12 @@ mod tests {
             IrModuleBuilder::new().view("LetExpr", [("name", "String")], |t| {
                 // let x = name in x
                 let result = t.let_expr("x", t.var("name"), |t| t.var("x"));
-                t.write_expr_escaped(result);
+                t.write_string(result);
             }),
             expect![[r#"
                 -- before --
                 view LetExpr(name@v0: String) {
-                  write_escaped(let v1 = v0 in v1)
+                  write_string(let v1 = v0 in v1)
                 }
 
                 -- after --
@@ -2752,7 +2760,7 @@ mod tests {
                     Some("value"),
                     |t| {
                         t.write("<span>Found: ");
-                        t.write_expr_escaped(t.var("value"));
+                        t.write_string(t.var("value"));
                         t.write("</span>");
                     },
                     |t| {
@@ -2766,7 +2774,7 @@ mod tests {
                   match v0 {
                     Some(v1) => {
                       write("<span>Found: ")
-                      write_escaped(v1)
+                      write_string(v1)
                       write("</span>")
                     }
                     None => {
@@ -2834,12 +2842,12 @@ mod tests {
                     // Test Some literal
                     let match_result =
                         t.option_match_expr(t.var("opt1"), t.str("has value"), t.str("empty"));
-                    t.write_expr(match_result, false);
+                    t.write_string(match_result);
 
                     // Test None literal
                     let match_result2 =
                         t.option_match_expr(t.var("opt2"), t.str("HAS"), t.str("EMPTY"));
-                    t.write_expr(match_result2, false);
+                    t.write_string(match_result2);
                 },
             ),
             expect![[r#"
@@ -2848,11 +2856,11 @@ mod tests {
                   opt1@v0: Option[String],
                   opt2@v1: Option[String],
                 ) {
-                  write_expr(match v0 {
+                  write_string(match v0 {
                     Some(_) => "has value",
                     None => "empty",
                   })
-                  write_expr(match v1 {Some(_) => "HAS", None => "EMPTY"})
+                  write_string(match v1 {Some(_) => "HAS", None => "EMPTY"})
                 }
 
                 -- after --
@@ -2869,6 +2877,15 @@ mod tests {
                     }
                 }
 
+                function escapeHtml(str: string): string {
+                    return str
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;');
+                }
+
                 export function TestOptionLiteral({
                     opt1: v_0,
                     opt2: v_1
@@ -2877,18 +2894,18 @@ mod tests {
                     opt2: Option.Option<string>
                 }): string {
                     let output: string = "";
-                    output += ((v_2: Option.Option<string>) => {
+                    output += escapeHtml(((v_2: Option.Option<string>) => {
                       switch (v_2.tag) {
                         case "Some": return ("has value" as string);
                         case "None": return ("empty" as string);
                       }
-                    })(v_0);
-                    output += ((v_3: Option.Option<string>) => {
+                    })(v_0));
+                    output += escapeHtml(((v_3: Option.Option<string>) => {
                       switch (v_3.tag) {
                         case "Some": return ("HAS" as string);
                         case "None": return ("EMPTY" as string);
                       }
-                    })(v_1);
+                    })(v_1));
                     return output;
                 }
             "#]],
@@ -2905,7 +2922,7 @@ mod tests {
                         Some("val"),
                         |t| {
                             t.write("Got:");
-                            t.write_expr(t.var("val"), false);
+                            t.write_string(t.var("val"));
                         },
                         |t| {
                             t.write("Empty");
@@ -2920,7 +2937,7 @@ mod tests {
                     match v0 {
                       Some(v1) => {
                         write("Got:")
-                        write_expr(v1)
+                        write_string(v1)
                       }
                       None => {
                         write("Empty")
@@ -2943,6 +2960,15 @@ mod tests {
                     }
                 }
 
+                function escapeHtml(str: string): string {
+                    return str
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;');
+                }
+
                 export function TestInlineMatch(): string {
                     let output: string = "";
                     const v_0: Option.Option<string> = Option.some<string>(("world" as string));
@@ -2951,7 +2977,7 @@ mod tests {
                         case "Some": {
                             const v_1 = v_2.value;
                             output += "Got:";
-                            output += v_1;
+                            output += escapeHtml(v_1);
                             break;
                         }
                         case "None": {
@@ -2977,7 +3003,7 @@ mod tests {
                             t.some(t.var("value")),
                             Some("inner"),
                             |t| {
-                                t.write_expr(t.var("inner"), false);
+                                t.write_string(t.var("inner"));
                             },
                             |t| {
                                 t.write("none2");
@@ -2996,7 +3022,7 @@ mod tests {
                     Some(v0) => {
                       match Option[String]::Some(v0) {
                         Some(v1) => {
-                          write_expr(v1)
+                          write_string(v1)
                         }
                         None => {
                           write("none2")
@@ -3023,6 +3049,15 @@ mod tests {
                     }
                 }
 
+                function escapeHtml(str: string): string {
+                    return str
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;');
+                }
+
                 export function Test(): string {
                     let output: string = "";
                     const v_2: Option.Option<string> = Option.some<string>(("x" as string));
@@ -3033,7 +3068,7 @@ mod tests {
                             switch (v_3.tag) {
                                 case "Some": {
                                     const v_1 = v_3.value;
-                                    output += v_1;
+                                    output += escapeHtml(v_1);
                                     break;
                                 }
                                 case "None": {
@@ -3060,12 +3095,12 @@ mod tests {
             IrModuleBuilder::new().view("IsActive", [("active", "Bool")], |t| {
                 let match_result =
                     t.bool_match_expr(t.not(t.var("active")), t.str("yes"), t.str("no"));
-                t.write_expr_escaped(match_result);
+                t.write_string(match_result);
             }),
             expect![[r#"
                 -- before --
                 view IsActive(active@v0: Bool) {
-                  write_escaped(match (!v0) {true => "yes", false => "no"})
+                  write_string(match (!v0) {true => "yes", false => "no"})
                 }
 
                 -- after --
@@ -3108,7 +3143,7 @@ mod tests {
                         vec![("value", t.int(42))],
                     );
                     t.let_stmt("ok", ok, |t| {
-                        t.write_expr(t.str("Created Ok!"), false);
+                        t.write_string(t.str("Created Ok!"));
                     });
                     t.write("</div>");
                 }),
@@ -3121,13 +3156,22 @@ mod tests {
                 view ShowOutcome(r@v0: test::Outcome) {
                   write("<div>")
                   let v1 = Outcome::Success {value: 42} in {
-                    write_expr("Created Ok!")
+                    write_string("Created Ok!")
                   }
                   write("</div>")
                 }
 
                 -- after --
                 // Code generated by the hop compiler. DO NOT EDIT.
+
+                function escapeHtml(str: string): string {
+                    return str
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;');
+                }
 
                 export namespace Outcome {
                     export type Outcome = { readonly _tag: "Success", readonly value: number } | { readonly _tag: "Failure", readonly message: string };
@@ -3144,7 +3188,7 @@ mod tests {
                     let output: string = "";
                     output += "<div>";
                     const v_1: Outcome.Outcome = Outcome.Success({value: (42 as number)});
-                    output += ("Created Ok!" as string);
+                    output += escapeHtml(("Created Ok!" as string));
                     output += "</div>";
                     return output;
                 }
@@ -3167,11 +3211,11 @@ mod tests {
                     t.enum_match_stmt(t.var("r"), |m| {
                         m.arm_bound("Success", [("value", "v")], |t| {
                             t.write("Value: ");
-                            t.write_expr(t.var("v"), false);
+                            t.write_string(t.var("v"));
                         });
                         m.arm_bound("Failure", [("message", "m")], |t| {
                             t.write("Error: ");
-                            t.write_expr(t.var("m"), false);
+                            t.write_string(t.var("m"));
                         });
                     });
                 }),
@@ -3185,17 +3229,26 @@ mod tests {
                   match v0 {
                     Outcome::Success(value: v1) => {
                       write("Value: ")
-                      write_expr(v1)
+                      write_string(v1)
                     }
                     Outcome::Failure(message: v2) => {
                       write("Error: ")
-                      write_expr(v2)
+                      write_string(v2)
                     }
                   }
                 }
 
                 -- after --
                 // Code generated by the hop compiler. DO NOT EDIT.
+
+                function escapeHtml(str: string): string {
+                    return str
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;');
+                }
 
                 export namespace Outcome {
                     export type Outcome = { readonly _tag: "Success", readonly value: string } | { readonly _tag: "Failure", readonly message: string };
@@ -3215,13 +3268,13 @@ mod tests {
                         case "Success": {
                             const { value: v_1 } = v_3;
                             output += "Value: ";
-                            output += v_1;
+                            output += escapeHtml(v_1);
                             break;
                         }
                         case "Failure": {
                             const { message: v_2 } = v_3;
                             output += "Error: ";
-                            output += v_2;
+                            output += escapeHtml(v_2);
                             break;
                         }
                     }
@@ -3241,7 +3294,7 @@ mod tests {
                         t.write("<b>hi</b>");
                     },
                     |t| {
-                        t.write_expr(t.var("v_0"), false);
+                        t.write_fragment(t.var("v_0"));
                     },
                 );
             }),
@@ -3251,7 +3304,7 @@ mod tests {
                   let v0 = {
                     write("<b>hi</b>")
                   } in {
-                    write_expr(v0)
+                    write_fragment(v0)
                   }
                 }
 

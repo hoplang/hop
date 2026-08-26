@@ -106,20 +106,21 @@ fn eval_statement(
             Ok(())
         }
 
-        IrStatement::WriteExpr {
-            id: _,
-            expr,
-            escape,
-        } => {
+        IrStatement::WriteFragment { id: _, expr } => {
             let value = evaluate_expr(expr, env, component_defs)?;
             let Value::String(s) = value else {
-                panic!("WriteExpr requires a string value");
+                panic!("WriteFragment requires a string value");
             };
-            if *escape {
-                write_escaped_html(&s, output);
-            } else {
-                output.push_str(&s);
-            }
+            output.push_str(&s);
+            Ok(())
+        }
+
+        IrStatement::WriteString { id: _, expr } => {
+            let value = evaluate_expr(expr, env, component_defs)?;
+            let Value::String(s) = value else {
+                panic!("WriteString requires a string value");
+            };
+            write_escaped_html(&s, output);
             Ok(())
         }
 
@@ -347,7 +348,7 @@ fn evaluate_expr(
             }
         }
         IrExpr::StringLiteral { value: s, .. } => Ok(Value::String(s.to_string())),
-        IrExpr::Fragment { body, .. } => {
+        IrExpr::FragmentLiteral { body, .. } => {
             let mut captured = String::new();
             eval_statements(body, env, &mut captured, component_defs)?;
             Ok(Value::String(captured))
@@ -811,14 +812,14 @@ mod tests {
             IrModuleBuilder::new()
                 .view_no_params("Test", |t| {
                     let sum = t.add(t.int(2147483647), t.int(1));
-                    t.write_expr_escaped(t.int_to_string(sum));
+                    t.write_string(t.int_to_string(sum));
                 })
                 .build(),
             vec![],
             expect![[r#"
                 -- before --
                 view Test() {
-                  write_escaped((2147483647 + 1).to_string())
+                  write_string((2147483647 + 1).to_string())
                 }
 
                 -- after --
@@ -833,14 +834,14 @@ mod tests {
             IrModuleBuilder::new()
                 .view_no_params("Test", |t| {
                     let product = t.mul(t.int(65536), t.int(65536));
-                    t.write_expr_escaped(t.int_to_string(product));
+                    t.write_string(t.int_to_string(product));
                 })
                 .build(),
             vec![],
             expect![[r#"
                 -- before --
                 view Test() {
-                  write_escaped((65536 * 65536).to_string())
+                  write_string((65536 * 65536).to_string())
                 }
 
                 -- after --
@@ -856,14 +857,14 @@ mod tests {
                 .view_no_params("Test", |t| {
                     let min = t.add(t.int(-2147483647), t.int(-1));
                     let negated = t.neg(min);
-                    t.write_expr_escaped(t.int_to_string(negated));
+                    t.write_string(t.int_to_string(negated));
                 })
                 .build(),
             vec![],
             expect![[r#"
                 -- before --
                 view Test() {
-                  write_escaped((-(-2147483647 + -1)).to_string())
+                  write_string((-(-2147483647 + -1)).to_string())
                 }
 
                 -- after --
@@ -878,14 +879,14 @@ mod tests {
             IrModuleBuilder::new()
                 .view_no_params("Test", |t| {
                     let converted = t.float_to_int(t.float(1e19));
-                    t.write_expr_escaped(t.int_to_string(converted));
+                    t.write_string(t.int_to_string(converted));
                 })
                 .build(),
             vec![],
             expect![[r#"
                 -- before --
                 view Test() {
-                  write_escaped(10000000000000000000.to_int().to_string())
+                  write_string(10000000000000000000.to_int().to_string())
                 }
 
                 -- after --
@@ -900,14 +901,14 @@ mod tests {
             IrModuleBuilder::new()
                 .view_no_params("Test", |t| {
                     let converted = t.float_to_int(t.float(f64::NAN));
-                    t.write_expr_escaped(t.int_to_string(converted));
+                    t.write_string(t.int_to_string(converted));
                 })
                 .build(),
             vec![],
             expect![[r#"
                 -- before --
                 view Test() {
-                  write_escaped(NaN.to_int().to_string())
+                  write_string(NaN.to_int().to_string())
                 }
 
                 -- after --
@@ -942,7 +943,7 @@ mod tests {
         check(
             IrModuleBuilder::new()
                 .view("Test", [("content", "String")], |t| {
-                    t.write_expr_escaped(t.var("content"));
+                    t.write_string(t.var("content"));
                 })
                 .build(),
             vec![(
@@ -952,7 +953,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test(content@v0: String) {
-                  write_escaped(v0)
+                  write_string(v0)
                 }
 
                 -- after --
@@ -1026,7 +1027,7 @@ mod tests {
                 .view("Test", [("items", "Array[String]")], |t| {
                     t.for_loop("item", t.var("items"), |t| {
                         t.write("<li>");
-                        t.write_expr_escaped(t.var("item"));
+                        t.write_string(t.var("item"));
                         t.write("</li>\n");
                     });
                 })
@@ -1044,7 +1045,7 @@ mod tests {
                 view Test(items@v0: Array[String]) {
                   for v1 in v0 {
                     write("<li>")
-                    write_escaped(v1)
+                    write_string(v1)
                     write("</li>\n")
                   }
                 }
@@ -1069,7 +1070,7 @@ mod tests {
                             t.write("<b>hi</b>");
                         },
                         |t| {
-                            t.write_expr(t.var("v_0"), false);
+                            t.write_fragment(t.var("v_0"));
                         },
                     );
                 })
@@ -1081,7 +1082,7 @@ mod tests {
                   let v0 = {
                     write("<b>hi</b>")
                   } in {
-                    write_expr(v0)
+                    write_fragment(v0)
                   }
                 }
 
@@ -1095,7 +1096,7 @@ mod tests {
     fn should_error_when_required_param_not_provided() {
         let module = IrModuleBuilder::new()
             .view("Test", [("name", "String")], |t| {
-                t.write_expr(t.var("name"), false);
+                t.write_string(t.var("name"));
             })
             .build();
 
@@ -1115,7 +1116,7 @@ mod tests {
         check(
             IrModuleBuilder::new()
                 .component("C", [("p0", "Int"), ("p1", "Int")], |t| {
-                    t.write_expr(t.int_to_string(t.var("p1")), false);
+                    t.write_string(t.int_to_string(t.var("p1")));
                 })
                 .view("Test", [("p0", "Int")], |t| {
                     t.invoke_component("C", vec![("p0", t.int(999)), ("p1", t.var("p0"))]);
@@ -1125,7 +1126,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 component C(p0@v0: Int, p1@v1: Int) {
-                  write_expr(v1.to_string())
+                  write_string(v1.to_string())
                 }
                 view Test(p0@v2: Int) {
                   call C(p0 = 999, p1 = v2)
@@ -1142,21 +1143,18 @@ mod tests {
         check(
             IrModuleBuilder::new()
                 .view("Test", [("items", "Array[String]")], |t| {
-                    t.write_expr(
-                        t.bool_match_expr(
-                            t.array_is_empty(t.var("items")),
-                            t.str("empty"),
-                            t.str("not empty"),
-                        ),
-                        false,
-                    );
+                    t.write_string(t.bool_match_expr(
+                        t.array_is_empty(t.var("items")),
+                        t.str("empty"),
+                        t.str("not empty"),
+                    ));
                 })
                 .build(),
             vec![("items", Value::Array(vec![]))],
             expect![[r#"
                 -- before --
                 view Test(items@v0: Array[String]) {
-                  write_expr(match v0.is_empty() {
+                  write_string(match v0.is_empty() {
                     true => "empty",
                     false => "not empty",
                   })
@@ -1173,21 +1171,18 @@ mod tests {
         check(
             IrModuleBuilder::new()
                 .view("Test", [("items", "Array[String]")], |t| {
-                    t.write_expr(
-                        t.bool_match_expr(
-                            t.array_is_empty(t.var("items")),
-                            t.str("empty"),
-                            t.str("not empty"),
-                        ),
-                        false,
-                    );
+                    t.write_string(t.bool_match_expr(
+                        t.array_is_empty(t.var("items")),
+                        t.str("empty"),
+                        t.str("not empty"),
+                    ));
                 })
                 .build(),
             vec![("items", Value::Array(vec![Value::String("x".to_string())]))],
             expect![[r#"
                 -- before --
                 view Test(items@v0: Array[String]) {
-                  write_expr(match v0.is_empty() {
+                  write_string(match v0.is_empty() {
                     true => "empty",
                     false => "not empty",
                   })
@@ -1204,21 +1199,18 @@ mod tests {
         check(
             IrModuleBuilder::new()
                 .view("Test", [("name", "String")], |t| {
-                    t.write_expr(
-                        t.bool_match_expr(
-                            t.string_is_empty(t.var("name")),
-                            t.str("empty"),
-                            t.str("not empty"),
-                        ),
-                        false,
-                    );
+                    t.write_string(t.bool_match_expr(
+                        t.string_is_empty(t.var("name")),
+                        t.str("empty"),
+                        t.str("not empty"),
+                    ));
                 })
                 .build(),
             vec![("name", Value::String(String::new()))],
             expect![[r#"
                 -- before --
                 view Test(name@v0: String) {
-                  write_expr(match v0.is_empty() {
+                  write_string(match v0.is_empty() {
                     true => "empty",
                     false => "not empty",
                   })
@@ -1235,21 +1227,18 @@ mod tests {
         check(
             IrModuleBuilder::new()
                 .view("Test", [("name", "String")], |t| {
-                    t.write_expr(
-                        t.bool_match_expr(
-                            t.string_is_empty(t.var("name")),
-                            t.str("empty"),
-                            t.str("not empty"),
-                        ),
-                        false,
-                    );
+                    t.write_string(t.bool_match_expr(
+                        t.string_is_empty(t.var("name")),
+                        t.str("empty"),
+                        t.str("not empty"),
+                    ));
                 })
                 .build(),
             vec![("name", Value::String("value".to_string()))],
             expect![[r#"
                 -- before --
                 view Test(name@v0: String) {
-                  write_expr(match v0.is_empty() {
+                  write_string(match v0.is_empty() {
                     true => "empty",
                     false => "not empty",
                   })
@@ -1266,14 +1255,11 @@ mod tests {
         check(
             IrModuleBuilder::new()
                 .view("Test", [("maybe", "Option[String]")], |t| {
-                    t.write_expr(
-                        t.bool_match_expr(
-                            t.option_is_some(t.var("maybe")),
-                            t.str("some"),
-                            t.str("none"),
-                        ),
-                        false,
-                    );
+                    t.write_string(t.bool_match_expr(
+                        t.option_is_some(t.var("maybe")),
+                        t.str("some"),
+                        t.str("none"),
+                    ));
                 })
                 .build(),
             vec![(
@@ -1283,7 +1269,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test(maybe@v0: Option[String]) {
-                  write_expr(match v0.is_some() {
+                  write_string(match v0.is_some() {
                     true => "some",
                     false => "none",
                   })
@@ -1300,21 +1286,18 @@ mod tests {
         check(
             IrModuleBuilder::new()
                 .view("Test", [("maybe", "Option[String]")], |t| {
-                    t.write_expr(
-                        t.bool_match_expr(
-                            t.option_is_some(t.var("maybe")),
-                            t.str("some"),
-                            t.str("none"),
-                        ),
-                        false,
-                    );
+                    t.write_string(t.bool_match_expr(
+                        t.option_is_some(t.var("maybe")),
+                        t.str("some"),
+                        t.str("none"),
+                    ));
                 })
                 .build(),
             vec![("maybe", Value::None)],
             expect![[r#"
                 -- before --
                 view Test(maybe@v0: Option[String]) {
-                  write_expr(match v0.is_some() {
+                  write_string(match v0.is_some() {
                     true => "some",
                     false => "none",
                   })
@@ -1331,21 +1314,18 @@ mod tests {
         check(
             IrModuleBuilder::new()
                 .view("Test", [("maybe", "Option[String]")], |t| {
-                    t.write_expr(
-                        t.bool_match_expr(
-                            t.option_is_none(t.var("maybe")),
-                            t.str("none"),
-                            t.str("some"),
-                        ),
-                        false,
-                    );
+                    t.write_string(t.bool_match_expr(
+                        t.option_is_none(t.var("maybe")),
+                        t.str("none"),
+                        t.str("some"),
+                    ));
                 })
                 .build(),
             vec![("maybe", Value::None)],
             expect![[r#"
                 -- before --
                 view Test(maybe@v0: Option[String]) {
-                  write_expr(match v0.is_none() {
+                  write_string(match v0.is_none() {
                     true => "none",
                     false => "some",
                   })
@@ -1362,14 +1342,11 @@ mod tests {
         check(
             IrModuleBuilder::new()
                 .view("Test", [("maybe", "Option[String]")], |t| {
-                    t.write_expr(
-                        t.bool_match_expr(
-                            t.option_is_none(t.var("maybe")),
-                            t.str("none"),
-                            t.str("some"),
-                        ),
-                        false,
-                    );
+                    t.write_string(t.bool_match_expr(
+                        t.option_is_none(t.var("maybe")),
+                        t.str("none"),
+                        t.str("some"),
+                    ));
                 })
                 .build(),
             vec![(
@@ -1379,7 +1356,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 view Test(maybe@v0: Option[String]) {
-                  write_expr(match v0.is_none() {
+                  write_string(match v0.is_none() {
                     true => "none",
                     false => "some",
                   })
@@ -1396,17 +1373,18 @@ mod tests {
         check(
             IrModuleBuilder::new()
                 .view_no_params("Test", |t| {
-                    t.write_expr(
-                        t.bool_match_expr(t.lt(t.int(2), t.int(3)), t.str("yes"), t.str("no")),
-                        false,
-                    );
+                    t.write_string(t.bool_match_expr(
+                        t.lt(t.int(2), t.int(3)),
+                        t.str("yes"),
+                        t.str("no"),
+                    ));
                 })
                 .build(),
             vec![],
             expect![[r#"
                 -- before --
                 view Test() {
-                  write_expr(match (2 < 3) {true => "yes", false => "no"})
+                  write_string(match (2 < 3) {true => "yes", false => "no"})
                 }
 
                 -- after --
@@ -1420,17 +1398,18 @@ mod tests {
         check(
             IrModuleBuilder::new()
                 .view_no_params("Test", |t| {
-                    t.write_expr(
-                        t.bool_match_expr(t.lt(t.int(3), t.int(2)), t.str("yes"), t.str("no")),
-                        false,
-                    );
+                    t.write_string(t.bool_match_expr(
+                        t.lt(t.int(3), t.int(2)),
+                        t.str("yes"),
+                        t.str("no"),
+                    ));
                 })
                 .build(),
             vec![],
             expect![[r#"
                 -- before --
                 view Test() {
-                  write_expr(match (3 < 2) {true => "yes", false => "no"})
+                  write_string(match (3 < 2) {true => "yes", false => "no"})
                 }
 
                 -- after --
@@ -1444,17 +1423,21 @@ mod tests {
         check(
             IrModuleBuilder::new()
                 .view_no_params("Test", |t| {
-                    t.write_expr(
-                        t.bool_match_expr(t.lte(t.int(3), t.int(3)), t.str("yes"), t.str("no")),
-                        false,
-                    );
+                    t.write_string(t.bool_match_expr(
+                        t.lte(t.int(3), t.int(3)),
+                        t.str("yes"),
+                        t.str("no"),
+                    ));
                 })
                 .build(),
             vec![],
             expect![[r#"
                 -- before --
                 view Test() {
-                  write_expr(match (3 <= 3) {true => "yes", false => "no"})
+                  write_string(match (3 <= 3) {
+                    true => "yes",
+                    false => "no",
+                  })
                 }
 
                 -- after --
@@ -1468,17 +1451,21 @@ mod tests {
         check(
             IrModuleBuilder::new()
                 .view_no_params("Test", |t| {
-                    t.write_expr(
-                        t.bool_match_expr(t.lte(t.int(4), t.int(3)), t.str("yes"), t.str("no")),
-                        false,
-                    );
+                    t.write_string(t.bool_match_expr(
+                        t.lte(t.int(4), t.int(3)),
+                        t.str("yes"),
+                        t.str("no"),
+                    ));
                 })
                 .build(),
             vec![],
             expect![[r#"
                 -- before --
                 view Test() {
-                  write_expr(match (4 <= 3) {true => "yes", false => "no"})
+                  write_string(match (4 <= 3) {
+                    true => "yes",
+                    false => "no",
+                  })
                 }
 
                 -- after --
@@ -1492,17 +1479,21 @@ mod tests {
         check(
             IrModuleBuilder::new()
                 .view("Test", [("a", "Float"), ("b", "Float")], |t| {
-                    t.write_expr(
-                        t.bool_match_expr(t.lt(t.var("a"), t.var("b")), t.str("yes"), t.str("no")),
-                        false,
-                    );
+                    t.write_string(t.bool_match_expr(
+                        t.lt(t.var("a"), t.var("b")),
+                        t.str("yes"),
+                        t.str("no"),
+                    ));
                 })
                 .build(),
             vec![("a", Value::Float(1.5)), ("b", Value::Float(2.5))],
             expect![[r#"
                 -- before --
                 view Test(a@v0: Float, b@v1: Float) {
-                  write_expr(match (v0 < v1) {true => "yes", false => "no"})
+                  write_string(match (v0 < v1) {
+                    true => "yes",
+                    false => "no",
+                  })
                 }
 
                 -- after --

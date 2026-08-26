@@ -331,7 +331,8 @@ impl IrGenerator<'_, '_> {
     fn stmt(&mut self, b: &mut IrBuilder, depth: usize) {
         enum P {
             Write,
-            WriteExpr,
+            WriteString,
+            WriteFragment,
             InvokeComponent,
             If,
             ForRange,
@@ -341,7 +342,7 @@ impl IrGenerator<'_, '_> {
             OptionMatch,
             EnumMatch,
         }
-        let mut productions = vec![P::Write, P::WriteExpr];
+        let mut productions = vec![P::Write, P::WriteString, P::WriteFragment];
         if !self.components.is_empty() {
             productions.push(P::InvokeComponent);
         }
@@ -360,14 +361,11 @@ impl IrGenerator<'_, '_> {
         }
         match self.u.choose(&productions).unwrap() {
             P::Write => b.write(self.u.choose(STRING_LITERALS).unwrap()),
-            P::WriteExpr => {
-                let ty = if self.coin() {
-                    Type::String
-                } else {
-                    Type::Fragment
-                };
-                let expr = self.expr(b, &ty, depth);
-                b.write_expr(expr, self.coin());
+            P::WriteString => {
+                b.write_string(self.expr(b, &Type::String, depth));
+            }
+            P::WriteFragment => {
+                b.write_fragment(self.expr(b, &Type::Fragment, depth));
             }
             P::InvokeComponent => {
                 let info = self.u.choose(&self.components).unwrap().clone();

@@ -193,7 +193,7 @@ mod tests {
                     t.for_loop("item", t.array(vec![t.str("x")]), |t| {
                         t.write("Item");
                         t.write(": ");
-                        t.write_expr_escaped(t.var("item"));
+                        t.write_string(t.var("item"));
                         t.write(" - ");
                         t.write("Done");
                     });
@@ -205,7 +205,7 @@ mod tests {
                   for v0 in ["x"] {
                     write("Item")
                     write(": ")
-                    write_escaped(v0)
+                    write_string(v0)
                     write(" - ")
                     write("Done")
                   }
@@ -215,7 +215,7 @@ mod tests {
                 view Test() {
                   for v0 in ["x"] {
                     write("Item: ")
-                    write_escaped(v0)
+                    write_string(v0)
                     write(" - Done")
                   }
                 }
@@ -326,7 +326,7 @@ mod tests {
                 .view("Test", [("x", "String")], |t| {
                     t.write("Value");
                     t.write(": ");
-                    t.write_expr_escaped(t.var("x"));
+                    t.write_string(t.var("x"));
                     t.write(" - ");
                     t.write("done");
                 })
@@ -336,7 +336,7 @@ mod tests {
                 view Test(x@v0: String) {
                   write("Value")
                   write(": ")
-                  write_escaped(v0)
+                  write_string(v0)
                   write(" - ")
                   write("done")
                 }
@@ -344,7 +344,7 @@ mod tests {
                 -- after --
                 view Test(x@v0: String) {
                   write("Value: ")
-                  write_escaped(v0)
+                  write_string(v0)
                   write(" - done")
                 }
             "#]],

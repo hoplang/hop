@@ -7,18 +7,15 @@ use crate::ir::ir_module::{IrStatement, traverse_statements_mut};
 pub fn simplify_write_exprs(body: &mut Vec<IrStatement>) {
     traverse_statements_mut(body, &mut |stmts| {
         for statement in stmts.iter_mut() {
-            if let IrStatement::WriteExpr {
+            if let IrStatement::WriteString {
                 id,
                 expr: IrExpr::StringLiteral { value: s, .. },
-                escape,
             } = statement
             {
-                let content = if *escape {
+                let content = {
                     let mut buf = String::new();
                     write_escaped_html(s, &mut buf);
                     buf
-                } else {
-                    s.to_string()
                 };
                 *statement = IrStatement::Write { id: *id, content };
             }
@@ -52,13 +49,13 @@ mod tests {
             IrModuleBuilder::new()
                 .view_no_params("Test", |t| {
                     // WriteExpr with constant string should become Write
-                    t.write_expr(t.str("Hello, World!"), false);
+                    t.write_string(t.str("Hello, World!"));
                 })
                 .build(),
             expect![[r#"
                 -- before --
                 view Test() {
-                  write_expr("Hello, World!")
+                  write_string("Hello, World!")
                 }
 
                 -- after --
@@ -74,14 +71,13 @@ mod tests {
         check(
             IrModuleBuilder::new()
                 .view_no_params("Test", |t| {
-                    // WriteExpr with escaping enabled
-                    t.write_expr(t.str("<div>Hello & Goodbye</div>"), true);
+                    t.write_string(t.str("<div>Hello & Goodbye</div>"));
                 })
                 .build(),
             expect![[r#"
                 -- before --
                 view Test() {
-                  write_escaped("<div>Hello & Goodbye</div>")
+                  write_string("<div>Hello & Goodbye</div>")
                 }
 
                 -- after --
@@ -98,13 +94,13 @@ mod tests {
             IrModuleBuilder::new()
                 .view_no_params("Test", |t| {
                     t.if_stmt(t.bool(true), |t| {
-                        t.write_expr(t.str("Inside if"), false);
+                        t.write_string(t.str("Inside if"));
                         t.for_loop("item", t.array(vec![t.str("foo")]), |t| {
-                            t.write_expr(t.str("Inside for"), false);
+                            t.write_string(t.str("Inside for"));
                         });
                     });
                     t.let_stmt("x", t.str("value"), |t| {
-                        t.write_expr(t.str("Inside let"), false);
+                        t.write_string(t.str("Inside let"));
                     });
                 })
                 .build(),
@@ -113,16 +109,16 @@ mod tests {
                 view Test() {
                   match true {
                     true => {
-                      write_expr("Inside if")
+                      write_string("Inside if")
                       for v0 in ["foo"] {
-                        write_expr("Inside for")
+                        write_string("Inside for")
                       }
                     }
                     false => {
                     }
                   }
                   let v1 = "value" in {
-                    write_expr("Inside let")
+                    write_string("Inside let")
                   }
                 }
 
@@ -152,23 +148,23 @@ mod tests {
             IrModuleBuilder::new()
                 .view("Test", [("x", "String")], |t| {
                     t.write("Already a Write statement");
-                    t.write_expr(t.str("Will become Write"), false);
-                    t.write_expr(t.var("x"), false);
+                    t.write_string(t.str("Will become Write"));
+                    t.write_string(t.var("x"));
                 })
                 .build(),
             expect![[r#"
                 -- before --
                 view Test(x@v0: String) {
                   write("Already a Write statement")
-                  write_expr("Will become Write")
-                  write_expr(v0)
+                  write_string("Will become Write")
+                  write_string(v0)
                 }
 
                 -- after --
                 view Test(x@v0: String) {
                   write("Already a Write statement")
                   write("Will become Write")
-                  write_expr(v0)
+                  write_string(v0)
                 }
             "#]],
         );

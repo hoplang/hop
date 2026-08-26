@@ -380,7 +380,7 @@ mod tests {
                         t.var("maybe"),
                         Some("x"),
                         |t| {
-                            t.write_expr(t.var("x"), false);
+                            t.write_string(t.var("x"));
                         },
                         |t| {
                             t.write("none");
@@ -393,7 +393,7 @@ mod tests {
                 view Test(maybe@v0: Option[String]) {
                   match v0 {
                     Some(v1) => {
-                      write_expr(v1)
+                      write_string(v1)
                     }
                     None => {
                       write("none")
@@ -405,7 +405,7 @@ mod tests {
                 view Test(maybe@v0: Option[String]) {
                   match v0 {
                     Some(v1) => {
-                      write_expr(v1)
+                      write_string(v1)
                     }
                     None => {
                       write("none")
@@ -425,7 +425,7 @@ mod tests {
                         t.some(t.str("hi")),
                         Some("x"),
                         |t| {
-                            t.write_expr(t.var("x"), false);
+                            t.write_string(t.var("x"));
                         },
                         |t| {
                             t.write("none branch");
@@ -438,7 +438,7 @@ mod tests {
                 view Test() {
                   match Option[String]::Some("hi") {
                     Some(v0) => {
-                      write_expr(v0)
+                      write_string(v0)
                     }
                     None => {
                       write("none branch")
@@ -449,7 +449,7 @@ mod tests {
                 -- after --
                 view Test() {
                   let v0 = "hi" in {
-                    write_expr(v0)
+                    write_string(v0)
                   }
                 }
             "#]],

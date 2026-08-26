@@ -32,11 +32,15 @@ pub trait Transpiler {
 
     // Statement transpilation
     fn transpile_write_statement<'a>(&mut self, arena: &'a Arena<'a>, content: &'a str) -> Doc<'a>;
-    fn transpile_write_expr_statement<'a>(
+    fn transpile_write_string_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
         expr: &'a IrExpr,
-        escape: bool,
+    ) -> Doc<'a>;
+    fn transpile_write_fragment_statement<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        expr: &'a IrExpr,
     ) -> Doc<'a>;
     fn transpile_for_statement<'a>(
         &mut self,
@@ -75,8 +79,11 @@ pub trait Transpiler {
     ) -> Doc<'a> {
         match statement {
             IrStatement::Write { content, .. } => self.transpile_write_statement(arena, content),
-            IrStatement::WriteExpr { expr, escape, .. } => {
-                self.transpile_write_expr_statement(arena, expr, *escape)
+            IrStatement::WriteString { expr, .. } => {
+                self.transpile_write_string_statement(arena, expr)
+            }
+            IrStatement::WriteFragment { expr, .. } => {
+                self.transpile_write_fragment_statement(arena, expr)
             }
             IrStatement::For {
                 var, source, body, ..
@@ -316,7 +323,7 @@ pub trait Transpiler {
                 ..
             } => self.transpile_field_access(arena, object, field),
             IrExpr::StringLiteral { value, .. } => self.transpile_string_literal(arena, value),
-            IrExpr::Fragment { body, .. } => self.transpile_fragment(arena, body),
+            IrExpr::FragmentLiteral { body, .. } => self.transpile_fragment(arena, body),
             IrExpr::BooleanLiteral { value, .. } => self.transpile_boolean_literal(arena, *value),
             IrExpr::FloatLiteral { value, .. } => self.transpile_float_literal(arena, *value),
             IrExpr::IntLiteral { value, .. } => self.transpile_int_literal(arena, *value),

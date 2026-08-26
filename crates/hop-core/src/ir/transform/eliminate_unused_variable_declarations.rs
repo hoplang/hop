@@ -214,7 +214,7 @@ mod tests {
             IrModuleBuilder::new()
                 .view_no_params("Test", |t| {
                     t.let_stmt("message", t.str("Hello"), |t| {
-                        t.write_expr(t.var("message"), false);
+                        t.write_string(t.var("message"));
                     });
                 })
                 .build(),
@@ -222,14 +222,14 @@ mod tests {
                 -- before --
                 view Test() {
                   let v0 = "Hello" in {
-                    write_expr(v0)
+                    write_string(v0)
                   }
                 }
 
                 -- after --
                 view Test() {
                   let v0 = "Hello" in {
-                    write_expr(v0)
+                    write_string(v0)
                   }
                 }
             "#]],
@@ -326,7 +326,7 @@ mod tests {
                     let items = t.array(vec![t.str("a"), t.str("b")]);
                     t.for_loop("item", items, |t| {
                         t.let_stmt("unused", t.str("value"), |t| {
-                            t.write_expr(t.var("item"), false);
+                            t.write_string(t.var("item"));
                         });
                     });
                 })
@@ -336,7 +336,7 @@ mod tests {
                 view Test() {
                   for v0 in ["a", "b"] {
                     let v1 = "value" in {
-                      write_expr(v0)
+                      write_string(v0)
                     }
                   }
                 }
@@ -344,7 +344,7 @@ mod tests {
                 -- after --
                 view Test() {
                   for v0 in ["a", "b"] {
-                    write_expr(v0)
+                    write_string(v0)
                   }
                 }
             "#]],
@@ -443,7 +443,7 @@ mod tests {
                     let items = t.array(vec![t.str("a"), t.str("b")]);
                     t.let_stmt("items", items, |t| {
                         t.for_loop("item", t.var("items"), |t| {
-                            t.write_expr(t.var("item"), false);
+                            t.write_string(t.var("item"));
                         });
                     });
                 })
@@ -453,7 +453,7 @@ mod tests {
                 view Test() {
                   let v0 = ["a", "b"] in {
                     for v1 in v0 {
-                      write_expr(v1)
+                      write_string(v1)
                     }
                   }
                 }
@@ -462,7 +462,7 @@ mod tests {
                 view Test() {
                   let v0 = ["a", "b"] in {
                     for v1 in v0 {
-                      write_expr(v1)
+                      write_string(v1)
                     }
                   }
                 }
@@ -477,7 +477,7 @@ mod tests {
                 .view_no_params("Test", |t| {
                     t.let_stmt("count", t.int(3), |t| {
                         t.for_range(Some("i"), t.int(1), t.var("count"), |t| {
-                            t.write_expr(t.int_to_string(t.var("i")), false);
+                            t.write_string(t.int_to_string(t.var("i")));
                         });
                     });
                 })
@@ -487,7 +487,7 @@ mod tests {
                 view Test() {
                   let v0 = 3 in {
                     for v1 in 1..=v0 {
-                      write_expr(v1.to_string())
+                      write_string(v1.to_string())
                     }
                   }
                 }
@@ -496,7 +496,7 @@ mod tests {
                 view Test() {
                   let v0 = 3 in {
                     for v1 in 1..=v0 {
-                      write_expr(v1.to_string())
+                      write_string(v1.to_string())
                     }
                   }
                 }
@@ -511,7 +511,7 @@ mod tests {
                 .view_no_params("Test", |t| {
                     t.let_stmt("start", t.int(1), |t| {
                         t.for_range(Some("i"), t.var("start"), t.int(5), |t| {
-                            t.write_expr(t.int_to_string(t.var("i")), false);
+                            t.write_string(t.int_to_string(t.var("i")));
                         });
                     });
                 })
@@ -521,7 +521,7 @@ mod tests {
                 view Test() {
                   let v0 = 1 in {
                     for v1 in v0..=5 {
-                      write_expr(v1.to_string())
+                      write_string(v1.to_string())
                     }
                   }
                 }
@@ -530,7 +530,7 @@ mod tests {
                 view Test() {
                   let v0 = 1 in {
                     for v1 in v0..=5 {
-                      write_expr(v1.to_string())
+                      write_string(v1.to_string())
                     }
                   }
                 }
@@ -578,7 +578,7 @@ mod tests {
             IrModuleBuilder::new()
                 .view_no_params("Test", |t| {
                     t.let_stmt("x", t.str("first x"), |t| {
-                        t.write_expr(t.var("x"), false);
+                        t.write_string(t.var("x"));
                     });
                     t.let_stmt("x_1", t.str("second x"), |t| {
                         t.write("No reference to x_1 here");
@@ -589,7 +589,7 @@ mod tests {
                 -- before --
                 view Test() {
                   let v0 = "first x" in {
-                    write_expr(v0)
+                    write_string(v0)
                   }
                   let v1 = "second x" in {
                     write("No reference to x_1 here")
@@ -599,7 +599,7 @@ mod tests {
                 -- after --
                 view Test() {
                   let v0 = "first x" in {
-                    write_expr(v0)
+                    write_string(v0)
                   }
                   write("No reference to x_1 here")
                 }
@@ -717,7 +717,7 @@ mod tests {
                     t.let_stmt("x", t.str("str"), |t| {
                         t.let_stmt("y", t.var("x"), |t| {
                             t.let_stmt("z", t.var("y"), |t| {
-                                t.write_expr(t.var("x"), false);
+                                t.write_string(t.var("x"));
                             });
                         });
                     });
@@ -729,7 +729,7 @@ mod tests {
                   let v0 = "str" in {
                     let v1 = v0 in {
                       let v2 = v1 in {
-                        write_expr(v0)
+                        write_string(v0)
                       }
                     }
                   }
@@ -738,7 +738,7 @@ mod tests {
                 -- after --
                 view Test() {
                   let v0 = "str" in {
-                    write_expr(v0)
+                    write_string(v0)
                   }
                 }
             "#]],
@@ -751,10 +751,7 @@ mod tests {
             IrModuleBuilder::new()
                 .view_no_params("Test", |t| {
                     t.let_stmt("flag", t.bool(true), |t| {
-                        t.write_expr(
-                            t.bool_match_expr(t.var("flag"), t.str("yes"), t.str("no")),
-                            true,
-                        );
+                        t.write_string(t.bool_match_expr(t.var("flag"), t.str("yes"), t.str("no")));
                     });
                 })
                 .build(),
@@ -762,14 +759,14 @@ mod tests {
                 -- before --
                 view Test() {
                   let v0 = true in {
-                    write_escaped(match v0 {true => "yes", false => "no"})
+                    write_string(match v0 {true => "yes", false => "no"})
                   }
                 }
 
                 -- after --
                 view Test() {
                   let v0 = true in {
-                    write_escaped(match v0 {true => "yes", false => "no"})
+                    write_string(match v0 {true => "yes", false => "no"})
                   }
                 }
             "#]],
@@ -860,7 +857,7 @@ mod tests {
                         |t| {
                             t.enum_match_stmt(t.var("foo"), |m| {
                                 m.arm_bound("Foo", [("value", "v")], |t| {
-                                    t.write_expr(t.var("v"), true);
+                                    t.write_string(t.var("v"));
                                 });
                             });
                         },
@@ -881,7 +878,7 @@ mod tests {
                     let v1 = MyEnum::Foo {value: v0} in {
                       match v1 {
                         MyEnum::Foo(value: v2) => {
-                          write_escaped(v2)
+                          write_string(v2)
                         }
                       }
                     }
@@ -897,7 +894,7 @@ mod tests {
                     let v1 = MyEnum::Foo {value: v0} in {
                       match v1 {
                         MyEnum::Foo(value: v2) => {
-                          write_escaped(v2)
+                          write_string(v2)
                         }
                       }
                     }
@@ -934,7 +931,7 @@ mod tests {
                                         t.write("<span>badge</span>");
                                     });
                                     m.arm_bound("Link", [("href", "h")], |t| {
-                                        t.write_expr(t.var("h"), true);
+                                        t.write_string(t.var("h"));
                                     });
                                 });
                             });
@@ -961,7 +958,7 @@ mod tests {
                             write("<span>badge</span>")
                           }
                           BadgeElement::Link(href: v3) => {
-                            write_escaped(v3)
+                            write_string(v3)
                           }
                         }
                       }
@@ -983,7 +980,7 @@ mod tests {
                             write("<span>badge</span>")
                           }
                           BadgeElement::Link(href: v3) => {
-                            write_escaped(v3)
+                            write_string(v3)
                           }
                         }
                       }
@@ -1114,7 +1111,7 @@ mod tests {
                                     t.var("inner"),
                                     Some("value"),
                                     |t| {
-                                        t.write_expr(t.var("value"), false);
+                                        t.write_string(t.var("value"));
                                     },
                                     |t| {
                                         t.write("inner-none");
@@ -1136,7 +1133,7 @@ mod tests {
                       Some(v1) => {
                         match v1 {
                           Some(v2) => {
-                            write_expr(v2)
+                            write_string(v2)
                           }
                           None => {
                             write("inner-none")
@@ -1157,7 +1154,7 @@ mod tests {
                       Some(v1) => {
                         match v1 {
                           Some(v2) => {
-                            write_expr(v2)
+                            write_string(v2)
                           }
                           None => {
                             write("inner-none")
@@ -1298,7 +1295,7 @@ mod tests {
                 t.let_stmt("e", e, |t| {
                     t.enum_match_stmt(t.var("e"), |m| {
                         m.arm_bound("A", [("f0", "used")], |t| {
-                            t.write_expr(t.var("used"), false);
+                            t.write_string(t.var("used"));
                         });
                         m.arm_bound("B", [("f0", "unused")], |t| {
                             t.write("no reference to unused here");
@@ -1320,7 +1317,7 @@ mod tests {
                   let v0 = E::A {f0: "hi"} in {
                     match v0 {
                       E::A(f0: v1) => {
-                        write_expr(v1)
+                        write_string(v1)
                       }
                       E::B(f0: v2) => {
                         write("no reference to unused here")
@@ -1338,7 +1335,7 @@ mod tests {
                   let v0 = E::A {f0: "hi"} in {
                     match v0 {
                       E::A(f0: v1) => {
-                        write_expr(v1)
+                        write_string(v1)
                       }
                       E::B => {
                         write("no reference to unused here")

@@ -339,7 +339,7 @@ impl IrBuilder {
     {
         let mut scope = self.scoped([]);
         body_fn(&mut scope);
-        IrExpr::Fragment {
+        IrExpr::FragmentLiteral {
             body: scope.statements,
             id: self.next_expr_id(),
         }
@@ -1069,21 +1069,28 @@ impl IrBuilder {
         });
     }
 
-    pub fn write_expr(&mut self, expr: IrExpr, escape: bool) {
+    pub fn write_fragment(&mut self, expr: IrExpr) {
         assert!(
-            matches!(expr.as_type(), Type::String | Type::Fragment),
-            "WriteExpr expects String or Fragment, got: {}",
+            matches!(expr.as_type(), Type::Fragment),
+            "WriteFragment expects Fragment, got: {}",
             expr
         );
-        self.statements.push(IrStatement::WriteExpr {
+        self.statements.push(IrStatement::WriteFragment {
             id: self.next_statement_id(),
             expr,
-            escape,
         });
     }
 
-    pub fn write_expr_escaped(&mut self, expr: IrExpr) {
-        self.write_expr(expr, true);
+    pub fn write_string(&mut self, expr: IrExpr) {
+        assert!(
+            matches!(expr.as_type(), Type::String),
+            "WriteString expects String, got: {}",
+            expr
+        );
+        self.statements.push(IrStatement::WriteString {
+            id: self.next_statement_id(),
+            expr,
+        });
     }
 
     /// Sugar for a boolean match with an empty false arm.

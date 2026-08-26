@@ -200,12 +200,17 @@ impl<'a> Compiler<'a> {
             }
 
             InlinedNode::TextExpression { expression } => {
-                let escape = !matches!(expression.as_type(), Type::Fragment);
-                output.push(IrStatement::WriteExpr {
-                    id: self.next_statement_id(),
-                    expr: self.compile_expr(expression),
-                    escape,
-                });
+                if matches!(expression.as_type(), Type::Fragment) {
+                    output.push(IrStatement::WriteFragment {
+                        id: self.next_statement_id(),
+                        expr: self.compile_expr(expression),
+                    });
+                } else {
+                    output.push(IrStatement::WriteString {
+                        id: self.next_statement_id(),
+                        expr: self.compile_expr(expression),
+                    });
+                }
             }
 
             InlinedNode::Html {
@@ -397,7 +402,7 @@ impl<'a> Compiler<'a> {
     fn compile_value(&mut self, value: &InlinedValue) -> IrExpr {
         match value {
             InlinedValue::Expr(expr) => self.compile_expr(expr),
-            InlinedValue::Fragment(nodes) => IrExpr::Fragment {
+            InlinedValue::Fragment(nodes) => IrExpr::FragmentLiteral {
                 body: self.compile_nodes(nodes),
                 id: self.next_expr_id(),
             },
@@ -418,9 +423,8 @@ impl<'a> Compiler<'a> {
                         id: self.next_statement_id(),
                         content: format!(" {}=\"", name.as_str()),
                     });
-                    output.push(IrStatement::WriteExpr {
+                    output.push(IrStatement::WriteString {
                         id: self.next_statement_id(),
-                        escape: true,
                         expr: IrExpr::TwMerge {
                             operand: Box::new(IrExpr::StringLiteral {
                                 value: s.clone(),
@@ -459,9 +463,8 @@ impl<'a> Compiler<'a> {
                 } else {
                     self.compile_expr(expr)
                 };
-                output.push(IrStatement::WriteExpr {
+                output.push(IrStatement::WriteString {
                     id: self.next_statement_id(),
-                    escape: true,
                     expr,
                 });
                 output.push(IrStatement::Write {
@@ -755,7 +758,7 @@ impl<'a> Compiler<'a> {
                 kind: kind.clone(),
                 id: expr_id,
             },
-            TypedExpr::FragmentEmpty => IrExpr::Fragment {
+            TypedExpr::FragmentEmpty => IrExpr::FragmentLiteral {
                 body: Vec::new(),
                 id: expr_id,
             },
@@ -911,7 +914,7 @@ mod tests {
                 -- after --
                 view MainComp(name@v0: String) {
                   write("Hello ")
-                  write_escaped(v0)
+                  write_string(v0)
                 }
             "#]],
         );
@@ -1016,7 +1019,7 @@ mod tests {
                   for v1 in v0 {
                     write("<li")
                     write(">")
-                    write_escaped(v1)
+                    write_string(v1)
                     write("</li>")
                   }
                   write("</ul>")
@@ -1048,7 +1051,7 @@ mod tests {
                 view MainComp() {
                   write("<div")
                   write(" class=\"")
-                  write_escaped(tw_merge("base"))
+                  write_string(tw_merge("base"))
                   write("\"")
                   write(" id=\"test\"")
                   write(">")
@@ -1085,10 +1088,10 @@ mod tests {
                 view MainComp(cls@v0: String) {
                   write("<div")
                   write(" class=\"")
-                  write_escaped(tw_merge("base"))
+                  write_string(tw_merge("base"))
                   write("\"")
                   write(" data-value=\"")
-                  write_escaped(v0)
+                  write_string(v0)
                   write("\"")
                   write(">")
                   write("Content")
@@ -1132,14 +1135,14 @@ mod tests {
                 view MainComp() {
                   write("<div")
                   write(" class=\"")
-                  write_escaped(tw_merge("p-1 p-2"))
+                  write_string(tw_merge("p-1 p-2"))
                   write("\"")
                   write(">")
                   write("static")
                   write("</div>")
                   write("<div")
                   write(" class=\"")
-                  write_escaped(tw_merge("p-1 p-2"))
+                  write_string(tw_merge("p-1 p-2"))
                   write("\"")
                   write(">")
                   write("expression")
@@ -1180,9 +1183,9 @@ mod tests {
                   write("<div")
                   write(">")
                   write("Hello ")
-                  write_escaped(v0)
+                  write_string(v0)
                   write(", count: ")
-                  write_escaped(v1)
+                  write_string(v1)
                   write("</div>")
                 }
             "#]],

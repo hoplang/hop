@@ -173,15 +173,11 @@ pub enum IrStatement {
     /// Write literal string to the output stream.
     Write { id: StatementId, content: String },
 
-    /// Write an expression to the output stream.
-    ///
-    /// The typechecker guarantees that the value of the expression
-    /// will always be a String or a Fragment.
-    WriteExpr {
-        id: StatementId,
-        expr: IrExpr,
-        escape: bool,
-    },
+    /// Write a String expression to the output stream.
+    WriteString { id: StatementId, expr: IrExpr },
+
+    /// Write a Fragment expression to the output stream.
+    WriteFragment { id: StatementId, expr: IrExpr },
 
     /// Invoke a component and write its effects to the output stream.
     ComponentInvocation {
@@ -235,8 +231,8 @@ pub enum IrExpr {
     /// A string literal expression, e.g. "foo bar"
     StringLiteral { value: CheapString, id: ExprId },
 
-    /// A Fragment value produced by rendering `body` into a fresh buffer.
-    Fragment { body: Vec<IrStatement>, id: ExprId },
+    /// A fragment literal expression, produced by rendering `body` into a fresh buffer.
+    FragmentLiteral { body: Vec<IrStatement>, id: ExprId },
 
     /// A boolean literal expression, e.g. true
     BooleanLiteral { value: bool, id: ExprId },
@@ -409,7 +405,8 @@ impl IrStatement {
     pub fn traverse_exprs(&self, f: &mut impl FnMut(&IrExpr)) {
         match self {
             IrStatement::Write { .. } => {}
-            IrStatement::WriteExpr { expr, .. } => expr.traverse(f),
+            IrStatement::WriteString { expr, .. } => expr.traverse(f),
+            IrStatement::WriteFragment { expr, .. } => expr.traverse(f),
             IrStatement::For { source, .. } => match source {
                 IrForSource::Array(array) => array.traverse(f),
                 IrForSource::RangeInclusive { start, end } => {
@@ -434,7 +431,8 @@ impl IrStatement {
     pub fn traverse_exprs_mut(&mut self, f: &mut impl FnMut(&mut IrExpr)) {
         match self {
             IrStatement::Write { .. } => {}
-            IrStatement::WriteExpr { expr, .. } => expr.traverse_mut(f),
+            IrStatement::WriteString { expr, .. } => expr.traverse_mut(f),
+            IrStatement::WriteFragment { expr, .. } => expr.traverse_mut(f),
             IrStatement::For { source, .. } => match source {
                 IrForSource::Array(array) => array.traverse_mut(f),
                 IrForSource::RangeInclusive { start, end } => {
@@ -463,7 +461,7 @@ impl IrStatement {
         // traversal stops at a fragment's boundary, so the statements inside
         // are reached here, exactly once.
         self.traverse_exprs(&mut |e| {
-            if let IrExpr::Fragment { body, .. } = e {
+            if let IrExpr::FragmentLiteral { body, .. } = e {
                 for stmt in body {
                     stmt.traverse(f);
                 }
@@ -471,7 +469,8 @@ impl IrStatement {
         });
         match self {
             IrStatement::Write { .. } => {}
-            IrStatement::WriteExpr { .. } => {}
+            IrStatement::WriteString { .. } => {}
+            IrStatement::WriteFragment { .. } => {}
             IrStatement::For { body, .. } => {
                 for stmt in body {
                     stmt.traverse(f);
@@ -497,17 +496,14 @@ impl IrStatement {
                 .append(BoxDoc::text("("))
                 .append(BoxDoc::text(format!("{:?}", content)))
                 .append(BoxDoc::text(")")),
-            IrStatement::WriteExpr { expr, escape, .. } => {
-                let write_fn = if *escape {
-                    "write_escaped"
-                } else {
-                    "write_expr"
-                };
-                BoxDoc::text(write_fn)
-                    .append(BoxDoc::text("("))
-                    .append(expr.to_doc())
-                    .append(BoxDoc::text(")"))
-            }
+            IrStatement::WriteString { expr, .. } => BoxDoc::text("write_string")
+                .append(BoxDoc::text("("))
+                .append(expr.to_doc())
+                .append(BoxDoc::text(")")),
+            IrStatement::WriteFragment { expr, .. } => BoxDoc::text("write_fragment")
+                .append(BoxDoc::text("("))
+                .append(expr.to_doc())
+                .append(BoxDoc::text(")")),
             IrStatement::For {
                 var, source, body, ..
             } => {
@@ -700,7 +696,7 @@ impl IrExpr {
             IrExpr::Var { id, .. }
             | IrExpr::FieldAccess { id, .. }
             | IrExpr::StringLiteral { id, .. }
-            | IrExpr::Fragment { id, .. }
+            | IrExpr::FragmentLiteral { id, .. }
             | IrExpr::BooleanLiteral { id, .. }
             | IrExpr::FloatLiteral { id, .. }
             | IrExpr::IntLiteral { id, .. }
@@ -748,7 +744,7 @@ impl IrExpr {
             IrExpr::FloatLiteral { .. } | IrExpr::IntToFloat { .. } => Arc::new(Type::Float),
             IrExpr::IntLiteral { .. } => Arc::new(Type::Int),
 
-            IrExpr::Fragment { .. } => Arc::new(Type::Fragment),
+            IrExpr::FragmentLiteral { .. } => Arc::new(Type::Fragment),
 
             IrExpr::StringConcat { .. }
             | IrExpr::TwMerge { .. }
@@ -803,7 +799,7 @@ impl IrExpr {
             IrExpr::FloatLiteral { .. } | IrExpr::IntToFloat { .. } => &FLOAT_TYPE,
             IrExpr::IntLiteral { .. } => &INT_TYPE,
 
-            IrExpr::Fragment { .. } => &FRAGMENT_TYPE,
+            IrExpr::FragmentLiteral { .. } => &FRAGMENT_TYPE,
 
             IrExpr::StringConcat { .. }
             | IrExpr::TwMerge { .. }
@@ -847,7 +843,7 @@ impl IrExpr {
                 .append(BoxDoc::text(field.as_str())),
             IrExpr::StringLiteral { value, .. } => BoxDoc::text(format!("{:?}", value.as_str())),
 
-            IrExpr::Fragment { body, .. } => BoxDoc::text("{")
+            IrExpr::FragmentLiteral { body, .. } => BoxDoc::text("{")
                 .append(if body.is_empty() {
                     BoxDoc::nil()
                 } else {
@@ -1246,7 +1242,7 @@ impl IrExpr {
             }
             IrExpr::Var { .. }
             | IrExpr::StringLiteral { .. }
-            | IrExpr::Fragment { .. }
+            | IrExpr::FragmentLiteral { .. }
             | IrExpr::BooleanLiteral { .. }
             | IrExpr::FloatLiteral { .. }
             | IrExpr::IntLiteral { .. } => {}
@@ -1359,7 +1355,7 @@ impl IrExpr {
             }
             IrExpr::Var { .. }
             | IrExpr::StringLiteral { .. }
-            | IrExpr::Fragment { .. }
+            | IrExpr::FragmentLiteral { .. }
             | IrExpr::BooleanLiteral { .. }
             | IrExpr::FloatLiteral { .. }
             | IrExpr::IntLiteral { .. } => {}
@@ -1452,7 +1448,7 @@ pub fn traverse_statements_mut(
         // traversal stops at a fragment's boundary, so the bodies inside are
         // reached here, exactly once.
         stmt.traverse_exprs_mut(&mut |e| {
-            if let IrExpr::Fragment { body, .. } = e {
+            if let IrExpr::FragmentLiteral { body, .. } = e {
                 traverse_statements_mut(body, f);
             }
         });
@@ -1469,7 +1465,9 @@ pub fn traverse_statements_mut(
                 }
             }
             IrStatement::ComponentInvocation { .. } => {}
-            IrStatement::Write { .. } | IrStatement::WriteExpr { .. } => {}
+            IrStatement::Write { .. }
+            | IrStatement::WriteString { .. }
+            | IrStatement::WriteFragment { .. } => {}
         }
     }
     f(statements);

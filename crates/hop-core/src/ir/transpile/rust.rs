@@ -735,30 +735,28 @@ impl Transpiler for RustTranspiler {
             .append(arena.text("\");"))
     }
 
-    fn transpile_write_expr_statement<'a>(
+    fn transpile_write_string_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
         expr: &'a IrExpr,
-        escape: bool,
     ) -> Doc<'a> {
-        let unwrap = match expr.as_type() {
-            Type::Fragment => ".0",
-            _ => "",
-        };
-        if escape {
-            self.needs_escape_html = true;
-            arena
-                .text("write_escaped_html(&")
-                .append(self.transpile_expr(arena, expr))
-                .append(arena.text(unwrap))
-                .append(arena.text(", output);"))
-        } else {
-            arena
-                .text("output.push_str(&")
-                .append(self.transpile_expr(arena, expr))
-                .append(arena.text(unwrap))
-                .append(arena.text(");"))
-        }
+        self.needs_escape_html = true;
+        arena
+            .text("write_escaped_html(&")
+            .append(self.transpile_expr(arena, expr))
+            .append(arena.text(", output);"))
+    }
+
+    fn transpile_write_fragment_statement<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        expr: &'a IrExpr,
+    ) -> Doc<'a> {
+        arena
+            .text("output.push_str(&")
+            .append(self.transpile_expr(arena, expr))
+            .append(arena.text(".0"))
+            .append(arena.text(");"))
     }
 
     fn transpile_for_statement<'a>(
@@ -1811,7 +1809,7 @@ mod tests {
                     t.write("<h1>First</h1>");
                 })
                 .view("Second", [("title", "String")], |t| {
-                    t.write_expr(t.var("title"), true);
+                    t.write_string(t.var("title"));
                 }),
             expect![[r#"
                 -- before --
@@ -1819,7 +1817,7 @@ mod tests {
                   write("<h1>First</h1>")
                 }
                 view Second(title@v0: String) {
-                  write_escaped(v0)
+                  write_string(v0)
                 }
 
                 -- after --
@@ -1936,14 +1934,14 @@ mod tests {
         check(
             IrModuleBuilder::new().view_no_params("Test", |t| {
                 t.for_range(Some("i"), t.int(1), t.int(3), |t| {
-                    t.write_expr(t.int_to_string(t.var("i")), false);
+                    t.write_string(t.int_to_string(t.var("i")));
                 });
             }),
             expect![[r#"
                 -- before --
                 view Test() {
                   for v0 in 1..=3 {
-                    write_expr(v0.to_string())
+                    write_string(v0.to_string())
                   }
                 }
 
@@ -1957,6 +1955,19 @@ mod tests {
                     fn write(self, output: &mut String);
                 }
 
+                fn write_escaped_html(s: &str, output: &mut String) {
+                    for c in s.chars() {
+                        match c {
+                            '&' => output.push_str("&amp;"),
+                            '<' => output.push_str("&lt;"),
+                            '>' => output.push_str("&gt;"),
+                            '"' => output.push_str("&quot;"),
+                            '\'' => output.push_str("&#39;"),
+                            _ => output.push(c),
+                        }
+                    }
+                }
+
                 pub struct Test {}
 
                 impl View for Test {
@@ -1968,7 +1979,7 @@ mod tests {
 
                     fn write(self, output: &mut String) {
                         for v_0 in 1_i32..=3_i32 {
-                            output.push_str(&(v_0).to_string());
+                            write_escaped_html(&(v_0).to_string(), output);
                         }
                     }
                 }
@@ -1985,7 +1996,7 @@ mod tests {
                     Some("value"),
                     |t| {
                         t.write("some: ");
-                        t.write_expr(t.var("value"), false);
+                        t.write_string(t.var("value"));
                     },
                     |t| {
                         t.write("none");
@@ -1998,7 +2009,7 @@ mod tests {
                   match Option[String]::Some("x") {
                     Some(v0) => {
                       write("some: ")
-                      write_expr(v0)
+                      write_string(v0)
                     }
                     None => {
                       write("none")
@@ -2016,6 +2027,19 @@ mod tests {
                     fn write(self, output: &mut String);
                 }
 
+                fn write_escaped_html(s: &str, output: &mut String) {
+                    for c in s.chars() {
+                        match c {
+                            '&' => output.push_str("&amp;"),
+                            '<' => output.push_str("&lt;"),
+                            '>' => output.push_str("&gt;"),
+                            '"' => output.push_str("&quot;"),
+                            '\'' => output.push_str("&#39;"),
+                            _ => output.push(c),
+                        }
+                    }
+                }
+
                 pub struct Test {}
 
                 impl View for Test {
@@ -2030,7 +2054,7 @@ mod tests {
                             Some(v_0) => {
                                 let v_0 = v_0.clone();
                                 output.push_str("some: ");
-                                output.push_str(&v_0);
+                                write_escaped_html(&v_0, output);
                             }
                             None => {
                                 output.push_str("none");
@@ -2051,7 +2075,7 @@ mod tests {
                     Some("value"),
                     |t| {
                         t.write("some: ");
-                        t.write_expr(t.var("value"), false);
+                        t.write_string(t.var("value"));
                     },
                     |t| {
                         t.write("none");
@@ -2064,7 +2088,7 @@ mod tests {
                   match v0 {
                     Some(v1) => {
                       write("some: ")
-                      write_expr(v1)
+                      write_string(v1)
                     }
                     None => {
                       write("none")
@@ -2080,6 +2104,19 @@ mod tests {
                 pub trait View {
                     fn render(self) -> String;
                     fn write(self, output: &mut String);
+                }
+
+                fn write_escaped_html(s: &str, output: &mut String) {
+                    for c in s.chars() {
+                        match c {
+                            '&' => output.push_str("&amp;"),
+                            '<' => output.push_str("&lt;"),
+                            '>' => output.push_str("&gt;"),
+                            '"' => output.push_str("&quot;"),
+                            '\'' => output.push_str("&#39;"),
+                            _ => output.push(c),
+                        }
+                    }
                 }
 
                 pub struct Test {
@@ -2099,7 +2136,7 @@ mod tests {
                             Some(v_1) => {
                                 let v_1 = v_1.clone();
                                 output.push_str("some: ");
-                                output.push_str(&v_1);
+                                write_escaped_html(&v_1, output);
                             }
                             None => {
                                 output.push_str("none");
@@ -2117,10 +2154,7 @@ mod tests {
             IrModuleBuilder::new()
                 .record("Node", [("value", "Int"), ("next", "Option[Node]")])
                 .view("Test", [("node", "Node")], |t| {
-                    t.write_expr(
-                        t.int_to_string(t.field_access(t.var("node"), "value")),
-                        false,
-                    );
+                    t.write_string(t.int_to_string(t.field_access(t.var("node"), "value")));
                 }),
             expect![[r#"
                 -- before --
@@ -2129,7 +2163,7 @@ mod tests {
                   next: Option[test::Node],
                 }
                 view Test(node@v0: test::Node) {
-                  write_expr(v0.value.to_string())
+                  write_string(v0.value.to_string())
                 }
 
                 -- after --
@@ -2140,6 +2174,19 @@ mod tests {
                 pub trait View {
                     fn render(self) -> String;
                     fn write(self, output: &mut String);
+                }
+
+                fn write_escaped_html(s: &str, output: &mut String) {
+                    for c in s.chars() {
+                        match c {
+                            '&' => output.push_str("&amp;"),
+                            '<' => output.push_str("&lt;"),
+                            '>' => output.push_str("&gt;"),
+                            '"' => output.push_str("&quot;"),
+                            '\'' => output.push_str("&#39;"),
+                            _ => output.push(c),
+                        }
+                    }
                 }
 
                 #[derive(Clone, Debug)]
@@ -2161,7 +2208,7 @@ mod tests {
 
                     fn write(self, output: &mut String) {
                         let Test { node: v_0 } = self;
-                        output.push_str(&(v_0.value).to_string());
+                        write_escaped_html(&(v_0.value).to_string(), output);
                     }
                 }
             "#]],
@@ -2235,10 +2282,7 @@ mod tests {
                         t.record("Node", vec![("value", t.int(1)), ("next", t.none("Node"))]);
                     let node = t.record("Node", vec![("value", t.int(2)), ("next", t.some(inner))]);
                     t.let_stmt("node", node, |t| {
-                        t.write_expr(
-                            t.int_to_string(t.field_access(t.var("node"), "value")),
-                            false,
-                        );
+                        t.write_string(t.int_to_string(t.field_access(t.var("node"), "value")));
                     });
                 }),
             expect![[r#"
@@ -2255,7 +2299,7 @@ mod tests {
                       next: Option[test::Node]::None,
                     }),
                   } in {
-                    write_expr(v0.value.to_string())
+                    write_string(v0.value.to_string())
                   }
                 }
 
@@ -2267,6 +2311,19 @@ mod tests {
                 pub trait View {
                     fn render(self) -> String;
                     fn write(self, output: &mut String);
+                }
+
+                fn write_escaped_html(s: &str, output: &mut String) {
+                    for c in s.chars() {
+                        match c {
+                            '&' => output.push_str("&amp;"),
+                            '<' => output.push_str("&lt;"),
+                            '>' => output.push_str("&gt;"),
+                            '"' => output.push_str("&quot;"),
+                            '\'' => output.push_str("&#39;"),
+                            _ => output.push(c),
+                        }
+                    }
                 }
 
                 #[derive(Clone, Debug)]
@@ -2286,7 +2343,7 @@ mod tests {
 
                     fn write(self, output: &mut String) {
                         let v_0 = Node { value: 2_i32, next: Some(Node { value: 1_i32, next: None::<Node>.map(Box::new) }).map(Box::new) };
-                        output.push_str(&(v_0.value).to_string());
+                        write_escaped_html(&(v_0.value).to_string(), output);
                     }
                 }
             "#]],
@@ -2531,7 +2588,7 @@ mod tests {
                         t.write("<b>hi</b>");
                     },
                     |t| {
-                        t.write_expr(t.var("v_0"), false);
+                        t.write_fragment(t.var("v_0"));
                     },
                 );
             }),
@@ -2541,7 +2598,7 @@ mod tests {
                   let v0 = {
                     write("<b>hi</b>")
                   } in {
-                    write_expr(v0)
+                    write_fragment(v0)
                   }
                 }
 
