@@ -183,6 +183,13 @@ pub enum IrStatement {
         escape: bool,
     },
 
+    /// Invoke a component and write its effects to the output stream.
+    ComponentInvocation {
+        id: StatementId,
+        component_name: TypeName,
+        args: Vec<IrArgument>,
+    },
+
     /// Loop over an array or range.
     /// When var is None, the loop variable is discarded (underscore syntax).
     For {
@@ -204,13 +211,6 @@ pub enum IrStatement {
     Match {
         id: StatementId,
         match_: Match<IrExpr, Vec<IrStatement>, IrVar>,
-    },
-
-    /// Call a component render function and write its output.
-    ComponentInvocation {
-        id: StatementId,
-        component_name: TypeName,
-        args: Vec<IrArgument>,
     },
 }
 

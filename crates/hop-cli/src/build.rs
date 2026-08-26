@@ -1006,6 +1006,7 @@ mod tests {
 
                 pub trait View {
                     fn render(self) -> String;
+                    fn write(self, output: &mut String);
                 }
 
                 pub struct Home {}
@@ -1013,6 +1014,11 @@ mod tests {
                 impl View for Home {
                     fn render(self) -> String {
                         let mut output = String::new();
+                        self.write(&mut output);
+                        output
+                    }
+
+                    fn write(self, output: &mut String) {
                         output.push_str("<!DOCTYPE html><html><head><meta charset=\"utf-8\"><meta");
                         output.push_str(" content=\"width=device-width, initial-scale=1\"");
                         output.push_str(" name=\"viewport\"><link rel=\"stylesheet\"");
@@ -1020,7 +1026,6 @@ mod tests {
                         output.push_str(" type=\"module\" src=\"/static/v1/scripts-27809078.js\">");
                         output.push_str("</script></head><body><div class=\"text-red-500\">hi</div>");
                         output.push_str("</body></html>");
-                        output
                     }
                 }
                 -- app.ts --

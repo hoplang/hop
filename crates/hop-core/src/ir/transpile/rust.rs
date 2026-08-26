@@ -546,9 +546,16 @@ impl Transpiler for RustTranspiler {
         if !module.views.is_empty() {
             let view_trait = arena
                 .text("pub trait View {")
-                .append(arena.line())
-                .append(arena.text("    fn render(self) -> String;"))
-                .append(arena.line())
+                .append(
+                    arena
+                        .nil()
+                        .append(arena.line())
+                        .append(arena.text("fn render(self) -> String;"))
+                        .append(arena.line())
+                        .append(arena.text("fn write(self, output: &mut String);"))
+                        .append(arena.line())
+                        .nest(4),
+                )
                 .append(arena.text("}"))
                 .append(arena.line())
                 .append(arena.line());
@@ -586,7 +593,7 @@ impl Transpiler for RustTranspiler {
         let struct_name = name.as_str();
 
         // render method body
-        let mut body = arena.nil();
+        let mut write_body = arena.nil();
 
         // Destructure self into local variables
         if !view.parameters.is_empty() {
@@ -599,7 +606,7 @@ impl Transpiler for RustTranspiler {
                 }),
                 arena.text(", "),
             );
-            body = body
+            write_body = write_body
                 .append(arena.text("let "))
                 .append(arena.text(struct_name))
                 .append(arena.text(" { "))
@@ -608,17 +615,27 @@ impl Transpiler for RustTranspiler {
                 .append(arena.hardline());
         }
 
-        body = body
-            .append(arena.text("let mut output = String::new();"))
-            .append(arena.hardline())
-            .append(self.transpile_statements(arena, &view.body))
-            .append(arena.hardline())
-            .append(arena.text("output"));
+        write_body = write_body.append(self.transpile_statements(arena, &view.body));
 
-        // render method
+        let write_fn = arena
+            .text("fn write(self, output: &mut String) {")
+            .append(arena.hardline().append(write_body).nest(4))
+            .append(arena.hardline())
+            .append(arena.text("}"));
+
         let render_fn = arena
             .text("fn render(self) -> String {")
-            .append(arena.hardline().append(body).nest(4))
+            .append(
+                arena
+                    .nil()
+                    .append(arena.hardline())
+                    .append(arena.text("let mut output = String::new();"))
+                    .append(arena.hardline())
+                    .append(arena.text("self.write(&mut output);"))
+                    .append(arena.hardline())
+                    .append(arena.text("output"))
+                    .nest(4),
+            )
             .append(arena.hardline())
             .append(arena.text("}"));
 
@@ -628,6 +645,8 @@ impl Transpiler for RustTranspiler {
             .append(arena.text(struct_name))
             .append(arena.text(" {"))
             .append(arena.hardline().append(render_fn).nest(4))
+            .append(arena.hardline())
+            .append(arena.hardline().append(write_fn).nest(4))
             .append(arena.hardline())
             .append(arena.text("}"))
             .append(arena.hardline())
@@ -643,41 +662,31 @@ impl Transpiler for RustTranspiler {
         let mut result = arena.text("fn ").append(arena.text(func_name));
 
         // Build parameter list
-        let params: Vec<Doc<'a>> = component
-            .parameters
-            .iter()
-            .map(|param| {
+        let mut params: Vec<Doc<'a>> = Vec::new();
+
+        params.push(arena.text("output: &mut String"));
+
+        for param in &component.parameters {
+            params.push(
                 arena
                     .text(var_ident(&param.var))
                     .append(arena.text(": "))
-                    .append(self.transpile_param_type(arena, &param.typ))
-            })
-            .collect();
-
-        if params.is_empty() {
-            result = result.append(arena.text("() -> String {"));
-        } else {
-            result = result
-                .append(arena.text("("))
-                .append(arena.intersperse(params, arena.text(", ")))
-                .append(arena.text(") -> String {"));
+                    .append(self.transpile_param_type(arena, &param.typ)),
+            );
         }
+
+        result = result
+            .append(arena.text("("))
+            .append(arena.intersperse(params, arena.text(", ")))
+            .append(arena.text(") {"));
 
         // Build function body
         let mut body = arena.nil();
-
-        // Initialize output string
-        body = body
-            .append(arena.text("let mut output = String::new();"))
-            .append(arena.hardline());
 
         // Transpile body statements
         body = body
             .append(self.transpile_statements(arena, &component.body))
             .append(arena.hardline());
-
-        // Return output
-        body = body.append(arena.text("output"));
 
         result
             .append(arena.hardline().append(body).nest(4))
@@ -694,30 +703,29 @@ impl Transpiler for RustTranspiler {
     ) -> Doc<'a> {
         let func_name = format!("render_{}", name.to_snake_case());
 
-        let mut doc = arena
-            .text("output.push_str(&")
-            .append(arena.text(func_name));
+        let mut doc = arena.text(func_name);
 
         doc = doc.append(arena.text("("));
 
-        let all_args: Vec<Doc<'a>> = args
-            .iter()
-            .map(|arg| {
-                if Self::passed_by_ref(arg.expr.as_type()) {
+        let mut all_args: Vec<Doc<'a>> = Vec::new();
+
+        all_args.push(arena.text("output"));
+
+        for arg in args {
+            if Self::passed_by_ref(arg.expr.as_type()) {
+                all_args.push(
                     arena
                         .text("&")
-                        .append(self.transpile_expr(arena, &arg.expr))
-                } else {
-                    self.transpile_expr_owned(arena, &arg.expr)
-                }
-            })
-            .collect();
-
-        if !all_args.is_empty() {
-            doc = doc.append(arena.intersperse(all_args, arena.text(", ")));
+                        .append(self.transpile_expr(arena, &arg.expr)),
+                );
+            } else {
+                all_args.push(self.transpile_expr_owned(arena, &arg.expr));
+            }
         }
 
-        doc.append(arena.text("));"))
+        doc = doc.append(arena.intersperse(all_args, arena.text(", ")));
+
+        doc.append(arena.text(");"))
     }
 
     fn transpile_write_statement<'a>(&mut self, arena: &'a Arena<'a>, content: &'a str) -> Doc<'a> {
@@ -743,7 +751,7 @@ impl Transpiler for RustTranspiler {
                 .text("write_escaped_html(&")
                 .append(self.transpile_expr(arena, expr))
                 .append(arena.text(unwrap))
-                .append(arena.text(", &mut output);"))
+                .append(arena.text(", output);"))
         } else {
             arena
                 .text("output.push_str(&")
@@ -1122,11 +1130,13 @@ impl Transpiler for RustTranspiler {
                 arena
                     .nil()
                     .append(arena.hardline())
-                    .append(arena.text("let mut output = String::new();"))
+                    .append(arena.text("let mut buf = String::new();"))
+                    .append(arena.hardline())
+                    .append(arena.text("let mut output = &mut buf;"))
                     .append(arena.hardline())
                     .append(self.transpile_statements(arena, body))
                     .append(arena.hardline())
-                    .append(arena.text("Fragment(output)"))
+                    .append(arena.text("Fragment(buf)"))
                     .nest(4),
             )
             .append(arena.hardline())
@@ -1773,6 +1783,7 @@ mod tests {
 
                 pub trait View {
                     fn render(self) -> String;
+                    fn write(self, output: &mut String);
                 }
 
                 pub struct Test {}
@@ -1780,8 +1791,12 @@ mod tests {
                 impl View for Test {
                     fn render(self) -> String {
                         let mut output = String::new();
-                        output.push_str("<h1>Hello, World!</h1>\n");
+                        self.write(&mut output);
                         output
+                    }
+
+                    fn write(self, output: &mut String) {
+                        output.push_str("<h1>Hello, World!</h1>\n");
                     }
                 }
             "#]],
@@ -1814,6 +1829,7 @@ mod tests {
 
                 pub trait View {
                     fn render(self) -> String;
+                    fn write(self, output: &mut String);
                 }
 
                 fn write_escaped_html(s: &str, output: &mut String) {
@@ -1838,17 +1854,25 @@ mod tests {
                 impl View for First {
                     fn render(self) -> String {
                         let mut output = String::new();
-                        output.push_str("<h1>First</h1>");
+                        self.write(&mut output);
                         output
+                    }
+
+                    fn write(self, output: &mut String) {
+                        output.push_str("<h1>First</h1>");
                     }
                 }
 
                 impl View for Second {
                     fn render(self) -> String {
-                        let Second { title: v_0 } = self;
                         let mut output = String::new();
-                        write_escaped_html(&v_0, &mut output);
+                        self.write(&mut output);
                         output
+                    }
+
+                    fn write(self, output: &mut String) {
+                        let Second { title: v_0 } = self;
+                        write_escaped_html(&v_0, output);
                     }
                 }
             "#]],
@@ -1882,6 +1906,7 @@ mod tests {
 
                 pub trait View {
                     fn render(self) -> String;
+                    fn write(self, output: &mut String);
                 }
 
                 pub struct Test {
@@ -1890,12 +1915,16 @@ mod tests {
 
                 impl View for Test {
                     fn render(self) -> String {
-                        let Test { show: v_0 } = self;
                         let mut output = String::new();
+                        self.write(&mut output);
+                        output
+                    }
+
+                    fn write(self, output: &mut String) {
+                        let Test { show: v_0 } = self;
                         if v_0 {
                             output.push_str("<h1>Visible</h1>");
                         }
-                        output
                     }
                 }
             "#]],
@@ -1925,6 +1954,7 @@ mod tests {
 
                 pub trait View {
                     fn render(self) -> String;
+                    fn write(self, output: &mut String);
                 }
 
                 pub struct Test {}
@@ -1932,10 +1962,14 @@ mod tests {
                 impl View for Test {
                     fn render(self) -> String {
                         let mut output = String::new();
+                        self.write(&mut output);
+                        output
+                    }
+
+                    fn write(self, output: &mut String) {
                         for v_0 in 1_i32..=3_i32 {
                             output.push_str(&(v_0).to_string());
                         }
-                        output
                     }
                 }
             "#]],
@@ -1979,6 +2013,7 @@ mod tests {
 
                 pub trait View {
                     fn render(self) -> String;
+                    fn write(self, output: &mut String);
                 }
 
                 pub struct Test {}
@@ -1986,6 +2021,11 @@ mod tests {
                 impl View for Test {
                     fn render(self) -> String {
                         let mut output = String::new();
+                        self.write(&mut output);
+                        output
+                    }
+
+                    fn write(self, output: &mut String) {
                         match &(Some("x".to_string())) {
                             Some(v_0) => {
                                 let v_0 = v_0.clone();
@@ -1996,7 +2036,6 @@ mod tests {
                                 output.push_str("none");
                             }
                         }
-                        output
                     }
                 }
             "#]],
@@ -2040,6 +2079,7 @@ mod tests {
 
                 pub trait View {
                     fn render(self) -> String;
+                    fn write(self, output: &mut String);
                 }
 
                 pub struct Test {
@@ -2048,8 +2088,13 @@ mod tests {
 
                 impl View for Test {
                     fn render(self) -> String {
-                        let Test { opt: v_0 } = self;
                         let mut output = String::new();
+                        self.write(&mut output);
+                        output
+                    }
+
+                    fn write(self, output: &mut String) {
+                        let Test { opt: v_0 } = self;
                         match &v_0 {
                             Some(v_1) => {
                                 let v_1 = v_1.clone();
@@ -2060,7 +2105,6 @@ mod tests {
                                 output.push_str("none");
                             }
                         }
-                        output
                     }
                 }
             "#]],
@@ -2095,6 +2139,7 @@ mod tests {
 
                 pub trait View {
                     fn render(self) -> String;
+                    fn write(self, output: &mut String);
                 }
 
                 #[derive(Clone, Debug)]
@@ -2109,10 +2154,14 @@ mod tests {
 
                 impl View for Test {
                     fn render(self) -> String {
-                        let Test { node: v_0 } = self;
                         let mut output = String::new();
-                        output.push_str(&(v_0.value).to_string());
+                        self.write(&mut output);
                         output
+                    }
+
+                    fn write(self, output: &mut String) {
+                        let Test { node: v_0 } = self;
+                        output.push_str(&(v_0.value).to_string());
                     }
                 }
             "#]],
@@ -2150,6 +2199,7 @@ mod tests {
 
                 pub trait View {
                     fn render(self) -> String;
+                    fn write(self, output: &mut String);
                 }
 
                 #[derive(Clone, Debug)]
@@ -2163,8 +2213,12 @@ mod tests {
                 impl View for Test {
                     fn render(self) -> String {
                         let mut output = String::new();
-                        output.push_str("hello");
+                        self.write(&mut output);
                         output
+                    }
+
+                    fn write(self, output: &mut String) {
+                        output.push_str("hello");
                     }
                 }
             "#]],
@@ -2212,6 +2266,7 @@ mod tests {
 
                 pub trait View {
                     fn render(self) -> String;
+                    fn write(self, output: &mut String);
                 }
 
                 #[derive(Clone, Debug)]
@@ -2225,9 +2280,13 @@ mod tests {
                 impl View for Test {
                     fn render(self) -> String {
                         let mut output = String::new();
+                        self.write(&mut output);
+                        output
+                    }
+
+                    fn write(self, output: &mut String) {
                         let v_0 = Node { value: 2_i32, next: Some(Node { value: 1_i32, next: None::<Node>.map(Box::new) }).map(Box::new) };
                         output.push_str(&(v_0.value).to_string());
-                        output
                     }
                 }
             "#]],
@@ -2277,6 +2336,7 @@ mod tests {
 
                 pub trait View {
                     fn render(self) -> String;
+                    fn write(self, output: &mut String);
                 }
 
                 #[derive(Clone, Debug)]
@@ -2290,9 +2350,13 @@ mod tests {
                 impl View for Test {
                     fn render(self) -> String {
                         let mut output = String::new();
+                        self.write(&mut output);
+                        output
+                    }
+
+                    fn write(self, output: &mut String) {
                         let v_0 = IntList::Cons { head: 1_i32, tail: Box::new(IntList::Nil) };
                         output.push_str("done");
-                        output
                     }
                 }
             "#]],
@@ -2338,6 +2402,7 @@ mod tests {
 
                 pub trait View {
                     fn render(self) -> String;
+                    fn write(self, output: &mut String);
                 }
 
                 #[derive(Clone, Debug)]
@@ -2355,9 +2420,13 @@ mod tests {
                 impl View for Test {
                     fn render(self) -> String {
                         let mut output = String::new();
+                        self.write(&mut output);
+                        output
+                    }
+
+                    fn write(self, output: &mut String) {
                         let v_0 = B { a: Some(A { b: Box::new(B { a: None::<A>.map(Box::new) }) }).map(Box::new) };
                         output.push_str("done");
-                        output
                     }
                 }
             "#]],
@@ -2410,6 +2479,7 @@ mod tests {
 
                 pub trait View {
                     fn render(self) -> String;
+                    fn write(self, output: &mut String);
                 }
 
                 #[derive(Clone, Debug)]
@@ -2421,8 +2491,7 @@ mod tests {
 
                 pub struct Test {}
 
-                fn render_badge(v_0: &Color) -> String {
-                    let mut output = String::new();
+                fn render_badge(output: &mut String, v_0: &Color) {
                     match &v_0 {
                         Color::Red => {
                             output.push_str("red");
@@ -2434,14 +2503,18 @@ mod tests {
                             output.push_str("blue");
                         }
                     }
-                    output
+
                 }
 
                 impl View for Test {
                     fn render(self) -> String {
                         let mut output = String::new();
-                        output.push_str(&render_badge(&Color::Green));
+                        self.write(&mut output);
                         output
+                    }
+
+                    fn write(self, output: &mut String) {
+                        render_badge(output, &Color::Green);
                     }
                 }
             "#]],
@@ -2479,6 +2552,7 @@ mod tests {
 
                 pub trait View {
                     fn render(self) -> String;
+                    fn write(self, output: &mut String);
                 }
 
                 #[derive(Clone, Debug)]
@@ -2489,13 +2563,18 @@ mod tests {
                 impl View for Test {
                     fn render(self) -> String {
                         let mut output = String::new();
+                        self.write(&mut output);
+                        output
+                    }
+
+                    fn write(self, output: &mut String) {
                         let v_0 = {
-                            let mut output = String::new();
+                            let mut buf = String::new();
+                            let mut output = &mut buf;
                             output.push_str("<b>hi</b>");
-                            Fragment(output)
+                            Fragment(buf)
                         };
                         output.push_str(&v_0.0);
-                        output
                     }
                 }
             "#]],
