@@ -13,12 +13,15 @@ struct UnusedVars {
     unused_option_bindings: HashSet<StatementId>,
     /// Enum match arm bindings that are unused
     unused_enum_bindings: HashSet<VarId>,
+    /// For statements whose loop variable is unused
+    unused_for_bindings: HashSet<StatementId>,
 }
 
 /// A pass that eliminates unused variable declarations.
 /// - Unused let statements are replaced with their body
 /// - Unused Option match bindings are set to `_` (wildcard)
 /// - Unused Enum match bindings are removed from the bindings list
+/// - Unused for loop variables are set to `_` (wildcard)
 pub fn eliminate_unused_variable_declarations(body: &mut Vec<IrStatement>) {
     loop {
         let unused_vars = collect_unused_vars(body);
@@ -60,6 +63,23 @@ pub fn eliminate_unused_variable_declarations(body: &mut Vec<IrStatement>) {
                         }
                         transformed.push(IrStatement::Match { id, match_ });
                     }
+                    IrStatement::For {
+                        id,
+                        mut var,
+                        source,
+                        body,
+                    } => {
+                        if var.is_some() && unused_vars.unused_for_bindings.contains(&id) {
+                            var = None;
+                            changed = true;
+                        }
+                        transformed.push(IrStatement::For {
+                            id,
+                            var,
+                            source,
+                            body,
+                        });
+                    }
                     other => transformed.push(other),
                 }
             }
@@ -85,6 +105,7 @@ fn collect_unused_vars(body: &[IrStatement]) -> UnusedVars {
     let mut let_bindings: HashMap<VarId, StatementId> = HashMap::new();
     let mut option_bindings: HashMap<VarId, StatementId> = HashMap::new();
     let mut enum_bindings: HashSet<VarId> = HashSet::new();
+    let mut for_bindings: HashMap<VarId, StatementId> = HashMap::new();
 
     for stmt in body {
         stmt.traverse(&mut |s| {
@@ -125,7 +146,17 @@ fn collect_unused_vars(body: &[IrStatement]) -> UnusedVars {
                         }
                     }
                 }
-                _ => {}
+                IrStatement::For { id, var, .. } => {
+                    if let Some(var) = var {
+                        let prev = for_bindings.insert(var.id, *id);
+                        assert!(prev.is_none(), "duplicate binding of loop variable `{var}`");
+                    }
+                }
+                // These bind nothing.
+                IrStatement::Write { .. }
+                | IrStatement::WriteString { .. }
+                | IrStatement::WriteFragment { .. }
+                | IrStatement::ComponentInvocation { .. } => {}
             }
 
             // Collect variable references from all expressions
@@ -155,10 +186,17 @@ fn collect_unused_vars(body: &[IrStatement]) -> UnusedVars {
         .copied()
         .collect();
 
+    let unused_for_bindings: HashSet<StatementId> = for_bindings
+        .iter()
+        .filter(|(var, _)| !used_vars.contains(*var))
+        .map(|(_, id)| *id)
+        .collect();
+
     UnusedVars {
         unused_lets,
         unused_option_bindings,
         unused_enum_bindings,
+        unused_for_bindings,
     }
 }
 
@@ -180,6 +218,62 @@ mod tests {
         let after = module.to_string();
         let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
         expected.assert_eq(&output);
+    }
+
+    #[test]
+    fn should_discard_unused_for_loop_variable() {
+        check(
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.for_loop("unused", t.array(vec![t.str("a"), t.str("b")]), |t| {
+                        t.write("Hello");
+                    });
+                })
+                .build(),
+            expect![[r#"
+                -- before --
+                view Test() {
+                  for v0 in ["a", "b"] {
+                    write("Hello")
+                  }
+                }
+
+                -- after --
+                view Test() {
+                  for _ in ["a", "b"] {
+                    write("Hello")
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_preserve_used_for_loop_variable() {
+        check(
+            IrModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.for_loop("item", t.array(vec![t.str("a"), t.str("b")]), |t| {
+                        t.write_string(t.var("item"));
+                    });
+                })
+                .build(),
+            expect![[r#"
+                -- before --
+                view Test() {
+                  for v0 in ["a", "b"] {
+                    write_string(v0)
+                  }
+                }
+
+                -- after --
+                view Test() {
+                  for v0 in ["a", "b"] {
+                    write_string(v0)
+                  }
+                }
+            "#]],
+        );
     }
 
     #[test]

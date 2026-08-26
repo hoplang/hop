@@ -6195,6 +6195,59 @@ mod tests {
 
     #[test]
     #[ignore]
+    fn for_loop_variable_left_unused_by_optimization_becomes_underscore() {
+        check(
+            indoc! {r#"
+                view Test {
+                  <for {x in ["a", "b"]}>
+                    <if {false}>
+                      {x}
+                    </if>
+                    y
+                  </for>
+                }
+            "#},
+            "yy",
+            expect![[r#"
+                -- ir (unoptimized) --
+                view Test() {
+                  for v0 in ["a", "b"] {
+                    match false {
+                      true => {
+                        write_string(v0)
+                      }
+                      false => {
+                      }
+                    }
+                    write("y")
+                  }
+                }
+                -- ir (optimized) --
+                view Test() {
+                  for _ in ["a", "b"] {
+                    write("y")
+                  }
+                }
+                -- expected output --
+                yy
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
     fn for_loop_with_underscore_array() {
         check(
             indoc! {r#"

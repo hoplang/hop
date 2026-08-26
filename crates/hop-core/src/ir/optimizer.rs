@@ -13,8 +13,8 @@ fn optimize_statements(
     stmt_ids: &mut StatementIdCounter,
 ) {
     perform_partial_evaluation(body, registry, expr_ids);
-    eliminate_unused_variable_declarations(body);
     eliminate_match_statements(body);
+    eliminate_unused_variable_declarations(body);
     simplify_write_exprs(body, stmt_ids);
     coalesce_write_statements(body, 60);
 }
