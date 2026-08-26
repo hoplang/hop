@@ -19,6 +19,7 @@ pub struct IrModule {
     pub enums: Vec<IrEnumDeclaration>,
     pub expr_ids: ExprIdCounter,
     pub var_ids: VarIdCounter,
+    pub stmt_ids: StatementIdCounter,
 }
 
 /// Unique identifier for each expression in the IR
@@ -170,13 +171,13 @@ pub struct IrComponentDeclaration {
 
 #[derive(Debug, PartialEq)]
 pub enum IrStatement {
-    /// Write literal string to the output stream.
+    /// Write a constant string to the output stream without any escaping.
     Write { id: StatementId, content: String },
 
-    /// Write a String expression to the output stream.
+    /// Write a String expression to the output stream with HTML escaping.
     WriteString { id: StatementId, expr: IrExpr },
 
-    /// Write a Fragment expression to the output stream.
+    /// Write a Fragment expression to the output stream without any escaping.
     WriteFragment { id: StatementId, expr: IrExpr },
 
     /// Invoke a component and write its effects to the output stream.

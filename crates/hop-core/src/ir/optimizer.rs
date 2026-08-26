@@ -1,5 +1,6 @@
 use super::ir_module::{ExprIdCounter, IrModule, IrStatement};
 use crate::expr::typing::type_registry::TypeRegistry;
+use crate::ir::ir_module::StatementIdCounter;
 use crate::ir::transform::{
     coalesce_write_statements, eliminate_match_statements, eliminate_unused_variable_declarations,
     perform_partial_evaluation, simplify_write_exprs,
@@ -9,21 +10,23 @@ fn optimize_statements(
     body: &mut Vec<IrStatement>,
     registry: &TypeRegistry,
     expr_ids: &mut ExprIdCounter,
+    stmt_ids: &mut StatementIdCounter,
 ) {
     perform_partial_evaluation(body, registry, expr_ids);
     eliminate_unused_variable_declarations(body);
     eliminate_match_statements(body);
-    simplify_write_exprs(body);
+    simplify_write_exprs(body, stmt_ids);
     coalesce_write_statements(body, 60);
 }
 
 pub fn optimize(mut module: IrModule, registry: &TypeRegistry) -> IrModule {
     let expr_ids = &mut module.expr_ids;
+    let stmt_ids = &mut module.stmt_ids;
     for view in &mut module.views {
-        optimize_statements(&mut view.body, registry, expr_ids);
+        optimize_statements(&mut view.body, registry, expr_ids, stmt_ids);
     }
     for component in &mut module.components {
-        optimize_statements(&mut component.body, registry, expr_ids);
+        optimize_statements(&mut component.body, registry, expr_ids, stmt_ids);
     }
     module
 }

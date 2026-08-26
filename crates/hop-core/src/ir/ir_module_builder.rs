@@ -236,6 +236,7 @@ impl IrModuleBodiesBuilder {
             enums: enum_declarations,
             expr_ids: *self.expr_ids.borrow(),
             var_ids: *self.var_ids.borrow(),
+            stmt_ids: *self.statement_ids.borrow(),
         };
         (module, self.types.registry().clone())
     }

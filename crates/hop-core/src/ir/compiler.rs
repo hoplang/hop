@@ -26,14 +26,9 @@ pub fn compile(
     asset_rewriter: Option<Arc<dyn AssetRewriter>>,
 ) -> IrModule {
     let mut expr_ids = ExprIdCounter::new();
-    let mut statement_ids = StatementIdCounter::new();
+    let mut stmt_ids = StatementIdCounter::new();
     let mut var_ids = VarIdCounter::new();
-    let mut compiler = Compiler::new(
-        &mut expr_ids,
-        &mut statement_ids,
-        &mut var_ids,
-        asset_rewriter,
-    );
+    let mut compiler = Compiler::new(&mut expr_ids, &mut stmt_ids, &mut var_ids, asset_rewriter);
 
     let views = views
         .into_iter()
@@ -72,6 +67,7 @@ pub fn compile(
         enums,
         expr_ids,
         var_ids,
+        stmt_ids,
     }
 }
 
