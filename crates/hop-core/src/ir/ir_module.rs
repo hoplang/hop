@@ -214,6 +214,22 @@ pub enum IrStatement {
 /// IR expression type - a concrete expression type for the IR layer.
 #[derive(Debug, PartialEq)]
 pub enum IrExpr {
+    /// A let binding expression
+    Let {
+        var: IrVar,
+        value: Box<IrExpr>,
+        body: Box<IrExpr>,
+        kind: Arc<Type>,
+        id: ExprId,
+    },
+
+    /// A match expression (enum, bool, or option)
+    Match {
+        match_: Match<IrExpr, IrExpr, IrVar>,
+        kind: Arc<Type>,
+        id: ExprId,
+    },
+
     /// A variable expression, e.g. foo
     Var {
         value: IrVar,
@@ -272,13 +288,6 @@ pub enum IrExpr {
     /// An option literal expression, e.g. Some(42) or None
     OptionLiteral {
         value: Option<Box<IrExpr>>,
-        kind: Arc<Type>,
-        id: ExprId,
-    },
-
-    /// A match expression (enum, bool, or option)
-    Match {
-        match_: Match<IrExpr, IrExpr, IrVar>,
         kind: Arc<Type>,
         id: ExprId,
     },
@@ -362,15 +371,6 @@ pub enum IrExpr {
         left: Box<IrExpr>,
         right: Box<IrExpr>,
         operand_types: ComparableType,
-        id: ExprId,
-    },
-
-    /// A let binding expression
-    Let {
-        var: IrVar,
-        value: Box<IrExpr>,
-        body: Box<IrExpr>,
-        kind: Arc<Type>,
         id: ExprId,
     },
 
