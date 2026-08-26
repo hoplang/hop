@@ -146,7 +146,39 @@ impl RustTranspiler {
                 };
                 self.transpile_expr(arena, expr).append(arena.text(method))
             }
-            _ => self.transpile_expr(arena, expr),
+            // Every other variant constructs a fresh value, so it is already
+            // owned.
+            IrExpr::StringLiteral { .. }
+            | IrExpr::FragmentLiteral { .. }
+            | IrExpr::BooleanLiteral { .. }
+            | IrExpr::FloatLiteral { .. }
+            | IrExpr::IntLiteral { .. }
+            | IrExpr::ArrayLiteral { .. }
+            | IrExpr::RecordLiteral { .. }
+            | IrExpr::EnumLiteral { .. }
+            | IrExpr::OptionLiteral { .. }
+            | IrExpr::Match { .. }
+            | IrExpr::StringConcat { .. }
+            | IrExpr::TwMerge { .. }
+            | IrExpr::NumericAdd { .. }
+            | IrExpr::NumericSubtract { .. }
+            | IrExpr::NumericMultiply { .. }
+            | IrExpr::BooleanNegation { .. }
+            | IrExpr::NumericNegation { .. }
+            | IrExpr::BooleanLogicalAnd { .. }
+            | IrExpr::BooleanLogicalOr { .. }
+            | IrExpr::Equals { .. }
+            | IrExpr::LessThan { .. }
+            | IrExpr::LessThanOrEqual { .. }
+            | IrExpr::Let { .. }
+            | IrExpr::ArrayLength { .. }
+            | IrExpr::ArrayIsEmpty { .. }
+            | IrExpr::StringIsEmpty { .. }
+            | IrExpr::OptionIsSome { .. }
+            | IrExpr::OptionIsNone { .. }
+            | IrExpr::IntToString { .. }
+            | IrExpr::FloatToInt { .. }
+            | IrExpr::IntToFloat { .. } => self.transpile_expr(arena, expr),
         }
     }
 
@@ -1093,7 +1125,38 @@ impl Transpiler for RustTranspiler {
                 .text("(")
                 .append(self.transpile_expr(arena, object))
                 .append(arena.text(")")),
-            _ => self.transpile_expr(arena, object),
+            IrExpr::Var { .. }
+            | IrExpr::FieldAccess { .. }
+            | IrExpr::StringLiteral { .. }
+            | IrExpr::FragmentLiteral { .. }
+            | IrExpr::BooleanLiteral { .. }
+            | IrExpr::FloatLiteral { .. }
+            | IrExpr::IntLiteral { .. }
+            | IrExpr::ArrayLiteral { .. }
+            | IrExpr::EnumLiteral { .. }
+            | IrExpr::OptionLiteral { .. }
+            | IrExpr::Match { .. }
+            | IrExpr::StringConcat { .. }
+            | IrExpr::TwMerge { .. }
+            | IrExpr::NumericAdd { .. }
+            | IrExpr::NumericSubtract { .. }
+            | IrExpr::NumericMultiply { .. }
+            | IrExpr::BooleanNegation { .. }
+            | IrExpr::NumericNegation { .. }
+            | IrExpr::BooleanLogicalAnd { .. }
+            | IrExpr::BooleanLogicalOr { .. }
+            | IrExpr::Equals { .. }
+            | IrExpr::LessThan { .. }
+            | IrExpr::LessThanOrEqual { .. }
+            | IrExpr::Let { .. }
+            | IrExpr::ArrayLength { .. }
+            | IrExpr::ArrayIsEmpty { .. }
+            | IrExpr::StringIsEmpty { .. }
+            | IrExpr::OptionIsSome { .. }
+            | IrExpr::OptionIsNone { .. }
+            | IrExpr::IntToString { .. }
+            | IrExpr::FloatToInt { .. }
+            | IrExpr::IntToFloat { .. } => self.transpile_expr(arena, object),
         };
         let access = object_doc
             .append(arena.text("."))
