@@ -161,7 +161,7 @@ fn collect_unused_vars(body: &[IrStatement]) -> UnusedVars {
 
             // Collect variable references from all expressions
             s.traverse_exprs(&mut |e| {
-                if let IrExpr::Var { value: var, .. } = e {
+                if let IrExpr::VariableReference { value: var, .. } = e {
                     used_vars.insert(var.id);
                 }
             });

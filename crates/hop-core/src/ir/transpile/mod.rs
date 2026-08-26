@@ -316,7 +316,7 @@ pub trait Transpiler {
     fn transpile_int_to_float<'a>(&mut self, arena: &'a Arena<'a>, value: &'a IrExpr) -> Doc<'a>;
     fn transpile_expr<'a>(&mut self, arena: &'a Arena<'a>, expr: &'a IrExpr) -> Doc<'a> {
         match expr {
-            IrExpr::Var { value, .. } => self.transpile_var(arena, value),
+            IrExpr::VariableReference { value, .. } => self.transpile_var(arena, value),
             IrExpr::FieldAccess {
                 record: object,
                 field,

@@ -478,7 +478,7 @@ pub fn perform_partial_evaluation(
                             }
                         }
                     },
-                    IrExpr::Var { value: var, .. } => {
+                    IrExpr::VariableReference { value: var, .. } => {
                         if let Some(def_expr_id) = variable_bindings.get(&var.id) {
                             variable_references.push((*def_expr_id, expr.id()));
                         } else if let Some(subject_def_id) = option_bindings.get(&var.id) {

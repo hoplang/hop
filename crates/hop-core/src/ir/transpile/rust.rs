@@ -100,7 +100,7 @@ impl RustTranspiler {
         subject: &'a IrExpr,
     ) -> Doc<'a> {
         match subject {
-            IrExpr::Var { .. } => self.transpile_expr(arena, subject),
+            IrExpr::VariableReference { .. } => self.transpile_expr(arena, subject),
             _ => arena
                 .text("(")
                 .append(self.transpile_expr(arena, subject))
@@ -138,7 +138,7 @@ impl RustTranspiler {
             {
                 self.transpile_expr(arena, expr)
             }
-            IrExpr::FieldAccess { .. } | IrExpr::Var { .. } => {
+            IrExpr::FieldAccess { .. } | IrExpr::VariableReference { .. } => {
                 let method = match expr.as_type() {
                     Type::Array(_) => ".to_vec()",
                     Type::String => ".to_string()",
@@ -1125,7 +1125,7 @@ impl Transpiler for RustTranspiler {
                 .text("(")
                 .append(self.transpile_expr(arena, object))
                 .append(arena.text(")")),
-            IrExpr::Var { .. }
+            IrExpr::VariableReference { .. }
             | IrExpr::FieldAccess { .. }
             | IrExpr::StringLiteral { .. }
             | IrExpr::FragmentLiteral { .. }

@@ -328,7 +328,7 @@ fn evaluate_expr(
     component_defs: &[IrComponentDeclaration],
 ) -> Result<Value, EvalError> {
     match expr {
-        IrExpr::Var { value: var, .. } => Ok(env
+        IrExpr::VariableReference { value: var, .. } => Ok(env
             .lookup(var.id)
             .cloned()
             .unwrap_or_else(|| panic!("Undefined variable: {}", var))),

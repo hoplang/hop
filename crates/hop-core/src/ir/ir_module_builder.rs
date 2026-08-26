@@ -364,7 +364,7 @@ impl IrBuilder {
                 )
             });
 
-        IrExpr::Var {
+        IrExpr::VariableReference {
             value,
             kind,
             id: self.next_expr_id(),

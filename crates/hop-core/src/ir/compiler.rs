@@ -475,7 +475,7 @@ impl<'a> Compiler<'a> {
         let expr_id = self.next_expr_id();
 
         match expr {
-            TypedExpr::Var { value, kind, .. } => IrExpr::Var {
+            TypedExpr::Var { value, kind, .. } => IrExpr::VariableReference {
                 value: self.resolve(value),
                 kind: kind.clone(),
                 id: expr_id,

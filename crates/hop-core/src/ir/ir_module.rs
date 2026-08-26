@@ -11,6 +11,14 @@ use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use pretty::BoxDoc;
 
+/// An IR module.
+///
+/// All IDs in the module are unique across the whole module and a pass that
+/// creates new expressions, statements or variables must mint fresh IDs from
+/// the counters expr_ids, stmt_ids and var_ids.
+///
+/// Each binder in the IR has a unique VarId, so two binders are never the same
+/// variable. Shadowing is impossible and substitution is capture-free.
 #[derive(Debug)]
 pub struct IrModule {
     pub views: Vec<IrViewDeclaration>,
@@ -22,7 +30,7 @@ pub struct IrModule {
     pub stmt_ids: StatementIdCounter,
 }
 
-/// Unique identifier for each expression in the IR
+/// Unique identifier for each expression in the IR.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ExprId(usize);
 
@@ -41,7 +49,7 @@ impl ExprIdCounter {
     }
 }
 
-/// Unique identifier for each statement in the IR
+/// Unique identifier for each statement in the IR.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct StatementId(usize);
 
@@ -62,7 +70,7 @@ impl StatementIdCounter {
 
 /// Identity of a bound variable in the IR.
 ///
-/// Two binders are the same variable exactly when their `VarId`s are equal.
+/// Every binder has its own unique VarId. Equal VarIds mean the same binder.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct VarId(usize);
 
@@ -128,20 +136,20 @@ pub struct IrArgument {
     pub expr: IrExpr,
 }
 
-/// The source of iteration in a for loop - either an array or an inclusive range.
+/// The source of iteration in a For loop.
 #[derive(Debug, PartialEq)]
 pub enum IrForSource {
-    /// Iterate over elements of an array
+    /// Iterate over elements of an array.
     Array(IrExpr),
-    /// Iterate over an inclusive integer range
+    /// Iterate over an inclusive integer range.
     RangeInclusive { start: IrExpr, end: IrExpr },
 }
 
 #[derive(Debug)]
 pub struct IrViewDeclaration {
-    /// Entrypoint name (e.g. Index)
+    /// Entrypoint name
     pub name: TypeName,
-    /// Original parameter names with their types and optional default values
+    /// Parameter names with their types
     pub parameters: Vec<IrParameter>,
     /// IR nodes for the view body
     pub body: Vec<IrStatement>,
@@ -159,25 +167,43 @@ pub struct IrEnumDeclaration {
     pub variants: Vec<EnumVariant>,
 }
 
+/// A component declaration in the IR.
+///
+/// Invokable through the ComponentInvocation statement.
 #[derive(Debug)]
 pub struct IrComponentDeclaration {
-    /// Component name (e.g. TreeView)
+    /// Component name
     pub name: TypeName,
-    /// Parameter names with their types and optional default values
+    /// Parameter names with their types
     pub parameters: Vec<IrParameter>,
     /// IR nodes for the component body
     pub body: Vec<IrStatement>,
 }
 
+/// A statement in the IR.
+///
+/// Statements may perform one kind of effect: writing to the output stream.
+/// Statement order is output order.
 #[derive(Debug, PartialEq)]
 pub enum IrStatement {
-    /// Write a constant string to the output stream without any escaping.
+    /// Write a constant string to the output stream.
+    ///
+    /// Write performs no escaping.
     Write { id: StatementId, content: String },
 
-    /// Write a String expression to the output stream with HTML escaping.
+    /// Write a String expression to the output stream.
+    ///
+    /// WriteString performs HTML escaping.
+    ///
+    /// The type of expr must be String.
     WriteString { id: StatementId, expr: IrExpr },
 
-    /// Write a Fragment expression to the output stream without any escaping.
+    /// Write a Fragment expression to the output stream.
+    ///
+    /// WriteFragment performs no escaping, a Fragment is already-escaped HTML
+    /// by construction.
+    ///
+    /// The type of expr must be Fragment.
     WriteFragment { id: StatementId, expr: IrExpr },
 
     /// Invoke a component and write its effects to the output stream.
@@ -188,7 +214,9 @@ pub enum IrStatement {
     },
 
     /// Loop over an array or range.
-    /// When var is None, the loop variable is discarded (underscore syntax).
+    ///
+    /// When var is None, the loop binds no variable, but the loop still
+    /// executes.
     For {
         id: StatementId,
         var: Option<IrVar>,
@@ -196,7 +224,10 @@ pub enum IrStatement {
         body: Vec<IrStatement>,
     },
 
-    /// Bind a variable to the value of an expression.
+    /// Bind a variable to the value of an expression and execute the effects
+    /// of the body.
+    ///
+    /// The binding scopes over body only, not the statements that follow.
     Let {
         id: StatementId,
         var: IrVar,
@@ -204,17 +235,27 @@ pub enum IrStatement {
         body: Vec<IrStatement>,
     },
 
-    /// Match on a value and execute the corresponding branch.
+    /// Match on a value and execute the effects of the matched branch.
+    ///
+    /// Matching is exhaustive, a value must match at least one branch.
     Match {
         id: StatementId,
         match_: Match<IrExpr, Vec<IrStatement>, IrVar>,
     },
 }
 
-/// IR expression type - a concrete expression type for the IR layer.
+/// IR expression type.
+///
+/// Expressions produce no side effects. The statements inside a FragmentLiteral
+/// write into a fresh buffer, not the enclosing output stream.
+///
+/// The Int type is an i32 with wrapping add/sub/mul/neg.
+///
+/// A FloatToString conversion is avoided since semantics would be too tricky to
+/// define across backends.
 #[derive(Debug, PartialEq)]
 pub enum IrExpr {
-    /// A let binding expression
+    /// A Let expression.
     Let {
         var: IrVar,
         value: Box<IrExpr>,
@@ -223,21 +264,30 @@ pub enum IrExpr {
         id: ExprId,
     },
 
-    /// A match expression (enum, bool, or option)
+    /// A Match expression over an Enum, Boolean, or Option.
+    ///
+    /// Matching is exhaustive, a value must match at least one branch.
     Match {
         match_: Match<IrExpr, IrExpr, IrVar>,
         kind: Arc<Type>,
         id: ExprId,
     },
 
-    /// A variable expression, e.g. foo
-    Var {
+    /// A VariableReference expression.
+    ///
+    /// Reads the value bound by the innermost active binder.
+    ///
+    /// The kind field must match the binder's type.
+    VariableReference {
         value: IrVar,
         kind: Arc<Type>,
         id: ExprId,
     },
 
-    /// A field access expression, e.g. foo.bar
+    /// A FieldAccess expression.
+    ///
+    /// The expression must evaluate to a record and the field must exist on the
+    /// record.
     FieldAccess {
         record: Box<IrExpr>,
         field: FieldName,
@@ -245,29 +295,31 @@ pub enum IrExpr {
         id: ExprId,
     },
 
-    /// A string literal expression, e.g. "foo bar"
+    /// A StringLiteral expression.
     StringLiteral { value: CheapString, id: ExprId },
 
-    /// A fragment literal expression, produced by rendering `body` into a fresh buffer.
+    /// A FragmentLiteral expression.
+    ///
+    /// Produced by rendering the body into a fresh buffer.
     FragmentLiteral { body: Vec<IrStatement>, id: ExprId },
 
-    /// A boolean literal expression, e.g. true
+    /// A BooleanLiteral expression.
     BooleanLiteral { value: bool, id: ExprId },
 
-    /// A float literal expression, e.g. 2.5
+    /// A FloatLiteral expression.
     FloatLiteral { value: f64, id: ExprId },
 
-    /// An integer literal expression, e.g. 42
+    /// An IntLiteral expression.
     IntLiteral { value: i32, id: ExprId },
 
-    /// An array literal expression, e.g. [1, 2, 3]
+    /// An ArrayLiteral expression.
     ArrayLiteral {
         elements: Vec<IrExpr>,
         kind: Arc<Type>,
         id: ExprId,
     },
 
-    /// A record literal expression, e.g. User(name: "John", age: 30)
+    /// A RecordLiteral expression.
     RecordLiteral {
         record_name: TypeName,
         fields: Vec<(FieldName, IrExpr)>,
@@ -275,7 +327,7 @@ pub enum IrExpr {
         id: ExprId,
     },
 
-    /// An enum literal expression, e.g. Color::Red or Result::Ok(value: 42)
+    /// An EnumLiteral expression.
     EnumLiteral {
         enum_name: TypeName,
         variant_name: TypeName,
@@ -285,24 +337,33 @@ pub enum IrExpr {
         id: ExprId,
     },
 
-    /// An option literal expression, e.g. Some(42) or None
+    /// An OptionLiteral expression.
     OptionLiteral {
         value: Option<Box<IrExpr>>,
         kind: Arc<Type>,
         id: ExprId,
     },
 
-    /// String concatenation expression for joining two string expressions
+    /// A StringConcat expression.
+    ///
+    /// Must hold two expressions of type String.
+    /// Returns a String.
     StringConcat {
         left: Box<IrExpr>,
         right: Box<IrExpr>,
         id: ExprId,
     },
 
-    /// Tailwind merge wrapper applied at class attribute boundary
+    /// A TwMerge expression, applied at the class attribute boundary.
+    ///
+    /// Must hold an expression of type String.
+    /// Returns a String.
     TwMerge { operand: Box<IrExpr>, id: ExprId },
 
-    /// Numeric addition expression for adding numeric values
+    /// A NumericAdd expression.
+    ///
+    /// Must hold two expressions of the same NumericType.
+    /// Returns the NumericType of the expressions.
     NumericAdd {
         left: Box<IrExpr>,
         right: Box<IrExpr>,
@@ -310,7 +371,10 @@ pub enum IrExpr {
         id: ExprId,
     },
 
-    /// Numeric subtraction expression for subtracting numeric values
+    /// A NumericSubtract expression.
+    ///
+    /// Must hold two expressions of the same NumericType.
+    /// Returns the NumericType of the expressions.
     NumericSubtract {
         left: Box<IrExpr>,
         right: Box<IrExpr>,
@@ -318,7 +382,10 @@ pub enum IrExpr {
         id: ExprId,
     },
 
-    /// Numeric multiplication expression for multiplying numeric values
+    /// A NumericMultiply expression.
+    ///
+    /// Must hold two expressions of the same NumericType.
+    /// Returns the NumericType of the expressions.
     NumericMultiply {
         left: Box<IrExpr>,
         right: Box<IrExpr>,
@@ -326,31 +393,46 @@ pub enum IrExpr {
         id: ExprId,
     },
 
-    /// Boolean negation expression
-    BooleanNegation { operand: Box<IrExpr>, id: ExprId },
-
-    /// Numeric negation expression
+    /// A NumericNegation expression.
+    ///
+    /// Must hold an expression of a NumericType.
+    /// Returns the NumericType of the expression.
     NumericNegation {
         operand: Box<IrExpr>,
         operand_type: NumericType,
         id: ExprId,
     },
 
-    /// Boolean logical AND expression
+    /// A BooleanNegation expression.
+    ///
+    /// Must hold a Boolean expression.
+    /// Returns a Boolean.
+    BooleanNegation { operand: Box<IrExpr>, id: ExprId },
+
+    /// A BooleanLogicalAnd expression.
+    ///
+    /// Must hold two Boolean expressions.
+    /// Returns a Boolean.
     BooleanLogicalAnd {
         left: Box<IrExpr>,
         right: Box<IrExpr>,
         id: ExprId,
     },
 
-    /// Boolean logical OR expression
+    /// A BooleanLogicalOr expression.
+    ///
+    /// Must hold two Boolean expressions.
+    /// Returns a Boolean.
     BooleanLogicalOr {
         left: Box<IrExpr>,
         right: Box<IrExpr>,
         id: ExprId,
     },
 
-    /// Equals expression
+    /// An Equals expression.
+    ///
+    /// Must hold two values of the same EquatableType.
+    /// Returns a Boolean.
     Equals {
         left: Box<IrExpr>,
         right: Box<IrExpr>,
@@ -358,7 +440,10 @@ pub enum IrExpr {
         id: ExprId,
     },
 
-    /// Less than expression
+    /// A LessThan expression.
+    ///
+    /// Must hold two values of the same ComparableType.
+    /// Returns a Boolean.
     LessThan {
         left: Box<IrExpr>,
         right: Box<IrExpr>,
@@ -366,7 +451,10 @@ pub enum IrExpr {
         id: ExprId,
     },
 
-    /// Less than or equal expression
+    /// A LessThanOrEqual expression.
+    ///
+    /// Must hold two values of the same ComparableType.
+    /// Returns a Boolean.
     LessThanOrEqual {
         left: Box<IrExpr>,
         right: Box<IrExpr>,
@@ -374,28 +462,54 @@ pub enum IrExpr {
         id: ExprId,
     },
 
-    /// Array length expression, e.g. items.len()
+    /// An ArrayLength expression.
+    ///
+    /// Must hold an Array expression.
+    /// Returns an Int.
     ArrayLength { array: Box<IrExpr>, id: ExprId },
 
-    /// Array is empty expression, e.g. items.is_empty()
+    /// An ArrayIsEmpty expression.
+    ///
+    /// Must hold an Array expression.
+    /// Returns a Boolean.
     ArrayIsEmpty { array: Box<IrExpr>, id: ExprId },
 
-    /// String is empty expression, e.g. name.is_empty()
+    /// A StringIsEmpty expression.
+    ///
+    /// Must hold a String expression.
+    /// Returns a Boolean.
     StringIsEmpty { string: Box<IrExpr>, id: ExprId },
 
-    /// Option is_some expression, e.g. maybe_value.is_some()
+    /// An OptionIsSome expression.
+    ///
+    /// Must hold an Option expression.
+    /// Returns a Boolean.
     OptionIsSome { option: Box<IrExpr>, id: ExprId },
 
-    /// Option is_none expression, e.g. maybe_value.is_none()
+    /// An OptionIsNone expression.
+    ///
+    /// Must hold an Option expression.
+    /// Returns a Boolean.
     OptionIsNone { option: Box<IrExpr>, id: ExprId },
 
-    /// Int to string conversion, e.g. count.to_string()
+    /// An IntToString expression.
+    ///
+    /// Must hold an Int.
+    /// Returns a String.
     IntToString { value: Box<IrExpr>, id: ExprId },
 
-    /// Float to int conversion, e.g. price.to_int()
+    /// A FloatToInt expression.
+    ///
+    /// Saturates at the i32 bounds and maps NaN -> 0.
+    ///
+    /// Must hold a Float.
+    /// Returns an Int.
     FloatToInt { value: Box<IrExpr>, id: ExprId },
 
-    /// Int to float conversion, e.g. count.to_float()
+    /// An IntToFloat expression.
+    ///
+    /// Must hold an Int.
+    /// Returns a Float.
     IntToFloat { value: Box<IrExpr>, id: ExprId },
 }
 
@@ -694,7 +808,7 @@ impl IrExpr {
     /// Get the id of this expression
     pub fn id(&self) -> ExprId {
         match self {
-            IrExpr::Var { id, .. }
+            IrExpr::VariableReference { id, .. }
             | IrExpr::FieldAccess { id, .. }
             | IrExpr::StringLiteral { id, .. }
             | IrExpr::FragmentLiteral { id, .. }
@@ -733,7 +847,7 @@ impl IrExpr {
     /// Get the type of this expression as an Arc
     pub fn get_type(&self) -> Arc<Type> {
         match self {
-            IrExpr::Var { kind, .. }
+            IrExpr::VariableReference { kind, .. }
             | IrExpr::FieldAccess { kind, .. }
             | IrExpr::ArrayLiteral { kind, .. }
             | IrExpr::RecordLiteral { kind, .. }
@@ -788,7 +902,7 @@ impl IrExpr {
         static FRAGMENT_TYPE: Type = Type::Fragment;
 
         match self {
-            IrExpr::Var { kind, .. }
+            IrExpr::VariableReference { kind, .. }
             | IrExpr::FieldAccess { kind, .. }
             | IrExpr::ArrayLiteral { kind, .. }
             | IrExpr::RecordLiteral { kind, .. }
@@ -837,7 +951,7 @@ impl IrExpr {
     /// Pretty-print this expression
     pub fn to_doc(&self) -> BoxDoc<'_> {
         match self {
-            IrExpr::Var { value, .. } => BoxDoc::text(value.to_string()),
+            IrExpr::VariableReference { value, .. } => BoxDoc::text(value.to_string()),
             IrExpr::FieldAccess { record, field, .. } => record
                 .to_doc()
                 .append(BoxDoc::text("."))
@@ -1241,7 +1355,7 @@ impl IrExpr {
                     value.traverse(f);
                 }
             }
-            IrExpr::Var { .. }
+            IrExpr::VariableReference { .. }
             | IrExpr::StringLiteral { .. }
             | IrExpr::FragmentLiteral { .. }
             | IrExpr::BooleanLiteral { .. }
@@ -1354,7 +1468,7 @@ impl IrExpr {
                     value.traverse_mut(f);
                 }
             }
-            IrExpr::Var { .. }
+            IrExpr::VariableReference { .. }
             | IrExpr::StringLiteral { .. }
             | IrExpr::FragmentLiteral { .. }
             | IrExpr::BooleanLiteral { .. }
