@@ -1,19 +1,20 @@
 use crate::expr::patterns::{EnumMatchArm, Match};
+use crate::expr::typing::r#type::Type;
 use crate::ir::ir_var::IrVar;
 
 use super::pure_module::{
-    PureComponentDeclaration, PureExpr, PureForSource, PureModule, PureViewDeclaration,
+    PureExpr, PureForSource, PureFunctionDeclaration, PureModule, PureViewDeclaration,
 };
 use super::writer_module::{
-    WriterArgument, WriterComponentDeclaration, WriterExpr, WriterForSource, WriterModule,
-    WriterStatement, WriterViewDeclaration,
+    WriterArgument, WriterExpr, WriterForSource, WriterFunctionBody, WriterFunctionDeclaration,
+    WriterModule, WriterStatement, WriterViewDeclaration,
 };
 
 /// Lower a whole PureModule into a WriterModule.
 pub fn lower_pure(module: PureModule) -> WriterModule {
     WriterModule {
         views: module.views.into_iter().map(lower_view).collect(),
-        components: module.components.into_iter().map(lower_component).collect(),
+        functions: module.functions.into_iter().map(lower_function).collect(),
         records: module.records,
         enums: module.enums,
         var_ids: module.var_ids,
@@ -30,12 +31,21 @@ fn lower_view(decl: PureViewDeclaration) -> WriterViewDeclaration {
     }
 }
 
-fn lower_component(decl: PureComponentDeclaration) -> WriterComponentDeclaration {
-    let mut body = Vec::new();
-    lower_output(decl.body, &mut body);
-    WriterComponentDeclaration {
+/// Lower a function declaration, choosing the calling convention from its
+/// return type. Fragment compiles to destination-passing, everything else
+/// compiles as an ordinary value-returning function.
+fn lower_function(decl: PureFunctionDeclaration) -> WriterFunctionDeclaration {
+    let body = if matches!(*decl.return_type, Type::Fragment) {
+        let mut statements = Vec::new();
+        lower_output(decl.body, &mut statements);
+        WriterFunctionBody::Writes(statements)
+    } else {
+        WriterFunctionBody::Returns(lower_value(decl.body))
+    };
+    WriterFunctionDeclaration {
         name: decl.name,
         parameters: decl.parameters,
+        return_type: decl.return_type,
         body,
     }
 }
@@ -71,11 +81,17 @@ fn lower_output(expr: PureExpr, out: &mut Vec<WriterStatement>) {
             });
         }
 
-        PureExpr::ComponentCall {
-            component_name,
+        PureExpr::FunctionCall {
+            function_name,
             args,
+            kind,
             ..
         } => {
+            debug_assert!(
+                matches!(*kind, Type::Fragment),
+                "non-Fragment function call in output position: {}",
+                function_name
+            );
             let args = args
                 .into_iter()
                 .map(|arg| WriterArgument {
@@ -83,8 +99,8 @@ fn lower_output(expr: PureExpr, out: &mut Vec<WriterStatement>) {
                     expr: lower_value(arg.expr),
                 })
                 .collect();
-            out.push(WriterStatement::ComponentInvocation {
-                component_name,
+            out.push(WriterStatement::WriteFunction {
+                function_name,
                 args,
             });
         }
@@ -107,7 +123,12 @@ fn lower_output(expr: PureExpr, out: &mut Vec<WriterStatement>) {
             out.push(WriterStatement::Match { match_ });
         }
 
-        PureExpr::VariableReference { .. } | PureExpr::FieldAccess { .. } => {
+        PureExpr::VariableReference { ref kind, .. } | PureExpr::FieldAccess { ref kind, .. } => {
+            debug_assert!(
+                matches!(**kind, Type::Fragment),
+                "non-Fragment expression in output position: {:?}",
+                expr
+            );
             let expr = lower_value(expr);
             out.push(WriterStatement::WriteFragment { expr });
         }
@@ -259,12 +280,49 @@ fn lower_value(expr: PureExpr) -> WriterExpr {
         expr @ (PureExpr::FragmentRaw { .. }
         | PureExpr::FragmentEscape { .. }
         | PureExpr::FragmentConcat { .. }
-        | PureExpr::FragmentFor { .. }
-        | PureExpr::ComponentCall { .. }) => {
+        | PureExpr::FragmentFor { .. }) => {
             let mut body = Vec::new();
             lower_output(expr, &mut body);
             WriterExpr::FragmentLiteral { body }
         }
+
+        PureExpr::FunctionCall {
+            function_name,
+            args,
+            kind,
+            ..
+        } if matches!(*kind, Type::Fragment) => {
+            let args = args
+                .into_iter()
+                .map(|arg| WriterArgument {
+                    name: arg.name,
+                    expr: lower_value(arg.expr),
+                })
+                .collect();
+            WriterExpr::FragmentLiteral {
+                body: vec![WriterStatement::WriteFunction {
+                    function_name,
+                    args,
+                }],
+            }
+        }
+
+        PureExpr::FunctionCall {
+            function_name,
+            args,
+            kind,
+            ..
+        } => WriterExpr::FunctionCall {
+            function_name,
+            args: args
+                .into_iter()
+                .map(|arg| WriterArgument {
+                    name: arg.name,
+                    expr: lower_value(arg.expr),
+                })
+                .collect(),
+            kind,
+        },
 
         PureExpr::Let {
             var,

@@ -20,7 +20,7 @@ use super::writer_module::{WriterEnumDeclaration, WriterParameter, WriterRecordD
 #[derive(Debug)]
 pub struct PureModule {
     pub views: Vec<PureViewDeclaration>,
-    pub components: Vec<PureComponentDeclaration>,
+    pub functions: Vec<PureFunctionDeclaration>,
     pub records: Vec<WriterRecordDeclaration>,
     pub enums: Vec<WriterEnumDeclaration>,
     pub expr_ids: ExprIdCounter,
@@ -38,14 +38,16 @@ pub struct PureViewDeclaration {
     pub body: PureExpr,
 }
 
-/// A component declaration in Pure.
+/// A function declaration in Pure.
 #[derive(Debug)]
-pub struct PureComponentDeclaration {
-    /// Component name
+pub struct PureFunctionDeclaration {
+    /// Function name
     pub name: TypeName,
     /// Parameter names with their types
     pub parameters: Vec<WriterParameter>,
-    /// PureIR expression for the component body. Must be of type `Fragment`.
+    /// The function's return type. The body must be of this type.
+    pub return_type: Arc<Type>,
+    /// PureIR expression for the function body. Must be of type `return_type`.
     pub body: PureExpr,
 }
 
@@ -58,7 +60,7 @@ pub enum PureForSource {
     RangeInclusive { start: PureExpr, end: PureExpr },
 }
 
-/// An argument passed to a ComponentCall.
+/// An argument passed to a FunctionCall.
 #[derive(Debug, PartialEq)]
 pub struct PureArgument {
     pub name: VarName,
@@ -145,12 +147,13 @@ pub enum PureExpr {
         id: ExprId,
     },
 
-    /// A ComponentCall expression.
+    /// A FunctionCall expression.
     ///
-    /// Invokes a component and produces its fragment.
-    ComponentCall {
-        component_name: TypeName,
+    /// Invokes a function and produces its result.
+    FunctionCall {
+        function_name: TypeName,
         args: Vec<PureArgument>,
+        kind: Arc<Type>,
         id: ExprId,
     },
 
@@ -371,7 +374,8 @@ impl PureExpr {
             | PureExpr::EnumLiteral { kind, .. }
             | PureExpr::OptionLiteral { kind, .. }
             | PureExpr::Match { kind, .. }
-            | PureExpr::Let { kind, .. } => kind.clone(),
+            | PureExpr::Let { kind, .. }
+            | PureExpr::FunctionCall { kind, .. } => kind.clone(),
 
             PureExpr::FloatLiteral { .. } | PureExpr::IntToFloat { .. } => Arc::new(Type::Float),
             PureExpr::IntLiteral { .. } => Arc::new(Type::Int),
@@ -379,8 +383,7 @@ impl PureExpr {
             PureExpr::FragmentRaw { .. }
             | PureExpr::FragmentEscape { .. }
             | PureExpr::FragmentConcat { .. }
-            | PureExpr::FragmentFor { .. }
-            | PureExpr::ComponentCall { .. } => Arc::new(Type::Fragment),
+            | PureExpr::FragmentFor { .. } => Arc::new(Type::Fragment),
 
             PureExpr::StringConcat { .. }
             | PureExpr::TwMerge { .. }
@@ -431,7 +434,8 @@ impl PureExpr {
             | PureExpr::EnumLiteral { kind, .. }
             | PureExpr::OptionLiteral { kind, .. }
             | PureExpr::Match { kind, .. }
-            | PureExpr::Let { kind, .. } => kind,
+            | PureExpr::Let { kind, .. }
+            | PureExpr::FunctionCall { kind, .. } => kind,
 
             PureExpr::FloatLiteral { .. } | PureExpr::IntToFloat { .. } => &FLOAT_TYPE,
             PureExpr::IntLiteral { .. } => &INT_TYPE,
@@ -439,8 +443,7 @@ impl PureExpr {
             PureExpr::FragmentRaw { .. }
             | PureExpr::FragmentEscape { .. }
             | PureExpr::FragmentConcat { .. }
-            | PureExpr::FragmentFor { .. }
-            | PureExpr::ComponentCall { .. } => &FRAGMENT_TYPE,
+            | PureExpr::FragmentFor { .. } => &FRAGMENT_TYPE,
 
             PureExpr::StringConcat { .. }
             | PureExpr::TwMerge { .. }
@@ -576,12 +579,13 @@ impl PureExpr {
                 id,
             },
 
-            PureExpr::ComponentCall {
-                component_name,
+            PureExpr::FunctionCall {
+                function_name,
                 args,
+                kind,
                 id,
-            } => PureExpr::ComponentCall {
-                component_name,
+            } => PureExpr::FunctionCall {
+                function_name,
                 args: args
                     .into_iter()
                     .map(|arg| PureArgument {
@@ -589,6 +593,7 @@ impl PureExpr {
                         expr: f(arg.expr),
                     })
                     .collect(),
+                kind,
                 id,
             },
 
@@ -809,13 +814,15 @@ impl PureViewDeclaration {
     }
 }
 
-impl PureComponentDeclaration {
+impl PureFunctionDeclaration {
     pub fn to_doc(&self) -> BoxDoc<'_> {
-        BoxDoc::text("component ")
+        BoxDoc::text("fn ")
             .append(BoxDoc::text(self.name.as_str()))
             .append(BoxDoc::text("("))
             .append(params_to_doc(&self.parameters))
-            .append(BoxDoc::text(") {"))
+            .append(BoxDoc::text(") -> "))
+            .append(self.return_type.to_doc())
+            .append(BoxDoc::text(" {"))
             .append(BoxDoc::line().append(self.body.to_doc()).nest(2))
             .append(BoxDoc::line())
             .append(BoxDoc::text("}"))
@@ -898,13 +905,13 @@ impl PureExpr {
                     .append(BoxDoc::text(" in "))
                     .append(source_doc)
             }
-            PureExpr::ComponentCall {
-                component_name,
+            PureExpr::FunctionCall {
+                function_name,
                 args,
                 ..
             } => {
                 let mut doc = BoxDoc::text("call ")
-                    .append(BoxDoc::text(component_name.as_str()))
+                    .append(BoxDoc::text(function_name.as_str()))
                     .append(BoxDoc::text("("));
                 if !args.is_empty() {
                     doc = doc.append(BoxDoc::intersperse(
@@ -1240,7 +1247,7 @@ impl fmt::Display for PureViewDeclaration {
     }
 }
 
-impl fmt::Display for PureComponentDeclaration {
+impl fmt::Display for PureFunctionDeclaration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "{}", self.to_doc().pretty(60))
     }
@@ -1254,8 +1261,8 @@ impl fmt::Display for PureModule {
         for record_decl in &self.records {
             writeln!(f, "{}", record_decl)?;
         }
-        for component in &self.components {
-            write!(f, "{}", component)?;
+        for function in &self.functions {
+            write!(f, "{}", function)?;
         }
         for view in &self.views {
             write!(f, "{}", view)?;

@@ -22,7 +22,7 @@ use pretty::BoxDoc;
 #[derive(Debug)]
 pub struct WriterModule {
     pub views: Vec<WriterViewDeclaration>,
-    pub components: Vec<WriterComponentDeclaration>,
+    pub functions: Vec<WriterFunctionDeclaration>,
     pub records: Vec<WriterRecordDeclaration>,
     pub enums: Vec<WriterEnumDeclaration>,
     pub var_ids: VarIdCounter,
@@ -41,7 +41,6 @@ impl WriterParameter {
     }
 }
 
-/// An argument passed to a component invocation in the IR.
 #[derive(Debug, PartialEq)]
 pub struct WriterArgument {
     pub name: VarName,
@@ -79,17 +78,26 @@ pub struct WriterEnumDeclaration {
     pub variants: Vec<EnumVariant>,
 }
 
-/// A component declaration in the IR.
-///
-/// Invokable through the ComponentInvocation statement.
 #[derive(Debug)]
-pub struct WriterComponentDeclaration {
-    /// Component name
+pub struct WriterFunctionDeclaration {
+    /// Function name
     pub name: TypeName,
     /// Parameter names with their types
     pub parameters: Vec<WriterParameter>,
-    /// IR nodes for the component body
-    pub body: Vec<WriterStatement>,
+    /// The function's return type.
+    pub return_type: Arc<Type>,
+    /// The function's body. Must produce `return_type`.
+    pub body: WriterFunctionBody,
+}
+
+#[derive(Debug)]
+pub enum WriterFunctionBody {
+    /// Destination-passing: writes directly to the ambient output stream.
+    /// Call sites invoke this with a WriteFunction statement.
+    Writes(Vec<WriterStatement>),
+    /// Value-returning: evaluates to a value.
+    /// Call sites invoke this with a FunctionCall expression.
+    Returns(WriterExpr),
 }
 
 /// A statement in the IR.
@@ -118,9 +126,9 @@ pub enum WriterStatement {
     /// The type of expr must be Fragment.
     WriteFragment { expr: WriterExpr },
 
-    /// Invoke a component and write its effects to the output stream.
-    ComponentInvocation {
-        component_name: TypeName,
+    /// Invoke a function and write its effects to the output stream.
+    WriteFunction {
+        function_name: TypeName,
         args: Vec<WriterArgument>,
     },
 
@@ -203,6 +211,15 @@ pub enum WriterExpr {
     ///
     /// Produced by rendering the body into a fresh buffer.
     FragmentLiteral { body: Vec<WriterStatement> },
+
+    /// A FunctionCall expression.
+    ///
+    /// Invokes a value-returning function and produces its result.
+    FunctionCall {
+        function_name: TypeName,
+        args: Vec<WriterArgument>,
+        kind: Arc<Type>,
+    },
 
     /// A BooleanLiteral expression.
     BooleanLiteral { value: bool },
@@ -571,13 +588,13 @@ impl WriterStatement {
                     }
                 }
             }
-            WriterStatement::ComponentInvocation {
-                component_name,
+            WriterStatement::WriteFunction {
+                function_name,
                 args,
                 ..
             } => {
                 let mut doc = BoxDoc::text("call ")
-                    .append(BoxDoc::text(component_name.as_str()))
+                    .append(BoxDoc::text(function_name.as_str()))
                     .append(BoxDoc::text("("));
                 if !args.is_empty() {
                     doc = doc.append(BoxDoc::intersperse(
@@ -607,7 +624,8 @@ impl WriterExpr {
             | WriterExpr::EnumLiteral { kind, .. }
             | WriterExpr::OptionLiteral { kind, .. }
             | WriterExpr::Match { kind, .. }
-            | WriterExpr::Let { kind, .. } => kind.clone(),
+            | WriterExpr::Let { kind, .. }
+            | WriterExpr::FunctionCall { kind, .. } => kind.clone(),
 
             WriterExpr::FloatLiteral { .. } | WriterExpr::IntToFloat { .. } => {
                 Arc::new(Type::Float)
@@ -664,7 +682,8 @@ impl WriterExpr {
             | WriterExpr::EnumLiteral { kind, .. }
             | WriterExpr::OptionLiteral { kind, .. }
             | WriterExpr::Match { kind, .. }
-            | WriterExpr::Let { kind, .. } => kind,
+            | WriterExpr::Let { kind, .. }
+            | WriterExpr::FunctionCall { kind, .. } => kind,
 
             WriterExpr::FloatLiteral { .. } | WriterExpr::IntToFloat { .. } => &FLOAT_TYPE,
             WriterExpr::IntLiteral { .. } => &INT_TYPE,
@@ -728,6 +747,26 @@ impl WriterExpr {
                         .nest(2)
                 })
                 .append(BoxDoc::text("}")),
+            WriterExpr::FunctionCall {
+                function_name,
+                args,
+                ..
+            } => {
+                let mut doc = BoxDoc::text("call ")
+                    .append(BoxDoc::text(function_name.as_str()))
+                    .append(BoxDoc::text("("));
+                if !args.is_empty() {
+                    doc = doc.append(BoxDoc::intersperse(
+                        args.iter().map(|arg| {
+                            BoxDoc::text(arg.name.as_str())
+                                .append(BoxDoc::text(" = "))
+                                .append(arg.expr.to_doc())
+                        }),
+                        BoxDoc::text(", "),
+                    ));
+                }
+                doc.append(BoxDoc::text(")"))
+            }
             WriterExpr::BooleanLiteral { value, .. } => BoxDoc::text(value.to_string()),
             WriterExpr::FloatLiteral { value, .. } => BoxDoc::text(value.to_string()),
             WriterExpr::IntLiteral { value, .. } => BoxDoc::text(value.to_string()),
@@ -1161,8 +1200,8 @@ impl fmt::Display for WriterModule {
         for record_decl in &self.records {
             writeln!(f, "{}", record_decl)?;
         }
-        for component in &self.components {
-            write!(f, "{}", component)?;
+        for function in &self.functions {
+            write!(f, "{}", function)?;
         }
         for view in &self.views {
             write!(f, "{}", view)?;
@@ -1171,47 +1210,57 @@ impl fmt::Display for WriterModule {
     }
 }
 
-impl<'a> WriterComponentDeclaration {
+impl<'a> WriterFunctionDeclaration {
     pub fn to_doc(&'a self) -> BoxDoc<'a> {
-        let closing = ") {";
-        BoxDoc::text("component ")
+        let params_doc = BoxDoc::nil()
+            .append(BoxDoc::line_())
+            .append(BoxDoc::intersperse(
+                self.parameters.iter().map(|param| {
+                    BoxDoc::text(param.name.to_string())
+                        .append(BoxDoc::text("@"))
+                        .append(BoxDoc::text(param.var.to_string()))
+                        .append(BoxDoc::text(": "))
+                        .append(param.typ.to_doc())
+                }),
+                BoxDoc::text(",").append(BoxDoc::line()),
+            ))
+            .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
+            .append(BoxDoc::line_())
+            .nest(2)
+            .group();
+
+        let head = BoxDoc::text("fn ")
             .append(BoxDoc::text(self.name.as_str()))
             .append(BoxDoc::text("("))
-            .append(
-                BoxDoc::nil()
-                    .append(BoxDoc::line_())
-                    .append(BoxDoc::intersperse(
-                        self.parameters.iter().map(|param| {
-                            BoxDoc::text(param.name.to_string())
-                                .append(BoxDoc::text("@"))
-                                .append(BoxDoc::text(param.var.to_string()))
-                                .append(BoxDoc::text(": "))
-                                .append(param.typ.to_doc())
-                        }),
-                        BoxDoc::text(",").append(BoxDoc::line()),
-                    ))
-                    .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
-                    .append(BoxDoc::line_())
-                    .nest(2)
-                    .group(),
-            )
-            .append(BoxDoc::text(closing))
-            .append(if self.body.is_empty() {
-                BoxDoc::nil()
-            } else {
-                BoxDoc::line()
-                    .append(BoxDoc::intersperse(
-                        self.body.iter().map(|stmt| stmt.to_doc()),
-                        BoxDoc::line(),
-                    ))
-                    .append(BoxDoc::line())
-                    .nest(2)
-            })
-            .append(BoxDoc::text("}"))
+            .append(params_doc)
+            .append(BoxDoc::text(") -> "))
+            .append(self.return_type.to_doc());
+
+        match &self.body {
+            WriterFunctionBody::Writes(statements) => head
+                .append(BoxDoc::text(" {"))
+                .append(if statements.is_empty() {
+                    BoxDoc::nil()
+                } else {
+                    BoxDoc::line()
+                        .append(BoxDoc::intersperse(
+                            statements.iter().map(|stmt| stmt.to_doc()),
+                            BoxDoc::line(),
+                        ))
+                        .append(BoxDoc::line())
+                        .nest(2)
+                })
+                .append(BoxDoc::text("}")),
+            WriterFunctionBody::Returns(expr) => head
+                .append(BoxDoc::text(" {"))
+                .append(BoxDoc::line().append(expr.to_doc()).nest(2))
+                .append(BoxDoc::line())
+                .append(BoxDoc::text("}")),
+        }
     }
 }
 
-impl fmt::Display for WriterComponentDeclaration {
+impl fmt::Display for WriterFunctionDeclaration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "{}", self.to_doc().pretty(60))
     }

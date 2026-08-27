@@ -7,8 +7,8 @@ use crate::expr::typing::type_registry::TypeRegistry;
 use crate::ir::ir_var::IrVar;
 use crate::ir::var_id::{VarId, VarIdCounter};
 use crate::ir::writer_module::{
-    WriterArgument, WriterComponentDeclaration, WriterExpr, WriterForSource, WriterModule,
-    WriterParameter, WriterStatement, WriterViewDeclaration,
+    WriterArgument, WriterExpr, WriterForSource, WriterFunctionBody, WriterFunctionDeclaration,
+    WriterModule, WriterParameter, WriterStatement, WriterViewDeclaration,
 };
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
@@ -112,7 +112,7 @@ impl TsTranspiler {
         var_id_ident(self.var_ids.next())
     }
 
-    /// The destructuring parameter of a view or component: the binding pattern
+    /// The destructuring parameter of a view or function: the binding pattern
     /// and the type literal that annotates it, as in `{a: v_0}: {a: string}`.
     fn transpile_parameter_list<'a>(
         &mut self,
@@ -458,10 +458,10 @@ impl Transpiler for TsTranspiler {
             }
         }
 
-        // Add component definitions
-        for component in &module.components {
+        // Add function definitions
+        for function in &module.functions {
             result = result
-                .append(self.transpile_component_def(arena, component))
+                .append(self.transpile_function_def(arena, function))
                 .append(arena.hardline())
                 .append(arena.hardline());
         }
@@ -627,38 +627,7 @@ impl Transpiler for TsTranspiler {
             .append(arena.text("}"))
     }
 
-    fn transpile_component_def<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        component: &'a WriterComponentDeclaration,
-    ) -> Doc<'a> {
-        let parameters = self.transpile_parameter_list(arena, &component.parameters);
-        let result = arena
-            .text("function render")
-            .append(arena.text(component.name.as_ref()))
-            .append(arena.text("("))
-            .append(parameters);
-
-        // Function body
-        let body = arena
-            .nil()
-            .append(arena.line())
-            .append(arena.text("let output: string = \"\";"))
-            .append(arena.line());
-
-        let body = body
-            .append(self.transpile_statements(arena, &component.body))
-            .append(arena.line())
-            .append(arena.text("return output;"))
-            .append(arena.line());
-
-        result
-            .append(arena.text("): string {"))
-            .append(body.nest(4))
-            .append(arena.text("}"))
-    }
-
-    fn transpile_component_call_statement<'a>(
+    fn transpile_write_function_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
         name: &'a TypeName,
@@ -689,6 +658,87 @@ impl Transpiler for TsTranspiler {
         }
 
         doc.append(arena.text(");"))
+    }
+
+    fn transpile_function_def<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        function: &'a WriterFunctionDeclaration,
+    ) -> Doc<'a> {
+        let parameters = self.transpile_parameter_list(arena, &function.parameters);
+        let head = arena
+            .text("function render")
+            .append(arena.text(function.name.as_ref()))
+            .append(arena.text("("))
+            .append(parameters);
+
+        match &function.body {
+            WriterFunctionBody::Writes(statements) => {
+                let body = arena
+                    .nil()
+                    .append(arena.line())
+                    .append(arena.text("let output: string = \"\";"))
+                    .append(arena.line())
+                    .append(self.transpile_statements(arena, statements))
+                    .append(arena.line())
+                    .append(arena.text("return output;"))
+                    .append(arena.line());
+
+                head.append(arena.text("): string {"))
+                    .append(body.nest(4))
+                    .append(arena.text("}"))
+            }
+            WriterFunctionBody::Returns(expr) => {
+                let return_type = self.transpile_type(arena, &function.return_type);
+                let body = self.transpile_expr(arena, expr);
+                head.append(arena.text("): "))
+                    .append(return_type)
+                    .append(arena.text(" {"))
+                    .append(
+                        arena
+                            .nil()
+                            .append(arena.line())
+                            .append(arena.text("return "))
+                            .append(body)
+                            .append(arena.text(";"))
+                            .append(arena.line())
+                            .nest(4),
+                    )
+                    .append(arena.text("}"))
+            }
+        }
+    }
+
+    fn transpile_function_call_expr<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        name: &'a TypeName,
+        args: &'a [WriterArgument],
+    ) -> Doc<'a> {
+        let mut doc = arena
+            .nil()
+            .append(arena.text("render"))
+            .append(arena.text(name.as_ref()))
+            .append(arena.text("("));
+
+        if !args.is_empty() {
+            let arg_docs: Vec<_> = args
+                .iter()
+                .map(|arg| {
+                    arena
+                        .text(arg.name.as_str())
+                        .append(arena.text(": "))
+                        .append(self.transpile_expr(arena, &arg.expr))
+                })
+                .collect();
+
+            doc = doc
+                .append(arena.text("{"))
+                .append(arena.intersperse(arg_docs, arena.text(", ")))
+                .append(arena.text("}"));
+        }
+
+        doc.append(arena.text(")"))
     }
 
     fn transpile_write_statement<'a>(&mut self, arena: &'a Arena<'a>, content: &'a str) -> Doc<'a> {
@@ -1770,7 +1820,7 @@ mod tests {
     }
 
     #[test]
-    fn simple_component() {
+    fn simple_view() {
         check(
             PureModuleBuilder::new()
                 .view_no_params("HelloWorld", |t| t.raw("<h1>Hello, World!</h1>\n")),
@@ -1793,7 +1843,7 @@ mod tests {
     }
 
     #[test]
-    fn component_with_params_and_escaping() {
+    fn view_with_params_and_escaping() {
         check(
             PureModuleBuilder::new().view(
                 "UserInfo",
@@ -3363,6 +3413,57 @@ mod tests {
                     const v_0: Fragment = (() => {
                         let output: string = "";
                         output += "<b>hi</b>";
+                        return output as Fragment;
+                    })();
+                    output += v_0;
+                    return output;
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn fragment_returning_function_called_in_value_position() {
+        check(
+            PureModuleBuilder::new()
+                .function("Frag", [], "Fragment", |t| t.raw("<b>hi</b>"))
+                .view_no_params("Test", |t| {
+                    t.let_expr("x", t.call("Frag", vec![]), |t| t.var("x"))
+                }),
+            expect![[r#"
+                -- before --
+                fn Frag() -> Fragment {
+                  write("<b>hi</b>")
+                }
+                view Test() {
+                  let v0 = {
+                    call Frag()
+                  } in {
+                    write_fragment(v0)
+                  }
+                }
+
+                -- after --
+                // Code generated by the hop compiler. DO NOT EDIT.
+
+                type Fragment = string & { readonly __brand: unique symbol };
+
+                /** Marks a string as trusted HTML, bypassing escaping. Only use with sanitized or trusted content. Calling this function with untrusted content causes XSS vulnerabilities. */
+                export function trustHtml(str: string): Fragment {
+                    return str as Fragment;
+                }
+
+                function renderFrag(): string {
+                    let output: string = "";
+                    output += "<b>hi</b>";
+                    return output;
+                }
+
+                export function Test(): string {
+                    let output: string = "";
+                    const v_0: Fragment = (() => {
+                        let output: string = "";
+                        output += renderFrag();
                         return output as Fragment;
                     })();
                     output += v_0;

@@ -569,7 +569,7 @@ fn is_const(expr: &PureExpr) -> bool {
         | PureExpr::FragmentEscape { .. }
         | PureExpr::FragmentConcat { .. }
         | PureExpr::FragmentFor { .. }
-        | PureExpr::ComponentCall { .. }
+        | PureExpr::FunctionCall { .. }
         | PureExpr::StringConcat { .. }
         | PureExpr::TwMerge { .. }
         | PureExpr::NumericAdd { .. }
@@ -667,7 +667,7 @@ fn instantiate(expr: &PureExpr, expr_ids: &mut ExprIdCounter) -> PureExpr {
         | PureExpr::FragmentEscape { .. }
         | PureExpr::FragmentConcat { .. }
         | PureExpr::FragmentFor { .. }
-        | PureExpr::ComponentCall { .. }
+        | PureExpr::FunctionCall { .. }
         | PureExpr::StringConcat { .. }
         | PureExpr::TwMerge { .. }
         | PureExpr::NumericAdd { .. }
@@ -698,7 +698,7 @@ mod tests {
     use std::collections::HashMap;
 
     use super::*;
-    use crate::ir::pure_module::{PureComponentDeclaration, PureModule, PureViewDeclaration};
+    use crate::ir::pure_module::{PureFunctionDeclaration, PureModule, PureViewDeclaration};
     use crate::ir::pure_module_builder::PureModuleBuilder;
     use crate::ir::pure_module_generator::random_module;
     use crate::ir::runtime::evaluator::evaluate_view;
@@ -750,7 +750,6 @@ mod tests {
         });
     }
 
-    /// Apply the pass to every view and component body.
     fn run(module: PureModule) -> PureModule {
         let mut expr_ids = module.expr_ids;
         let views = module
@@ -762,18 +761,19 @@ mod tests {
                 body: perform_partial_evaluation(view.body, &mut expr_ids),
             })
             .collect();
-        let components = module
-            .components
+        let functions = module
+            .functions
             .into_iter()
-            .map(|component| PureComponentDeclaration {
-                name: component.name,
-                parameters: component.parameters,
-                body: perform_partial_evaluation(component.body, &mut expr_ids),
+            .map(|function| PureFunctionDeclaration {
+                name: function.name,
+                parameters: function.parameters,
+                return_type: function.return_type,
+                body: perform_partial_evaluation(function.body, &mut expr_ids),
             })
             .collect();
         PureModule {
             views,
-            components,
+            functions,
             records: module.records,
             enums: module.enums,
             expr_ids,

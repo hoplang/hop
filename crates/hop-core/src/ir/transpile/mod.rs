@@ -10,7 +10,7 @@ use crate::expr::typing::r#type::{ComparableType, EquatableType, NumericType, Ty
 use crate::expr::typing::type_registry::{ResolvedType, TypeRegistry};
 use crate::ir::ir_var::IrVar;
 use crate::ir::writer_module::{
-    WriterArgument, WriterComponentDeclaration, WriterExpr, WriterForSource, WriterModule,
+    WriterArgument, WriterExpr, WriterForSource, WriterFunctionDeclaration, WriterModule,
     WriterStatement, WriterViewDeclaration,
 };
 use crate::symbols::field_name::FieldName;
@@ -62,12 +62,18 @@ pub trait Transpiler {
         arena: &'a Arena<'a>,
         match_: &'a Match<WriterExpr, Vec<WriterStatement>, IrVar>,
     ) -> Doc<'a>;
-    fn transpile_component_def<'a>(
+    fn transpile_write_function_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        component: &'a WriterComponentDeclaration,
+        name: &'a TypeName,
+        args: &'a [WriterArgument],
     ) -> Doc<'a>;
-    fn transpile_component_call_statement<'a>(
+    fn transpile_function_def<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        function: &'a WriterFunctionDeclaration,
+    ) -> Doc<'a>;
+    fn transpile_function_call_expr<'a>(
         &mut self,
         arena: &'a Arena<'a>,
         name: &'a TypeName,
@@ -95,11 +101,11 @@ pub trait Transpiler {
                 var, value, body, ..
             } => self.transpile_let_statement(arena, var, value, body),
             WriterStatement::Match { match_, .. } => self.transpile_match_statement(arena, match_),
-            WriterStatement::ComponentInvocation {
-                component_name,
+            WriterStatement::WriteFunction {
+                function_name,
                 args,
                 ..
-            } => self.transpile_component_call_statement(arena, component_name, args.as_slice()),
+            } => self.transpile_write_function_statement(arena, function_name, args.as_slice()),
         }
     }
     fn transpile_statements<'a>(
@@ -360,6 +366,11 @@ pub trait Transpiler {
             } => self.transpile_field_access(arena, object, field),
             WriterExpr::StringLiteral { value, .. } => self.transpile_string_literal(arena, value),
             WriterExpr::FragmentLiteral { body, .. } => self.transpile_fragment(arena, body),
+            WriterExpr::FunctionCall {
+                function_name,
+                args,
+                ..
+            } => self.transpile_function_call_expr(arena, function_name, args.as_slice()),
             WriterExpr::BooleanLiteral { value, .. } => {
                 self.transpile_boolean_literal(arena, *value)
             }

@@ -7,8 +7,7 @@ use crate::expr::typing::type_registry_builder::{TestTypes, TypeRegistryBuilder}
 use crate::ir::expr_id::{ExprId, ExprIdCounter};
 use crate::ir::ir_var::IrVar;
 use crate::ir::pure_module::{
-    PureArgument, PureComponentDeclaration, PureExpr, PureForSource, PureModule,
-    PureViewDeclaration,
+    PureArgument, PureExpr, PureForSource, PureFunctionDeclaration, PureModule, PureViewDeclaration,
 };
 use crate::ir::var_id::VarIdCounter;
 use crate::ir::writer_module::{WriterEnumDeclaration, WriterParameter, WriterRecordDeclaration};
@@ -16,6 +15,7 @@ use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -60,14 +60,15 @@ impl PureModuleBuilder {
         self
     }
 
-    /// Freeze the declared types, enabling view and component bodies.
+    /// Freeze the declared types, enabling view and function bodies.
     pub fn freeze(self) -> PureModuleBodiesBuilder {
         PureModuleBodiesBuilder {
             types: Rc::new(self.types_builder.build()),
             expr_ids: Rc::new(RefCell::new(ExprIdCounter::new())),
             var_ids: Rc::new(RefCell::new(VarIdCounter::new())),
             views: Vec::new(),
-            components: Vec::new(),
+            functions: Vec::new(),
+            callees: Rc::new(RefCell::new(HashMap::new())),
         }
     }
 
@@ -90,16 +91,17 @@ impl PureModuleBuilder {
         self.freeze().view(name, params, body_fn)
     }
 
-    pub fn component<'a, F>(
+    pub fn function<'a, F>(
         self,
         name: &str,
         params: impl IntoIterator<Item = (&'a str, &'a str)>,
+        return_type: &str,
         body_fn: F,
     ) -> PureModuleBodiesBuilder
     where
         F: FnOnce(&PureBuilder) -> PureExpr,
     {
-        self.freeze().component(name, params, body_fn)
+        self.freeze().function(name, params, return_type, body_fn)
     }
 }
 
@@ -115,13 +117,18 @@ impl From<PureModuleBuilder> for PureModuleBodiesBuilder {
     }
 }
 
-/// Collects view and component bodies against a frozen set of types.
+/// A function's parameters and return type, keyed by name so call sites can
+/// look up the callee's return type.
+type FunctionSignature = (Vec<WriterParameter>, Arc<Type>);
+
+/// Collects view and function bodies against a frozen set of types.
 pub struct PureModuleBodiesBuilder {
     types: Rc<TestTypes>,
     expr_ids: Rc<RefCell<ExprIdCounter>>,
     var_ids: Rc<RefCell<VarIdCounter>>,
     views: Vec<PureViewDeclaration>,
-    components: Vec<PureComponentDeclaration>,
+    functions: Vec<PureFunctionDeclaration>,
+    callees: Rc<RefCell<HashMap<String, FunctionSignature>>>,
 }
 
 impl PureModuleBodiesBuilder {
@@ -141,7 +148,7 @@ impl PureModuleBodiesBuilder {
     where
         F: FnOnce(&PureBuilder) -> PureExpr,
     {
-        let (parameters, body) = self.declaration(params, body_fn);
+        let (parameters, body) = self.declaration(params, Arc::new(Type::Fragment), body_fn);
         self.views.push(PureViewDeclaration {
             name: TypeName::new(name).expect("Test view name should be valid"),
             parameters,
@@ -150,19 +157,25 @@ impl PureModuleBodiesBuilder {
         self
     }
 
-    pub fn component<'a, F>(
+    pub fn function<'a, F>(
         mut self,
         name: &str,
         params: impl IntoIterator<Item = (&'a str, &'a str)>,
+        return_type: &str,
         body_fn: F,
     ) -> Self
     where
         F: FnOnce(&PureBuilder) -> PureExpr,
     {
-        let (parameters, body) = self.declaration(params, body_fn);
-        self.components.push(PureComponentDeclaration {
-            name: TypeName::new(name).expect("Test component name should be valid"),
+        let return_type = self.types.resolve(return_type);
+        let (parameters, body) = self.declaration(params, return_type.clone(), body_fn);
+        self.callees
+            .borrow_mut()
+            .insert(name.to_string(), (parameters.clone(), return_type.clone()));
+        self.functions.push(PureFunctionDeclaration {
+            name: TypeName::new(name).expect("Test function name should be valid"),
             parameters,
+            return_type,
             body,
         });
         self
@@ -171,6 +184,7 @@ impl PureModuleBodiesBuilder {
     fn declaration<'a, F>(
         &self,
         params: impl IntoIterator<Item = (&'a str, &'a str)>,
+        expected_type: Arc<Type>,
         body_fn: F,
     ) -> (Vec<WriterParameter>, PureExpr)
     where
@@ -196,12 +210,14 @@ impl PureModuleBodiesBuilder {
             types: self.types.clone(),
             expr_ids: self.expr_ids.clone(),
             var_ids: self.var_ids.clone(),
+            callees: self.callees.clone(),
         };
         let body = body_fn(&builder);
         assert_eq!(
             *body.as_type(),
-            Type::Fragment,
-            "View/component body must be of type Fragment, got: {}",
+            *expected_type,
+            "Declaration body must be of type {:?}, got: {}",
+            expected_type,
             body
         );
         (parameters, body)
@@ -233,7 +249,7 @@ impl PureModuleBodiesBuilder {
         }
         let module = PureModule {
             views: self.views,
-            components: self.components,
+            functions: self.functions,
             records: record_declarations,
             enums: enum_declarations,
             expr_ids: *self.expr_ids.borrow(),
@@ -250,6 +266,7 @@ pub struct PureBuilder {
     types: Rc<TestTypes>,
     expr_ids: Rc<RefCell<ExprIdCounter>>,
     var_ids: Rc<RefCell<VarIdCounter>>,
+    callees: Rc<RefCell<HashMap<String, FunctionSignature>>>,
 }
 
 impl PureBuilder {
@@ -269,6 +286,7 @@ impl PureBuilder {
             types: self.types.clone(),
             expr_ids: self.expr_ids.clone(),
             var_ids: self.var_ids.clone(),
+            callees: self.callees.clone(),
         }
     }
 
@@ -1112,6 +1130,13 @@ impl PureBuilder {
     }
 
     pub fn call(&self, name: &str, args: Vec<(&str, PureExpr)>) -> PureExpr {
+        let (_, return_type) = self
+            .callees
+            .borrow()
+            .get(name)
+            .cloned()
+            .unwrap_or_else(|| panic!("Call to undeclared function '{}'", name));
+
         let pure_args: Vec<PureArgument> = args
             .into_iter()
             .map(|(k, expr)| PureArgument {
@@ -1120,9 +1145,10 @@ impl PureBuilder {
             })
             .collect();
 
-        PureExpr::ComponentCall {
-            component_name: TypeName::new(name).unwrap(),
+        PureExpr::FunctionCall {
+            function_name: TypeName::new(name).unwrap(),
             args: pure_args,
+            kind: return_type,
             id: self.next_expr_id(),
         }
     }

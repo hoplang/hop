@@ -1,4 +1,4 @@
-use super::pure_module::{PureComponentDeclaration, PureExpr, PureModule, PureViewDeclaration};
+use super::pure_module::{PureExpr, PureFunctionDeclaration, PureModule, PureViewDeclaration};
 use crate::ir::{expr_id::ExprIdCounter, transform};
 
 fn optimize_body(body: PureExpr, expr_ids: &mut ExprIdCounter) -> PureExpr {
@@ -18,18 +18,19 @@ pub fn optimize(module: PureModule) -> PureModule {
             body: optimize_body(view.body, &mut expr_ids),
         })
         .collect();
-    let components = module
-        .components
+    let functions = module
+        .functions
         .into_iter()
-        .map(|component| PureComponentDeclaration {
-            name: component.name,
-            parameters: component.parameters,
-            body: optimize_body(component.body, &mut expr_ids),
+        .map(|function| PureFunctionDeclaration {
+            name: function.name,
+            parameters: function.parameters,
+            return_type: function.return_type,
+            body: optimize_body(function.body, &mut expr_ids),
         })
         .collect();
     PureModule {
         views,
-        components,
+        functions,
         records: module.records,
         enums: module.enums,
         expr_ids,

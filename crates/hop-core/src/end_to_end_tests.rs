@@ -7869,7 +7869,7 @@ mod tests {
             "3210",
             expect![[r#"
                 -- ir (unoptimized) --
-                component Countdown(delete@v0: Int) {
+                fn Countdown(delete@v0: Int) -> Fragment {
                   write_string(v0.to_string())
                   match (0 < v0) {
                     true => {
@@ -7883,7 +7883,7 @@ mod tests {
                   call Countdown(delete = 3)
                 }
                 -- ir (optimized) --
-                component Countdown(delete@v0: Int) {
+                fn Countdown(delete@v0: Int) -> Fragment {
                   write_string(v0.to_string())
                   match (0 < v0) {
                     true => {
@@ -7933,7 +7933,7 @@ mod tests {
             "3210",
             expect![[r#"
                 -- ir (unoptimized) --
-                component Countdown(type@v0: Int) {
+                fn Countdown(type@v0: Int) -> Fragment {
                   write_string(v0.to_string())
                   match (0 < v0) {
                     true => {
@@ -7947,7 +7947,7 @@ mod tests {
                   call Countdown(type = 3)
                 }
                 -- ir (optimized) --
-                component Countdown(type@v0: Int) {
+                fn Countdown(type@v0: Int) -> Fragment {
                   write_string(v0.to_string())
                   match (0 < v0) {
                     true => {
@@ -10426,7 +10426,7 @@ mod tests {
                   value: String,
                   next: Option[test::Node],
                 }
-                component NodeView(node@v1: test::Node) {
+                fn NodeView(node@v1: test::Node) -> Fragment {
                   let v2 = v1.value in {
                     let v3 = v2 in {
                       write("<strong")
@@ -10461,7 +10461,7 @@ mod tests {
                   value: String,
                   next: Option[test::Node],
                 }
-                component NodeView(node@v1: test::Node) {
+                fn NodeView(node@v1: test::Node) -> Fragment {
                   let v2 = v1.value in {
                     let v3 = v2 in {
                       write("<strong>")
@@ -10552,7 +10552,7 @@ mod tests {
                   value: String,
                   next: Option[test::Node],
                 }
-                component NodeView(node@v1: test::Node) {
+                fn NodeView(node@v1: test::Node) -> Fragment {
                   write("<span")
                   write(">")
                   write_string(v1.value)
@@ -10586,7 +10586,7 @@ mod tests {
                   value: String,
                   next: Option[test::Node],
                 }
-                component NodeView(node@v1: test::Node) {
+                fn NodeView(node@v1: test::Node) -> Fragment {
                   write("<span>")
                   write_string(v1.value)
                   write("</span>")
@@ -12288,7 +12288,7 @@ mod tests {
             "<div><div><b>x</b></div></div>",
             expect![[r#"
                 -- ir (unoptimized) --
-                component Nest(depth@v0: Int, children@v1: Fragment) {
+                fn Nest(depth@v0: Int, children@v1: Fragment) -> Fragment {
                   match (0 < v0) {
                     true => {
                       write("<div")
@@ -12312,7 +12312,7 @@ mod tests {
                   })
                 }
                 -- ir (optimized) --
-                component Nest(depth@v0: Int, children@v1: Fragment) {
+                fn Nest(depth@v0: Int, children@v1: Fragment) -> Fragment {
                   match (0 < v0) {
                     true => {
                       write("<div>")
@@ -12528,7 +12528,7 @@ mod tests {
             "3210",
             expect![[r#"
                 -- ir (unoptimized) --
-                component Countdown(n@v0: Int) {
+                fn Countdown(n@v0: Int) -> Fragment {
                   write_string(v0.to_string())
                   match (0 < v0) {
                     true => {
@@ -12542,7 +12542,7 @@ mod tests {
                   call Countdown(n = 3)
                 }
                 -- ir (optimized) --
-                component Countdown(n@v0: Int) {
+                fn Countdown(n@v0: Int) -> Fragment {
                   write_string(v0.to_string())
                   match (0 < v0) {
                     true => {
@@ -12602,7 +12602,7 @@ mod tests {
             "aaa",
             expect![[r#"
                 -- ir (unoptimized) --
-                component Loop(n@v0: Int, label@v1: Option[String]) {
+                fn Loop(n@v0: Int, label@v1: Option[String]) -> Fragment {
                   match v1 {
                     Some(v2) => {
                       let v3 = v2 in {
@@ -12625,7 +12625,7 @@ mod tests {
                   call Loop(n = 2, label = Option[String]::Some("a"))
                 }
                 -- ir (optimized) --
-                component Loop(n@v0: Int, label@v1: Option[String]) {
+                fn Loop(n@v0: Int, label@v1: Option[String]) -> Fragment {
                   match v1 {
                     Some(v2) => {
                       let v3 = v2 in {
@@ -12686,7 +12686,7 @@ mod tests {
             "",
             expect![[r#"
                 -- ir (unoptimized) --
-                component C(x@v1: Option[String]) {
+                fn C(x@v1: Option[String]) -> Fragment {
                   match v1.is_none() {
                     true => {
                       call C(x = v1)
@@ -12702,7 +12702,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                component C(x@v1: Option[String]) {
+                fn C(x@v1: Option[String]) -> Fragment {
                   match v1.is_none() {
                     true => {
                       call C(x = v1)
@@ -12763,7 +12763,7 @@ mod tests {
             "even",
             expect![[r#"
                 -- ir (unoptimized) --
-                component Odd(n@v0: Int) {
+                fn Odd(n@v0: Int) -> Fragment {
                   match (v0 == 0) {
                     true => {
                       write("odd")
@@ -12779,7 +12779,7 @@ mod tests {
                     }
                   }
                 }
-                component Even(n@v1: Int) {
+                fn Even(n@v1: Int) -> Fragment {
                   match (v1 == 0) {
                     true => {
                       write("even")
@@ -12799,7 +12799,7 @@ mod tests {
                   call Even(n = 4)
                 }
                 -- ir (optimized) --
-                component Odd(n@v0: Int) {
+                fn Odd(n@v0: Int) -> Fragment {
                   match (v0 == 0) {
                     true => {
                       write("odd")
@@ -12815,7 +12815,7 @@ mod tests {
                     }
                   }
                 }
-                component Even(n@v1: Int) {
+                fn Even(n@v1: Int) -> Fragment {
                   match (v1 == 0) {
                     true => {
                       write("even")
@@ -12925,7 +12925,7 @@ mod tests {
             "",
             expect![[r#"
                 -- ir (unoptimized) --
-                component C(p@v0: Array[String]) {
+                fn C(p@v0: Array[String]) -> Fragment {
                   for _ in v0 {
                     call C(p = [])
                   }
@@ -12934,7 +12934,7 @@ mod tests {
                   call C(p = ["a"])
                 }
                 -- ir (optimized) --
-                component C(p@v0: Array[String]) {
+                fn C(p@v0: Array[String]) -> Fragment {
                   for _ in v0 {
                     call C(p = [])
                   }
@@ -12985,7 +12985,7 @@ mod tests {
                 record R {
                   f: Array[String],
                 }
-                component C(p@v0: Array[String]) {
+                fn C(p@v0: Array[String]) -> Fragment {
                   match R {f: v0}.f.is_empty() {
                     true => {
                       call C(p = [])
@@ -13001,7 +13001,7 @@ mod tests {
                 record R {
                   f: Array[String],
                 }
-                component C(p@v0: Array[String]) {
+                fn C(p@v0: Array[String]) -> Fragment {
                   match v0.is_empty() {
                     true => {
                       call C(p = [])

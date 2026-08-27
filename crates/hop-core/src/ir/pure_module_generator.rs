@@ -60,9 +60,10 @@ struct EnumInfo {
 }
 
 #[derive(Clone)]
-struct ComponentInfo {
+struct FunctionInfo {
     name: String,
     params: Vec<(String, String)>,
+    return_type: String,
 }
 
 /// Which named types may be referenced at a type position.
@@ -80,7 +81,7 @@ struct PureGenerator<'a, 'b> {
     declared_names: Vec<String>,
     records: Vec<RecordInfo>,
     enums: Vec<EnumInfo>,
-    components: Vec<ComponentInfo>,
+    functions: Vec<FunctionInfo>,
     next_var: usize,
 }
 
@@ -102,7 +103,7 @@ fn random_module_inner(
         declared_names: Vec::new(),
         records: Vec::new(),
         enums: Vec::new(),
-        components: Vec::new(),
+        functions: Vec::new(),
         next_var: 0,
     };
 
@@ -163,18 +164,27 @@ fn random_module_inner(
 
     let mut bodies = builder.freeze();
 
-    // Generate components
+    // Generate functions
     for i in 0..g.count(0..=2) {
         let name = format!("C{i}");
         let params: Vec<(String, String)> = (0..g.count(0..=3))
             .map(|_| (g.fresh_var_name(), g.random_type_string(2)))
             .collect();
-        bodies = bodies.component(
+        let return_type = g.random_type_string(2);
+        bodies = bodies.function(
             &name,
             params.iter().map(|(n, t)| (n.as_str(), t.as_str())),
-            |b| g.expr(b, &Type::Fragment, DEPTH),
+            &return_type,
+            |b| {
+                let target = b.resolve_type(&return_type);
+                g.expr(b, &target, DEPTH)
+            },
         );
-        g.components.push(ComponentInfo { name, params });
+        g.functions.push(FunctionInfo {
+            name,
+            params,
+            return_type,
+        });
     }
 
     // Generate views
@@ -409,9 +419,13 @@ impl PureGenerator<'_, '_> {
                     P::FragmentForRange,
                     P::FragmentIf,
                 ]);
-                if !self.components.is_empty() {
-                    productions.push(P::Call);
-                }
+            }
+            if self
+                .functions
+                .iter()
+                .any(|f| *b.resolve_type(&f.return_type) == *target)
+            {
+                productions.push(P::Call);
             }
         }
         match self.u.choose(&productions).unwrap() {
@@ -611,7 +625,13 @@ impl PureGenerator<'_, '_> {
                 b.bool_match_expr(condition, true_body, false_body)
             }
             P::Call => {
-                let info = self.u.choose(&self.components).unwrap().clone();
+                let candidates: Vec<FunctionInfo> = self
+                    .functions
+                    .iter()
+                    .filter(|f| *b.resolve_type(&f.return_type) == *target)
+                    .cloned()
+                    .collect();
+                let info = self.u.choose(&candidates).unwrap().clone();
                 let args = info
                     .params
                     .iter()

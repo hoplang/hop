@@ -9,8 +9,8 @@ use crate::expr::typing::r#type::{EnumVariant, Type};
 use crate::expr::typing::type_registry::{ResolvedType, TypeRegistry};
 use crate::ir::ir_var::IrVar;
 use crate::ir::writer_module::{
-    WriterArgument, WriterComponentDeclaration, WriterExpr, WriterForSource, WriterModule,
-    WriterStatement, WriterViewDeclaration,
+    WriterArgument, WriterExpr, WriterForSource, WriterFunctionBody, WriterFunctionDeclaration,
+    WriterModule, WriterStatement, WriterViewDeclaration,
 };
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
@@ -151,6 +151,7 @@ impl RustTranspiler {
             // owned.
             WriterExpr::StringLiteral { .. }
             | WriterExpr::FragmentLiteral { .. }
+            | WriterExpr::FunctionCall { .. }
             | WriterExpr::BooleanLiteral { .. }
             | WriterExpr::FloatLiteral { .. }
             | WriterExpr::IntLiteral { .. }
@@ -516,10 +517,10 @@ impl Transpiler for RustTranspiler {
                 .append(arena.line());
         }
 
-        // Transpile each component as a function
-        for component in &module.components {
+        // Transpile each function declaration
+        for function in &module.functions {
             result = result
-                .append(self.transpile_component_def(arena, component))
+                .append(self.transpile_function_def(arena, function))
                 .append(arena.line());
         }
 
@@ -685,50 +686,7 @@ impl Transpiler for RustTranspiler {
             .append(arena.hardline())
     }
 
-    fn transpile_component_def<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        component: &'a WriterComponentDeclaration,
-    ) -> Doc<'a> {
-        let func_name = format!("render_{}", component.name.to_snake_case());
-
-        let mut result = arena.text("fn ").append(arena.text(func_name));
-
-        // Build parameter list
-        let mut params: Vec<Doc<'a>> = Vec::new();
-
-        params.push(arena.text("output: &mut String"));
-
-        for param in &component.parameters {
-            params.push(
-                arena
-                    .text(var_ident(&param.var))
-                    .append(arena.text(": "))
-                    .append(self.transpile_param_type(arena, &param.typ)),
-            );
-        }
-
-        result = result
-            .append(arena.text("("))
-            .append(arena.intersperse(params, arena.text(", ")))
-            .append(arena.text(") {"));
-
-        // Build function body
-        let mut body = arena.nil();
-
-        // Transpile body statements
-        body = body
-            .append(self.transpile_statements(arena, &component.body))
-            .append(arena.hardline());
-
-        result
-            .append(arena.hardline().append(body).nest(4))
-            .append(arena.hardline())
-            .append(arena.text("}"))
-            .append(arena.hardline())
-    }
-
-    fn transpile_component_call_statement<'a>(
+    fn transpile_write_function_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
         name: &'a TypeName,
@@ -759,6 +717,98 @@ impl Transpiler for RustTranspiler {
         doc = doc.append(arena.intersperse(all_args, arena.text(", ")));
 
         doc.append(arena.text(");"))
+    }
+
+    fn transpile_function_def<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        function: &'a WriterFunctionDeclaration,
+    ) -> Doc<'a> {
+        let func_name = format!("render_{}", function.name.to_snake_case());
+        let mut result = arena.text("fn ").append(arena.text(func_name));
+
+        match &function.body {
+            WriterFunctionBody::Writes(statements) => {
+                let mut params: Vec<Doc<'a>> = Vec::new();
+                params.push(arena.text("output: &mut String"));
+                for param in &function.parameters {
+                    params.push(
+                        arena
+                            .text(var_ident(&param.var))
+                            .append(arena.text(": "))
+                            .append(self.transpile_param_type(arena, &param.typ)),
+                    );
+                }
+
+                result = result
+                    .append(arena.text("("))
+                    .append(arena.intersperse(params, arena.text(", ")))
+                    .append(arena.text(") {"));
+
+                let body = self.transpile_statements(arena, statements);
+
+                result
+                    .append(arena.hardline().append(body).nest(4))
+                    .append(arena.hardline())
+                    .append(arena.text("}"))
+                    .append(arena.hardline())
+            }
+            WriterFunctionBody::Returns(expr) => {
+                let params: Vec<Doc<'a>> = function
+                    .parameters
+                    .iter()
+                    .map(|param| {
+                        arena
+                            .text(var_ident(&param.var))
+                            .append(arena.text(": "))
+                            .append(self.transpile_param_type(arena, &param.typ))
+                    })
+                    .collect();
+
+                result = result
+                    .append(arena.text("("))
+                    .append(arena.intersperse(params, arena.text(", ")))
+                    .append(arena.text(") -> "))
+                    .append(self.transpile_type(arena, &function.return_type))
+                    .append(arena.text(" {"));
+
+                let body = self.transpile_expr_owned(arena, expr);
+
+                result
+                    .append(arena.hardline().append(body).nest(4))
+                    .append(arena.hardline())
+                    .append(arena.text("}"))
+                    .append(arena.hardline())
+            }
+        }
+    }
+
+    fn transpile_function_call_expr<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        name: &'a TypeName,
+        args: &'a [WriterArgument],
+    ) -> Doc<'a> {
+        let func_name = format!("render_{}", name.to_snake_case());
+
+        let mut doc = arena.text(func_name).append(arena.text("("));
+
+        let all_args: Vec<Doc<'a>> = args
+            .iter()
+            .map(|arg| {
+                if Self::passed_by_ref(arg.expr.as_type()) {
+                    arena
+                        .text("&")
+                        .append(self.transpile_expr(arena, &arg.expr))
+                } else {
+                    self.transpile_expr_owned(arena, &arg.expr)
+                }
+            })
+            .collect();
+
+        doc = doc.append(arena.intersperse(all_args, arena.text(", ")));
+
+        doc.append(arena.text(")"))
     }
 
     fn transpile_write_statement<'a>(&mut self, arena: &'a Arena<'a>, content: &'a str) -> Doc<'a> {
@@ -1130,6 +1180,7 @@ impl Transpiler for RustTranspiler {
             | WriterExpr::FieldAccess { .. }
             | WriterExpr::StringLiteral { .. }
             | WriterExpr::FragmentLiteral { .. }
+            | WriterExpr::FunctionCall { .. }
             | WriterExpr::BooleanLiteral { .. }
             | WriterExpr::FloatLiteral { .. }
             | WriterExpr::IntLiteral { .. }
@@ -1863,7 +1914,7 @@ mod tests {
     }
 
     #[test]
-    fn simple_component() {
+    fn simple_view() {
         check(
             PureModuleBuilder::new().view_no_params("Test", |t| t.raw("<h1>Hello, World!</h1>\n")),
             expect![[r#"
@@ -2569,19 +2620,19 @@ mod tests {
     }
 
     #[test]
-    fn component_with_enum_param() {
+    fn function_with_enum_param() {
         check(
             PureModuleBuilder::new()
                 .enum_unit("Color", ["Red", "Green", "Blue"])
-                .view_no_params("Test", |t| {
-                    t.call("Badge", vec![("color", t.enum_variant("Color", "Green"))])
-                })
-                .component("Badge", [("color", "Color")], |t| {
+                .function("Badge", [("color", "Color")], "Fragment", |t| {
                     t.enum_match_expr(t.var("color"), |m| {
                         m.arm("Red", |t| t.raw("red"));
                         m.arm("Green", |t| t.raw("green"));
                         m.arm("Blue", |t| t.raw("blue"));
                     })
+                })
+                .view_no_params("Test", |t| {
+                    t.call("Badge", vec![("color", t.enum_variant("Color", "Green"))])
                 }),
             expect![[r#"
                 -- before --
@@ -2590,7 +2641,7 @@ mod tests {
                   Green,
                   Blue,
                 }
-                component Badge(color@v0: test::Color) {
+                fn Badge(color@v0: test::Color) -> Fragment {
                   match v0 {
                     Color::Red => {
                       write("red")
@@ -2638,7 +2689,6 @@ mod tests {
                             output.push_str("blue");
                         }
                     }
-
                 }
 
                 impl View for Test {
@@ -2699,6 +2749,67 @@ mod tests {
                             let mut buf = String::new();
                             let mut output = &mut buf;
                             output.push_str("<b>hi</b>");
+                            Fragment(buf)
+                        };
+                        output.push_str(&v_0.0);
+                    }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn fragment_returning_function_called_in_value_position() {
+        check(
+            PureModuleBuilder::new()
+                .function("Frag", [], "Fragment", |t| t.raw("<b>hi</b>"))
+                .view_no_params("Test", |t| {
+                    t.let_expr("x", t.call("Frag", vec![]), |t| t.var("x"))
+                }),
+            expect![[r#"
+                -- before --
+                fn Frag() -> Fragment {
+                  write("<b>hi</b>")
+                }
+                view Test() {
+                  let v0 = {
+                    call Frag()
+                  } in {
+                    write_fragment(v0)
+                  }
+                }
+
+                -- after --
+                // Code generated by the hop compiler. DO NOT EDIT.
+                #![cfg_attr(rustfmt, rustfmt_skip)]
+                #![allow(unused_parens, dead_code, clippy::all)]
+
+                pub trait View {
+                    fn render(self) -> String;
+                    fn write(self, output: &mut String);
+                }
+
+                #[derive(Clone, Debug)]
+                pub struct Fragment(pub String);
+
+                pub struct Test {}
+
+                fn render_frag(output: &mut String) {
+                    output.push_str("<b>hi</b>");
+                }
+
+                impl View for Test {
+                    fn render(self) -> String {
+                        let mut output = String::new();
+                        self.write(&mut output);
+                        output
+                    }
+
+                    fn write(self, output: &mut String) {
+                        let v_0 = {
+                            let mut buf = String::new();
+                            let mut output = &mut buf;
+                            render_frag(output);
                             Fragment(buf)
                         };
                         output.push_str(&v_0.0);

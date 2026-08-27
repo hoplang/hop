@@ -20,7 +20,7 @@ use crate::ir::var_id::VarIdCounter;
 use crate::symbols::var_name::VarName;
 
 use super::pure_module::{
-    PureArgument, PureComponentDeclaration, PureExpr, PureModule, PureViewDeclaration,
+    PureArgument, PureExpr, PureFunctionDeclaration, PureModule, PureViewDeclaration,
 };
 use super::writer_module::{WriterEnumDeclaration, WriterParameter, WriterRecordDeclaration};
 
@@ -39,7 +39,7 @@ pub fn compile(
         .into_iter()
         .map(|view| compiler.compile_view_decl(view))
         .collect();
-    let components = components
+    let functions = components
         .into_iter()
         .map(|decl| compiler.compile_component_decl(decl))
         .collect();
@@ -67,7 +67,7 @@ pub fn compile(
 
     PureModule {
         views,
-        components,
+        functions,
         records,
         enums,
         expr_ids,
@@ -99,7 +99,7 @@ impl<'a> Compiler<'a> {
     fn compile_component_decl(
         &mut self,
         decl: InlinedComponentDeclaration,
-    ) -> PureComponentDeclaration {
+    ) -> PureFunctionDeclaration {
         self.push_scope();
 
         let mut parameters = Vec::with_capacity(decl.params.len());
@@ -111,9 +111,10 @@ impl<'a> Compiler<'a> {
             });
         }
 
-        let declaration = PureComponentDeclaration {
+        let declaration = PureFunctionDeclaration {
             name: decl.name,
             parameters,
+            return_type: Arc::new(Type::Fragment),
             body: self.compile_nodes(&decl.children),
         };
         self.pop_scope();
@@ -387,9 +388,10 @@ impl<'a> Compiler<'a> {
                     })
                     .collect();
 
-                output.push(PureExpr::ComponentCall {
-                    component_name: component_name.clone(),
+                output.push(PureExpr::FunctionCall {
+                    function_name: component_name.clone(),
                     args: compiled_args,
+                    kind: Arc::new(Type::Fragment),
                     id: self.next_expr_id(),
                 });
             }

@@ -141,7 +141,7 @@ mod tests {
     use std::collections::HashMap;
 
     use super::*;
-    use crate::ir::pure_module::{PureComponentDeclaration, PureModule, PureViewDeclaration};
+    use crate::ir::pure_module::{PureFunctionDeclaration, PureModule, PureViewDeclaration};
     use crate::ir::pure_module_builder::PureModuleBuilder;
     use crate::ir::pure_module_generator::random_module;
     use crate::ir::runtime::evaluator::evaluate_view;
@@ -193,7 +193,6 @@ mod tests {
         });
     }
 
-    /// Apply the pass to every view and component body.
     fn run(module: PureModule) -> PureModule {
         PureModule {
             views: module
@@ -205,13 +204,14 @@ mod tests {
                     body: eliminate_unused_variable_declarations(view.body),
                 })
                 .collect(),
-            components: module
-                .components
+            functions: module
+                .functions
                 .into_iter()
-                .map(|component| PureComponentDeclaration {
-                    name: component.name,
-                    parameters: component.parameters,
-                    body: eliminate_unused_variable_declarations(component.body),
+                .map(|function| PureFunctionDeclaration {
+                    name: function.name,
+                    parameters: function.parameters,
+                    return_type: function.return_type,
+                    body: eliminate_unused_variable_declarations(function.body),
                 })
                 .collect(),
             records: module.records,

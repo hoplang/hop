@@ -12,7 +12,7 @@ use tailwind_merge::tw_merge;
 use thiserror::Error;
 
 use crate::expr::patterns::{EnumPattern, Match};
-use crate::ir::pure_module::{PureComponentDeclaration, PureForSource, PureModule};
+use crate::ir::pure_module::{PureForSource, PureFunctionDeclaration, PureModule};
 
 pub fn evaluate_view(
     module: &PureModule,
@@ -40,7 +40,7 @@ pub fn evaluate_view(
         }
     }
 
-    let value = evaluate_expr(&view.body, &mut env, &module.components)?;
+    let value = evaluate_expr(&view.body, &mut env, &module.functions)?;
     let Value::String(html) = value else {
         panic!("View body must evaluate to a Fragment");
     };
@@ -93,7 +93,7 @@ impl VariableEnv {
 fn evaluate_expr(
     expr: &PureExpr,
     env: &mut VariableEnv,
-    component_defs: &[PureComponentDeclaration],
+    function_decls: &[PureFunctionDeclaration],
 ) -> Result<Value, EvalError> {
     match expr {
         PureExpr::VariableReference { value: var, .. } => Ok(env.get(&var.id).clone()),
@@ -102,7 +102,7 @@ fn evaluate_expr(
             field,
             ..
         } => {
-            let obj_value = evaluate_expr(object, env, component_defs)?;
+            let obj_value = evaluate_expr(object, env, function_decls)?;
             if let Some(rec) = obj_value.as_record() {
                 Ok(rec
                     .get(field)
@@ -117,7 +117,7 @@ fn evaluate_expr(
         PureExpr::FragmentRaw { content, .. } => Ok(Value::String(content.clone())),
 
         PureExpr::FragmentEscape { expr, .. } => {
-            let value = evaluate_expr(expr, env, component_defs)?;
+            let value = evaluate_expr(expr, env, function_decls)?;
             let Value::String(s) = value else {
                 panic!("FragmentEscape requires a string value");
             };
@@ -129,7 +129,7 @@ fn evaluate_expr(
         PureExpr::FragmentConcat { parts, .. } => {
             let mut result = String::new();
             for part in parts {
-                let value = evaluate_expr(part, env, component_defs)?;
+                let value = evaluate_expr(part, env, function_decls)?;
                 let Value::String(s) = value else {
                     panic!("FragmentConcat requires Fragment parts");
                 };
@@ -144,7 +144,7 @@ fn evaluate_expr(
             let mut result = String::new();
             match source.as_ref() {
                 PureForSource::Array(array) => {
-                    let array_value = evaluate_expr(array, env, component_defs)?;
+                    let array_value = evaluate_expr(array, env, function_decls)?;
                     let items = array_value
                         .as_array()
                         .cloned()
@@ -154,7 +154,7 @@ fn evaluate_expr(
                         if let Some(var) = var {
                             env.insert(var.id, item);
                         }
-                        let value = evaluate_expr(body, env, component_defs)?;
+                        let value = evaluate_expr(body, env, function_decls)?;
                         let Value::String(s) = value else {
                             panic!("FragmentFor requires a Fragment body");
                         };
@@ -165,8 +165,8 @@ fn evaluate_expr(
                     }
                 }
                 PureForSource::RangeInclusive { start, end } => {
-                    let start_value = evaluate_expr(start, env, component_defs)?;
-                    let end_value = evaluate_expr(end, env, component_defs)?;
+                    let start_value = evaluate_expr(start, env, function_decls)?;
+                    let end_value = evaluate_expr(end, env, function_decls)?;
                     let start_int = start_value.as_i32().expect("Expected integer value");
                     let end_int = end_value.as_i32().expect("Expected integer value");
 
@@ -174,7 +174,7 @@ fn evaluate_expr(
                         if let Some(var) = var {
                             env.insert(var.id, Value::Int(i));
                         }
-                        let value = evaluate_expr(body, env, component_defs)?;
+                        let value = evaluate_expr(body, env, function_decls)?;
                         let Value::String(s) = value else {
                             panic!("FragmentFor requires a Fragment body");
                         };
@@ -188,52 +188,51 @@ fn evaluate_expr(
             Ok(Value::String(result))
         }
 
-        PureExpr::ComponentCall {
-            component_name,
+        PureExpr::FunctionCall {
+            function_name,
             args,
             ..
         } => {
-            let component_def = component_defs
+            let func = function_decls
                 .iter()
-                .find(|c| c.name.as_str() == component_name.as_str())
-                .unwrap_or_else(|| panic!("Undefined component: {}", component_name.as_str()));
+                .find(|c| c.name.as_str() == function_name.as_str())
+                .unwrap_or_else(|| panic!("Undefined function: {}", function_name.as_str()));
 
             for arg in args {
                 assert!(
-                    component_def
-                        .parameters
+                    func.parameters
                         .iter()
                         .any(|p| p.name().as_str() == arg.name.as_str()),
-                    "Unknown argument '{}' for component '{}'",
+                    "Unknown argument '{}' for function '{}'",
                     arg.name.as_str(),
-                    component_name.as_str()
+                    function_name.as_str()
                 );
             }
             assert_eq!(
                 args.len(),
-                component_def.parameters.len(),
-                "Duplicate argument for component '{}'",
-                component_name.as_str()
+                func.parameters.len(),
+                "Duplicate argument for function '{}'",
+                function_name.as_str()
             );
 
             let mut callee_env = VariableEnv::new();
-            for param in &component_def.parameters {
+            for param in &func.parameters {
                 if let Some(arg) = args
                     .iter()
                     .find(|arg| arg.name.as_str() == param.name().as_str())
                 {
-                    let value = evaluate_expr(&arg.expr, env, component_defs)?;
+                    let value = evaluate_expr(&arg.expr, env, function_decls)?;
                     callee_env.insert(param.var.id, value);
                 } else {
                     panic!(
-                        "Missing required parameter '{}' for component '{}'",
+                        "Missing required parameter '{}' for function '{}'",
                         param.name(),
-                        component_name.as_str()
+                        function_name.as_str()
                     );
                 }
             }
 
-            evaluate_expr(&component_def.body, &mut callee_env, component_defs)
+            evaluate_expr(&func.body, &mut callee_env, function_decls)
         }
 
         PureExpr::BooleanLiteral { value: b, .. } => Ok(Value::Bool(*b)),
@@ -242,21 +241,21 @@ fn evaluate_expr(
         PureExpr::ArrayLiteral { elements, .. } => {
             let mut array = Vec::new();
             for elem in elements {
-                array.push(evaluate_expr(elem, env, component_defs)?);
+                array.push(evaluate_expr(elem, env, function_decls)?);
             }
             Ok(Value::Array(array))
         }
         PureExpr::RecordLiteral { fields, .. } => {
             let mut rec = HashMap::new();
             for (key, value) in fields {
-                rec.insert(key.clone(), evaluate_expr(value, env, component_defs)?);
+                rec.insert(key.clone(), evaluate_expr(value, env, function_decls)?);
             }
             Ok(Value::Record(rec))
         }
         PureExpr::StringConcat { parts, .. } => {
             let mut result = String::new();
             for part in parts {
-                match evaluate_expr(part, env, component_defs)? {
+                match evaluate_expr(part, env, function_decls)? {
                     Value::String(part) => result.push_str(&part),
                     _ => panic!("String concatenation requires String parts"),
                 }
@@ -264,7 +263,7 @@ fn evaluate_expr(
             Ok(Value::String(result))
         }
         PureExpr::BooleanNegation { operand, .. } => {
-            let val = evaluate_expr(operand, env, component_defs)?;
+            let val = evaluate_expr(operand, env, function_decls)?;
             let bool_val = val.as_bool().expect("Expected boolean value");
             Ok(Value::Bool(!bool_val))
         }
@@ -273,7 +272,7 @@ fn evaluate_expr(
             operand_type,
             ..
         } => {
-            let val = evaluate_expr(operand, env, component_defs)?;
+            let val = evaluate_expr(operand, env, function_decls)?;
             match operand_type {
                 NumericType::Int => {
                     let int_val = val.as_i32().expect("Expected integer value");
@@ -291,8 +290,8 @@ fn evaluate_expr(
             operand_types: EquatableType::Bool,
             ..
         } => {
-            let left_val = evaluate_expr(left, env, component_defs)?;
-            let right_val = evaluate_expr(right, env, component_defs)?;
+            let left_val = evaluate_expr(left, env, function_decls)?;
+            let right_val = evaluate_expr(right, env, function_decls)?;
             let left_bool = left_val.as_bool().expect("Expected boolean value");
             let right_bool = right_val.as_bool().expect("Expected boolean value");
             Ok(Value::Bool(left_bool == right_bool))
@@ -303,8 +302,8 @@ fn evaluate_expr(
             operand_types: EquatableType::String,
             ..
         } => {
-            let left_val = evaluate_expr(left, env, component_defs)?;
-            let right_val = evaluate_expr(right, env, component_defs)?;
+            let left_val = evaluate_expr(left, env, function_decls)?;
+            let right_val = evaluate_expr(right, env, function_decls)?;
             let left_str = left_val.as_str().expect("Expected string value");
             let right_str = right_val.as_str().expect("Expected string value");
             Ok(Value::Bool(left_str == right_str))
@@ -315,8 +314,8 @@ fn evaluate_expr(
             operand_types: EquatableType::Int,
             ..
         } => {
-            let left_val = evaluate_expr(left, env, component_defs)?;
-            let right_val = evaluate_expr(right, env, component_defs)?;
+            let left_val = evaluate_expr(left, env, function_decls)?;
+            let right_val = evaluate_expr(right, env, function_decls)?;
             let left_int = left_val.as_i32().expect("Expected integer value");
             let right_int = right_val.as_i32().expect("Expected integer value");
             Ok(Value::Bool(left_int == right_int))
@@ -327,8 +326,8 @@ fn evaluate_expr(
             operand_types: EquatableType::Float,
             ..
         } => {
-            let left_val = evaluate_expr(left, env, component_defs)?;
-            let right_val = evaluate_expr(right, env, component_defs)?;
+            let left_val = evaluate_expr(left, env, function_decls)?;
+            let right_val = evaluate_expr(right, env, function_decls)?;
             let left_float = left_val.as_f64().expect("Expected float value");
             let right_float = right_val.as_f64().expect("Expected float value");
             Ok(Value::Bool(left_float == right_float))
@@ -339,8 +338,8 @@ fn evaluate_expr(
             operand_types,
             ..
         } => {
-            let left_val = evaluate_expr(left, env, component_defs)?;
-            let right_val = evaluate_expr(right, env, component_defs)?;
+            let left_val = evaluate_expr(left, env, function_decls)?;
+            let right_val = evaluate_expr(right, env, function_decls)?;
 
             let result = match operand_types {
                 ComparableType::Int => {
@@ -363,8 +362,8 @@ fn evaluate_expr(
             operand_types,
             ..
         } => {
-            let left_val = evaluate_expr(left, env, component_defs)?;
-            let right_val = evaluate_expr(right, env, component_defs)?;
+            let left_val = evaluate_expr(left, env, function_decls)?;
+            let right_val = evaluate_expr(right, env, function_decls)?;
 
             let result = match operand_types {
                 ComparableType::Int => {
@@ -382,16 +381,16 @@ fn evaluate_expr(
         }
 
         PureExpr::BooleanLogicalAnd { left, right, .. } => {
-            let left_val = evaluate_expr(left, env, component_defs)?;
-            let right_val = evaluate_expr(right, env, component_defs)?;
+            let left_val = evaluate_expr(left, env, function_decls)?;
+            let right_val = evaluate_expr(right, env, function_decls)?;
             let left_bool = left_val.as_bool().expect("Expected boolean value");
             let right_bool = right_val.as_bool().expect("Expected boolean value");
             Ok(Value::Bool(left_bool && right_bool))
         }
 
         PureExpr::BooleanLogicalOr { left, right, .. } => {
-            let left_val = evaluate_expr(left, env, component_defs)?;
-            let right_val = evaluate_expr(right, env, component_defs)?;
+            let left_val = evaluate_expr(left, env, function_decls)?;
+            let right_val = evaluate_expr(right, env, function_decls)?;
             let left_bool = left_val.as_bool().expect("Expected boolean value");
             let right_bool = right_val.as_bool().expect("Expected boolean value");
             Ok(Value::Bool(left_bool || right_bool))
@@ -403,8 +402,8 @@ fn evaluate_expr(
             operand_types,
             ..
         } => {
-            let left_val = evaluate_expr(left, env, component_defs)?;
-            let right_val = evaluate_expr(right, env, component_defs)?;
+            let left_val = evaluate_expr(left, env, function_decls)?;
+            let right_val = evaluate_expr(right, env, function_decls)?;
 
             match operand_types {
                 NumericType::Int => {
@@ -426,8 +425,8 @@ fn evaluate_expr(
             operand_types,
             ..
         } => {
-            let left_val = evaluate_expr(left, env, component_defs)?;
-            let right_val = evaluate_expr(right, env, component_defs)?;
+            let left_val = evaluate_expr(left, env, function_decls)?;
+            let right_val = evaluate_expr(right, env, function_decls)?;
 
             match operand_types {
                 NumericType::Int => {
@@ -449,8 +448,8 @@ fn evaluate_expr(
             operand_types,
             ..
         } => {
-            let left_val = evaluate_expr(left, env, component_defs)?;
-            let right_val = evaluate_expr(right, env, component_defs)?;
+            let left_val = evaluate_expr(left, env, function_decls)?;
+            let right_val = evaluate_expr(right, env, function_decls)?;
 
             match operand_types {
                 NumericType::Int => {
@@ -472,7 +471,7 @@ fn evaluate_expr(
         } => {
             let mut field_values = HashMap::new();
             for (field_name, field_expr) in fields {
-                let field_val = evaluate_expr(field_expr, env, component_defs)?;
+                let field_val = evaluate_expr(field_expr, env, function_decls)?;
                 field_values.insert(field_name.clone(), field_val);
             }
             Ok(Value::Enum {
@@ -484,13 +483,13 @@ fn evaluate_expr(
             Some(inner) => Ok(Value::Some(Box::new(evaluate_expr(
                 inner,
                 env,
-                component_defs,
+                function_decls,
             )?))),
             None => Ok(Value::None),
         },
         PureExpr::Match { match_, .. } => match match_ {
             Match::Enum { subject, arms } => {
-                let subject_val = evaluate_expr(subject, env, component_defs)?;
+                let subject_val = evaluate_expr(subject, env, function_decls)?;
 
                 let Value::Enum {
                     variant_name,
@@ -516,7 +515,7 @@ fn evaluate_expr(
                             });
                             env.insert(var_name.id, field_val.clone());
                         }
-                        let result = evaluate_expr(&arm.body, env, component_defs);
+                        let result = evaluate_expr(&arm.body, env, function_decls);
                         for (_, var_name) in &arm.bindings {
                             env.remove(&var_name.id);
                         }
@@ -531,15 +530,15 @@ fn evaluate_expr(
                 true_body,
                 false_body,
             } => {
-                let subject_val = evaluate_expr(subject, env, component_defs)?;
+                let subject_val = evaluate_expr(subject, env, function_decls)?;
                 let subject_bool = subject_val
                     .as_bool()
                     .expect("Match subject must evaluate to a boolean");
 
                 if subject_bool {
-                    evaluate_expr(true_body, env, component_defs)
+                    evaluate_expr(true_body, env, function_decls)
                 } else {
-                    evaluate_expr(false_body, env, component_defs)
+                    evaluate_expr(false_body, env, function_decls)
                 }
             }
             Match::Option {
@@ -548,20 +547,20 @@ fn evaluate_expr(
                 some_arm_body,
                 none_arm_body,
             } => {
-                let subject_val = evaluate_expr(subject, env, component_defs)?;
+                let subject_val = evaluate_expr(subject, env, function_decls)?;
 
                 match subject_val {
                     Value::Some(inner) => {
                         if let Some(var_name) = some_arm_binding {
                             env.insert(var_name.id, *inner);
-                            let result = evaluate_expr(some_arm_body, env, component_defs);
+                            let result = evaluate_expr(some_arm_body, env, function_decls);
                             env.remove(&var_name.id);
                             result
                         } else {
-                            evaluate_expr(some_arm_body, env, component_defs)
+                            evaluate_expr(some_arm_body, env, function_decls)
                         }
                     }
-                    Value::None => evaluate_expr(none_arm_body, env, component_defs),
+                    Value::None => evaluate_expr(none_arm_body, env, function_decls),
                     _ => panic!("Expected Option value in match expression"),
                 }
             }
@@ -569,42 +568,42 @@ fn evaluate_expr(
         PureExpr::Let {
             var, value, body, ..
         } => {
-            let val = evaluate_expr(value, env, component_defs)?;
+            let val = evaluate_expr(value, env, function_decls)?;
             env.insert(var.id, val);
-            let result = evaluate_expr(body, env, component_defs)?;
+            let result = evaluate_expr(body, env, function_decls)?;
             env.remove(&var.id);
             Ok(result)
         }
         PureExpr::TwMerge { operand, .. } => {
-            let val = evaluate_expr(operand, env, component_defs)?;
+            let val = evaluate_expr(operand, env, function_decls)?;
             match val {
                 Value::String(s) => Ok(Value::String(tw_merge(&s))),
                 _ => panic!("TwMerge requires a string argument"),
             }
         }
         PureExpr::ArrayLength { array, .. } => {
-            let array_val = evaluate_expr(array, env, component_defs)?;
+            let array_val = evaluate_expr(array, env, function_decls)?;
             match array_val {
                 Value::Array(arr) => Ok(Value::Int(arr.len() as i32)),
                 _ => panic!("ArrayLength requires an array argument"),
             }
         }
         PureExpr::ArrayIsEmpty { array, .. } => {
-            let array_val = evaluate_expr(array, env, component_defs)?;
+            let array_val = evaluate_expr(array, env, function_decls)?;
             match array_val {
                 Value::Array(arr) => Ok(Value::Bool(arr.is_empty())),
                 _ => panic!("ArrayIsEmpty requires an array argument"),
             }
         }
         PureExpr::StringIsEmpty { string, .. } => {
-            let string_val = evaluate_expr(string, env, component_defs)?;
+            let string_val = evaluate_expr(string, env, function_decls)?;
             match string_val {
                 Value::String(s) => Ok(Value::Bool(s.is_empty())),
                 _ => panic!("StringIsEmpty requires a string argument"),
             }
         }
         PureExpr::OptionIsSome { option, .. } => {
-            let option_val = evaluate_expr(option, env, component_defs)?;
+            let option_val = evaluate_expr(option, env, function_decls)?;
             match option_val {
                 Value::Some(_) => Ok(Value::Bool(true)),
                 Value::None => Ok(Value::Bool(false)),
@@ -612,7 +611,7 @@ fn evaluate_expr(
             }
         }
         PureExpr::OptionIsNone { option, .. } => {
-            let option_val = evaluate_expr(option, env, component_defs)?;
+            let option_val = evaluate_expr(option, env, function_decls)?;
             match option_val {
                 Value::Some(_) => Ok(Value::Bool(false)),
                 Value::None => Ok(Value::Bool(true)),
@@ -620,21 +619,21 @@ fn evaluate_expr(
             }
         }
         PureExpr::IntToString { value, .. } => {
-            let int_val = evaluate_expr(value, env, component_defs)?;
+            let int_val = evaluate_expr(value, env, function_decls)?;
             match int_val {
                 Value::Int(n) => Ok(Value::String(n.to_string())),
                 _ => panic!("IntToString requires an integer argument"),
             }
         }
         PureExpr::FloatToInt { value, .. } => {
-            let float_val = evaluate_expr(value, env, component_defs)?;
+            let float_val = evaluate_expr(value, env, function_decls)?;
             match float_val {
                 Value::Float(f) => Ok(Value::Int(f as i32)),
                 _ => panic!("FloatToInt requires a float argument"),
             }
         }
         PureExpr::IntToFloat { value, .. } => {
-            let int_val = evaluate_expr(value, env, component_defs)?;
+            let int_val = evaluate_expr(value, env, function_decls)?;
             match int_val {
                 Value::Int(i) => Ok(Value::Float(i as f64)),
                 _ => panic!("IntToFloat requires an integer argument"),
@@ -880,12 +879,12 @@ mod tests {
     }
 
     #[test]
-    fn component_args_are_evaluated_in_caller_env_not_shadowed_by_earlier_params() {
-        // p1 = p0 refers to the caller's p0 (42), not the component's own
+    fn function_args_are_evaluated_in_caller_env_not_shadowed_by_earlier_params() {
+        // p1 = p0 refers to the caller's p0 (42), not the function's own
         // p0 (999) that gets bound first.
         check(
             PureModuleBuilder::new()
-                .component("C", [("p0", "Int"), ("p1", "Int")], |t| {
+                .function("C", [("p0", "Int"), ("p1", "Int")], "Fragment", |t| {
                     t.escape(t.int_to_string(t.var("p1")))
                 })
                 .view("Test", [("p0", "Int")], |t| {
@@ -895,7 +894,7 @@ mod tests {
             vec![("p0", Value::Int(42))],
             expect![[r#"
                 -- before --
-                component C(p0@v0: Int, p1@v1: Int) {
+                fn C(p0@v0: Int, p1@v1: Int) -> Fragment {
                   escape(v1.to_string())
                 }
                 view Test(p0@v2: Int) {
