@@ -3517,6 +3517,67 @@ mod tests {
 
     #[test]
     #[ignore]
+    fn string_concat_folds_constants_around_a_dynamic_part() {
+        check(
+            indoc! {r#"
+                view Test {
+                  <for {name in ["a", "b"]}>
+                    <span class={
+                      join!(
+                        name,
+                        "px-2",
+                        "py-1",
+                      )
+                    }>
+                      {name + "!" + "?"}
+                    </span>
+                  </for>
+                }
+            "#},
+            "<span class=\"a px-2 py-1\">a!?</span><span class=\"b px-2 py-1\">b!?</span>",
+            expect![[r#"
+                -- ir (unoptimized) --
+                view Test() {
+                  for v0 in ["a", "b"] {
+                    write("<span")
+                    write(" class=\"")
+                    write_string(tw_merge((v0 + " " + "px-2" + " " + "py-1")))
+                    write("\"")
+                    write(">")
+                    write_string(((v0 + "!") + "?"))
+                    write("</span>")
+                  }
+                }
+                -- ir (optimized) --
+                view Test() {
+                  for v0 in ["a", "b"] {
+                    write("<span class=\"")
+                    write_string(tw_merge((v0 + " px-2 py-1")))
+                    write("\">")
+                    write_string(v0)
+                    write("!?</span>")
+                  }
+                }
+                -- expected output --
+                <span class="a px-2 py-1">a!?</span><span class="b px-2 py-1">b!?</span>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
     fn string_concatenation() {
         check(
             indoc! {r#"
@@ -7446,7 +7507,7 @@ mod tests {
                 view Test() {
                   write("<div")
                   write(" class=\"")
-                  write_string(tw_merge((("foo" + " ") + (("bar" + " ") + "baz"))))
+                  write_string(tw_merge(("foo" + " " + "bar" + " " + "baz")))
                   write("\"")
                   write(">")
                   write("</div>")

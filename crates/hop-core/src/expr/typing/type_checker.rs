@@ -1,7 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use super::join_macro::build_balanced_join;
 use super::r#type::{NumericType, Type};
 use super::type_env::TypeBinding;
 use super::type_registry::{ResolvedType, TypeRegistry};
@@ -710,8 +709,7 @@ pub fn typecheck_expr(
 
             match (left_type, right_type) {
                 (Type::String, Type::String) => Ok(TypedExpr::StringConcat {
-                    left: Box::new(typed_left),
-                    right: Box::new(typed_right),
+                    parts: vec![typed_left, typed_right],
                 }),
                 (Type::Int, Type::Int) => Ok(TypedExpr::NumericAdd {
                     left: Box::new(typed_left),
@@ -1493,13 +1491,17 @@ pub fn typecheck_expr(
                     range: subject_range.clone(),
                 });
 
-                match typed_args.len() {
-                    0 => Ok(TypedExpr::StringLiteral {
-                        value: CheapString::new(String::new()),
-                    }),
-                    1 => Ok(typed_args.pop().unwrap()),
-                    _ => Ok(build_balanced_join(typed_args)),
+                let separator = CheapString::new(" ".to_string());
+                let mut parts = Vec::with_capacity((typed_args.len() * 2).saturating_sub(1));
+                for (index, arg) in typed_args.into_iter().enumerate() {
+                    if index > 0 {
+                        parts.push(TypedExpr::StringLiteral {
+                            value: separator.clone(),
+                        });
+                    }
+                    parts.push(arg);
                 }
+                Ok(TypedExpr::StringConcat { parts })
             }
             "asset" => {
                 // Exactly one argument

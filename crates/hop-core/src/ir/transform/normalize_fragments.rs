@@ -7,8 +7,8 @@ use crate::ir::pure_module::PureExpr;
 /// - A FragmentEscape of a constant string becomes a FragmentRaw with the
 ///   escaping applied at compile time.
 /// - A FragmentEscape distributes over StringConcat: escaping is a monoid
-///   homomorphism, escape(a + b) = escape(a) <> escape(b), so the constant
-///   halves can be escaped at compile time however deeply they nest.
+///   homomorphism, escape(a + b) = escape(a) <> escape(b), so every constant
+///   part can be escaped at compile time however deeply it nests.
 /// - Nested FragmentConcats are flattened.
 /// - Adjacent FragmentRaws are merged while the combined length stays below
 ///   the limit.
@@ -50,13 +50,16 @@ fn push_escape(
             write_escaped_html(value.as_str(), &mut content);
             PureExpr::FragmentRaw { content, id }
         }
-        PureExpr::StringConcat { left, right, .. } => {
-            let left_id = expr_ids.next();
-            let right_id = expr_ids.next();
-            let left = push_escape(*left, left_id, expr_ids, limit);
-            let right = push_escape(*right, right_id, expr_ids, limit);
+        PureExpr::StringConcat { parts, .. } => {
+            let escaped: Vec<PureExpr> = parts
+                .into_iter()
+                .map(|part| {
+                    let part_id = expr_ids.next();
+                    push_escape(part, part_id, expr_ids, limit)
+                })
+                .collect();
             PureExpr::FragmentConcat {
-                parts: flatten_and_merge([left, right], limit),
+                parts: flatten_and_merge(escaped, limit),
                 id,
             }
         }
@@ -290,7 +293,7 @@ mod tests {
             PureModuleBuilder::new()
                 .view("Test", [("name", "String")], |t| {
                     t.concat(vec![
-                        t.escape(t.string_concat(t.str("Hi <"), t.var("name"))),
+                        t.escape(t.string_concat(vec![t.str("Hi <"), t.var("name")])),
                     ])
                 })
                 .build(),
@@ -314,10 +317,10 @@ mod tests {
         check(
             PureModuleBuilder::new()
                 .view_no_params("Test", |t| {
-                    t.concat(vec![t.escape(t.string_concat(
-                        t.string_concat(t.str("a<"), t.str("b>")),
+                    t.concat(vec![t.escape(t.string_concat(vec![
+                        t.string_concat(vec![t.str("a<"), t.str("b>")]),
                         t.str("c&"),
-                    ))])
+                    ]))])
                 })
                 .build(),
             usize::MAX,
@@ -342,7 +345,7 @@ mod tests {
                 .view("Test", [("name", "String")], |t| {
                     t.concat(vec![
                         t.raw("<p>"),
-                        t.escape(t.string_concat(t.str("Hi, "), t.var("name"))),
+                        t.escape(t.string_concat(vec![t.str("Hi, "), t.var("name")])),
                         t.raw("</p>"),
                     ])
                 })

@@ -69,8 +69,9 @@ pub enum TypedExpr {
         kind: Arc<Type>,
     },
 
-    /// String concatenation expression for joining two string expressions
-    StringConcat { left: Box<Self>, right: Box<Self> },
+    /// String concatenation expression for joining a sequence of string
+    /// expressions.
+    StringConcat { parts: Vec<Self> },
 
     /// Numeric addition expression for adding numeric values
     NumericAdd {
@@ -361,11 +362,12 @@ impl TypedExpr {
                         .append(BoxDoc::text("}"))
                 }
             }
-            TypedExpr::StringConcat { left, right, .. } => BoxDoc::nil()
+            TypedExpr::StringConcat { parts } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
-                .append(left.to_doc())
-                .append(BoxDoc::text(" + "))
-                .append(right.to_doc())
+                .append(BoxDoc::intersperse(
+                    parts.iter().map(|part| part.to_doc()),
+                    BoxDoc::text(" + "),
+                ))
                 .append(BoxDoc::text(")")),
             TypedExpr::NumericAdd { left, right, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))

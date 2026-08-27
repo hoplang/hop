@@ -197,13 +197,8 @@ pub enum PureExpr {
 
     /// A StringConcat expression.
     ///
-    /// Must hold two expressions of type String.
-    /// Returns a String.
-    StringConcat {
-        left: Box<PureExpr>,
-        right: Box<PureExpr>,
-        id: ExprId,
-    },
+    /// N-ary mappend over String-typed parts.
+    StringConcat { parts: Vec<PureExpr>, id: ExprId },
 
     /// A TwMerge expression, applied at the class attribute boundary.
     ///
@@ -641,9 +636,8 @@ impl PureExpr {
                 id,
             },
 
-            PureExpr::StringConcat { left, right, id } => PureExpr::StringConcat {
-                left: Box::new(f(*left)),
-                right: Box::new(f(*right)),
+            PureExpr::StringConcat { parts, id } => PureExpr::StringConcat {
+                parts: parts.into_iter().map(&mut *f).collect(),
                 id,
             },
 
@@ -974,11 +968,12 @@ impl PureExpr {
                         .append(BoxDoc::text("}"))
                 }
             }
-            PureExpr::StringConcat { left, right, .. } => BoxDoc::nil()
+            PureExpr::StringConcat { parts, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
-                .append(left.to_doc())
-                .append(BoxDoc::text(" + "))
-                .append(right.to_doc())
+                .append(BoxDoc::intersperse(
+                    parts.iter().map(|part| part.to_doc()),
+                    BoxDoc::text(" + "),
+                ))
                 .append(BoxDoc::text(")")),
             PureExpr::TwMerge { operand, .. } => BoxDoc::text("tw_merge(")
                 .append(operand.to_doc())

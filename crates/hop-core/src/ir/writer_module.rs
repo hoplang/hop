@@ -243,12 +243,8 @@ pub enum WriterExpr {
 
     /// A StringConcat expression.
     ///
-    /// Must hold two expressions of type String.
-    /// Returns a String.
-    StringConcat {
-        left: Box<WriterExpr>,
-        right: Box<WriterExpr>,
-    },
+    /// N-ary mappend over String-typed parts.
+    StringConcat { parts: Vec<WriterExpr> },
 
     /// A TwMerge expression, applied at the class attribute boundary.
     ///
@@ -782,11 +778,12 @@ impl WriterExpr {
                         .append(BoxDoc::text("}"))
                 }
             }
-            WriterExpr::StringConcat { left, right, .. } => BoxDoc::nil()
+            WriterExpr::StringConcat { parts, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
-                .append(left.to_doc())
-                .append(BoxDoc::text(" + "))
-                .append(right.to_doc())
+                .append(BoxDoc::intersperse(
+                    parts.iter().map(|part| part.to_doc()),
+                    BoxDoc::text(" + "),
+                ))
                 .append(BoxDoc::text(")")),
             WriterExpr::NumericAdd { left, right, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))

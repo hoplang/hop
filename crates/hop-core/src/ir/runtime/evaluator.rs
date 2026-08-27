@@ -253,14 +253,15 @@ fn evaluate_expr(
             }
             Ok(Value::Record(rec))
         }
-        PureExpr::StringConcat { left, right, .. } => {
-            let left_val = evaluate_expr(left, env, component_defs)?;
-            let right_val = evaluate_expr(right, env, component_defs)?;
-
-            match (left_val, right_val) {
-                (Value::String(l), Value::String(r)) => Ok(Value::String(format!("{}{}", l, r))),
-                _ => panic!("String concatenation requires two strings"),
+        PureExpr::StringConcat { parts, .. } => {
+            let mut result = String::new();
+            for part in parts {
+                match evaluate_expr(part, env, component_defs)? {
+                    Value::String(part) => result.push_str(&part),
+                    _ => panic!("String concatenation requires String parts"),
+                }
             }
+            Ok(Value::String(result))
         }
         PureExpr::BooleanNegation { operand, .. } => {
             let val = evaluate_expr(operand, env, component_defs)?;

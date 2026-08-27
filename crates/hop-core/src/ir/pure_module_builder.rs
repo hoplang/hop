@@ -882,22 +882,17 @@ impl PureBuilder {
         }
     }
 
-    pub fn string_concat(&self, left: PureExpr, right: PureExpr) -> PureExpr {
-        assert_eq!(
-            *left.as_type(),
-            Type::String,
-            "StringConcat expects String operands, got: {}",
-            left
-        );
-        assert_eq!(
-            *right.as_type(),
-            Type::String,
-            "StringConcat expects String operands, got: {}",
-            right
-        );
+    pub fn string_concat(&self, parts: Vec<PureExpr>) -> PureExpr {
+        for part in &parts {
+            assert_eq!(
+                *part.as_type(),
+                Type::String,
+                "StringConcat expects String parts, got: {}",
+                part
+            );
+        }
         PureExpr::StringConcat {
-            left: Box::new(left),
-            right: Box::new(right),
+            parts,
             id: self.next_expr_id(),
         }
     }
@@ -911,32 +906,20 @@ impl PureBuilder {
                 arg
             );
         }
-        match args.len() {
-            0 => PureExpr::StringLiteral {
-                value: CheapString::new(String::new()),
-                id: self.next_expr_id(),
-            },
-            1 => args.into_iter().next().unwrap(),
-            _ => {
-                let mut iter = args.into_iter();
-                let mut result = iter.next().unwrap();
-                for arg in iter {
-                    result = PureExpr::StringConcat {
-                        left: Box::new(result),
-                        right: Box::new(PureExpr::StringLiteral {
-                            value: CheapString::new(" ".to_string()),
-                            id: self.next_expr_id(),
-                        }),
-                        id: self.next_expr_id(),
-                    };
-                    result = PureExpr::StringConcat {
-                        left: Box::new(result),
-                        right: Box::new(arg),
-                        id: self.next_expr_id(),
-                    };
-                }
-                result
+        let separator = CheapString::new(" ".to_string());
+        let mut parts = Vec::with_capacity((args.len() * 2).saturating_sub(1));
+        for (index, arg) in args.into_iter().enumerate() {
+            if index > 0 {
+                parts.push(PureExpr::StringLiteral {
+                    value: separator.clone(),
+                    id: self.next_expr_id(),
+                });
             }
+            parts.push(arg);
+        }
+        PureExpr::StringConcat {
+            parts,
+            id: self.next_expr_id(),
         }
     }
 

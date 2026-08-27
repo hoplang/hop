@@ -515,9 +515,10 @@ impl PureGenerator<'_, '_> {
                 b.or(left, right)
             }
             P::Concat => {
-                let left = self.expr(b, &Type::String, depth - 1);
-                let right = self.expr(b, &Type::String, depth - 1);
-                b.string_concat(left, right)
+                let parts = (0..self.count(0..=4))
+                    .map(|_| self.expr(b, &Type::String, depth - 1))
+                    .collect();
+                b.string_concat(parts)
             }
             P::IntToString => {
                 let operand = self.expr(b, &Type::Int, depth - 1);

@@ -229,8 +229,7 @@ pub trait Transpiler {
     fn transpile_string_concat<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a WriterExpr,
-        right: &'a WriterExpr,
+        parts: &'a [WriterExpr],
     ) -> Doc<'a>;
     fn transpile_logical_and<'a>(
         &mut self,
@@ -377,9 +376,7 @@ pub trait Transpiler {
                 fields,
                 ..
             } => self.transpile_record_literal(arena, record_name.as_str(), fields),
-            WriterExpr::StringConcat { left, right, .. } => {
-                self.transpile_string_concat(arena, left, right)
-            }
+            WriterExpr::StringConcat { parts, .. } => self.transpile_string_concat(arena, parts),
             WriterExpr::BooleanNegation { operand, .. } => self.transpile_not(arena, operand),
             WriterExpr::NumericNegation {
                 operand,

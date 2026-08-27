@@ -1402,14 +1402,20 @@ impl Transpiler for RustTranspiler {
     fn transpile_string_concat<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a WriterExpr,
-        right: &'a WriterExpr,
+        parts: &'a [WriterExpr],
     ) -> Doc<'a> {
+        if parts.is_empty() {
+            return arena.text("String::new()");
+        }
+        let format_string: String = std::iter::repeat_n("{}", parts.len()).collect();
         arena
-            .text("format!(\"{}{}\", ")
-            .append(self.transpile_expr(arena, left))
-            .append(arena.text(", "))
-            .append(self.transpile_expr(arena, right))
+            .text("format!(\"")
+            .append(arena.text(format_string))
+            .append(arena.text("\", "))
+            .append(arena.intersperse(
+                parts.iter().map(|part| self.transpile_expr(arena, part)),
+                arena.text(", "),
+            ))
             .append(arena.text(")"))
     }
 

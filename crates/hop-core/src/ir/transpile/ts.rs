@@ -1291,15 +1291,18 @@ impl Transpiler for TsTranspiler {
     fn transpile_string_concat<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a WriterExpr,
-        right: &'a WriterExpr,
+        parts: &'a [WriterExpr],
     ) -> Doc<'a> {
+        if parts.is_empty() {
+            return arena.text("\"\"");
+        }
         arena
             .nil()
             .append(arena.text("("))
-            .append(self.transpile_expr(arena, left))
-            .append(arena.text(" + "))
-            .append(self.transpile_expr(arena, right))
+            .append(arena.intersperse(
+                parts.iter().map(|part| self.transpile_expr(arena, part)),
+                arena.text(" + "),
+            ))
             .append(arena.text(")"))
     }
 

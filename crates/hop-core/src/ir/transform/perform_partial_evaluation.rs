@@ -372,20 +372,43 @@ fn try_fold(expr: PureExpr) -> PureExpr {
             },
         },
 
-        PureExpr::StringConcat { left, right, id } => match (*left, *right) {
-            (
-                PureExpr::StringLiteral { value: l, .. },
-                PureExpr::StringLiteral { value: r, .. },
-            ) => PureExpr::StringLiteral {
-                value: CheapString::new(format!("{}{}", l.as_str(), r.as_str())),
-                id,
-            },
-            (left, right) => PureExpr::StringConcat {
-                left: Box::new(left),
-                right: Box::new(right),
-                id,
-            },
-        },
+        PureExpr::StringConcat { parts, id } => {
+            let mut merged: Vec<PureExpr> = Vec::with_capacity(parts.len());
+            for part in parts {
+                let subparts = match part {
+                    PureExpr::StringConcat { parts, .. } => parts,
+                    part => vec![part],
+                };
+                for part in subparts {
+                    match (merged.last_mut(), part) {
+                        (_, PureExpr::StringLiteral { value, .. }) if value.as_str().is_empty() => {
+                        }
+                        (
+                            Some(PureExpr::StringLiteral {
+                                value: accumulated, ..
+                            }),
+                            PureExpr::StringLiteral { value, .. },
+                        ) => {
+                            let mut combined = String::with_capacity(
+                                accumulated.as_str().len() + value.as_str().len(),
+                            );
+                            combined.push_str(accumulated.as_str());
+                            combined.push_str(value.as_str());
+                            *accumulated = CheapString::new(combined);
+                        }
+                        (_, part) => merged.push(part),
+                    }
+                }
+            }
+            match merged.len() {
+                0 => PureExpr::StringLiteral {
+                    value: CheapString::new(String::new()),
+                    id,
+                },
+                1 => merged.pop().unwrap(),
+                _ => PureExpr::StringConcat { parts: merged, id },
+            }
+        }
 
         PureExpr::BooleanLogicalAnd { left, right, id } => match (*left, *right) {
             (
@@ -851,13 +874,87 @@ mod tests {
     }
 
     #[test]
+    fn should_merge_constants_adjacent_across_a_dynamic_part() {
+        check(
+            PureModuleBuilder::new()
+                .view("Test", vec![("dyn", "String")], |t| {
+                    t.escape(t.tw_merge(t.join(vec![
+                        t.var("dyn"),
+                        t.str("b"),
+                        t.str("c"),
+                        t.str("d"),
+                    ])))
+                })
+                .build(),
+            expect![[r#"
+                -- before --
+                view Test(dyn@v0: String) {
+                  escape(tw_merge((v0 + " " + "b" + " " + "c" + " " + "d")))
+                }
+
+                -- after --
+                view Test(dyn@v0: String) {
+                  escape(tw_merge((v0 + " b c d")))
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_flatten_nested_string_concatenation_before_merging() {
+        check(
+            PureModuleBuilder::new()
+                .view("Test", vec![("dyn", "String")], |t| {
+                    t.escape(t.tw_merge(t.string_concat(vec![
+                        t.string_concat(vec![t.var("dyn"), t.str("a")]),
+                        t.string_concat(vec![t.str("b"), t.var("dyn")]),
+                    ])))
+                })
+                .build(),
+            expect![[r#"
+                -- before --
+                view Test(dyn@v0: String) {
+                  escape(tw_merge(((v0 + "a") + ("b" + v0))))
+                }
+
+                -- after --
+                view Test(dyn@v0: String) {
+                  escape(tw_merge((v0 + "ab" + v0)))
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_drop_empty_strings_from_concatenation() {
+        check(
+            PureModuleBuilder::new()
+                .view("Test", vec![("dyn", "String")], |t| {
+                    t.escape(t.tw_merge(t.string_concat(vec![t.str(""), t.var("dyn"), t.str("")])))
+                })
+                .build(),
+            expect![[r#"
+                -- before --
+                view Test(dyn@v0: String) {
+                  escape(tw_merge(("" + v0 + "")))
+                }
+
+                -- after --
+                view Test(dyn@v0: String) {
+                  escape(tw_merge(v0))
+                }
+            "#]],
+        );
+    }
+
+    #[test]
     fn should_evaluate_string_concatenation_with_propagated_variables() {
         check(
             PureModuleBuilder::new()
                 .view_no_params("Test", |t| {
                     t.let_expr("name", t.str("World"), |t| {
                         t.concat(vec![
-                            t.escape(t.string_concat(t.str("Hello, "), t.var("name"))),
+                            t.escape(t.string_concat(vec![t.str("Hello, "), t.var("name")])),
                         ])
                     })
                 })
@@ -1041,10 +1138,10 @@ mod tests {
                         ),
                         |arms| {
                             arms.arm_bound("Active", [("since", "s"), ("by", "b")], |t| {
-                                t.escape(t.string_concat(
+                                t.escape(t.string_concat(vec![
                                     t.var("s"),
-                                    t.string_concat(t.str(" / "), t.var("b")),
-                                ))
+                                    t.string_concat(vec![t.str(" / "), t.var("b")]),
+                                ]))
                             });
                             arms.arm("Inactive", |t| t.raw("inactive"));
                         },
@@ -1249,7 +1346,7 @@ mod tests {
                 -- before --
                 view Test() {
                   concat(
-                    escape(tw_merge((((("px-4" + " ") + "py-2") + " ") + "p-6"))),
+                    escape(tw_merge(("px-4" + " " + "py-2" + " " + "p-6"))),
                   )
                 }
 

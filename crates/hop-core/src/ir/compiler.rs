@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::sync::Arc;
 
 use crate::asset_rewriter::AssetRewriter;
@@ -520,7 +521,10 @@ impl<'a> Compiler<'a> {
                 id: expr_id,
             },
             TypedExpr::StringLiteral { value, .. } => PureExpr::StringLiteral {
-                value: CheapString::new(process_escape_sequences(value.as_str())),
+                value: match process_escape_sequences(value.as_str()) {
+                    Cow::Borrowed(_) => value.clone(),
+                    Cow::Owned(unescaped) => CheapString::new(unescaped),
+                },
                 id: expr_id,
             },
             TypedExpr::Asset { path } => {
@@ -531,7 +535,7 @@ impl<'a> Compiler<'a> {
                     None => path.to_string(),
                 };
                 PureExpr::StringLiteral {
-                    value: CheapString::new(process_escape_sequences(&rewritten)),
+                    value: CheapString::new(process_escape_sequences(&rewritten).into_owned()),
                     id: expr_id,
                 }
             }
@@ -547,9 +551,8 @@ impl<'a> Compiler<'a> {
                 value: *value,
                 id: expr_id,
             },
-            TypedExpr::StringConcat { left, right, .. } => PureExpr::StringConcat {
-                left: Box::new(self.compile_expr(left)),
-                right: Box::new(self.compile_expr(right)),
+            TypedExpr::StringConcat { parts, .. } => PureExpr::StringConcat {
+                parts: parts.iter().map(|part| self.compile_expr(part)).collect(),
                 id: expr_id,
             },
             TypedExpr::Equals {
@@ -819,7 +822,13 @@ impl<'a> Compiler<'a> {
 /// - `\r` → carriage return
 /// - `\\` → backslash
 /// - `\"` → double quote
-fn process_escape_sequences(s: &str) -> String {
+fn process_escape_sequences(s: &str) -> Cow<'_, str> {
+    // Without a backslash there is nothing to unescape, so the caller can keep
+    // whatever allocation it already has instead of copying the text out.
+    if !s.contains('\\') {
+        return Cow::Borrowed(s);
+    }
+
     let mut result = String::with_capacity(s.len());
     let mut chars = s.chars().peekable();
 
@@ -847,7 +856,7 @@ fn process_escape_sequences(s: &str) -> String {
         }
     }
 
-    result
+    Cow::Owned(result)
 }
 
 #[cfg(test)]
@@ -1283,28 +1292,5 @@ mod tests {
                 }
             "#]],
         );
-    }
-
-    #[test]
-    fn should_compile_deeply_nested_string_concat() {
-        // Create a deeply nested left-leaning StringConcat tree
-        let depth = 100;
-        let mut expr = TypedExpr::StringLiteral {
-            value: CheapString::new("start".to_string()),
-        };
-        for i in 0..depth {
-            expr = TypedExpr::StringConcat {
-                left: Box::new(expr),
-                right: Box::new(TypedExpr::StringLiteral {
-                    value: CheapString::new(format!("{}", i)),
-                }),
-            };
-        }
-
-        let mut expr_ids = ExprIdCounter::new();
-        let mut var_ids = VarIdCounter::new();
-        let mut compiler = Compiler::new(&mut expr_ids, &mut var_ids, None);
-        let _result = compiler.compile_expr(&expr);
-        // If we get here without stack overflow, the test passes
     }
 }

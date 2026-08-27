@@ -347,9 +347,8 @@ fn lower_value(expr: PureExpr) -> WriterExpr {
             kind,
         },
 
-        PureExpr::StringConcat { left, right, .. } => WriterExpr::StringConcat {
-            left: Box::new(lower_value(*left)),
-            right: Box::new(lower_value(*right)),
+        PureExpr::StringConcat { parts, .. } => WriterExpr::StringConcat {
+            parts: parts.into_iter().map(lower_value).collect(),
         },
 
         PureExpr::TwMerge { operand, .. } => WriterExpr::TwMerge {

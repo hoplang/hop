@@ -1,4 +1,3 @@
-pub mod join_macro;
 pub mod r#type;
 pub mod type_checker;
 pub mod type_env;
