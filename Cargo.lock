@@ -250,12 +250,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "datafrog"
-version = "2.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a0afaad2b26fa326569eb264b1363e8ae3357618c43982b3f285f0774ce76b69"
-
-[[package]]
 name = "dissimilar"
 version = "1.0.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -484,7 +478,6 @@ dependencies = [
  "anyhow",
  "arbitrary",
  "arbtest",
- "datafrog",
  "expect-test",
  "indoc",
  "pretty",

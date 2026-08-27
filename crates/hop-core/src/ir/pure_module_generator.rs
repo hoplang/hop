@@ -1,12 +1,11 @@
 use crate::expr::Type;
 use crate::expr::typing::type_registry::TypeRegistry;
-use crate::ir::ir_module::{IrExpr, IrModule};
-use crate::ir::ir_module_builder::{IrBuilder, IrModuleBuilder};
+use crate::ir::pure_module::{PureExpr, PureModule};
+use crate::ir::pure_module_builder::{PureBuilder, PureModuleBuilder};
 use arbitrary::Unstructured;
-use std::cell::RefCell;
 use std::ops::RangeInclusive;
 
-/// Statement/expression recursion budget.
+/// Expression recursion budget.
 const DEPTH: usize = 3;
 
 const FLOATS: &[f64] = &[
@@ -76,7 +75,7 @@ enum NamedTypes {
     Complete,
 }
 
-struct IrGenerator<'a, 'b> {
+struct PureGenerator<'a, 'b> {
     u: &'a mut Unstructured<'b>,
     declared_names: Vec<String>,
     records: Vec<RecordInfo>,
@@ -85,20 +84,20 @@ struct IrGenerator<'a, 'b> {
     next_var: usize,
 }
 
-/// Generate a random well-typed IR module.
-pub fn random_ir_module(u: &mut Unstructured<'_>) -> (IrModule, TypeRegistry) {
-    random_ir_module_inner(u, false)
+/// Generate a random well-typed Pure module.
+pub fn random_module(u: &mut Unstructured<'_>) -> (PureModule, TypeRegistry) {
+    random_module_inner(u, false)
 }
 
-pub fn random_ir_module_with_test_view(u: &mut Unstructured<'_>) -> (IrModule, TypeRegistry) {
-    random_ir_module_inner(u, true)
+pub fn random_module_with_test_view(u: &mut Unstructured<'_>) -> (PureModule, TypeRegistry) {
+    random_module_inner(u, true)
 }
 
-fn random_ir_module_inner(
+fn random_module_inner(
     u: &mut Unstructured<'_>,
     single_test_view: bool,
-) -> (IrModule, TypeRegistry) {
-    let mut g = IrGenerator {
+) -> (PureModule, TypeRegistry) {
+    let mut g = PureGenerator {
         u,
         declared_names: Vec::new(),
         records: Vec::new(),
@@ -116,7 +115,7 @@ fn random_ir_module_inner(
         .chain((0..enum_count).map(|i| format!("E{i}")))
         .collect();
 
-    let mut builder = IrModuleBuilder::new();
+    let mut builder = PureModuleBuilder::new();
 
     // Generate records and enums in a shuffled interleaved order.
     enum Decl {
@@ -173,14 +172,14 @@ fn random_ir_module_inner(
         bodies = bodies.component(
             &name,
             params.iter().map(|(n, t)| (n.as_str(), t.as_str())),
-            |b| g.stmts(b, DEPTH),
+            |b| g.expr(b, &Type::Fragment, DEPTH),
         );
         g.components.push(ComponentInfo { name, params });
     }
 
     // Generate views
     if single_test_view {
-        bodies = bodies.view_no_params("Test", |b| g.stmts(b, DEPTH));
+        bodies = bodies.view_no_params("Test", |b| g.expr(b, &Type::Fragment, DEPTH));
     } else {
         for i in 0..g.count(1..=3) {
             let params: Vec<(String, String)> = (0..g.count(0..=3))
@@ -189,14 +188,14 @@ fn random_ir_module_inner(
             bodies = bodies.view(
                 &format!("V{i}"),
                 params.iter().map(|(n, t)| (n.as_str(), t.as_str())),
-                |b| g.stmts(b, DEPTH),
+                |b| g.expr(b, &Type::Fragment, DEPTH),
             );
         }
     }
     bodies.build_with_registry()
 }
 
-impl IrGenerator<'_, '_> {
+impl PureGenerator<'_, '_> {
     /// A choice within `range`, resolving to the lower bound once the
     /// input is exhausted.
     fn count(&mut self, range: RangeInclusive<usize>) -> usize {
@@ -228,7 +227,7 @@ impl IrGenerator<'_, '_> {
     }
 
     /// Pairs of `(record, field)` where the field type is the given type.
-    fn record_fields_of_type(&self, b: &IrBuilder, target: &Type) -> Vec<(String, String)> {
+    fn record_fields_of_type(&self, b: &PureBuilder, target: &Type) -> Vec<(String, String)> {
         let mut candidates = Vec::new();
         for rec in &self.records {
             for (field, field_ty) in &rec.fields {
@@ -321,129 +320,8 @@ impl IrGenerator<'_, '_> {
         arms
     }
 
-    fn stmts(&mut self, b: &mut IrBuilder, depth: usize) {
-        for _ in 0..self.count(0..=4) {
-            self.stmt(b, depth);
-        }
-    }
-
-    /// Generate a random statement.
-    fn stmt(&mut self, b: &mut IrBuilder, depth: usize) {
-        enum P {
-            Write,
-            WriteString,
-            WriteFragment,
-            InvokeComponent,
-            If,
-            ForRange,
-            ForLoop,
-            Let,
-            BoolMatch,
-            OptionMatch,
-            EnumMatch,
-        }
-        let mut productions = vec![P::Write, P::WriteString, P::WriteFragment];
-        if !self.components.is_empty() {
-            productions.push(P::InvokeComponent);
-        }
-        if depth > 0 {
-            productions.extend([
-                P::If,
-                P::ForRange,
-                P::ForLoop,
-                P::Let,
-                P::BoolMatch,
-                P::OptionMatch,
-            ]);
-            if !self.enums.is_empty() {
-                productions.push(P::EnumMatch);
-            }
-        }
-        match self.u.choose(&productions).unwrap() {
-            P::Write => b.write(self.u.choose(STRING_LITERALS).unwrap()),
-            P::WriteString => {
-                b.write_string(self.expr(b, &Type::String, depth));
-            }
-            P::WriteFragment => {
-                b.write_fragment(self.expr(b, &Type::Fragment, depth));
-            }
-            P::InvokeComponent => {
-                let info = self.u.choose(&self.components).unwrap().clone();
-                let args = info
-                    .params
-                    .iter()
-                    .map(|(n, t)| {
-                        let ty = b.resolve_type(t);
-                        (n.as_str(), self.expr(b, &ty, depth))
-                    })
-                    .collect();
-                b.invoke_component(&info.name, args);
-            }
-            P::If => {
-                let condition = self.expr(b, &Type::Bool, depth);
-                b.if_stmt(condition, |b| self.stmts(b, depth - 1));
-            }
-            P::ForRange => {
-                // Literal bounds only: generated arithmetic can produce huge
-                // Int values, which would make evaluation iterate forever.
-                let start = b.int(self.zigzag(3));
-                let end = b.int(self.zigzag(3));
-                let var = self.coin().then(|| self.fresh_var_name());
-                b.for_range(var.as_deref(), start, end, |b| self.stmts(b, depth - 1));
-            }
-            P::ForLoop => {
-                let array_ty = Type::Array(b.resolve_type(&self.random_type_string(1)));
-                let array = self.expr(b, &array_ty, depth);
-                let var = self.fresh_var_name();
-                b.for_loop(&var, array, |b| self.stmts(b, depth - 1));
-            }
-            P::Let => {
-                let ty = b.resolve_type(&self.random_type_string(2));
-                let value = self.expr(b, &ty, depth);
-                let var = self.fresh_var_name();
-                b.let_stmt(&var, value, |b| self.stmts(b, depth - 1));
-            }
-            P::BoolMatch => {
-                let subject = self.expr(b, &Type::Bool, depth);
-                let this = RefCell::new(self);
-                b.bool_match_stmt(
-                    subject,
-                    |b| this.borrow_mut().stmts(b, depth - 1),
-                    |b| this.borrow_mut().stmts(b, depth - 1),
-                );
-            }
-            P::OptionMatch => {
-                let option_ty = Type::Option(b.resolve_type(&self.random_type_string(1)));
-                let subject = self.expr(b, &option_ty, depth);
-                let binding = self.coin().then(|| self.fresh_var_name());
-                let this = RefCell::new(self);
-                b.option_match_stmt(
-                    subject,
-                    binding.as_deref(),
-                    |b| this.borrow_mut().stmts(b, depth - 1),
-                    |b| this.borrow_mut().stmts(b, depth - 1),
-                );
-            }
-            P::EnumMatch => {
-                let info = self.u.choose(&self.enums).unwrap().clone();
-                let subject_ty = b.resolve_type(&info.name);
-                let subject = self.expr(b, &subject_ty, depth);
-                let arm_plan = self.enum_match_arms(&info.variants);
-                b.enum_match_stmt(subject, |arms| {
-                    for (variant, bindings) in &arm_plan {
-                        arms.arm_bound(
-                            variant,
-                            bindings.iter().map(|(f, v)| (f.as_str(), v.as_str())),
-                            |b| self.stmts(b, depth - 1),
-                        );
-                    }
-                });
-            }
-        }
-    }
-
     /// Generate a random expression of the target type.
-    fn expr(&mut self, b: &IrBuilder, target: &Type, depth: usize) -> IrExpr {
+    fn expr(&mut self, b: &PureBuilder, target: &Type, depth: usize) -> PureExpr {
         enum P {
             Lit,
             Var,
@@ -471,7 +349,13 @@ impl IrGenerator<'_, '_> {
             Add,
             Sub,
             Mul,
-            Fragment,
+            Raw,
+            Escape,
+            FragmentConcat,
+            FragmentForArray,
+            FragmentForRange,
+            FragmentIf,
+            Call,
         }
         let mut productions = vec![P::Lit];
         if b.vars().iter().any(|(_, _, ty)| **ty == *target) {
@@ -517,7 +401,17 @@ impl IrGenerator<'_, '_> {
                 productions.extend([P::Concat, P::IntToString]);
             }
             if *target == Type::Fragment {
-                productions.push(P::Fragment);
+                productions.extend([
+                    P::Raw,
+                    P::Escape,
+                    P::FragmentConcat,
+                    P::FragmentForArray,
+                    P::FragmentForRange,
+                    P::FragmentIf,
+                ]);
+                if !self.components.is_empty() {
+                    productions.push(P::Call);
+                }
             }
         }
         match self.u.choose(&productions).unwrap() {
@@ -680,12 +574,58 @@ impl IrGenerator<'_, '_> {
                 let right = self.expr(b, target, depth - 1);
                 b.mul(left, right)
             }
-            P::Fragment => b.fragment(|b| self.stmts(b, depth - 1)),
+            P::Raw => b.raw(self.u.choose(STRING_LITERALS).unwrap()),
+            P::Escape => {
+                let operand = self.expr(b, &Type::String, depth - 1);
+                b.escape(operand)
+            }
+            P::FragmentConcat => {
+                let parts = (0..self.count(0..=4))
+                    .map(|_| self.expr(b, &Type::Fragment, depth - 1))
+                    .collect();
+                b.concat(parts)
+            }
+            P::FragmentForArray => {
+                let array_ty = Type::Array(b.resolve_type(&self.random_type_string(1)));
+                let array = self.expr(b, &array_ty, depth);
+                let var = self.fresh_var_name();
+                b.fragment_for(Some(&var), array, |b| {
+                    self.expr(b, &Type::Fragment, depth - 1)
+                })
+            }
+            P::FragmentForRange => {
+                // Literal bounds only, generated arithmetic can produce huge
+                // Int values, which would make evaluation iterate forever.
+                let start = b.int(self.zigzag(3));
+                let end = b.int(self.zigzag(3));
+                let var = self.coin().then(|| self.fresh_var_name());
+                b.fragment_for_range(var.as_deref(), start, end, |b| {
+                    self.expr(b, &Type::Fragment, depth - 1)
+                })
+            }
+            P::FragmentIf => {
+                let condition = self.expr(b, &Type::Bool, depth - 1);
+                let true_body = self.expr(b, &Type::Fragment, depth - 1);
+                let false_body = b.concat(Vec::new());
+                b.bool_match_expr(condition, true_body, false_body)
+            }
+            P::Call => {
+                let info = self.u.choose(&self.components).unwrap().clone();
+                let args = info
+                    .params
+                    .iter()
+                    .map(|(n, t)| {
+                        let ty = b.resolve_type(t);
+                        (n.as_str(), self.expr(b, &ty, depth))
+                    })
+                    .collect();
+                b.call(&info.name, args)
+            }
         }
     }
 
     /// A literal expression of the target type.
-    fn literal(&mut self, b: &IrBuilder, target: &Type, depth: usize) -> IrExpr {
+    fn literal(&mut self, b: &PureBuilder, target: &Type, depth: usize) -> PureExpr {
         // Note: we use saturating_sub here since we might be forced to construct
         // something deeper than depth.
         match &target {
@@ -745,7 +685,7 @@ impl IrGenerator<'_, '_> {
                     b.enum_variant_with_fields(name.as_str(), variant, values)
                 }
             }
-            Type::Fragment => b.fragment(|_b| {}),
+            Type::Fragment => b.concat(Vec::new()),
         }
     }
 }

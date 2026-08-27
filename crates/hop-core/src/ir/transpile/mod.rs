@@ -8,9 +8,10 @@ pub use ts::TsTranspiler;
 use crate::expr::patterns::Match;
 use crate::expr::typing::r#type::{ComparableType, EquatableType, NumericType, Type};
 use crate::expr::typing::type_registry::{ResolvedType, TypeRegistry};
-use crate::ir::ir_module::{
-    IrArgument, IrComponentDeclaration, IrExpr, IrForSource, IrModule, IrStatement, IrVar,
-    IrViewDeclaration,
+use crate::ir::ir_var::IrVar;
+use crate::ir::writer_module::{
+    WriterArgument, WriterComponentDeclaration, WriterExpr, WriterForSource, WriterModule,
+    WriterStatement, WriterViewDeclaration,
 };
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
@@ -23,9 +24,9 @@ pub trait Transpiler {
         &mut self,
         arena: &'a Arena<'a>,
         name: &'a TypeName,
-        view: &'a IrViewDeclaration,
+        view: &'a WriterViewDeclaration,
     ) -> Doc<'a>;
-    fn transpile_module(&mut self, module: &IrModule, registry: &TypeRegistry) -> String;
+    fn transpile_module(&mut self, module: &WriterModule, registry: &TypeRegistry) -> String;
     /// The registry of the module currently being transpiled. Used to
     /// resolve named types during type transpilation.
     fn registry(&self) -> &TypeRegistry;
@@ -35,64 +36,66 @@ pub trait Transpiler {
     fn transpile_write_string_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        expr: &'a IrExpr,
+        expr: &'a WriterExpr,
     ) -> Doc<'a>;
     fn transpile_write_fragment_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        expr: &'a IrExpr,
+        expr: &'a WriterExpr,
     ) -> Doc<'a>;
     fn transpile_for_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
         var: Option<&'a IrVar>,
-        source: &'a IrForSource,
-        body: &'a [IrStatement],
+        source: &'a WriterForSource,
+        body: &'a [WriterStatement],
     ) -> Doc<'a>;
     fn transpile_let_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
         var: &'a IrVar,
-        value: &'a IrExpr,
-        body: &'a [IrStatement],
+        value: &'a WriterExpr,
+        body: &'a [WriterStatement],
     ) -> Doc<'a>;
     fn transpile_match_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        match_: &'a Match<IrExpr, Vec<IrStatement>, IrVar>,
+        match_: &'a Match<WriterExpr, Vec<WriterStatement>, IrVar>,
     ) -> Doc<'a>;
     fn transpile_component_def<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        component: &'a IrComponentDeclaration,
+        component: &'a WriterComponentDeclaration,
     ) -> Doc<'a>;
     fn transpile_component_call_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
         name: &'a TypeName,
-        args: &'a [IrArgument],
+        args: &'a [WriterArgument],
     ) -> Doc<'a>;
     fn transpile_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        statement: &'a IrStatement,
+        statement: &'a WriterStatement,
     ) -> Doc<'a> {
         match statement {
-            IrStatement::Write { content, .. } => self.transpile_write_statement(arena, content),
-            IrStatement::WriteString { expr, .. } => {
+            WriterStatement::Write { content, .. } => {
+                self.transpile_write_statement(arena, content)
+            }
+            WriterStatement::WriteString { expr, .. } => {
                 self.transpile_write_string_statement(arena, expr)
             }
-            IrStatement::WriteFragment { expr, .. } => {
+            WriterStatement::WriteFragment { expr, .. } => {
                 self.transpile_write_fragment_statement(arena, expr)
             }
-            IrStatement::For {
+            WriterStatement::For {
                 var, source, body, ..
             } => self.transpile_for_statement(arena, var.as_ref(), source, body),
-            IrStatement::Let {
+            WriterStatement::Let {
                 var, value, body, ..
             } => self.transpile_let_statement(arena, var, value, body),
-            IrStatement::Match { match_, .. } => self.transpile_match_statement(arena, match_),
-            IrStatement::ComponentInvocation {
+            WriterStatement::Match { match_, .. } => self.transpile_match_statement(arena, match_),
+            WriterStatement::ComponentInvocation {
                 component_name,
                 args,
                 ..
@@ -102,7 +105,7 @@ pub trait Transpiler {
     fn transpile_statements<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        statements: &'a [IrStatement],
+        statements: &'a [WriterStatement],
     ) -> Doc<'a>;
 
     // Type transpilation
@@ -146,203 +149,239 @@ pub trait Transpiler {
     fn transpile_field_access<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        object: &'a IrExpr,
+        object: &'a WriterExpr,
         field: &'a FieldName,
     ) -> Doc<'a>;
     fn transpile_string_literal<'a>(&mut self, arena: &'a Arena<'a>, value: &'a str) -> Doc<'a>;
-    fn transpile_fragment<'a>(&mut self, arena: &'a Arena<'a>, body: &'a [IrStatement]) -> Doc<'a>;
+    fn transpile_fragment<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        body: &'a [WriterStatement],
+    ) -> Doc<'a>;
     fn transpile_boolean_literal<'a>(&mut self, arena: &'a Arena<'a>, value: bool) -> Doc<'a>;
     fn transpile_float_literal<'a>(&mut self, arena: &'a Arena<'a>, value: f64) -> Doc<'a>;
     fn transpile_int_literal<'a>(&mut self, arena: &'a Arena<'a>, value: i32) -> Doc<'a>;
     fn transpile_array_literal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        elements: &'a [IrExpr],
+        elements: &'a [WriterExpr],
         elem_type: &'a Type,
     ) -> Doc<'a>;
     fn transpile_string_equals<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a IrExpr,
-        right: &'a IrExpr,
+        left: &'a WriterExpr,
+        right: &'a WriterExpr,
     ) -> Doc<'a>;
     fn transpile_bool_equals<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a IrExpr,
-        right: &'a IrExpr,
+        left: &'a WriterExpr,
+        right: &'a WriterExpr,
     ) -> Doc<'a>;
     fn transpile_int_equals<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a IrExpr,
-        right: &'a IrExpr,
+        left: &'a WriterExpr,
+        right: &'a WriterExpr,
     ) -> Doc<'a>;
     fn transpile_float_equals<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a IrExpr,
-        right: &'a IrExpr,
+        left: &'a WriterExpr,
+        right: &'a WriterExpr,
     ) -> Doc<'a>;
     fn transpile_int_less_than<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a IrExpr,
-        right: &'a IrExpr,
+        left: &'a WriterExpr,
+        right: &'a WriterExpr,
     ) -> Doc<'a>;
     fn transpile_float_less_than<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a IrExpr,
-        right: &'a IrExpr,
+        left: &'a WriterExpr,
+        right: &'a WriterExpr,
     ) -> Doc<'a>;
     fn transpile_int_less_than_or_equal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a IrExpr,
-        right: &'a IrExpr,
+        left: &'a WriterExpr,
+        right: &'a WriterExpr,
     ) -> Doc<'a>;
     fn transpile_float_less_than_or_equal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a IrExpr,
-        right: &'a IrExpr,
+        left: &'a WriterExpr,
+        right: &'a WriterExpr,
     ) -> Doc<'a>;
-    fn transpile_not<'a>(&mut self, arena: &'a Arena<'a>, operand: &'a IrExpr) -> Doc<'a>;
-    fn transpile_int_negation<'a>(&mut self, arena: &'a Arena<'a>, operand: &'a IrExpr) -> Doc<'a>;
+    fn transpile_not<'a>(&mut self, arena: &'a Arena<'a>, operand: &'a WriterExpr) -> Doc<'a>;
+    fn transpile_int_negation<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        operand: &'a WriterExpr,
+    ) -> Doc<'a>;
     fn transpile_float_negation<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        operand: &'a IrExpr,
+        operand: &'a WriterExpr,
     ) -> Doc<'a>;
     fn transpile_string_concat<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a IrExpr,
-        right: &'a IrExpr,
+        left: &'a WriterExpr,
+        right: &'a WriterExpr,
     ) -> Doc<'a>;
     fn transpile_logical_and<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a IrExpr,
-        right: &'a IrExpr,
+        left: &'a WriterExpr,
+        right: &'a WriterExpr,
     ) -> Doc<'a>;
     fn transpile_logical_or<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a IrExpr,
-        right: &'a IrExpr,
+        left: &'a WriterExpr,
+        right: &'a WriterExpr,
     ) -> Doc<'a>;
     fn transpile_int_add<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a IrExpr,
-        right: &'a IrExpr,
+        left: &'a WriterExpr,
+        right: &'a WriterExpr,
     ) -> Doc<'a>;
     fn transpile_float_add<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a IrExpr,
-        right: &'a IrExpr,
+        left: &'a WriterExpr,
+        right: &'a WriterExpr,
     ) -> Doc<'a>;
     fn transpile_int_subtract<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a IrExpr,
-        right: &'a IrExpr,
+        left: &'a WriterExpr,
+        right: &'a WriterExpr,
     ) -> Doc<'a>;
     fn transpile_float_subtract<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a IrExpr,
-        right: &'a IrExpr,
+        left: &'a WriterExpr,
+        right: &'a WriterExpr,
     ) -> Doc<'a>;
     fn transpile_int_multiply<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a IrExpr,
-        right: &'a IrExpr,
+        left: &'a WriterExpr,
+        right: &'a WriterExpr,
     ) -> Doc<'a>;
     fn transpile_float_multiply<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a IrExpr,
-        right: &'a IrExpr,
+        left: &'a WriterExpr,
+        right: &'a WriterExpr,
     ) -> Doc<'a>;
     fn transpile_record_literal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
         record_name: &'a str,
-        fields: &'a [(FieldName, IrExpr)],
+        fields: &'a [(FieldName, WriterExpr)],
     ) -> Doc<'a>;
     fn transpile_enum_literal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
         enum_name: &'a str,
         variant_name: &'a str,
-        fields: &'a [(FieldName, IrExpr)],
+        fields: &'a [(FieldName, WriterExpr)],
     ) -> Doc<'a>;
     fn transpile_option_literal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        value: Option<&'a IrExpr>,
+        value: Option<&'a WriterExpr>,
         inner_type: &'a Type,
     ) -> Doc<'a>;
     fn transpile_match_expr<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        match_: &'a Match<IrExpr, IrExpr, IrVar>,
+        match_: &'a Match<WriterExpr, WriterExpr, IrVar>,
     ) -> Doc<'a>;
     fn transpile_let<'a>(
         &mut self,
         arena: &'a Arena<'a>,
         var: &'a IrVar,
-        value: &'a IrExpr,
-        body: &'a IrExpr,
+        value: &'a WriterExpr,
+        body: &'a WriterExpr,
     ) -> Doc<'a>;
-    fn transpile_array_length<'a>(&mut self, arena: &'a Arena<'a>, array: &'a IrExpr) -> Doc<'a>;
-    fn transpile_array_is_empty<'a>(&mut self, arena: &'a Arena<'a>, array: &'a IrExpr) -> Doc<'a>;
+    fn transpile_array_length<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        array: &'a WriterExpr,
+    ) -> Doc<'a>;
+    fn transpile_array_is_empty<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        array: &'a WriterExpr,
+    ) -> Doc<'a>;
     fn transpile_string_is_empty<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        string: &'a IrExpr,
+        string: &'a WriterExpr,
     ) -> Doc<'a>;
-    fn transpile_option_is_some<'a>(&mut self, arena: &'a Arena<'a>, option: &'a IrExpr)
-    -> Doc<'a>;
-    fn transpile_option_is_none<'a>(&mut self, arena: &'a Arena<'a>, option: &'a IrExpr)
-    -> Doc<'a>;
-    fn transpile_int_to_string<'a>(&mut self, arena: &'a Arena<'a>, value: &'a IrExpr) -> Doc<'a>;
-    fn transpile_float_to_int<'a>(&mut self, arena: &'a Arena<'a>, value: &'a IrExpr) -> Doc<'a>;
-    fn transpile_int_to_float<'a>(&mut self, arena: &'a Arena<'a>, value: &'a IrExpr) -> Doc<'a>;
-    fn transpile_expr<'a>(&mut self, arena: &'a Arena<'a>, expr: &'a IrExpr) -> Doc<'a> {
+    fn transpile_option_is_some<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        option: &'a WriterExpr,
+    ) -> Doc<'a>;
+    fn transpile_option_is_none<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        option: &'a WriterExpr,
+    ) -> Doc<'a>;
+    fn transpile_int_to_string<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        value: &'a WriterExpr,
+    ) -> Doc<'a>;
+    fn transpile_float_to_int<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        value: &'a WriterExpr,
+    ) -> Doc<'a>;
+    fn transpile_int_to_float<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        value: &'a WriterExpr,
+    ) -> Doc<'a>;
+    fn transpile_expr<'a>(&mut self, arena: &'a Arena<'a>, expr: &'a WriterExpr) -> Doc<'a> {
         match expr {
-            IrExpr::VariableReference { value, .. } => self.transpile_var(arena, value),
-            IrExpr::FieldAccess {
+            WriterExpr::VariableReference { value, .. } => self.transpile_var(arena, value),
+            WriterExpr::FieldAccess {
                 record: object,
                 field,
                 ..
             } => self.transpile_field_access(arena, object, field),
-            IrExpr::StringLiteral { value, .. } => self.transpile_string_literal(arena, value),
-            IrExpr::FragmentLiteral { body, .. } => self.transpile_fragment(arena, body),
-            IrExpr::BooleanLiteral { value, .. } => self.transpile_boolean_literal(arena, *value),
-            IrExpr::FloatLiteral { value, .. } => self.transpile_float_literal(arena, *value),
-            IrExpr::IntLiteral { value, .. } => self.transpile_int_literal(arena, *value),
-            IrExpr::ArrayLiteral { elements, kind, .. } => match kind.as_ref() {
+            WriterExpr::StringLiteral { value, .. } => self.transpile_string_literal(arena, value),
+            WriterExpr::FragmentLiteral { body, .. } => self.transpile_fragment(arena, body),
+            WriterExpr::BooleanLiteral { value, .. } => {
+                self.transpile_boolean_literal(arena, *value)
+            }
+            WriterExpr::FloatLiteral { value, .. } => self.transpile_float_literal(arena, *value),
+            WriterExpr::IntLiteral { value, .. } => self.transpile_int_literal(arena, *value),
+            WriterExpr::ArrayLiteral { elements, kind, .. } => match kind.as_ref() {
                 Type::Array(elem_type) => self.transpile_array_literal(arena, elements, elem_type),
                 _ => {
                     unreachable!()
                 }
             },
-            IrExpr::RecordLiteral {
+            WriterExpr::RecordLiteral {
                 record_name,
                 fields,
                 ..
             } => self.transpile_record_literal(arena, record_name.as_str(), fields),
-            IrExpr::StringConcat { left, right, .. } => {
+            WriterExpr::StringConcat { left, right, .. } => {
                 self.transpile_string_concat(arena, left, right)
             }
-            IrExpr::BooleanNegation { operand, .. } => self.transpile_not(arena, operand),
-            IrExpr::NumericNegation {
+            WriterExpr::BooleanNegation { operand, .. } => self.transpile_not(arena, operand),
+            WriterExpr::NumericNegation {
                 operand,
                 operand_type,
                 ..
@@ -350,7 +389,7 @@ pub trait Transpiler {
                 NumericType::Int => self.transpile_int_negation(arena, operand),
                 NumericType::Float => self.transpile_float_negation(arena, operand),
             },
-            IrExpr::Equals {
+            WriterExpr::Equals {
                 left,
                 right,
                 operand_types,
@@ -361,7 +400,7 @@ pub trait Transpiler {
                 EquatableType::Int => self.transpile_int_equals(arena, left, right),
                 EquatableType::Float => self.transpile_float_equals(arena, left, right),
             },
-            IrExpr::LessThan {
+            WriterExpr::LessThan {
                 left,
                 right,
                 operand_types,
@@ -370,7 +409,7 @@ pub trait Transpiler {
                 ComparableType::Int => self.transpile_int_less_than(arena, left, right),
                 ComparableType::Float => self.transpile_float_less_than(arena, left, right),
             },
-            IrExpr::LessThanOrEqual {
+            WriterExpr::LessThanOrEqual {
                 left,
                 right,
                 operand_types,
@@ -381,13 +420,13 @@ pub trait Transpiler {
                     self.transpile_float_less_than_or_equal(arena, left, right)
                 }
             },
-            IrExpr::BooleanLogicalAnd { left, right, .. } => {
+            WriterExpr::BooleanLogicalAnd { left, right, .. } => {
                 self.transpile_logical_and(arena, left, right)
             }
-            IrExpr::BooleanLogicalOr { left, right, .. } => {
+            WriterExpr::BooleanLogicalOr { left, right, .. } => {
                 self.transpile_logical_or(arena, left, right)
             }
-            IrExpr::NumericAdd {
+            WriterExpr::NumericAdd {
                 left,
                 right,
                 operand_types,
@@ -396,7 +435,7 @@ pub trait Transpiler {
                 NumericType::Int => self.transpile_int_add(arena, left, right),
                 NumericType::Float => self.transpile_float_add(arena, left, right),
             },
-            IrExpr::NumericSubtract {
+            WriterExpr::NumericSubtract {
                 left,
                 right,
                 operand_types,
@@ -405,7 +444,7 @@ pub trait Transpiler {
                 NumericType::Int => self.transpile_int_subtract(arena, left, right),
                 NumericType::Float => self.transpile_float_subtract(arena, left, right),
             },
-            IrExpr::NumericMultiply {
+            WriterExpr::NumericMultiply {
                 left,
                 right,
                 operand_types,
@@ -414,7 +453,7 @@ pub trait Transpiler {
                 NumericType::Int => self.transpile_int_multiply(arena, left, right),
                 NumericType::Float => self.transpile_float_multiply(arena, left, right),
             },
-            IrExpr::EnumLiteral {
+            WriterExpr::EnumLiteral {
                 enum_name,
                 variant_name,
                 fields,
@@ -425,26 +464,28 @@ pub trait Transpiler {
                 variant_name.as_str(),
                 fields,
             ),
-            IrExpr::OptionLiteral { value, kind, .. } => {
+            WriterExpr::OptionLiteral { value, kind, .. } => {
                 let inner_type = match kind.as_ref() {
                     Type::Option(inner) => inner.as_ref(),
                     _ => unreachable!("OptionLiteral must have Option type"),
                 };
                 self.transpile_option_literal(arena, value.as_ref().map(|v| v.as_ref()), inner_type)
             }
-            IrExpr::Match { match_, .. } => self.transpile_match_expr(arena, match_),
-            IrExpr::Let {
+            WriterExpr::Match { match_, .. } => self.transpile_match_expr(arena, match_),
+            WriterExpr::Let {
                 var, value, body, ..
             } => self.transpile_let(arena, var, value, body),
-            IrExpr::TwMerge { operand, .. } => self.transpile_expr(arena, operand),
-            IrExpr::ArrayLength { array, .. } => self.transpile_array_length(arena, array),
-            IrExpr::ArrayIsEmpty { array, .. } => self.transpile_array_is_empty(arena, array),
-            IrExpr::StringIsEmpty { string, .. } => self.transpile_string_is_empty(arena, string),
-            IrExpr::OptionIsSome { option, .. } => self.transpile_option_is_some(arena, option),
-            IrExpr::OptionIsNone { option, .. } => self.transpile_option_is_none(arena, option),
-            IrExpr::IntToString { value, .. } => self.transpile_int_to_string(arena, value),
-            IrExpr::FloatToInt { value, .. } => self.transpile_float_to_int(arena, value),
-            IrExpr::IntToFloat { value, .. } => self.transpile_int_to_float(arena, value),
+            WriterExpr::TwMerge { operand, .. } => self.transpile_expr(arena, operand),
+            WriterExpr::ArrayLength { array, .. } => self.transpile_array_length(arena, array),
+            WriterExpr::ArrayIsEmpty { array, .. } => self.transpile_array_is_empty(arena, array),
+            WriterExpr::StringIsEmpty { string, .. } => {
+                self.transpile_string_is_empty(arena, string)
+            }
+            WriterExpr::OptionIsSome { option, .. } => self.transpile_option_is_some(arena, option),
+            WriterExpr::OptionIsNone { option, .. } => self.transpile_option_is_none(arena, option),
+            WriterExpr::IntToString { value, .. } => self.transpile_int_to_string(arena, value),
+            WriterExpr::FloatToInt { value, .. } => self.transpile_float_to_int(arena, value),
+            WriterExpr::IntToFloat { value, .. } => self.transpile_int_to_float(arena, value),
         }
     }
 }

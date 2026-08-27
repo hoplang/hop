@@ -6,124 +6,36 @@ use crate::expr::patterns::{EnumPattern, Match};
 use crate::expr::typing::r#type::{
     ComparableType, EnumVariant, EquatableType, ExamplesAnnotation, NumericType, Type,
 };
+use crate::ir::ir_var::IrVar;
+use crate::ir::var_id::VarIdCounter;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use pretty::BoxDoc;
 
-/// An IR module.
+/// A Writer module. The lowered, statement form of the IR, consumed by
+/// the evaluator and the transpilers.
 ///
-/// All IDs in the module are unique across the whole module and a pass that
-/// creates new expressions, statements or variables must mint fresh IDs from
-/// the counters expr_ids, stmt_ids and var_ids.
-///
-/// Each binder in the IR has a unique VarId, so two binders are never the same
-/// variable. Shadowing is impossible and substitution is capture-free.
+/// All IDs in the module are unique across the whole module. Each binder has
+/// a unique VarId, so two binders are never the same variable: shadowing is
+/// impossible and substitution is capture-free.
 #[derive(Debug)]
-pub struct IrModule {
-    pub views: Vec<IrViewDeclaration>,
-    pub components: Vec<IrComponentDeclaration>,
-    pub records: Vec<IrRecordDeclaration>,
-    pub enums: Vec<IrEnumDeclaration>,
-    pub expr_ids: ExprIdCounter,
+pub struct WriterModule {
+    pub views: Vec<WriterViewDeclaration>,
+    pub components: Vec<WriterComponentDeclaration>,
+    pub records: Vec<WriterRecordDeclaration>,
+    pub enums: Vec<WriterEnumDeclaration>,
     pub var_ids: VarIdCounter,
-    pub stmt_ids: StatementIdCounter,
 }
 
-/// Unique identifier for each expression in the IR.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ExprId(usize);
-
-#[derive(Debug, Clone, Copy, Default)]
-pub struct ExprIdCounter(usize);
-
-impl ExprIdCounter {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn next(&mut self) -> ExprId {
-        let id = ExprId(self.0);
-        self.0 += 1;
-        id
-    }
-}
-
-/// Unique identifier for each statement in the IR.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct StatementId(usize);
-
-#[derive(Debug, Clone, Copy, Default)]
-pub struct StatementIdCounter(usize);
-
-impl StatementIdCounter {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn next(&mut self) -> StatementId {
-        let id = StatementId(self.0);
-        self.0 += 1;
-        id
-    }
-}
-
-/// Identity of a bound variable in the IR.
-///
-/// Every binder has its own unique VarId. Equal VarIds mean the same binder.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct VarId(usize);
-
-impl fmt::Display for VarId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-#[derive(Debug, Clone, Copy, Default)]
-pub struct VarIdCounter(usize);
-
-impl VarIdCounter {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn next(&mut self) -> VarId {
-        let id = VarId(self.0);
-        self.0 += 1;
-        id
-    }
-}
-
-/// A bound variable in the IR.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct IrVar {
-    pub id: VarId,
-}
-
-impl IrVar {
-    pub fn new(id: VarId) -> Self {
-        Self { id }
-    }
-}
-
-/// Rendered in IR dumps. Each transpiler names variables its own way, so this
-/// spelling is the IR's alone.
-impl fmt::Display for IrVar {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "v{}", self.id)
-    }
-}
-
-/// A parameter declaration in the IR (used in views and components).
 #[derive(Debug, Clone, PartialEq)]
-pub struct IrParameter {
+pub struct WriterParameter {
     pub name: VarName,
     pub var: IrVar,
     pub typ: Arc<Type>,
 }
 
-impl IrParameter {
+impl WriterParameter {
     pub fn name(&self) -> &VarName {
         &self.name
     }
@@ -131,38 +43,38 @@ impl IrParameter {
 
 /// An argument passed to a component invocation in the IR.
 #[derive(Debug, PartialEq)]
-pub struct IrArgument {
+pub struct WriterArgument {
     pub name: VarName,
-    pub expr: IrExpr,
+    pub expr: WriterExpr,
 }
 
 /// The source of iteration in a For loop.
 #[derive(Debug, PartialEq)]
-pub enum IrForSource {
+pub enum WriterForSource {
     /// Iterate over elements of an array.
-    Array(IrExpr),
+    Array(WriterExpr),
     /// Iterate over an inclusive integer range.
-    RangeInclusive { start: IrExpr, end: IrExpr },
+    RangeInclusive { start: WriterExpr, end: WriterExpr },
 }
 
 #[derive(Debug)]
-pub struct IrViewDeclaration {
+pub struct WriterViewDeclaration {
     /// Entrypoint name
     pub name: TypeName,
     /// Parameter names with their types
-    pub parameters: Vec<IrParameter>,
+    pub parameters: Vec<WriterParameter>,
     /// IR nodes for the view body
-    pub body: Vec<IrStatement>,
+    pub body: Vec<WriterStatement>,
 }
 
 #[derive(Debug, Clone)]
-pub struct IrRecordDeclaration {
+pub struct WriterRecordDeclaration {
     pub name: TypeName,
     pub fields: Vec<(FieldName, Arc<Type>, Option<ExamplesAnnotation>)>,
 }
 
 #[derive(Debug, Clone)]
-pub struct IrEnumDeclaration {
+pub struct WriterEnumDeclaration {
     pub name: TypeName,
     pub variants: Vec<EnumVariant>,
 }
@@ -171,13 +83,13 @@ pub struct IrEnumDeclaration {
 ///
 /// Invokable through the ComponentInvocation statement.
 #[derive(Debug)]
-pub struct IrComponentDeclaration {
+pub struct WriterComponentDeclaration {
     /// Component name
     pub name: TypeName,
     /// Parameter names with their types
-    pub parameters: Vec<IrParameter>,
+    pub parameters: Vec<WriterParameter>,
     /// IR nodes for the component body
-    pub body: Vec<IrStatement>,
+    pub body: Vec<WriterStatement>,
 }
 
 /// A statement in the IR.
@@ -185,18 +97,18 @@ pub struct IrComponentDeclaration {
 /// Statements may perform one kind of effect: writing to the output stream.
 /// Statement order is output order.
 #[derive(Debug, PartialEq)]
-pub enum IrStatement {
+pub enum WriterStatement {
     /// Write a constant string to the output stream.
     ///
     /// Write performs no escaping.
-    Write { id: StatementId, content: String },
+    Write { content: String },
 
     /// Write a String expression to the output stream.
     ///
     /// WriteString performs HTML escaping.
     ///
     /// The type of expr must be String.
-    WriteString { id: StatementId, expr: IrExpr },
+    WriteString { expr: WriterExpr },
 
     /// Write a Fragment expression to the output stream.
     ///
@@ -204,13 +116,12 @@ pub enum IrStatement {
     /// by construction.
     ///
     /// The type of expr must be Fragment.
-    WriteFragment { id: StatementId, expr: IrExpr },
+    WriteFragment { expr: WriterExpr },
 
     /// Invoke a component and write its effects to the output stream.
     ComponentInvocation {
-        id: StatementId,
         component_name: TypeName,
-        args: Vec<IrArgument>,
+        args: Vec<WriterArgument>,
     },
 
     /// Loop over an array or range.
@@ -218,10 +129,9 @@ pub enum IrStatement {
     /// When var is None, the loop binds no variable, but the loop still
     /// executes.
     For {
-        id: StatementId,
         var: Option<IrVar>,
-        source: IrForSource,
-        body: Vec<IrStatement>,
+        source: WriterForSource,
+        body: Vec<WriterStatement>,
     },
 
     /// Bind a variable to the value of an expression and execute the effects
@@ -229,18 +139,16 @@ pub enum IrStatement {
     ///
     /// The binding scopes over body only, not the statements that follow.
     Let {
-        id: StatementId,
         var: IrVar,
-        value: IrExpr,
-        body: Vec<IrStatement>,
+        value: WriterExpr,
+        body: Vec<WriterStatement>,
     },
 
     /// Match on a value and execute the effects of the matched branch.
     ///
     /// Matching is exhaustive, a value must match at least one branch.
     Match {
-        id: StatementId,
-        match_: Match<IrExpr, Vec<IrStatement>, IrVar>,
+        match_: Match<WriterExpr, Vec<WriterStatement>, IrVar>,
     },
 }
 
@@ -254,23 +162,21 @@ pub enum IrStatement {
 /// A FloatToString conversion is avoided since semantics would be too tricky to
 /// define across backends.
 #[derive(Debug, PartialEq)]
-pub enum IrExpr {
+pub enum WriterExpr {
     /// A Let expression.
     Let {
         var: IrVar,
-        value: Box<IrExpr>,
-        body: Box<IrExpr>,
+        value: Box<WriterExpr>,
+        body: Box<WriterExpr>,
         kind: Arc<Type>,
-        id: ExprId,
     },
 
     /// A Match expression over an Enum, Boolean, or Option.
     ///
     /// Matching is exhaustive, a value must match at least one branch.
     Match {
-        match_: Match<IrExpr, IrExpr, IrVar>,
+        match_: Match<WriterExpr, WriterExpr, IrVar>,
         kind: Arc<Type>,
-        id: ExprId,
     },
 
     /// A VariableReference expression.
@@ -278,53 +184,46 @@ pub enum IrExpr {
     /// Reads the value bound by its binder.
     ///
     /// The kind field must match the binder's type.
-    VariableReference {
-        value: IrVar,
-        kind: Arc<Type>,
-        id: ExprId,
-    },
+    VariableReference { value: IrVar, kind: Arc<Type> },
 
     /// A FieldAccess expression.
     ///
     /// The expression must evaluate to a record and the field must exist on the
     /// record.
     FieldAccess {
-        record: Box<IrExpr>,
+        record: Box<WriterExpr>,
         field: FieldName,
         kind: Arc<Type>,
-        id: ExprId,
     },
 
     /// A StringLiteral expression.
-    StringLiteral { value: CheapString, id: ExprId },
+    StringLiteral { value: CheapString },
 
     /// A FragmentLiteral expression.
     ///
     /// Produced by rendering the body into a fresh buffer.
-    FragmentLiteral { body: Vec<IrStatement>, id: ExprId },
+    FragmentLiteral { body: Vec<WriterStatement> },
 
     /// A BooleanLiteral expression.
-    BooleanLiteral { value: bool, id: ExprId },
+    BooleanLiteral { value: bool },
 
     /// A FloatLiteral expression.
-    FloatLiteral { value: f64, id: ExprId },
+    FloatLiteral { value: f64 },
 
     /// An IntLiteral expression.
-    IntLiteral { value: i32, id: ExprId },
+    IntLiteral { value: i32 },
 
     /// An ArrayLiteral expression.
     ArrayLiteral {
-        elements: Vec<IrExpr>,
+        elements: Vec<WriterExpr>,
         kind: Arc<Type>,
-        id: ExprId,
     },
 
     /// A RecordLiteral expression.
     RecordLiteral {
         record_name: TypeName,
-        fields: Vec<(FieldName, IrExpr)>,
+        fields: Vec<(FieldName, WriterExpr)>,
         kind: Arc<Type>,
-        id: ExprId,
     },
 
     /// An EnumLiteral expression.
@@ -332,16 +231,14 @@ pub enum IrExpr {
         enum_name: TypeName,
         variant_name: TypeName,
         /// Field values for variants with fields (empty for unit variants)
-        fields: Vec<(FieldName, IrExpr)>,
+        fields: Vec<(FieldName, WriterExpr)>,
         kind: Arc<Type>,
-        id: ExprId,
     },
 
     /// An OptionLiteral expression.
     OptionLiteral {
-        value: Option<Box<IrExpr>>,
+        value: Option<Box<WriterExpr>>,
         kind: Arc<Type>,
-        id: ExprId,
     },
 
     /// A StringConcat expression.
@@ -349,26 +246,24 @@ pub enum IrExpr {
     /// Must hold two expressions of type String.
     /// Returns a String.
     StringConcat {
-        left: Box<IrExpr>,
-        right: Box<IrExpr>,
-        id: ExprId,
+        left: Box<WriterExpr>,
+        right: Box<WriterExpr>,
     },
 
     /// A TwMerge expression, applied at the class attribute boundary.
     ///
     /// Must hold an expression of type String.
     /// Returns a String.
-    TwMerge { operand: Box<IrExpr>, id: ExprId },
+    TwMerge { operand: Box<WriterExpr> },
 
     /// A NumericAdd expression.
     ///
     /// Must hold two expressions of the same NumericType.
     /// Returns the NumericType of the expressions.
     NumericAdd {
-        left: Box<IrExpr>,
-        right: Box<IrExpr>,
+        left: Box<WriterExpr>,
+        right: Box<WriterExpr>,
         operand_types: NumericType,
-        id: ExprId,
     },
 
     /// A NumericSubtract expression.
@@ -376,10 +271,9 @@ pub enum IrExpr {
     /// Must hold two expressions of the same NumericType.
     /// Returns the NumericType of the expressions.
     NumericSubtract {
-        left: Box<IrExpr>,
-        right: Box<IrExpr>,
+        left: Box<WriterExpr>,
+        right: Box<WriterExpr>,
         operand_types: NumericType,
-        id: ExprId,
     },
 
     /// A NumericMultiply expression.
@@ -387,10 +281,9 @@ pub enum IrExpr {
     /// Must hold two expressions of the same NumericType.
     /// Returns the NumericType of the expressions.
     NumericMultiply {
-        left: Box<IrExpr>,
-        right: Box<IrExpr>,
+        left: Box<WriterExpr>,
+        right: Box<WriterExpr>,
         operand_types: NumericType,
-        id: ExprId,
     },
 
     /// A NumericNegation expression.
@@ -398,25 +291,23 @@ pub enum IrExpr {
     /// Must hold an expression of a NumericType.
     /// Returns the NumericType of the expression.
     NumericNegation {
-        operand: Box<IrExpr>,
+        operand: Box<WriterExpr>,
         operand_type: NumericType,
-        id: ExprId,
     },
 
     /// A BooleanNegation expression.
     ///
     /// Must hold a Boolean expression.
     /// Returns a Boolean.
-    BooleanNegation { operand: Box<IrExpr>, id: ExprId },
+    BooleanNegation { operand: Box<WriterExpr> },
 
     /// A BooleanLogicalAnd expression.
     ///
     /// Must hold two Boolean expressions.
     /// Returns a Boolean.
     BooleanLogicalAnd {
-        left: Box<IrExpr>,
-        right: Box<IrExpr>,
-        id: ExprId,
+        left: Box<WriterExpr>,
+        right: Box<WriterExpr>,
     },
 
     /// A BooleanLogicalOr expression.
@@ -424,9 +315,8 @@ pub enum IrExpr {
     /// Must hold two Boolean expressions.
     /// Returns a Boolean.
     BooleanLogicalOr {
-        left: Box<IrExpr>,
-        right: Box<IrExpr>,
-        id: ExprId,
+        left: Box<WriterExpr>,
+        right: Box<WriterExpr>,
     },
 
     /// An Equals expression.
@@ -434,10 +324,9 @@ pub enum IrExpr {
     /// Must hold two values of the same EquatableType.
     /// Returns a Boolean.
     Equals {
-        left: Box<IrExpr>,
-        right: Box<IrExpr>,
+        left: Box<WriterExpr>,
+        right: Box<WriterExpr>,
         operand_types: EquatableType,
-        id: ExprId,
     },
 
     /// A LessThan expression.
@@ -445,10 +334,9 @@ pub enum IrExpr {
     /// Must hold two values of the same ComparableType.
     /// Returns a Boolean.
     LessThan {
-        left: Box<IrExpr>,
-        right: Box<IrExpr>,
+        left: Box<WriterExpr>,
+        right: Box<WriterExpr>,
         operand_types: ComparableType,
-        id: ExprId,
     },
 
     /// A LessThanOrEqual expression.
@@ -456,47 +344,46 @@ pub enum IrExpr {
     /// Must hold two values of the same ComparableType.
     /// Returns a Boolean.
     LessThanOrEqual {
-        left: Box<IrExpr>,
-        right: Box<IrExpr>,
+        left: Box<WriterExpr>,
+        right: Box<WriterExpr>,
         operand_types: ComparableType,
-        id: ExprId,
     },
 
     /// An ArrayLength expression.
     ///
     /// Must hold an Array expression.
     /// Returns an Int.
-    ArrayLength { array: Box<IrExpr>, id: ExprId },
+    ArrayLength { array: Box<WriterExpr> },
 
     /// An ArrayIsEmpty expression.
     ///
     /// Must hold an Array expression.
     /// Returns a Boolean.
-    ArrayIsEmpty { array: Box<IrExpr>, id: ExprId },
+    ArrayIsEmpty { array: Box<WriterExpr> },
 
     /// A StringIsEmpty expression.
     ///
     /// Must hold a String expression.
     /// Returns a Boolean.
-    StringIsEmpty { string: Box<IrExpr>, id: ExprId },
+    StringIsEmpty { string: Box<WriterExpr> },
 
     /// An OptionIsSome expression.
     ///
     /// Must hold an Option expression.
     /// Returns a Boolean.
-    OptionIsSome { option: Box<IrExpr>, id: ExprId },
+    OptionIsSome { option: Box<WriterExpr> },
 
     /// An OptionIsNone expression.
     ///
     /// Must hold an Option expression.
     /// Returns a Boolean.
-    OptionIsNone { option: Box<IrExpr>, id: ExprId },
+    OptionIsNone { option: Box<WriterExpr> },
 
     /// An IntToString expression.
     ///
     /// Must hold an Int.
     /// Returns a String.
-    IntToString { value: Box<IrExpr>, id: ExprId },
+    IntToString { value: Box<WriterExpr> },
 
     /// A FloatToInt expression.
     ///
@@ -504,127 +391,36 @@ pub enum IrExpr {
     ///
     /// Must hold a Float.
     /// Returns an Int.
-    FloatToInt { value: Box<IrExpr>, id: ExprId },
+    FloatToInt { value: Box<WriterExpr> },
 
     /// An IntToFloat expression.
     ///
     /// Must hold an Int.
     /// Returns a Float.
-    IntToFloat { value: Box<IrExpr>, id: ExprId },
+    IntToFloat { value: Box<WriterExpr> },
 }
 
-impl IrStatement {
-    /// Traverse all expressions owned by this statement, recursively
-    /// into nested sub-expressions (does not recurse into nested statement
-    /// bodies, including the bodies of fragment expressions).
-    pub fn traverse_exprs(&self, f: &mut impl FnMut(&IrExpr)) {
-        match self {
-            IrStatement::Write { .. } => {}
-            IrStatement::WriteString { expr, .. } => expr.traverse(f),
-            IrStatement::WriteFragment { expr, .. } => expr.traverse(f),
-            IrStatement::For { source, .. } => match source {
-                IrForSource::Array(array) => array.traverse(f),
-                IrForSource::RangeInclusive { start, end } => {
-                    start.traverse(f);
-                    end.traverse(f);
-                }
-            },
-            IrStatement::Let { value, .. } => value.traverse(f),
-            IrStatement::Match { match_, .. } => match_.subject().traverse(f),
-            IrStatement::ComponentInvocation { args, .. } => {
-                for arg in args {
-                    arg.expr.traverse(f);
-                }
-            }
-        }
-    }
-
-    /// Traverse all expressions owned by this statement, recursively
-    /// into nested sub-expressions with mutable access
-    /// (does not recurse into nested statement bodies, including the bodies
-    /// of fragment expressions).
-    pub fn traverse_exprs_mut(&mut self, f: &mut impl FnMut(&mut IrExpr)) {
-        match self {
-            IrStatement::Write { .. } => {}
-            IrStatement::WriteString { expr, .. } => expr.traverse_mut(f),
-            IrStatement::WriteFragment { expr, .. } => expr.traverse_mut(f),
-            IrStatement::For { source, .. } => match source {
-                IrForSource::Array(array) => array.traverse_mut(f),
-                IrForSource::RangeInclusive { start, end } => {
-                    start.traverse_mut(f);
-                    end.traverse_mut(f);
-                }
-            },
-            IrStatement::Let { value, .. } => value.traverse_mut(f),
-            IrStatement::Match { match_, .. } => match_.subject_mut().traverse_mut(f),
-            IrStatement::ComponentInvocation { args, .. } => {
-                for arg in args {
-                    arg.expr.traverse_mut(f);
-                }
-            }
-        }
-    }
-
-    /// Traverse this statement and all nested statements with a closure,
-    /// including statements nested inside fragment expressions.
-    pub fn traverse<F>(&self, f: &mut F)
-    where
-        F: FnMut(&IrStatement),
-    {
-        f(self);
-        // Statement bodies nested inside fragment expressions. Expression
-        // traversal stops at a fragment's boundary, so the statements inside
-        // are reached here, exactly once.
-        self.traverse_exprs(&mut |e| {
-            if let IrExpr::FragmentLiteral { body, .. } = e {
-                for stmt in body {
-                    stmt.traverse(f);
-                }
-            }
-        });
-        match self {
-            IrStatement::Write { .. } => {}
-            IrStatement::WriteString { .. } => {}
-            IrStatement::WriteFragment { .. } => {}
-            IrStatement::For { body, .. } => {
-                for stmt in body {
-                    stmt.traverse(f);
-                }
-            }
-            IrStatement::Let { body, .. } => {
-                for stmt in body {
-                    stmt.traverse(f);
-                }
-            }
-            IrStatement::Match { match_, .. } => {
-                for stmt in match_.bodies().into_iter().flatten() {
-                    stmt.traverse(f);
-                }
-            }
-            IrStatement::ComponentInvocation { .. } => {}
-        }
-    }
-
+impl WriterStatement {
     pub fn to_doc(&self) -> BoxDoc<'_> {
         match self {
-            IrStatement::Write { content, .. } => BoxDoc::text("write")
+            WriterStatement::Write { content, .. } => BoxDoc::text("write")
                 .append(BoxDoc::text("("))
                 .append(BoxDoc::text(format!("{:?}", content)))
                 .append(BoxDoc::text(")")),
-            IrStatement::WriteString { expr, .. } => BoxDoc::text("write_string")
+            WriterStatement::WriteString { expr, .. } => BoxDoc::text("write_string")
                 .append(BoxDoc::text("("))
                 .append(expr.to_doc())
                 .append(BoxDoc::text(")")),
-            IrStatement::WriteFragment { expr, .. } => BoxDoc::text("write_fragment")
+            WriterStatement::WriteFragment { expr, .. } => BoxDoc::text("write_fragment")
                 .append(BoxDoc::text("("))
                 .append(expr.to_doc())
                 .append(BoxDoc::text(")")),
-            IrStatement::For {
+            WriterStatement::For {
                 var, source, body, ..
             } => {
                 let source_doc = match source {
-                    IrForSource::Array(array) => array.to_doc(),
-                    IrForSource::RangeInclusive { start, end } => start
+                    WriterForSource::Array(array) => array.to_doc(),
+                    WriterForSource::RangeInclusive { start, end } => start
                         .to_doc()
                         .append(BoxDoc::text("..="))
                         .append(end.to_doc()),
@@ -651,7 +447,7 @@ impl IrStatement {
                     })
                     .append(BoxDoc::text("}"))
             }
-            IrStatement::Let {
+            WriterStatement::Let {
                 var, value, body, ..
             } => BoxDoc::text("let ")
                 .append(BoxDoc::text(var.to_string()))
@@ -670,8 +466,8 @@ impl IrStatement {
                         .nest(2)
                 })
                 .append(BoxDoc::text("}")),
-            IrStatement::Match { match_, .. } => {
-                fn body_to_doc(body: &[IrStatement]) -> BoxDoc<'_> {
+            WriterStatement::Match { match_, .. } => {
+                fn body_to_doc(body: &[WriterStatement]) -> BoxDoc<'_> {
                     if body.is_empty() {
                         BoxDoc::nil()
                     } else {
@@ -684,7 +480,7 @@ impl IrStatement {
                     }
                 }
 
-                fn arm_to_doc<'a>(pattern: BoxDoc<'a>, body: &'a [IrStatement]) -> BoxDoc<'a> {
+                fn arm_to_doc<'a>(pattern: BoxDoc<'a>, body: &'a [WriterStatement]) -> BoxDoc<'a> {
                     pattern
                         .append(BoxDoc::text(" => {"))
                         .append(body_to_doc(body))
@@ -779,7 +575,7 @@ impl IrStatement {
                     }
                 }
             }
-            IrStatement::ComponentInvocation {
+            WriterStatement::ComponentInvocation {
                 component_name,
                 args,
                 ..
@@ -804,72 +600,35 @@ impl IrStatement {
     }
 }
 
-impl IrExpr {
-    /// Get the id of this expression
-    pub fn id(&self) -> ExprId {
-        match self {
-            IrExpr::VariableReference { id, .. }
-            | IrExpr::FieldAccess { id, .. }
-            | IrExpr::StringLiteral { id, .. }
-            | IrExpr::FragmentLiteral { id, .. }
-            | IrExpr::BooleanLiteral { id, .. }
-            | IrExpr::FloatLiteral { id, .. }
-            | IrExpr::IntLiteral { id, .. }
-            | IrExpr::ArrayLiteral { id, .. }
-            | IrExpr::RecordLiteral { id, .. }
-            | IrExpr::EnumLiteral { id, .. }
-            | IrExpr::OptionLiteral { id, .. }
-            | IrExpr::Match { id, .. }
-            | IrExpr::StringConcat { id, .. }
-            | IrExpr::TwMerge { id, .. }
-            | IrExpr::NumericAdd { id, .. }
-            | IrExpr::NumericSubtract { id, .. }
-            | IrExpr::NumericMultiply { id, .. }
-            | IrExpr::BooleanNegation { id, .. }
-            | IrExpr::NumericNegation { id, .. }
-            | IrExpr::BooleanLogicalAnd { id, .. }
-            | IrExpr::BooleanLogicalOr { id, .. }
-            | IrExpr::Equals { id, .. }
-            | IrExpr::LessThan { id, .. }
-            | IrExpr::LessThanOrEqual { id, .. }
-            | IrExpr::Let { id, .. }
-            | IrExpr::ArrayLength { id, .. }
-            | IrExpr::ArrayIsEmpty { id, .. }
-            | IrExpr::StringIsEmpty { id, .. }
-            | IrExpr::OptionIsSome { id, .. }
-            | IrExpr::OptionIsNone { id, .. }
-            | IrExpr::IntToString { id, .. }
-            | IrExpr::FloatToInt { id, .. }
-            | IrExpr::IntToFloat { id, .. } => *id,
-        }
-    }
-
+impl WriterExpr {
     /// Get the type of this expression as an Arc
     pub fn get_type(&self) -> Arc<Type> {
         match self {
-            IrExpr::VariableReference { kind, .. }
-            | IrExpr::FieldAccess { kind, .. }
-            | IrExpr::ArrayLiteral { kind, .. }
-            | IrExpr::RecordLiteral { kind, .. }
-            | IrExpr::EnumLiteral { kind, .. }
-            | IrExpr::OptionLiteral { kind, .. }
-            | IrExpr::Match { kind, .. }
-            | IrExpr::Let { kind, .. } => kind.clone(),
+            WriterExpr::VariableReference { kind, .. }
+            | WriterExpr::FieldAccess { kind, .. }
+            | WriterExpr::ArrayLiteral { kind, .. }
+            | WriterExpr::RecordLiteral { kind, .. }
+            | WriterExpr::EnumLiteral { kind, .. }
+            | WriterExpr::OptionLiteral { kind, .. }
+            | WriterExpr::Match { kind, .. }
+            | WriterExpr::Let { kind, .. } => kind.clone(),
 
-            IrExpr::FloatLiteral { .. } | IrExpr::IntToFloat { .. } => Arc::new(Type::Float),
-            IrExpr::IntLiteral { .. } => Arc::new(Type::Int),
+            WriterExpr::FloatLiteral { .. } | WriterExpr::IntToFloat { .. } => {
+                Arc::new(Type::Float)
+            }
+            WriterExpr::IntLiteral { .. } => Arc::new(Type::Int),
 
-            IrExpr::FragmentLiteral { .. } => Arc::new(Type::Fragment),
+            WriterExpr::FragmentLiteral { .. } => Arc::new(Type::Fragment),
 
-            IrExpr::StringConcat { .. }
-            | IrExpr::TwMerge { .. }
-            | IrExpr::StringLiteral { .. }
-            | IrExpr::IntToString { .. } => Arc::new(Type::String),
+            WriterExpr::StringConcat { .. }
+            | WriterExpr::TwMerge { .. }
+            | WriterExpr::StringLiteral { .. }
+            | WriterExpr::IntToString { .. } => Arc::new(Type::String),
 
-            IrExpr::NumericAdd { operand_types, .. }
-            | IrExpr::NumericSubtract { operand_types, .. }
-            | IrExpr::NumericMultiply { operand_types, .. }
-            | IrExpr::NumericNegation {
+            WriterExpr::NumericAdd { operand_types, .. }
+            | WriterExpr::NumericSubtract { operand_types, .. }
+            | WriterExpr::NumericMultiply { operand_types, .. }
+            | WriterExpr::NumericNegation {
                 operand_type: operand_types,
                 ..
             } => match operand_types {
@@ -877,19 +636,19 @@ impl IrExpr {
                 NumericType::Float => Arc::new(Type::Float),
             },
 
-            IrExpr::BooleanLiteral { .. }
-            | IrExpr::BooleanNegation { .. }
-            | IrExpr::Equals { .. }
-            | IrExpr::LessThan { .. }
-            | IrExpr::LessThanOrEqual { .. }
-            | IrExpr::BooleanLogicalAnd { .. }
-            | IrExpr::BooleanLogicalOr { .. }
-            | IrExpr::ArrayIsEmpty { .. }
-            | IrExpr::StringIsEmpty { .. }
-            | IrExpr::OptionIsSome { .. }
-            | IrExpr::OptionIsNone { .. } => Arc::new(Type::Bool),
+            WriterExpr::BooleanLiteral { .. }
+            | WriterExpr::BooleanNegation { .. }
+            | WriterExpr::Equals { .. }
+            | WriterExpr::LessThan { .. }
+            | WriterExpr::LessThanOrEqual { .. }
+            | WriterExpr::BooleanLogicalAnd { .. }
+            | WriterExpr::BooleanLogicalOr { .. }
+            | WriterExpr::ArrayIsEmpty { .. }
+            | WriterExpr::StringIsEmpty { .. }
+            | WriterExpr::OptionIsSome { .. }
+            | WriterExpr::OptionIsNone { .. } => Arc::new(Type::Bool),
 
-            IrExpr::ArrayLength { .. } | IrExpr::FloatToInt { .. } => Arc::new(Type::Int),
+            WriterExpr::ArrayLength { .. } | WriterExpr::FloatToInt { .. } => Arc::new(Type::Int),
         }
     }
 
@@ -902,29 +661,29 @@ impl IrExpr {
         static FRAGMENT_TYPE: Type = Type::Fragment;
 
         match self {
-            IrExpr::VariableReference { kind, .. }
-            | IrExpr::FieldAccess { kind, .. }
-            | IrExpr::ArrayLiteral { kind, .. }
-            | IrExpr::RecordLiteral { kind, .. }
-            | IrExpr::EnumLiteral { kind, .. }
-            | IrExpr::OptionLiteral { kind, .. }
-            | IrExpr::Match { kind, .. }
-            | IrExpr::Let { kind, .. } => kind,
+            WriterExpr::VariableReference { kind, .. }
+            | WriterExpr::FieldAccess { kind, .. }
+            | WriterExpr::ArrayLiteral { kind, .. }
+            | WriterExpr::RecordLiteral { kind, .. }
+            | WriterExpr::EnumLiteral { kind, .. }
+            | WriterExpr::OptionLiteral { kind, .. }
+            | WriterExpr::Match { kind, .. }
+            | WriterExpr::Let { kind, .. } => kind,
 
-            IrExpr::FloatLiteral { .. } | IrExpr::IntToFloat { .. } => &FLOAT_TYPE,
-            IrExpr::IntLiteral { .. } => &INT_TYPE,
+            WriterExpr::FloatLiteral { .. } | WriterExpr::IntToFloat { .. } => &FLOAT_TYPE,
+            WriterExpr::IntLiteral { .. } => &INT_TYPE,
 
-            IrExpr::FragmentLiteral { .. } => &FRAGMENT_TYPE,
+            WriterExpr::FragmentLiteral { .. } => &FRAGMENT_TYPE,
 
-            IrExpr::StringConcat { .. }
-            | IrExpr::TwMerge { .. }
-            | IrExpr::StringLiteral { .. }
-            | IrExpr::IntToString { .. } => &STRING_TYPE,
+            WriterExpr::StringConcat { .. }
+            | WriterExpr::TwMerge { .. }
+            | WriterExpr::StringLiteral { .. }
+            | WriterExpr::IntToString { .. } => &STRING_TYPE,
 
-            IrExpr::NumericAdd { operand_types, .. }
-            | IrExpr::NumericSubtract { operand_types, .. }
-            | IrExpr::NumericMultiply { operand_types, .. }
-            | IrExpr::NumericNegation {
+            WriterExpr::NumericAdd { operand_types, .. }
+            | WriterExpr::NumericSubtract { operand_types, .. }
+            | WriterExpr::NumericMultiply { operand_types, .. }
+            | WriterExpr::NumericNegation {
                 operand_type: operand_types,
                 ..
             } => match operand_types {
@@ -932,33 +691,35 @@ impl IrExpr {
                 NumericType::Float => &FLOAT_TYPE,
             },
 
-            IrExpr::BooleanLiteral { .. }
-            | IrExpr::BooleanNegation { .. }
-            | IrExpr::Equals { .. }
-            | IrExpr::LessThan { .. }
-            | IrExpr::LessThanOrEqual { .. }
-            | IrExpr::BooleanLogicalAnd { .. }
-            | IrExpr::BooleanLogicalOr { .. }
-            | IrExpr::ArrayIsEmpty { .. }
-            | IrExpr::StringIsEmpty { .. }
-            | IrExpr::OptionIsSome { .. }
-            | IrExpr::OptionIsNone { .. } => &BOOL_TYPE,
+            WriterExpr::BooleanLiteral { .. }
+            | WriterExpr::BooleanNegation { .. }
+            | WriterExpr::Equals { .. }
+            | WriterExpr::LessThan { .. }
+            | WriterExpr::LessThanOrEqual { .. }
+            | WriterExpr::BooleanLogicalAnd { .. }
+            | WriterExpr::BooleanLogicalOr { .. }
+            | WriterExpr::ArrayIsEmpty { .. }
+            | WriterExpr::StringIsEmpty { .. }
+            | WriterExpr::OptionIsSome { .. }
+            | WriterExpr::OptionIsNone { .. } => &BOOL_TYPE,
 
-            IrExpr::ArrayLength { .. } | IrExpr::FloatToInt { .. } => &INT_TYPE,
+            WriterExpr::ArrayLength { .. } | WriterExpr::FloatToInt { .. } => &INT_TYPE,
         }
     }
 
     /// Pretty-print this expression
     pub fn to_doc(&self) -> BoxDoc<'_> {
         match self {
-            IrExpr::VariableReference { value, .. } => BoxDoc::text(value.to_string()),
-            IrExpr::FieldAccess { record, field, .. } => record
+            WriterExpr::VariableReference { value, .. } => BoxDoc::text(value.to_string()),
+            WriterExpr::FieldAccess { record, field, .. } => record
                 .to_doc()
                 .append(BoxDoc::text("."))
                 .append(BoxDoc::text(field.as_str())),
-            IrExpr::StringLiteral { value, .. } => BoxDoc::text(format!("{:?}", value.as_str())),
+            WriterExpr::StringLiteral { value, .. } => {
+                BoxDoc::text(format!("{:?}", value.as_str()))
+            }
 
-            IrExpr::FragmentLiteral { body, .. } => BoxDoc::text("{")
+            WriterExpr::FragmentLiteral { body, .. } => BoxDoc::text("{")
                 .append(if body.is_empty() {
                     BoxDoc::nil()
                 } else {
@@ -971,10 +732,10 @@ impl IrExpr {
                         .nest(2)
                 })
                 .append(BoxDoc::text("}")),
-            IrExpr::BooleanLiteral { value, .. } => BoxDoc::text(value.to_string()),
-            IrExpr::FloatLiteral { value, .. } => BoxDoc::text(value.to_string()),
-            IrExpr::IntLiteral { value, .. } => BoxDoc::text(value.to_string()),
-            IrExpr::ArrayLiteral { elements, .. } => {
+            WriterExpr::BooleanLiteral { value, .. } => BoxDoc::text(value.to_string()),
+            WriterExpr::FloatLiteral { value, .. } => BoxDoc::text(value.to_string()),
+            WriterExpr::IntLiteral { value, .. } => BoxDoc::text(value.to_string()),
+            WriterExpr::ArrayLiteral { elements, .. } => {
                 if elements.is_empty() {
                     BoxDoc::text("[]")
                 } else {
@@ -993,7 +754,7 @@ impl IrExpr {
                         .append(BoxDoc::text("]"))
                 }
             }
-            IrExpr::RecordLiteral {
+            WriterExpr::RecordLiteral {
                 record_name,
                 fields,
                 ..
@@ -1021,71 +782,71 @@ impl IrExpr {
                         .append(BoxDoc::text("}"))
                 }
             }
-            IrExpr::StringConcat { left, right, .. } => BoxDoc::nil()
+            WriterExpr::StringConcat { left, right, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(left.to_doc())
                 .append(BoxDoc::text(" + "))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
-            IrExpr::NumericAdd { left, right, .. } => BoxDoc::nil()
+            WriterExpr::NumericAdd { left, right, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(left.to_doc())
                 .append(BoxDoc::text(" + "))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
-            IrExpr::NumericSubtract { left, right, .. } => BoxDoc::nil()
+            WriterExpr::NumericSubtract { left, right, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(left.to_doc())
                 .append(BoxDoc::text(" - "))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
-            IrExpr::NumericMultiply { left, right, .. } => BoxDoc::nil()
+            WriterExpr::NumericMultiply { left, right, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(left.to_doc())
                 .append(BoxDoc::text(" * "))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
-            IrExpr::BooleanNegation { operand, .. } => BoxDoc::nil()
+            WriterExpr::BooleanNegation { operand, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(BoxDoc::text("!"))
                 .append(operand.to_doc())
                 .append(BoxDoc::text(")")),
-            IrExpr::NumericNegation { operand, .. } => BoxDoc::nil()
+            WriterExpr::NumericNegation { operand, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(BoxDoc::text("-"))
                 .append(operand.to_doc())
                 .append(BoxDoc::text(")")),
-            IrExpr::Equals { left, right, .. } => BoxDoc::nil()
+            WriterExpr::Equals { left, right, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(left.to_doc())
                 .append(BoxDoc::text(" == "))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
-            IrExpr::LessThan { left, right, .. } => BoxDoc::nil()
+            WriterExpr::LessThan { left, right, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(left.to_doc())
                 .append(BoxDoc::text(" < "))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
-            IrExpr::LessThanOrEqual { left, right, .. } => BoxDoc::nil()
+            WriterExpr::LessThanOrEqual { left, right, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(left.to_doc())
                 .append(BoxDoc::text(" <= "))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
-            IrExpr::BooleanLogicalAnd { left, right, .. } => BoxDoc::nil()
+            WriterExpr::BooleanLogicalAnd { left, right, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(left.to_doc())
                 .append(BoxDoc::text(" && "))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
-            IrExpr::BooleanLogicalOr { left, right, .. } => BoxDoc::nil()
+            WriterExpr::BooleanLogicalOr { left, right, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(left.to_doc())
                 .append(BoxDoc::text(" || "))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
-            IrExpr::EnumLiteral {
+            WriterExpr::EnumLiteral {
                 enum_name,
                 variant_name,
                 fields,
@@ -1109,7 +870,7 @@ impl IrExpr {
                         .append(BoxDoc::text("}"))
                 }
             }
-            IrExpr::OptionLiteral { value, kind, .. } => {
+            WriterExpr::OptionLiteral { value, kind, .. } => {
                 // Extract inner type from Option[T] -> T
                 let inner_type = match kind.as_ref() {
                     Type::Option(inner) => inner.to_doc(),
@@ -1126,7 +887,7 @@ impl IrExpr {
                     None => type_prefix.append(BoxDoc::text("None")),
                 }
             }
-            IrExpr::Match { match_, .. } => match match_ {
+            WriterExpr::Match { match_, .. } => match match_ {
                 Match::Enum { subject, arms } => {
                     if arms.is_empty() {
                         BoxDoc::text("match ")
@@ -1246,7 +1007,7 @@ impl IrExpr {
                         .append(BoxDoc::text("}"))
                 }
             },
-            IrExpr::Let {
+            WriterExpr::Let {
                 var, value, body, ..
             } => BoxDoc::text("let ")
                 .append(BoxDoc::text(var.to_string()))
@@ -1254,258 +1015,36 @@ impl IrExpr {
                 .append(value.to_doc())
                 .append(BoxDoc::text(" in "))
                 .append(body.to_doc()),
-            IrExpr::TwMerge { operand: value, .. } => BoxDoc::text("tw_merge(")
+            WriterExpr::TwMerge { operand: value, .. } => BoxDoc::text("tw_merge(")
                 .append(value.to_doc())
                 .append(BoxDoc::text(")")),
-            IrExpr::ArrayLength { array, .. } => array.to_doc().append(BoxDoc::text(".len()")),
-            IrExpr::ArrayIsEmpty { array, .. } => {
+            WriterExpr::ArrayLength { array, .. } => array.to_doc().append(BoxDoc::text(".len()")),
+            WriterExpr::ArrayIsEmpty { array, .. } => {
                 array.to_doc().append(BoxDoc::text(".is_empty()"))
             }
-            IrExpr::StringIsEmpty { string, .. } => {
+            WriterExpr::StringIsEmpty { string, .. } => {
                 string.to_doc().append(BoxDoc::text(".is_empty()"))
             }
-            IrExpr::OptionIsSome { option, .. } => {
+            WriterExpr::OptionIsSome { option, .. } => {
                 option.to_doc().append(BoxDoc::text(".is_some()"))
             }
-            IrExpr::OptionIsNone { option, .. } => {
+            WriterExpr::OptionIsNone { option, .. } => {
                 option.to_doc().append(BoxDoc::text(".is_none()"))
             }
-            IrExpr::IntToString { value, .. } => {
+            WriterExpr::IntToString { value, .. } => {
                 value.to_doc().append(BoxDoc::text(".to_string()"))
             }
-            IrExpr::FloatToInt { value, .. } => value.to_doc().append(BoxDoc::text(".to_int()")),
-            IrExpr::IntToFloat { value, .. } => value.to_doc().append(BoxDoc::text(".to_float()")),
-        }
-    }
-
-    /// Recursively traverses this expression and all nested expressions.
-    /// Does not descend into the statement body of a fragment expression,
-    /// statement-level traversals own that recursion.
-    pub fn traverse<F>(&self, f: &mut F)
-    where
-        F: FnMut(&IrExpr),
-    {
-        f(self);
-        match self {
-            IrExpr::FieldAccess { record, .. } => {
-                record.traverse(f);
+            WriterExpr::FloatToInt { value, .. } => {
+                value.to_doc().append(BoxDoc::text(".to_int()"))
             }
-            IrExpr::ArrayLiteral { elements, .. } => {
-                for elem in elements {
-                    elem.traverse(f);
-                }
-            }
-            IrExpr::RecordLiteral { fields, .. } => {
-                for (_, value) in fields {
-                    value.traverse(f);
-                }
-            }
-            IrExpr::BooleanNegation { operand, .. } | IrExpr::NumericNegation { operand, .. } => {
-                operand.traverse(f);
-            }
-            IrExpr::Equals { left, right, .. }
-            | IrExpr::LessThan { left, right, .. }
-            | IrExpr::LessThanOrEqual { left, right, .. }
-            | IrExpr::StringConcat { left, right, .. }
-            | IrExpr::NumericAdd { left, right, .. }
-            | IrExpr::NumericSubtract { left, right, .. }
-            | IrExpr::NumericMultiply { left, right, .. }
-            | IrExpr::BooleanLogicalAnd { left, right, .. }
-            | IrExpr::BooleanLogicalOr { left, right, .. } => {
-                left.traverse(f);
-                right.traverse(f);
-            }
-            IrExpr::Match { match_, .. } => {
-                match_.subject().traverse(f);
-                match match_ {
-                    Match::Enum { arms, .. } => {
-                        for arm in arms {
-                            arm.body.traverse(f);
-                        }
-                    }
-                    Match::Bool {
-                        true_body,
-                        false_body,
-                        ..
-                    } => {
-                        true_body.traverse(f);
-                        false_body.traverse(f);
-                    }
-                    Match::Option {
-                        some_arm_body,
-                        none_arm_body,
-                        ..
-                    } => {
-                        some_arm_body.traverse(f);
-                        none_arm_body.traverse(f);
-                    }
-                }
-            }
-            IrExpr::Let { value, body, .. } => {
-                value.traverse(f);
-                body.traverse(f);
-            }
-            IrExpr::OptionLiteral { value, .. } => {
-                if let Some(inner) = value {
-                    inner.traverse(f);
-                }
-            }
-            IrExpr::EnumLiteral { fields, .. } => {
-                for (_, value) in fields {
-                    value.traverse(f);
-                }
-            }
-            IrExpr::VariableReference { .. }
-            | IrExpr::StringLiteral { .. }
-            | IrExpr::FragmentLiteral { .. }
-            | IrExpr::BooleanLiteral { .. }
-            | IrExpr::FloatLiteral { .. }
-            | IrExpr::IntLiteral { .. } => {}
-            IrExpr::TwMerge { operand: value, .. } => {
-                value.traverse(f);
-            }
-            IrExpr::ArrayLength { array, .. } => {
-                array.traverse(f);
-            }
-            IrExpr::ArrayIsEmpty { array, .. } => {
-                array.traverse(f);
-            }
-            IrExpr::StringIsEmpty { string, .. } => {
-                string.traverse(f);
-            }
-            IrExpr::OptionIsSome { option, .. } => {
-                option.traverse(f);
-            }
-            IrExpr::OptionIsNone { option, .. } => {
-                option.traverse(f);
-            }
-            IrExpr::IntToString { value, .. } => {
-                value.traverse(f);
-            }
-            IrExpr::FloatToInt { value, .. } => {
-                value.traverse(f);
-            }
-            IrExpr::IntToFloat { value, .. } => {
-                value.traverse(f);
-            }
-        }
-    }
-
-    /// Recursively traverses this expression and all nested expressions with
-    /// mutable access. Does not descend into the statement body of a fragment
-    /// expression, statement-level traversals own that recursion.
-    pub fn traverse_mut<F>(&mut self, f: &mut F)
-    where
-        F: FnMut(&mut IrExpr),
-    {
-        f(self);
-        match self {
-            IrExpr::FieldAccess { record, .. } => {
-                record.traverse_mut(f);
-            }
-            IrExpr::ArrayLiteral { elements, .. } => {
-                for elem in elements {
-                    elem.traverse_mut(f);
-                }
-            }
-            IrExpr::RecordLiteral { fields, .. } => {
-                for (_, value) in fields {
-                    value.traverse_mut(f);
-                }
-            }
-            IrExpr::BooleanNegation { operand, .. } | IrExpr::NumericNegation { operand, .. } => {
-                operand.traverse_mut(f);
-            }
-            IrExpr::StringConcat { left, right, .. }
-            | IrExpr::NumericAdd { left, right, .. }
-            | IrExpr::NumericSubtract { left, right, .. }
-            | IrExpr::NumericMultiply { left, right, .. }
-            | IrExpr::Equals { left, right, .. }
-            | IrExpr::LessThan { left, right, .. }
-            | IrExpr::LessThanOrEqual { left, right, .. }
-            | IrExpr::BooleanLogicalAnd { left, right, .. }
-            | IrExpr::BooleanLogicalOr { left, right, .. } => {
-                left.traverse_mut(f);
-                right.traverse_mut(f);
-            }
-            IrExpr::Match { match_, .. } => {
-                match_.subject_mut().traverse_mut(f);
-                match match_ {
-                    Match::Enum { arms, .. } => {
-                        for arm in arms {
-                            arm.body.traverse_mut(f);
-                        }
-                    }
-                    Match::Bool {
-                        true_body,
-                        false_body,
-                        ..
-                    } => {
-                        true_body.traverse_mut(f);
-                        false_body.traverse_mut(f);
-                    }
-                    Match::Option {
-                        some_arm_body,
-                        none_arm_body,
-                        ..
-                    } => {
-                        some_arm_body.traverse_mut(f);
-                        none_arm_body.traverse_mut(f);
-                    }
-                }
-            }
-            IrExpr::Let { value, body, .. } => {
-                value.traverse_mut(f);
-                body.traverse_mut(f);
-            }
-            IrExpr::OptionLiteral { value, .. } => {
-                if let Some(inner) = value {
-                    inner.traverse_mut(f);
-                }
-            }
-            IrExpr::EnumLiteral { fields, .. } => {
-                for (_, value) in fields {
-                    value.traverse_mut(f);
-                }
-            }
-            IrExpr::VariableReference { .. }
-            | IrExpr::StringLiteral { .. }
-            | IrExpr::FragmentLiteral { .. }
-            | IrExpr::BooleanLiteral { .. }
-            | IrExpr::FloatLiteral { .. }
-            | IrExpr::IntLiteral { .. } => {}
-            IrExpr::TwMerge { operand: value, .. } => {
-                value.traverse_mut(f);
-            }
-            IrExpr::ArrayLength { array, .. } => {
-                array.traverse_mut(f);
-            }
-            IrExpr::ArrayIsEmpty { array, .. } => {
-                array.traverse_mut(f);
-            }
-            IrExpr::StringIsEmpty { string, .. } => {
-                string.traverse_mut(f);
-            }
-            IrExpr::OptionIsSome { option, .. } => {
-                option.traverse_mut(f);
-            }
-            IrExpr::OptionIsNone { option, .. } => {
-                option.traverse_mut(f);
-            }
-            IrExpr::IntToString { value, .. } => {
-                value.traverse_mut(f);
-            }
-            IrExpr::FloatToInt { value, .. } => {
-                value.traverse_mut(f);
-            }
-            IrExpr::IntToFloat { value, .. } => {
-                value.traverse_mut(f);
+            WriterExpr::IntToFloat { value, .. } => {
+                value.to_doc().append(BoxDoc::text(".to_float()"))
             }
         }
     }
 }
 
-impl<'a> IrViewDeclaration {
+impl<'a> WriterViewDeclaration {
     pub fn to_doc(&'a self) -> BoxDoc<'a> {
         BoxDoc::nil()
             .append("view ")
@@ -1551,62 +1090,25 @@ impl<'a> IrViewDeclaration {
     }
 }
 
-/// Traverse all statement bodies recursively and apply a closure to each `Vec<IrStatement>`,
-/// including the bodies of fragment expressions.
-/// Children are visited before their parents (post-order / bottom-up).
-pub fn traverse_statements_mut(
-    statements: &mut Vec<IrStatement>,
-    f: &mut impl FnMut(&mut Vec<IrStatement>),
-) {
-    for stmt in statements.iter_mut() {
-        // Statement bodies nested inside fragment expressions. Expression
-        // traversal stops at a fragment's boundary, so the bodies inside are
-        // reached here, exactly once.
-        stmt.traverse_exprs_mut(&mut |e| {
-            if let IrExpr::FragmentLiteral { body, .. } = e {
-                traverse_statements_mut(body, f);
-            }
-        });
-        match stmt {
-            IrStatement::For { body, .. } => {
-                traverse_statements_mut(body, f);
-            }
-            IrStatement::Let { body, .. } => {
-                traverse_statements_mut(body, f);
-            }
-            IrStatement::Match { match_, .. } => {
-                for body in match_.bodies_mut() {
-                    traverse_statements_mut(body, f);
-                }
-            }
-            IrStatement::ComponentInvocation { .. } => {}
-            IrStatement::Write { .. }
-            | IrStatement::WriteString { .. }
-            | IrStatement::WriteFragment { .. } => {}
-        }
-    }
-    f(statements);
-}
-
-impl fmt::Display for IrStatement {
+impl fmt::Display for WriterStatement {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.to_doc().pretty(60))
     }
 }
 
-impl fmt::Display for IrExpr {
+impl fmt::Display for WriterExpr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.to_doc().pretty(60))
     }
 }
 
-impl fmt::Display for IrViewDeclaration {
+impl fmt::Display for WriterViewDeclaration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "{}", self.to_doc().pretty(60))
     }
 }
 
-impl fmt::Display for IrEnumDeclaration {
+impl fmt::Display for WriterEnumDeclaration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "enum {} {{", self.name)?;
         for variant in &self.variants {
@@ -1630,7 +1132,7 @@ impl fmt::Display for IrEnumDeclaration {
     }
 }
 
-impl IrRecordDeclaration {
+impl WriterRecordDeclaration {
     fn type_name_without_module(typ: &Type) -> String {
         match typ {
             Type::Named { name, .. } => name.as_str().to_string(),
@@ -1639,7 +1141,7 @@ impl IrRecordDeclaration {
     }
 }
 
-impl fmt::Display for IrRecordDeclaration {
+impl fmt::Display for WriterRecordDeclaration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "record {} {{", self.name)?;
         for (field_name, field_type, _) in &self.fields {
@@ -1654,7 +1156,7 @@ impl fmt::Display for IrRecordDeclaration {
     }
 }
 
-impl fmt::Display for IrModule {
+impl fmt::Display for WriterModule {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for enum_decl in &self.enums {
             writeln!(f, "{}", enum_decl)?;
@@ -1672,7 +1174,7 @@ impl fmt::Display for IrModule {
     }
 }
 
-impl<'a> IrComponentDeclaration {
+impl<'a> WriterComponentDeclaration {
     pub fn to_doc(&'a self) -> BoxDoc<'a> {
         let closing = ") {";
         BoxDoc::text("component ")
@@ -1712,7 +1214,7 @@ impl<'a> IrComponentDeclaration {
     }
 }
 
-impl fmt::Display for IrComponentDeclaration {
+impl fmt::Display for WriterComponentDeclaration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "{}", self.to_doc().pretty(60))
     }

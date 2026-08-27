@@ -4,13 +4,14 @@ use crate::expr::patterns::{EnumMatchArm, EnumPattern, Match};
 use crate::expr::typing::r#type::{ComparableType, EnumVariant, EquatableType, NumericType};
 use crate::expr::typing::type_registry::{ResolvedType, TypeRegistry};
 use crate::expr::typing::type_registry_builder::{TestTypes, TypeRegistryBuilder};
-use crate::ir::ir_module::{
-    ExprId, ExprIdCounter, IrArgument, IrExpr, IrForSource, IrParameter, IrStatement, IrVar,
-    StatementId, StatementIdCounter, VarIdCounter,
+use crate::ir::expr_id::{ExprId, ExprIdCounter};
+use crate::ir::ir_var::IrVar;
+use crate::ir::pure_module::{
+    PureArgument, PureComponentDeclaration, PureExpr, PureForSource, PureModule,
+    PureViewDeclaration,
 };
-use crate::ir::ir_module::{
-    IrComponentDeclaration, IrEnumDeclaration, IrModule, IrRecordDeclaration, IrViewDeclaration,
-};
+use crate::ir::var_id::VarIdCounter;
+use crate::ir::writer_module::{WriterEnumDeclaration, WriterParameter, WriterRecordDeclaration};
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
@@ -19,11 +20,11 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 /// Declares the record and enum types of a module under construction.
-pub struct IrModuleBuilder {
+pub struct PureModuleBuilder {
     types_builder: TypeRegistryBuilder,
 }
 
-impl IrModuleBuilder {
+impl PureModuleBuilder {
     pub fn new() -> Self {
         Self {
             types_builder: TypeRegistryBuilder::new(),
@@ -60,20 +61,19 @@ impl IrModuleBuilder {
     }
 
     /// Freeze the declared types, enabling view and component bodies.
-    pub fn freeze(self) -> IrModuleBodiesBuilder {
-        IrModuleBodiesBuilder {
+    pub fn freeze(self) -> PureModuleBodiesBuilder {
+        PureModuleBodiesBuilder {
             types: Rc::new(self.types_builder.build()),
             expr_ids: Rc::new(RefCell::new(ExprIdCounter::new())),
-            statement_ids: Rc::new(RefCell::new(StatementIdCounter::new())),
             var_ids: Rc::new(RefCell::new(VarIdCounter::new())),
             views: Vec::new(),
             components: Vec::new(),
         }
     }
 
-    pub fn view_no_params<F>(self, name: &str, body_fn: F) -> IrModuleBodiesBuilder
+    pub fn view_no_params<F>(self, name: &str, body_fn: F) -> PureModuleBodiesBuilder
     where
-        F: FnOnce(&mut IrBuilder),
+        F: FnOnce(&PureBuilder) -> PureExpr,
     {
         self.freeze().view_no_params(name, body_fn)
     }
@@ -83,9 +83,9 @@ impl IrModuleBuilder {
         name: &str,
         params: impl IntoIterator<Item = (&'a str, &'a str)>,
         body_fn: F,
-    ) -> IrModuleBodiesBuilder
+    ) -> PureModuleBodiesBuilder
     where
-        F: FnOnce(&mut IrBuilder),
+        F: FnOnce(&PureBuilder) -> PureExpr,
     {
         self.freeze().view(name, params, body_fn)
     }
@@ -95,40 +95,39 @@ impl IrModuleBuilder {
         name: &str,
         params: impl IntoIterator<Item = (&'a str, &'a str)>,
         body_fn: F,
-    ) -> IrModuleBodiesBuilder
+    ) -> PureModuleBodiesBuilder
     where
-        F: FnOnce(&mut IrBuilder),
+        F: FnOnce(&PureBuilder) -> PureExpr,
     {
         self.freeze().component(name, params, body_fn)
     }
 }
 
-impl Default for IrModuleBuilder {
+impl Default for PureModuleBuilder {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl From<IrModuleBuilder> for IrModuleBodiesBuilder {
-    fn from(builder: IrModuleBuilder) -> Self {
+impl From<PureModuleBuilder> for PureModuleBodiesBuilder {
+    fn from(builder: PureModuleBuilder) -> Self {
         builder.freeze()
     }
 }
 
 /// Collects view and component bodies against a frozen set of types.
-pub struct IrModuleBodiesBuilder {
+pub struct PureModuleBodiesBuilder {
     types: Rc<TestTypes>,
     expr_ids: Rc<RefCell<ExprIdCounter>>,
-    statement_ids: Rc<RefCell<StatementIdCounter>>,
     var_ids: Rc<RefCell<VarIdCounter>>,
-    views: Vec<IrViewDeclaration>,
-    components: Vec<IrComponentDeclaration>,
+    views: Vec<PureViewDeclaration>,
+    components: Vec<PureComponentDeclaration>,
 }
 
-impl IrModuleBodiesBuilder {
+impl PureModuleBodiesBuilder {
     pub fn view_no_params<F>(self, name: &str, body_fn: F) -> Self
     where
-        F: FnOnce(&mut IrBuilder),
+        F: FnOnce(&PureBuilder) -> PureExpr,
     {
         self.view(name, [], body_fn)
     }
@@ -140,10 +139,10 @@ impl IrModuleBodiesBuilder {
         body_fn: F,
     ) -> Self
     where
-        F: FnOnce(&mut IrBuilder),
+        F: FnOnce(&PureBuilder) -> PureExpr,
     {
         let (parameters, body) = self.declaration(params, body_fn);
-        self.views.push(IrViewDeclaration {
+        self.views.push(PureViewDeclaration {
             name: TypeName::new(name).expect("Test view name should be valid"),
             parameters,
             body,
@@ -158,10 +157,10 @@ impl IrModuleBodiesBuilder {
         body_fn: F,
     ) -> Self
     where
-        F: FnOnce(&mut IrBuilder),
+        F: FnOnce(&PureBuilder) -> PureExpr,
     {
         let (parameters, body) = self.declaration(params, body_fn);
-        self.components.push(IrComponentDeclaration {
+        self.components.push(PureComponentDeclaration {
             name: TypeName::new(name).expect("Test component name should be valid"),
             parameters,
             body,
@@ -169,20 +168,19 @@ impl IrModuleBodiesBuilder {
         self
     }
 
-    /// Resolve parameters and run the body closure immediately.
     fn declaration<'a, F>(
         &self,
         params: impl IntoIterator<Item = (&'a str, &'a str)>,
         body_fn: F,
-    ) -> (Vec<IrParameter>, Vec<IrStatement>)
+    ) -> (Vec<WriterParameter>, PureExpr)
     where
-        F: FnOnce(&mut IrBuilder),
+        F: FnOnce(&PureBuilder) -> PureExpr,
     {
-        let parameters: Vec<IrParameter> = params
+        let parameters: Vec<WriterParameter> = params
             .into_iter()
             .map(|(name, typ)| {
                 let id = self.var_ids.borrow_mut().next();
-                IrParameter {
+                WriterParameter {
                     name: VarName::new(name).unwrap(),
                     var: IrVar::new(id),
                     typ: self.types.resolve(typ),
@@ -193,35 +191,39 @@ impl IrModuleBodiesBuilder {
             .iter()
             .map(|p| (p.name.as_str().to_string(), p.var, p.typ.clone()))
             .collect();
-        let mut builder = IrBuilder {
+        let builder = PureBuilder {
             var_stack: vars,
             types: self.types.clone(),
             expr_ids: self.expr_ids.clone(),
-            statement_ids: self.statement_ids.clone(),
             var_ids: self.var_ids.clone(),
-            statements: Vec::new(),
         };
-        body_fn(&mut builder);
-        (parameters, builder.statements)
+        let body = body_fn(&builder);
+        assert_eq!(
+            *body.as_type(),
+            Type::Fragment,
+            "View/component body must be of type Fragment, got: {}",
+            body
+        );
+        (parameters, body)
     }
 
-    pub fn build(self) -> IrModule {
+    pub fn build(self) -> PureModule {
         self.build_with_registry().0
     }
 
-    pub fn build_with_registry(self) -> (IrModule, TypeRegistry) {
+    pub fn build_with_registry(self) -> (PureModule, TypeRegistry) {
         let mut record_declarations = Vec::new();
         let mut enum_declarations = Vec::new();
         for (name, resolved) in self.types.declared_types() {
             match resolved {
                 ResolvedType::Record { fields, .. } => {
-                    record_declarations.push(IrRecordDeclaration {
+                    record_declarations.push(WriterRecordDeclaration {
                         name: name.clone(),
                         fields: fields.to_vec(),
                     });
                 }
                 ResolvedType::Enum { variants, .. } => {
-                    enum_declarations.push(IrEnumDeclaration {
+                    enum_declarations.push(WriterEnumDeclaration {
                         name: name.clone(),
                         variants: variants.to_vec(),
                     });
@@ -229,39 +231,30 @@ impl IrModuleBodiesBuilder {
                 _ => unreachable!("only records and enums can be declared"),
             }
         }
-        let module = IrModule {
+        let module = PureModule {
             views: self.views,
             components: self.components,
             records: record_declarations,
             enums: enum_declarations,
             expr_ids: *self.expr_ids.borrow(),
             var_ids: *self.var_ids.borrow(),
-            stmt_ids: *self.statement_ids.borrow(),
         };
         (module, self.types.registry().clone())
     }
 }
 
-/// A variable in scope, together with the name tests refer to it by. The name
-/// lives here rather than on [`IrVar`], which carries only an identity.
 type ScopedVar = (String, IrVar, Arc<Type>);
 
-pub struct IrBuilder {
+pub struct PureBuilder {
     var_stack: Vec<ScopedVar>,
     types: Rc<TestTypes>,
     expr_ids: Rc<RefCell<ExprIdCounter>>,
-    statement_ids: Rc<RefCell<StatementIdCounter>>,
     var_ids: Rc<RefCell<VarIdCounter>>,
-    statements: Vec<IrStatement>,
 }
 
-impl IrBuilder {
+impl PureBuilder {
     fn next_expr_id(&self) -> ExprId {
         self.expr_ids.borrow_mut().next()
-    }
-
-    fn next_statement_id(&self) -> StatementId {
-        self.statement_ids.borrow_mut().next()
     }
 
     fn bind(&self) -> IrVar {
@@ -275,25 +268,8 @@ impl IrBuilder {
             var_stack,
             types: self.types.clone(),
             expr_ids: self.expr_ids.clone(),
-            statement_ids: self.statement_ids.clone(),
             var_ids: self.var_ids.clone(),
-            statements: Vec::new(),
         }
-    }
-
-    /// Run `body_fn` with `bindings` pushed onto the variable stack,
-    /// returning the statements it emitted as a separate body.
-    fn in_scope(
-        &mut self,
-        bindings: impl IntoIterator<Item = ScopedVar>,
-        body_fn: impl FnOnce(&mut Self),
-    ) -> Vec<IrStatement> {
-        let saved_statements = std::mem::take(&mut self.statements);
-        let saved_vars = self.var_stack.len();
-        self.var_stack.extend(bindings);
-        body_fn(self);
-        self.var_stack.truncate(saved_vars);
-        std::mem::replace(&mut self.statements, saved_statements)
     }
 
     /// In-scope variables, innermost last.
@@ -306,47 +282,35 @@ impl IrBuilder {
         self.types.resolve(type_str)
     }
 
-    pub fn str(&self, s: &str) -> IrExpr {
-        IrExpr::StringLiteral {
+    pub fn str(&self, s: &str) -> PureExpr {
+        PureExpr::StringLiteral {
             value: CheapString::new(s.to_string()),
             id: self.next_expr_id(),
         }
     }
 
-    pub fn int(&self, n: i32) -> IrExpr {
-        IrExpr::IntLiteral {
+    pub fn int(&self, n: i32) -> PureExpr {
+        PureExpr::IntLiteral {
             value: n,
             id: self.next_expr_id(),
         }
     }
 
-    pub fn bool(&self, b: bool) -> IrExpr {
-        IrExpr::BooleanLiteral {
+    pub fn bool(&self, b: bool) -> PureExpr {
+        PureExpr::BooleanLiteral {
             value: b,
             id: self.next_expr_id(),
         }
     }
 
-    pub fn float(&self, f: f64) -> IrExpr {
-        IrExpr::FloatLiteral {
+    pub fn float(&self, f: f64) -> PureExpr {
+        PureExpr::FloatLiteral {
             value: f,
             id: self.next_expr_id(),
         }
     }
 
-    pub fn fragment<F>(&self, body_fn: F) -> IrExpr
-    where
-        F: FnOnce(&mut Self),
-    {
-        let mut scope = self.scoped([]);
-        body_fn(&mut scope);
-        IrExpr::FragmentLiteral {
-            body: scope.statements,
-            id: self.next_expr_id(),
-        }
-    }
-
-    pub fn var(&self, name: &str) -> IrExpr {
+    pub fn var(&self, name: &str) -> PureExpr {
         let (_, value, kind) = self
             .var_stack
             .iter()
@@ -364,14 +328,14 @@ impl IrBuilder {
                 )
             });
 
-        IrExpr::VariableReference {
+        PureExpr::VariableReference {
             value,
             kind,
             id: self.next_expr_id(),
         }
     }
 
-    pub fn eq(&self, left: IrExpr, right: IrExpr) -> IrExpr {
+    pub fn eq(&self, left: PureExpr, right: PureExpr) -> PureExpr {
         let operand_types = match (left.as_type(), right.as_type()) {
             (Type::Bool, Type::Bool) => EquatableType::Bool,
             (Type::String, Type::String) => EquatableType::String,
@@ -382,7 +346,7 @@ impl IrBuilder {
                 l, r
             ),
         };
-        IrExpr::Equals {
+        PureExpr::Equals {
             left: Box::new(left),
             right: Box::new(right),
             operand_types,
@@ -390,7 +354,7 @@ impl IrBuilder {
         }
     }
 
-    pub fn lt(&self, left: IrExpr, right: IrExpr) -> IrExpr {
+    pub fn lt(&self, left: PureExpr, right: PureExpr) -> PureExpr {
         let operand_types = match (left.as_type(), right.as_type()) {
             (Type::Int, Type::Int) => ComparableType::Int,
             (Type::Float, Type::Float) => ComparableType::Float,
@@ -399,7 +363,7 @@ impl IrBuilder {
                 l, r
             ),
         };
-        IrExpr::LessThan {
+        PureExpr::LessThan {
             left: Box::new(left),
             right: Box::new(right),
             operand_types,
@@ -407,7 +371,7 @@ impl IrBuilder {
         }
     }
 
-    pub fn lte(&self, left: IrExpr, right: IrExpr) -> IrExpr {
+    pub fn lte(&self, left: PureExpr, right: PureExpr) -> PureExpr {
         let operand_types = match (left.as_type(), right.as_type()) {
             (Type::Int, Type::Int) => ComparableType::Int,
             (Type::Float, Type::Float) => ComparableType::Float,
@@ -416,7 +380,7 @@ impl IrBuilder {
                 l, r
             ),
         };
-        IrExpr::LessThanOrEqual {
+        PureExpr::LessThanOrEqual {
             left: Box::new(left),
             right: Box::new(right),
             operand_types,
@@ -424,13 +388,13 @@ impl IrBuilder {
         }
     }
 
-    pub fn add(&self, left: IrExpr, right: IrExpr) -> IrExpr {
+    pub fn add(&self, left: PureExpr, right: PureExpr) -> PureExpr {
         let operand_types = match (left.as_type(), right.as_type()) {
             (Type::Int, Type::Int) => NumericType::Int,
             (Type::Float, Type::Float) => NumericType::Float,
             (l, r) => panic!("Unsupported types for addition: {:?} + {:?}", l, r),
         };
-        IrExpr::NumericAdd {
+        PureExpr::NumericAdd {
             left: Box::new(left),
             right: Box::new(right),
             operand_types,
@@ -438,13 +402,13 @@ impl IrBuilder {
         }
     }
 
-    pub fn sub(&self, left: IrExpr, right: IrExpr) -> IrExpr {
+    pub fn sub(&self, left: PureExpr, right: PureExpr) -> PureExpr {
         let operand_types = match (left.as_type(), right.as_type()) {
             (Type::Int, Type::Int) => NumericType::Int,
             (Type::Float, Type::Float) => NumericType::Float,
             (l, r) => panic!("Unsupported types for subtraction: {:?} - {:?}", l, r),
         };
-        IrExpr::NumericSubtract {
+        PureExpr::NumericSubtract {
             left: Box::new(left),
             right: Box::new(right),
             operand_types,
@@ -452,13 +416,13 @@ impl IrBuilder {
         }
     }
 
-    pub fn mul(&self, left: IrExpr, right: IrExpr) -> IrExpr {
+    pub fn mul(&self, left: PureExpr, right: PureExpr) -> PureExpr {
         let operand_types = match (left.as_type(), right.as_type()) {
             (Type::Int, Type::Int) => NumericType::Int,
             (Type::Float, Type::Float) => NumericType::Float,
             (l, r) => panic!("Unsupported types for multiplication: {:?} * {:?}", l, r),
         };
-        IrExpr::NumericMultiply {
+        PureExpr::NumericMultiply {
             left: Box::new(left),
             right: Box::new(right),
             operand_types,
@@ -466,33 +430,33 @@ impl IrBuilder {
         }
     }
 
-    pub fn not(&self, operand: IrExpr) -> IrExpr {
+    pub fn not(&self, operand: PureExpr) -> PureExpr {
         assert_eq!(
             *operand.as_type(),
             Type::Bool,
             "BooleanNegation expects Bool operand, got: {}",
             operand
         );
-        IrExpr::BooleanNegation {
+        PureExpr::BooleanNegation {
             operand: Box::new(operand),
             id: self.next_expr_id(),
         }
     }
 
-    pub fn neg(&self, operand: IrExpr) -> IrExpr {
+    pub fn neg(&self, operand: PureExpr) -> PureExpr {
         let operand_type = match operand.as_type() {
             Type::Int => NumericType::Int,
             Type::Float => NumericType::Float,
             t => panic!("Unsupported type for numeric negation: -{:?}", t),
         };
-        IrExpr::NumericNegation {
+        PureExpr::NumericNegation {
             operand: Box::new(operand),
             operand_type,
             id: self.next_expr_id(),
         }
     }
 
-    pub fn and(&self, left: IrExpr, right: IrExpr) -> IrExpr {
+    pub fn and(&self, left: PureExpr, right: PureExpr) -> PureExpr {
         assert_eq!(
             *left.as_type(),
             Type::Bool,
@@ -505,14 +469,14 @@ impl IrBuilder {
             "BooleanLogicalAnd expects Bool operands, got: {}",
             right
         );
-        IrExpr::BooleanLogicalAnd {
+        PureExpr::BooleanLogicalAnd {
             left: Box::new(left),
             right: Box::new(right),
             id: self.next_expr_id(),
         }
     }
 
-    pub fn or(&self, left: IrExpr, right: IrExpr) -> IrExpr {
+    pub fn or(&self, left: PureExpr, right: PureExpr) -> PureExpr {
         assert_eq!(
             *left.as_type(),
             Type::Bool,
@@ -525,14 +489,14 @@ impl IrBuilder {
             "BooleanLogicalOr expects Bool operands, got: {}",
             right
         );
-        IrExpr::BooleanLogicalOr {
+        PureExpr::BooleanLogicalOr {
             left: Box::new(left),
             right: Box::new(right),
             id: self.next_expr_id(),
         }
     }
 
-    pub fn array(&self, elements: Vec<IrExpr>) -> IrExpr {
+    pub fn array(&self, elements: Vec<PureExpr>) -> PureExpr {
         let element_type = elements
             .first()
             .map(|first| first.get_type())
@@ -540,8 +504,7 @@ impl IrBuilder {
         self.array_typed(element_type, elements)
     }
 
-    /// An array literal with an explicit element type, allowing empty arrays.
-    pub fn array_typed(&self, element_type: Arc<Type>, elements: Vec<IrExpr>) -> IrExpr {
+    pub fn array_typed(&self, element_type: Arc<Type>, elements: Vec<PureExpr>) -> PureExpr {
         for element in &elements {
             assert_eq!(
                 *element.as_type(),
@@ -551,53 +514,53 @@ impl IrBuilder {
             );
         }
 
-        IrExpr::ArrayLiteral {
+        PureExpr::ArrayLiteral {
             elements,
             kind: Arc::new(Type::Array(element_type)),
             id: self.next_expr_id(),
         }
     }
 
-    pub fn int_to_string(&self, value: IrExpr) -> IrExpr {
+    pub fn int_to_string(&self, value: PureExpr) -> PureExpr {
         assert_eq!(
             *value.as_type(),
             Type::Int,
             "IntToString expects Int operand, got: {}",
             value
         );
-        IrExpr::IntToString {
+        PureExpr::IntToString {
             value: Box::new(value),
             id: self.next_expr_id(),
         }
     }
 
-    pub fn float_to_int(&self, value: IrExpr) -> IrExpr {
+    pub fn float_to_int(&self, value: PureExpr) -> PureExpr {
         assert_eq!(
             *value.as_type(),
             Type::Float,
             "FloatToInt expects Float operand, got: {}",
             value
         );
-        IrExpr::FloatToInt {
+        PureExpr::FloatToInt {
             value: Box::new(value),
             id: self.next_expr_id(),
         }
     }
 
-    pub fn int_to_float(&self, value: IrExpr) -> IrExpr {
+    pub fn int_to_float(&self, value: PureExpr) -> PureExpr {
         assert_eq!(
             *value.as_type(),
             Type::Int,
             "IntToFloat expects Int operand, got: {}",
             value
         );
-        IrExpr::IntToFloat {
+        PureExpr::IntToFloat {
             value: Box::new(value),
             id: self.next_expr_id(),
         }
     }
 
-    pub fn record(&self, record_name: &str, fields: Vec<(&str, IrExpr)>) -> IrExpr {
+    pub fn record(&self, record_name: &str, fields: Vec<(&str, PureExpr)>) -> PureExpr {
         let name = TypeName::new(record_name).unwrap();
         let record_fields = self.types.record_fields(record_name);
 
@@ -634,7 +597,7 @@ impl IrBuilder {
             missing_fields
         );
 
-        IrExpr::RecordLiteral {
+        PureExpr::RecordLiteral {
             record_name: name,
             fields: fields
                 .into_iter()
@@ -645,18 +608,16 @@ impl IrBuilder {
         }
     }
 
-    /// Create a unit enum variant (no fields)
-    pub fn enum_variant(&self, enum_name: &str, variant_name: &str) -> IrExpr {
+    pub fn enum_variant(&self, enum_name: &str, variant_name: &str) -> PureExpr {
         self.enum_variant_with_fields(enum_name, variant_name, vec![])
     }
 
-    /// Create an enum variant with field values
     pub fn enum_variant_with_fields(
         &self,
         enum_name: &str,
         variant_name: &str,
-        field_values: Vec<(&str, IrExpr)>,
-    ) -> IrExpr {
+        field_values: Vec<(&str, PureExpr)>,
+    ) -> PureExpr {
         let name = TypeName::new(enum_name).unwrap();
         let variants = self.types.enum_variants(enum_name);
 
@@ -707,7 +668,7 @@ impl IrBuilder {
             missing_fields
         );
 
-        IrExpr::EnumLiteral {
+        PureExpr::EnumLiteral {
             enum_name: name,
             variant_name: TypeName::new(variant_name).unwrap(),
             fields: field_values
@@ -719,33 +680,28 @@ impl IrBuilder {
         }
     }
 
-    /// Create a Some option literal
-    pub fn some(&self, inner: IrExpr) -> IrExpr {
+    pub fn some(&self, inner: PureExpr) -> PureExpr {
         let inner_type = inner.get_type();
-        IrExpr::OptionLiteral {
+        PureExpr::OptionLiteral {
             value: Some(Box::new(inner)),
             kind: Arc::new(Type::Option(inner_type)),
             id: self.next_expr_id(),
         }
     }
 
-    /// Create a None option literal, the inner type is given in source
-    /// syntax, e.g. "String" or "Array[Node]"
-    pub fn none(&self, inner_type: &str) -> IrExpr {
+    pub fn none(&self, inner_type: &str) -> PureExpr {
         self.none_typed(self.types.resolve(inner_type))
     }
 
-    /// Create a None option literal from an already-resolved inner type.
-    pub fn none_typed(&self, inner_type: Arc<Type>) -> IrExpr {
-        IrExpr::OptionLiteral {
+    pub fn none_typed(&self, inner_type: Arc<Type>) -> PureExpr {
+        PureExpr::OptionLiteral {
             value: None,
             kind: Arc::new(Type::Option(inner_type)),
             id: self.next_expr_id(),
         }
     }
 
-    /// Create an exhaustive match expression over an enum value.
-    pub fn enum_match_expr<F>(&self, subject: IrExpr, arms_fn: F) -> IrExpr
+    pub fn enum_match_expr<F>(&self, subject: PureExpr, arms_fn: F) -> PureExpr
     where
         F: FnOnce(&mut EnumMatchExprArms<'_>),
     {
@@ -769,7 +725,7 @@ impl IrBuilder {
             .result_type
             .expect("enum_match_expr requires at least one arm");
 
-        IrExpr::Match {
+        PureExpr::Match {
             match_: Match::Enum {
                 subject: Box::new(subject),
                 arms: arms.arms,
@@ -779,13 +735,12 @@ impl IrBuilder {
         }
     }
 
-    /// Create a match expression over a boolean value
     pub fn bool_match_expr(
         &self,
-        subject: IrExpr,
-        true_body: IrExpr,
-        false_body: IrExpr,
-    ) -> IrExpr {
+        subject: PureExpr,
+        true_body: PureExpr,
+        false_body: PureExpr,
+    ) -> PureExpr {
         assert_eq!(*subject.as_type(), Type::Bool, "{}", subject);
         assert_eq!(
             *true_body.as_type(),
@@ -796,7 +751,7 @@ impl IrBuilder {
         );
         let result_type = true_body.get_type();
 
-        IrExpr::Match {
+        PureExpr::Match {
             match_: Match::Bool {
                 subject: Box::new(subject),
                 true_body: Box::new(true_body),
@@ -807,13 +762,12 @@ impl IrBuilder {
         }
     }
 
-    /// Create a match expression over an option value
     pub fn option_match_expr(
         &self,
-        subject: IrExpr,
-        some_body: IrExpr,
-        none_body: IrExpr,
-    ) -> IrExpr {
+        subject: PureExpr,
+        some_body: PureExpr,
+        none_body: PureExpr,
+    ) -> PureExpr {
         assert!(
             matches!(subject.as_type(), Type::Option(_)),
             "Match subject must be an option type, got: {}",
@@ -828,7 +782,7 @@ impl IrBuilder {
         );
         let result_type = some_body.get_type();
 
-        IrExpr::Match {
+        PureExpr::Match {
             match_: Match::Option {
                 subject: Box::new(subject),
                 some_arm_binding: None,
@@ -840,16 +794,15 @@ impl IrBuilder {
         }
     }
 
-    /// Create a match expression over an option value with a binding for the Some case.
     pub fn option_match_expr_with_binding<F>(
         &self,
-        subject: IrExpr,
+        subject: PureExpr,
         binding_name: &str,
         some_body_fn: F,
-        none_body: IrExpr,
-    ) -> IrExpr
+        none_body: PureExpr,
+    ) -> PureExpr
     where
-        F: FnOnce(&Self) -> IrExpr,
+        F: FnOnce(&Self) -> PureExpr,
     {
         let inner_type = match subject.as_type() {
             Type::Option(inner) => inner.clone(),
@@ -869,7 +822,7 @@ impl IrBuilder {
         );
         let result_type = some_body.get_type();
 
-        IrExpr::Match {
+        PureExpr::Match {
             match_: Match::Option {
                 subject: Box::new(subject),
                 some_arm_binding: Some(binding),
@@ -881,7 +834,7 @@ impl IrBuilder {
         }
     }
 
-    pub fn field_access(&self, object: IrExpr, field_str: &str) -> IrExpr {
+    pub fn field_access(&self, object: PureExpr, field_str: &str) -> PureExpr {
         let field_name = FieldName::new(field_str).unwrap();
         let field_type = match self.types.registry().resolve(object.as_type()) {
             Some(ResolvedType::Record {
@@ -901,7 +854,7 @@ impl IrBuilder {
             _ => panic!("Cannot access field '{}' on non-record type", field_str),
         };
 
-        IrExpr::FieldAccess {
+        PureExpr::FieldAccess {
             record: Box::new(object),
             field: field_name,
             kind: field_type,
@@ -909,10 +862,9 @@ impl IrBuilder {
         }
     }
 
-    /// Create a let expression that binds a variable to a value and evaluates a body expression.
-    pub fn let_expr<F>(&self, var_name: &str, value: IrExpr, body_fn: F) -> IrExpr
+    pub fn let_expr<F>(&self, var_name: &str, value: PureExpr, body_fn: F) -> PureExpr
     where
-        F: FnOnce(&Self) -> IrExpr,
+        F: FnOnce(&Self) -> PureExpr,
     {
         let value_type = value.get_type();
 
@@ -921,7 +873,7 @@ impl IrBuilder {
 
         let kind = body.get_type();
 
-        IrExpr::Let {
+        PureExpr::Let {
             var,
             value: Box::new(value),
             body: Box::new(body),
@@ -930,7 +882,7 @@ impl IrBuilder {
         }
     }
 
-    pub fn string_concat(&self, left: IrExpr, right: IrExpr) -> IrExpr {
+    pub fn string_concat(&self, left: PureExpr, right: PureExpr) -> PureExpr {
         assert_eq!(
             *left.as_type(),
             Type::String,
@@ -943,14 +895,14 @@ impl IrBuilder {
             "StringConcat expects String operands, got: {}",
             right
         );
-        IrExpr::StringConcat {
+        PureExpr::StringConcat {
             left: Box::new(left),
             right: Box::new(right),
             id: self.next_expr_id(),
         }
     }
 
-    pub fn join(&self, args: Vec<IrExpr>) -> IrExpr {
+    pub fn join(&self, args: Vec<PureExpr>) -> PureExpr {
         for arg in &args {
             assert_eq!(
                 *arg.as_type(),
@@ -960,7 +912,7 @@ impl IrBuilder {
             );
         }
         match args.len() {
-            0 => IrExpr::StringLiteral {
+            0 => PureExpr::StringLiteral {
                 value: CheapString::new(String::new()),
                 id: self.next_expr_id(),
             },
@@ -969,15 +921,15 @@ impl IrBuilder {
                 let mut iter = args.into_iter();
                 let mut result = iter.next().unwrap();
                 for arg in iter {
-                    result = IrExpr::StringConcat {
+                    result = PureExpr::StringConcat {
                         left: Box::new(result),
-                        right: Box::new(IrExpr::StringLiteral {
+                        right: Box::new(PureExpr::StringLiteral {
                             value: CheapString::new(" ".to_string()),
                             id: self.next_expr_id(),
                         }),
                         id: self.next_expr_id(),
                     };
-                    result = IrExpr::StringConcat {
+                    result = PureExpr::StringConcat {
                         left: Box::new(result),
                         right: Box::new(arg),
                         id: self.next_expr_id(),
@@ -988,132 +940,119 @@ impl IrBuilder {
         }
     }
 
-    pub fn tw_merge(&self, value: IrExpr) -> IrExpr {
+    pub fn tw_merge(&self, value: PureExpr) -> PureExpr {
         assert_eq!(
             *value.as_type(),
             Type::String,
             "TwMerge expects String operand, got: {}",
             value
         );
-        IrExpr::TwMerge {
+        PureExpr::TwMerge {
             operand: Box::new(value),
             id: self.next_expr_id(),
         }
     }
 
-    pub fn array_length(&self, operand: IrExpr) -> IrExpr {
+    pub fn array_length(&self, operand: PureExpr) -> PureExpr {
         assert!(
             matches!(operand.as_type(), Type::Array(_)),
             "ArrayLength expects Array operand, got: {}",
             operand
         );
-        IrExpr::ArrayLength {
+        PureExpr::ArrayLength {
             array: Box::new(operand),
             id: self.next_expr_id(),
         }
     }
 
-    pub fn array_is_empty(&self, operand: IrExpr) -> IrExpr {
+    pub fn array_is_empty(&self, operand: PureExpr) -> PureExpr {
         assert!(
             matches!(operand.as_type(), Type::Array(_)),
             "ArrayIsEmpty expects Array operand, got: {}",
             operand
         );
-        IrExpr::ArrayIsEmpty {
+        PureExpr::ArrayIsEmpty {
             array: Box::new(operand),
             id: self.next_expr_id(),
         }
     }
 
-    pub fn string_is_empty(&self, operand: IrExpr) -> IrExpr {
+    pub fn string_is_empty(&self, operand: PureExpr) -> PureExpr {
         assert_eq!(
             *operand.as_type(),
             Type::String,
             "StringIsEmpty expects String operand, got: {}",
             operand
         );
-        IrExpr::StringIsEmpty {
+        PureExpr::StringIsEmpty {
             string: Box::new(operand),
             id: self.next_expr_id(),
         }
     }
 
-    pub fn option_is_some(&self, operand: IrExpr) -> IrExpr {
+    pub fn option_is_some(&self, operand: PureExpr) -> PureExpr {
         assert!(
             matches!(operand.as_type(), Type::Option(_)),
             "OptionIsSome expects Option operand, got: {}",
             operand
         );
-        IrExpr::OptionIsSome {
+        PureExpr::OptionIsSome {
             option: Box::new(operand),
             id: self.next_expr_id(),
         }
     }
 
-    pub fn option_is_none(&self, operand: IrExpr) -> IrExpr {
+    pub fn option_is_none(&self, operand: PureExpr) -> PureExpr {
         assert!(
             matches!(operand.as_type(), Type::Option(_)),
             "OptionIsNone expects Option operand, got: {}",
             operand
         );
-        IrExpr::OptionIsNone {
+        PureExpr::OptionIsNone {
             option: Box::new(operand),
             id: self.next_expr_id(),
         }
     }
 
-    // Statement methods that auto-collect
-    pub fn write(&mut self, s: &str) {
-        self.statements.push(IrStatement::Write {
-            id: self.next_statement_id(),
-            content: s.to_string(),
-        });
+    /// A trusted, already-escaped HTML atom.
+    pub fn raw(&self, content: &str) -> PureExpr {
+        PureExpr::FragmentRaw {
+            content: content.to_string(),
+            id: self.next_expr_id(),
+        }
     }
 
-    pub fn write_fragment(&mut self, expr: IrExpr) {
-        assert!(
-            matches!(expr.as_type(), Type::Fragment),
-            "WriteFragment expects Fragment, got: {}",
+    pub fn escape(&self, expr: PureExpr) -> PureExpr {
+        assert_eq!(
+            *expr.as_type(),
+            Type::String,
+            "FragmentEscape expects String operand, got: {}",
             expr
         );
-        self.statements.push(IrStatement::WriteFragment {
-            id: self.next_statement_id(),
-            expr,
-        });
+        PureExpr::FragmentEscape {
+            expr: Box::new(expr),
+            id: self.next_expr_id(),
+        }
     }
 
-    pub fn write_string(&mut self, expr: IrExpr) {
-        assert!(
-            matches!(expr.as_type(), Type::String),
-            "WriteString expects String, got: {}",
-            expr
-        );
-        self.statements.push(IrStatement::WriteString {
-            id: self.next_statement_id(),
-            expr,
-        });
+    pub fn concat(&self, parts: Vec<PureExpr>) -> PureExpr {
+        for part in &parts {
+            assert_eq!(
+                *part.as_type(),
+                Type::Fragment,
+                "FragmentConcat expects Fragment parts, got: {}",
+                part
+            );
+        }
+        PureExpr::FragmentConcat {
+            parts,
+            id: self.next_expr_id(),
+        }
     }
 
-    /// Sugar for a boolean match with an empty false arm.
-    pub fn if_stmt<F>(&mut self, cond: IrExpr, body_fn: F)
+    pub fn fragment_for<F>(&self, var: Option<&str>, array: PureExpr, body_fn: F) -> PureExpr
     where
-        F: FnOnce(&mut Self),
-    {
-        assert_eq!(*cond.as_type(), Type::Bool, "{}", cond);
-        let body = self.in_scope([], body_fn);
-        self.statements.push(IrStatement::Match {
-            id: self.next_statement_id(),
-            match_: Match::Bool {
-                subject: Box::new(cond),
-                true_body: Box::new(body),
-                false_body: Box::new(Vec::new()),
-            },
-        });
-    }
-
-    pub fn for_loop<F>(&mut self, var: &str, array: IrExpr, body_fn: F)
-    where
-        F: FnOnce(&mut Self),
+        F: FnOnce(&Self) -> PureExpr,
     {
         let element_type = match array.as_type() {
             Type::Array(elem_type) => elem_type.clone(),
@@ -1121,25 +1060,38 @@ impl IrBuilder {
         };
 
         let name = var;
-        let var = self.bind();
-        let body = self.in_scope([(name.to_string(), var, element_type)], body_fn);
+        let var = name.map(|_| self.bind());
+        let bindings: Vec<_> = name
+            .into_iter()
+            .zip(var)
+            .map(|(name, v)| (name.to_string(), v, element_type.clone()))
+            .collect();
+        let body = body_fn(&self.scoped(bindings));
+        assert_eq!(
+            *body.as_type(),
+            Type::Fragment,
+            "FragmentFor expects a Fragment body, got: {}",
+            body
+        );
 
-        self.statements.push(IrStatement::For {
-            id: self.next_statement_id(),
-            var: Some(var),
-            source: IrForSource::Array(array),
-            body,
-        });
+        PureExpr::FragmentFor {
+            var,
+            source: Box::new(PureForSource::Array(array)),
+            body: Box::new(body),
+            id: self.next_expr_id(),
+        }
     }
 
-    /// Create a for loop over an inclusive range (start..=end)
-    /// Create a for loop over an inclusive range. Passing `None` for `var`
-    /// leaves the loop variable unbound (underscore).
-    pub fn for_range<F>(&mut self, var: Option<&str>, start: IrExpr, end: IrExpr, body_fn: F)
+    pub fn fragment_for_range<F>(
+        &self,
+        var: Option<&str>,
+        start: PureExpr,
+        end: PureExpr,
+        body_fn: F,
+    ) -> PureExpr
     where
-        F: FnOnce(&mut Self),
+        F: FnOnce(&Self) -> PureExpr,
     {
-        // Range loops iterate over integers
         assert_eq!(
             *start.as_type(),
             Type::Int,
@@ -1152,6 +1104,7 @@ impl IrBuilder {
             "Range bounds must be Int, got: {}",
             end
         );
+
         let name = var;
         let var = name.map(|_| self.bind());
         let bindings: Vec<_> = name
@@ -1159,161 +1112,44 @@ impl IrBuilder {
             .zip(var)
             .map(|(name, v)| (name.to_string(), v, Arc::new(Type::Int)))
             .collect();
-        let body = self.in_scope(bindings, body_fn);
-
-        self.statements.push(IrStatement::For {
-            id: self.next_statement_id(),
-            var,
-            source: IrForSource::RangeInclusive { start, end },
-            body,
-        });
-    }
-
-    pub fn let_stmt<F>(&mut self, var: &str, value: IrExpr, body_fn: F)
-    where
-        F: FnOnce(&mut Self),
-    {
-        let value_type = value.get_type();
-
-        let name = var;
-        let var = self.bind();
-        let body = self.in_scope([(name.to_string(), var, value_type)], body_fn);
-
-        self.statements.push(IrStatement::Let {
-            id: self.next_statement_id(),
-            var,
-            value,
-            body,
-        });
-    }
-
-    pub fn let_fragment<F1, F2>(&mut self, var: &str, fragment_body_fn: F1, body_fn: F2)
-    where
-        F1: FnOnce(&mut Self),
-        F2: FnOnce(&mut Self),
-    {
-        let value = self.fragment(fragment_body_fn);
-        self.let_stmt(var, value, body_fn);
-    }
-
-    pub fn bool_match_stmt<FTrue, FFalse>(
-        &mut self,
-        subject: IrExpr,
-        true_body_fn: FTrue,
-        false_body_fn: FFalse,
-    ) where
-        FTrue: FnOnce(&mut Self),
-        FFalse: FnOnce(&mut Self),
-    {
-        assert_eq!(*subject.as_type(), Type::Bool);
-
-        let true_body = self.in_scope([], true_body_fn);
-        let false_body = self.in_scope([], false_body_fn);
-
-        self.statements.push(IrStatement::Match {
-            id: self.next_statement_id(),
-            match_: Match::Bool {
-                subject: Box::new(subject),
-                true_body: Box::new(true_body),
-                false_body: Box::new(false_body),
-            },
-        });
-    }
-
-    pub fn option_match_stmt<FSome, FNone>(
-        &mut self,
-        subject: IrExpr,
-        binding_var: Option<&str>,
-        some_body_fn: FSome,
-        none_body_fn: FNone,
-    ) where
-        FSome: FnOnce(&mut Self),
-        FNone: FnOnce(&mut Self),
-    {
-        let inner_type = match subject.as_type() {
-            Type::Option(inner) => inner.clone(),
-            _ => panic!("Cannot match on non-option type"),
-        };
-
-        // Build some body with optional binding
-        let some_arm_binding = binding_var.map(|_| self.bind());
-
-        let some_arm_body = self.in_scope(
-            binding_var
-                .into_iter()
-                .zip(some_arm_binding)
-                .map(|(name, var)| (name.to_string(), var, inner_type.clone())),
-            some_body_fn,
+        let body = body_fn(&self.scoped(bindings));
+        assert_eq!(
+            *body.as_type(),
+            Type::Fragment,
+            "FragmentFor expects a Fragment body, got: {}",
+            body
         );
-        let none_arm_body = self.in_scope([], none_body_fn);
 
-        self.statements.push(IrStatement::Match {
-            id: self.next_statement_id(),
-            match_: Match::Option {
-                subject: Box::new(subject),
-                some_arm_binding,
-                some_arm_body: Box::new(some_arm_body),
-                none_arm_body: Box::new(none_arm_body),
-            },
-        });
+        PureExpr::FragmentFor {
+            var,
+            source: Box::new(PureForSource::RangeInclusive { start, end }),
+            body: Box::new(body),
+            id: self.next_expr_id(),
+        }
     }
 
-    /// Create an exhaustive match statement over an enum value.
-    pub fn enum_match_stmt<F>(&mut self, subject: IrExpr, arms_fn: F)
-    where
-        F: FnOnce(&mut EnumMatchStmtArms<'_>),
-    {
-        let Some(ResolvedType::Enum { name, variants, .. }) =
-            self.types.registry().resolve(subject.as_type())
-        else {
-            panic!("Match subject must be an enum type")
-        };
-        let (enum_name, variants) = (name.clone(), variants.to_vec());
-
-        let mut arms = EnumMatchStmtArms {
-            builder: self,
-            enum_name,
-            variants,
-            arms: Vec::new(),
-        };
-        arms_fn(&mut arms);
-        assert_exhaustive(&arms.enum_name, &arms.variants, &arms.arms);
-        let ir_arms = arms.arms;
-
-        self.statements.push(IrStatement::Match {
-            id: self.next_statement_id(),
-            match_: Match::Enum {
-                subject: Box::new(subject),
-                arms: ir_arms,
-            },
-        });
-    }
-
-    /// Invoke a component by name with the given arguments.
-    /// No validation is done against the invoked component's parameters.
-    pub fn invoke_component(&mut self, name: &str, args: Vec<(&str, IrExpr)>) {
-        let ir_args: Vec<IrArgument> = args
+    pub fn call(&self, name: &str, args: Vec<(&str, PureExpr)>) -> PureExpr {
+        let pure_args: Vec<PureArgument> = args
             .into_iter()
-            .map(|(k, expr)| IrArgument {
+            .map(|(k, expr)| PureArgument {
                 name: VarName::new(k).unwrap(),
                 expr,
             })
             .collect();
 
-        self.statements.push(IrStatement::ComponentInvocation {
-            id: self.next_statement_id(),
+        PureExpr::ComponentCall {
             component_name: TypeName::new(name).unwrap(),
-            args: ir_args,
-        });
+            args: pure_args,
+            id: self.next_expr_id(),
+        }
     }
 }
 
-/// Collects the arms of an [`IrBuilder::enum_match_expr`].
 pub struct EnumMatchExprArms<'a> {
-    builder: &'a IrBuilder,
+    builder: &'a PureBuilder,
     enum_name: TypeName,
     variants: Vec<EnumVariant>,
-    arms: Vec<EnumMatchArm<IrExpr, IrVar>>,
+    arms: Vec<EnumMatchArm<PureExpr, IrVar>>,
     result_type: Option<Arc<Type>>,
 }
 
@@ -1321,7 +1157,7 @@ impl EnumMatchExprArms<'_> {
     /// Add an arm for a variant without binding any fields.
     pub fn arm<F>(&mut self, variant: &str, body_fn: F)
     where
-        F: FnOnce(&IrBuilder) -> IrExpr,
+        F: FnOnce(&PureBuilder) -> PureExpr,
     {
         self.arm_bound(variant, [], body_fn);
     }
@@ -1334,7 +1170,7 @@ impl EnumMatchExprArms<'_> {
         field_bindings: impl IntoIterator<Item = (&'s str, &'s str)>,
         body_fn: F,
     ) where
-        F: FnOnce(&IrBuilder) -> IrExpr,
+        F: FnOnce(&PureBuilder) -> PureExpr,
     {
         let (bindings, scoped_vars) = resolve_arm_bindings(
             self.builder,
@@ -1364,57 +1200,8 @@ impl EnumMatchExprArms<'_> {
     }
 }
 
-/// Collects the arms of an [`IrBuilder::enum_match_stmt`].
-pub struct EnumMatchStmtArms<'a> {
-    builder: &'a mut IrBuilder,
-    enum_name: TypeName,
-    variants: Vec<EnumVariant>,
-    arms: Vec<EnumMatchArm<Vec<IrStatement>, IrVar>>,
-}
-
-impl EnumMatchStmtArms<'_> {
-    /// Add an arm for a variant without binding any fields.
-    pub fn arm<F>(&mut self, variant: &str, body_fn: F)
-    where
-        F: FnOnce(&mut IrBuilder),
-    {
-        self.arm_bound(variant, [], body_fn);
-    }
-
-    /// Add an arm for a variant, binding the given (field_name,
-    /// binding_name) pairs in the arm body's scope.
-    pub fn arm_bound<'s, F>(
-        &mut self,
-        variant: &str,
-        field_bindings: impl IntoIterator<Item = (&'s str, &'s str)>,
-        body_fn: F,
-    ) where
-        F: FnOnce(&mut IrBuilder),
-    {
-        let (bindings, scoped_vars) = resolve_arm_bindings(
-            self.builder,
-            &self.enum_name,
-            &self.variants,
-            variant,
-            field_bindings,
-        );
-        let body = self.builder.in_scope(scoped_vars, body_fn);
-        self.arms.push(EnumMatchArm {
-            pattern: EnumPattern::Variant {
-                enum_name: self.enum_name.clone(),
-                variant_name: TypeName::new(variant).unwrap(),
-            },
-            bindings,
-            body,
-        });
-    }
-}
-
-/// Resolve an arm's (field_name, binding_name) pairs against the variant's
-/// declared fields, yielding the IR bindings and the variables to bring
-/// into scope for the arm body.
 fn resolve_arm_bindings<'s>(
-    builder: &IrBuilder,
+    builder: &PureBuilder,
     enum_name: &TypeName,
     variants: &[EnumVariant],
     variant: &str,
@@ -1452,7 +1239,6 @@ fn resolve_arm_bindings<'s>(
     (bindings, scoped_vars)
 }
 
-/// Panic unless every variant of the enum is covered by exactly one arm.
 fn assert_exhaustive<B, V>(
     enum_name: &TypeName,
     variants: &[EnumVariant],

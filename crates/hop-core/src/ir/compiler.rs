@@ -10,13 +10,18 @@ use crate::hop::inlining::inlined_node::{InlinedNode, InlinedValue};
 use crate::hop::inlining::{InlinedComponentDeclaration, InlinedViewDeclaration};
 use crate::hop::typing::typed_ast::{TypedEnumDeclaration, TypedRecordDeclaration};
 use crate::hop::typing::typed_node::{TypedAttributeValue, TypedLoopSource};
+use crate::ir::expr_id::ExprId;
+use crate::ir::expr_id::ExprIdCounter;
+use crate::ir::ir_var::IrVar;
+use crate::ir::pure_module::PureForSource;
+use crate::ir::var_id::VarId;
+use crate::ir::var_id::VarIdCounter;
 use crate::symbols::var_name::VarName;
 
-use super::ir_module::{
-    ExprId, ExprIdCounter, IrArgument, IrComponentDeclaration, IrEnumDeclaration, IrExpr,
-    IrForSource, IrModule, IrParameter, IrRecordDeclaration, IrStatement, IrVar, IrViewDeclaration,
-    StatementId, StatementIdCounter, VarId, VarIdCounter,
+use super::pure_module::{
+    PureArgument, PureComponentDeclaration, PureExpr, PureModule, PureViewDeclaration,
 };
+use super::writer_module::{WriterEnumDeclaration, WriterParameter, WriterRecordDeclaration};
 
 pub fn compile(
     views: Vec<InlinedViewDeclaration>,
@@ -24,11 +29,10 @@ pub fn compile(
     records: &[&TypedRecordDeclaration],
     enums: &[&TypedEnumDeclaration],
     asset_rewriter: Option<Arc<dyn AssetRewriter>>,
-) -> IrModule {
+) -> PureModule {
     let mut expr_ids = ExprIdCounter::new();
-    let mut stmt_ids = StatementIdCounter::new();
     let mut var_ids = VarIdCounter::new();
-    let mut compiler = Compiler::new(&mut expr_ids, &mut stmt_ids, &mut var_ids, asset_rewriter);
+    let mut compiler = Compiler::new(&mut expr_ids, &mut var_ids, asset_rewriter);
 
     let views = views
         .into_iter()
@@ -42,38 +46,36 @@ pub fn compile(
     // Records and enums carry no code, so they are converted as-is. Both are
     // sorted by name since callers collect them from an unordered set of
     // modules and the IR must be deterministic.
-    let mut records: Vec<IrRecordDeclaration> = records
+    let mut records: Vec<WriterRecordDeclaration> = records
         .iter()
-        .map(|record| IrRecordDeclaration {
+        .map(|record| WriterRecordDeclaration {
             name: record.name.clone(),
             fields: record.fields.clone(),
         })
         .collect();
     records.sort_by(|a, b| a.name.cmp(&b.name));
 
-    let mut enums: Vec<IrEnumDeclaration> = enums
+    let mut enums: Vec<WriterEnumDeclaration> = enums
         .iter()
-        .map(|enum_decl| IrEnumDeclaration {
+        .map(|enum_decl| WriterEnumDeclaration {
             name: enum_decl.name.clone(),
             variants: enum_decl.variants.clone(),
         })
         .collect();
     enums.sort_by(|a, b| a.name.cmp(&b.name));
 
-    IrModule {
+    PureModule {
         views,
         components,
         records,
         enums,
         expr_ids,
         var_ids,
-        stmt_ids,
     }
 }
 
 struct Compiler<'a> {
     expr_id_counter: &'a mut ExprIdCounter,
-    statement_id_counter: &'a mut StatementIdCounter,
     var_id_counter: &'a mut VarIdCounter,
     scopes: Vec<Vec<(VarName, VarId)>>,
     asset_rewriter: Option<Arc<dyn AssetRewriter>>,
@@ -82,13 +84,11 @@ struct Compiler<'a> {
 impl<'a> Compiler<'a> {
     fn new(
         expr_id_counter: &'a mut ExprIdCounter,
-        statement_id_counter: &'a mut StatementIdCounter,
         var_id_counter: &'a mut VarIdCounter,
         asset_rewriter: Option<Arc<dyn AssetRewriter>>,
     ) -> Self {
         Compiler {
             expr_id_counter,
-            statement_id_counter,
             var_id_counter,
             scopes: vec![Vec::new()],
             asset_rewriter,
@@ -98,19 +98,19 @@ impl<'a> Compiler<'a> {
     fn compile_component_decl(
         &mut self,
         decl: InlinedComponentDeclaration,
-    ) -> IrComponentDeclaration {
+    ) -> PureComponentDeclaration {
         self.push_scope();
 
         let mut parameters = Vec::with_capacity(decl.params.len());
         for param in decl.params {
-            parameters.push(IrParameter {
+            parameters.push(WriterParameter {
                 var: self.bind(&param.var_name),
                 name: param.var_name,
                 typ: param.var_type,
             });
         }
 
-        let declaration = IrComponentDeclaration {
+        let declaration = PureComponentDeclaration {
             name: decl.name,
             parameters,
             body: self.compile_nodes(&decl.children),
@@ -119,19 +119,19 @@ impl<'a> Compiler<'a> {
         declaration
     }
 
-    fn compile_view_decl(&mut self, view: InlinedViewDeclaration) -> IrViewDeclaration {
+    fn compile_view_decl(&mut self, view: InlinedViewDeclaration) -> PureViewDeclaration {
         self.push_scope();
 
         let mut parameters = Vec::with_capacity(view.params.len());
         for param in view.params {
-            parameters.push(IrParameter {
+            parameters.push(WriterParameter {
                 var: self.bind(&param.var_name),
                 name: param.var_name,
                 typ: param.var_type,
             });
         }
 
-        let declaration = IrViewDeclaration {
+        let declaration = PureViewDeclaration {
             name: view.name,
             parameters,
             body: self.compile_nodes(&view.children),
@@ -146,10 +146,6 @@ impl<'a> Compiler<'a> {
 
     fn next_expr_id(&mut self) -> ExprId {
         self.expr_id_counter.next()
-    }
-
-    fn next_statement_id(&mut self) -> StatementId {
-        self.statement_id_counter.next()
     }
 
     fn push_scope(&mut self) {
@@ -178,33 +174,33 @@ impl<'a> Compiler<'a> {
         panic!("undefined variable: {name}");
     }
 
-    fn compile_nodes(&mut self, nodes: &[InlinedNode]) -> Vec<IrStatement> {
-        let mut result = Vec::new();
+    fn compile_nodes(&mut self, nodes: &[InlinedNode]) -> PureExpr {
+        let mut parts = Vec::new();
         for node in nodes {
-            self.compile_node(node, &mut result);
+            self.compile_node(node, &mut parts);
         }
-        result
+        PureExpr::FragmentConcat {
+            parts,
+            id: self.next_expr_id(),
+        }
     }
 
-    fn compile_node(&mut self, node: &InlinedNode, output: &mut Vec<IrStatement>) {
+    fn compile_node(&mut self, node: &InlinedNode, output: &mut Vec<PureExpr>) {
         match node {
             InlinedNode::Text { value } => {
-                output.push(IrStatement::Write {
-                    id: self.next_statement_id(),
+                output.push(PureExpr::FragmentRaw {
                     content: value.to_string(),
+                    id: self.next_expr_id(),
                 });
             }
 
             InlinedNode::TextExpression { expression } => {
                 if matches!(expression.as_type(), Type::Fragment) {
-                    output.push(IrStatement::WriteFragment {
-                        id: self.next_statement_id(),
-                        expr: self.compile_expr(expression),
-                    });
+                    output.push(self.compile_expr(expression));
                 } else {
-                    output.push(IrStatement::WriteString {
-                        id: self.next_statement_id(),
-                        expr: self.compile_expr(expression),
+                    output.push(PureExpr::FragmentEscape {
+                        expr: Box::new(self.compile_expr(expression)),
+                        id: self.next_expr_id(),
                     });
                 }
             }
@@ -214,32 +210,32 @@ impl<'a> Compiler<'a> {
                 attributes,
                 children,
             } => {
-                output.push(IrStatement::Write {
-                    id: self.next_statement_id(),
+                output.push(PureExpr::FragmentRaw {
                     content: format!("<{}", element.as_str()),
+                    id: self.next_expr_id(),
                 });
                 for attr in attributes {
                     if let Some(val) = &attr.value {
                         self.compile_attribute(&attr.name, val, output);
                     } else {
                         // Boolean attribute
-                        output.push(IrStatement::Write {
-                            id: self.next_statement_id(),
+                        output.push(PureExpr::FragmentRaw {
                             content: format!(" {}", attr.name.as_str()),
+                            id: self.next_expr_id(),
                         });
                     }
                 }
-                output.push(IrStatement::Write {
-                    id: self.next_statement_id(),
+                output.push(PureExpr::FragmentRaw {
                     content: ">".to_string(),
+                    id: self.next_expr_id(),
                 });
                 if !element.is_void() {
                     for child in children {
                         self.compile_node(child, output);
                     }
-                    output.push(IrStatement::Write {
-                        id: self.next_statement_id(),
+                    output.push(PureExpr::FragmentRaw {
                         content: format!("</{}>", element.as_str()),
+                        id: self.next_expr_id(),
                     });
                 }
             }
@@ -249,13 +245,17 @@ impl<'a> Compiler<'a> {
                 children,
                 ..
             } => {
-                output.push(IrStatement::Match {
-                    id: self.next_statement_id(),
+                output.push(PureExpr::Match {
                     match_: Match::Bool {
                         subject: Box::new(self.compile_expr(condition)),
                         true_body: Box::new(self.compile_nodes(children)),
-                        false_body: Box::new(Vec::new()),
+                        false_body: Box::new(PureExpr::FragmentConcat {
+                            parts: Vec::new(),
+                            id: self.next_expr_id(),
+                        }),
                     },
+                    kind: Arc::new(Type::Fragment),
+                    id: self.next_expr_id(),
                 });
             }
 
@@ -265,32 +265,33 @@ impl<'a> Compiler<'a> {
                 children,
                 ..
             } => {
-                let ir_source = match source {
+                let pure_source = match source {
                     TypedLoopSource::Array(array_expr) => {
-                        IrForSource::Array(self.compile_expr(array_expr))
+                        PureForSource::Array(self.compile_expr(array_expr))
                     }
-                    TypedLoopSource::RangeInclusive { start, end } => IrForSource::RangeInclusive {
-                        start: self.compile_expr(start),
-                        end: self.compile_expr(end),
-                    },
+                    TypedLoopSource::RangeInclusive { start, end } => {
+                        PureForSource::RangeInclusive {
+                            start: self.compile_expr(start),
+                            end: self.compile_expr(end),
+                        }
+                    }
                 };
-                let id = self.next_statement_id();
                 self.push_scope();
                 let var = var_name.as_ref().map(|name| self.bind(name));
                 let body = self.compile_nodes(children);
                 self.pop_scope();
-                output.push(IrStatement::For {
-                    id,
+                output.push(PureExpr::FragmentFor {
                     var,
-                    source: ir_source,
-                    body,
+                    source: Box::new(pure_source),
+                    body: Box::new(body),
+                    id: self.next_expr_id(),
                 });
             }
 
             InlinedNode::Doctype { value } => {
-                output.push(IrStatement::Write {
-                    id: self.next_statement_id(),
+                output.push(PureExpr::FragmentRaw {
                     content: value.to_string(),
+                    id: self.next_expr_id(),
                 });
             }
 
@@ -299,17 +300,17 @@ impl<'a> Compiler<'a> {
                 value,
                 children,
             } => {
-                let id = self.next_statement_id();
-                let value = self.compile_value(value);
+                let value = self.compile_inlined_value(value);
                 self.push_scope();
-                let ir_var = self.bind(var);
+                let pure_var = self.bind(var);
                 let body = self.compile_nodes(children);
                 self.pop_scope();
-                output.push(IrStatement::Let {
-                    id,
-                    var: ir_var,
-                    value,
-                    body,
+                output.push(PureExpr::Let {
+                    var: pure_var,
+                    value: Box::new(value),
+                    body: Box::new(body),
+                    kind: Arc::new(Type::Fragment),
+                    id: self.next_expr_id(),
                 });
             }
 
@@ -366,9 +367,10 @@ impl<'a> Compiler<'a> {
                         Match::Enum { subject, arms }
                     }
                 };
-                output.push(IrStatement::Match {
-                    id: self.next_statement_id(),
+                output.push(PureExpr::Match {
                     match_: compiled_match,
+                    kind: Arc::new(Type::Fragment),
+                    id: self.next_expr_id(),
                 });
             }
 
@@ -376,67 +378,62 @@ impl<'a> Compiler<'a> {
                 component_name,
                 args,
             } => {
-                let compiled_args: Vec<IrArgument> = args
+                let compiled_args: Vec<PureArgument> = args
                     .iter()
-                    .map(|arg| IrArgument {
+                    .map(|arg| PureArgument {
                         name: arg.name.clone(),
-                        expr: self.compile_value(&arg.value),
+                        expr: self.compile_inlined_value(&arg.value),
                     })
                     .collect();
 
-                output.push(IrStatement::ComponentInvocation {
-                    id: self.next_statement_id(),
+                output.push(PureExpr::ComponentCall {
                     component_name: component_name.clone(),
                     args: compiled_args,
+                    id: self.next_expr_id(),
                 });
             }
         }
     }
 
-    /// Compile a binding or argument value: expressions compile as usual,
-    /// fragment bodies become fragment expressions.
-    fn compile_value(&mut self, value: &InlinedValue) -> IrExpr {
+    fn compile_inlined_value(&mut self, value: &InlinedValue) -> PureExpr {
         match value {
             InlinedValue::Expr(expr) => self.compile_expr(expr),
-            InlinedValue::Fragment(nodes) => IrExpr::FragmentLiteral {
-                body: self.compile_nodes(nodes),
-                id: self.next_expr_id(),
-            },
+            InlinedValue::Fragment(nodes) => self.compile_nodes(nodes),
         }
     }
 
-    /// Helper to compile an attribute to IR statements
+    /// Helper to compile an attribute to PureIR fragment parts
     fn compile_attribute(
         &mut self,
         name: &CheapString,
         value: &TypedAttributeValue,
-        output: &mut Vec<IrStatement>,
+        output: &mut Vec<PureExpr>,
     ) {
         match value {
             TypedAttributeValue::String(s) => {
                 if name.as_str() == "class" {
-                    output.push(IrStatement::Write {
-                        id: self.next_statement_id(),
+                    output.push(PureExpr::FragmentRaw {
                         content: format!(" {}=\"", name.as_str()),
+                        id: self.next_expr_id(),
                     });
-                    output.push(IrStatement::WriteString {
-                        id: self.next_statement_id(),
-                        expr: IrExpr::TwMerge {
-                            operand: Box::new(IrExpr::StringLiteral {
+                    output.push(PureExpr::FragmentEscape {
+                        expr: Box::new(PureExpr::TwMerge {
+                            operand: Box::new(PureExpr::StringLiteral {
                                 value: s.clone(),
                                 id: self.next_expr_id(),
                             }),
                             id: self.next_expr_id(),
-                        },
+                        }),
+                        id: self.next_expr_id(),
                     });
-                    output.push(IrStatement::Write {
-                        id: self.next_statement_id(),
+                    output.push(PureExpr::FragmentRaw {
                         content: "\"".to_string(),
+                        id: self.next_expr_id(),
                     });
                 } else {
-                    output.push(IrStatement::Write {
-                        id: self.next_statement_id(),
+                    output.push(PureExpr::FragmentRaw {
                         content: format!(" {}=\"{}\"", name.as_str(), s.as_str()),
+                        id: self.next_expr_id(),
                     });
                 }
             }
@@ -446,36 +443,36 @@ impl<'a> Compiler<'a> {
                     "Attribute expression values must evaluate to String"
                 );
                 // String attributes: output attribute="value"
-                output.push(IrStatement::Write {
-                    id: self.next_statement_id(),
+                output.push(PureExpr::FragmentRaw {
                     content: format!(" {}=\"", name.as_str()),
+                    id: self.next_expr_id(),
                 });
                 // Wrap class attribute values in TwMerge for Tailwind class merging
                 let expr = if name.as_str() == "class" {
-                    IrExpr::TwMerge {
+                    PureExpr::TwMerge {
                         operand: Box::new(self.compile_expr(expr)),
                         id: self.next_expr_id(),
                     }
                 } else {
                     self.compile_expr(expr)
                 };
-                output.push(IrStatement::WriteString {
-                    id: self.next_statement_id(),
-                    expr,
+                output.push(PureExpr::FragmentEscape {
+                    expr: Box::new(expr),
+                    id: self.next_expr_id(),
                 });
-                output.push(IrStatement::Write {
-                    id: self.next_statement_id(),
+                output.push(PureExpr::FragmentRaw {
                     content: "\"".to_string(),
+                    id: self.next_expr_id(),
                 });
             }
         }
     }
 
-    fn compile_expr(&mut self, expr: &TypedExpr) -> IrExpr {
+    fn compile_expr(&mut self, expr: &TypedExpr) -> PureExpr {
         let expr_id = self.next_expr_id();
 
         match expr {
-            TypedExpr::Var { value, kind, .. } => IrExpr::VariableReference {
+            TypedExpr::Var { value, kind, .. } => PureExpr::VariableReference {
                 value: self.resolve(value),
                 kind: kind.clone(),
                 id: expr_id,
@@ -485,25 +482,25 @@ impl<'a> Compiler<'a> {
                 field,
                 kind,
                 ..
-            } => IrExpr::FieldAccess {
+            } => PureExpr::FieldAccess {
                 record: Box::new(self.compile_expr(object)),
                 field: field.clone(),
                 kind: kind.clone(),
                 id: expr_id,
             },
-            TypedExpr::BooleanNegation { operand, .. } => IrExpr::BooleanNegation {
+            TypedExpr::BooleanNegation { operand, .. } => PureExpr::BooleanNegation {
                 operand: Box::new(self.compile_expr(operand)),
                 id: expr_id,
             },
             TypedExpr::NumericNegation {
                 operand,
                 operand_type,
-            } => IrExpr::NumericNegation {
+            } => PureExpr::NumericNegation {
                 operand: Box::new(self.compile_expr(operand)),
                 operand_type: operand_type.clone(),
                 id: expr_id,
             },
-            TypedExpr::ArrayLiteral { elements, kind, .. } => IrExpr::ArrayLiteral {
+            TypedExpr::ArrayLiteral { elements, kind, .. } => PureExpr::ArrayLiteral {
                 elements: elements.iter().map(|e| self.compile_expr(e)).collect(),
                 kind: kind.clone(),
                 id: expr_id,
@@ -513,7 +510,7 @@ impl<'a> Compiler<'a> {
                 fields,
                 kind,
                 ..
-            } => IrExpr::RecordLiteral {
+            } => PureExpr::RecordLiteral {
                 record_name: record_name.clone(),
                 fields: fields
                     .iter()
@@ -522,7 +519,7 @@ impl<'a> Compiler<'a> {
                 kind: kind.clone(),
                 id: expr_id,
             },
-            TypedExpr::StringLiteral { value, .. } => IrExpr::StringLiteral {
+            TypedExpr::StringLiteral { value, .. } => PureExpr::StringLiteral {
                 value: CheapString::new(process_escape_sequences(value.as_str())),
                 id: expr_id,
             },
@@ -533,24 +530,24 @@ impl<'a> Compiler<'a> {
                     }
                     None => path.to_string(),
                 };
-                IrExpr::StringLiteral {
+                PureExpr::StringLiteral {
                     value: CheapString::new(process_escape_sequences(&rewritten)),
                     id: expr_id,
                 }
             }
-            TypedExpr::BooleanLiteral { value, .. } => IrExpr::BooleanLiteral {
+            TypedExpr::BooleanLiteral { value, .. } => PureExpr::BooleanLiteral {
                 value: *value,
                 id: expr_id,
             },
-            TypedExpr::FloatLiteral { value, .. } => IrExpr::FloatLiteral {
+            TypedExpr::FloatLiteral { value, .. } => PureExpr::FloatLiteral {
                 value: *value,
                 id: expr_id,
             },
-            TypedExpr::IntLiteral { value, .. } => IrExpr::IntLiteral {
+            TypedExpr::IntLiteral { value, .. } => PureExpr::IntLiteral {
                 value: *value,
                 id: expr_id,
             },
-            TypedExpr::StringConcat { left, right, .. } => IrExpr::StringConcat {
+            TypedExpr::StringConcat { left, right, .. } => PureExpr::StringConcat {
                 left: Box::new(self.compile_expr(left)),
                 right: Box::new(self.compile_expr(right)),
                 id: expr_id,
@@ -560,7 +557,7 @@ impl<'a> Compiler<'a> {
                 right,
                 operand_types,
                 ..
-            } => IrExpr::Equals {
+            } => PureExpr::Equals {
                 left: Box::new(self.compile_expr(left)),
                 right: Box::new(self.compile_expr(right)),
                 operand_types: operand_types.clone(),
@@ -574,8 +571,8 @@ impl<'a> Compiler<'a> {
             } => {
                 // Desugar NotEquals into BooleanNegation(Equals(...))
                 let equals_id = self.next_expr_id();
-                IrExpr::BooleanNegation {
-                    operand: Box::new(IrExpr::Equals {
+                PureExpr::BooleanNegation {
+                    operand: Box::new(PureExpr::Equals {
                         left: Box::new(self.compile_expr(left)),
                         right: Box::new(self.compile_expr(right)),
                         operand_types: operand_types.clone(),
@@ -589,7 +586,7 @@ impl<'a> Compiler<'a> {
                 right,
                 operand_types,
                 ..
-            } => IrExpr::LessThan {
+            } => PureExpr::LessThan {
                 left: Box::new(self.compile_expr(left)),
                 right: Box::new(self.compile_expr(right)),
                 operand_types: operand_types.clone(),
@@ -601,7 +598,7 @@ impl<'a> Compiler<'a> {
                 right,
                 operand_types,
                 ..
-            } => IrExpr::LessThan {
+            } => PureExpr::LessThan {
                 left: Box::new(self.compile_expr(right)),
                 right: Box::new(self.compile_expr(left)),
                 operand_types: operand_types.clone(),
@@ -612,7 +609,7 @@ impl<'a> Compiler<'a> {
                 right,
                 operand_types,
                 ..
-            } => IrExpr::LessThanOrEqual {
+            } => PureExpr::LessThanOrEqual {
                 left: Box::new(self.compile_expr(left)),
                 right: Box::new(self.compile_expr(right)),
                 operand_types: operand_types.clone(),
@@ -624,18 +621,18 @@ impl<'a> Compiler<'a> {
                 right,
                 operand_types,
                 ..
-            } => IrExpr::LessThanOrEqual {
+            } => PureExpr::LessThanOrEqual {
                 left: Box::new(self.compile_expr(right)),
                 right: Box::new(self.compile_expr(left)),
                 operand_types: operand_types.clone(),
                 id: expr_id,
             },
-            TypedExpr::BooleanLogicalAnd { left, right, .. } => IrExpr::BooleanLogicalAnd {
+            TypedExpr::BooleanLogicalAnd { left, right, .. } => PureExpr::BooleanLogicalAnd {
                 left: Box::new(self.compile_expr(left)),
                 right: Box::new(self.compile_expr(right)),
                 id: expr_id,
             },
-            TypedExpr::BooleanLogicalOr { left, right, .. } => IrExpr::BooleanLogicalOr {
+            TypedExpr::BooleanLogicalOr { left, right, .. } => PureExpr::BooleanLogicalOr {
                 left: Box::new(self.compile_expr(left)),
                 right: Box::new(self.compile_expr(right)),
                 id: expr_id,
@@ -645,7 +642,7 @@ impl<'a> Compiler<'a> {
                 right,
                 operand_types,
                 ..
-            } => IrExpr::NumericAdd {
+            } => PureExpr::NumericAdd {
                 left: Box::new(self.compile_expr(left)),
                 right: Box::new(self.compile_expr(right)),
                 operand_types: operand_types.clone(),
@@ -656,7 +653,7 @@ impl<'a> Compiler<'a> {
                 right,
                 operand_types,
                 ..
-            } => IrExpr::NumericSubtract {
+            } => PureExpr::NumericSubtract {
                 left: Box::new(self.compile_expr(left)),
                 right: Box::new(self.compile_expr(right)),
                 operand_types: operand_types.clone(),
@@ -667,7 +664,7 @@ impl<'a> Compiler<'a> {
                 right,
                 operand_types,
                 ..
-            } => IrExpr::NumericMultiply {
+            } => PureExpr::NumericMultiply {
                 left: Box::new(self.compile_expr(left)),
                 right: Box::new(self.compile_expr(right)),
                 operand_types: operand_types.clone(),
@@ -678,7 +675,7 @@ impl<'a> Compiler<'a> {
                 variant_name,
                 fields,
                 kind,
-            } => IrExpr::EnumLiteral {
+            } => PureExpr::EnumLiteral {
                 enum_name: enum_name.clone(),
                 variant_name: variant_name.clone(),
                 fields: fields
@@ -743,19 +740,19 @@ impl<'a> Compiler<'a> {
                         }
                     }
                 };
-                IrExpr::Match {
+                PureExpr::Match {
                     match_: compiled_match,
                     kind: kind.clone(),
                     id: expr_id,
                 }
             }
-            TypedExpr::OptionLiteral { value, kind } => IrExpr::OptionLiteral {
+            TypedExpr::OptionLiteral { value, kind } => PureExpr::OptionLiteral {
                 value: value.as_ref().map(|v| Box::new(self.compile_expr(v))),
                 kind: kind.clone(),
                 id: expr_id,
             },
-            TypedExpr::FragmentEmpty => IrExpr::FragmentLiteral {
-                body: Vec::new(),
+            TypedExpr::FragmentEmpty => PureExpr::FragmentConcat {
+                parts: Vec::new(),
                 id: expr_id,
             },
             TypedExpr::Let {
@@ -769,7 +766,7 @@ impl<'a> Compiler<'a> {
                 let ir_var = self.bind(var);
                 let body = Box::new(self.compile_expr(body));
                 self.pop_scope();
-                IrExpr::Let {
+                PureExpr::Let {
                     var: ir_var,
                     value,
                     body,
@@ -777,35 +774,35 @@ impl<'a> Compiler<'a> {
                     id: expr_id,
                 }
             }
-            TypedExpr::ArrayLength { array } => IrExpr::ArrayLength {
+            TypedExpr::ArrayLength { array } => PureExpr::ArrayLength {
                 array: Box::new(self.compile_expr(array)),
                 id: expr_id,
             },
-            TypedExpr::ArrayIsEmpty { array } => IrExpr::ArrayIsEmpty {
+            TypedExpr::ArrayIsEmpty { array } => PureExpr::ArrayIsEmpty {
                 array: Box::new(self.compile_expr(array)),
                 id: expr_id,
             },
-            TypedExpr::StringIsEmpty { string } => IrExpr::StringIsEmpty {
+            TypedExpr::StringIsEmpty { string } => PureExpr::StringIsEmpty {
                 string: Box::new(self.compile_expr(string)),
                 id: expr_id,
             },
-            TypedExpr::OptionIsSome { option } => IrExpr::OptionIsSome {
+            TypedExpr::OptionIsSome { option } => PureExpr::OptionIsSome {
                 option: Box::new(self.compile_expr(option)),
                 id: expr_id,
             },
-            TypedExpr::OptionIsNone { option } => IrExpr::OptionIsNone {
+            TypedExpr::OptionIsNone { option } => PureExpr::OptionIsNone {
                 option: Box::new(self.compile_expr(option)),
                 id: expr_id,
             },
-            TypedExpr::IntToString { value } => IrExpr::IntToString {
+            TypedExpr::IntToString { value } => PureExpr::IntToString {
                 value: Box::new(self.compile_expr(value)),
                 id: expr_id,
             },
-            TypedExpr::FloatToInt { value } => IrExpr::FloatToInt {
+            TypedExpr::FloatToInt { value } => PureExpr::FloatToInt {
                 value: Box::new(self.compile_expr(value)),
                 id: expr_id,
             },
-            TypedExpr::IntToFloat { value } => IrExpr::IntToFloat {
+            TypedExpr::IntToFloat { value } => PureExpr::IntToFloat {
                 value: Box::new(self.compile_expr(value)),
                 id: expr_id,
             },
@@ -864,11 +861,10 @@ mod tests {
     fn check(view: InlinedViewDeclaration, expected: Expect) {
         let before = view.to_string();
         let mut expr_ids = ExprIdCounter::new();
-        let mut statement_ids = StatementIdCounter::new();
         let mut var_ids = VarIdCounter::new();
-        let ir = Compiler::new(&mut expr_ids, &mut statement_ids, &mut var_ids, None)
-            .compile_view_decl(view);
-        let after = ir.to_string();
+        let compiled_view =
+            Compiler::new(&mut expr_ids, &mut var_ids, None).compile_view_decl(view);
+        let after = compiled_view.to_string();
         let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
         expected.assert_eq(&output);
     }
@@ -887,7 +883,7 @@ mod tests {
 
                 -- after --
                 view MainComp() {
-                  write("Hello World")
+                  concat(raw("Hello World"))
                 }
             "#]],
         );
@@ -909,8 +905,7 @@ mod tests {
 
                 -- after --
                 view MainComp(name@v0: String) {
-                  write("Hello ")
-                  write_string(v0)
+                  concat(raw("Hello "), escape(v0))
                 }
             "#]],
         );
@@ -934,10 +929,12 @@ mod tests {
 
                 -- after --
                 view MainComp() {
-                  write("<div")
-                  write(">")
-                  write("Content")
-                  write("</div>")
+                  concat(
+                    raw("<div"),
+                    raw(">"),
+                    raw("Content"),
+                    raw("</div>"),
+                  )
                 }
             "#]],
         );
@@ -965,16 +962,17 @@ mod tests {
 
                 -- after --
                 view MainComp(show@v0: Bool) {
-                  match v0 {
-                    true => {
-                      write("<div")
-                      write(">")
-                      write("Visible")
-                      write("</div>")
-                    }
-                    false => {
-                    }
-                  }
+                  concat(
+                    match v0 {
+                      true => concat(
+                        raw("<div"),
+                        raw(">"),
+                        raw("Visible"),
+                        raw("</div>"),
+                      ),
+                      false => concat(),
+                    },
+                  )
                 }
             "#]],
         );
@@ -1010,15 +1008,17 @@ mod tests {
 
                 -- after --
                 view MainComp(items@v0: Array[String]) {
-                  write("<ul")
-                  write(">")
-                  for v1 in v0 {
-                    write("<li")
-                    write(">")
-                    write_string(v1)
-                    write("</li>")
-                  }
-                  write("</ul>")
+                  concat(
+                    raw("<ul"),
+                    raw(">"),
+                    concat(
+                      raw("<li"),
+                      raw(">"),
+                      escape(v1),
+                      raw("</li>"),
+                    ) for v1 in v0,
+                    raw("</ul>"),
+                  )
                 }
             "#]],
         );
@@ -1045,14 +1045,16 @@ mod tests {
 
                 -- after --
                 view MainComp() {
-                  write("<div")
-                  write(" class=\"")
-                  write_string(tw_merge("base"))
-                  write("\"")
-                  write(" id=\"test\"")
-                  write(">")
-                  write("Content")
-                  write("</div>")
+                  concat(
+                    raw("<div"),
+                    raw(" class=\""),
+                    escape(tw_merge("base")),
+                    raw("\""),
+                    raw(" id=\"test\""),
+                    raw(">"),
+                    raw("Content"),
+                    raw("</div>"),
+                  )
                 }
             "#]],
         );
@@ -1082,16 +1084,18 @@ mod tests {
 
                 -- after --
                 view MainComp(cls@v0: String) {
-                  write("<div")
-                  write(" class=\"")
-                  write_string(tw_merge("base"))
-                  write("\"")
-                  write(" data-value=\"")
-                  write_string(v0)
-                  write("\"")
-                  write(">")
-                  write("Content")
-                  write("</div>")
+                  concat(
+                    raw("<div"),
+                    raw(" class=\""),
+                    escape(tw_merge("base")),
+                    raw("\""),
+                    raw(" data-value=\""),
+                    escape(v0),
+                    raw("\""),
+                    raw(">"),
+                    raw("Content"),
+                    raw("</div>"),
+                  )
                 }
             "#]],
         );
@@ -1129,20 +1133,22 @@ mod tests {
 
                 -- after --
                 view MainComp() {
-                  write("<div")
-                  write(" class=\"")
-                  write_string(tw_merge("p-1 p-2"))
-                  write("\"")
-                  write(">")
-                  write("static")
-                  write("</div>")
-                  write("<div")
-                  write(" class=\"")
-                  write_string(tw_merge("p-1 p-2"))
-                  write("\"")
-                  write(">")
-                  write("expression")
-                  write("</div>")
+                  concat(
+                    raw("<div"),
+                    raw(" class=\""),
+                    escape(tw_merge("p-1 p-2")),
+                    raw("\""),
+                    raw(">"),
+                    raw("static"),
+                    raw("</div>"),
+                    raw("<div"),
+                    raw(" class=\""),
+                    escape(tw_merge("p-1 p-2")),
+                    raw("\""),
+                    raw(">"),
+                    raw("expression"),
+                    raw("</div>"),
+                  )
                 }
             "#]],
         );
@@ -1176,13 +1182,15 @@ mod tests {
 
                 -- after --
                 view TestComp(name@v0: String, count@v1: String) {
-                  write("<div")
-                  write(">")
-                  write("Hello ")
-                  write_string(v0)
-                  write(", count: ")
-                  write_string(v1)
-                  write("</div>")
+                  concat(
+                    raw("<div"),
+                    raw(">"),
+                    raw("Hello "),
+                    escape(v0),
+                    raw(", count: "),
+                    escape(v1),
+                    raw("</div>"),
+                  )
                 }
             "#]],
         );
@@ -1217,14 +1225,12 @@ mod tests {
 
                 -- after --
                 view TestComp(flag@v0: Bool) {
-                  match v0 {
-                    true => {
-                      write("yes")
-                    }
-                    false => {
-                      write("no")
-                    }
-                  }
+                  concat(
+                    match v0 {
+                      true => concat(raw("yes")),
+                      false => concat(raw("no")),
+                    },
+                  )
                 }
             "#]],
         );
@@ -1248,10 +1254,12 @@ mod tests {
 
                 -- after --
                 view MainComp() {
-                  write("<script")
-                  write(">")
-                  write("alert(\"hi\")")
-                  write("</script>")
+                  concat(
+                    raw("<script"),
+                    raw(">"),
+                    raw("alert(\"hi\")"),
+                    raw("</script>"),
+                  )
                 }
             "#]],
         );
@@ -1271,8 +1279,7 @@ mod tests {
 
                 -- after --
                 view MainComp() {
-                  write("<br")
-                  write(">")
+                  concat(raw("<br"), raw(">"))
                 }
             "#]],
         );
@@ -1295,9 +1302,8 @@ mod tests {
         }
 
         let mut expr_ids = ExprIdCounter::new();
-        let mut statement_ids = StatementIdCounter::new();
         let mut var_ids = VarIdCounter::new();
-        let mut compiler = Compiler::new(&mut expr_ids, &mut statement_ids, &mut var_ids, None);
+        let mut compiler = Compiler::new(&mut expr_ids, &mut var_ids, None);
         let _result = compiler.compile_expr(&expr);
         // If we get here without stack overflow, the test passes
     }

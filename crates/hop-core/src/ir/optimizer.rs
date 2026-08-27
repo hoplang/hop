@@ -1,67 +1,62 @@
-use super::ir_module::{ExprIdCounter, IrModule, IrStatement};
-use crate::expr::typing::type_registry::TypeRegistry;
-use crate::ir::ir_module::StatementIdCounter;
-use crate::ir::transform::{
-    coalesce_write_statements, eliminate_match_statements, eliminate_unused_variable_declarations,
-    perform_partial_evaluation, simplify_write_exprs,
-};
+use super::pure_module::{PureComponentDeclaration, PureExpr, PureModule, PureViewDeclaration};
+use crate::ir::{expr_id::ExprIdCounter, transform};
 
-fn optimize_statements(
-    body: &mut Vec<IrStatement>,
-    registry: &TypeRegistry,
-    expr_ids: &mut ExprIdCounter,
-    stmt_ids: &mut StatementIdCounter,
-) {
-    perform_partial_evaluation(body, registry, expr_ids);
-    eliminate_match_statements(body);
-    eliminate_unused_variable_declarations(body);
-    simplify_write_exprs(body, stmt_ids);
-    coalesce_write_statements(body, 60);
+fn optimize_body(body: PureExpr, expr_ids: &mut ExprIdCounter) -> PureExpr {
+    let body = transform::perform_partial_evaluation(body, expr_ids);
+    let body = transform::eliminate_unused_variable_declarations(body);
+    transform::normalize_fragments(body, expr_ids, 60)
 }
 
-pub fn optimize(mut module: IrModule, registry: &TypeRegistry) -> IrModule {
-    let expr_ids = &mut module.expr_ids;
-    let stmt_ids = &mut module.stmt_ids;
-    for view in &mut module.views {
-        optimize_statements(&mut view.body, registry, expr_ids, stmt_ids);
+pub fn optimize(module: PureModule) -> PureModule {
+    let mut expr_ids = module.expr_ids;
+    let views = module
+        .views
+        .into_iter()
+        .map(|view| PureViewDeclaration {
+            name: view.name,
+            parameters: view.parameters,
+            body: optimize_body(view.body, &mut expr_ids),
+        })
+        .collect();
+    let components = module
+        .components
+        .into_iter()
+        .map(|component| PureComponentDeclaration {
+            name: component.name,
+            parameters: component.parameters,
+            body: optimize_body(component.body, &mut expr_ids),
+        })
+        .collect();
+    PureModule {
+        views,
+        components,
+        records: module.records,
+        enums: module.enums,
+        expr_ids,
+        var_ids: module.var_ids,
     }
-    for component in &mut module.components {
-        optimize_statements(&mut component.body, registry, expr_ids, stmt_ids);
-    }
-    module
 }
 
 #[cfg(test)]
 mod tests {
-
     use std::collections::HashMap;
 
     use super::*;
-    use crate::ir::ir_module_builder::IrModuleBuilder;
-    use crate::ir::ir_module_generator::random_ir_module;
-    use crate::ir::runtime::{evaluator::evaluate_view, random::random_value, value::Value};
+    use crate::ir::pure_module_builder::PureModuleBuilder;
+    use crate::ir::pure_module_generator::random_module;
+    use crate::ir::runtime::evaluator::evaluate_view;
+    use crate::ir::runtime::{random::random_value, value::Value};
     use crate::symbols::type_name::TypeName;
     use crate::symbols::var_name::VarName;
     use expect_test::{Expect, expect};
     use rand::{SeedableRng, rngs::StdRng};
 
-    fn check(built: (IrModule, TypeRegistry), expected: Expect) {
-        let (module, registry) = built;
-        let before = module.to_string();
-        let result = optimize(module, &registry);
-        let after = result.to_string();
-        let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
-        expected.assert_eq(&output);
-    }
-
     #[test]
-    fn fuzz_random_modules_evaluate_identically_after_optimization() {
+    fn fuzz_random_pure_modules_evaluate_identically_after_optimization() {
         arbtest::arbtest(|u| {
-            let (module, registry) = random_ir_module(u);
+            let (module, registry) = random_module(u);
             let mut rng = StdRng::seed_from_u64(u.arbitrary()?);
 
-            // Generate args up-front so the exact same values are used to
-            // evaluate before and after the pipeline.
             let view_args: Vec<(TypeName, HashMap<VarName, Value>)> = module
                 .views
                 .iter()
@@ -86,7 +81,7 @@ mod tests {
                 .map(|(view_name, args)| evaluate_view(&module, view_name, args.clone()).unwrap())
                 .collect();
 
-            let module = optimize(module, &registry);
+            let module = optimize(module);
 
             for ((view_name, args), before_output) in view_args.iter().zip(&before_outputs) {
                 let after_output = evaluate_view(&module, view_name, args.clone()).unwrap();
@@ -99,82 +94,79 @@ mod tests {
         });
     }
 
-    #[test]
-    fn should_optimize_single_component() {
-        let module = IrModuleBuilder::new()
-            .view_no_params("Test", |t| {
-                t.let_stmt("unused", t.str("value"), |t| {
-                    t.write("Hello");
-                    t.write(" ");
-                    t.write("World");
-                });
-            })
-            .build_with_registry();
+    fn check(module: PureModule, expected: Expect) {
+        let before = module.to_string();
+        let result = optimize(module);
+        let after = result.to_string();
+        let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
+        expected.assert_eq(&output);
+    }
 
+    #[test]
+    fn should_optimize_single_view() {
         check(
-            module,
+            PureModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.let_expr("unused", t.str("value"), |t| {
+                        t.concat(vec![t.raw("Hello"), t.raw(" "), t.raw("World")])
+                    })
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
-                  let v0 = "value" in {
-                    write("Hello")
-                    write(" ")
-                    write("World")
-                  }
+                  let v0 = "value" in concat(
+                    raw("Hello"),
+                    raw(" "),
+                    raw("World"),
+                  )
                 }
 
                 -- after --
                 view Test() {
-                  write("Hello World")
+                  concat(raw("Hello World"))
                 }
             "#]],
         );
     }
 
     #[test]
-    fn should_optimize_multiple_components() {
-        let module = IrModuleBuilder::new()
-            .view_no_params("First", |t| {
-                t.let_stmt("unused", t.str("x"), |t| {
-                    t.write("A");
-                    t.write("B");
-                });
-            })
-            .view_no_params("Second", |t| {
-                t.if_stmt(t.bool(true), |t| {
-                    t.write("C");
-                    t.write("D");
-                });
-            })
-            .build_with_registry();
-
+    fn should_optimize_multiple_views() {
         check(
-            module,
+            PureModuleBuilder::new()
+                .view_no_params("First", |t| {
+                    t.let_expr("unused", t.str("x"), |t| {
+                        t.concat(vec![t.raw("A"), t.raw("B")])
+                    })
+                })
+                .view_no_params("Second", |t| {
+                    t.concat(vec![t.bool_match_expr(
+                        t.bool(true),
+                        t.concat(vec![t.raw("C"), t.raw("D")]),
+                        t.concat(vec![]),
+                    )])
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view First() {
-                  let v0 = "x" in {
-                    write("A")
-                    write("B")
-                  }
+                  let v0 = "x" in concat(raw("A"), raw("B"))
                 }
                 view Second() {
-                  match true {
-                    true => {
-                      write("C")
-                      write("D")
-                    }
-                    false => {
-                    }
-                  }
+                  concat(
+                    match true {
+                      true => concat(raw("C"), raw("D")),
+                      false => concat(),
+                    },
+                  )
                 }
 
                 -- after --
                 view First() {
-                  write("AB")
+                  concat(raw("AB"))
                 }
                 view Second() {
-                  write("CD")
+                  concat(raw("CD"))
                 }
             "#]],
         );
@@ -182,120 +174,32 @@ mod tests {
 
     #[test]
     fn should_apply_constant_propagation_before_unused_let_elimination() {
-        let module = IrModuleBuilder::new()
-            .view_no_params("Test", |t| {
-                t.let_stmt("flag", t.bool(true), |t| {
-                    t.if_stmt(t.var("flag"), |t| {
-                        t.write("yes");
-                    });
-                });
-            })
-            .build_with_registry();
-
         check(
-            module,
+            PureModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.let_expr("flag", t.bool(true), |t| {
+                        t.concat(vec![t.bool_match_expr(
+                            t.var("flag"),
+                            t.concat(vec![t.raw("yes")]),
+                            t.concat(vec![]),
+                        )])
+                    })
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
-                  let v0 = true in {
+                  let v0 = true in concat(
                     match v0 {
-                      true => {
-                        write("yes")
-                      }
-                      false => {
-                      }
-                    }
-                  }
+                      true => concat(raw("yes")),
+                      false => concat(),
+                    },
+                  )
                 }
 
                 -- after --
                 view Test() {
-                  write("yes")
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_eliminate_bool_match_with_constant_subject() {
-        let module = IrModuleBuilder::new()
-            .view_no_params("Test", |t| {
-                t.let_stmt("flag", t.bool(true), |t| {
-                    t.bool_match_stmt(
-                        t.var("flag"),
-                        |t| {
-                            t.write("yes");
-                        },
-                        |t| {
-                            t.write("no");
-                        },
-                    );
-                });
-            })
-            .build_with_registry();
-
-        check(
-            module,
-            expect![[r#"
-                -- before --
-                view Test() {
-                  let v0 = true in {
-                    match v0 {
-                      true => {
-                        write("yes")
-                      }
-                      false => {
-                        write("no")
-                      }
-                    }
-                  }
-                }
-
-                -- after --
-                view Test() {
-                  write("yes")
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_preserve_records_and_enums() {
-        let module = IrModuleBuilder::new()
-            .record("User", [("name", "String"), ("age", "Int")])
-            .enum_unit("Status", ["Active", "Inactive"])
-            .view_no_params("Test", |t| {
-                t.write("Hello");
-            })
-            .build_with_registry();
-
-        check(
-            module,
-            expect![[r#"
-                -- before --
-                enum Status {
-                  Active,
-                  Inactive,
-                }
-                record User {
-                  name: String,
-                  age: Int,
-                }
-                view Test() {
-                  write("Hello")
-                }
-
-                -- after --
-                enum Status {
-                  Active,
-                  Inactive,
-                }
-                record User {
-                  name: String,
-                  age: Int,
-                }
-                view Test() {
-                  write("Hello")
+                  concat(raw("yes"))
                 }
             "#]],
         );
@@ -303,44 +207,105 @@ mod tests {
 
     #[test]
     fn should_chain_multiple_optimizations() {
-        let module = IrModuleBuilder::new()
-            .view_no_params("Test", |t| {
-                // let x = "hello"
-                // let unused = x  -- unused, should be eliminated
-                // if true { write("A"); write("B") }  -- if should be eliminated, writes coalesced
-                t.let_stmt("x", t.str("hello"), |t| {
-                    t.let_stmt("unused", t.var("x"), |t| {
-                        t.if_stmt(t.bool(true), |t| {
-                            t.write("A");
-                            t.write("B");
-                        });
-                    });
-                });
-            })
-            .build_with_registry();
-
+        // let x = "hello"
+        // let unused = x  -- unused, should be eliminated
+        // match true { .. }  -- selected, arms coalesced
         check(
-            module,
+            PureModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.let_expr("x", t.str("hello"), |t| {
+                        t.let_expr("unused", t.var("x"), |t| {
+                            t.concat(vec![t.bool_match_expr(
+                                t.bool(true),
+                                t.concat(vec![t.raw("A"), t.raw("B")]),
+                                t.concat(vec![]),
+                            )])
+                        })
+                    })
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 view Test() {
-                  let v0 = "hello" in {
-                    let v1 = v0 in {
-                      match true {
-                        true => {
-                          write("A")
-                          write("B")
-                        }
-                        false => {
-                        }
-                      }
-                    }
-                  }
+                  let v0 = "hello" in let v1 = v0 in concat(
+                    match true {
+                      true => concat(raw("A"), raw("B")),
+                      false => concat(),
+                    },
+                  )
                 }
 
                 -- after --
                 view Test() {
-                  write("AB")
+                  concat(raw("AB"))
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_preserve_records_and_enums() {
+        check(
+            PureModuleBuilder::new()
+                .record("User", [("name", "String"), ("age", "Int")])
+                .enum_unit("Status", ["Active", "Inactive"])
+                .view_no_params("Test", |t| t.concat(vec![t.raw("Hello")]))
+                .build(),
+            expect![[r#"
+                -- before --
+                enum Status {
+                  Active,
+                  Inactive,
+                }
+                record User {
+                  name: String,
+                  age: Int,
+                }
+                view Test() {
+                  concat(raw("Hello"))
+                }
+
+                -- after --
+                enum Status {
+                  Active,
+                  Inactive,
+                }
+                record User {
+                  name: String,
+                  age: Int,
+                }
+                view Test() {
+                  concat(raw("Hello"))
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_escape_propagated_constants_at_compile_time() {
+        // Partial evaluation inlines the constant, elimination drops the
+        // let, and normalization escapes and merges the result.
+        check(
+            PureModuleBuilder::new()
+                .view_no_params("Test", |t| {
+                    t.let_expr("name", t.str("<Ada>"), |t| {
+                        t.concat(vec![t.raw("<p>"), t.escape(t.var("name")), t.raw("</p>")])
+                    })
+                })
+                .build(),
+            expect![[r#"
+                -- before --
+                view Test() {
+                  let v0 = "<Ada>" in concat(
+                    raw("<p>"),
+                    escape(v0),
+                    raw("</p>"),
+                  )
+                }
+
+                -- after --
+                view Test() {
+                  concat(raw("<p>&lt;Ada&gt;</p>"))
                 }
             "#]],
         );

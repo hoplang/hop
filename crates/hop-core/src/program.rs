@@ -23,7 +23,7 @@ use crate::hop::typing::typed_ast::TypedAst;
 use crate::ir;
 use crate::ir::Transpiler;
 use crate::ir::runtime::random::random_value;
-use crate::orchestrator::{OrchestrateOptions, orchestrate};
+use crate::orchestrator::{OrchestrateOptions, orchestrate, orchestrate_pure};
 use crate::parse_error::ParseError;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
@@ -595,11 +595,10 @@ impl Program {
             );
         }
 
-        // Use orchestrate to handle inlining and compilation
+        // Use orchestrate_pure to handle inlining and compilation
         // Pass the view filter to only compile the requested view
-        let ir_module = orchestrate(
+        let pure_module = orchestrate_pure(
             self.get_typed_modules(),
-            &self.type_registry,
             OrchestrateOptions {
                 skip_optimization,
                 disable_links,
@@ -610,7 +609,7 @@ impl Program {
             },
         );
 
-        let str = ir::runtime::evaluator::evaluate_view(&ir_module, view_name, args)?;
+        let str = ir::runtime::evaluator::evaluate_view(&pure_module, view_name, args)?;
 
         Ok(str)
     }
@@ -681,7 +680,6 @@ impl Program {
     ) -> String {
         let ir_module = orchestrate(
             self.get_typed_modules(),
-            &self.type_registry,
             OrchestrateOptions {
                 skip_optimization,
                 asset_rewriter,

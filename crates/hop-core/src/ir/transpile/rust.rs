@@ -7,9 +7,10 @@ use crate::dependency_graph::DependencyGraph;
 use crate::expr::patterns::{EnumPattern, Match};
 use crate::expr::typing::r#type::{EnumVariant, Type};
 use crate::expr::typing::type_registry::{ResolvedType, TypeRegistry};
-use crate::ir::ir_module::{
-    IrArgument, IrComponentDeclaration, IrExpr, IrForSource, IrModule, IrStatement, IrVar,
-    IrViewDeclaration,
+use crate::ir::ir_var::IrVar;
+use crate::ir::writer_module::{
+    WriterArgument, WriterComponentDeclaration, WriterExpr, WriterForSource, WriterModule,
+    WriterStatement, WriterViewDeclaration,
 };
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
@@ -64,7 +65,7 @@ impl RustTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         rebinds: &[(String, String)],
-        body: &'a [IrStatement],
+        body: &'a [WriterStatement],
     ) -> Doc<'a> {
         let mut doc = arena.nil();
         for (var, value) in rebinds {
@@ -79,7 +80,7 @@ impl RustTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         rebinds: &[(String, String)],
-        body: &'a IrExpr,
+        body: &'a WriterExpr,
     ) -> Doc<'a> {
         if rebinds.is_empty() {
             return self.transpile_expr_owned(arena, body);
@@ -97,10 +98,10 @@ impl RustTranspiler {
     fn transpile_match_subject<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        subject: &'a IrExpr,
+        subject: &'a WriterExpr,
     ) -> Doc<'a> {
         match subject {
-            IrExpr::VariableReference { .. } => self.transpile_expr(arena, subject),
+            WriterExpr::VariableReference { .. } => self.transpile_expr(arena, subject),
             _ => arena
                 .text("(")
                 .append(self.transpile_expr(arena, subject))
@@ -130,15 +131,15 @@ impl RustTranspiler {
             .replace('\t', "\\t")
     }
 
-    fn transpile_expr_owned<'a>(&mut self, arena: &'a Arena<'a>, expr: &'a IrExpr) -> Doc<'a> {
+    fn transpile_expr_owned<'a>(&mut self, arena: &'a Arena<'a>, expr: &'a WriterExpr) -> Doc<'a> {
         match expr {
             // Unboxing a field read already produces an owned value.
-            IrExpr::FieldAccess { record, field, .. }
+            WriterExpr::FieldAccess { record, field, .. }
                 if self.field_unboxing(record, field).is_some() =>
             {
                 self.transpile_expr(arena, expr)
             }
-            IrExpr::FieldAccess { .. } | IrExpr::VariableReference { .. } => {
+            WriterExpr::FieldAccess { .. } | WriterExpr::VariableReference { .. } => {
                 let method = match expr.as_type() {
                     Type::Array(_) => ".to_vec()",
                     Type::String => ".to_string()",
@@ -148,37 +149,37 @@ impl RustTranspiler {
             }
             // Every other variant constructs a fresh value, so it is already
             // owned.
-            IrExpr::StringLiteral { .. }
-            | IrExpr::FragmentLiteral { .. }
-            | IrExpr::BooleanLiteral { .. }
-            | IrExpr::FloatLiteral { .. }
-            | IrExpr::IntLiteral { .. }
-            | IrExpr::ArrayLiteral { .. }
-            | IrExpr::RecordLiteral { .. }
-            | IrExpr::EnumLiteral { .. }
-            | IrExpr::OptionLiteral { .. }
-            | IrExpr::Match { .. }
-            | IrExpr::StringConcat { .. }
-            | IrExpr::TwMerge { .. }
-            | IrExpr::NumericAdd { .. }
-            | IrExpr::NumericSubtract { .. }
-            | IrExpr::NumericMultiply { .. }
-            | IrExpr::BooleanNegation { .. }
-            | IrExpr::NumericNegation { .. }
-            | IrExpr::BooleanLogicalAnd { .. }
-            | IrExpr::BooleanLogicalOr { .. }
-            | IrExpr::Equals { .. }
-            | IrExpr::LessThan { .. }
-            | IrExpr::LessThanOrEqual { .. }
-            | IrExpr::Let { .. }
-            | IrExpr::ArrayLength { .. }
-            | IrExpr::ArrayIsEmpty { .. }
-            | IrExpr::StringIsEmpty { .. }
-            | IrExpr::OptionIsSome { .. }
-            | IrExpr::OptionIsNone { .. }
-            | IrExpr::IntToString { .. }
-            | IrExpr::FloatToInt { .. }
-            | IrExpr::IntToFloat { .. } => self.transpile_expr(arena, expr),
+            WriterExpr::StringLiteral { .. }
+            | WriterExpr::FragmentLiteral { .. }
+            | WriterExpr::BooleanLiteral { .. }
+            | WriterExpr::FloatLiteral { .. }
+            | WriterExpr::IntLiteral { .. }
+            | WriterExpr::ArrayLiteral { .. }
+            | WriterExpr::RecordLiteral { .. }
+            | WriterExpr::EnumLiteral { .. }
+            | WriterExpr::OptionLiteral { .. }
+            | WriterExpr::Match { .. }
+            | WriterExpr::StringConcat { .. }
+            | WriterExpr::TwMerge { .. }
+            | WriterExpr::NumericAdd { .. }
+            | WriterExpr::NumericSubtract { .. }
+            | WriterExpr::NumericMultiply { .. }
+            | WriterExpr::BooleanNegation { .. }
+            | WriterExpr::NumericNegation { .. }
+            | WriterExpr::BooleanLogicalAnd { .. }
+            | WriterExpr::BooleanLogicalOr { .. }
+            | WriterExpr::Equals { .. }
+            | WriterExpr::LessThan { .. }
+            | WriterExpr::LessThanOrEqual { .. }
+            | WriterExpr::Let { .. }
+            | WriterExpr::ArrayLength { .. }
+            | WriterExpr::ArrayIsEmpty { .. }
+            | WriterExpr::StringIsEmpty { .. }
+            | WriterExpr::OptionIsSome { .. }
+            | WriterExpr::OptionIsNone { .. }
+            | WriterExpr::IntToString { .. }
+            | WriterExpr::FloatToInt { .. }
+            | WriterExpr::IntToFloat { .. } => self.transpile_expr(arena, expr),
         }
     }
 
@@ -195,7 +196,7 @@ impl RustTranspiler {
 
     /// The field positions that need `Box` for every declared type to be
     /// finitely sized, as `(declaring type, referenced type)` pairs.
-    fn compute_boxed_edges(module: &IrModule) -> HashSet<(TypeName, TypeName)> {
+    fn compute_boxed_edges(module: &WriterModule) -> HashSet<(TypeName, TypeName)> {
         let mut graph = DependencyGraph::new();
         for record in &module.records {
             let mut refs = BTreeSet::new();
@@ -288,7 +289,7 @@ impl RustTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         owner: &str,
-        value: &'a IrExpr,
+        value: &'a WriterExpr,
     ) -> Doc<'a> {
         match self.boxing(value.as_type(), owner) {
             Some(BoxConversion::Direct) => arena
@@ -303,7 +304,7 @@ impl RustTranspiler {
     }
 
     /// The conversion undoing the `Box` on reads of `field` off `object`.
-    fn field_unboxing(&self, object: &IrExpr, field: &FieldName) -> Option<BoxConversion> {
+    fn field_unboxing(&self, object: &WriterExpr, field: &FieldName) -> Option<BoxConversion> {
         let Some(ResolvedType::Record { name, fields, .. }) =
             self.registry.resolve(object.as_type())
         else {
@@ -374,7 +375,7 @@ impl RustTranspiler {
     fn transpile_view_struct<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        view: &'a IrViewDeclaration,
+        view: &'a WriterViewDeclaration,
     ) -> Doc<'a> {
         let struct_name = view.name.as_str();
         if view.parameters.is_empty() {
@@ -416,7 +417,7 @@ impl Transpiler for RustTranspiler {
         &self.registry
     }
 
-    fn transpile_module(&mut self, module: &IrModule, registry: &TypeRegistry) -> String {
+    fn transpile_module(&mut self, module: &WriterModule, registry: &TypeRegistry) -> String {
         // Reset tracking flags for this module
         self.needs_escape_html = false;
         self.needs_fragment = false;
@@ -620,7 +621,7 @@ impl Transpiler for RustTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         name: &'a TypeName,
-        view: &'a IrViewDeclaration,
+        view: &'a WriterViewDeclaration,
     ) -> Doc<'a> {
         let struct_name = name.as_str();
 
@@ -687,7 +688,7 @@ impl Transpiler for RustTranspiler {
     fn transpile_component_def<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        component: &'a IrComponentDeclaration,
+        component: &'a WriterComponentDeclaration,
     ) -> Doc<'a> {
         let func_name = format!("render_{}", component.name.to_snake_case());
 
@@ -731,7 +732,7 @@ impl Transpiler for RustTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         name: &'a TypeName,
-        args: &'a [IrArgument],
+        args: &'a [WriterArgument],
     ) -> Doc<'a> {
         let func_name = format!("render_{}", name.to_snake_case());
 
@@ -770,7 +771,7 @@ impl Transpiler for RustTranspiler {
     fn transpile_write_string_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        expr: &'a IrExpr,
+        expr: &'a WriterExpr,
     ) -> Doc<'a> {
         self.needs_escape_html = true;
         arena
@@ -782,7 +783,7 @@ impl Transpiler for RustTranspiler {
     fn transpile_write_fragment_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        expr: &'a IrExpr,
+        expr: &'a WriterExpr,
     ) -> Doc<'a> {
         arena
             .text("output.push_str(&")
@@ -795,19 +796,19 @@ impl Transpiler for RustTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         var: Option<&'a IrVar>,
-        source: &'a IrForSource,
-        body: &'a [IrStatement],
+        source: &'a WriterForSource,
+        body: &'a [WriterStatement],
     ) -> Doc<'a> {
         let var_name = var.map_or_else(|| "_".to_string(), var_ident);
 
         let doc = match source {
-            IrForSource::Array(array) => arena
+            WriterForSource::Array(array) => arena
                 .text("for ")
                 .append(arena.text(var_name))
                 .append(arena.text(" in "))
                 .append(self.transpile_expr(arena, array))
                 .append(arena.text(".iter() {")),
-            IrForSource::RangeInclusive { start, end } => arena
+            WriterForSource::RangeInclusive { start, end } => arena
                 .text("for ")
                 .append(arena.text(var_name))
                 .append(arena.text(" in "))
@@ -818,12 +819,12 @@ impl Transpiler for RustTranspiler {
         };
 
         let rebinds: Vec<(String, String)> = match source {
-            IrForSource::Array(_) => var
+            WriterForSource::Array(_) => var
                 .into_iter()
                 .map(var_ident)
                 .map(|v| (v.clone(), format!("{}.clone()", v)))
                 .collect(),
-            IrForSource::RangeInclusive { .. } => Vec::new(),
+            WriterForSource::RangeInclusive { .. } => Vec::new(),
         };
         doc.append(
             arena
@@ -839,8 +840,8 @@ impl Transpiler for RustTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         var: &'a IrVar,
-        value: &'a IrExpr,
-        body: &'a [IrStatement],
+        value: &'a WriterExpr,
+        body: &'a [WriterStatement],
     ) -> Doc<'a> {
         let binding = arena
             .text("let ")
@@ -861,7 +862,7 @@ impl Transpiler for RustTranspiler {
     fn transpile_match_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        match_: &'a Match<IrExpr, Vec<IrStatement>, IrVar>,
+        match_: &'a Match<WriterExpr, Vec<WriterStatement>, IrVar>,
     ) -> Doc<'a> {
         match match_ {
             Match::Bool {
@@ -1053,7 +1054,7 @@ impl Transpiler for RustTranspiler {
     fn transpile_statements<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        statements: &'a [IrStatement],
+        statements: &'a [WriterStatement],
     ) -> Doc<'a> {
         let mut docs: Vec<Doc<'a>> = Vec::new();
         for stmt in statements {
@@ -1116,47 +1117,47 @@ impl Transpiler for RustTranspiler {
     fn transpile_field_access<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        object: &'a IrExpr,
+        object: &'a WriterExpr,
         field: &'a FieldName,
     ) -> Doc<'a> {
         let boxed = self.field_unboxing(object, field);
         let object_doc = match object {
-            IrExpr::RecordLiteral { .. } => arena
+            WriterExpr::RecordLiteral { .. } => arena
                 .text("(")
                 .append(self.transpile_expr(arena, object))
                 .append(arena.text(")")),
-            IrExpr::VariableReference { .. }
-            | IrExpr::FieldAccess { .. }
-            | IrExpr::StringLiteral { .. }
-            | IrExpr::FragmentLiteral { .. }
-            | IrExpr::BooleanLiteral { .. }
-            | IrExpr::FloatLiteral { .. }
-            | IrExpr::IntLiteral { .. }
-            | IrExpr::ArrayLiteral { .. }
-            | IrExpr::EnumLiteral { .. }
-            | IrExpr::OptionLiteral { .. }
-            | IrExpr::Match { .. }
-            | IrExpr::StringConcat { .. }
-            | IrExpr::TwMerge { .. }
-            | IrExpr::NumericAdd { .. }
-            | IrExpr::NumericSubtract { .. }
-            | IrExpr::NumericMultiply { .. }
-            | IrExpr::BooleanNegation { .. }
-            | IrExpr::NumericNegation { .. }
-            | IrExpr::BooleanLogicalAnd { .. }
-            | IrExpr::BooleanLogicalOr { .. }
-            | IrExpr::Equals { .. }
-            | IrExpr::LessThan { .. }
-            | IrExpr::LessThanOrEqual { .. }
-            | IrExpr::Let { .. }
-            | IrExpr::ArrayLength { .. }
-            | IrExpr::ArrayIsEmpty { .. }
-            | IrExpr::StringIsEmpty { .. }
-            | IrExpr::OptionIsSome { .. }
-            | IrExpr::OptionIsNone { .. }
-            | IrExpr::IntToString { .. }
-            | IrExpr::FloatToInt { .. }
-            | IrExpr::IntToFloat { .. } => self.transpile_expr(arena, object),
+            WriterExpr::VariableReference { .. }
+            | WriterExpr::FieldAccess { .. }
+            | WriterExpr::StringLiteral { .. }
+            | WriterExpr::FragmentLiteral { .. }
+            | WriterExpr::BooleanLiteral { .. }
+            | WriterExpr::FloatLiteral { .. }
+            | WriterExpr::IntLiteral { .. }
+            | WriterExpr::ArrayLiteral { .. }
+            | WriterExpr::EnumLiteral { .. }
+            | WriterExpr::OptionLiteral { .. }
+            | WriterExpr::Match { .. }
+            | WriterExpr::StringConcat { .. }
+            | WriterExpr::TwMerge { .. }
+            | WriterExpr::NumericAdd { .. }
+            | WriterExpr::NumericSubtract { .. }
+            | WriterExpr::NumericMultiply { .. }
+            | WriterExpr::BooleanNegation { .. }
+            | WriterExpr::NumericNegation { .. }
+            | WriterExpr::BooleanLogicalAnd { .. }
+            | WriterExpr::BooleanLogicalOr { .. }
+            | WriterExpr::Equals { .. }
+            | WriterExpr::LessThan { .. }
+            | WriterExpr::LessThanOrEqual { .. }
+            | WriterExpr::Let { .. }
+            | WriterExpr::ArrayLength { .. }
+            | WriterExpr::ArrayIsEmpty { .. }
+            | WriterExpr::StringIsEmpty { .. }
+            | WriterExpr::OptionIsSome { .. }
+            | WriterExpr::OptionIsNone { .. }
+            | WriterExpr::IntToString { .. }
+            | WriterExpr::FloatToInt { .. }
+            | WriterExpr::IntToFloat { .. } => self.transpile_expr(arena, object),
         };
         let access = object_doc
             .append(arena.text("."))
@@ -1183,7 +1184,11 @@ impl Transpiler for RustTranspiler {
 
     /// The fragment body renders into its own `output` buffer, so it is
     /// emitted as a block expression that shadows `output`.
-    fn transpile_fragment<'a>(&mut self, arena: &'a Arena<'a>, body: &'a [IrStatement]) -> Doc<'a> {
+    fn transpile_fragment<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        body: &'a [WriterStatement],
+    ) -> Doc<'a> {
         self.needs_fragment = true;
         arena
             .text("{")
@@ -1236,7 +1241,7 @@ impl Transpiler for RustTranspiler {
     fn transpile_array_literal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        elements: &'a [IrExpr],
+        elements: &'a [WriterExpr],
         elem_type: &'a Type,
     ) -> Doc<'a> {
         if elements.is_empty() {
@@ -1259,8 +1264,8 @@ impl Transpiler for RustTranspiler {
     fn transpile_string_equals<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a IrExpr,
-        right: &'a IrExpr,
+        left: &'a WriterExpr,
+        right: &'a WriterExpr,
     ) -> Doc<'a> {
         arena
             .text("(")
@@ -1273,8 +1278,8 @@ impl Transpiler for RustTranspiler {
     fn transpile_bool_equals<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a IrExpr,
-        right: &'a IrExpr,
+        left: &'a WriterExpr,
+        right: &'a WriterExpr,
     ) -> Doc<'a> {
         arena
             .text("(")
@@ -1287,8 +1292,8 @@ impl Transpiler for RustTranspiler {
     fn transpile_int_equals<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a IrExpr,
-        right: &'a IrExpr,
+        left: &'a WriterExpr,
+        right: &'a WriterExpr,
     ) -> Doc<'a> {
         arena
             .text("(")
@@ -1301,8 +1306,8 @@ impl Transpiler for RustTranspiler {
     fn transpile_float_equals<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a IrExpr,
-        right: &'a IrExpr,
+        left: &'a WriterExpr,
+        right: &'a WriterExpr,
     ) -> Doc<'a> {
         arena
             .text("(")
@@ -1315,8 +1320,8 @@ impl Transpiler for RustTranspiler {
     fn transpile_int_less_than<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a IrExpr,
-        right: &'a IrExpr,
+        left: &'a WriterExpr,
+        right: &'a WriterExpr,
     ) -> Doc<'a> {
         arena
             .text("(")
@@ -1329,8 +1334,8 @@ impl Transpiler for RustTranspiler {
     fn transpile_float_less_than<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a IrExpr,
-        right: &'a IrExpr,
+        left: &'a WriterExpr,
+        right: &'a WriterExpr,
     ) -> Doc<'a> {
         arena
             .text("(")
@@ -1343,8 +1348,8 @@ impl Transpiler for RustTranspiler {
     fn transpile_int_less_than_or_equal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a IrExpr,
-        right: &'a IrExpr,
+        left: &'a WriterExpr,
+        right: &'a WriterExpr,
     ) -> Doc<'a> {
         arena
             .text("(")
@@ -1357,8 +1362,8 @@ impl Transpiler for RustTranspiler {
     fn transpile_float_less_than_or_equal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a IrExpr,
-        right: &'a IrExpr,
+        left: &'a WriterExpr,
+        right: &'a WriterExpr,
     ) -> Doc<'a> {
         arena
             .text("(")
@@ -1368,11 +1373,15 @@ impl Transpiler for RustTranspiler {
             .append(arena.text(")"))
     }
 
-    fn transpile_not<'a>(&mut self, arena: &'a Arena<'a>, operand: &'a IrExpr) -> Doc<'a> {
+    fn transpile_not<'a>(&mut self, arena: &'a Arena<'a>, operand: &'a WriterExpr) -> Doc<'a> {
         arena.text("!").append(self.transpile_expr(arena, operand))
     }
 
-    fn transpile_int_negation<'a>(&mut self, arena: &'a Arena<'a>, operand: &'a IrExpr) -> Doc<'a> {
+    fn transpile_int_negation<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        operand: &'a WriterExpr,
+    ) -> Doc<'a> {
         arena
             .text("(")
             .append(self.transpile_expr(arena, operand))
@@ -1382,7 +1391,7 @@ impl Transpiler for RustTranspiler {
     fn transpile_float_negation<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        operand: &'a IrExpr,
+        operand: &'a WriterExpr,
     ) -> Doc<'a> {
         arena
             .text("(-")
@@ -1393,8 +1402,8 @@ impl Transpiler for RustTranspiler {
     fn transpile_string_concat<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a IrExpr,
-        right: &'a IrExpr,
+        left: &'a WriterExpr,
+        right: &'a WriterExpr,
     ) -> Doc<'a> {
         arena
             .text("format!(\"{}{}\", ")
@@ -1407,8 +1416,8 @@ impl Transpiler for RustTranspiler {
     fn transpile_logical_and<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a IrExpr,
-        right: &'a IrExpr,
+        left: &'a WriterExpr,
+        right: &'a WriterExpr,
     ) -> Doc<'a> {
         arena
             .text("(")
@@ -1421,8 +1430,8 @@ impl Transpiler for RustTranspiler {
     fn transpile_logical_or<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a IrExpr,
-        right: &'a IrExpr,
+        left: &'a WriterExpr,
+        right: &'a WriterExpr,
     ) -> Doc<'a> {
         arena
             .text("(")
@@ -1435,8 +1444,8 @@ impl Transpiler for RustTranspiler {
     fn transpile_int_add<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a IrExpr,
-        right: &'a IrExpr,
+        left: &'a WriterExpr,
+        right: &'a WriterExpr,
     ) -> Doc<'a> {
         arena
             .text("(")
@@ -1449,8 +1458,8 @@ impl Transpiler for RustTranspiler {
     fn transpile_float_add<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a IrExpr,
-        right: &'a IrExpr,
+        left: &'a WriterExpr,
+        right: &'a WriterExpr,
     ) -> Doc<'a> {
         arena
             .text("(")
@@ -1463,8 +1472,8 @@ impl Transpiler for RustTranspiler {
     fn transpile_int_subtract<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a IrExpr,
-        right: &'a IrExpr,
+        left: &'a WriterExpr,
+        right: &'a WriterExpr,
     ) -> Doc<'a> {
         arena
             .text("(")
@@ -1477,8 +1486,8 @@ impl Transpiler for RustTranspiler {
     fn transpile_float_subtract<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a IrExpr,
-        right: &'a IrExpr,
+        left: &'a WriterExpr,
+        right: &'a WriterExpr,
     ) -> Doc<'a> {
         arena
             .text("(")
@@ -1491,8 +1500,8 @@ impl Transpiler for RustTranspiler {
     fn transpile_int_multiply<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a IrExpr,
-        right: &'a IrExpr,
+        left: &'a WriterExpr,
+        right: &'a WriterExpr,
     ) -> Doc<'a> {
         arena
             .text("(")
@@ -1505,8 +1514,8 @@ impl Transpiler for RustTranspiler {
     fn transpile_float_multiply<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a IrExpr,
-        right: &'a IrExpr,
+        left: &'a WriterExpr,
+        right: &'a WriterExpr,
     ) -> Doc<'a> {
         arena
             .text("(")
@@ -1520,7 +1529,7 @@ impl Transpiler for RustTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         record_name: &'a str,
-        fields: &'a [(FieldName, IrExpr)],
+        fields: &'a [(FieldName, WriterExpr)],
     ) -> Doc<'a> {
         if fields.is_empty() {
             arena.text(record_name).append(arena.text(" {}"))
@@ -1548,7 +1557,7 @@ impl Transpiler for RustTranspiler {
         arena: &'a Arena<'a>,
         enum_name: &'a str,
         variant_name: &'a str,
-        fields: &'a [(FieldName, IrExpr)],
+        fields: &'a [(FieldName, WriterExpr)],
     ) -> Doc<'a> {
         if fields.is_empty() {
             arena
@@ -1579,7 +1588,7 @@ impl Transpiler for RustTranspiler {
     fn transpile_option_literal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        value: Option<&'a IrExpr>,
+        value: Option<&'a WriterExpr>,
         inner_type: &'a Type,
     ) -> Doc<'a> {
         match value {
@@ -1597,7 +1606,7 @@ impl Transpiler for RustTranspiler {
     fn transpile_match_expr<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        match_: &'a Match<IrExpr, IrExpr, IrVar>,
+        match_: &'a Match<WriterExpr, WriterExpr, IrVar>,
     ) -> Doc<'a> {
         match match_ {
             Match::Bool {
@@ -1737,8 +1746,8 @@ impl Transpiler for RustTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         var: &'a IrVar,
-        value: &'a IrExpr,
-        body: &'a IrExpr,
+        value: &'a WriterExpr,
+        body: &'a WriterExpr,
     ) -> Doc<'a> {
         arena
             .text("{ let ")
@@ -1750,14 +1759,22 @@ impl Transpiler for RustTranspiler {
             .append(arena.text(" }"))
     }
 
-    fn transpile_array_length<'a>(&mut self, arena: &'a Arena<'a>, array: &'a IrExpr) -> Doc<'a> {
+    fn transpile_array_length<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        array: &'a WriterExpr,
+    ) -> Doc<'a> {
         arena
             .text("(")
             .append(self.transpile_expr(arena, array))
             .append(arena.text(".len() as i32)"))
     }
 
-    fn transpile_array_is_empty<'a>(&mut self, arena: &'a Arena<'a>, array: &'a IrExpr) -> Doc<'a> {
+    fn transpile_array_is_empty<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        array: &'a WriterExpr,
+    ) -> Doc<'a> {
         self.transpile_expr(arena, array)
             .append(arena.text(".is_empty()"))
     }
@@ -1765,7 +1782,7 @@ impl Transpiler for RustTranspiler {
     fn transpile_string_is_empty<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        string: &'a IrExpr,
+        string: &'a WriterExpr,
     ) -> Doc<'a> {
         self.transpile_expr(arena, string)
             .append(arena.text(".is_empty()"))
@@ -1774,7 +1791,7 @@ impl Transpiler for RustTranspiler {
     fn transpile_option_is_some<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        option: &'a IrExpr,
+        option: &'a WriterExpr,
     ) -> Doc<'a> {
         self.transpile_expr(arena, option)
             .append(arena.text(".is_some()"))
@@ -1783,27 +1800,39 @@ impl Transpiler for RustTranspiler {
     fn transpile_option_is_none<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        option: &'a IrExpr,
+        option: &'a WriterExpr,
     ) -> Doc<'a> {
         self.transpile_expr(arena, option)
             .append(arena.text(".is_none()"))
     }
 
-    fn transpile_int_to_string<'a>(&mut self, arena: &'a Arena<'a>, value: &'a IrExpr) -> Doc<'a> {
+    fn transpile_int_to_string<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        value: &'a WriterExpr,
+    ) -> Doc<'a> {
         arena
             .text("(")
             .append(self.transpile_expr(arena, value))
             .append(arena.text(").to_string()"))
     }
 
-    fn transpile_float_to_int<'a>(&mut self, arena: &'a Arena<'a>, value: &'a IrExpr) -> Doc<'a> {
+    fn transpile_float_to_int<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        value: &'a WriterExpr,
+    ) -> Doc<'a> {
         arena
             .text("(")
             .append(self.transpile_expr(arena, value))
             .append(arena.text(" as i32)"))
     }
 
-    fn transpile_int_to_float<'a>(&mut self, arena: &'a Arena<'a>, value: &'a IrExpr) -> Doc<'a> {
+    fn transpile_int_to_float<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        value: &'a WriterExpr,
+    ) -> Doc<'a> {
         arena
             .text("(")
             .append(self.transpile_expr(arena, value))
@@ -1814,11 +1843,13 @@ impl Transpiler for RustTranspiler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::ir_module_builder::{IrModuleBodiesBuilder, IrModuleBuilder};
+    use crate::ir::lower_pure;
+    use crate::ir::pure_module_builder::{PureModuleBodiesBuilder, PureModuleBuilder};
     use expect_test::{Expect, expect};
 
-    fn check(builder: impl Into<IrModuleBodiesBuilder>, expected: Expect) {
+    fn check(builder: impl Into<PureModuleBodiesBuilder>, expected: Expect) {
         let (module, registry) = builder.into().build_with_registry();
+        let module = lower_pure(module);
         let before = module.to_string();
         let after = RustTranspiler::new().transpile_module(&module, &registry);
         let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
@@ -1828,9 +1859,7 @@ mod tests {
     #[test]
     fn simple_component() {
         check(
-            IrModuleBuilder::new().view_no_params("Test", |t| {
-                t.write("<h1>Hello, World!</h1>\n");
-            }),
+            PureModuleBuilder::new().view_no_params("Test", |t| t.raw("<h1>Hello, World!</h1>\n")),
             expect![[r#"
                 -- before --
                 view Test() {
@@ -1867,12 +1896,10 @@ mod tests {
     #[test]
     fn view_structs_grouped_above_impls() {
         check(
-            IrModuleBuilder::new()
-                .view_no_params("First", |t| {
-                    t.write("<h1>First</h1>");
-                })
+            PureModuleBuilder::new()
+                .view_no_params("First", |t| t.raw("<h1>First</h1>"))
                 .view("Second", [("title", "String")], |t| {
-                    t.write_string(t.var("title"));
+                    t.escape(t.var("title"))
                 }),
             expect![[r#"
                 -- before --
@@ -1943,10 +1970,8 @@ mod tests {
     #[test]
     fn conditional_display() {
         check(
-            IrModuleBuilder::new().view("Test", [("show", "Bool")], |t| {
-                t.if_stmt(t.var("show"), |t| {
-                    t.write("<h1>Visible</h1>");
-                });
+            PureModuleBuilder::new().view("Test", [("show", "Bool")], |t| {
+                t.bool_match_expr(t.var("show"), t.raw("<h1>Visible</h1>"), t.concat(vec![]))
             }),
             expect![[r#"
                 -- before --
@@ -1995,10 +2020,10 @@ mod tests {
     #[test]
     fn for_loop_with_range() {
         check(
-            IrModuleBuilder::new().view_no_params("Test", |t| {
-                t.for_range(Some("i"), t.int(1), t.int(3), |t| {
-                    t.write_string(t.int_to_string(t.var("i")));
-                });
+            PureModuleBuilder::new().view_no_params("Test", |t| {
+                t.fragment_for_range(Some("i"), t.int(1), t.int(3), |t| {
+                    t.escape(t.int_to_string(t.var("i")))
+                })
             }),
             expect![[r#"
                 -- before --
@@ -2053,18 +2078,13 @@ mod tests {
     #[test]
     fn option_match_statement_on_expression_subject() {
         check(
-            IrModuleBuilder::new().view_no_params("Test", |t| {
-                t.option_match_stmt(
+            PureModuleBuilder::new().view_no_params("Test", |t| {
+                t.option_match_expr_with_binding(
                     t.some(t.str("x")),
-                    Some("value"),
-                    |t| {
-                        t.write("some: ");
-                        t.write_string(t.var("value"));
-                    },
-                    |t| {
-                        t.write("none");
-                    },
-                );
+                    "value",
+                    |t| t.concat(vec![t.raw("some: "), t.escape(t.var("value"))]),
+                    t.raw("none"),
+                )
             }),
             expect![[r#"
                 -- before --
@@ -2132,18 +2152,13 @@ mod tests {
     #[test]
     fn option_match_statement() {
         check(
-            IrModuleBuilder::new().view("Test", [("opt", "Option[String]")], |t| {
-                t.option_match_stmt(
+            PureModuleBuilder::new().view("Test", [("opt", "Option[String]")], |t| {
+                t.option_match_expr_with_binding(
                     t.var("opt"),
-                    Some("value"),
-                    |t| {
-                        t.write("some: ");
-                        t.write_string(t.var("value"));
-                    },
-                    |t| {
-                        t.write("none");
-                    },
-                );
+                    "value",
+                    |t| t.concat(vec![t.raw("some: "), t.escape(t.var("value"))]),
+                    t.raw("none"),
+                )
             }),
             expect![[r#"
                 -- before --
@@ -2214,10 +2229,10 @@ mod tests {
     #[test]
     fn recursive_record_boxes_recursive_field() {
         check(
-            IrModuleBuilder::new()
+            PureModuleBuilder::new()
                 .record("Node", [("value", "Int"), ("next", "Option[Node]")])
                 .view("Test", [("node", "Node")], |t| {
-                    t.write_string(t.int_to_string(t.field_access(t.var("node"), "value")));
+                    t.escape(t.int_to_string(t.field_access(t.var("node"), "value")))
                 }),
             expect![[r#"
                 -- before --
@@ -2281,7 +2296,7 @@ mod tests {
     #[test]
     fn recursive_enum_boxes_recursive_field() {
         check(
-            IrModuleBuilder::new()
+            PureModuleBuilder::new()
                 .enum_(
                     "IntList",
                     [
@@ -2289,9 +2304,7 @@ mod tests {
                         ("Nil", vec![]),
                     ],
                 )
-                .view_no_params("Test", |t| {
-                    t.write("hello");
-                }),
+                .view_no_params("Test", |t| t.raw("hello")),
             expect![[r#"
                 -- before --
                 enum IntList {
@@ -2338,15 +2351,15 @@ mod tests {
     #[test]
     fn recursive_record_literal_boxes_field_values() {
         check(
-            IrModuleBuilder::new()
+            PureModuleBuilder::new()
                 .record("Node", [("value", "Int"), ("next", "Option[Node]")])
                 .view_no_params("Test", |t| {
                     let inner =
                         t.record("Node", vec![("value", t.int(1)), ("next", t.none("Node"))]);
                     let node = t.record("Node", vec![("value", t.int(2)), ("next", t.some(inner))]);
-                    t.let_stmt("node", node, |t| {
-                        t.write_string(t.int_to_string(t.field_access(t.var("node"), "value")));
-                    });
+                    t.let_expr("node", node, |t| {
+                        t.escape(t.int_to_string(t.field_access(t.var("node"), "value")))
+                    })
                 }),
             expect![[r#"
                 -- before --
@@ -2416,7 +2429,7 @@ mod tests {
     #[test]
     fn recursive_enum_literal_boxes_field_values() {
         check(
-            IrModuleBuilder::new()
+            PureModuleBuilder::new()
                 .enum_(
                     "IntList",
                     [
@@ -2433,9 +2446,7 @@ mod tests {
                             ("tail", t.enum_variant("IntList", "Nil")),
                         ],
                     );
-                    t.let_stmt("list", list, |t| {
-                        t.write("done");
-                    });
+                    t.let_expr("list", list, |t| t.raw("done"))
                 }),
             expect![[r#"
                 -- before --
@@ -2486,16 +2497,14 @@ mod tests {
     #[test]
     fn mutually_recursive_records_boxes_in_both_directions() {
         check(
-            IrModuleBuilder::new()
+            PureModuleBuilder::new()
                 .record("A", [("b", "B")])
                 .record("B", [("a", "Option[A]")])
                 .view_no_params("Test", |t| {
                     let inner_b = t.record("B", vec![("a", t.none("A"))]);
                     let a = t.record("A", vec![("b", inner_b)]);
                     let b = t.record("B", vec![("a", t.some(a))]);
-                    t.let_stmt("b", b, |t| {
-                        t.write("done");
-                    });
+                    t.let_expr("b", b, |t| t.raw("done"))
                 }),
             expect![[r#"
                 -- before --
@@ -2556,17 +2565,17 @@ mod tests {
     #[test]
     fn component_with_enum_param() {
         check(
-            IrModuleBuilder::new()
+            PureModuleBuilder::new()
                 .enum_unit("Color", ["Red", "Green", "Blue"])
                 .view_no_params("Test", |t| {
-                    t.invoke_component("Badge", vec![("color", t.enum_variant("Color", "Green"))]);
+                    t.call("Badge", vec![("color", t.enum_variant("Color", "Green"))])
                 })
                 .component("Badge", [("color", "Color")], |t| {
-                    t.enum_match_stmt(t.var("color"), |m| {
-                        m.arm("Red", |t| t.write("red"));
-                        m.arm("Green", |t| t.write("green"));
-                        m.arm("Blue", |t| t.write("blue"));
-                    });
+                    t.enum_match_expr(t.var("color"), |m| {
+                        m.arm("Red", |t| t.raw("red"));
+                        m.arm("Green", |t| t.raw("green"));
+                        m.arm("Blue", |t| t.raw("blue"));
+                    })
                 }),
             expect![[r#"
                 -- before --
@@ -2644,16 +2653,8 @@ mod tests {
     #[test]
     fn transpiles_let_fragment_as_rust_block() {
         check(
-            IrModuleBuilder::new().view_no_params("Test", |t| {
-                t.let_fragment(
-                    "v_0",
-                    |t| {
-                        t.write("<b>hi</b>");
-                    },
-                    |t| {
-                        t.write_fragment(t.var("v_0"));
-                    },
-                );
+            PureModuleBuilder::new().view_no_params("Test", |t| {
+                t.let_expr("v_0", t.raw("<b>hi</b>"), |t| t.var("v_0"))
             }),
             expect![[r#"
                 -- before --

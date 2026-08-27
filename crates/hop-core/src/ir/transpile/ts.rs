@@ -4,9 +4,11 @@ use super::{Doc, Transpiler};
 use crate::expr::patterns::{EnumPattern, Match};
 use crate::expr::typing::r#type::Type;
 use crate::expr::typing::type_registry::TypeRegistry;
-use crate::ir::ir_module::{
-    IrArgument, IrComponentDeclaration, IrExpr, IrForSource, IrModule, IrParameter, IrStatement,
-    IrVar, IrViewDeclaration, VarId, VarIdCounter,
+use crate::ir::ir_var::IrVar;
+use crate::ir::var_id::{VarId, VarIdCounter};
+use crate::ir::writer_module::{
+    WriterArgument, WriterComponentDeclaration, WriterExpr, WriterForSource, WriterModule,
+    WriterParameter, WriterStatement, WriterViewDeclaration,
 };
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
@@ -29,7 +31,7 @@ fn var_id_ident(id: VarId) -> String {
 
 /// Destructuring entry for a parameter: `name: v_0`. The property name stays
 /// the source name, since it is the caller-facing argument name.
-fn transpile_param_binding<'a>(arena: &'a Arena<'a>, param: &'a IrParameter) -> Doc<'a> {
+fn transpile_param_binding<'a>(arena: &'a Arena<'a>, param: &'a WriterParameter) -> Doc<'a> {
     arena
         .text(param.name().as_str())
         .append(arena.text(": "))
@@ -72,7 +74,7 @@ impl TsTranspiler {
         var: &'a IrVar,
         binding_type: Doc<'a>,
         value: Doc<'a>,
-        body: &'a [IrStatement],
+        body: &'a [WriterStatement],
     ) -> Doc<'a> {
         let declaration = arena
             .text("const ")
@@ -115,7 +117,7 @@ impl TsTranspiler {
     fn transpile_parameter_list<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        parameters: &'a [IrParameter],
+        parameters: &'a [WriterParameter],
     ) -> Doc<'a> {
         if parameters.is_empty() {
             return arena.nil();
@@ -152,7 +154,7 @@ impl TsTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         base: Doc<'a>,
-        fields: &'a [(FieldName, IrExpr)],
+        fields: &'a [(FieldName, WriterExpr)],
     ) -> Doc<'a> {
         if fields.is_empty() {
             return base.append(arena.text(")"));
@@ -182,7 +184,7 @@ impl TsTranspiler {
     fn bind_match_subject_stmt<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        subject: &'a IrExpr,
+        subject: &'a WriterExpr,
         name: String,
         switch_doc: Doc<'a>,
     ) -> Doc<'a> {
@@ -203,7 +205,7 @@ impl TsTranspiler {
     fn bind_match_subject_expr<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        subject: &'a IrExpr,
+        subject: &'a WriterExpr,
         name: String,
         switch_body: Doc<'a>,
     ) -> Doc<'a> {
@@ -221,9 +223,13 @@ impl TsTranspiler {
             .group()
     }
 
-    fn transpile_bool_subject<'a>(&mut self, arena: &'a Arena<'a>, subject: &'a IrExpr) -> Doc<'a> {
+    fn transpile_bool_subject<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        subject: &'a WriterExpr,
+    ) -> Doc<'a> {
         match subject {
-            IrExpr::BooleanLiteral { .. } => self.transpile_expr(arena, subject),
+            WriterExpr::BooleanLiteral { .. } => self.transpile_expr(arena, subject),
             _ => arena
                 .text("(")
                 .append(self.transpile_expr(arena, subject))
@@ -243,7 +249,7 @@ impl Transpiler for TsTranspiler {
         &self.registry
     }
 
-    fn transpile_module(&mut self, module: &IrModule, registry: &TypeRegistry) -> String {
+    fn transpile_module(&mut self, module: &WriterModule, registry: &TypeRegistry) -> String {
         // Reset tracking flags for this module
         self.needs_option = false;
         self.needs_escape_html = false;
@@ -597,7 +603,7 @@ impl Transpiler for TsTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         name: &'a TypeName,
-        view: &'a IrViewDeclaration,
+        view: &'a WriterViewDeclaration,
     ) -> Doc<'a> {
         let parameters = self.transpile_parameter_list(arena, &view.parameters);
         arena
@@ -624,7 +630,7 @@ impl Transpiler for TsTranspiler {
     fn transpile_component_def<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        component: &'a IrComponentDeclaration,
+        component: &'a WriterComponentDeclaration,
     ) -> Doc<'a> {
         let parameters = self.transpile_parameter_list(arena, &component.parameters);
         let result = arena
@@ -656,7 +662,7 @@ impl Transpiler for TsTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         name: &'a TypeName,
-        args: &'a [IrArgument],
+        args: &'a [WriterArgument],
     ) -> Doc<'a> {
         let mut doc = arena
             .nil()
@@ -696,7 +702,7 @@ impl Transpiler for TsTranspiler {
     fn transpile_write_string_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        expr: &'a IrExpr,
+        expr: &'a WriterExpr,
     ) -> Doc<'a> {
         self.needs_escape_html = true;
         arena
@@ -709,7 +715,7 @@ impl Transpiler for TsTranspiler {
     fn transpile_write_fragment_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        expr: &'a IrExpr,
+        expr: &'a WriterExpr,
     ) -> Doc<'a> {
         arena
             .nil()
@@ -722,12 +728,12 @@ impl Transpiler for TsTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         var: Option<&'a IrVar>,
-        source: &'a IrForSource,
-        body: &'a [IrStatement],
+        source: &'a WriterForSource,
+        body: &'a [WriterStatement],
     ) -> Doc<'a> {
         let var_name = var.map_or_else(|| "_".to_string(), var_ident);
         match source {
-            IrForSource::Array(array) => {
+            WriterForSource::Array(array) => {
                 let source_name = self.fresh_var();
                 arena
                     .text("const ")
@@ -753,7 +759,7 @@ impl Transpiler for TsTranspiler {
                     )
                     .append(arena.text("}"))
             }
-            IrForSource::RangeInclusive { start, end } => {
+            WriterForSource::RangeInclusive { start, end } => {
                 let start_name = self.fresh_var();
                 let end_name = self.fresh_var();
                 arena
@@ -801,8 +807,8 @@ impl Transpiler for TsTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         var: &'a IrVar,
-        value: &'a IrExpr,
-        body: &'a [IrStatement],
+        value: &'a WriterExpr,
+        body: &'a [WriterStatement],
     ) -> Doc<'a> {
         let binding_type = self.transpile_type(arena, value.as_type());
         let value = self.transpile_expr(arena, value);
@@ -812,7 +818,7 @@ impl Transpiler for TsTranspiler {
     fn transpile_match_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        match_: &'a Match<IrExpr, Vec<IrStatement>, IrVar>,
+        match_: &'a Match<WriterExpr, Vec<WriterStatement>, IrVar>,
     ) -> Doc<'a> {
         match match_ {
             Match::Bool {
@@ -996,7 +1002,7 @@ impl Transpiler for TsTranspiler {
     fn transpile_statements<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        statements: &'a [IrStatement],
+        statements: &'a [WriterStatement],
     ) -> Doc<'a> {
         let mut docs: Vec<Doc<'a>> = Vec::new();
         for stmt in statements {
@@ -1012,7 +1018,7 @@ impl Transpiler for TsTranspiler {
     fn transpile_field_access<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        object: &'a IrExpr,
+        object: &'a WriterExpr,
         field: &'a FieldName,
     ) -> Doc<'a> {
         arena
@@ -1031,7 +1037,11 @@ impl Transpiler for TsTranspiler {
 
     /// The fragment body gets its own `output` buffer, so it is built by an
     /// immediately invoked arrow function rather than inline.
-    fn transpile_fragment<'a>(&mut self, arena: &'a Arena<'a>, body: &'a [IrStatement]) -> Doc<'a> {
+    fn transpile_fragment<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        body: &'a [WriterStatement],
+    ) -> Doc<'a> {
         self.needs_fragment = true;
         arena
             .text("(() => {")
@@ -1077,7 +1087,7 @@ impl Transpiler for TsTranspiler {
     fn transpile_array_literal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        elements: &'a [IrExpr],
+        elements: &'a [WriterExpr],
         elem_type: &'a Type,
     ) -> Doc<'a> {
         if elements.is_empty() {
@@ -1101,7 +1111,7 @@ impl Transpiler for TsTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         record_name: &'a str,
-        fields: &'a [(FieldName, IrExpr)],
+        fields: &'a [(FieldName, WriterExpr)],
     ) -> Doc<'a> {
         let base = arena
             .text("new ")
@@ -1115,7 +1125,7 @@ impl Transpiler for TsTranspiler {
         arena: &'a Arena<'a>,
         enum_name: &'a str,
         variant_name: &'a str,
-        fields: &'a [(FieldName, IrExpr)],
+        fields: &'a [(FieldName, WriterExpr)],
     ) -> Doc<'a> {
         // Call the namespace constructor function: Color.Red() or Result.Ok(value)
         let base = arena
@@ -1129,8 +1139,8 @@ impl Transpiler for TsTranspiler {
     fn transpile_string_equals<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a IrExpr,
-        right: &'a IrExpr,
+        left: &'a WriterExpr,
+        right: &'a WriterExpr,
     ) -> Doc<'a> {
         arena
             .nil()
@@ -1144,8 +1154,8 @@ impl Transpiler for TsTranspiler {
     fn transpile_bool_equals<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a IrExpr,
-        right: &'a IrExpr,
+        left: &'a WriterExpr,
+        right: &'a WriterExpr,
     ) -> Doc<'a> {
         arena
             .nil()
@@ -1159,8 +1169,8 @@ impl Transpiler for TsTranspiler {
     fn transpile_int_equals<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a IrExpr,
-        right: &'a IrExpr,
+        left: &'a WriterExpr,
+        right: &'a WriterExpr,
     ) -> Doc<'a> {
         arena
             .nil()
@@ -1174,8 +1184,8 @@ impl Transpiler for TsTranspiler {
     fn transpile_float_equals<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a IrExpr,
-        right: &'a IrExpr,
+        left: &'a WriterExpr,
+        right: &'a WriterExpr,
     ) -> Doc<'a> {
         arena
             .nil()
@@ -1189,8 +1199,8 @@ impl Transpiler for TsTranspiler {
     fn transpile_int_less_than<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a IrExpr,
-        right: &'a IrExpr,
+        left: &'a WriterExpr,
+        right: &'a WriterExpr,
     ) -> Doc<'a> {
         arena
             .nil()
@@ -1204,8 +1214,8 @@ impl Transpiler for TsTranspiler {
     fn transpile_float_less_than<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a IrExpr,
-        right: &'a IrExpr,
+        left: &'a WriterExpr,
+        right: &'a WriterExpr,
     ) -> Doc<'a> {
         arena
             .nil()
@@ -1219,8 +1229,8 @@ impl Transpiler for TsTranspiler {
     fn transpile_int_less_than_or_equal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a IrExpr,
-        right: &'a IrExpr,
+        left: &'a WriterExpr,
+        right: &'a WriterExpr,
     ) -> Doc<'a> {
         arena
             .nil()
@@ -1234,8 +1244,8 @@ impl Transpiler for TsTranspiler {
     fn transpile_float_less_than_or_equal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a IrExpr,
-        right: &'a IrExpr,
+        left: &'a WriterExpr,
+        right: &'a WriterExpr,
     ) -> Doc<'a> {
         arena
             .nil()
@@ -1246,7 +1256,7 @@ impl Transpiler for TsTranspiler {
             .append(arena.text(")"))
     }
 
-    fn transpile_not<'a>(&mut self, arena: &'a Arena<'a>, operand: &'a IrExpr) -> Doc<'a> {
+    fn transpile_not<'a>(&mut self, arena: &'a Arena<'a>, operand: &'a WriterExpr) -> Doc<'a> {
         arena
             .nil()
             .append(arena.text("!("))
@@ -1254,7 +1264,11 @@ impl Transpiler for TsTranspiler {
             .append(arena.text(")"))
     }
 
-    fn transpile_int_negation<'a>(&mut self, arena: &'a Arena<'a>, operand: &'a IrExpr) -> Doc<'a> {
+    fn transpile_int_negation<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        operand: &'a WriterExpr,
+    ) -> Doc<'a> {
         arena
             .nil()
             .append(arena.text("((-("))
@@ -1265,7 +1279,7 @@ impl Transpiler for TsTranspiler {
     fn transpile_float_negation<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        operand: &'a IrExpr,
+        operand: &'a WriterExpr,
     ) -> Doc<'a> {
         arena
             .nil()
@@ -1277,8 +1291,8 @@ impl Transpiler for TsTranspiler {
     fn transpile_string_concat<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a IrExpr,
-        right: &'a IrExpr,
+        left: &'a WriterExpr,
+        right: &'a WriterExpr,
     ) -> Doc<'a> {
         arena
             .nil()
@@ -1292,8 +1306,8 @@ impl Transpiler for TsTranspiler {
     fn transpile_logical_and<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a IrExpr,
-        right: &'a IrExpr,
+        left: &'a WriterExpr,
+        right: &'a WriterExpr,
     ) -> Doc<'a> {
         arena
             .nil()
@@ -1307,8 +1321,8 @@ impl Transpiler for TsTranspiler {
     fn transpile_logical_or<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a IrExpr,
-        right: &'a IrExpr,
+        left: &'a WriterExpr,
+        right: &'a WriterExpr,
     ) -> Doc<'a> {
         arena
             .nil()
@@ -1322,8 +1336,8 @@ impl Transpiler for TsTranspiler {
     fn transpile_int_add<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a IrExpr,
-        right: &'a IrExpr,
+        left: &'a WriterExpr,
+        right: &'a WriterExpr,
     ) -> Doc<'a> {
         arena
             .nil()
@@ -1337,8 +1351,8 @@ impl Transpiler for TsTranspiler {
     fn transpile_float_add<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a IrExpr,
-        right: &'a IrExpr,
+        left: &'a WriterExpr,
+        right: &'a WriterExpr,
     ) -> Doc<'a> {
         arena
             .nil()
@@ -1352,8 +1366,8 @@ impl Transpiler for TsTranspiler {
     fn transpile_int_subtract<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a IrExpr,
-        right: &'a IrExpr,
+        left: &'a WriterExpr,
+        right: &'a WriterExpr,
     ) -> Doc<'a> {
         arena
             .nil()
@@ -1367,8 +1381,8 @@ impl Transpiler for TsTranspiler {
     fn transpile_float_subtract<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a IrExpr,
-        right: &'a IrExpr,
+        left: &'a WriterExpr,
+        right: &'a WriterExpr,
     ) -> Doc<'a> {
         arena
             .nil()
@@ -1382,8 +1396,8 @@ impl Transpiler for TsTranspiler {
     fn transpile_int_multiply<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a IrExpr,
-        right: &'a IrExpr,
+        left: &'a WriterExpr,
+        right: &'a WriterExpr,
     ) -> Doc<'a> {
         arena
             .nil()
@@ -1397,8 +1411,8 @@ impl Transpiler for TsTranspiler {
     fn transpile_float_multiply<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        left: &'a IrExpr,
-        right: &'a IrExpr,
+        left: &'a WriterExpr,
+        right: &'a WriterExpr,
     ) -> Doc<'a> {
         arena
             .nil()
@@ -1412,7 +1426,7 @@ impl Transpiler for TsTranspiler {
     fn transpile_option_literal<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        value: Option<&'a IrExpr>,
+        value: Option<&'a WriterExpr>,
         inner_type: &'a Type,
     ) -> Doc<'a> {
         self.needs_option = true;
@@ -1433,7 +1447,7 @@ impl Transpiler for TsTranspiler {
     fn transpile_match_expr<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        match_: &'a Match<IrExpr, IrExpr, IrVar>,
+        match_: &'a Match<WriterExpr, WriterExpr, IrVar>,
     ) -> Doc<'a> {
         match match_ {
             Match::Enum { subject, arms } => {
@@ -1576,8 +1590,8 @@ impl Transpiler for TsTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         var: &'a IrVar,
-        value: &'a IrExpr,
-        body: &'a IrExpr,
+        value: &'a WriterExpr,
+        body: &'a WriterExpr,
     ) -> Doc<'a> {
         let param_type = self.transpile_type(arena, value.as_type());
         let value = self.transpile_expr(arena, value);
@@ -1601,12 +1615,20 @@ impl Transpiler for TsTranspiler {
             .append(arena.text(")"))
     }
 
-    fn transpile_array_length<'a>(&mut self, arena: &'a Arena<'a>, array: &'a IrExpr) -> Doc<'a> {
+    fn transpile_array_length<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        array: &'a WriterExpr,
+    ) -> Doc<'a> {
         self.transpile_expr(arena, array)
             .append(arena.text(".length"))
     }
 
-    fn transpile_array_is_empty<'a>(&mut self, arena: &'a Arena<'a>, array: &'a IrExpr) -> Doc<'a> {
+    fn transpile_array_is_empty<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        array: &'a WriterExpr,
+    ) -> Doc<'a> {
         arena
             .text("(")
             .append(self.transpile_expr(arena, array))
@@ -1616,7 +1638,7 @@ impl Transpiler for TsTranspiler {
     fn transpile_string_is_empty<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        string: &'a IrExpr,
+        string: &'a WriterExpr,
     ) -> Doc<'a> {
         arena
             .text("(")
@@ -1627,7 +1649,7 @@ impl Transpiler for TsTranspiler {
     fn transpile_option_is_some<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        option: &'a IrExpr,
+        option: &'a WriterExpr,
     ) -> Doc<'a> {
         arena
             .text("(")
@@ -1638,7 +1660,7 @@ impl Transpiler for TsTranspiler {
     fn transpile_option_is_none<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        option: &'a IrExpr,
+        option: &'a WriterExpr,
     ) -> Doc<'a> {
         arena
             .text("(")
@@ -1646,14 +1668,22 @@ impl Transpiler for TsTranspiler {
             .append(arena.text(".tag === \"None\")"))
     }
 
-    fn transpile_int_to_string<'a>(&mut self, arena: &'a Arena<'a>, value: &'a IrExpr) -> Doc<'a> {
+    fn transpile_int_to_string<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        value: &'a WriterExpr,
+    ) -> Doc<'a> {
         arena
             .text("(")
             .append(self.transpile_expr(arena, value))
             .append(arena.text(").toString()"))
     }
 
-    fn transpile_float_to_int<'a>(&mut self, arena: &'a Arena<'a>, value: &'a IrExpr) -> Doc<'a> {
+    fn transpile_float_to_int<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        value: &'a WriterExpr,
+    ) -> Doc<'a> {
         self.needs_float_to_int = true;
         arena
             .text("floatToInt(")
@@ -1661,7 +1691,11 @@ impl Transpiler for TsTranspiler {
             .append(arena.text(")"))
     }
 
-    fn transpile_int_to_float<'a>(&mut self, arena: &'a Arena<'a>, value: &'a IrExpr) -> Doc<'a> {
+    fn transpile_int_to_float<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        value: &'a WriterExpr,
+    ) -> Doc<'a> {
         // In JavaScript, all numbers are floats, so no conversion needed
         self.transpile_expr(arena, value)
     }
@@ -1719,11 +1753,13 @@ impl Transpiler for TsTranspiler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::ir_module_builder::{IrModuleBodiesBuilder, IrModuleBuilder};
+    use crate::ir::lower_pure;
+    use crate::ir::pure_module_builder::{PureModuleBodiesBuilder, PureModuleBuilder};
     use expect_test::{Expect, expect};
 
-    fn check(builder: impl Into<IrModuleBodiesBuilder>, expected: Expect) {
+    fn check(builder: impl Into<PureModuleBodiesBuilder>, expected: Expect) {
         let (module, registry) = builder.into().build_with_registry();
+        let module = lower_pure(module);
         let before = module.to_string();
         let after = TsTranspiler::new().transpile_module(&module, &registry);
         let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
@@ -1733,9 +1769,8 @@ mod tests {
     #[test]
     fn simple_component() {
         check(
-            IrModuleBuilder::new().view_no_params("HelloWorld", |t| {
-                t.write("<h1>Hello, World!</h1>\n");
-            }),
+            PureModuleBuilder::new()
+                .view_no_params("HelloWorld", |t| t.raw("<h1>Hello, World!</h1>\n")),
             expect![[r#"
                 -- before --
                 view HelloWorld() {
@@ -1757,16 +1792,22 @@ mod tests {
     #[test]
     fn component_with_params_and_escaping() {
         check(
-            IrModuleBuilder::new().view("UserInfo", [("name", "String"), ("age", "String")], |t| {
-                t.write("<div>\n");
-                t.write("<h2>Name: ");
-                t.write_string(t.var("name"));
-                t.write("</h2>\n");
-                t.write("<p>Age: ");
-                t.write_string(t.var("age"));
-                t.write("</p>\n");
-                t.write("</div>\n");
-            }),
+            PureModuleBuilder::new().view(
+                "UserInfo",
+                [("name", "String"), ("age", "String")],
+                |t| {
+                    t.concat(vec![
+                        t.raw("<div>\n"),
+                        t.raw("<h2>Name: "),
+                        t.escape(t.var("name")),
+                        t.raw("</h2>\n"),
+                        t.raw("<p>Age: "),
+                        t.escape(t.var("age")),
+                        t.raw("</p>\n"),
+                        t.raw("</div>\n"),
+                    ])
+                },
+            ),
             expect![[r#"
                 -- before --
                 view UserInfo(name@v0: String, age@v1: String) {
@@ -1817,15 +1858,19 @@ mod tests {
     #[test]
     fn conditional_display() {
         check(
-            IrModuleBuilder::new().view(
+            PureModuleBuilder::new().view(
                 "ConditionalDisplay",
                 [("title", "String"), ("show", "Bool")],
                 |t| {
-                    t.if_stmt(t.var("show"), |t| {
-                        t.write("<h1>");
-                        t.write_string(t.var("title"));
-                        t.write("</h1>\n");
-                    });
+                    t.bool_match_expr(
+                        t.var("show"),
+                        t.concat(vec![
+                            t.raw("<h1>"),
+                            t.escape(t.var("title")),
+                            t.raw("</h1>\n"),
+                        ]),
+                        t.concat(vec![]),
+                    )
                 },
             ),
             expect![[r#"
@@ -1876,14 +1921,18 @@ mod tests {
     #[test]
     fn for_loop_with_array() {
         check(
-            IrModuleBuilder::new().view("ListItems", [("items", "Array[String]")], |t| {
-                t.write("<ul>\n");
-                t.for_loop("item", t.var("items"), |t| {
-                    t.write("<li>");
-                    t.write_string(t.var("item"));
-                    t.write("</li>\n");
-                });
-                t.write("</ul>\n");
+            PureModuleBuilder::new().view("ListItems", [("items", "Array[String]")], |t| {
+                t.concat(vec![
+                    t.raw("<ul>\n"),
+                    t.fragment_for(Some("item"), t.var("items"), |t| {
+                        t.concat(vec![
+                            t.raw("<li>"),
+                            t.escape(t.var("item")),
+                            t.raw("</li>\n"),
+                        ])
+                    }),
+                    t.raw("</ul>\n"),
+                ])
             }),
             expect![[r#"
                 -- before --
@@ -1928,11 +1977,10 @@ mod tests {
     #[test]
     fn for_loop_with_range() {
         check(
-            IrModuleBuilder::new().view_no_params("Counter", |t| {
-                t.for_range(Some("i"), t.int(1), t.int(3), |t| {
-                    t.write_string(t.int_to_string(t.var("i")));
-                    t.write(" ");
-                });
+            PureModuleBuilder::new().view_no_params("Counter", |t| {
+                t.fragment_for_range(Some("i"), t.int(1), t.int(3), |t| {
+                    t.concat(vec![t.escape(t.int_to_string(t.var("i"))), t.raw(" ")])
+                })
             }),
             expect![[r#"
                 -- before --
@@ -1972,14 +2020,16 @@ mod tests {
     #[test]
     fn let_binding() {
         check(
-            IrModuleBuilder::new().view_no_params("GreetingCard", |t| {
-                t.let_stmt("greeting", t.str("Hello from hop!"), |t| {
-                    t.write("<div class=\"card\">\n");
-                    t.write("<p>");
-                    t.write_string(t.var("greeting"));
-                    t.write("</p>\n");
-                    t.write("</div>\n");
-                });
+            PureModuleBuilder::new().view_no_params("GreetingCard", |t| {
+                t.let_expr("greeting", t.str("Hello from hop!"), |t| {
+                    t.concat(vec![
+                        t.raw("<div class=\"card\">\n"),
+                        t.raw("<p>"),
+                        t.escape(t.var("greeting")),
+                        t.raw("</p>\n"),
+                        t.raw("</div>\n"),
+                    ])
+                })
             }),
             expect![[r#"
                 -- before --
@@ -2022,14 +2072,18 @@ mod tests {
     #[test]
     fn nested_components_with_let_bindings() {
         check(
-            IrModuleBuilder::new().view_no_params("TestMainComp", |t| {
-                t.write("<div data-hop-id=\"test/card-comp\">");
-                t.let_stmt("title", t.str("Hello World"), |t| {
-                    t.write("<h2>");
-                    t.write_string(t.var("title"));
-                    t.write("</h2>");
-                });
-                t.write("</div>");
+            PureModuleBuilder::new().view_no_params("TestMainComp", |t| {
+                t.concat(vec![
+                    t.raw("<div data-hop-id=\"test/card-comp\">"),
+                    t.let_expr("title", t.str("Hello World"), |t| {
+                        t.concat(vec![
+                            t.raw("<h2>"),
+                            t.escape(t.var("title")),
+                            t.raw("</h2>"),
+                        ])
+                    }),
+                    t.raw("</div>"),
+                ])
             }),
             expect![[r#"
                 -- before --
@@ -2072,15 +2126,17 @@ mod tests {
     #[test]
     fn fragment_type() {
         check(
-            IrModuleBuilder::new().view(
+            PureModuleBuilder::new().view(
                 "RenderHtml",
                 [("safe_content", "Fragment"), ("user_input", "String")],
                 |t| {
-                    t.write("<div>");
-                    t.write_fragment(t.var("safe_content"));
-                    t.write("</div><div>");
-                    t.write_string(t.var("user_input"));
-                    t.write("</div>");
+                    t.concat(vec![
+                        t.raw("<div>"),
+                        t.var("safe_content"),
+                        t.raw("</div><div>"),
+                        t.escape(t.var("user_input")),
+                        t.raw("</div>"),
+                    ])
                 },
             ),
             expect![[r#"
@@ -2137,16 +2193,18 @@ mod tests {
     #[test]
     fn record_declarations() {
         check(
-            IrModuleBuilder::new()
+            PureModuleBuilder::new()
                 .record(
                     "User",
                     [("name", "String"), ("age", "Int"), ("active", "Bool")],
                 )
                 .record("Address", [("street", "String"), ("city", "String")])
                 .view("UserProfile", [("user", "User")], |t| {
-                    t.write("<div>");
-                    t.write_string(t.field_access(t.var("user"), "name"));
-                    t.write("</div>");
+                    t.concat(vec![
+                        t.raw("<div>"),
+                        t.escape(t.field_access(t.var("user"), "name")),
+                        t.raw("</div>"),
+                    ])
                 }),
             expect![[r#"
                 -- before --
@@ -2213,13 +2271,15 @@ mod tests {
     #[test]
     fn record_literal() {
         check(
-            IrModuleBuilder::new()
+            PureModuleBuilder::new()
                 .record("User", [("name", "String"), ("age", "Int")])
                 .view_no_params("CreateUser", |t| {
-                    t.write("<div>");
                     let user = t.record("User", vec![("name", t.str("John")), ("age", t.int(30))]);
-                    t.write_string(t.field_access(user, "name"));
-                    t.write("</div>");
+                    t.concat(vec![
+                        t.raw("<div>"),
+                        t.escape(t.field_access(user, "name")),
+                        t.raw("</div>"),
+                    ])
                 }),
             expect![[r#"
                 -- before --
@@ -2272,10 +2332,10 @@ mod tests {
     #[test]
     fn recursive_record_declaration() {
         check(
-            IrModuleBuilder::new()
+            PureModuleBuilder::new()
                 .record("Node", [("value", "Int"), ("next", "Option[Node]")])
                 .view("Test", [("node", "Node")], |t| {
-                    t.write_string(t.int_to_string(t.field_access(t.var("node"), "value")));
+                    t.escape(t.int_to_string(t.field_access(t.var("node"), "value")))
                 }),
             expect![[r#"
                 -- before --
@@ -2332,7 +2392,7 @@ mod tests {
     #[test]
     fn recursive_enum_declaration() {
         check(
-            IrModuleBuilder::new()
+            PureModuleBuilder::new()
                 .enum_(
                     "IntList",
                     [
@@ -2340,9 +2400,7 @@ mod tests {
                         ("Nil", vec![]),
                     ],
                 )
-                .view_no_params("Test", |t| {
-                    t.write("hello");
-                }),
+                .view_no_params("Test", |t| t.raw("hello")),
             expect![[r#"
                 -- before --
                 enum IntList {
@@ -2379,15 +2437,15 @@ mod tests {
     #[test]
     fn recursive_record_literal() {
         check(
-            IrModuleBuilder::new()
+            PureModuleBuilder::new()
                 .record("Node", [("value", "Int"), ("next", "Option[Node]")])
                 .view_no_params("Test", |t| {
                     let inner =
                         t.record("Node", vec![("value", t.int(1)), ("next", t.none("Node"))]);
                     let node = t.record("Node", vec![("value", t.int(2)), ("next", t.some(inner))]);
-                    t.let_stmt("node", node, |t| {
-                        t.write_string(t.int_to_string(t.field_access(t.var("node"), "value")));
-                    });
+                    t.let_expr("node", node, |t| {
+                        t.escape(t.int_to_string(t.field_access(t.var("node"), "value")))
+                    })
                 }),
             expect![[r#"
                 -- before --
@@ -2459,7 +2517,7 @@ mod tests {
     #[test]
     fn match_expression() {
         check(
-            IrModuleBuilder::new()
+            PureModuleBuilder::new()
                 .enum_unit("Color", ["Red", "Green", "Blue"])
                 .view("ColorName", [("color", "Color")], |t| {
                     // Use match expression to convert color to string
@@ -2468,7 +2526,7 @@ mod tests {
                         m.arm("Green", |t| t.str("green"));
                         m.arm("Blue", |t| t.str("blue"));
                     });
-                    t.write_string(match_result);
+                    t.escape(match_result)
                 }),
             expect![[r#"
                 -- before --
@@ -2529,9 +2587,9 @@ mod tests {
     #[test]
     fn bool_match_expression() {
         check(
-            IrModuleBuilder::new().view("IsActive", [("active", "Bool")], |t| {
+            PureModuleBuilder::new().view("IsActive", [("active", "Bool")], |t| {
                 let match_result = t.bool_match_expr(t.var("active"), t.str("yes"), t.str("no"));
-                t.write_string(match_result);
+                t.escape(match_result)
             }),
             expect![[r#"
                 -- before --
@@ -2563,10 +2621,10 @@ mod tests {
     #[test]
     fn option_match_expression() {
         check(
-            IrModuleBuilder::new().view("CheckOption", [("opt", "Option[Int]")], |t| {
+            PureModuleBuilder::new().view("CheckOption", [("opt", "Option[Int]")], |t| {
                 let match_result =
                     t.option_match_expr(t.var("opt"), t.str("has value"), t.str("empty"));
-                t.write_string(match_result);
+                t.escape(match_result)
             }),
             expect![[r#"
                 -- before --
@@ -2617,7 +2675,7 @@ mod tests {
     #[test]
     fn nested_option_match_expression() {
         check(
-            IrModuleBuilder::new().view(
+            PureModuleBuilder::new().view(
                 "CheckNestedOption",
                 [("opt", "Option[Option[Bool]]")],
                 |t| {
@@ -2644,7 +2702,7 @@ mod tests {
                         t.str("none"),
                     );
 
-                    t.write_string(outer_match);
+                    t.escape(outer_match)
                 },
             ),
             expect![[r#"
@@ -2717,10 +2775,10 @@ mod tests {
     #[test]
     fn let_expression() {
         check(
-            IrModuleBuilder::new().view("LetExpr", [("name", "String")], |t| {
+            PureModuleBuilder::new().view("LetExpr", [("name", "String")], |t| {
                 // let x = name in x
                 let result = t.let_expr("x", t.var("name"), |t| t.var("x"));
-                t.write_string(result);
+                t.escape(result)
             }),
             expect![[r#"
                 -- before --
@@ -2754,19 +2812,19 @@ mod tests {
     #[test]
     fn option_match_statement() {
         check(
-            IrModuleBuilder::new().view("DisplayOption", [("opt", "Option[String]")], |t| {
-                t.option_match_stmt(
+            PureModuleBuilder::new().view("DisplayOption", [("opt", "Option[String]")], |t| {
+                t.option_match_expr_with_binding(
                     t.var("opt"),
-                    Some("value"),
+                    "value",
                     |t| {
-                        t.write("<span>Found: ");
-                        t.write_string(t.var("value"));
-                        t.write("</span>");
+                        t.concat(vec![
+                            t.raw("<span>Found: "),
+                            t.escape(t.var("value")),
+                            t.raw("</span>"),
+                        ])
                     },
-                    |t| {
-                        t.write("<span>Nothing</span>");
-                    },
-                );
+                    t.concat(vec![t.raw("<span>Nothing</span>")]),
+                )
             }),
             expect![[r#"
                 -- before --
@@ -2835,19 +2893,19 @@ mod tests {
     #[test]
     fn option_literal() {
         check(
-            IrModuleBuilder::new().view(
+            PureModuleBuilder::new().view(
                 "TestOptionLiteral",
                 [("opt1", "Option[String]"), ("opt2", "Option[String]")],
                 |t| {
                     // Test Some literal
                     let match_result =
                         t.option_match_expr(t.var("opt1"), t.str("has value"), t.str("empty"));
-                    t.write_string(match_result);
 
                     // Test None literal
                     let match_result2 =
                         t.option_match_expr(t.var("opt2"), t.str("HAS"), t.str("EMPTY"));
-                    t.write_string(match_result2);
+
+                    t.concat(vec![t.escape(match_result), t.escape(match_result2)])
                 },
             ),
             expect![[r#"
@@ -2915,20 +2973,15 @@ mod tests {
     #[test]
     fn option_literal_inline_match_stmt() {
         check(
-            IrModuleBuilder::new().view_no_params("TestInlineMatch", |t| {
-                t.let_stmt("opt", t.some(t.str("world")), |t| {
-                    t.option_match_stmt(
+            PureModuleBuilder::new().view_no_params("TestInlineMatch", |t| {
+                t.let_expr("opt", t.some(t.str("world")), |t| {
+                    t.option_match_expr_with_binding(
                         t.var("opt"),
-                        Some("val"),
-                        |t| {
-                            t.write("Got:");
-                            t.write_string(t.var("val"));
-                        },
-                        |t| {
-                            t.write("Empty");
-                        },
-                    );
-                });
+                        "val",
+                        |t| t.concat(vec![t.raw("Got:"), t.escape(t.var("val"))]),
+                        t.concat(vec![t.raw("Empty")]),
+                    )
+                })
             }),
             expect![[r#"
                 -- before --
@@ -2994,26 +3047,20 @@ mod tests {
     #[test]
     fn option_match_statement_on_expression_subject() {
         check(
-            IrModuleBuilder::new().view_no_params("Test", |t| {
-                t.option_match_stmt(
+            PureModuleBuilder::new().view_no_params("Test", |t| {
+                t.option_match_expr_with_binding(
                     t.some(t.str("x")),
-                    Some("value"),
+                    "value",
                     |t| {
-                        t.option_match_stmt(
+                        t.option_match_expr_with_binding(
                             t.some(t.var("value")),
-                            Some("inner"),
-                            |t| {
-                                t.write_string(t.var("inner"));
-                            },
-                            |t| {
-                                t.write("none2");
-                            },
-                        );
+                            "inner",
+                            |t| t.escape(t.var("inner")),
+                            t.concat(vec![t.raw("none2")]),
+                        )
                     },
-                    |t| {
-                        t.write("none1");
-                    },
-                );
+                    t.concat(vec![t.raw("none1")]),
+                )
             }),
             expect![[r#"
                 -- before --
@@ -3092,10 +3139,10 @@ mod tests {
     #[test]
     fn bool_match_expression_on_expression_subject() {
         check(
-            IrModuleBuilder::new().view("IsActive", [("active", "Bool")], |t| {
+            PureModuleBuilder::new().view("IsActive", [("active", "Bool")], |t| {
                 let match_result =
                     t.bool_match_expr(t.not(t.var("active")), t.str("yes"), t.str("no"));
-                t.write_string(match_result);
+                t.escape(match_result)
             }),
             expect![[r#"
                 -- before --
@@ -3127,7 +3174,7 @@ mod tests {
     #[test]
     fn enum_with_fields() {
         check(
-            IrModuleBuilder::new()
+            PureModuleBuilder::new()
                 .enum_(
                     "Outcome",
                     [
@@ -3136,16 +3183,16 @@ mod tests {
                     ],
                 )
                 .view("ShowOutcome", [("r", "Outcome")], |t| {
-                    t.write("<div>");
                     let ok = t.enum_variant_with_fields(
                         "Outcome",
                         "Success",
                         vec![("value", t.int(42))],
                     );
-                    t.let_stmt("ok", ok, |t| {
-                        t.write_string(t.str("Created Ok!"));
-                    });
-                    t.write("</div>");
+                    t.concat(vec![
+                        t.raw("<div>"),
+                        t.let_expr("ok", ok, |t| t.escape(t.str("Created Ok!"))),
+                        t.raw("</div>"),
+                    ])
                 }),
             expect![[r#"
                 -- before --
@@ -3199,7 +3246,7 @@ mod tests {
     #[test]
     fn enum_match_with_field_bindings() {
         check(
-            IrModuleBuilder::new()
+            PureModuleBuilder::new()
                 .enum_(
                     "Outcome",
                     [
@@ -3208,16 +3255,14 @@ mod tests {
                     ],
                 )
                 .view("ShowOutcome", [("r", "Outcome")], |t| {
-                    t.enum_match_stmt(t.var("r"), |m| {
+                    t.enum_match_expr(t.var("r"), |m| {
                         m.arm_bound("Success", [("value", "v")], |t| {
-                            t.write("Value: ");
-                            t.write_string(t.var("v"));
+                            t.concat(vec![t.raw("Value: "), t.escape(t.var("v"))])
                         });
                         m.arm_bound("Failure", [("message", "m")], |t| {
-                            t.write("Error: ");
-                            t.write_string(t.var("m"));
+                            t.concat(vec![t.raw("Error: "), t.escape(t.var("m"))])
                         });
-                    });
+                    })
                 }),
             expect![[r#"
                 -- before --
@@ -3287,16 +3332,8 @@ mod tests {
     #[test]
     fn transpiles_let_fragment_as_nested_buffer() {
         check(
-            IrModuleBuilder::new().view_no_params("Test", |t| {
-                t.let_fragment(
-                    "v_0",
-                    |t| {
-                        t.write("<b>hi</b>");
-                    },
-                    |t| {
-                        t.write_fragment(t.var("v_0"));
-                    },
-                );
+            PureModuleBuilder::new().view_no_params("Test", |t| {
+                t.let_expr("v_0", t.concat(vec![t.raw("<b>hi</b>")]), |t| t.var("v_0"))
             }),
             expect![[r#"
                 -- before --

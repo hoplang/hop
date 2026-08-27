@@ -1,10 +1,11 @@
 use crate::asset_rewriter::AssetRewriter;
 use crate::document::Document;
 use crate::document_id::DocumentId;
-use crate::ir::IrModule;
-use crate::ir::runtime::evaluator::evaluate_view;
+use crate::ir::lower_pure;
+use crate::ir::pure_module::PureModule;
+use crate::ir::runtime::evaluator;
 use crate::ir::transpile::{RustTranspiler, Transpiler, TsTranspiler};
-use crate::orchestrator::{OrchestrateOptions, orchestrate};
+use crate::orchestrator::{OrchestrateOptions, orchestrate_pure};
 use crate::program::Program;
 use crate::symbols::type_name::TypeName;
 use expect_test::Expect;
@@ -148,9 +149,9 @@ fn typecheck_rust(code: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn execute_evaluator(module: &IrModule) -> Result<String, String> {
+fn execute_evaluator(module: &PureModule) -> Result<String, String> {
     let view_name = TypeName::new("Test").unwrap();
-    evaluate_view(module, &view_name, HashMap::new())
+    evaluator::evaluate_view(module, &view_name, HashMap::new())
         .map_err(|e| format!("Evaluator failed: {}", e))
 }
 
@@ -214,7 +215,7 @@ fn check_with_asset_rewriter(
         asset_rewriter: asset_rewriter.clone(),
         ..Default::default()
     };
-    let unoptimized_module = orchestrate(&typed_asts, registry, unoptimized_options);
+    let unoptimized_pure = orchestrate_pure(&typed_asts, unoptimized_options);
 
     // Compile to IR with optimization
     let optimized_options = OrchestrateOptions {
@@ -223,7 +224,14 @@ fn check_with_asset_rewriter(
         asset_rewriter,
         ..Default::default()
     };
-    let optimized_module = orchestrate(&typed_asts, registry, optimized_options);
+    let optimized_pure = orchestrate_pure(&typed_asts, optimized_options);
+
+    // Evaluate the Pure modules before lowering consumes them.
+    let unoptimized_eval = execute_evaluator(&unoptimized_pure);
+    let optimized_eval = execute_evaluator(&optimized_pure);
+
+    let unoptimized_module = lower_pure(unoptimized_pure);
+    let optimized_module = lower_pure(optimized_pure);
 
     let unoptimized_ir = unoptimized_module.to_string();
     let optimized_ir = optimized_module.to_string();
@@ -233,8 +241,8 @@ fn check_with_asset_rewriter(
         unoptimized_ir, optimized_ir, expected_output
     );
 
-    // Test evaluator on unoptimized IR
-    let eval_output = match execute_evaluator(&unoptimized_module) {
+    // Test evaluator on the unoptimized Pure module
+    let eval_output = match unoptimized_eval {
         Ok(out) => out,
         Err(e) => panic!(
             "Evaluator failed (unoptimized):\n{}\n\nIR:\n{}",
@@ -248,8 +256,8 @@ fn check_with_asset_rewriter(
     );
     output.push_str("-- eval (unoptimized) --\nOK\n");
 
-    // Test evaluator on optimized IR
-    let eval_output = match execute_evaluator(&optimized_module) {
+    // Test evaluator on the optimized Pure module
+    let eval_output = match optimized_eval {
         Ok(out) => out,
         Err(e) => panic!(
             "Evaluator failed (optimized):\n{}\n\nIR:\n{}",
@@ -359,7 +367,7 @@ mod tests {
     use crate::asset_rewriter::{PrefixingAssetRewriter, ReplacingAssetRewriter};
 
     use super::*;
-    use crate::ir::ir_module_generator::random_ir_module_with_test_view;
+    use crate::ir::pure_module_generator::random_module_with_test_view;
     use expect_test::expect;
     use indoc::indoc;
 
@@ -367,22 +375,27 @@ mod tests {
     #[ignore]
     fn fuzz_transpile_ts_renders_identically() {
         arbtest::arbtest(|u| {
-            let (module, registry) = random_ir_module_with_test_view(u);
-            let ir = module.to_string();
-            let expected = execute_evaluator(&module)
-                .unwrap_or_else(|e| panic!("Evaluator failed:\n{e}\n\nIR:\n{ir}"))
+            let (module, registry) = random_module_with_test_view(u);
+            let pure = module.to_string();
+            let view_name = TypeName::new("Test").unwrap();
+            let expected = evaluator::evaluate_view(&module, &view_name, HashMap::new())
+                .unwrap_or_else(|e| panic!("Evaluator failed:\n{e}\n\nPure:\n{pure}"))
                 .trim()
                 .to_string();
+            let module = lower_pure(module);
+            let ir = module.to_string();
             let ts_code = TsTranspiler::new().transpile_module(&module, &registry);
             if let Err(e) = typecheck_typescript(&ts_code) {
-                panic!("TypeScript typecheck failed:\n{e}\n\nIR:\n{ir}\nCode:\n{ts_code}");
+                panic!(
+                    "TypeScript typecheck failed:\n{e}\n\nPure:\n{pure}\nIR:\n{ir}\nCode:\n{ts_code}"
+                );
             }
             let ts_output = execute_typescript(&ts_code).unwrap_or_else(|e| {
-                panic!("TypeScript failed:\n{e}\n\nIR:\n{ir}\nCode:\n{ts_code}")
+                panic!("TypeScript failed:\n{e}\n\nPure:\n{pure}\nIR:\n{ir}\nCode:\n{ts_code}")
             });
             assert_eq!(
                 expected, ts_output,
-                "evaluator and TypeScript disagree\n\nIR:\n{ir}\nCode:\n{ts_code}"
+                "evaluator and TypeScript disagree\n\nPure:\n{pure}\nIR:\n{ir}\nCode:\n{ts_code}"
             );
             Ok(())
         });
@@ -392,18 +405,22 @@ mod tests {
     #[ignore]
     fn fuzz_transpile_rust_renders_identically() {
         arbtest::arbtest(|u| {
-            let (module, registry) = random_ir_module_with_test_view(u);
-            let ir = module.to_string();
-            let expected = execute_evaluator(&module)
-                .unwrap_or_else(|e| panic!("Evaluator failed:\n{e}\n\nIR:\n{ir}"))
+            let (module, registry) = random_module_with_test_view(u);
+            let pure = module.to_string();
+            let view_name = TypeName::new("Test").unwrap();
+            let expected = evaluator::evaluate_view(&module, &view_name, HashMap::new())
+                .unwrap_or_else(|e| panic!("Evaluator failed:\n{e}\n\nPure:\n{pure}"))
                 .trim()
                 .to_string();
+            let module = lower_pure(module);
+            let ir = module.to_string();
             let rust_code = RustTranspiler::new().transpile_module(&module, &registry);
-            let rust_output = execute_rust(&rust_code)
-                .unwrap_or_else(|e| panic!("Rust failed:\n{e}\n\nIR:\n{ir}\nCode:\n{rust_code}"));
+            let rust_output = execute_rust(&rust_code).unwrap_or_else(|e| {
+                panic!("Rust failed:\n{e}\n\nPure:\n{pure}\nIR:\n{ir}\nCode:\n{rust_code}")
+            });
             assert_eq!(
                 expected, rust_output,
-                "evaluator and Rust disagree\n\nIR:\n{ir}\nCode:\n{rust_code}"
+                "evaluator and Rust disagree\n\nPure:\n{pure}\nIR:\n{ir}\nCode:\n{rust_code}"
             );
             Ok(())
         });
@@ -2211,12 +2228,7 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  let v4 = "hello" in {
-                    let v5 = v4 in {
-                      write("mapped:")
-                      write_string(v5)
-                    }
-                  }
+                  write("mapped:hello")
                 }
                 -- expected output --
                 mapped:hello
@@ -2391,12 +2403,7 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  let v0 = "hi" in {
-                    let v1 = v0 in {
-                      write("got:")
-                      write_string(v1)
-                    }
-                  }
+                  write("got:hi")
                 }
                 -- expected output --
                 got:hi
@@ -2464,11 +2471,7 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  let v4 = "inner" in {
-                    let v5 = v4 in {
-                      write_string(v5)
-                    }
-                  }
+                  write("inner")
                 }
                 -- expected output --
                 inner
@@ -4041,17 +4044,7 @@ mod tests {
                   Rect {width: String, height: String},
                 }
                 view Test() {
-                  match Shape::Rect {height: "b", width: "a"} {
-                    Shape::Rect(width: v1, height: v2) => {
-                      let v3 = v1 in {
-                        let v4 = v2 in {
-                          write_string(v3)
-                          write("-")
-                          write_string(v4)
-                        }
-                      }
-                    }
-                  }
+                  write("a-b")
                 }
                 -- expected output --
                 a-b
@@ -4551,11 +4544,7 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  let v1 = "hello" in {
-                    let v2 = v1 in {
-                      write_string(v2)
-                    }
-                  }
+                  write("hello")
                 }
                 -- expected output --
                 hello
@@ -4678,11 +4667,7 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  let v4 = "inner" in {
-                    let v5 = v4 in {
-                      write_string(v5)
-                    }
-                  }
+                  write("inner")
                 }
                 -- expected output --
                 inner
@@ -4904,17 +4889,7 @@ mod tests {
                   Blue,
                 }
                 view Test() {
-                  match Color::Blue {
-                    Color::Red => {
-                      write("red")
-                    }
-                    Color::Green => {
-                      write("green")
-                    }
-                    Color::Blue => {
-                      write("blue")
-                    }
-                  }
+                  write("blue")
                 }
                 -- expected output --
                 blue
@@ -4994,20 +4969,7 @@ mod tests {
                   Failure {message: String},
                 }
                 view Test() {
-                  match Outcome::Success {value: "hello"} {
-                    Outcome::Success(value: v1) => {
-                      let v2 = v1 in {
-                        write("Ok:")
-                        write_string(v2)
-                      }
-                    }
-                    Outcome::Failure(message: v3) => {
-                      let v4 = v3 in {
-                        write("Err:")
-                        write_string(v4)
-                      }
-                    }
-                  }
+                  write("Ok:hello")
                 }
                 -- expected output --
                 Ok:hello
@@ -5080,17 +5042,7 @@ mod tests {
                   Plain,
                 }
                 view Test() {
-                  match Item::Tagged {tag: "news"} {
-                    Item::Tagged(tag: v1) => {
-                      let v2 = v1 in {
-                        write("tag:")
-                        write_string(v2)
-                      }
-                    }
-                    Item::Plain => {
-                      write("plain")
-                    }
-                  }
+                  write("tag:news")
                 }
                 -- expected output --
                 tag:news
@@ -5238,17 +5190,7 @@ mod tests {
                   Blue,
                 }
                 view Test() {
-                  match Color::Green {
-                    Color::Red => {
-                      write("red")
-                    }
-                    Color::Green => {
-                      write("green")
-                    }
-                    Color::Blue => {
-                      write("blue")
-                    }
-                  }
+                  write("green")
                 }
                 -- expected output --
                 green
@@ -5330,20 +5272,7 @@ mod tests {
                   Failure {message: String},
                 }
                 view Test() {
-                  match Outcome::Failure {message: "something went wrong"} {
-                    Outcome::Success(value: v1) => {
-                      let v2 = v1 in {
-                        write("Ok:")
-                        write_string(v2)
-                      }
-                    }
-                    Outcome::Failure(message: v3) => {
-                      let v4 = v3 in {
-                        write("Err:")
-                        write_string(v4)
-                      }
-                    }
-                  }
+                  write("Err:something went wrong")
                 }
                 -- expected output --
                 Err:something went wrong
@@ -5430,23 +5359,7 @@ mod tests {
                   Lose {reason: String},
                 }
                 view Test() {
-                  match Response::Win {code: "200", body: "OK"} {
-                    Response::Win(code: v1, body: v2) => {
-                      let v3 = v1 in {
-                        let v4 = v2 in {
-                          write_string(v3)
-                          write(":")
-                          write_string(v4)
-                        }
-                      }
-                    }
-                    Response::Lose(reason: v5) => {
-                      let v6 = v5 in {
-                        write("Error:")
-                        write_string(v6)
-                      }
-                    }
-                  }
+                  write("200:OK")
                 }
                 -- expected output --
                 200:OK
@@ -5526,20 +5439,7 @@ mod tests {
                   Failure {message: String},
                 }
                 view Test() {
-                  match Outcome::Success {value: "hello"} {
-                    Outcome::Success(value: v1) => {
-                      let v2 = v1 in {
-                        write("Ok:")
-                        write_string(v2)
-                      }
-                    }
-                    Outcome::Failure(message: v3) => {
-                      let v4 = v3 in {
-                        write("Err:")
-                        write_string(v4)
-                      }
-                    }
-                  }
+                  write("Ok:hello")
                 }
                 -- expected output --
                 Ok:hello
@@ -6551,18 +6451,7 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  let v1 = Option[String]::Some("deep") in {
-                    match v1 {
-                      Some(v2) => {
-                        let v3 = v2 in {
-                          write_string(v3)
-                        }
-                      }
-                      None => {
-                        write("some-none")
-                      }
-                    }
-                  }
+                  write("deep")
                 }
                 -- expected output --
                 deep
@@ -6826,16 +6715,7 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  let v1 = Option[String]::Some("x") in {
-                    match v1 {
-                      Some(_) => {
-                        write("some-some")
-                      }
-                      None => {
-                        write("some-none")
-                      }
-                    }
-                  }
+                  write("some-some")
                 }
                 -- expected output --
                 some-some
@@ -6966,14 +6846,7 @@ mod tests {
                   Failure {message: String},
                 }
                 view Test() {
-                  match Outcome::Success {value: "hello"} {
-                    Outcome::Success => {
-                      write("ok")
-                    }
-                    Outcome::Failure => {
-                      write("err")
-                    }
-                  }
+                  write("ok")
                 }
                 -- expected output --
                 ok
@@ -7048,14 +6921,7 @@ mod tests {
                   Failure {message: String},
                 }
                 view Test() {
-                  match Outcome::Failure {message: "failed"} {
-                    Outcome::Success => {
-                      write("ok")
-                    }
-                    Outcome::Failure => {
-                      write("err")
-                    }
-                  }
+                  write("err")
                 }
                 -- expected output --
                 err
@@ -7199,23 +7065,7 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  let v1 = Option[Option[String]]::Some(Option[String]::Some("value")) in {
-                    match v1 {
-                      Some(v2) => {
-                        match v2 {
-                          Some(_) => {
-                            write("triple-some")
-                          }
-                          None => {
-                            write("double-some-none")
-                          }
-                        }
-                      }
-                      None => {
-                        write("single-some-none")
-                      }
-                    }
-                  }
+                  write("triple-some")
                 }
                 -- expected output --
                 triple-some
@@ -7323,21 +7173,7 @@ mod tests {
                   Failure {message: String},
                 }
                 view Test() {
-                  match Outer::Success {value: Inner::Success {value: "deep"}} {
-                    Outer::Success(value: v1) => {
-                      match v1 {
-                        Inner::Success => {
-                          write("ok-ok")
-                        }
-                        Inner::Failure => {
-                          write("ok-err")
-                        }
-                      }
-                    }
-                    Outer::Failure => {
-                      write("err")
-                    }
-                  }
+                  write("ok-ok")
                 }
                 -- expected output --
                 ok-ok
@@ -7492,17 +7328,7 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  let v0 = "outer" in {
-                    let v1 = v0 in {
-                      let v2 = "inner" in {
-                        let v3 = v2 in {
-                          write_string(v1)
-                          write(":")
-                          write_string(v3)
-                        }
-                      }
-                    }
-                  }
+                  write("outer:inner")
                 }
                 -- expected output --
                 outer:inner
@@ -7578,21 +7404,7 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  let v1 = Option[String]::Some("hello") in {
-                    let v2 = v1 in {
-                      match v2 {
-                        Some(v3) => {
-                          let v4 = v3 in {
-                            write("value:")
-                            write_string(v4)
-                          }
-                        }
-                        None => {
-                          write("inner-none")
-                        }
-                      }
-                    }
-                  }
+                  write("value:hello")
                 }
                 -- expected output --
                 value:hello
@@ -9158,16 +8970,7 @@ mod tests {
                   Neg {inner: test::Expr},
                 }
                 view Test() {
-                  match Expr::Literal {value: "42"} {
-                    Expr::Literal(value: v1) => {
-                      let v2 = v1 in {
-                        write_string(v2)
-                      }
-                    }
-                    Expr::Neg => {
-                      write("neg")
-                    }
-                  }
+                  write("42")
                 }
                 -- expected output --
                 42
@@ -9246,17 +9049,7 @@ mod tests {
                   Neg {inner: test::Expr},
                 }
                 view Test() {
-                  match Expr::Neg {inner: Expr::Literal {value: "42"}} {
-                    Expr::Literal(value: v1) => {
-                      let v2 = v1 in {
-                        write("lit:")
-                        write_string(v2)
-                      }
-                    }
-                    Expr::Neg => {
-                      write("neg")
-                    }
-                  }
+                  write("neg")
                 }
                 -- expected output --
                 neg
@@ -9702,23 +9495,7 @@ mod tests {
                   next: Option[Option[test::Node]],
                 }
                 view Test() {
-                  let v1 = Option[test::Node]::Some(Node {
-                    value: "tail",
-                    next: Option[Option[test::Node]]::None,
-                  }) in {
-                    let v2 = v1 in {
-                      match v2 {
-                        Some(v3) => {
-                          let v4 = v3 in {
-                            write_string(v4.value)
-                          }
-                        }
-                        None => {
-                          write("inner-none")
-                        }
-                      }
-                    }
-                  }
+                  write("tail")
                 }
                 -- expected output --
                 tail
@@ -10002,30 +9779,7 @@ mod tests {
                   rest: Option[test::Tree],
                 }
                 view Test() {
-                  match Tree::Node {label: "a", left: Tree::Leaf, right: Option[test::Tree]::None} {
-                    Tree::Node(label: v1, left: v2, right: v3) => {
-                      let v4 = v1 in {
-                        let v5 = v2 in {
-                          let v6 = v3 in {
-                            let v7 = Step {t: v5, rest: v6} in {
-                              write_string(v4)
-                              match v7.rest {
-                                Some(_) => {
-                                  write("some")
-                                }
-                                None => {
-                                  write("none")
-                                }
-                              }
-                            }
-                          }
-                        }
-                      }
-                    }
-                    Tree::Leaf => {
-                      write("empty")
-                    }
-                  }
+                  write("anone")
                 }
                 -- expected output --
                 anone
@@ -10123,28 +9877,7 @@ mod tests {
                   Anonymous,
                 }
                 view Test() {
-                  match Contact::Email {address: "a@b.c", label: Option[String]::Some("work")} {
-                    Contact::Email(address: v1, label: v2) => {
-                      let v3 = v1 in {
-                        let v4 = v2 in {
-                          write_string(v3)
-                          match v4 {
-                            Some(v5) => {
-                              let v6 = v5 in {
-                                write_string(v6)
-                              }
-                            }
-                            None => {
-                              write("no-label")
-                            }
-                          }
-                        }
-                      }
-                    }
-                    Contact::Anonymous => {
-                      write("anon")
-                    }
-                  }
+                  write("a@b.cwork")
                 }
                 -- expected output --
                 a@b.cwork
@@ -11909,53 +11642,7 @@ mod tests {
                   Todo {label: String, done: Bool},
                 }
                 view Test() {
-                  match Item::Todo {label: "Buy milk", done: true} {
-                    Item::Todo(label: v2, done: v3) => {
-                      let v4 = v2 in {
-                        let v5 = v3 in {
-                          match v5 {
-                            true => {
-                              write("[x]")
-                            }
-                            false => {
-                            }
-                          }
-                          match (!v5) {
-                            true => {
-                              write("[ ]")
-                            }
-                            false => {
-                            }
-                          }
-                          write_string(v4)
-                        }
-                      }
-                    }
-                  }
-                  write(",")
-                  match Item::Todo {label: "Walk dog", done: false} {
-                    Item::Todo(label: v8, done: v9) => {
-                      let v10 = v8 in {
-                        let v11 = v9 in {
-                          match v11 {
-                            true => {
-                              write("[x]")
-                            }
-                            false => {
-                            }
-                          }
-                          match (!v11) {
-                            true => {
-                              write("[ ]")
-                            }
-                            false => {
-                            }
-                          }
-                          write_string(v10)
-                        }
-                      }
-                    }
-                  }
+                  write("[x]Buy milk,[ ]Walk dog")
                 }
                 -- expected output --
                 [x]Buy milk,[ ]Walk dog
@@ -12097,62 +11784,7 @@ mod tests {
                   HoursAgo {count: Int},
                 }
                 view Test() {
-                  match TimeAgo::MinutesAgo {count: 1} {
-                    TimeAgo::MinutesAgo(count: v2) => {
-                      let v3 = v2 in {
-                        write_string(match (v3 == 1) {
-                          true => "1 minute ago",
-                          false => (v3.to_string() + " minutes ago"),
-                        })
-                      }
-                    }
-                    TimeAgo::HoursAgo(count: v4) => {
-                      let v5 = v4 in {
-                        write_string(match (v5 == 1) {
-                          true => "1 hour ago",
-                          false => (v5.to_string() + " hours ago"),
-                        })
-                      }
-                    }
-                  }
-                  write(",")
-                  match TimeAgo::MinutesAgo {count: 5} {
-                    TimeAgo::MinutesAgo(count: v8) => {
-                      let v9 = v8 in {
-                        write_string(match (v9 == 1) {
-                          true => "1 minute ago",
-                          false => (v9.to_string() + " minutes ago"),
-                        })
-                      }
-                    }
-                    TimeAgo::HoursAgo(count: v10) => {
-                      let v11 = v10 in {
-                        write_string(match (v11 == 1) {
-                          true => "1 hour ago",
-                          false => (v11.to_string() + " hours ago"),
-                        })
-                      }
-                    }
-                  }
-                  write(",")
-                  match TimeAgo::HoursAgo {count: 1} {
-                    TimeAgo::MinutesAgo(count: v14) => {
-                      let v15 = v14 in {
-                        write_string(match (v15 == 1) {
-                          true => "1 minute ago",
-                          false => (v15.to_string() + " minutes ago"),
-                        })
-                      }
-                    }
-                    TimeAgo::HoursAgo(count: v16) => {
-                      let v17 = v16 in {
-                        write_string(match (v17 == 1) {
-                          true => "1 hour ago",
-                          false => (v17.to_string() + " hours ago"),
-                        })
-                      }
-                    }
-                  }
+                  write("1 minute ago,5 minutes ago,1 hour ago")
                 }
                 -- expected output --
                 1 minute ago,5 minutes ago,1 hour ago
@@ -12227,15 +11859,7 @@ mod tests {
                   Snippet {language: String, code: String},
                 }
                 view Test() {
-                  match CodeBlock::Snippet {language: "rust", code: "fn main()"} {
-                    CodeBlock::Snippet(code: v2) => {
-                      let v3 = v2 in {
-                        write("<code>")
-                        write_string(v3)
-                        write("</code>")
-                      }
-                    }
-                  }
+                  write("<code>fn main()</code>")
                 }
                 -- expected output --
                 <code>fn main()</code>
@@ -12334,22 +11958,7 @@ mod tests {
                   Button {disabled: Bool, type: String},
                 }
                 view Test() {
-                  match ButtonElement::Button {disabled: false, type: "submit"} {
-                    ButtonElement::Link(href: v2) => {
-                      let v3 = v2 in {
-                        write("<a href=\"")
-                        write_string(v3)
-                        write("\">link</a>")
-                      }
-                    }
-                    ButtonElement::Button(type: v4) => {
-                      let v5 = v4 in {
-                        write("<button type=\"")
-                        write_string(v5)
-                        write("\">btn</button>")
-                      }
-                    }
-                  }
+                  write("<button type=\"submit\">btn</button>")
                 }
                 -- expected output --
                 <button type="submit">btn</button>
@@ -12475,11 +12084,7 @@ mod tests {
                       }
                     }
                   }
-                  let v7 = Target {id: "1", title: "hello"} in {
-                    let v8 = v7 in {
-                      write_string(v8.title)
-                    }
-                  }
+                  write("hello")
                 }
                 -- expected output --
                 [hello]hello
@@ -13336,7 +12941,7 @@ mod tests {
                   f: Array[String],
                 }
                 component C(p@v0: Array[String]) {
-                  match R {f: v0}.f.is_empty() {
+                  match v0.is_empty() {
                     true => {
                       call C(p = [])
                     }
@@ -13422,16 +13027,7 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  let v2 = true in {
-                    match v2 {
-                      true => {
-                        write("<span>yes</span>")
-                      }
-                      false => {
-                        write("<span>no</span>")
-                      }
-                    }
-                  }
+                  write("<span>yes</span>")
                 }
                 -- expected output --
                 <span>yes</span>
@@ -13506,23 +13102,7 @@ mod tests {
                 }
                 -- ir (optimized) --
                 view Test() {
-                  let v1 = Option[Bool]::Some(true) in {
-                    match v1 {
-                      Some(v2) => {
-                        match v2 {
-                          true => {
-                            write("tt")
-                          }
-                          false => {
-                            write("tf")
-                          }
-                        }
-                      }
-                      None => {
-                        write("some-none")
-                      }
-                    }
-                  }
+                  write("tt")
                 }
                 -- expected output --
                 tt
@@ -14118,15 +13698,7 @@ mod tests {
                   A {class: String},
                 }
                 view Test() {
-                  match E::A {class: "a"} {
-                    E::A(class: v1) => {
-                      let v2 = v1 in {
-                        write("<div>")
-                        write_string(v2)
-                        write("</div>")
-                      }
-                    }
-                  }
+                  write("<div>a</div>")
                 }
                 -- expected output --
                 <div>a</div>
@@ -14416,10 +13988,7 @@ mod tests {
                 view Test() {
                   for v0 in [State {query: "a", page: 7}] {
                     write("x ")
-                    write_string(State {
-                      query: "x",
-                      page: v0.page,
-                    }.page.to_string())
+                    write_string(v0.page.to_string())
                   }
                 }
                 -- expected output --
@@ -14517,10 +14086,28 @@ mod tests {
                   for v0 in [Item {label: "a", selected: false}] {
                     match v0.selected {
                       true => {
-                        write("<div>on</div>")
+                        let v1 = Item {
+                          label: "on",
+                          selected: v0.selected,
+                        } in {
+                          let v2 = v1 in {
+                            write("<div>")
+                            write_string(v2.label)
+                            write("</div>")
+                          }
+                        }
                       }
                       false => {
-                        write("<div>off</div>")
+                        let v3 = Item {
+                          label: "off",
+                          selected: v0.selected,
+                        } in {
+                          let v4 = v3 in {
+                            write("<div>")
+                            write_string(v4.label)
+                            write("</div>")
+                          }
+                        }
                       }
                     }
                   }

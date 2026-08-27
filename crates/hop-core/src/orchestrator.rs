@@ -1,13 +1,13 @@
 use crate::asset_rewriter::AssetRewriter;
 use crate::document_id::DocumentId;
-use crate::expr::typing::type_registry::TypeRegistry;
 use crate::hop::inlining::Inliner;
 use crate::hop::inlining::transform::{
     DoctypeInjector, HtmlStructureInjector, LinkRewriter, MetaInjector, ScriptInjector,
     TailwindInjection, TailwindInjector,
 };
 use crate::hop::typing::typed_ast::TypedAst;
-use crate::ir::{IrModule, compile, optimize};
+use crate::ir::pure_module::PureModule;
+use crate::ir::{WriterModule, compile, lower_pure, optimize};
 use crate::symbols::type_name::TypeName;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -30,9 +30,15 @@ pub struct OrchestrateOptions<'a> {
 
 pub fn orchestrate(
     typed_asts: &HashMap<DocumentId, TypedAst>,
-    registry: &TypeRegistry,
     options: OrchestrateOptions<'_>,
-) -> IrModule {
+) -> WriterModule {
+    lower_pure(orchestrate_pure(typed_asts, options))
+}
+
+pub fn orchestrate_pure(
+    typed_asts: &HashMap<DocumentId, TypedAst>,
+    options: OrchestrateOptions<'_>,
+) -> PureModule {
     // Take views from all modules (sorted by module ID for deterministic order)
     let mut document_ids: Vec<_> = typed_asts.keys().cloned().collect();
     document_ids.sort();
@@ -84,17 +90,16 @@ pub fn orchestrate(
         .flat_map(|module| module.get_enums())
         .collect();
 
-    let module = compile(
+    let pure_module = compile(
         inlined_views,
         inlined_component_declarations,
         &records,
         &enums,
         options.asset_rewriter,
     );
-
     if options.skip_optimization {
-        module
+        pure_module
     } else {
-        optimize(module, registry)
+        optimize(pure_module)
     }
 }
