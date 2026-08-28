@@ -9,6 +9,7 @@ use crate::expr::typing::r#type::{
 use crate::ir::ir_var::IrVar;
 use crate::ir::var_id::VarIdCounter;
 use crate::symbols::field_name::FieldName;
+use crate::symbols::function_name::FunctionName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use pretty::BoxDoc;
@@ -81,7 +82,7 @@ pub struct WriterEnumDeclaration {
 #[derive(Debug)]
 pub struct WriterFunctionDeclaration {
     /// Function name
-    pub name: TypeName,
+    pub name: FunctionName,
     /// Parameter names with their types
     pub parameters: Vec<WriterParameter>,
     /// The function's return type.
@@ -128,7 +129,7 @@ pub enum WriterStatement {
 
     /// Invoke a function and write its effects to the output stream.
     WriteFunction {
-        function_name: TypeName,
+        function_name: FunctionName,
         args: Vec<WriterArgument>,
     },
 
@@ -216,7 +217,7 @@ pub enum WriterExpr {
     ///
     /// Invokes a value-returning function and produces its result.
     FunctionCall {
-        function_name: TypeName,
+        function_name: FunctionName,
         args: Vec<WriterArgument>,
         kind: Arc<Type>,
     },

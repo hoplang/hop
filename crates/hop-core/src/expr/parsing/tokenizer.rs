@@ -217,6 +217,7 @@ pub fn next(
                 "entrypoint" | "view" => Token::View,
                 "enum" => Token::Enum,
                 "false" => Token::False,
+                "fn" => Token::Fn,
                 "import" => Token::Import,
                 "in" => Token::In,
                 "match" => Token::Match,
@@ -1736,6 +1737,22 @@ mod tests {
                 token: Identifier("foo")
                 match foo
                       ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_fn_keyword() {
+        accept(
+            "fn foo",
+            expect![[r#"
+                token: Fn
+                fn foo
+                ^^
+
+                token: Identifier("foo")
+                fn foo
+                   ^^^
             "#]],
         );
     }

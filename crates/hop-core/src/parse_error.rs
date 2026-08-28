@@ -191,6 +191,9 @@ pub(crate) enum ParseErrorKind {
     #[error("Default values are not allowed on view parameters")]
     DefaultValueNotAllowedOnView,
 
+    #[error("Default values are not allowed on function parameters")]
+    DefaultValueNotAllowedOnFunction,
+
     #[error("Unknown macro '{name}'")]
     UnknownMacro { name: CheapString },
 

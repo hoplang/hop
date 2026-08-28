@@ -8,6 +8,7 @@ use crate::ir::expr_id::{ExprId, ExprIdCounter};
 use crate::ir::ir_var::IrVar;
 use crate::ir::var_id::VarIdCounter;
 use crate::symbols::field_name::FieldName;
+use crate::symbols::function_name::FunctionName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use pretty::BoxDoc;
@@ -42,7 +43,7 @@ pub struct PureViewDeclaration {
 #[derive(Debug)]
 pub struct PureFunctionDeclaration {
     /// Function name
-    pub name: TypeName,
+    pub name: FunctionName,
     /// Parameter names with their types
     pub parameters: Vec<WriterParameter>,
     /// The function's return type. The body must be of this type.
@@ -151,7 +152,7 @@ pub enum PureExpr {
     ///
     /// Invokes a function and produces its result.
     FunctionCall {
-        function_name: TypeName,
+        function_name: FunctionName,
         args: Vec<PureArgument>,
         kind: Arc<Type>,
         id: ExprId,

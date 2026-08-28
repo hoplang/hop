@@ -257,17 +257,36 @@ pub fn parse_primary(
                     name_range.to(bang_range),
                 );
             }
-            match VarName::from_cheap_string(name.clone()) {
-                Ok(var_name) => ParsedExpr::Var {
-                    range: name_range,
-                    value: var_name,
-                },
+            let var_name = match VarName::from_cheap_string(name.clone()) {
+                Ok(var_name) => var_name,
                 Err(error) => {
                     errors.push(ParseError::new(
                         ParseErrorKind::InvalidVariableName { name, error },
                         name_range,
                     ));
                     return None;
+                }
+            };
+            if let Some(left_paren) = advance_if(iter, comments, errors, Token::LeftParen) {
+                let (args, right_paren) = parse_delimited_list(
+                    iter,
+                    comments,
+                    errors,
+                    range,
+                    &Token::LeftParen,
+                    &left_paren,
+                    parse_logical,
+                )?;
+                ParsedExpr::FunctionCall {
+                    name: var_name,
+                    name_range: name_range.clone(),
+                    args,
+                    range: name_range.to(right_paren),
+                }
+            } else {
+                ParsedExpr::Var {
+                    range: name_range,
+                    value: var_name,
                 }
             }
         }
@@ -2824,6 +2843,70 @@ mod tests {
             "x * y.field",
             expect![[r#"
                 x * y.field
+            "#]],
+        );
+    }
+
+    ///////////////////////////////////////////////////////////////////////////
+    // FUNCTION CALL                                                         //
+    ///////////////////////////////////////////////////////////////////////////
+
+    #[test]
+    fn accepts_function_call_with_no_arguments() {
+        accept(
+            "foo()",
+            expect![[r#"
+                foo()
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_function_call_with_single_argument() {
+        accept(
+            "foo(10)",
+            expect![[r#"
+                foo(10)
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_function_call_with_multiple_arguments() {
+        accept(
+            "foo(1, 2, 3)",
+            expect![[r#"
+                foo(1, 2, 3)
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_function_call_with_expression_arguments() {
+        accept(
+            "foo(x + 1, bar(y))",
+            expect![[r#"
+                foo(x + 1, bar(y))
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_method_call_on_function_call_result() {
+        accept(
+            "foo(1).to_string()",
+            expect![[r#"
+                foo(1).to_string()
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_function_call_in_binary_expression() {
+        accept(
+            "foo(1) + foo(2)",
+            expect![[r#"
+                foo(1) + foo(2)
             "#]],
         );
     }

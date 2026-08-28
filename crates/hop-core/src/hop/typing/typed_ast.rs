@@ -2,7 +2,7 @@ use std::fmt::{self, Display};
 use std::sync::Arc;
 
 use crate::expr::typing::r#type::EnumVariant;
-use crate::expr::{ExamplesAnnotation, Type};
+use crate::expr::{ExamplesAnnotation, Type, TypedExpr};
 use crate::hop::typing::typed_node::TypedNode;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
@@ -15,6 +15,7 @@ pub struct TypedAst {
     enum_declarations: Vec<TypedEnumDeclaration>,
     component_declarations: Vec<TypedComponentDeclaration>,
     view_declarations: Vec<TypedViewDeclaration>,
+    function_declarations: Vec<TypedFunctionDeclaration>,
 }
 
 #[derive(Debug, Clone)]
@@ -52,18 +53,28 @@ pub struct TypedParameter {
     pub examples: Option<ExamplesAnnotation>,
 }
 
+#[derive(Debug, Clone)]
+pub struct TypedFunctionDeclaration {
+    pub name: VarName,
+    pub params: Vec<TypedParameter>,
+    pub return_type: Arc<Type>,
+    pub body: TypedExpr,
+}
+
 impl TypedAst {
     pub fn new(
         component_declarations: Vec<TypedComponentDeclaration>,
         record_declarations: Vec<TypedRecordDeclaration>,
         enum_declarations: Vec<TypedEnumDeclaration>,
         view_declarations: Vec<TypedViewDeclaration>,
+        function_declarations: Vec<TypedFunctionDeclaration>,
     ) -> Self {
         Self {
             component_declarations,
             record_declarations,
             enum_declarations,
             view_declarations,
+            function_declarations,
         }
     }
 
@@ -88,6 +99,10 @@ impl TypedAst {
         &self.view_declarations
     }
 
+    pub fn get_function_declarations(&self) -> &[TypedFunctionDeclaration] {
+        &self.function_declarations
+    }
+
     pub fn to_doc(&self) -> BoxDoc<'_> {
         let mut docs: Vec<BoxDoc<'_>> = Vec::new();
 
@@ -105,6 +120,10 @@ impl TypedAst {
 
         for view in &self.view_declarations {
             docs.push(view.to_doc());
+        }
+
+        for function in &self.function_declarations {
+            docs.push(function.to_doc());
         }
 
         if docs.is_empty() {
@@ -269,6 +288,41 @@ impl TypedViewDeclaration {
                 .append(BoxDoc::line())
                 .append(BoxDoc::text("}"))
         }
+    }
+}
+
+impl TypedFunctionDeclaration {
+    pub fn to_doc(&self) -> BoxDoc<'_> {
+        let params_doc = BoxDoc::intersperse(
+            self.params.iter().map(|param| {
+                BoxDoc::text(param.var_name.as_str())
+                    .append(BoxDoc::text(": "))
+                    .append(param.var_type.to_doc())
+            }),
+            BoxDoc::text(", "),
+        );
+
+        BoxDoc::text("fn")
+            .append(BoxDoc::space())
+            .append(BoxDoc::text(self.name.as_str()))
+            .append(BoxDoc::text("("))
+            .append(params_doc)
+            .append(BoxDoc::text(")"))
+            .append(BoxDoc::space())
+            .append(BoxDoc::text("->"))
+            .append(BoxDoc::space())
+            .append(self.return_type.to_doc())
+            .append(BoxDoc::space())
+            .append(BoxDoc::text("{"))
+            .append(BoxDoc::line().append(self.body.to_doc()).nest(2))
+            .append(BoxDoc::line())
+            .append(BoxDoc::text("}"))
+    }
+}
+
+impl Display for TypedFunctionDeclaration {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "{}", self.to_doc().pretty(60))
     }
 }
 

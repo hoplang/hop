@@ -32,6 +32,12 @@ pub struct ComponentSignature {
 }
 
 #[derive(Debug, Clone)]
+pub struct FunctionSignature {
+    pub params: Vec<ParamEntry>,
+    pub return_type: Arc<Type>,
+}
+
+#[derive(Debug, Clone)]
 pub struct ParamEntry {
     pub name: VarName,
     pub typ: Arc<Type>,

@@ -12,6 +12,7 @@ use crate::ir::pure_module::{
 use crate::ir::var_id::VarIdCounter;
 use crate::ir::writer_module::{WriterEnumDeclaration, WriterParameter, WriterRecordDeclaration};
 use crate::symbols::field_name::FieldName;
+use crate::symbols::function_name::FunctionName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use std::cell::RefCell;
@@ -173,7 +174,7 @@ impl PureModuleBodiesBuilder {
             .borrow_mut()
             .insert(name.to_string(), (parameters.clone(), return_type.clone()));
         self.functions.push(PureFunctionDeclaration {
-            name: TypeName::new(name).expect("Test function name should be valid"),
+            name: FunctionName::new(name).expect("Test function name should be valid"),
             parameters,
             return_type,
             body,
@@ -1146,7 +1147,7 @@ impl PureBuilder {
             .collect();
 
         PureExpr::FunctionCall {
-            function_name: TypeName::new(name).unwrap(),
+            function_name: FunctionName::new(name).unwrap(),
             args: pure_args,
             kind: return_type,
             id: self.next_expr_id(),

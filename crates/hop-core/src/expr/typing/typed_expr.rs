@@ -189,6 +189,13 @@ pub enum TypedExpr {
     /// An asset path, e.g. asset!("/logo.svg").
     /// Resolved to a concrete string literal at IR compile time based on build mode.
     Asset { path: CheapString },
+
+    /// A function call expression, e.g. foo(1, 2)
+    FunctionCall {
+        function_name: VarName,
+        args: Vec<(VarName, Self)>,
+        kind: Arc<Type>,
+    },
 }
 
 impl TypedExpr {
@@ -201,7 +208,8 @@ impl TypedExpr {
             | TypedExpr::EnumLiteral { kind, .. }
             | TypedExpr::OptionLiteral { kind, .. }
             | TypedExpr::Match { kind, .. }
-            | TypedExpr::Let { kind, .. } => kind.clone(),
+            | TypedExpr::Let { kind, .. }
+            | TypedExpr::FunctionCall { kind, .. } => kind.clone(),
 
             TypedExpr::FloatLiteral { .. } | TypedExpr::IntToFloat { .. } => Arc::new(Type::Float),
             TypedExpr::IntLiteral { .. } => Arc::new(Type::Int),
@@ -258,7 +266,8 @@ impl TypedExpr {
             | TypedExpr::EnumLiteral { kind, .. }
             | TypedExpr::OptionLiteral { kind, .. }
             | TypedExpr::Match { kind, .. }
-            | TypedExpr::Let { kind, .. } => kind.as_ref(),
+            | TypedExpr::Let { kind, .. }
+            | TypedExpr::FunctionCall { kind, .. } => kind.as_ref(),
 
             TypedExpr::FloatLiteral { .. } | TypedExpr::IntToFloat { .. } => &FLOAT_TYPE,
             TypedExpr::IntLiteral { .. } => &INT_TYPE,
@@ -601,6 +610,30 @@ impl TypedExpr {
             TypedExpr::Asset { path } => BoxDoc::text("asset!(\"")
                 .append(BoxDoc::text(path.as_str()))
                 .append(BoxDoc::text("\")")),
+            TypedExpr::FunctionCall {
+                function_name,
+                args,
+                ..
+            } => {
+                if args.is_empty() {
+                    BoxDoc::text(function_name.as_str()).append(BoxDoc::text("()"))
+                } else {
+                    BoxDoc::text(function_name.as_str())
+                        .append(BoxDoc::text("("))
+                        .append(
+                            BoxDoc::line_()
+                                .append(BoxDoc::intersperse(
+                                    args.iter().map(|(_, e)| e.to_doc()),
+                                    BoxDoc::text(",").append(BoxDoc::line()),
+                                ))
+                                .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
+                                .append(BoxDoc::line_())
+                                .nest(2)
+                                .group(),
+                        )
+                        .append(BoxDoc::text(")"))
+                }
+            }
         }
     }
 }

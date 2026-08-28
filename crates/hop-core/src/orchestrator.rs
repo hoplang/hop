@@ -81,6 +81,11 @@ pub fn orchestrate_pure(
         }
     }
 
+    let functions: Vec<_> = document_ids
+        .iter()
+        .flat_map(|id| typed_asts[id].get_function_declarations())
+        .collect();
+
     let records: Vec<_> = typed_asts
         .values()
         .flat_map(|module| module.get_records())
@@ -93,6 +98,7 @@ pub fn orchestrate_pure(
     let pure_module = compile(
         inlined_views,
         inlined_component_declarations,
+        &functions,
         &records,
         &enums,
         options.asset_rewriter,

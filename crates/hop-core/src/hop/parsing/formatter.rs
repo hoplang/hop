@@ -1,7 +1,7 @@
 use super::parsed_ast::{
     ParsedAst, ParsedAttribute, ParsedAttributeValue, ParsedComponentDeclaration,
     ParsedDeclaration, ParsedEnumDeclaration, ParsedEnumDeclarationVariant,
-    ParsedImportDeclaration, ParsedParameter, ParsedRecordDeclaration,
+    ParsedFunctionDeclaration, ParsedImportDeclaration, ParsedParameter, ParsedRecordDeclaration,
     ParsedRecordDeclarationField, ParsedViewDeclaration,
 };
 use super::parsed_node::{ParsedLetBinding, ParsedMatchCase, ParsedNode};
@@ -130,6 +130,9 @@ fn format_declaration<'a>(
             format_component_declaration(arena, component, comments)
         }
         ParsedDeclaration::View(view) => format_view_declaration(arena, view, comments),
+        ParsedDeclaration::Function(function) => {
+            format_function_declaration(arena, function, comments)
+        }
     }
 }
 
@@ -416,6 +419,84 @@ fn format_view_declaration<'a>(
         .append(params_doc)
         .append(arena.text(" {"))
         .append(format_children(arena, &view.children, comments))
+        .append(arena.text("}"))
+}
+
+fn format_function_declaration<'a>(
+    arena: &'a Arena<'a>,
+    function: &'a ParsedFunctionDeclaration,
+    comments: &mut VecDeque<&'a DocumentRange>,
+) -> DocBuilder<'a, Arena<'a>> {
+    let leading_comments = drain_comments_before(arena, comments, function.name_range.start());
+
+    let params_doc = if function.params.is_empty() {
+        arena.text("()")
+    } else {
+        let mut params_inner = arena.nil();
+        let force_multiline = function.params.len() >= 2;
+        let line_break = if force_multiline {
+            arena.hardline()
+        } else {
+            arena.line()
+        };
+        for (i, param) in function.params.iter().enumerate() {
+            if i > 0 {
+                params_inner = params_inner
+                    .append(arena.text(","))
+                    .append(line_break.clone());
+            }
+            params_inner = params_inner.append(format_parameter(arena, param, comments));
+        }
+        if force_multiline {
+            let body = arena
+                .hardline()
+                .append(params_inner)
+                .append(arena.text(","))
+                .nest(2)
+                .append(arena.hardline());
+            arena.text("(").append(body).append(arena.text(")"))
+        } else {
+            let body = arena
+                .line_()
+                .append(params_inner)
+                .append(arena.text(",").flat_alt(arena.nil()))
+                .nest(2)
+                .append(arena.line_());
+            arena.text("(").append(body).append(arena.text(")")).group()
+        }
+    };
+
+    let body_leading_comments =
+        drain_comments_before(arena, comments, function.body.range().start());
+    let body_content = body_leading_comments.append(format_expr(arena, &function.body, comments));
+    let has_trailing_comments = comments
+        .front()
+        .is_some_and(|c| c.start() < function.range.end());
+    let body_doc = if has_trailing_comments {
+        let trailing_comments = drain_comments_before(arena, comments, function.range.end());
+        arena
+            .hardline()
+            .append(body_content)
+            .append(arena.hardline())
+            .append(trailing_comments)
+            .nest(2)
+    } else {
+        arena
+            .hardline()
+            .append(body_content)
+            .nest(2)
+            .append(arena.hardline())
+    };
+
+    leading_comments
+        .append(arena.text("fn"))
+        .append(arena.text(" "))
+        .append(arena.text(function.name.as_str()))
+        .append(params_doc)
+        .append(arena.text(" -> "))
+        .append(format_type(arena, &function.return_type))
+        .append(arena.text(" {"))
+        .append(body_doc)
         .append(arena.text("}"))
 }
 
@@ -1142,6 +1223,24 @@ fn format_expr<'a>(
             }
         }
         ParsedExpr::FragmentEmpty { .. } => arena.text("Fragment::empty()"),
+        ParsedExpr::FunctionCall { name, args, .. } => {
+            if args.is_empty() {
+                arena.text(name.as_str()).append(arena.text("()"))
+            } else {
+                let mut args_doc = arena.nil();
+                for (i, arg) in args.iter().enumerate() {
+                    if i > 0 {
+                        args_doc = args_doc.append(arena.text(",")).append(arena.line());
+                    }
+                    args_doc = args_doc.append(format_expr(arena, arg, comments));
+                }
+                arena
+                    .text(name.as_str())
+                    .append(arena.text("("))
+                    .append(soft_block(arena, args_doc))
+                    .append(arena.text(")"))
+            }
+        }
     }
 }
 
@@ -4214,6 +4313,108 @@ mod tests {
                 component Foo(...rest) {
                   <button ...rest>
                   </button>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn function_declaration_to_doc() {
+        check(
+            indoc! {"
+                fn foo(x: Int) -> Int { x + 10 }
+            "},
+            expect![[r#"
+                fn foo(x: Int) -> Int {
+                  x + 10
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn function_with_empty_params_to_doc() {
+        check(
+            indoc! {"
+                fn answer() -> Int {
+                  42
+                }
+            "},
+            expect![[r#"
+                fn answer() -> Int {
+                  42
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn function_with_multiple_params_to_doc() {
+        check(
+            indoc! {r#"
+                fn pick(cond: Bool, a: String, b: String) -> String { "x" }
+            "#},
+            expect![[r#"
+                fn pick(
+                  cond: Bool,
+                  a: String,
+                  b: String,
+                ) -> String {
+                  "x"
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn function_preserves_leading_comment() {
+        check(
+            indoc! {"
+                // Adds ten
+                fn foo(x: Int) -> Int {
+                  x + 10
+                }
+            "},
+            expect![[r#"
+                // Adds ten
+                fn foo(x: Int) -> Int {
+                  x + 10
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn function_preserves_comments_in_body() {
+        check(
+            indoc! {"
+                fn foo(x: Int) -> Int {
+                  // before the expression
+                  x + 10
+                  // after the expression
+                }
+            "},
+            expect![[r#"
+                fn foo(x: Int) -> Int {
+                  // before the expression
+                  x + 10
+                  // after the expression
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn function_with_match_body_to_doc() {
+        check(
+            indoc! {r#"
+                fn label(flag: Bool) -> String {
+                  match flag { true => "on", false => "off" }
+                }
+            "#},
+            expect![[r#"
+                fn label(flag: Bool) -> String {
+                  match flag {true => "on", false => "off"}
                 }
             "#]],
         );

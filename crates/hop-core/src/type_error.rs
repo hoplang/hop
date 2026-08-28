@@ -387,6 +387,43 @@ pub(crate) enum TypeErrorKind {
 
     #[error("asset! path must start with '/'")]
     AssetPathMustBeAbsolute,
+
+    #[error("Undefined function: {name}")]
+    UndefinedFunction { name: VarName },
+
+    #[error("Function '{name}' expects {expected} argument(s), got {found}")]
+    FunctionArgumentCountMismatch {
+        name: VarName,
+        expected: usize,
+        found: usize,
+    },
+
+    #[error(
+        "Mismatched type for argument '{param_name}' of function '{name}': expected `{expected}` got `{found}`"
+    )]
+    FunctionArgumentTypeMismatch {
+        name: VarName,
+        param_name: VarName,
+        expected: Arc<Type>,
+        found: Arc<Type>,
+    },
+
+    #[error("Function {name} is already defined")]
+    FunctionNameIsAlreadyDefined { name: VarName },
+
+    #[error(
+        "Function {function} collides with component {component}: both compile to the same generated name"
+    )]
+    FunctionNameCollidesWithComponent {
+        function: VarName,
+        component: TypeName,
+    },
+
+    #[error("Mismatched type for function body: expected `{expected}` got `{found}`")]
+    FunctionBodyTypeMismatch {
+        expected: Arc<Type>,
+        found: Arc<Type>,
+    },
 }
 
 impl TypeErrorKind {

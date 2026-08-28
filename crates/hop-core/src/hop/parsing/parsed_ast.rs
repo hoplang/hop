@@ -55,6 +55,17 @@ pub enum ParsedDeclaration {
     Enum(ParsedEnumDeclaration),
     Component(ParsedComponentDeclaration),
     View(ParsedViewDeclaration),
+    Function(ParsedFunctionDeclaration),
+}
+
+#[derive(Debug, Clone)]
+pub struct ParsedFunctionDeclaration {
+    pub name: VarName,
+    pub name_range: DocumentRange,
+    pub params: Vec<ParsedParameter>,
+    pub return_type: ParsedType,
+    pub body: ParsedExpr,
+    pub range: DocumentRange,
 }
 
 #[derive(Debug, Clone)]
@@ -236,6 +247,7 @@ impl ParsedDeclaration {
             ParsedDeclaration::Enum(e) => e.to_doc(),
             ParsedDeclaration::Component(component) => component.to_doc(),
             ParsedDeclaration::View(view) => view.to_doc(),
+            ParsedDeclaration::Function(function) => function.to_doc(),
         }
     }
 }
@@ -313,6 +325,13 @@ impl ParsedAst {
     pub fn get_view_declarations(&self) -> impl Iterator<Item = &ParsedViewDeclaration> {
         self.declarations.iter().filter_map(|d| match d {
             ParsedDeclaration::View(e) => Some(e),
+            _ => None,
+        })
+    }
+
+    pub fn get_function_declarations(&self) -> impl Iterator<Item = &ParsedFunctionDeclaration> {
+        self.declarations.iter().filter_map(|d| match d {
+            ParsedDeclaration::Function(f) => Some(f),
             _ => None,
         })
     }
@@ -496,6 +515,32 @@ impl ParsedComponentDeclaration {
                     .nest(2)
                     .append(BoxDoc::line())
             })
+            .append(BoxDoc::text("}"))
+    }
+}
+
+impl ParsedFunctionDeclaration {
+    pub fn to_doc(&self) -> BoxDoc<'_> {
+        BoxDoc::text("fn")
+            .append(BoxDoc::space())
+            .append(BoxDoc::text(self.name.as_str()))
+            .append(BoxDoc::text("("))
+            .append(if self.params.is_empty() {
+                BoxDoc::nil()
+            } else {
+                BoxDoc::intersperse(self.params.iter().map(|p| p.to_doc()), BoxDoc::text(", "))
+            })
+            .append(BoxDoc::text(")"))
+            .append(BoxDoc::text(" -> "))
+            .append(self.return_type.to_doc())
+            .append(BoxDoc::space())
+            .append(BoxDoc::text("{"))
+            .append(
+                BoxDoc::line()
+                    .append(self.body.to_doc())
+                    .nest(2)
+                    .append(BoxDoc::line()),
+            )
             .append(BoxDoc::text("}"))
     }
 }

@@ -1,9 +1,10 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use super::r#type::{ComponentSignature, Type};
+use super::r#type::{ComponentSignature, FunctionSignature, Type};
 use crate::document::DocumentRange;
 use crate::symbols::type_name::TypeName;
+use crate::symbols::var_name::VarName;
 
 #[derive(Debug, Clone)]
 pub enum TypeBinding {
@@ -15,6 +16,13 @@ pub enum TypeBinding {
 #[derive(Debug, Clone, Default)]
 pub struct TypeEnv {
     entries: HashMap<TypeName, Entry>,
+    functions: HashMap<VarName, FunctionEntry>,
+}
+
+#[derive(Debug, Clone)]
+struct FunctionEntry {
+    signature: FunctionSignature,
+    definition_range: DocumentRange,
 }
 
 #[derive(Debug, Clone)]
@@ -118,5 +126,33 @@ impl TypeEnv {
             .get_mut(name)
             .unwrap_or_else(|| panic!("no binding registered for {name}"))
             .binding = binding;
+    }
+
+    /// Bind a locally declared function name.
+    ///
+    /// Errors if the name is already taken.
+    pub fn insert_local_function(
+        &mut self,
+        name: VarName,
+        signature: FunctionSignature,
+        definition_range: DocumentRange,
+    ) -> Result<(), ()> {
+        if self.functions.contains_key(&name) {
+            return Err(());
+        }
+        self.functions.insert(
+            name,
+            FunctionEntry {
+                signature,
+                definition_range,
+            },
+        );
+        Ok(())
+    }
+
+    /// Look up a function signature by name.
+    pub fn lookup_function(&self, name: &VarName) -> Option<(&FunctionSignature, &DocumentRange)> {
+        let entry = self.functions.get(name)?;
+        Some((&entry.signature, &entry.definition_range))
     }
 }

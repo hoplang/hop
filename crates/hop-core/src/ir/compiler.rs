@@ -9,7 +9,9 @@ use crate::expr::TypedExpr;
 use crate::expr::patterns::{EnumMatchArm, Match};
 use crate::hop::inlining::inlined_node::{InlinedNode, InlinedValue};
 use crate::hop::inlining::{InlinedComponentDeclaration, InlinedViewDeclaration};
-use crate::hop::typing::typed_ast::{TypedEnumDeclaration, TypedRecordDeclaration};
+use crate::hop::typing::typed_ast::{
+    TypedEnumDeclaration, TypedFunctionDeclaration, TypedRecordDeclaration,
+};
 use crate::hop::typing::typed_node::{TypedAttributeValue, TypedLoopSource};
 use crate::ir::expr_id::ExprId;
 use crate::ir::expr_id::ExprIdCounter;
@@ -27,6 +29,7 @@ use super::writer_module::{WriterEnumDeclaration, WriterParameter, WriterRecordD
 pub fn compile(
     views: Vec<InlinedViewDeclaration>,
     components: Vec<InlinedComponentDeclaration>,
+    source_functions: &[&TypedFunctionDeclaration],
     records: &[&TypedRecordDeclaration],
     enums: &[&TypedEnumDeclaration],
     asset_rewriter: Option<Arc<dyn AssetRewriter>>,
@@ -39,10 +42,15 @@ pub fn compile(
         .into_iter()
         .map(|view| compiler.compile_view_decl(view))
         .collect();
-    let functions = components
+    let mut functions: Vec<PureFunctionDeclaration> = components
         .into_iter()
         .map(|decl| compiler.compile_component_decl(decl))
         .collect();
+    functions.extend(
+        source_functions
+            .iter()
+            .map(|decl| compiler.compile_function_decl(decl)),
+    );
 
     // Records and enums carry no code, so they are converted as-is. Both are
     // sorted by name since callers collect them from an unordered set of
@@ -112,10 +120,35 @@ impl<'a> Compiler<'a> {
         }
 
         let declaration = PureFunctionDeclaration {
-            name: decl.name,
+            name: decl.name.into(),
             parameters,
             return_type: Arc::new(Type::Fragment),
             body: self.compile_nodes(&decl.children),
+        };
+        self.pop_scope();
+        declaration
+    }
+
+    fn compile_function_decl(
+        &mut self,
+        decl: &TypedFunctionDeclaration,
+    ) -> PureFunctionDeclaration {
+        self.push_scope();
+
+        let mut parameters = Vec::with_capacity(decl.params.len());
+        for param in &decl.params {
+            parameters.push(WriterParameter {
+                var: self.bind(&param.var_name),
+                name: param.var_name.clone(),
+                typ: param.var_type.clone(),
+            });
+        }
+
+        let declaration = PureFunctionDeclaration {
+            name: decl.name.clone().into(),
+            parameters,
+            return_type: decl.return_type.clone(),
+            body: self.compile_expr(&decl.body),
         };
         self.pop_scope();
         declaration
@@ -389,7 +422,7 @@ impl<'a> Compiler<'a> {
                     .collect();
 
                 output.push(PureExpr::FunctionCall {
-                    function_name: component_name.clone(),
+                    function_name: component_name.clone().into(),
                     args: compiled_args,
                     kind: Arc::new(Type::Fragment),
                     id: self.next_expr_id(),
@@ -758,6 +791,22 @@ impl<'a> Compiler<'a> {
             },
             TypedExpr::FragmentEmpty => PureExpr::FragmentConcat {
                 parts: Vec::new(),
+                id: expr_id,
+            },
+            TypedExpr::FunctionCall {
+                function_name,
+                args,
+                kind,
+            } => PureExpr::FunctionCall {
+                function_name: function_name.clone().into(),
+                args: args
+                    .iter()
+                    .map(|(name, value)| PureArgument {
+                        name: name.clone(),
+                        expr: self.compile_expr(value),
+                    })
+                    .collect(),
+                kind: kind.clone(),
                 id: expr_id,
             },
             TypedExpr::Let {

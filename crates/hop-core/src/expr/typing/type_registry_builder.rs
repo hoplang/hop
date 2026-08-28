@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::sync::Arc;
 
 use crate::document::DocumentCursor;
@@ -6,13 +6,14 @@ use crate::document_annotator::DocumentAnnotator;
 use crate::document_id::DocumentId;
 use crate::expr::ExamplesAnnotation;
 use crate::expr::parsing::parse_type::parse_type;
-use crate::expr::typing::r#type::{EnumVariant, Type};
+use crate::expr::typing::r#type::{EnumVariant, FunctionSignature, ParamEntry, Type};
 use crate::expr::typing::type_checker::resolve_type;
 use crate::expr::typing::type_env::TypeBinding;
 use crate::expr::typing::type_env::TypeEnv;
 use crate::expr::typing::type_registry::{ResolvedType, TypeDef, TypeRegistry};
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
+use crate::symbols::var_name::VarName;
 
 /// The module all test-declared types live in.
 fn test_module() -> DocumentId {
@@ -25,6 +26,10 @@ fn type_name(name: &str) -> TypeName {
 
 fn field_name(name: &str) -> FieldName {
     FieldName::new(name).unwrap_or_else(|e| panic!("invalid field name `{name}`: {e:?}"))
+}
+
+fn var_name(name: &str) -> VarName {
+    VarName::new(name).unwrap_or_else(|e| panic!("invalid var name `{name}`: {e:?}"))
 }
 
 #[derive(Clone)]
@@ -40,6 +45,11 @@ enum Decl {
     Enum {
         name: String,
         variants: Vec<(String, Vec<(String, String)>)>,
+    },
+    Function {
+        name: String,
+        params: Vec<(String, String)>,
+        return_type: String,
     },
 }
 
@@ -103,6 +113,23 @@ impl TypeRegistryBuilder {
         self
     }
 
+    pub fn function<'a>(
+        mut self,
+        name: &str,
+        params: impl IntoIterator<Item = (&'a str, &'a str)>,
+        return_type: &str,
+    ) -> Self {
+        self.decls.push(Decl::Function {
+            name: name.to_string(),
+            params: params
+                .into_iter()
+                .map(|(p, t)| (p.to_string(), t.to_string()))
+                .collect(),
+            return_type: return_type.to_string(),
+        });
+        self
+    }
+
     pub fn build(self) -> TestTypes {
         let module = test_module();
         let mut named = BTreeMap::new();
@@ -112,6 +139,7 @@ impl TypeRegistryBuilder {
                 Decl::Record { name, .. }
                 | Decl::EnumUnit { name, .. }
                 | Decl::Enum { name, .. } => name,
+                Decl::Function { .. } => continue,
             };
             let type_name = type_name(name);
             let typ = Arc::new(Type::Named {
@@ -127,6 +155,7 @@ impl TypeRegistryBuilder {
             module,
             registry: TypeRegistry::default(),
             named,
+            functions: HashMap::new(),
         };
 
         for decl in self.decls {
@@ -173,6 +202,27 @@ impl TypeRegistryBuilder {
                         TypeDef::Enum { variants },
                     );
                 }
+                Decl::Function {
+                    name,
+                    params,
+                    return_type,
+                } => {
+                    let params = params
+                        .iter()
+                        .map(|(p, t)| ParamEntry {
+                            name: var_name(p),
+                            typ: types.resolve(t),
+                            default: None,
+                        })
+                        .collect();
+                    let signature = FunctionSignature {
+                        params,
+                        return_type: types.resolve(&return_type),
+                    };
+                    if types.functions.insert(var_name(&name), signature).is_some() {
+                        panic!("duplicate declaration of function `{name}`");
+                    }
+                }
             }
         }
 
@@ -188,6 +238,7 @@ pub struct TestTypes {
     module: DocumentId,
     registry: TypeRegistry,
     named: BTreeMap<TypeName, Arc<Type>>,
+    functions: HashMap<VarName, FunctionSignature>,
 }
 
 impl TestTypes {
@@ -281,6 +332,10 @@ impl TestTypes {
                 TypeBinding::Type(typ.clone()),
                 decl_range.clone(),
             );
+        }
+        for (name, signature) in &self.functions {
+            // Names come from a HashMap so they are unique and cannot collide.
+            let _ = env.insert_local_function(name.clone(), signature.clone(), decl_range.clone());
         }
         env
     }

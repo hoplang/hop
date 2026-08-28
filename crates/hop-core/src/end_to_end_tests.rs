@@ -14341,4 +14341,73 @@ mod tests {
             "#]],
         );
     }
+
+    #[test]
+    #[ignore]
+    fn function_called_in_range_bound_and_interpolation() {
+        check(
+            indoc! {r#"
+                fn foo(x: Int) -> Int {
+                  x + 10
+                }
+
+                component Wrapper {
+                  <div>
+                    <for {x in 0..=foo(-7)}>
+                      {x.to_string()},
+                    </for>
+                    {foo(10).to_string()}
+                  </div>
+                }
+
+                view Test {
+                  <Wrapper/>
+                }
+            "#},
+            "<div>0,1,2,3,20</div>",
+            expect![[r#"
+                -- ir (unoptimized) --
+                fn foo(x@v1: Int) -> Int {
+                  (v1 + 10)
+                }
+                view Test() {
+                  write("<div")
+                  write(">")
+                  for v0 in 0..=call foo(x = (-7)) {
+                    write_string(v0.to_string())
+                    write(",")
+                  }
+                  write_string(call foo(x = 10).to_string())
+                  write("</div>")
+                }
+                -- ir (optimized) --
+                fn foo(x@v1: Int) -> Int {
+                  (v1 + 10)
+                }
+                view Test() {
+                  write("<div>")
+                  for v0 in 0..=call foo(x = -7) {
+                    write_string(v0.to_string())
+                    write(",")
+                  }
+                  write_string(call foo(x = 10).to_string())
+                  write("</div>")
+                }
+                -- expected output --
+                <div>0,1,2,3,20</div>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
 }

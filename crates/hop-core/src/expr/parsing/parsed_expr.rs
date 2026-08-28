@@ -119,6 +119,14 @@ pub enum ParsedExpr {
 
     /// An empty Fragment literal, e.g. `Fragment::empty()`
     FragmentEmpty { range: DocumentRange },
+
+    /// A function call expression, e.g. `foo(1, 2)`
+    FunctionCall {
+        name: VarName,
+        name_range: DocumentRange,
+        args: Vec<Self>,
+        range: DocumentRange,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -309,7 +317,8 @@ impl ParsedExpr {
             | ParsedExpr::Match { range, .. }
             | ParsedExpr::OptionLiteral { range, .. }
             | ParsedExpr::MacroInvocation { range, .. }
-            | ParsedExpr::FragmentEmpty { range, .. } => range,
+            | ParsedExpr::FragmentEmpty { range, .. }
+            | ParsedExpr::FunctionCall { range, .. } => range,
         }
     }
 
@@ -516,6 +525,26 @@ impl ParsedExpr {
                 }
             }
             ParsedExpr::FragmentEmpty { .. } => BoxDoc::text("Fragment::empty()"),
+            ParsedExpr::FunctionCall { name, args, .. } => {
+                if args.is_empty() {
+                    BoxDoc::text(name.as_str()).append(BoxDoc::text("()"))
+                } else {
+                    BoxDoc::text(name.as_str())
+                        .append(BoxDoc::text("("))
+                        .append(
+                            BoxDoc::line_()
+                                .append(BoxDoc::intersperse(
+                                    args.iter().map(|e| e.to_doc()),
+                                    BoxDoc::text(",").append(BoxDoc::line()),
+                                ))
+                                .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
+                                .append(BoxDoc::line_())
+                                .nest(2)
+                                .group(),
+                        )
+                        .append(BoxDoc::text(")"))
+                }
+            }
         }
     }
 }

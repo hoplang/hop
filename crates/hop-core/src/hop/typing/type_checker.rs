@@ -4,7 +4,7 @@ use crate::dependency_graph::DependencyGraph;
 use crate::document::{CheapString, DocumentRange};
 use crate::error_collection::ErrorCollectionExt;
 use crate::expr::patterns::compiler::compile_match;
-use crate::expr::typing::r#type::EnumVariant;
+use crate::expr::typing::r#type::{EnumVariant, FunctionSignature};
 use crate::expr::typing::type_checker::{resolve_type, typecheck_expr};
 use crate::expr::typing::type_env::TypeEnv;
 use crate::expr::typing::type_export::TypeExport;
@@ -12,11 +12,13 @@ use crate::expr::typing::type_registry::{TypeDef, TypeRegistry};
 use crate::expr::{self, ComponentSignature, ParamEntry, Tail, Type, TypeBinding, TypedExpr};
 use crate::hop::parsing::parsed_ast::ParsedDeclaration;
 use crate::hop::parsing::parsed_ast::{
-    ParsedAttribute, ParsedComponentDeclaration, ParsedEnumDeclaration, ParsedImportDeclaration,
-    ParsedParameter, ParsedRecordDeclaration, ParsedViewDeclaration, RestSpreadTarget,
+    ParsedAttribute, ParsedComponentDeclaration, ParsedEnumDeclaration, ParsedFunctionDeclaration,
+    ParsedImportDeclaration, ParsedParameter, ParsedRecordDeclaration, ParsedViewDeclaration,
+    RestSpreadTarget,
 };
 use crate::hop::typing::definition_link::DefinitionLink;
 use crate::html::HtmlElement;
+use crate::symbols::function_name::FunctionName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use crate::type_error::{TypeError, TypeErrorKind};
@@ -31,8 +33,8 @@ use crate::expr::patterns::{EnumMatchArm, EnumPattern, Match};
 use crate::hop::parsing::parsed_ast::{ParsedAst, ParsedAttributeValue};
 use crate::hop::parsing::parsed_node::{ParsedLetBinding, ParsedLoopSource, ParsedNode};
 use crate::hop::typing::typed_ast::{
-    TypedAst, TypedComponentDeclaration, TypedEnumDeclaration, TypedParameter,
-    TypedRecordDeclaration, TypedViewDeclaration,
+    TypedAst, TypedComponentDeclaration, TypedEnumDeclaration, TypedFunctionDeclaration,
+    TypedParameter, TypedRecordDeclaration, TypedViewDeclaration,
 };
 use crate::hop::typing::typed_node::{
     TypedArgument, TypedArgumentValue, TypedAttribute, TypedAttributeValue, TypedLoopSource,
@@ -111,6 +113,17 @@ fn typecheck_module(
     let mut typed_enums = Vec::new();
     let mut typed_views = Vec::new();
 
+    let component_snake_names: HashMap<String, TypeName> = parsed_ast
+        .get_component_declarations()
+        .map(|c| {
+            (
+                FunctionName::from(c.component_name.clone()).to_snake_case(),
+                c.component_name.clone(),
+            )
+        })
+        .collect();
+    let mut function_names: HashSet<VarName> = HashSet::new();
+
     // Register all top level names in document order. Duplicates are
     // reported at the second occurrence. Pre-registering also lets type
     // declarations reference each other regardless of declaration order.
@@ -188,6 +201,24 @@ fn typecheck_module(
                     ));
                 }
             }
+            ParsedDeclaration::Function(f) => {
+                if !function_names.insert(f.name.clone()) {
+                    errors.push(TypeError::new(
+                        TypeErrorKind::FunctionNameIsAlreadyDefined {
+                            name: f.name.clone(),
+                        },
+                        f.name_range.clone(),
+                    ));
+                } else if let Some(component) = component_snake_names.get(f.name.as_str()) {
+                    errors.push(TypeError::new(
+                        TypeErrorKind::FunctionNameCollidesWithComponent {
+                            function: f.name.clone(),
+                            component: component.clone(),
+                        },
+                        f.name_range.clone(),
+                    ));
+                }
+            }
         }
     }
 
@@ -210,6 +241,29 @@ fn typecheck_module(
             registry,
             errors,
             definition_links,
+        ));
+    }
+
+    let mut pending_functions = Vec::new();
+    for function in parsed_ast.get_function_declarations() {
+        pending_functions.extend(register_function_signature(
+            function,
+            &mut type_env,
+            errors,
+            annotations,
+            definition_links,
+        ));
+    }
+    let mut typed_functions = Vec::new();
+    for pending in pending_functions {
+        typed_functions.extend(check_function_body(
+            pending,
+            registry,
+            errors,
+            &mut type_env,
+            annotations,
+            definition_links,
+            asset_references,
         ));
     }
 
@@ -307,6 +361,7 @@ fn typecheck_module(
         typed_records,
         typed_enums,
         typed_views,
+        typed_functions,
     )
 }
 
@@ -889,6 +944,151 @@ fn check_view_declaration(
         params: typed_params,
         children: typed_children,
     }
+}
+
+struct PendingFunction<'a> {
+    function: &'a ParsedFunctionDeclaration,
+    resolved_params: Vec<(&'a ParsedParameter, Arc<Type>)>,
+    typed_params: Vec<TypedParameter>,
+    return_type: Arc<Type>,
+}
+
+fn register_function_signature<'a>(
+    function: &'a ParsedFunctionDeclaration,
+    type_env: &mut TypeEnv,
+    errors: &mut Vec<TypeError>,
+    annotations: &mut Vec<TypeAnnotation>,
+    definition_links: &mut Vec<DefinitionLink>,
+) -> Option<PendingFunction<'a>> {
+    let mut resolved_params = Vec::new();
+    let mut declared_params = Vec::new();
+    let mut typed_params = Vec::new();
+    let mut seen_param_names: HashSet<VarName> = HashSet::new();
+
+    for param in &function.params {
+        if !seen_param_names.insert(param.var_name.clone()) {
+            errors.push(TypeError::new(
+                TypeErrorKind::DuplicateParameter {
+                    name: param.var_name.clone(),
+                },
+                param.var_name_range.clone(),
+            ));
+            continue;
+        }
+
+        let Some(param_type) =
+            errors.ok_or_add(resolve_type(&param.var_type, type_env, definition_links))
+        else {
+            continue;
+        };
+
+        annotations.push(TypeAnnotation::TypeForVarName {
+            range: param.var_name_range.clone(),
+            typ: param_type.clone(),
+            var_name: param.var_name.clone(),
+        });
+
+        resolved_params.push((param, param_type.clone()));
+        declared_params.push(ParamEntry {
+            name: param.var_name.clone(),
+            typ: param_type.clone(),
+            default: None,
+        });
+        typed_params.push(TypedParameter {
+            var_name: param.var_name.clone(),
+            var_type: param_type,
+            examples: param.examples.clone(),
+        });
+    }
+
+    let return_type = errors.ok_or_add(resolve_type(
+        &function.return_type,
+        type_env,
+        definition_links,
+    ))?;
+
+    type_env
+        .insert_local_function(
+            function.name.clone(),
+            FunctionSignature {
+                params: declared_params,
+                return_type: return_type.clone(),
+            },
+            function.name_range.clone(),
+        )
+        .ok()?;
+
+    Some(PendingFunction {
+        function,
+        resolved_params,
+        typed_params,
+        return_type,
+    })
+}
+
+fn check_function_body(
+    pending: PendingFunction<'_>,
+    registry: &TypeRegistry,
+    errors: &mut Vec<TypeError>,
+    type_env: &mut TypeEnv,
+    annotations: &mut Vec<TypeAnnotation>,
+    definition_links: &mut Vec<DefinitionLink>,
+    asset_references: &mut Vec<AssetReference>,
+) -> Option<TypedFunctionDeclaration> {
+    let PendingFunction {
+        function,
+        resolved_params,
+        typed_params,
+        return_type,
+    } = pending;
+
+    let mut var_env = VariableScope::new();
+    for (param, param_type) in &resolved_params {
+        let _ = var_env.push(
+            param.var_name.clone(),
+            (param_type.clone(), param.var_name_range.clone()),
+        );
+    }
+
+    let typed_body = errors.ok_or_add(typecheck_expr(
+        &function.body,
+        Some(&return_type),
+        &mut var_env,
+        type_env,
+        registry,
+        annotations,
+        definition_links,
+        asset_references,
+    ));
+
+    for (param, _) in resolved_params.iter().rev() {
+        let (name, _, accessed) = var_env.pop();
+        if !accessed {
+            errors.push(TypeError::new(
+                TypeErrorKind::UnusedVariable { var_name: name },
+                param.var_name_range.clone(),
+            ));
+        }
+    }
+
+    let typed_body = typed_body?;
+    let body_type = typed_body.get_type();
+    if *body_type != *return_type {
+        errors.push(TypeError::new(
+            TypeErrorKind::FunctionBodyTypeMismatch {
+                expected: return_type.clone(),
+                found: body_type,
+            },
+            function.body.range().clone(),
+        ));
+    }
+
+    Some(TypedFunctionDeclaration {
+        name: function.name.clone(),
+        params: typed_params,
+        return_type,
+        body: typed_body,
+    })
 }
 
 fn typecheck_node(
@@ -9362,6 +9562,258 @@ mod tests {
                 4 | 
                 5 | component Main(x: Index) {
                   |                   ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_function_call_in_component_body_and_for_range() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn add_ten(x: Int) -> Int {
+                  x + 10
+                }
+
+                component Foo {
+                  <div>
+                    <for {x in 0..=add_ten(10)}>
+                      {x.to_string()}
+                    </for>
+                  </div>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                component Foo {
+                  <div>
+                    <for {x in 0..=add_ten(10)}>
+                      {x.to_string()}
+                    </for>
+                  </div>
+                }
+
+                fn add_ten(x: Int) -> Int {
+                  (x + 10)
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_function_call_in_view_body() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn shout(name: String) -> String {
+                  name
+                }
+
+                view Main {
+                  <div>{shout("hi")}</div>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                view Main() {
+                  <div>
+                    {shout("hi")}
+                  </div>
+                }
+
+                fn shout(name: String) -> String {
+                  name
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_recursive_function() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn spin(n: Int) -> Int {
+                  spin(n + 1)
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn spin(n: Int) -> Int {
+                  spin((n + 1))
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_mutually_recursive_functions() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn ping(n: Int) -> Int {
+                  pong(n)
+                }
+
+                fn pong(n: Int) -> Int {
+                  ping(n)
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn ping(n: Int) -> Int {
+                  pong(n)
+                }
+
+                fn pong(n: Int) -> Int {
+                  ping(n)
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_function_call_with_wrong_argument_count() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn add_ten(x: Int) -> Int {
+                  x + 10
+                }
+
+                view Main {
+                  <div>{add_ten(1, 2).to_string()}</div>
+                }
+            "#},
+            expect![[r#"
+                error: Function 'add_ten' expects 1 argument(s), got 2
+                  --> main.hop (line 6, col 9)
+                5 | view Main {
+                6 |   <div>{add_ten(1, 2).to_string()}</div>
+                  |         ^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_function_call_with_wrong_argument_type() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn add_ten(x: Int) -> Int {
+                  x + 10
+                }
+
+                view Main {
+                  <div>{add_ten("one").to_string()}</div>
+                }
+            "#},
+            expect![[r#"
+                error: Mismatched type for argument 'x' of function 'add_ten': expected `Int` got `String`
+                  --> main.hop (line 6, col 17)
+                5 | view Main {
+                6 |   <div>{add_ten("one").to_string()}</div>
+                  |                 ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_duplicate_function_names() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn foo(x: Int) -> Int {
+                  x
+                }
+
+                fn foo(y: Int) -> Int {
+                  y
+                }
+            "#},
+            expect![[r#"
+                error: Function foo is already defined
+                  --> main.hop (line 5, col 4)
+                4 | 
+                5 | fn foo(y: Int) -> Int {
+                  |    ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_function_name_colliding_with_component() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn nav_bar(x: Int) -> Int {
+                  x
+                }
+
+                component NavBar {
+                  <div></div>
+                }
+            "#},
+            expect![[r#"
+                error: Function nav_bar collides with component NavBar: both compile to the same generated name
+                  --> main.hop (line 1, col 4)
+                1 | fn nav_bar(x: Int) -> Int {
+                  |    ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_function_with_duplicate_parameter_names() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn foo(x: Int, x: Int) -> Int {
+                  x
+                }
+            "#},
+            expect![[r#"
+                error: Duplicate parameter 'x'
+                  --> main.hop (line 1, col 16)
+                1 | fn foo(x: Int, x: Int) -> Int {
+                  |                ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_function_with_duplicate_parameter_names_with_different_types() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn foo(x: Int, x: String) -> Int {
+                  x
+                }
+            "#},
+            expect![[r#"
+                error: Duplicate parameter 'x'
+                  --> main.hop (line 1, col 16)
+                1 | fn foo(x: Int, x: String) -> Int {
+                  |                ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_function_body_type_mismatch() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn label() -> String {
+                  42
+                }
+            "#},
+            expect![[r#"
+                error: Mismatched type for function body: expected `String` got `Int`
+                  --> main.hop (line 2, col 3)
+                1 | fn label() -> String {
+                2 |   42
+                  |   ^^
             "#]],
         );
     }

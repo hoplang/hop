@@ -1635,6 +1635,70 @@ pub fn typecheck_expr(
                 )),
             }
         }
+        ParsedExpr::FunctionCall {
+            name,
+            name_range,
+            args,
+            range,
+        } => {
+            let (signature, def_range) = type_env.lookup_function(name).ok_or_else(|| {
+                TypeError::new(
+                    TypeErrorKind::UndefinedFunction { name: name.clone() },
+                    name_range.clone(),
+                )
+            })?;
+            let signature = signature.clone();
+            let def_range = def_range.clone();
+
+            if args.len() != signature.params.len() {
+                return Err(TypeError::new(
+                    TypeErrorKind::FunctionArgumentCountMismatch {
+                        name: name.clone(),
+                        expected: signature.params.len(),
+                        found: args.len(),
+                    },
+                    range.clone(),
+                ));
+            }
+
+            definition_links.push(DefinitionLink {
+                use_range: name_range.clone(),
+                definition_range: def_range,
+            });
+
+            let mut typed_args = Vec::with_capacity(args.len());
+            for (arg, param) in args.iter().zip(signature.params.iter()) {
+                let typed_arg = typecheck_expr(
+                    arg,
+                    Some(&param.typ),
+                    var_env,
+                    type_env,
+                    registry,
+                    annotations,
+                    definition_links,
+                    asset_references,
+                )?;
+                let arg_type = typed_arg.get_type();
+                if *arg_type != *param.typ {
+                    return Err(TypeError::new(
+                        TypeErrorKind::FunctionArgumentTypeMismatch {
+                            name: name.clone(),
+                            param_name: param.name.clone(),
+                            expected: param.typ.clone(),
+                            found: arg_type,
+                        },
+                        arg.range().clone(),
+                    ));
+                }
+                typed_args.push((param.name.clone(), typed_arg));
+            }
+
+            Ok(TypedExpr::FunctionCall {
+                function_name: name.clone(),
+                args: typed_args,
+                kind: signature.return_type.clone(),
+            })
+        }
     }
 }
 
@@ -5366,6 +5430,92 @@ mod tests {
             &[],
             "(1 + 2).to_string()",
             expect!["String"],
+        );
+    }
+
+    #[test]
+    fn accepts_call_to_registered_function() {
+        accept(
+            TypeRegistryBuilder::new().function("add_ten", [("x", "Int")], "Int"),
+            &[],
+            "add_ten(10)",
+            expect!["Int"],
+        );
+    }
+
+    #[test]
+    fn accepts_call_to_function_with_multiple_arguments() {
+        accept(
+            TypeRegistryBuilder::new().function("clamp", [("value", "Int"), ("max", "Int")], "Int"),
+            &[],
+            "clamp(10, 20)",
+            expect!["Int"],
+        );
+    }
+
+    #[test]
+    fn accepts_call_to_function_with_no_arguments() {
+        accept(
+            TypeRegistryBuilder::new().function("zero", [], "Int"),
+            &[],
+            "zero()",
+            expect!["Int"],
+        );
+    }
+
+    #[test]
+    fn rejects_call_to_undefined_function() {
+        reject(
+            TypeRegistryBuilder::new(),
+            &[],
+            "foo(10)",
+            expect![[r#"
+                error: Undefined function: foo
+                foo(10)
+                ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_call_with_too_few_arguments() {
+        reject(
+            TypeRegistryBuilder::new().function("add_ten", [("x", "Int")], "Int"),
+            &[],
+            "add_ten()",
+            expect![[r#"
+                error: Function 'add_ten' expects 1 argument(s), got 0
+                add_ten()
+                ^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_call_with_too_many_arguments() {
+        reject(
+            TypeRegistryBuilder::new().function("add_ten", [("x", "Int")], "Int"),
+            &[],
+            "add_ten(10, 20)",
+            expect![[r#"
+                error: Function 'add_ten' expects 1 argument(s), got 2
+                add_ten(10, 20)
+                ^^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_call_with_mismatched_argument_type() {
+        reject(
+            TypeRegistryBuilder::new().function("add_ten", [("x", "Int")], "Int"),
+            &[],
+            "add_ten(\"hello\")",
+            expect![[r#"
+                error: Mismatched type for argument 'x' of function 'add_ten': expected `Int` got `String`
+                add_ten("hello")
+                        ^^^^^^^
+            "#]],
         );
     }
 }

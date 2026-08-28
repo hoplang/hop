@@ -44,6 +44,12 @@ pub fn find_node_at_position(ast: &ParsedAst, position: DocumentPosition) -> Opt
         }
     }
 
+    for n in ast.get_function_declarations() {
+        if n.range.contains_position(position) {
+            return None;
+        }
+    }
+
     None
 }
 

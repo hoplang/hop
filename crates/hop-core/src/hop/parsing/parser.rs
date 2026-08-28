@@ -1,7 +1,8 @@
 use super::parsed_ast::{
     self, ParsedAst, ParsedAttribute, ParsedComponentDeclaration, ParsedDeclaration,
-    ParsedEnumDeclaration, ParsedEnumDeclarationVariant, ParsedImportDeclaration,
-    ParsedRecordDeclaration, ParsedRecordDeclarationField, ParsedViewDeclaration, RestSpreadTarget,
+    ParsedEnumDeclaration, ParsedEnumDeclarationVariant, ParsedFunctionDeclaration,
+    ParsedImportDeclaration, ParsedRecordDeclaration, ParsedRecordDeclarationField,
+    ParsedViewDeclaration, RestSpreadTarget,
 };
 use super::parsed_node::{ParsedLetBinding, ParsedLoopSource, ParsedMatchCase, ParsedNode};
 use super::token_tree::{TokenTree, parse_tree};
@@ -111,6 +112,19 @@ pub fn parse(
                     pub_range,
                 ) {
                     declarations.push(ParsedDeclaration::View(view));
+                }
+            }
+            Some((expr::Token::Fn, _)) => {
+                if let Some(pub_r) = pub_range {
+                    errors.push(ParseError::new(
+                        ParseErrorKind::UnexpectedPubKeyword {},
+                        pub_r,
+                    ));
+                }
+                if let Some(function) =
+                    parse_function_declaration(&mut iter, &mut comments, errors, &document_range)
+                {
+                    declarations.push(ParsedDeclaration::Function(function));
                 }
             }
             Some((_, token_range)) => {
@@ -781,6 +795,70 @@ fn parse_view_declaration(
         children,
         range,
         pub_range,
+    })
+}
+
+fn parse_function_declaration(
+    iter: &mut Peekable<DocumentCursor>,
+    comments: &mut VecDeque<DocumentRange>,
+    errors: &mut Vec<ParseError>,
+    range: &DocumentRange,
+) -> Option<ParsedFunctionDeclaration> {
+    let keyword_range =
+        expr::tokenizer::expect_token(iter, comments, errors, range, &expr::Token::Fn)?;
+    let (name, name_range) = expr::tokenizer::expect_variable_name(iter, comments, errors, range)?;
+    let left_paren =
+        expr::tokenizer::expect_token(iter, comments, errors, range, &expr::Token::LeftParen)?;
+    let (params, _) = expr::tokenizer::parse_delimited_list(
+        iter,
+        comments,
+        errors,
+        &left_paren,
+        &expr::Token::LeftParen,
+        &left_paren,
+        |iter, comments, errors, range| {
+            let (var_name, var_name_range) =
+                expr::tokenizer::expect_variable_name(iter, comments, errors, range)?;
+            expr::tokenizer::expect_token(iter, comments, errors, range, &expr::Token::Colon)?;
+            let var_type = parse_type(iter, comments, errors, range)?;
+            if let Some(assign_range) =
+                expr::tokenizer::advance_if(iter, comments, errors, expr::Token::Assign)
+            {
+                errors.push(ParseError::new(
+                    ParseErrorKind::DefaultValueNotAllowedOnFunction {},
+                    assign_range,
+                ));
+                expr::parse_expr::parse_primary(iter, comments, errors, range);
+            }
+            Some(parsed_ast::ParsedParameter {
+                var_name,
+                var_name_range,
+                var_type,
+                default_value: None,
+                examples: None,
+            })
+        },
+    )?;
+    expr::tokenizer::expect_token(iter, comments, errors, range, &expr::Token::Arrow)?;
+    let return_type = parse_type(iter, comments, errors, range)?;
+    let body_start =
+        expr::tokenizer::expect_token(iter, comments, errors, range, &expr::Token::LeftBrace)?;
+    let body = expr::parse_expr::parse_logical(iter, comments, errors, range)?;
+    let body_end = expr::tokenizer::expect_opposite(
+        iter,
+        comments,
+        errors,
+        &expr::Token::LeftBrace,
+        &body_start,
+    )?;
+    let full_range = keyword_range.to(body_end);
+    Some(ParsedFunctionDeclaration {
+        name,
+        name_range,
+        params,
+        return_type,
+        body,
+        range: full_range,
     })
 }
 
@@ -4314,6 +4392,169 @@ mod tests {
                 1 | view Main {
                 2 |   <div ...rest></div>
                   |        ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_function_declaration() {
+        accept(
+            indoc! {"
+                fn foo(x: Int) -> Int {
+                  x + 10
+                }
+
+                component Foo {
+                  <div>
+                    <for {x in 0..=foo(10)}>
+                      {x.to_string()}
+                    </for>
+                    {foo(10)}
+                  </div>
+                }
+            "},
+            expect![[r#"
+                fn foo(x: Int) -> Int {
+                  x + 10
+                }
+
+                component Foo {
+                  <div>
+                    <for {x in 0..=foo(10)}>
+                      {x.to_string()}
+                    </for>
+                    {foo(10)}
+                  </div>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_function_with_empty_params() {
+        accept(
+            indoc! {"
+                fn answer() -> Int {
+                  42
+                }
+            "},
+            expect![[r#"
+                fn answer() -> Int {
+                  42
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_function_with_multiple_params() {
+        accept(
+            indoc! {"
+                fn clamp(value: Int, low: Int, high: Int) -> Int {
+                  value
+                }
+            "},
+            expect![[r#"
+                fn clamp(
+                  value: Int,
+                  low: Int,
+                  high: Int,
+                ) -> Int {
+                  value
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_pub_on_function() {
+        reject(
+            indoc! {"
+                pub fn foo(x: Int) -> Int {
+                  x
+                }
+            "},
+            expect![[r#"
+                error: 'pub' is not allowed here
+                1 | pub fn foo(x: Int) -> Int {
+                  | ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_function_without_return_type() {
+        reject(
+            indoc! {"
+                fn foo(x: Int) {
+                  x
+                }
+            "},
+            expect![[r#"
+                error: Expected token '->' but got '{'
+                1 | fn foo(x: Int) {
+                  |                ^
+
+                error: Unexpected text at top level
+                1 | fn foo(x: Int) {
+                2 |   x
+                  |   ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_function_without_parameter_parens() {
+        reject(
+            indoc! {"
+                fn foo -> Int {
+                  1
+                }
+            "},
+            expect![[r#"
+                error: Expected token '(' but got '->'
+                1 | fn foo -> Int {
+                  |        ^^
+
+                error: Unexpected text at top level
+                1 | fn foo -> Int {
+                  |           ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_default_value_on_function_parameter() {
+        reject(
+            indoc! {"
+                fn foo(x: Int = 1) -> Int {
+                  x
+                }
+            "},
+            expect![[r#"
+                error: Default values are not allowed on function parameters
+                1 | fn foo(x: Int = 1) -> Int {
+                  |               ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_rest_param_on_function() {
+        reject(
+            indoc! {"
+                fn foo(...rest) -> Int {
+                  1
+                }
+            "},
+            expect![[r#"
+                error: Expected variable name but got '...'
+                1 | fn foo(...rest) -> Int {
+                  |        ^^^
+
+                error: Unexpected text at top level
+                1 | fn foo(...rest) -> Int {
+                  |           ^^^^
             "#]],
         );
     }

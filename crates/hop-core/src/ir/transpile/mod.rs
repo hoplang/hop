@@ -14,6 +14,7 @@ use crate::ir::writer_module::{
     WriterStatement, WriterViewDeclaration,
 };
 use crate::symbols::field_name::FieldName;
+use crate::symbols::function_name::FunctionName;
 use crate::symbols::type_name::TypeName;
 
 pub type Doc<'a> = DocBuilder<'a, Arena<'a>>;
@@ -65,7 +66,7 @@ pub trait Transpiler {
     fn transpile_write_function_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        name: &'a TypeName,
+        name: &'a FunctionName,
         args: &'a [WriterArgument],
     ) -> Doc<'a>;
     fn transpile_function_def<'a>(
@@ -76,7 +77,7 @@ pub trait Transpiler {
     fn transpile_function_call_expr<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        name: &'a TypeName,
+        name: &'a FunctionName,
         args: &'a [WriterArgument],
     ) -> Doc<'a>;
     fn transpile_statement<'a>(
