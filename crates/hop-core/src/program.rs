@@ -332,9 +332,7 @@ impl Program {
                 .tag_name_ranges()
                 .any(|r| r.contains_position(position))
             {
-                return Some(
-                    self.collect_component_rename_locations(&node.component_name, document_id),
-                );
+                return Some(self.collect_component_rename_locations(&node.tag_name));
             }
         }
 
@@ -347,13 +345,14 @@ impl Program {
         }
 
         match node {
-            ParsedNode::ComponentInvocation {
-                component_name,
-                declaring_module: definition_location,
-                ..
-            } => definition_location.as_ref().map(|target_module| {
-                self.collect_component_rename_locations(component_name, target_module)
-            }),
+            ParsedNode::ComponentInvocation { .. } => {
+                let link = self
+                    .definition_links
+                    .get(document_id)?
+                    .iter()
+                    .find(|link| link.use_range.contains_position(position))?;
+                Some(self.collect_component_rename_locations(&link.definition_range))
+            }
             n @ ParsedNode::Html { .. } => Some(
                 n.tag_names()
                     .map(|range| RenameLocation {
@@ -420,20 +419,8 @@ impl Program {
     /// - All import statements that import the component
     fn collect_component_rename_locations(
         &self,
-        component_name: &TypeName,
-        definition_module: &DocumentId,
+        definition_range: &DocumentRange,
     ) -> Vec<RenameLocation> {
-        // Find the definition range (the opening tag_name of the component declaration)
-        let definition_range = self
-            .parsed_asts
-            .get(definition_module)
-            .and_then(|module| module.get_component_declaration(component_name.as_str()))
-            .map(|decl| &decl.tag_name);
-
-        let Some(definition_range) = definition_range else {
-            return Vec::new();
-        };
-
         // Collect all use_ranges across all modules whose definition_range
         // matches the component's definition
         self.definition_links

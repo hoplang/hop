@@ -1455,7 +1455,6 @@ fn typecheck_node(
         ParsedNode::ComponentInvocation {
             component_name,
             component_name_opening_range,
-            declaring_module: _,
             component_name_closing_range,
             args,
             children,

@@ -20,7 +20,7 @@ use crate::symbols::field_name::FieldName;
 use crate::symbols::module_name::ModuleName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashSet, VecDeque};
 use std::iter::Peekable;
 
 /// A `...name` spread attribute found in a body, with the target it lands on.
@@ -41,9 +41,6 @@ pub fn parse(
     let mut declarations = Vec::new();
     let mut comments = VecDeque::new();
 
-    let mut defined_components = HashSet::new();
-    let mut imported_components = HashMap::new();
-
     loop {
         let pub_range =
             expr::tokenizer::advance_if(&mut iter, &mut comments, errors, expr::Token::Pub);
@@ -59,9 +56,6 @@ pub fn parse(
                 if let Some(import) =
                     parse_import_declaration(&mut iter, &mut comments, errors, &document_range)
                 {
-                    imported_components
-                        .entry(import.type_name.as_str().to_string())
-                        .or_insert_with(|| import.module_name.to_document_id());
                     declarations.push(ParsedDeclaration::Import(import));
                 }
             }
@@ -88,29 +82,16 @@ pub fn parse(
                 }
             }
             Some((expr::Token::Component, _)) => {
-                if let Some(component) = parse_component_declaration(
-                    &mut iter,
-                    &mut comments,
-                    errors,
-                    &document_id,
-                    &defined_components,
-                    &imported_components,
-                    pub_range,
-                ) {
-                    defined_components.insert(component.tag_name.as_str().to_string());
+                if let Some(component) =
+                    parse_component_declaration(&mut iter, &mut comments, errors, pub_range)
+                {
                     declarations.push(ParsedDeclaration::Component(component));
                 }
             }
             Some((expr::Token::View, _)) => {
-                if let Some(view) = parse_view_declaration(
-                    &mut iter,
-                    &mut comments,
-                    errors,
-                    &document_id,
-                    &defined_components,
-                    &imported_components,
-                    pub_range,
-                ) {
+                if let Some(view) =
+                    parse_view_declaration(&mut iter, &mut comments, errors, pub_range)
+                {
                     declarations.push(ParsedDeclaration::View(view));
                 }
             }
@@ -423,9 +404,6 @@ fn parse_component_declaration(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut Vec<ParseError>,
-    document_id: &DocumentId,
-    defined_components: &HashSet<String>,
-    imported_components: &HashMap<String, DocumentId>,
     pub_range: Option<DocumentRange>,
 ) -> Option<ParsedComponentDeclaration> {
     // Consume the 'component' keyword
@@ -568,15 +546,7 @@ fn parse_component_declaration(
     let mut tokenizer = Tokenizer::new();
 
     while let Some(tree) = parse_tree(&mut tokenizer, iter, errors) {
-        if let Some(node) = construct_node(
-            tree,
-            comments,
-            errors,
-            &mut spreads,
-            document_id,
-            defined_components,
-            imported_components,
-        ) {
+        if let Some(node) = construct_node(tree, comments, errors, &mut spreads) {
             children.push(node);
         }
     }
@@ -662,9 +632,6 @@ fn parse_view_declaration(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut Vec<ParseError>,
-    document_id: &DocumentId,
-    defined_components: &HashSet<String>,
-    imported_components: &HashMap<String, DocumentId>,
     pub_range: Option<DocumentRange>,
 ) -> Option<ParsedViewDeclaration> {
     // Consume the 'view' keyword
@@ -747,15 +714,7 @@ fn parse_view_declaration(
     let mut tokenizer = Tokenizer::new();
 
     while let Some(tree) = parse_tree(&mut tokenizer, iter, errors) {
-        if let Some(node) = construct_node(
-            tree,
-            comments,
-            errors,
-            &mut spreads,
-            document_id,
-            defined_components,
-            imported_components,
-        ) {
+        if let Some(node) = construct_node(tree, comments, errors, &mut spreads) {
             children.push(node);
         }
     }
@@ -923,9 +882,6 @@ fn construct_node(
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut Vec<ParseError>,
     spreads: &mut Vec<SpreadOccurrence>,
-    document_id: &DocumentId,
-    defined_components: &HashSet<String>,
-    imported_components: &HashMap<String, DocumentId>,
 ) -> Option<ParsedNode> {
     match tree.token {
         Token::Comment { range } => Some(ParsedNode::Comment { range }),
@@ -1001,15 +957,7 @@ fn construct_node(
                 let Some(subject) = subject else {
                     // Parse children to collect errors
                     for child in tree.children {
-                        construct_node(
-                            child,
-                            comments,
-                            errors,
-                            spreads,
-                            document_id,
-                            defined_components,
-                            imported_components,
-                        );
+                        construct_node(child, comments, errors, spreads);
                     }
                     return None;
                 };
@@ -1055,17 +1003,7 @@ fn construct_node(
                             let case_children: Vec<_> = child_tree
                                 .children
                                 .into_iter()
-                                .filter_map(|c| {
-                                    construct_node(
-                                        c,
-                                        comments,
-                                        errors,
-                                        spreads,
-                                        document_id,
-                                        defined_components,
-                                        imported_components,
-                                    )
-                                })
+                                .filter_map(|c| construct_node(c, comments, errors, spreads))
                                 .collect();
                             cases.push(ParsedMatchCase {
                                 pattern,
@@ -1092,17 +1030,7 @@ fn construct_node(
             let children: Vec<_> = tree
                 .children
                 .into_iter()
-                .filter_map(|child| {
-                    construct_node(
-                        child,
-                        comments,
-                        errors,
-                        spreads,
-                        document_id,
-                        defined_components,
-                        imported_components,
-                    )
-                })
+                .filter_map(|child| construct_node(child, comments, errors, spreads))
                 .collect();
 
             match tag_name.as_str() {
@@ -1208,12 +1136,6 @@ fn construct_node(
 
                     let parsed_args = parse_attributes(&attributes, comments, errors);
 
-                    let declaring_module = if defined_components.contains(component_name.as_str()) {
-                        Some(document_id.clone())
-                    } else {
-                        imported_components.get(component_name.as_str()).cloned()
-                    };
-
                     let children = if tree.closing_tag_name.is_some() {
                         Some(children)
                     } else {
@@ -1230,7 +1152,6 @@ fn construct_node(
                         component_name,
                         component_name_opening_range: tag_name,
                         component_name_closing_range: tree.closing_tag_name,
-                        declaring_module,
                         args: parsed_args,
                         range: tree.range,
                         children,

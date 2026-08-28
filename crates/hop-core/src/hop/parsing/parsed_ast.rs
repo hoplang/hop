@@ -274,11 +274,6 @@ impl ParsedAst {
         &self.declarations
     }
 
-    pub fn get_component_declaration(&self, name: &str) -> Option<&ParsedComponentDeclaration> {
-        self.get_component_declarations()
-            .find(|n| n.tag_name.as_str() == name)
-    }
-
     /// Finds a record declaration by name.
     pub fn get_record_declaration(&self, name: &str) -> Option<&ParsedRecordDeclaration> {
         self.get_record_declarations().find(|r| r.name() == name)

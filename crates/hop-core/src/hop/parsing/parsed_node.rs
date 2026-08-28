@@ -1,6 +1,5 @@
 use super::parsed_ast::ParsedAttribute;
 use crate::document::{CheapString, DocumentRange};
-use crate::document_id::DocumentId;
 use crate::expr::ParsedExpr;
 use crate::expr::parsing::ParsedType;
 use crate::expr::parsing::parsed_expr::ParsedMatchPattern;
@@ -34,7 +33,6 @@ pub enum ParsedNode {
         component_name: TypeName,
         component_name_opening_range: DocumentRange,
         component_name_closing_range: Option<DocumentRange>,
-        declaring_module: Option<DocumentId>,
         args: Vec<ParsedAttribute>,
         children: Option<Vec<ParsedNode>>,
         range: DocumentRange,
