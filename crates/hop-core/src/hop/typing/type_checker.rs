@@ -515,8 +515,19 @@ fn register_component_signature<'a>(
     let mut resolved_params = Vec::new();
     let mut declared_params: Vec<ParamEntry> = Vec::new();
     let mut typed_params = Vec::new();
+    let mut seen_param_names: HashSet<VarName> = HashSet::new();
     if let Some((params, _)) = params {
         for param in params {
+            if !seen_param_names.insert(param.var_name.clone()) {
+                errors.push(TypeError::new(
+                    TypeErrorKind::DuplicateParameter {
+                        name: param.var_name.clone(),
+                    },
+                    param.var_name_range.clone(),
+                ));
+                continue;
+            }
+
             let Some(param_type) =
                 errors.ok_or_add(resolve_type(&param.var_type, type_env, definition_links))
             else {
@@ -804,8 +815,19 @@ fn check_view_declaration(
 
     let mut pushed_params = Vec::new();
     let mut typed_params = Vec::new();
+    let mut seen_param_names: HashSet<VarName> = HashSet::new();
 
     for param in params {
+        if !seen_param_names.insert(param.var_name.clone()) {
+            errors.push(TypeError::new(
+                TypeErrorKind::DuplicateParameter {
+                    name: param.var_name.clone(),
+                },
+                param.var_name_range.clone(),
+            ));
+            continue;
+        }
+
         let Some(param_type) =
             errors.ok_or_add(resolve_type(&param.var_type, type_env, definition_links))
         else {
@@ -817,13 +839,17 @@ fn check_view_declaration(
             typ: param_type.clone(),
             var_name: param.var_name.clone(),
         });
-        let _ = var_env.push(
-            param.var_name.clone(),
-            (param_type.clone(), param.var_name_range.clone()),
-        );
+        if var_env
+            .push(
+                param.var_name.clone(),
+                (param_type.clone(), param.var_name_range.clone()),
+            )
+            .is_ok()
+        {
+            pushed_params.push(param);
+        }
         validate_examples_annotation(&param.examples, &param_type, &param.var_name_range, errors);
 
-        pushed_params.push(param);
         typed_params.push(TypedParameter {
             var_name: param.var_name.clone(),
             var_type: param_type,
@@ -2214,6 +2240,78 @@ mod tests {
             panic!("expected diagnostics but got none");
         }
         expected.assert_eq(&actual);
+    }
+
+    #[test]
+    fn rejects_component_with_duplicate_parameter_names() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component Foo(x: Int, x: Int) {
+                  {x.to_string()}
+                }
+            "#},
+            expect![[r#"
+                error: Duplicate parameter 'x'
+                  --> main.hop (line 1, col 23)
+                1 | component Foo(x: Int, x: Int) {
+                  |                       ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_component_with_duplicate_parameter_names_with_different_types() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component Foo(x: Int, x: String) {
+                  {x.to_string()}
+                }
+            "#},
+            expect![[r#"
+                error: Duplicate parameter 'x'
+                  --> main.hop (line 1, col 23)
+                1 | component Foo(x: Int, x: String) {
+                  |                       ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_view_with_duplicate_parameter_names() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                view Main(x: Int, x: Int) {
+                  {x.to_string()}
+                }
+            "#},
+            expect![[r#"
+                error: Duplicate parameter 'x'
+                  --> main.hop (line 1, col 19)
+                1 | view Main(x: Int, x: Int) {
+                  |                   ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_view_with_duplicate_parameter_names_with_different_types() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                view Main(x: Int, x: String) {
+                  {x.to_string()}
+                }
+            "#},
+            expect![[r#"
+                error: Duplicate parameter 'x'
+                  --> main.hop (line 1, col 19)
+                1 | view Main(x: Int, x: String) {
+                  |                   ^
+            "#]],
+        );
     }
 
     #[test]

@@ -340,6 +340,9 @@ pub(crate) enum TypeErrorKind {
     #[error("Variable {name} is already defined")]
     VariableAlreadyDefined { name: VarName },
 
+    #[error("Duplicate parameter '{name}'")]
+    DuplicateParameter { name: VarName },
+
     #[error("{name} is already defined")]
     TypeNameIsAlreadyDefined { name: TypeName },
 
