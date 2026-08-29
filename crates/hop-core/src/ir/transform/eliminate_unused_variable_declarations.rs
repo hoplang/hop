@@ -242,12 +242,12 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Test() {
-                  raw("Hello") for v0 in ["a", "b"]
+                  for v0 in ["a", "b"] { raw("Hello") }
                 }
 
                 -- after --
                 page Test() {
-                  raw("Hello") for _ in ["a", "b"]
+                  for _ in ["a", "b"] { raw("Hello") }
                 }
             "#]],
         );
@@ -266,12 +266,12 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Test() {
-                  escape(v0) for v0 in ["a", "b"]
+                  for v0 in ["a", "b"] { escape(v0) }
                 }
 
                 -- after --
                 page Test() {
-                  escape(v0) for v0 in ["a", "b"]
+                  for v0 in ["a", "b"] { escape(v0) }
                 }
             "#]],
         );
@@ -288,7 +288,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Test() {
-                  let v0 = "value" in raw("Hello")
+                  let v0 = "value" in { raw("Hello") }
                 }
 
                 -- after --
@@ -310,12 +310,12 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Test() {
-                  let v0 = "Hello" in escape(v0)
+                  let v0 = "Hello" in { escape(v0) }
                 }
 
                 -- after --
                 page Test() {
-                  let v0 = "Hello" in escape(v0)
+                  let v0 = "Hello" in { escape(v0) }
                 }
             "#]],
         );
@@ -336,7 +336,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Test() {
-                  let v0 = "a" in let v1 = v0 in raw("Hello")
+                  let v0 = "a" in { let v1 = v0 in { raw("Hello") } }
                 }
 
                 -- after --
@@ -360,12 +360,14 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Test() {
-                  let v1 = "value" in escape(v0) for v0 in ["a", "b"]
+                  for v0 in ["a", "b"] {
+                    let v1 = "value" in { escape(v0) }
+                  }
                 }
 
                 -- after --
                 page Test() {
-                  escape(v0) for v0 in ["a", "b"]
+                  for v0 in ["a", "b"] { escape(v0) }
                 }
             "#]],
         );
@@ -388,16 +390,16 @@ mod tests {
                 -- before --
                 page Test() {
                   match Option[String]::Some("x") {
-                    Some(v0) => raw("some"),
-                    None => raw("none"),
+                    Some(v0) => { raw("some") }
+                    None => { raw("none") }
                   }
                 }
 
                 -- after --
                 page Test() {
                   match Option[String]::Some("x") {
-                    Some(_) => raw("some"),
-                    None => raw("none"),
+                    Some(_) => { raw("some") }
+                    None => { raw("none") }
                   }
                 }
             "#]],
@@ -421,16 +423,16 @@ mod tests {
                 -- before --
                 page Test() {
                   match Option[String]::Some("x") {
-                    Some(v0) => escape(v0),
-                    None => raw("none"),
+                    Some(v0) => { escape(v0) }
+                    None => { raw("none") }
                   }
                 }
 
                 -- after --
                 page Test() {
                   match Option[String]::Some("x") {
-                    Some(v0) => escape(v0),
-                    None => raw("none"),
+                    Some(v0) => { escape(v0) }
+                    None => { raw("none") }
                   }
                 }
             "#]],
@@ -467,8 +469,8 @@ mod tests {
                 }
                 page Test() {
                   match Status::Active {since: "now"} {
-                    Status::Active {since: v0} => raw("active"),
-                    Status::Inactive => raw("inactive"),
+                    Status::Active {since: v0} => { raw("active") }
+                    Status::Inactive => { raw("inactive") }
                   }
                 }
 
@@ -479,8 +481,8 @@ mod tests {
                 }
                 page Test() {
                   match Status::Active {since: "now"} {
-                    Status::Active => raw("active"),
-                    Status::Inactive => raw("inactive"),
+                    Status::Active => { raw("active") }
+                    Status::Inactive => { raw("inactive") }
                   }
                 }
             "#]],
@@ -517,8 +519,8 @@ mod tests {
                 }
                 page Test() {
                   match Status::Active {since: "now"} {
-                    Status::Active {since: v0} => escape(v0),
-                    Status::Inactive => raw("inactive"),
+                    Status::Active {since: v0} => { escape(v0) }
+                    Status::Inactive => { raw("inactive") }
                   }
                 }
 
@@ -529,8 +531,8 @@ mod tests {
                 }
                 page Test() {
                   match Status::Active {since: "now"} {
-                    Status::Active {since: v0} => escape(v0),
-                    Status::Inactive => raw("inactive"),
+                    Status::Active {since: v0} => { escape(v0) }
+                    Status::Inactive => { raw("inactive") }
                   }
                 }
             "#]],

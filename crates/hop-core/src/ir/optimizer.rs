@@ -119,11 +119,9 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Test() {
-                  let v0 = "value" in concat(
-                    raw("Hello"),
-                    raw(" "),
-                    raw("World"),
-                  )
+                  let v0 = "value" in {
+                    concat(raw("Hello"), raw(" "), raw("World"))
+                  }
                 }
 
                 -- after --
@@ -154,13 +152,13 @@ mod tests {
             expect![[r#"
                 -- before --
                 page First() {
-                  let v0 = "x" in concat(raw("A"), raw("B"))
+                  let v0 = "x" in { concat(raw("A"), raw("B")) }
                 }
                 page Second() {
                   concat(
                     match true {
-                      true => concat(raw("C"), raw("D")),
-                      false => concat(),
+                      true => { concat(raw("C"), raw("D")) }
+                      false => { concat() }
                     },
                   )
                 }
@@ -193,12 +191,14 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Test() {
-                  let v0 = true in concat(
-                    match v0 {
-                      true => concat(raw("yes")),
-                      false => concat(),
-                    },
-                  )
+                  let v0 = true in {
+                    concat(
+                      match v0 {
+                        true => { concat(raw("yes")) }
+                        false => { concat() }
+                      },
+                    )
+                  }
                 }
 
                 -- after --
@@ -231,12 +231,16 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Test() {
-                  let v0 = "hello" in let v1 = v0 in concat(
-                    match true {
-                      true => concat(raw("A"), raw("B")),
-                      false => concat(),
-                    },
-                  )
+                  let v0 = "hello" in {
+                    let v1 = v0 in {
+                      concat(
+                        match true {
+                          true => { concat(raw("A"), raw("B")) }
+                          false => { concat() }
+                        },
+                      )
+                    }
+                  }
                 }
 
                 -- after --
@@ -300,11 +304,9 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Test() {
-                  let v0 = "<Ada>" in concat(
-                    raw("<p>"),
-                    escape(v0),
-                    raw("</p>"),
-                  )
+                  let v0 = "<Ada>" in {
+                    concat(raw("<p>"), escape(v0), raw("</p>"))
+                  }
                 }
 
                 -- after --

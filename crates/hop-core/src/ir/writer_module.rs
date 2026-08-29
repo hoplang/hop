@@ -916,134 +916,114 @@ impl WriterExpr {
                     None => type_prefix.append(BoxDoc::text("None")),
                 }
             }
-            WriterExpr::Match { match_, .. } => match match_ {
-                Match::Enum { subject, arms } => {
-                    if arms.is_empty() {
-                        BoxDoc::text("match ")
-                            .append(subject.to_doc())
-                            .append(BoxDoc::text(" {}"))
-                    } else {
-                        BoxDoc::text("match ")
-                            .append(subject.to_doc())
-                            .append(BoxDoc::text(" {"))
-                            .append(
-                                BoxDoc::line_()
-                                    .append(BoxDoc::intersperse(
-                                        arms.iter().map(|arm| {
-                                            let pattern_doc = match &arm.pattern {
-                                                EnumPattern::Variant {
-                                                    enum_name,
-                                                    variant_name,
-                                                } => {
-                                                    let base = BoxDoc::text(enum_name.as_str())
-                                                        .append(BoxDoc::text("::"))
-                                                        .append(BoxDoc::text(
-                                                            variant_name.as_str(),
-                                                        ));
-                                                    if arm.bindings.is_empty() {
-                                                        base
-                                                    } else {
-                                                        let bindings_str: Vec<String> = arm
-                                                            .bindings
-                                                            .iter()
-                                                            .map(|(field, var)| {
-                                                                format!("{}: {}", field, var)
-                                                            })
-                                                            .collect();
-                                                        base.append(BoxDoc::text(" {"))
-                                                            .append(BoxDoc::text(
-                                                                bindings_str.join(", "),
-                                                            ))
-                                                            .append(BoxDoc::text("}"))
-                                                    }
-                                                }
-                                            };
-                                            pattern_doc
-                                                .append(BoxDoc::text(" => "))
-                                                .append(arm.body.to_doc())
-                                        }),
-                                        BoxDoc::text(",").append(BoxDoc::line()),
-                                    ))
-                                    .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
-                                    .append(BoxDoc::line_())
-                                    .nest(2)
-                                    .group(),
-                            )
-                            .append(BoxDoc::text("}"))
+            WriterExpr::Match { match_, .. } => {
+                fn arm_to_doc<'a>(pattern: BoxDoc<'a>, body: &'a WriterExpr) -> BoxDoc<'a> {
+                    pattern
+                        .append(BoxDoc::text(" => {"))
+                        .append(BoxDoc::line().append(body.to_doc()).nest(2))
+                        .append(BoxDoc::line())
+                        .append(BoxDoc::text("}"))
+                        .group()
+                }
+
+                fn match_to_doc<'a>(subject: &'a WriterExpr, arms: Vec<BoxDoc<'a>>) -> BoxDoc<'a> {
+                    BoxDoc::text("match ")
+                        .append(subject.to_doc())
+                        .append(BoxDoc::text(" {"))
+                        .append(
+                            BoxDoc::line()
+                                .append(BoxDoc::intersperse(arms, BoxDoc::line()))
+                                .nest(2),
+                        )
+                        .append(BoxDoc::line())
+                        .append(BoxDoc::text("}"))
+                        .group()
+                }
+
+                match match_ {
+                    Match::Enum { subject, arms } => {
+                        if arms.is_empty() {
+                            BoxDoc::text("match ")
+                                .append(subject.to_doc())
+                                .append(BoxDoc::text(" {}"))
+                        } else {
+                            let arm_docs = arms
+                                .iter()
+                                .map(|arm| {
+                                    let pattern_doc = match &arm.pattern {
+                                        EnumPattern::Variant {
+                                            enum_name,
+                                            variant_name,
+                                        } => {
+                                            let base = BoxDoc::text(enum_name.as_str())
+                                                .append(BoxDoc::text("::"))
+                                                .append(BoxDoc::text(variant_name.as_str()));
+                                            if arm.bindings.is_empty() {
+                                                base
+                                            } else {
+                                                let bindings_str: Vec<String> = arm
+                                                    .bindings
+                                                    .iter()
+                                                    .map(|(field, var)| {
+                                                        format!("{}: {}", field, var)
+                                                    })
+                                                    .collect();
+                                                base.append(BoxDoc::text(" {"))
+                                                    .append(BoxDoc::text(bindings_str.join(", ")))
+                                                    .append(BoxDoc::text("}"))
+                                            }
+                                        }
+                                    };
+                                    arm_to_doc(pattern_doc, &arm.body)
+                                })
+                                .collect();
+                            match_to_doc(subject, arm_docs)
+                        }
+                    }
+                    Match::Bool {
+                        subject,
+                        true_body,
+                        false_body,
+                    } => match_to_doc(
+                        subject,
+                        vec![
+                            arm_to_doc(BoxDoc::text("true"), true_body),
+                            arm_to_doc(BoxDoc::text("false"), false_body),
+                        ],
+                    ),
+                    Match::Option {
+                        subject,
+                        some_arm_binding,
+                        some_arm_body,
+                        none_arm_body,
+                    } => {
+                        let some_pattern_doc = match some_arm_binding {
+                            Some(name) => BoxDoc::text("Some(")
+                                .append(BoxDoc::text(name.to_string()))
+                                .append(BoxDoc::text(")")),
+                            None => BoxDoc::text("Some(_)"),
+                        };
+                        match_to_doc(
+                            subject,
+                            vec![
+                                arm_to_doc(some_pattern_doc, some_arm_body),
+                                arm_to_doc(BoxDoc::text("None"), none_arm_body),
+                            ],
+                        )
                     }
                 }
-                Match::Bool {
-                    subject,
-                    true_body,
-                    false_body,
-                } => {
-                    let true_arm_doc = BoxDoc::text("true")
-                        .append(BoxDoc::text(" => "))
-                        .append(true_body.to_doc());
-                    let false_arm_doc = BoxDoc::text("false")
-                        .append(BoxDoc::text(" => "))
-                        .append(false_body.to_doc());
-
-                    BoxDoc::text("match ")
-                        .append(subject.to_doc())
-                        .append(BoxDoc::text(" {"))
-                        .append(
-                            BoxDoc::line_()
-                                .append(BoxDoc::intersperse(
-                                    [true_arm_doc, false_arm_doc],
-                                    BoxDoc::text(",").append(BoxDoc::line()),
-                                ))
-                                .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
-                                .append(BoxDoc::line_())
-                                .nest(2)
-                                .group(),
-                        )
-                        .append(BoxDoc::text("}"))
-                }
-                Match::Option {
-                    subject,
-                    some_arm_binding,
-                    some_arm_body,
-                    none_arm_body,
-                } => {
-                    let some_pattern_doc = match some_arm_binding {
-                        Some(name) => BoxDoc::text("Some(")
-                            .append(BoxDoc::text(name.to_string()))
-                            .append(BoxDoc::text(")")),
-                        None => BoxDoc::text("Some(_)"),
-                    };
-                    let some_arm_doc = some_pattern_doc
-                        .append(BoxDoc::text(" => "))
-                        .append(some_arm_body.to_doc());
-                    let none_arm_doc = BoxDoc::text("None")
-                        .append(BoxDoc::text(" => "))
-                        .append(none_arm_body.to_doc());
-
-                    BoxDoc::text("match ")
-                        .append(subject.to_doc())
-                        .append(BoxDoc::text(" {"))
-                        .append(
-                            BoxDoc::line_()
-                                .append(BoxDoc::intersperse(
-                                    [some_arm_doc, none_arm_doc],
-                                    BoxDoc::text(",").append(BoxDoc::line()),
-                                ))
-                                .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
-                                .append(BoxDoc::line_())
-                                .nest(2)
-                                .group(),
-                        )
-                        .append(BoxDoc::text("}"))
-                }
-            },
+            }
             WriterExpr::Let {
                 var, value, body, ..
             } => BoxDoc::text("let ")
                 .append(BoxDoc::text(var.to_string()))
                 .append(BoxDoc::text(" = "))
                 .append(value.to_doc())
-                .append(BoxDoc::text(" in "))
-                .append(body.to_doc()),
+                .append(BoxDoc::text(" in {"))
+                .append(BoxDoc::line().append(body.to_doc()).nest(2))
+                .append(BoxDoc::line())
+                .append(BoxDoc::text("}"))
+                .group(),
             WriterExpr::ArrayLength { array, .. } => array.to_doc().append(BoxDoc::text(".len()")),
             WriterExpr::ArrayIsEmpty { array, .. } => {
                 array.to_doc().append(BoxDoc::text(".is_empty()"))

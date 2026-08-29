@@ -382,22 +382,18 @@ mod tests {
                 -- before --
                 page Test() {
                   concat(
-                    concat(
-                      raw("<li>"),
-                      escape(v0),
-                      raw("</li>"),
-                    ) for v0 in ["a"],
+                    for v0 in ["a"] {
+                      concat(raw("<li>"), escape(v0), raw("</li>"))
+                    },
                   )
                 }
 
                 -- after --
                 page Test() {
                   concat(
-                    concat(
-                      raw("<li>"),
-                      escape(v0),
-                      raw("</li>"),
-                    ) for v0 in ["a"],
+                    for v0 in ["a"] {
+                      concat(raw("<li>"), escape(v0), raw("</li>"))
+                    },
                   )
                 }
             "#]],

@@ -792,8 +792,8 @@ mod tests {
                 page Test() {
                   concat(
                     match (!(!true)) {
-                      true => raw("yes"),
-                      false => raw("no"),
+                      true => { raw("yes") }
+                      false => { raw("no") }
                     },
                   )
                 }
@@ -821,12 +821,22 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Test(flag@v0: Bool) {
-                  concat(match v0 {true => raw("yes"), false => raw("no")})
+                  concat(
+                    match v0 {
+                      true => { raw("yes") }
+                      false => { raw("no") }
+                    },
+                  )
                 }
 
                 -- after --
                 page Test(flag@v0: Bool) {
-                  concat(match v0 {true => raw("yes"), false => raw("no")})
+                  concat(
+                    match v0 {
+                      true => { raw("yes") }
+                      false => { raw("no") }
+                    },
+                  )
                 }
             "#]],
         );
@@ -848,7 +858,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Test() {
-                  let v0 = "Hello" in concat(escape(v0), escape(v0))
+                  let v0 = "Hello" in { concat(escape(v0), escape(v0)) }
                 }
 
                 -- after --
@@ -943,7 +953,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Test() {
-                  let v0 = "World" in concat(escape(("Hello, " + v0)))
+                  let v0 = "World" in { concat(escape(("Hello, " + v0))) }
                 }
 
                 -- after --
@@ -971,8 +981,8 @@ mod tests {
                 page Test() {
                   concat(
                     match ("a" == "b") {
-                      true => raw("equal"),
-                      false => raw("different"),
+                      true => { raw("equal") }
+                      false => { raw("different") }
                     },
                   )
                 }
@@ -1053,8 +1063,8 @@ mod tests {
                 page Test() {
                   concat(
                     match Option[String]::Some("present") {
-                      Some(v0) => escape(v0),
-                      None => raw("none"),
+                      Some(v0) => { escape(v0) }
+                      None => { raw("none") }
                     },
                   )
                 }
@@ -1085,8 +1095,8 @@ mod tests {
                 page Test() {
                   concat(
                     match Option[String]::None {
-                      Some(v0) => escape(v0),
-                      None => raw("none"),
+                      Some(v0) => { escape(v0) }
+                      None => { raw("none") }
                     },
                   )
                 }
@@ -1138,8 +1148,10 @@ mod tests {
                 page Test() {
                   concat(
                     match Status::Active {since: "today", by: "admin"} {
-                      Status::Active {since: v0, by: v1} => escape((v0 + (" / " + v1))),
-                      Status::Inactive => raw("inactive"),
+                      Status::Active {since: v0, by: v1} => {
+                        escape((v0 + (" / " + v1)))
+                      }
+                      Status::Inactive => { raw("inactive") }
                     },
                   )
                 }
@@ -1190,12 +1202,14 @@ mod tests {
                   Inactive,
                 }
                 page Test() {
-                  let v0 = Status::Active {since: "now"} in concat(
-                    match v0 {
-                      Status::Active {since: v1} => escape(v1),
-                      Status::Inactive => raw("inactive"),
-                    },
-                  )
+                  let v0 = Status::Active {since: "now"} in {
+                    concat(
+                      match v0 {
+                        Status::Active {since: v1} => { escape(v1) }
+                        Status::Inactive => { raw("inactive") }
+                      },
+                    )
+                  }
                 }
 
                 -- after --
@@ -1234,7 +1248,7 @@ mod tests {
                 page Test(x@v0: String) {
                   concat(
                     match Wrap::Value {inner: v0} {
-                      Wrap::Value {inner: v1} => escape(v1),
+                      Wrap::Value {inner: v1} => { escape(v1) }
                     },
                   )
                 }
@@ -1244,7 +1258,7 @@ mod tests {
                   Value {inner: String},
                 }
                 page Test(x@v0: String) {
-                  concat(let v1 = v0 in escape(v1))
+                  concat(let v1 = v0 in { escape(v1) })
                 }
             "#]],
         );

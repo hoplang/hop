@@ -614,8 +614,8 @@ mod tests {
                     let v1 = v0.value in {
                       let v2 = v1 in {
                         write_string(match v2 {
-                          true => "yes",
-                          false => "no",
+                          true => { "yes" }
+                          false => { "no" }
                         })
                       }
                     }
@@ -630,8 +630,8 @@ mod tests {
                     let v1 = v0.value in {
                       let v2 = v1 in {
                         write_string(match v2 {
-                          true => "yes",
-                          false => "no",
+                          true => { "yes" }
+                          false => { "no" }
                         })
                       }
                     }
@@ -2716,8 +2716,10 @@ mod tests {
                 page Test() {
                   let v0 = Option[String]::Some("hello") in {
                     let v3 = match v0 {
-                      Some(v1) => let v2 = v1 in Option[String]::Some(v2),
-                      None => Option[String]::None,
+                      Some(v1) => {
+                        let v2 = v1 in { Option[String]::Some(v2) }
+                      }
+                      None => { Option[String]::None }
                     } in {
                       match v3 {
                         Some(v4) => {
@@ -2783,10 +2785,9 @@ mod tests {
                   y: String,
                 }
                 page Test() {
-                  let v3 = let v0 = Point {
-                    x: "hi",
-                    y: "bye",
-                  } in let v1 = v0.x in let v2 = v1 in v2 in {
+                  let v3 = let v0 = Point {x: "hi", y: "bye"} in {
+                    let v1 = v0.x in { let v2 = v1 in { v2 } }
+                  } in {
                     write("got:")
                     write_string(v3)
                   }
@@ -2845,7 +2846,9 @@ mod tests {
                   y: String,
                 }
                 page Test() {
-                  let v1 = let v0 = Point {x: "hi", y: "bye"} in v0.x in {
+                  let v1 = let v0 = Point {x: "hi", y: "bye"} in {
+                    v0.x
+                  } in {
                     write("got:")
                     write_string(v1)
                   }
@@ -2960,8 +2963,8 @@ mod tests {
                 page Test() {
                   let v0 = Option[String]::Some("inner") in {
                     let v3 = Option[String]::Some(match v0 {
-                      Some(v1) => let v2 = v1 in v2,
-                      None => "default",
+                      Some(v1) => { let v2 = v1 in { v2 } }
+                      None => { "default" }
                     }) in {
                       match v3 {
                         Some(v4) => {
@@ -3214,10 +3217,16 @@ mod tests {
                 -- ir (unoptimized) --
                 page Test() {
                   let v0 = true in {
-                    write_string(match v0 {true => "yes", false => "no"})
+                    write_string(match v0 {
+                      true => { "yes" }
+                      false => { "no" }
+                    })
                   }
                   let v1 = false in {
-                    write_string(match v1 {true => "YES", false => "NO"})
+                    write_string(match v1 {
+                      true => { "YES" }
+                      false => { "NO" }
+                    })
                   }
                 }
                 -- ir (optimized) --
@@ -3265,8 +3274,8 @@ mod tests {
                   let v0 = "" in {
                     let v1 = "main" in {
                       write_string(match (v0 == "") {
-                        true => v1,
-                        false => ((v1 + " - ") + v0),
+                        true => { v1 }
+                        false => { ((v1 + " - ") + v0) }
                       })
                     }
                   }
@@ -3314,15 +3323,15 @@ mod tests {
                 page Test() {
                   let v0 = Option[String]::Some("hi") in {
                     write_string(match v0 {
-                      Some(_) => "some",
-                      None => "none",
+                      Some(_) => { "some" }
+                      None => { "none" }
                     })
                   }
                   write(",")
                   let v1 = Option[String]::None in {
                     write_string(match v1 {
-                      Some(_) => "SOME",
-                      None => "NONE",
+                      Some(_) => { "SOME" }
+                      None => { "NONE" }
                     })
                   }
                 }
@@ -3380,8 +3389,10 @@ mod tests {
                   let v0 = true in {
                     let v1 = false in {
                       write_string(match v0 {
-                        true => match v1 {true => "TT", false => "TF"},
-                        false => "F",
+                        true => {
+                          match v1 { true => { "TT" } false => { "TF" } }
+                        }
+                        false => { "F" }
                       })
                     }
                   }
@@ -3389,8 +3400,10 @@ mod tests {
                   let v2 = false in {
                     let v3 = true in {
                       write_string(match v2 {
-                        true => match v3 {true => "TT", false => "TF"},
-                        false => "F",
+                        true => {
+                          match v3 { true => { "TT" } false => { "TF" } }
+                        }
+                        false => { "F" }
                       })
                     }
                   }
@@ -5211,8 +5224,8 @@ mod tests {
                 page Test() {
                   let v0 = Option[String]::Some("inner") in {
                     let v3 = Option[String]::Some(match v0 {
-                      Some(v1) => let v2 = v1 in v2,
-                      None => "default",
+                      Some(v1) => { let v2 = v1 in { v2 } }
+                      None => { "default" }
                     }) in {
                       match v3 {
                         Some(v4) => {
@@ -5361,9 +5374,9 @@ mod tests {
                 page Test() {
                   let v0 = Color::Green in {
                     write_string(match v0 {
-                      Color::Red => "red",
-                      Color::Green => "green",
-                      Color::Blue => "blue",
+                      Color::Red => { "red" }
+                      Color::Green => { "green" }
+                      Color::Blue => { "blue" }
                     })
                   }
                 }
@@ -5658,8 +5671,12 @@ mod tests {
                 }
                 page Test() {
                   let v4 = match Outcome::Success {value: "hi"} {
-                    Outcome::Success {value: v0} => let v1 = v0 in v1,
-                    Outcome::Failure {message: v2} => let v3 = v2 in v3,
+                    Outcome::Success {value: v0} => {
+                      let v1 = v0 in { v1 }
+                    }
+                    Outcome::Failure {message: v2} => {
+                      let v3 = v2 in { v3 }
+                    }
                   } in {
                     write("got:")
                     write_string(v4)
@@ -7159,8 +7176,8 @@ mod tests {
                 page Test() {
                   let v0 = Option[String]::Some("x") in {
                     write_string(match v0 {
-                      Some(_) => "some",
-                      None => "none",
+                      Some(_) => { "some" }
+                      None => { "none" }
                     })
                   }
                 }
@@ -7203,8 +7220,8 @@ mod tests {
                 page Test() {
                   let v0 = Option[String]::None in {
                     write_string(match v0 {
-                      Some(_) => "some",
-                      None => "none",
+                      Some(_) => { "some" }
+                      None => { "none" }
                     })
                   }
                 }
@@ -7771,7 +7788,10 @@ mod tests {
                 -- ir (unoptimized) --
                 page Test() {
                   let v0 = true in {
-                    write_string(match v0 {true => "t", false => "f"})
+                    write_string(match v0 {
+                      true => { "t" }
+                      false => { "f" }
+                    })
                   }
                 }
                 -- ir (optimized) --
@@ -7813,7 +7833,10 @@ mod tests {
                 -- ir (unoptimized) --
                 page Test() {
                   let v0 = false in {
-                    write_string(match v0 {true => "t", false => "f"})
+                    write_string(match v0 {
+                      true => { "t" }
+                      false => { "f" }
+                    })
                   }
                 }
                 -- ir (optimized) --
@@ -9327,8 +9350,8 @@ mod tests {
                   let v0 = Foo {a: "hello"} in {
                     let v1 = true in {
                       let v2 = match v1 {
-                        true => v0.a,
-                        false => "default",
+                        true => { v0.a }
+                        false => { "default" }
                       } in {
                         write("[")
                         write_string(v2)
@@ -9888,8 +9911,8 @@ mod tests {
                     let v1 = Node {
                       value: "head",
                       next: match true {
-                        true => Option[test::Node]::Some(v0),
-                        false => Option[test::Node]::None,
+                        true => { Option[test::Node]::Some(v0) }
+                        false => { Option[test::Node]::None }
                       },
                     } in {
                       write_string(v1.value)
@@ -12130,16 +12153,16 @@ mod tests {
                     TimeAgo::MinutesAgo(count: v1) => {
                       let v2 = v1 in {
                         write_string(match (v2 == 1) {
-                          true => "1 minute ago",
-                          false => (v2.to_string() + " minutes ago"),
+                          true => { "1 minute ago" }
+                          false => { (v2.to_string() + " minutes ago") }
                         })
                       }
                     }
                     TimeAgo::HoursAgo(count: v3) => {
                       let v4 = v3 in {
                         write_string(match (v4 == 1) {
-                          true => "1 hour ago",
-                          false => (v4.to_string() + " hours ago"),
+                          true => { "1 hour ago" }
+                          false => { (v4.to_string() + " hours ago") }
                         })
                       }
                     }
@@ -12408,8 +12431,10 @@ mod tests {
                   }) in {
                     let v3 = [
                       match v0 {
-                        Some(v1) => let v2 = v1 in Option[String]::Some(v2.title),
-                        None => Option[String]::None,
+                        Some(v1) => {
+                          let v2 = v1 in { Option[String]::Some(v2.title) }
+                        }
+                        None => { Option[String]::None }
                       },
                     ] in {
                       for v4 in v3 {
@@ -14567,9 +14592,8 @@ mod tests {
                   settings: Settings,
                 }
                 fn Dark(s@v1: test::State) -> Fragment {
-                  let v3 = let v2 = v1.settings in Settings {
-                    theme: "dark",
-                    compact: v2.compact,
+                  let v3 = let v2 = v1.settings in {
+                    Settings {theme: "dark", compact: v2.compact}
                   } in {
                     let v4 = State {query: v1.query, settings: v3} in {
                       write_string(v4.query)
@@ -14636,14 +14660,12 @@ mod tests {
                   y: String,
                 }
                 page Test() {
-                  write_string(let v0 = Foo {x: "bar", y: "baz"} in Foo {
-                    x: v0.x,
-                    y: "foo",
+                  write_string(let v0 = Foo {x: "bar", y: "baz"} in {
+                    Foo {x: v0.x, y: "foo"}
                   }.x)
                   write(" ")
-                  write_string(let v1 = Foo {x: "bar", y: "baz"} in Foo {
-                    x: v1.x,
-                    y: "foo",
+                  write_string(let v1 = Foo {x: "bar", y: "baz"} in {
+                    Foo {x: v1.x, y: "foo"}
                   }.y)
                 }
                 -- ir (optimized) --

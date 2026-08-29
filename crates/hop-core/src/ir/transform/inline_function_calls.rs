@@ -518,7 +518,7 @@ mod tests {
                   concat(v0, v0)
                 }
                 page Main(name@v1: String) {
-                  let v2 = escape(v1) in concat(v2, v2)
+                  let v2 = escape(v1) in { concat(v2, v2) }
                 }
             "#]],
         );
@@ -540,7 +540,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 fn Repeat(body@v0: Fragment) -> Fragment {
-                  v0 for _ in ["a", "b"]
+                  for _ in ["a", "b"] { v0 }
                 }
                 page Main(name@v1: String) {
                   call Repeat(body = escape(v1))
@@ -548,10 +548,10 @@ mod tests {
 
                 -- after --
                 fn Repeat(body@v0: Fragment) -> Fragment {
-                  v0 for _ in ["a", "b"]
+                  for _ in ["a", "b"] { v0 }
                 }
                 page Main(name@v1: String) {
-                  let v2 = escape(v1) in v2 for _ in ["a", "b"]
+                  let v2 = escape(v1) in { for _ in ["a", "b"] { v2 } }
                 }
             "#]],
         );

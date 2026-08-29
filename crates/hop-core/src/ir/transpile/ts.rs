@@ -2591,9 +2591,9 @@ mod tests {
                 }
                 page ColorName(color@v0: test::Color) {
                   write_string(match v0 {
-                    Color::Red => "red",
-                    Color::Green => "green",
-                    Color::Blue => "blue",
+                    Color::Red => { "red" }
+                    Color::Green => { "green" }
+                    Color::Blue => { "blue" }
                   })
                 }
 
@@ -2648,7 +2648,10 @@ mod tests {
             expect![[r#"
                 -- before --
                 page IsActive(active@v0: Bool) {
-                  write_string(match v0 {true => "yes", false => "no"})
+                  write_string(match v0 {
+                    true => { "yes" }
+                    false => { "no" }
+                  })
                 }
 
                 -- after --
@@ -2684,8 +2687,8 @@ mod tests {
                 -- before --
                 page CheckOption(opt@v0: Option[Int]) {
                   write_string(match v0 {
-                    Some(_) => "has value",
-                    None => "empty",
+                    Some(_) => { "has value" }
+                    None => { "empty" }
                   })
                 }
 
@@ -2763,14 +2766,18 @@ mod tests {
                 -- before --
                 page CheckNestedOption(opt@v0: Option[Option[Bool]]) {
                   write_string(match v0 {
-                    Some(v1) => match v1 {
-                      Some(v2) => match v2 {
-                        true => "some-some-true",
-                        false => "some-some-false",
-                      },
-                      None => "some-none",
-                    },
-                    None => "none",
+                    Some(v1) => {
+                      match v1 {
+                        Some(v2) => {
+                          match v2 {
+                            true => { "some-some-true" }
+                            false => { "some-some-false" }
+                          }
+                        }
+                        None => { "some-none" }
+                      }
+                    }
+                    None => { "none" }
                   })
                 }
 
@@ -2837,7 +2844,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 page LetExpr(name@v0: String) {
-                  write_string(let v1 = v0 in v1)
+                  write_string(let v1 = v0 in { v1 })
                 }
 
                 -- after --
@@ -2969,10 +2976,13 @@ mod tests {
                   opt2@v1: Option[String],
                 ) {
                   write_string(match v0 {
-                    Some(_) => "has value",
-                    None => "empty",
+                    Some(_) => { "has value" }
+                    None => { "empty" }
                   })
-                  write_string(match v1 {Some(_) => "HAS", None => "EMPTY"})
+                  write_string(match v1 {
+                    Some(_) => { "HAS" }
+                    None => { "EMPTY" }
+                  })
                 }
 
                 -- after --
@@ -3201,7 +3211,10 @@ mod tests {
             expect![[r#"
                 -- before --
                 page IsActive(active@v0: Bool) {
-                  write_string(match (!v0) {true => "yes", false => "no"})
+                  write_string(match (!v0) {
+                    true => { "yes" }
+                    false => { "no" }
+                  })
                 }
 
                 -- after --

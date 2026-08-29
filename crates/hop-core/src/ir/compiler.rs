@@ -1078,13 +1078,15 @@ mod tests {
                 page MainComp(show@v0: Bool) {
                   concat(
                     match v0 {
-                      true => concat(
-                        raw("<div"),
-                        raw(">"),
-                        raw("Visible"),
-                        raw("</div>"),
-                      ),
-                      false => concat(),
+                      true => {
+                        concat(
+                          raw("<div"),
+                          raw(">"),
+                          raw("Visible"),
+                          raw("</div>"),
+                        )
+                      }
+                      false => { concat() }
                     },
                   )
                 }
@@ -1125,12 +1127,9 @@ mod tests {
                   concat(
                     raw("<ul"),
                     raw(">"),
-                    concat(
-                      raw("<li"),
-                      raw(">"),
-                      escape(v1),
-                      raw("</li>"),
-                    ) for v1 in v0,
+                    for v1 in v0 {
+                      concat(raw("<li"), raw(">"), escape(v1), raw("</li>"))
+                    },
                     raw("</ul>"),
                   )
                 }
@@ -1284,8 +1283,8 @@ mod tests {
                 page TestComp(flag@v0: Bool) {
                   concat(
                     match v0 {
-                      true => concat(raw("yes")),
-                      false => concat(raw("no")),
+                      true => { concat(raw("yes")) }
+                      false => { concat(raw("no")) }
                     },
                   )
                 }

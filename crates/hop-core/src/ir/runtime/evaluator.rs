@@ -758,8 +758,8 @@ mod tests {
                 -- before --
                 page Test(show@v0: Bool) {
                   match v0 {
-                    true => raw("<div>Visible</div>"),
-                    false => concat(),
+                    true => { raw("<div>Visible</div>") }
+                    false => { concat() }
                   }
                 }
 
@@ -782,8 +782,8 @@ mod tests {
                 -- before --
                 page Test(show@v0: Bool) {
                   match v0 {
-                    true => raw("<div>Hidden</div>"),
-                    false => concat(),
+                    true => { raw("<div>Hidden</div>") }
+                    false => { concat() }
                   }
                 }
 
@@ -818,11 +818,9 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Test(items@v0: Array[String]) {
-                  concat(
-                    raw("<li>"),
-                    escape(v1),
-                    raw("</li>\n"),
-                  ) for v1 in v0
+                  for v1 in v0 {
+                    concat(raw("<li>"), escape(v1), raw("</li>\n"))
+                  }
                 }
 
                 -- after --
@@ -846,7 +844,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 page Test() {
-                  let v0 = raw("<b>hi</b>") in v0
+                  let v0 = raw("<b>hi</b>") in { v0 }
                 }
 
                 -- after --
