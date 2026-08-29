@@ -10,7 +10,7 @@ use pretty::BoxDoc;
 
 use super::r#type::{ComparableType, EquatableType, NumericType, Type};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum TypedExpr {
     /// A variable expression, e.g. foo
     Var { value: VarName, kind: Arc<Type> },
