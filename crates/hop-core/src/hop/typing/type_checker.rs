@@ -37,8 +37,7 @@ use crate::hop::typing::typed_ast::{
     TypedPageDeclaration, TypedParameter, TypedRecordDeclaration,
 };
 use crate::hop::typing::typed_node::{
-    TypedArgument, TypedArgumentValue, TypedAttribute, TypedAttributeValue, TypedLoopSource,
-    TypedNode,
+    TypedArgument, TypedAttribute, TypedAttributeValue, TypedLoopSource, TypedNode,
 };
 
 pub fn typecheck(
@@ -929,7 +928,9 @@ fn check_component_body(
         component_name: component_name.clone(),
         params: typed_params,
         rest_param: rest_param.as_ref().map(|(name, _)| name.clone()),
-        children: typed_children,
+        body: TypedExpr::Fragment {
+            nodes: typed_children,
+        },
     }
 }
 
@@ -2063,7 +2064,7 @@ fn typecheck_arguments(
 
         typed_args.push(TypedArgument {
             name: VarName::new(arg_name).unwrap(),
-            value: TypedArgumentValue::Expr(typed_expr),
+            value: typed_expr,
         });
     }
 
@@ -2077,7 +2078,9 @@ fn typecheck_arguments(
     if synthesize_children_arg {
         typed_args.push(TypedArgument {
             name: VarName::new("children").unwrap(),
-            value: TypedArgumentValue::Fragment(children.unwrap_or_default()),
+            value: TypedExpr::Fragment {
+                nodes: children.unwrap_or_default(),
+            },
         });
     }
 
@@ -2115,17 +2118,17 @@ fn typecheck_arguments(
                 // was extended with this parameter for exactly this purpose.
                 return Some(TypedArgument {
                     name: param.name.clone(),
-                    value: TypedArgumentValue::Expr(TypedExpr::Var {
+                    value: TypedExpr::Var {
                         value: param.name.clone(),
                         kind: param.typ.clone(),
-                    }),
+                    },
                 });
             }
             typed_args
                 .iter()
                 .find(|arg| arg.name.as_str() == param.name.as_str())
                 .map(|arg| arg.value.clone())
-                .or_else(|| param.default.clone().map(TypedArgumentValue::Expr))
+                .or_else(|| param.default.clone())
                 .map(|value| TypedArgument {
                     name: param.name.clone(),
                     value,

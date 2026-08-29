@@ -33,7 +33,7 @@ pub struct TypedEnumDeclaration {
 #[derive(Debug, Clone)]
 pub struct TypedComponentDeclaration {
     pub component_name: TypeName,
-    pub children: Vec<TypedNode>,
+    pub body: TypedExpr,
     pub params: Vec<TypedParameter>,
     pub rest_param: Option<VarName>,
 }
@@ -224,28 +224,12 @@ impl TypedComponentDeclaration {
             }
         };
 
-        let header = BoxDoc::text("component")
+        BoxDoc::text("component")
             .append(BoxDoc::space())
             .append(BoxDoc::text(self.component_name.as_str()))
             .append(params_doc)
             .append(BoxDoc::space())
-            .append(BoxDoc::text("{"));
-
-        if self.children.is_empty() {
-            header.append(BoxDoc::text("}"))
-        } else {
-            header
-                .append(
-                    BoxDoc::line()
-                        .append(BoxDoc::intersperse(
-                            self.children.iter().map(|c| c.to_doc()),
-                            BoxDoc::line(),
-                        ))
-                        .nest(2),
-                )
-                .append(BoxDoc::line())
-                .append(BoxDoc::text("}"))
-        }
+            .append(self.body.to_doc())
     }
 }
 

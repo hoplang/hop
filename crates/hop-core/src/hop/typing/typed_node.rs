@@ -51,44 +51,10 @@ impl TypedAttribute {
     }
 }
 
-/// The value of an argument passed to a component invocation: an ordinary
-/// expression, or markup rendered into a Fragment (component children).
-#[derive(Debug, Clone)]
-pub enum TypedArgumentValue {
-    Expr(TypedExpr),
-    Fragment(Vec<TypedNode>),
-}
-
-impl TypedArgumentValue {
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        match self {
-            TypedArgumentValue::Expr(expr) => expr.to_doc(),
-            TypedArgumentValue::Fragment(nodes) => {
-                if nodes.is_empty() {
-                    BoxDoc::text("{}")
-                } else {
-                    BoxDoc::text("{")
-                        .append(
-                            BoxDoc::line()
-                                .append(BoxDoc::intersperse(
-                                    nodes.iter().map(|c| c.to_doc()),
-                                    BoxDoc::line(),
-                                ))
-                                .nest(2),
-                        )
-                        .append(BoxDoc::line())
-                        .append(BoxDoc::text("}"))
-                }
-            }
-        }
-    }
-}
-
-/// An argument passed to a component invocation.
 #[derive(Debug, Clone)]
 pub struct TypedArgument {
     pub name: VarName,
-    pub value: TypedArgumentValue,
+    pub value: TypedExpr,
 }
 
 #[derive(Debug, Clone)]

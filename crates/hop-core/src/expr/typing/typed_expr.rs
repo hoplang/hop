@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use crate::document::CheapString;
 use crate::expr::patterns::{EnumPattern, Match};
+use crate::hop::typing::typed_node::TypedNode;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
@@ -186,6 +187,9 @@ pub enum TypedExpr {
     /// An empty Fragment literal, e.g. `Fragment::empty()`
     FragmentEmpty,
 
+    /// A Fragment literal holding markup
+    Fragment { nodes: Vec<TypedNode> },
+
     /// An asset path, e.g. asset!("/logo.svg").
     /// Resolved to a concrete string literal at IR compile time based on build mode.
     Asset { path: CheapString },
@@ -247,7 +251,7 @@ impl TypedExpr {
 
             TypedExpr::ArrayLength { .. } | TypedExpr::FloatToInt { .. } => Arc::new(Type::Int),
 
-            TypedExpr::FragmentEmpty => Arc::new(Type::Fragment),
+            TypedExpr::FragmentEmpty | TypedExpr::Fragment { .. } => Arc::new(Type::Fragment),
         }
     }
 
@@ -305,7 +309,7 @@ impl TypedExpr {
 
             TypedExpr::ArrayLength { .. } | TypedExpr::FloatToInt { .. } => &INT_TYPE,
 
-            TypedExpr::FragmentEmpty => &FRAGMENT_TYPE,
+            TypedExpr::FragmentEmpty | TypedExpr::Fragment { .. } => &FRAGMENT_TYPE,
         }
     }
 
@@ -607,6 +611,23 @@ impl TypedExpr {
             TypedExpr::FloatToInt { value } => value.to_doc().append(BoxDoc::text(".to_int()")),
             TypedExpr::IntToFloat { value } => value.to_doc().append(BoxDoc::text(".to_float()")),
             TypedExpr::FragmentEmpty => BoxDoc::text("Fragment::empty()"),
+            TypedExpr::Fragment { nodes } => {
+                if nodes.is_empty() {
+                    BoxDoc::text("{}")
+                } else {
+                    BoxDoc::text("{")
+                        .append(
+                            BoxDoc::line()
+                                .append(BoxDoc::intersperse(
+                                    nodes.iter().map(|c| c.to_doc()),
+                                    BoxDoc::line(),
+                                ))
+                                .nest(2),
+                        )
+                        .append(BoxDoc::line())
+                        .append(BoxDoc::text("}"))
+                }
+            }
             TypedExpr::Asset { path } => BoxDoc::text("asset!(\"")
                 .append(BoxDoc::text(path.as_str()))
                 .append(BoxDoc::text("\")")),

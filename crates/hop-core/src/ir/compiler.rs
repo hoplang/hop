@@ -13,7 +13,7 @@ use crate::hop::typing::typed_ast::{
     TypedRecordDeclaration,
 };
 use crate::hop::typing::typed_node::{
-    TypedArgumentValue, TypedAttribute, TypedAttributeValue, TypedLoopSource, TypedNode,
+    TypedAttribute, TypedAttributeValue, TypedLoopSource, TypedNode,
 };
 use crate::ir::expr_id::ExprId;
 use crate::ir::expr_id::ExprIdCounter;
@@ -151,7 +151,7 @@ impl<'a> Compiler<'a> {
             name: decl.component_name.clone().into(),
             parameters,
             return_type: Arc::new(Type::Fragment),
-            body: self.compile_nodes(&decl.children),
+            body: self.compile_expr(&decl.body),
         };
         self.pop_scope();
         declaration
@@ -444,7 +444,7 @@ impl<'a> Compiler<'a> {
                     .iter()
                     .map(|arg| PureArgument {
                         name: arg.name.clone(),
-                        expr: self.compile_argument_value(&arg.value),
+                        expr: self.compile_expr(&arg.value),
                     })
                     .collect();
 
@@ -499,13 +499,6 @@ impl<'a> Compiler<'a> {
         PureExpr::FragmentConcat {
             parts,
             id: self.next_expr_id(),
-        }
-    }
-
-    fn compile_argument_value(&mut self, value: &TypedArgumentValue) -> PureExpr {
-        match value {
-            TypedArgumentValue::Expr(expr) => self.compile_expr(expr),
-            TypedArgumentValue::Fragment(nodes) => self.compile_nodes(nodes),
         }
     }
 
@@ -843,6 +836,7 @@ impl<'a> Compiler<'a> {
                 kind: kind.clone(),
                 id: expr_id,
             },
+            TypedExpr::Fragment { nodes } => self.compile_nodes(nodes),
             TypedExpr::FragmentEmpty => PureExpr::FragmentConcat {
                 parts: Vec::new(),
                 id: expr_id,
