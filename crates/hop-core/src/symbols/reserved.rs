@@ -63,6 +63,7 @@ pub(super) fn is_reserved_name(name: &str) -> bool {
             | "or"
             | "out"
             | "package"
+            | "page"
             | "priv"
             | "private"
             | "pub"

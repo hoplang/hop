@@ -363,7 +363,7 @@ mod tests {
 
                 export function AlphaPage(): string {
                     let output: string = "";
-                    output += "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><meta";
+                    output += "<!doctype html><html><head><meta charset=\"utf-8\"><meta";
                     output += " content=\"width=device-width, initial-scale=1\"";
                     output += " name=\"viewport\"><link rel=\"stylesheet\"";
                     output += " href=\"/styles-00000000.css\"></head><body><div>Alpha</div>";
@@ -373,7 +373,7 @@ mod tests {
 
                 export function BetaPage(): string {
                     let output: string = "";
-                    output += "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><meta";
+                    output += "<!doctype html><html><head><meta charset=\"utf-8\"><meta";
                     output += " content=\"width=device-width, initial-scale=1\"";
                     output += " name=\"viewport\"><link rel=\"stylesheet\"";
                     output += " href=\"/styles-00000000.css\"></head><body><div>Beta</div>";
@@ -383,7 +383,7 @@ mod tests {
 
                 export function DeltaPage(): string {
                     let output: string = "";
-                    output += "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><meta";
+                    output += "<!doctype html><html><head><meta charset=\"utf-8\"><meta";
                     output += " content=\"width=device-width, initial-scale=1\"";
                     output += " name=\"viewport\"><link rel=\"stylesheet\"";
                     output += " href=\"/styles-00000000.css\"></head><body><div>Delta</div>";
@@ -393,7 +393,7 @@ mod tests {
 
                 export function EpsilonPage(): string {
                     let output: string = "";
-                    output += "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><meta";
+                    output += "<!doctype html><html><head><meta charset=\"utf-8\"><meta";
                     output += " content=\"width=device-width, initial-scale=1\"";
                     output += " name=\"viewport\"><link rel=\"stylesheet\"";
                     output += " href=\"/styles-00000000.css\"></head><body><div>Epsilon";
@@ -403,7 +403,7 @@ mod tests {
 
                 export function EtaPage(): string {
                     let output: string = "";
-                    output += "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><meta";
+                    output += "<!doctype html><html><head><meta charset=\"utf-8\"><meta";
                     output += " content=\"width=device-width, initial-scale=1\"";
                     output += " name=\"viewport\"><link rel=\"stylesheet\"";
                     output += " href=\"/styles-00000000.css\"></head><body><div>Eta</div>";
@@ -413,7 +413,7 @@ mod tests {
 
                 export function GammaPage(): string {
                     let output: string = "";
-                    output += "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><meta";
+                    output += "<!doctype html><html><head><meta charset=\"utf-8\"><meta";
                     output += " content=\"width=device-width, initial-scale=1\"";
                     output += " name=\"viewport\"><link rel=\"stylesheet\"";
                     output += " href=\"/styles-00000000.css\"></head><body><div>Gamma</div>";
@@ -423,7 +423,7 @@ mod tests {
 
                 export function ThetaPage(): string {
                     let output: string = "";
-                    output += "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><meta";
+                    output += "<!doctype html><html><head><meta charset=\"utf-8\"><meta";
                     output += " content=\"width=device-width, initial-scale=1\"";
                     output += " name=\"viewport\"><link rel=\"stylesheet\"";
                     output += " href=\"/styles-00000000.css\"></head><body><div>Theta</div>";
@@ -433,7 +433,7 @@ mod tests {
 
                 export function ZetaPage(): string {
                     let output: string = "";
-                    output += "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><meta";
+                    output += "<!doctype html><html><head><meta charset=\"utf-8\"><meta";
                     output += " content=\"width=device-width, initial-scale=1\"";
                     output += " name=\"viewport\"><link rel=\"stylesheet\"";
                     output += " href=\"/styles-00000000.css\"></head><body><div>Zeta</div>";
@@ -467,13 +467,13 @@ mod tests {
                 [assets]
                 output_dir = "dist/public"
                 -- main.hop --
-                view Home() {
-                    <head>
+                page Home() {
+                    head {
                         <link rel="icon" href={asset!("/logo.svg")} />
-                    </head>
-                    <body>
+                    }
+                    body {
                         <img src={asset!("/icons/star.svg")} />
-                    </body>
+                    }
                 }
                 -- logo.svg --
                 <svg>logo</svg>
@@ -486,7 +486,7 @@ mod tests {
 
                 export function Home(): string {
                     let output: string = "";
-                    output += "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><meta";
+                    output += "<!doctype html><html><head><meta charset=\"utf-8\"><meta";
                     output += " content=\"width=device-width, initial-scale=1\"";
                     output += " name=\"viewport\"><link rel=\"icon\" href=\"/logo-ffe99b60.svg\"";
                     output += "><link rel=\"stylesheet\" href=\"/styles-00000000.css\"></head>";
@@ -514,13 +514,13 @@ mod tests {
                 -- logo.svg --
                 <svg>logo</svg>
                 -- main.hop --
-                view Home() {
-                    <head>
+                page Home() {
+                    head {
                         <link rel="icon" href={asset!("/logo.svg")} />
-                    </head>
-                    <body>
+                    }
+                    body {
                         <img src={asset!("/icons/star.svg")} />
-                    </body>
+                    }
                 }
                 -- style.css --
             "#]],
@@ -546,10 +546,11 @@ mod tests {
                 production_prefix = "static/v1"
                 output_dir = "dist/public"
                 -- main.hop --
-                view Home() {
-                    <head>
+                page Home() {
+                    head {
                         <link rel="icon" href={asset!("/logo.svg")} />
-                    </head>
+                    }
+                    body {}
                 }
                 -- logo.svg --
                 <svg>logo</svg>
@@ -560,11 +561,11 @@ mod tests {
 
                 export function Home(): string {
                     let output: string = "";
-                    output += "<!DOCTYPE html><html><body><head><meta charset=\"utf-8\">";
-                    output += "<meta content=\"width=device-width, initial-scale=1\"";
+                    output += "<!doctype html><html><head><meta charset=\"utf-8\"><meta";
+                    output += " content=\"width=device-width, initial-scale=1\"";
                     output += " name=\"viewport\"><link rel=\"icon\" href=\"";
                     output += "/static/v1/logo-ffe99b60.svg\"><link rel=\"stylesheet\"";
-                    output += " href=\"/static/v1/styles-00000000.css\"></head></body>";
+                    output += " href=\"/static/v1/styles-00000000.css\"></head><body></body>";
                     output += "</html>";
                     return output;
                 }
@@ -586,10 +587,11 @@ mod tests {
                 -- logo.svg --
                 <svg>logo</svg>
                 -- main.hop --
-                view Home() {
-                    <head>
+                page Home() {
+                    head {
                         <link rel="icon" href={asset!("/logo.svg")} />
-                    </head>
+                    }
+                    body {}
                 }
                 -- style.css --
             "#]],
@@ -614,13 +616,13 @@ mod tests {
                 [assets]
                 output_dir = "../assets"
                 -- hop/main.hop --
-                view Home() {
-                    <head>
+                page Home() {
+                    head {
                         <link rel="icon" href={asset!("/logo.svg")} />
-                    </head>
-                    <body>
+                    }
+                    body {
                         <img src={asset!("/icons/star.svg")} />
-                    </body>
+                    }
                 }
                 -- hop/logo.svg --
                 <svg>logo</svg>
@@ -638,7 +640,7 @@ mod tests {
 
                 export function Home(): string {
                     let output: string = "";
-                    output += "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><meta";
+                    output += "<!doctype html><html><head><meta charset=\"utf-8\"><meta";
                     output += " content=\"width=device-width, initial-scale=1\"";
                     output += " name=\"viewport\"><link rel=\"icon\" href=\"/logo-ffe99b60.svg\"";
                     output += "><link rel=\"stylesheet\" href=\"/styles-00000000.css\"></head>";
@@ -661,13 +663,13 @@ mod tests {
                 -- hop/logo.svg --
                 <svg>logo</svg>
                 -- hop/main.hop --
-                view Home() {
-                    <head>
+                page Home() {
+                    head {
                         <link rel="icon" href={asset!("/logo.svg")} />
-                    </head>
-                    <body>
+                    }
+                    body {
                         <img src={asset!("/icons/star.svg")} />
-                    </body>
+                    }
                 }
                 -- hop/style.css --
             "#]],
@@ -684,10 +686,11 @@ mod tests {
                 target = "ts"
                 output_path = "app.ts"
                 -- main.hop --
-                view Home() {
-                    <head>
+                page Home() {
+                    head {
                         <link rel="icon" href={asset!("/logo.svg")} />
-                    </head>
+                    }
+                    body {}
                 }
                 -- logo.svg --
                 <svg>logo</svg>
@@ -716,13 +719,13 @@ mod tests {
                 [assets]
                 output_dir = "dist/public"
                 -- main.hop --
-                view Home() {
-                    <head>
+                page Home() {
+                    head {
                         <link rel="icon" href={asset!("/logo.svg")} />
-                    </head>
-                    <body>
+                    }
+                    body {
                         <img src={asset!("/icons/star.svg")} />
-                    </body>
+                    }
                 }
                 -- logo.svg --
                 <svg>logo</svg>
@@ -735,7 +738,7 @@ mod tests {
 
                 export function Home(): string {
                     let output: string = "";
-                    output += "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><meta";
+                    output += "<!doctype html><html><head><meta charset=\"utf-8\"><meta";
                     output += " content=\"width=device-width, initial-scale=1\"";
                     output += " name=\"viewport\"><link rel=\"icon\" href=\"/logo-ffe99b60.svg\"";
                     output += "><link rel=\"stylesheet\" href=\"/styles-00000000.css\"></head>";
@@ -763,13 +766,13 @@ mod tests {
                 -- logo.svg --
                 <svg>logo</svg>
                 -- main.hop --
-                view Home() {
-                    <head>
+                page Home() {
+                    head {
                         <link rel="icon" href={asset!("/logo.svg")} />
-                    </head>
-                    <body>
+                    }
+                    body {
                         <img src={asset!("/icons/star.svg")} />
-                    </body>
+                    }
                 }
                 -- style.css --
             "#]],
@@ -810,7 +813,7 @@ mod tests {
 
                 export function Home(): string {
                     let output: string = "";
-                    output += "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><meta";
+                    output += "<!doctype html><html><head><meta charset=\"utf-8\"><meta";
                     output += " content=\"width=device-width, initial-scale=1\"";
                     output += " name=\"viewport\"><link rel=\"stylesheet\"";
                     output += " href=\"/styles-00000000.css\"></head><body><img src=\"";
@@ -876,7 +879,7 @@ mod tests {
 
                 export function Home(): string {
                     let output: string = "";
-                    output += "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><meta";
+                    output += "<!doctype html><html><head><meta charset=\"utf-8\"><meta";
                     output += " content=\"width=device-width, initial-scale=1\"";
                     output += " name=\"viewport\"><link rel=\"stylesheet\"";
                     output += " href=\"/styles-00000000.css\"></head><body><div class=\"";
@@ -898,6 +901,72 @@ mod tests {
                 -- main.hop --
                 view Home() {
                     <div class="text-red-500">hi</div>
+                }
+                -- style.css --
+            "#]],
+        )
+    }
+
+    #[test]
+    #[ignore]
+    fn page_with_explicit_head_and_body_compiles() {
+        check(
+            indoc! {r#"
+                -- style.css --
+                -- hop.toml --
+                [compile]
+                target = "ts"
+                output_path = "app.ts"
+
+                [css]
+                bundler = "tailwind_4"
+                input_path = "style.css"
+
+                [assets]
+                output_dir = "dist/public"
+                -- main.hop --
+                page Home() {
+                    head {
+                        <title>My page</title>
+                    }
+                    body {
+                        <div class="text-red-500">hi</div>
+                    }
+                }
+            "#},
+            expect![[r#"
+                -- app.ts --
+                // Code generated by the hop compiler. DO NOT EDIT.
+
+                export function Home(): string {
+                    let output: string = "";
+                    output += "<!doctype html><html><head><meta charset=\"utf-8\"><meta";
+                    output += " content=\"width=device-width, initial-scale=1\"";
+                    output += " name=\"viewport\"><title>My page</title><link";
+                    output += " rel=\"stylesheet\" href=\"/styles-00000000.css\"></head><body>";
+                    output += "<div class=\"text-red-500\">hi</div></body></html>";
+                    return output;
+                }
+                -- dist/public/styles-00000000.css --
+                -- hop.toml --
+                [compile]
+                target = "ts"
+                output_path = "app.ts"
+
+                [css]
+                bundler = "tailwind_4"
+                input_path = "style.css"
+
+                [assets]
+                output_dir = "dist/public"
+                -- main.hop --
+                page Home() {
+                    head {
+                        <title>My page</title>
+                    }
+                    body {
+                        <div class="text-red-500">hi</div>
+                    }
                 }
                 -- style.css --
             "#]],
@@ -933,7 +1002,7 @@ mod tests {
 
                 export function Home(): string {
                     let output: string = "";
-                    output += "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><meta";
+                    output += "<!doctype html><html><head><meta charset=\"utf-8\"><meta";
                     output += " content=\"width=device-width, initial-scale=1\"";
                     output += " name=\"viewport\"><link rel=\"stylesheet\"";
                     output += " href=\"/static/v1/styles-00000000.css\"></head><body><div";
@@ -993,9 +1062,7 @@ mod tests {
                 output_dir = "dist/public"
                 -- main.hop --
                 view Home() {
-                    <body>
-                      <div class="text-red-500">hi</div>
-                    </body>
+                    <div class="text-red-500">hi</div>
                 }
             "#},
             expect![[r#"
@@ -1019,7 +1086,7 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        output.push_str("<!DOCTYPE html><html><head><meta charset=\"utf-8\"><meta");
+                        output.push_str("<!doctype html><html><head><meta charset=\"utf-8\"><meta");
                         output.push_str(" content=\"width=device-width, initial-scale=1\"");
                         output.push_str(" name=\"viewport\"><link rel=\"stylesheet\"");
                         output.push_str(" href=\"/static/v1/styles-00000000.css\"><script");
@@ -1052,9 +1119,7 @@ mod tests {
                 output_dir = "dist/public"
                 -- main.hop --
                 view Home() {
-                    <body>
-                      <div class="text-red-500">hi</div>
-                    </body>
+                    <div class="text-red-500">hi</div>
                 }
                 -- style.css --
             "#]],
@@ -1121,7 +1186,7 @@ mod tests {
 
                 export function Home(): string {
                     let output: string = "";
-                    output += "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><meta";
+                    output += "<!doctype html><html><head><meta charset=\"utf-8\"><meta";
                     output += " content=\"width=device-width, initial-scale=1\"";
                     output += " name=\"viewport\"><link rel=\"stylesheet\"";
                     output += " href=\"/styles-00000000.css\"><script type=\"module\"";
@@ -1168,7 +1233,7 @@ mod tests {
 
                 export function Home(): string {
                     let output: string = "";
-                    output += "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><meta";
+                    output += "<!doctype html><html><head><meta charset=\"utf-8\"><meta";
                     output += " content=\"width=device-width, initial-scale=1\"";
                     output += " name=\"viewport\"><link rel=\"stylesheet\"";
                     output += " href=\"/styles-ca0dd958.css\"></head><body><div>hi</div>";
@@ -1240,7 +1305,7 @@ mod tests {
 
                 export function Home(): string {
                     let output: string = "";
-                    output += "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><meta";
+                    output += "<!doctype html><html><head><meta charset=\"utf-8\"><meta";
                     output += " content=\"width=device-width, initial-scale=1\"";
                     output += " name=\"viewport\"><link rel=\"stylesheet\"";
                     output += " href=\"/static/v1/styles-25fd2426.css\"></head><body><div>hi";
@@ -1379,7 +1444,7 @@ mod tests {
 
                 export function Home(): string {
                     let output: string = "";
-                    output += "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><meta";
+                    output += "<!doctype html><html><head><meta charset=\"utf-8\"><meta";
                     output += " content=\"width=device-width, initial-scale=1\"";
                     output += " name=\"viewport\"><link rel=\"stylesheet\"";
                     output += " href=\"/styles-dd9995d1.css\"></head><body><div>hi</div>";
@@ -1441,7 +1506,7 @@ mod tests {
 
                 export function Home(): string {
                     let output: string = "";
-                    output += "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><meta";
+                    output += "<!doctype html><html><head><meta charset=\"utf-8\"><meta";
                     output += " content=\"width=device-width, initial-scale=1\"";
                     output += " name=\"viewport\"><link rel=\"stylesheet\"";
                     output += " href=\"/assets/styles-00000000.css\"></head><body><img src=\"";

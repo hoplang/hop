@@ -130,10 +130,6 @@ pub enum TypedNode {
         children: Vec<TypedNode>,
     },
 
-    Doctype {
-        value: CheapString,
-    },
-
     Html {
         element: HtmlElement,
         attributes: Vec<TypedAttribute>,
@@ -149,7 +145,6 @@ impl TypedNode {
             TypedNode::TextExpression { expression } => BoxDoc::text("{")
                 .append(expression.to_doc())
                 .append(BoxDoc::text("}")),
-            TypedNode::Doctype { value } => BoxDoc::text(value.as_str()),
             TypedNode::ComponentInvocation {
                 component_name,
                 args,

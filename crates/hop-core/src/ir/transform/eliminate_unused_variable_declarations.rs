@@ -141,10 +141,10 @@ mod tests {
     use std::collections::HashMap;
 
     use super::*;
-    use crate::ir::pure_module::{PureFunctionDeclaration, PureModule, PureViewDeclaration};
+    use crate::ir::pure_module::{PureFunctionDeclaration, PureModule, PurePageDeclaration};
     use crate::ir::pure_module_builder::PureModuleBuilder;
     use crate::ir::pure_module_generator::random_module;
-    use crate::ir::runtime::evaluator::evaluate_view;
+    use crate::ir::runtime::evaluator::evaluate_page;
     use crate::ir::runtime::random::random_value;
     use crate::ir::runtime::value::Value;
     use crate::symbols::type_name::TypeName;
@@ -158,11 +158,11 @@ mod tests {
             let (module, registry) = random_module(u);
             let mut rng = StdRng::seed_from_u64(u.arbitrary()?);
 
-            let view_args: Vec<(TypeName, HashMap<VarName, Value>)> = module
-                .views
+            let page_args: Vec<(TypeName, HashMap<VarName, Value>)> = module
+                .pages
                 .iter()
-                .map(|view| {
-                    let args = view
+                .map(|page| {
+                    let args = page
                         .parameters
                         .iter()
                         .map(|p| {
@@ -172,20 +172,20 @@ mod tests {
                             )
                         })
                         .collect();
-                    (view.name.clone(), args)
+                    (page.name.clone(), args)
                 })
                 .collect();
 
-            let before: Vec<String> = view_args
+            let before: Vec<String> = page_args
                 .iter()
-                .map(|(view_name, args)| evaluate_view(&module, view_name, args.clone()).unwrap())
+                .map(|(page_name, args)| evaluate_page(&module, page_name, args.clone()).unwrap())
                 .collect();
 
             let module = run(module);
 
-            let after: Vec<String> = view_args
+            let after: Vec<String> = page_args
                 .iter()
-                .map(|(view_name, args)| evaluate_view(&module, view_name, args.clone()).unwrap())
+                .map(|(page_name, args)| evaluate_page(&module, page_name, args.clone()).unwrap())
                 .collect();
 
             assert_eq!(before, after);
@@ -195,13 +195,13 @@ mod tests {
 
     fn run(module: PureModule) -> PureModule {
         PureModule {
-            views: module
-                .views
+            pages: module
+                .pages
                 .into_iter()
-                .map(|view| PureViewDeclaration {
-                    name: view.name,
-                    parameters: view.parameters,
-                    body: eliminate_unused_variable_declarations(view.body),
+                .map(|page| PurePageDeclaration {
+                    name: page.name,
+                    parameters: page.parameters,
+                    body: eliminate_unused_variable_declarations(page.body),
                 })
                 .collect(),
             functions: module
@@ -241,12 +241,12 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                view Test() {
+                page Test() {
                   raw("Hello") for v0 in ["a", "b"]
                 }
 
                 -- after --
-                view Test() {
+                page Test() {
                   raw("Hello") for _ in ["a", "b"]
                 }
             "#]],
@@ -265,12 +265,12 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                view Test() {
+                page Test() {
                   escape(v0) for v0 in ["a", "b"]
                 }
 
                 -- after --
-                view Test() {
+                page Test() {
                   escape(v0) for v0 in ["a", "b"]
                 }
             "#]],
@@ -287,12 +287,12 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                view Test() {
+                page Test() {
                   let v0 = "value" in raw("Hello")
                 }
 
                 -- after --
-                view Test() {
+                page Test() {
                   raw("Hello")
                 }
             "#]],
@@ -309,12 +309,12 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                view Test() {
+                page Test() {
                   let v0 = "Hello" in escape(v0)
                 }
 
                 -- after --
-                view Test() {
+                page Test() {
                   let v0 = "Hello" in escape(v0)
                 }
             "#]],
@@ -335,12 +335,12 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                view Test() {
+                page Test() {
                   let v0 = "a" in let v1 = v0 in raw("Hello")
                 }
 
                 -- after --
-                view Test() {
+                page Test() {
                   raw("Hello")
                 }
             "#]],
@@ -359,12 +359,12 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                view Test() {
+                page Test() {
                   let v1 = "value" in escape(v0) for v0 in ["a", "b"]
                 }
 
                 -- after --
-                view Test() {
+                page Test() {
                   escape(v0) for v0 in ["a", "b"]
                 }
             "#]],
@@ -386,7 +386,7 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                view Test() {
+                page Test() {
                   match Option[String]::Some("x") {
                     Some(v0) => raw("some"),
                     None => raw("none"),
@@ -394,7 +394,7 @@ mod tests {
                 }
 
                 -- after --
-                view Test() {
+                page Test() {
                   match Option[String]::Some("x") {
                     Some(_) => raw("some"),
                     None => raw("none"),
@@ -419,7 +419,7 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                view Test() {
+                page Test() {
                   match Option[String]::Some("x") {
                     Some(v0) => escape(v0),
                     None => raw("none"),
@@ -427,7 +427,7 @@ mod tests {
                 }
 
                 -- after --
-                view Test() {
+                page Test() {
                   match Option[String]::Some("x") {
                     Some(v0) => escape(v0),
                     None => raw("none"),
@@ -465,7 +465,7 @@ mod tests {
                   Active {since: String},
                   Inactive,
                 }
-                view Test() {
+                page Test() {
                   match Status::Active {since: "now"} {
                     Status::Active {since: v0} => raw("active"),
                     Status::Inactive => raw("inactive"),
@@ -477,7 +477,7 @@ mod tests {
                   Active {since: String},
                   Inactive,
                 }
-                view Test() {
+                page Test() {
                   match Status::Active {since: "now"} {
                     Status::Active => raw("active"),
                     Status::Inactive => raw("inactive"),
@@ -515,7 +515,7 @@ mod tests {
                   Active {since: String},
                   Inactive,
                 }
-                view Test() {
+                page Test() {
                   match Status::Active {since: "now"} {
                     Status::Active {since: v0} => escape(v0),
                     Status::Inactive => raw("inactive"),
@@ -527,7 +527,7 @@ mod tests {
                   Active {since: String},
                   Inactive,
                 }
-                view Test() {
+                page Test() {
                   match Status::Active {since: "now"} {
                     Status::Active {since: v0} => escape(v0),
                     Status::Inactive => raw("inactive"),

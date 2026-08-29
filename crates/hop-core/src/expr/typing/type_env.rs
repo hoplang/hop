@@ -10,7 +10,7 @@ use crate::symbols::var_name::VarName;
 pub enum TypeBinding {
     Type(Arc<Type>),
     Component(ComponentSignature),
-    View,
+    Page,
 }
 
 #[derive(Debug, Clone, Default)]

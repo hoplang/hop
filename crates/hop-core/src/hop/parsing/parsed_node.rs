@@ -1,5 +1,5 @@
 use super::parsed_ast::ParsedAttribute;
-use crate::document::{CheapString, DocumentRange};
+use crate::document::DocumentRange;
 use crate::expr::ParsedExpr;
 use crate::expr::parsing::ParsedType;
 use crate::expr::parsing::parsed_expr::ParsedMatchPattern;
@@ -80,12 +80,6 @@ pub enum ParsedNode {
     /// A Comment node represents an HTML comment.
     /// E.g. <!-- This is a comment -->
     Comment { range: DocumentRange },
-
-    /// A Doctype node represents a doctype, e.g. a <!DOCTYPE html>
-    Doctype {
-        value: CheapString,
-        range: DocumentRange,
-    },
 
     /// An HTML node represents a plain HTML node.
     /// E.g. <div>...</div>
@@ -174,8 +168,7 @@ impl ParsedNode {
             | ParsedNode::Let { range, .. }
             | ParsedNode::Match { range, .. }
             | ParsedNode::Comment { range }
-            | ParsedNode::Html { range, .. }
-            | ParsedNode::Doctype { range, .. } => range,
+            | ParsedNode::Html { range, .. } => range,
         }
     }
 
@@ -189,7 +182,6 @@ impl ParsedNode {
             ParsedNode::Html { children, .. } => children,
             ParsedNode::Match { .. } => &[], // children are inside cases
             ParsedNode::Comment { .. } => &[],
-            ParsedNode::Doctype { .. } => &[],
             ParsedNode::Text { .. } => &[],
             ParsedNode::Newline { .. } => &[],
             ParsedNode::TextExpression { .. } => &[],
@@ -386,7 +378,6 @@ impl ParsedNode {
                     .append(BoxDoc::text("</let>"))
             }
             ParsedNode::Comment { range } => BoxDoc::text(range.as_str()),
-            ParsedNode::Doctype { value, .. } => BoxDoc::text(value.as_str()),
             ParsedNode::Match { subject, cases, .. } => BoxDoc::text("<match {")
                 .append(subject.to_doc())
                 .append(BoxDoc::text("}>"))

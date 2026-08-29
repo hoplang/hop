@@ -14,7 +14,7 @@ pub struct TypedAst {
     record_declarations: Vec<TypedRecordDeclaration>,
     enum_declarations: Vec<TypedEnumDeclaration>,
     component_declarations: Vec<TypedComponentDeclaration>,
-    view_declarations: Vec<TypedViewDeclaration>,
+    page_declarations: Vec<TypedPageDeclaration>,
     function_declarations: Vec<TypedFunctionDeclaration>,
 }
 
@@ -36,13 +36,13 @@ pub struct TypedComponentDeclaration {
     pub children: Vec<TypedNode>,
     pub params: Vec<TypedParameter>,
     pub rest_param: Option<VarName>,
-    pub is_recursive: bool,
 }
 
 #[derive(Debug, Clone)]
-pub struct TypedViewDeclaration {
+pub struct TypedPageDeclaration {
     pub name: TypeName,
-    pub children: Vec<TypedNode>,
+    pub head: Vec<TypedNode>,
+    pub body: Vec<TypedNode>,
     pub params: Vec<TypedParameter>,
 }
 
@@ -66,22 +66,21 @@ impl TypedAst {
         component_declarations: Vec<TypedComponentDeclaration>,
         record_declarations: Vec<TypedRecordDeclaration>,
         enum_declarations: Vec<TypedEnumDeclaration>,
-        view_declarations: Vec<TypedViewDeclaration>,
+        page_declarations: Vec<TypedPageDeclaration>,
         function_declarations: Vec<TypedFunctionDeclaration>,
     ) -> Self {
         Self {
             component_declarations,
             record_declarations,
             enum_declarations,
-            view_declarations,
+            page_declarations,
             function_declarations,
         }
     }
 
-    pub fn get_component_declaration(&self, name: &str) -> Option<&TypedComponentDeclaration> {
-        self.component_declarations
-            .iter()
-            .find(|&n| n.component_name.as_str() == name)
+    /// Returns a reference to all component declarations in the AST.
+    pub fn get_component_declarations(&self) -> &[TypedComponentDeclaration] {
+        &self.component_declarations
     }
 
     /// Returns a reference to all record declarations in the AST.
@@ -94,9 +93,10 @@ impl TypedAst {
         &self.enum_declarations
     }
 
-    /// Returns a reference to all view declarations in the AST.
-    pub fn get_view_declarations(&self) -> &[TypedViewDeclaration] {
-        &self.view_declarations
+    /// Returns a reference to all page declarations in the AST (this
+    /// includes `view` declarations, which are sugar for `page`).
+    pub fn get_page_declarations(&self) -> &[TypedPageDeclaration] {
+        &self.page_declarations
     }
 
     pub fn get_function_declarations(&self) -> &[TypedFunctionDeclaration] {
@@ -118,8 +118,8 @@ impl TypedAst {
             docs.push(component.to_doc());
         }
 
-        for view in &self.view_declarations {
-            docs.push(view.to_doc());
+        for page in &self.page_declarations {
+            docs.push(page.to_doc());
         }
 
         for function in &self.function_declarations {
@@ -249,7 +249,7 @@ impl TypedComponentDeclaration {
     }
 }
 
-impl TypedViewDeclaration {
+impl TypedPageDeclaration {
     pub fn to_doc(&self) -> BoxDoc<'_> {
         let params_doc = if self.params.is_empty() {
             BoxDoc::nil()
@@ -264,7 +264,7 @@ impl TypedViewDeclaration {
             )
         };
 
-        let header = BoxDoc::text("view")
+        let header = BoxDoc::text("page")
             .append(BoxDoc::space())
             .append(BoxDoc::text(self.name.as_str()))
             .append(BoxDoc::text("("))
@@ -273,21 +273,44 @@ impl TypedViewDeclaration {
             .append(BoxDoc::space())
             .append(BoxDoc::text("{"));
 
-        if self.children.is_empty() {
-            header.append(BoxDoc::text("}"))
-        } else {
-            header
+        let mut blocks: Vec<BoxDoc<'_>> = Vec::new();
+        if !self.head.is_empty() {
+            blocks.push(
+                BoxDoc::text("head {")
+                    .append(
+                        BoxDoc::line()
+                            .append(BoxDoc::intersperse(
+                                self.head.iter().map(|c| c.to_doc()),
+                                BoxDoc::line(),
+                            ))
+                            .nest(2),
+                    )
+                    .append(BoxDoc::line())
+                    .append(BoxDoc::text("}")),
+            );
+        }
+        blocks.push(
+            BoxDoc::text("body {")
                 .append(
                     BoxDoc::line()
                         .append(BoxDoc::intersperse(
-                            self.children.iter().map(|c| c.to_doc()),
+                            self.body.iter().map(|c| c.to_doc()),
                             BoxDoc::line(),
                         ))
                         .nest(2),
                 )
                 .append(BoxDoc::line())
-                .append(BoxDoc::text("}"))
-        }
+                .append(BoxDoc::text("}")),
+        );
+
+        header
+            .append(
+                BoxDoc::line()
+                    .append(BoxDoc::intersperse(blocks, BoxDoc::line()))
+                    .nest(2),
+            )
+            .append(BoxDoc::line())
+            .append(BoxDoc::text("}"))
     }
 }
 
@@ -326,7 +349,7 @@ impl Display for TypedFunctionDeclaration {
     }
 }
 
-impl Display for TypedViewDeclaration {
+impl Display for TypedPageDeclaration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "{}", self.to_doc().pretty(60))
     }

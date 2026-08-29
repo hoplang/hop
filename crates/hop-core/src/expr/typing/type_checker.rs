@@ -61,7 +61,7 @@ pub fn resolve_type(
                     });
                     (typ, range)
                 }
-                TypeBinding::Component(_) | TypeBinding::View => {
+                TypeBinding::Component(_) | TypeBinding::Page => {
                     return Err(TypeError::new(
                         TypeErrorKind::ComponentUsedAsType { name: name.clone() },
                         range.clone(),
@@ -985,7 +985,7 @@ pub fn typecheck_expr(
             let def_range = def_range.clone();
             let record_type = match binding {
                 TypeBinding::Type(typ) => typ.clone(),
-                TypeBinding::Component(_) | TypeBinding::View => {
+                TypeBinding::Component(_) | TypeBinding::Page => {
                     return Err(TypeError::new(
                         TypeErrorKind::UndefinedRecord {
                             record_name: record_name.clone(),
@@ -1213,7 +1213,7 @@ pub fn typecheck_expr(
             let def_range = def_range.clone();
             let enum_type = match binding {
                 TypeBinding::Type(typ) => typ.clone(),
-                TypeBinding::Component(_) | TypeBinding::View => {
+                TypeBinding::Component(_) | TypeBinding::Page => {
                     return Err(TypeError::new(
                         TypeErrorKind::UndefinedEnum {
                             enum_name: enum_name.clone(),
@@ -3223,10 +3223,10 @@ mod tests {
     fn accepts_record_literal_with_spread_of_field_access() {
         accept(
             TypeRegistryBuilder::new()
-                .record("State", [("query", "String"), ("page", "Int")])
+                .record("State", [("query", "String"), ("num", "Int")])
                 .record("App", [("state", "State")]),
             &[("app", "App")],
-            "State {...app.state, page: 1}",
+            "State {...app.state, num: 1}",
             expect!["test::State"],
         );
     }

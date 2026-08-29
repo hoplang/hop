@@ -54,7 +54,7 @@ pub enum ParsedDeclaration {
     Record(ParsedRecordDeclaration),
     Enum(ParsedEnumDeclaration),
     Component(ParsedComponentDeclaration),
-    View(ParsedViewDeclaration),
+    Page(ParsedPageDeclaration),
     Function(ParsedFunctionDeclaration),
 }
 
@@ -69,13 +69,17 @@ pub struct ParsedFunctionDeclaration {
 }
 
 #[derive(Debug, Clone)]
-pub struct ParsedViewDeclaration {
+pub struct ParsedPageDeclaration {
     pub name: TypeName,
     pub name_range: DocumentRange,
     pub params: Vec<ParsedParameter>,
-    pub children: Vec<ParsedNode>,
+    pub head: Vec<ParsedNode>,
+    pub body: Vec<ParsedNode>,
     pub range: DocumentRange,
     pub pub_range: Option<DocumentRange>,
+    /// True when this declaration was written using the `view` keyword.
+    /// Used only by the formatter to round-trip `view` syntax.
+    pub is_view: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -246,7 +250,7 @@ impl ParsedDeclaration {
             ParsedDeclaration::Record(record) => record.to_doc(),
             ParsedDeclaration::Enum(e) => e.to_doc(),
             ParsedDeclaration::Component(component) => component.to_doc(),
-            ParsedDeclaration::View(view) => view.to_doc(),
+            ParsedDeclaration::Page(page) => page.to_doc(),
             ParsedDeclaration::Function(function) => function.to_doc(),
         }
     }
@@ -316,10 +320,9 @@ impl ParsedAst {
         })
     }
 
-    /// Returns an iterator over all view declarations in the AST.
-    pub fn get_view_declarations(&self) -> impl Iterator<Item = &ParsedViewDeclaration> {
+    pub fn get_page_declarations(&self) -> impl Iterator<Item = &ParsedPageDeclaration> {
         self.declarations.iter().filter_map(|d| match d {
-            ParsedDeclaration::View(e) => Some(e),
+            ParsedDeclaration::Page(e) => Some(e),
             _ => None,
         })
     }
@@ -540,15 +543,33 @@ impl ParsedFunctionDeclaration {
     }
 }
 
-impl ParsedViewDeclaration {
+impl ParsedPageDeclaration {
+    fn to_doc_block<'a>(name: &'a str, nodes: &'a [ParsedNode]) -> BoxDoc<'a> {
+        BoxDoc::text(name)
+            .append(BoxDoc::space())
+            .append(BoxDoc::text("{"))
+            .append(if nodes.is_empty() {
+                BoxDoc::nil()
+            } else {
+                BoxDoc::line()
+                    .append(BoxDoc::intersperse(
+                        nodes.iter().map(|c| c.to_doc()),
+                        BoxDoc::line(),
+                    ))
+                    .nest(2)
+                    .append(BoxDoc::line())
+            })
+            .append(BoxDoc::text("}"))
+    }
+
     pub fn to_doc(&self) -> BoxDoc<'_> {
         let pub_prefix = if self.pub_range.is_some() {
             BoxDoc::text("pub").append(BoxDoc::space())
         } else {
             BoxDoc::nil()
         };
-        pub_prefix
-            .append(BoxDoc::text("view"))
+        let header = pub_prefix
+            .append(BoxDoc::text(if self.is_view { "view" } else { "page" }))
             .append(BoxDoc::space())
             .append(BoxDoc::text(self.name.as_str()))
             .append(BoxDoc::text("("))
@@ -558,19 +579,38 @@ impl ParsedViewDeclaration {
                 BoxDoc::intersperse(self.params.iter().map(|p| p.to_doc()), BoxDoc::text(", "))
             })
             .append(BoxDoc::text(")"))
-            .append(BoxDoc::space())
-            .append(BoxDoc::text("{"))
-            .append(if self.children.is_empty() {
-                BoxDoc::nil()
-            } else {
-                BoxDoc::line()
-                    .append(BoxDoc::intersperse(
-                        self.children.iter().map(|c| c.to_doc()),
-                        BoxDoc::line(),
-                    ))
-                    .nest(2)
-                    .append(BoxDoc::line())
-            })
-            .append(BoxDoc::text("}"))
+            .append(BoxDoc::space());
+
+        if self.is_view {
+            header
+                .append(BoxDoc::text("{"))
+                .append(if self.body.is_empty() {
+                    BoxDoc::nil()
+                } else {
+                    BoxDoc::line()
+                        .append(BoxDoc::intersperse(
+                            self.body.iter().map(|c| c.to_doc()),
+                            BoxDoc::line(),
+                        ))
+                        .nest(2)
+                        .append(BoxDoc::line())
+                })
+                .append(BoxDoc::text("}"))
+        } else {
+            let mut blocks = Vec::new();
+            if !self.head.is_empty() {
+                blocks.push(Self::to_doc_block("head", &self.head));
+            }
+            blocks.push(Self::to_doc_block("body", &self.body));
+            header
+                .append(BoxDoc::text("{"))
+                .append(
+                    BoxDoc::line()
+                        .append(BoxDoc::intersperse(blocks, BoxDoc::line()))
+                        .nest(2)
+                        .append(BoxDoc::line()),
+                )
+                .append(BoxDoc::text("}"))
+        }
     }
 }

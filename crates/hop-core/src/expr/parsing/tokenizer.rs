@@ -221,6 +221,7 @@ pub fn next(
                 "import" => Token::Import,
                 "in" => Token::In,
                 "match" => Token::Match,
+                "page" => Token::Page,
                 "pub" => Token::Pub,
                 "record" => Token::Record,
                 "true" => Token::True,

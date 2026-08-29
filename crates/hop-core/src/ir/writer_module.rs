@@ -22,7 +22,7 @@ use pretty::BoxDoc;
 /// impossible and substitution is capture-free.
 #[derive(Debug)]
 pub struct WriterModule {
-    pub views: Vec<WriterViewDeclaration>,
+    pub pages: Vec<WriterPageDeclaration>,
     pub functions: Vec<WriterFunctionDeclaration>,
     pub records: Vec<WriterRecordDeclaration>,
     pub enums: Vec<WriterEnumDeclaration>,
@@ -58,12 +58,12 @@ pub enum WriterForSource {
 }
 
 #[derive(Debug)]
-pub struct WriterViewDeclaration {
-    /// Entrypoint name
+pub struct WriterPageDeclaration {
+    /// Page name
     pub name: TypeName,
     /// Parameter names with their types
     pub parameters: Vec<WriterParameter>,
-    /// IR nodes for the view body
+    /// IR nodes for the assembled page body
     pub body: Vec<WriterStatement>,
 }
 
@@ -1081,10 +1081,10 @@ impl WriterExpr {
     }
 }
 
-impl<'a> WriterViewDeclaration {
+impl<'a> WriterPageDeclaration {
     pub fn to_doc(&'a self) -> BoxDoc<'a> {
         BoxDoc::nil()
-            .append("view ")
+            .append("page ")
             .append(self.name.as_str())
             .append(BoxDoc::text("("))
             .append(
@@ -1139,7 +1139,7 @@ impl fmt::Display for WriterExpr {
     }
 }
 
-impl fmt::Display for WriterViewDeclaration {
+impl fmt::Display for WriterPageDeclaration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "{}", self.to_doc().pretty(60))
     }
@@ -1204,8 +1204,8 @@ impl fmt::Display for WriterModule {
         for function in &self.functions {
             write!(f, "{}", function)?;
         }
-        for view in &self.views {
-            write!(f, "{}", view)?;
+        for page in &self.pages {
+            write!(f, "{}", page)?;
         }
         Ok(())
     }

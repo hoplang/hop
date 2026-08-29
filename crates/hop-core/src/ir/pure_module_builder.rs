@@ -7,7 +7,7 @@ use crate::expr::typing::type_registry_builder::{TestTypes, TypeRegistryBuilder}
 use crate::ir::expr_id::{ExprId, ExprIdCounter};
 use crate::ir::ir_var::IrVar;
 use crate::ir::pure_module::{
-    PureArgument, PureExpr, PureForSource, PureFunctionDeclaration, PureModule, PureViewDeclaration,
+    PureArgument, PureExpr, PureForSource, PureFunctionDeclaration, PureModule, PurePageDeclaration,
 };
 use crate::ir::var_id::VarIdCounter;
 use crate::ir::writer_module::{WriterEnumDeclaration, WriterParameter, WriterRecordDeclaration};
@@ -67,7 +67,7 @@ impl PureModuleBuilder {
             types: Rc::new(self.types_builder.build()),
             expr_ids: Rc::new(RefCell::new(ExprIdCounter::new())),
             var_ids: Rc::new(RefCell::new(VarIdCounter::new())),
-            views: Vec::new(),
+            pages: Vec::new(),
             functions: Vec::new(),
             callees: Rc::new(RefCell::new(HashMap::new())),
         }
@@ -127,7 +127,7 @@ pub struct PureModuleBodiesBuilder {
     types: Rc<TestTypes>,
     expr_ids: Rc<RefCell<ExprIdCounter>>,
     var_ids: Rc<RefCell<VarIdCounter>>,
-    views: Vec<PureViewDeclaration>,
+    pages: Vec<PurePageDeclaration>,
     functions: Vec<PureFunctionDeclaration>,
     callees: Rc<RefCell<HashMap<String, FunctionSignature>>>,
 }
@@ -150,7 +150,7 @@ impl PureModuleBodiesBuilder {
         F: FnOnce(&PureBuilder) -> PureExpr,
     {
         let (parameters, body) = self.declaration(params, Arc::new(Type::Fragment), body_fn);
-        self.views.push(PureViewDeclaration {
+        self.pages.push(PurePageDeclaration {
             name: TypeName::new(name).expect("Test view name should be valid"),
             parameters,
             body,
@@ -249,7 +249,7 @@ impl PureModuleBodiesBuilder {
             }
         }
         let module = PureModule {
-            views: self.views,
+            pages: self.pages,
             functions: self.functions,
             records: record_declarations,
             enums: enum_declarations,

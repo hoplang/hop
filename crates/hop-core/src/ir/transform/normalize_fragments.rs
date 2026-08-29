@@ -103,10 +103,10 @@ mod tests {
     use std::collections::HashMap;
 
     use super::*;
-    use crate::ir::pure_module::{PureFunctionDeclaration, PureModule, PureViewDeclaration};
+    use crate::ir::pure_module::{PureFunctionDeclaration, PureModule, PurePageDeclaration};
     use crate::ir::pure_module_builder::PureModuleBuilder;
     use crate::ir::pure_module_generator::random_module;
-    use crate::ir::runtime::evaluator::evaluate_view;
+    use crate::ir::runtime::evaluator::evaluate_page;
     use crate::ir::runtime::random::random_value;
     use crate::ir::runtime::value::Value;
     use crate::symbols::type_name::TypeName;
@@ -120,11 +120,11 @@ mod tests {
             let (module, registry) = random_module(u);
             let mut rng = StdRng::seed_from_u64(u.arbitrary()?);
 
-            let view_args: Vec<(TypeName, HashMap<VarName, Value>)> = module
-                .views
+            let page_args: Vec<(TypeName, HashMap<VarName, Value>)> = module
+                .pages
                 .iter()
-                .map(|view| {
-                    let args = view
+                .map(|page| {
+                    let args = page
                         .parameters
                         .iter()
                         .map(|p| {
@@ -134,20 +134,20 @@ mod tests {
                             )
                         })
                         .collect();
-                    (view.name.clone(), args)
+                    (page.name.clone(), args)
                 })
                 .collect();
 
-            let before: Vec<String> = view_args
+            let before: Vec<String> = page_args
                 .iter()
-                .map(|(view_name, args)| evaluate_view(&module, view_name, args.clone()).unwrap())
+                .map(|(page_name, args)| evaluate_page(&module, page_name, args.clone()).unwrap())
                 .collect();
 
             let module = run(module, 60);
 
-            let after: Vec<String> = view_args
+            let after: Vec<String> = page_args
                 .iter()
-                .map(|(view_name, args)| evaluate_view(&module, view_name, args.clone()).unwrap())
+                .map(|(page_name, args)| evaluate_page(&module, page_name, args.clone()).unwrap())
                 .collect();
 
             assert_eq!(before, after);
@@ -157,13 +157,13 @@ mod tests {
 
     fn run(module: PureModule, limit: usize) -> PureModule {
         let mut expr_ids = module.expr_ids;
-        let views = module
-            .views
+        let pages = module
+            .pages
             .into_iter()
-            .map(|view| PureViewDeclaration {
-                name: view.name,
-                parameters: view.parameters,
-                body: normalize_fragments(view.body, &mut expr_ids, limit),
+            .map(|page| PurePageDeclaration {
+                name: page.name,
+                parameters: page.parameters,
+                body: normalize_fragments(page.body, &mut expr_ids, limit),
             })
             .collect();
         let functions = module
@@ -177,7 +177,7 @@ mod tests {
             })
             .collect();
         PureModule {
-            views,
+            pages,
             functions,
             records: module.records,
             enums: module.enums,
@@ -203,12 +203,12 @@ mod tests {
             usize::MAX,
             expect![[r#"
                 -- before --
-                view Test() {
+                page Test() {
                   concat(escape("<b> & \"q\""))
                 }
 
                 -- after --
-                view Test() {
+                page Test() {
                   concat(raw("&lt;b&gt; &amp; &quot;q&quot;"))
                 }
             "#]],
@@ -226,12 +226,12 @@ mod tests {
             usize::MAX,
             expect![[r#"
                 -- before --
-                view Test() {
+                page Test() {
                   concat(raw("<div>"), raw("Hello"), raw("</div>"))
                 }
 
                 -- after --
-                view Test() {
+                page Test() {
                   concat(raw("<div>Hello</div>"))
                 }
             "#]],
@@ -249,12 +249,12 @@ mod tests {
             8,
             expect![[r#"
                 -- before --
-                view Test() {
+                page Test() {
                   concat(raw("aaaa"), raw("bbbb"), raw("cc"))
                 }
 
                 -- after --
-                view Test() {
+                page Test() {
                   concat(raw("aaaa"), raw("bbbbcc"))
                 }
             "#]],
@@ -275,12 +275,12 @@ mod tests {
             usize::MAX,
             expect![[r#"
                 -- before --
-                view Test() {
+                page Test() {
                   concat(raw("a"), concat(raw("b"), concat(raw("c"))))
                 }
 
                 -- after --
-                view Test() {
+                page Test() {
                   concat(raw("abc"))
                 }
             "#]],
@@ -300,12 +300,12 @@ mod tests {
             usize::MAX,
             expect![[r#"
                 -- before --
-                view Test(name@v0: String) {
+                page Test(name@v0: String) {
                   concat(escape(("Hi <" + v0)))
                 }
 
                 -- after --
-                view Test(name@v0: String) {
+                page Test(name@v0: String) {
                   concat(raw("Hi &lt;"), escape(v0))
                 }
             "#]],
@@ -326,12 +326,12 @@ mod tests {
             usize::MAX,
             expect![[r#"
                 -- before --
-                view Test() {
+                page Test() {
                   concat(escape((("a<" + "b>") + "c&")))
                 }
 
                 -- after --
-                view Test() {
+                page Test() {
                   concat(raw("a&lt;b&gt;c&amp;"))
                 }
             "#]],
@@ -353,12 +353,12 @@ mod tests {
             usize::MAX,
             expect![[r#"
                 -- before --
-                view Test(name@v0: String) {
+                page Test(name@v0: String) {
                   concat(raw("<p>"), escape(("Hi, " + v0)), raw("</p>"))
                 }
 
                 -- after --
-                view Test(name@v0: String) {
+                page Test(name@v0: String) {
                   concat(raw("<p>Hi, "), escape(v0), raw("</p>"))
                 }
             "#]],
@@ -380,7 +380,7 @@ mod tests {
             usize::MAX,
             expect![[r#"
                 -- before --
-                view Test() {
+                page Test() {
                   concat(
                     concat(
                       raw("<li>"),
@@ -391,7 +391,7 @@ mod tests {
                 }
 
                 -- after --
-                view Test() {
+                page Test() {
                   concat(
                     concat(
                       raw("<li>"),

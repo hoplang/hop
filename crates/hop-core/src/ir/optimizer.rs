@@ -1,4 +1,4 @@
-use super::pure_module::{PureExpr, PureFunctionDeclaration, PureModule, PureViewDeclaration};
+use super::pure_module::{PureExpr, PureFunctionDeclaration, PureModule, PurePageDeclaration};
 use crate::ir::{expr_id::ExprIdCounter, transform};
 
 fn optimize_body(body: PureExpr, expr_ids: &mut ExprIdCounter) -> PureExpr {
@@ -8,14 +8,17 @@ fn optimize_body(body: PureExpr, expr_ids: &mut ExprIdCounter) -> PureExpr {
 }
 
 pub fn optimize(module: PureModule) -> PureModule {
+    let module = transform::inline_function_calls(module);
+    // TODO: Move retain_reachable until after partial evaluation?
+    let module = transform::retain_reachable(module);
     let mut expr_ids = module.expr_ids;
-    let views = module
-        .views
+    let pages = module
+        .pages
         .into_iter()
-        .map(|view| PureViewDeclaration {
-            name: view.name,
-            parameters: view.parameters,
-            body: optimize_body(view.body, &mut expr_ids),
+        .map(|page| PurePageDeclaration {
+            name: page.name,
+            parameters: page.parameters,
+            body: optimize_body(page.body, &mut expr_ids),
         })
         .collect();
     let functions = module
@@ -29,7 +32,7 @@ pub fn optimize(module: PureModule) -> PureModule {
         })
         .collect();
     PureModule {
-        views,
+        pages,
         functions,
         records: module.records,
         enums: module.enums,
@@ -45,7 +48,7 @@ mod tests {
     use super::*;
     use crate::ir::pure_module_builder::PureModuleBuilder;
     use crate::ir::pure_module_generator::random_module;
-    use crate::ir::runtime::evaluator::evaluate_view;
+    use crate::ir::runtime::evaluator::evaluate_page;
     use crate::ir::runtime::{random::random_value, value::Value};
     use crate::symbols::type_name::TypeName;
     use crate::symbols::var_name::VarName;
@@ -58,11 +61,11 @@ mod tests {
             let (module, registry) = random_module(u);
             let mut rng = StdRng::seed_from_u64(u.arbitrary()?);
 
-            let view_args: Vec<(TypeName, HashMap<VarName, Value>)> = module
-                .views
+            let page_args: Vec<(TypeName, HashMap<VarName, Value>)> = module
+                .pages
                 .iter()
-                .map(|view| {
-                    let args = view
+                .map(|page| {
+                    let args = page
                         .parameters
                         .iter()
                         .map(|p| {
@@ -72,23 +75,23 @@ mod tests {
                             )
                         })
                         .collect();
-                    (view.name.clone(), args)
+                    (page.name.clone(), args)
                 })
                 .collect();
 
             let before_module = module.to_string();
-            let before_outputs: Vec<String> = view_args
+            let before_outputs: Vec<String> = page_args
                 .iter()
-                .map(|(view_name, args)| evaluate_view(&module, view_name, args.clone()).unwrap())
+                .map(|(page_name, args)| evaluate_page(&module, page_name, args.clone()).unwrap())
                 .collect();
 
             let module = optimize(module);
 
-            for ((view_name, args), before_output) in view_args.iter().zip(&before_outputs) {
-                let after_output = evaluate_view(&module, view_name, args.clone()).unwrap();
+            for ((page_name, args), before_output) in page_args.iter().zip(&before_outputs) {
+                let after_output = evaluate_page(&module, page_name, args.clone()).unwrap();
                 assert_eq!(
                     before_output, &after_output,
-                    "view {view_name}\n-- before --\n{before_module}\n-- after --\n{module}"
+                    "page {page_name}\n-- before --\n{before_module}\n-- after --\n{module}"
                 );
             }
             Ok(())
@@ -115,7 +118,7 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                view Test() {
+                page Test() {
                   let v0 = "value" in concat(
                     raw("Hello"),
                     raw(" "),
@@ -124,7 +127,7 @@ mod tests {
                 }
 
                 -- after --
-                view Test() {
+                page Test() {
                   concat(raw("Hello World"))
                 }
             "#]],
@@ -150,10 +153,10 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                view First() {
+                page First() {
                   let v0 = "x" in concat(raw("A"), raw("B"))
                 }
-                view Second() {
+                page Second() {
                   concat(
                     match true {
                       true => concat(raw("C"), raw("D")),
@@ -163,10 +166,10 @@ mod tests {
                 }
 
                 -- after --
-                view First() {
+                page First() {
                   concat(raw("AB"))
                 }
-                view Second() {
+                page Second() {
                   concat(raw("CD"))
                 }
             "#]],
@@ -189,7 +192,7 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                view Test() {
+                page Test() {
                   let v0 = true in concat(
                     match v0 {
                       true => concat(raw("yes")),
@@ -199,7 +202,7 @@ mod tests {
                 }
 
                 -- after --
-                view Test() {
+                page Test() {
                   concat(raw("yes"))
                 }
             "#]],
@@ -227,7 +230,7 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                view Test() {
+                page Test() {
                   let v0 = "hello" in let v1 = v0 in concat(
                     match true {
                       true => concat(raw("A"), raw("B")),
@@ -237,7 +240,7 @@ mod tests {
                 }
 
                 -- after --
-                view Test() {
+                page Test() {
                   concat(raw("AB"))
                 }
             "#]],
@@ -262,7 +265,7 @@ mod tests {
                   name: String,
                   age: Int,
                 }
-                view Test() {
+                page Test() {
                   concat(raw("Hello"))
                 }
 
@@ -275,7 +278,7 @@ mod tests {
                   name: String,
                   age: Int,
                 }
-                view Test() {
+                page Test() {
                   concat(raw("Hello"))
                 }
             "#]],
@@ -296,7 +299,7 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                view Test() {
+                page Test() {
                   let v0 = "<Ada>" in concat(
                     raw("<p>"),
                     escape(v0),
@@ -305,7 +308,7 @@ mod tests {
                 }
 
                 -- after --
-                view Test() {
+                page Test() {
                   concat(raw("<p>&lt;Ada&gt;</p>"))
                 }
             "#]],

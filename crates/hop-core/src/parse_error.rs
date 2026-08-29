@@ -81,13 +81,16 @@ pub(crate) enum ParseErrorKind {
     #[error("Invalid markup declaration")]
     InvalidMarkupDeclaration,
 
+    #[error("<!doctype> declarations are not allowed: one is inserted automatically")]
+    DoctypeNotAllowed,
+
     #[error("Unterminated comment")]
     UnterminatedComment,
 
     #[error("Expected quoted attribute value or expression")]
     ExpectedQuotedAttributeValue,
 
-    #[error("Single-quoted attribute values are not supported; use double quotes")]
+    #[error("Single-quoted attribute values are not supported: use double quotes")]
     SingleQuotedAttributeValue,
 
     #[error("Unterminated opening tag")]
@@ -190,6 +193,9 @@ pub(crate) enum ParseErrorKind {
 
     #[error("Default values are not allowed on view parameters")]
     DefaultValueNotAllowedOnView,
+
+    #[error("Expected a 'body' block")]
+    ExpectedPageBodyBlock,
 
     #[error("Default values are not allowed on function parameters")]
     DefaultValueNotAllowedOnFunction,

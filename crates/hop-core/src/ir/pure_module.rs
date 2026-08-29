@@ -20,7 +20,7 @@ use super::writer_module::{WriterEnumDeclaration, WriterParameter, WriterRecordD
 /// An expression-only, side-effect-free form of the IR.
 #[derive(Debug)]
 pub struct PureModule {
-    pub views: Vec<PureViewDeclaration>,
+    pub pages: Vec<PurePageDeclaration>,
     pub functions: Vec<PureFunctionDeclaration>,
     pub records: Vec<WriterRecordDeclaration>,
     pub enums: Vec<WriterEnumDeclaration>,
@@ -28,14 +28,14 @@ pub struct PureModule {
     pub var_ids: VarIdCounter,
 }
 
-/// A view declaration in Pure.
+/// A page declaration in Pure.
 #[derive(Debug)]
-pub struct PureViewDeclaration {
-    /// Entrypoint name
+pub struct PurePageDeclaration {
+    /// Page name
     pub name: TypeName,
     /// Parameter names with their types
     pub parameters: Vec<WriterParameter>,
-    /// PureIR expression for the view body. Must be of type `Fragment`.
+    /// PureIR expression for the assembled page body. Must be of type `Fragment`.
     pub body: PureExpr,
 }
 
@@ -53,7 +53,7 @@ pub struct PureFunctionDeclaration {
 }
 
 /// The source of iteration in a FragmentFor.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum PureForSource {
     /// Iterate over elements of an array.
     Array(PureExpr),
@@ -62,13 +62,13 @@ pub enum PureForSource {
 }
 
 /// An argument passed to a FunctionCall.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PureArgument {
     pub name: VarName,
     pub expr: PureExpr,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum PureExpr {
     /// A Let expression.
     Let {
@@ -478,6 +478,172 @@ impl PureExpr {
         }
     }
 
+    /// The ExprId this expression carries, mutably.
+    pub fn id_mut(&mut self) -> &mut ExprId {
+        match self {
+            PureExpr::Let { id, .. }
+            | PureExpr::Match { id, .. }
+            | PureExpr::VariableReference { id, .. }
+            | PureExpr::FieldAccess { id, .. }
+            | PureExpr::StringLiteral { id, .. }
+            | PureExpr::FragmentRaw { id, .. }
+            | PureExpr::FragmentEscape { id, .. }
+            | PureExpr::FragmentConcat { id, .. }
+            | PureExpr::FragmentFor { id, .. }
+            | PureExpr::FunctionCall { id, .. }
+            | PureExpr::BooleanLiteral { id, .. }
+            | PureExpr::FloatLiteral { id, .. }
+            | PureExpr::IntLiteral { id, .. }
+            | PureExpr::ArrayLiteral { id, .. }
+            | PureExpr::RecordLiteral { id, .. }
+            | PureExpr::EnumLiteral { id, .. }
+            | PureExpr::OptionLiteral { id, .. }
+            | PureExpr::StringConcat { id, .. }
+            | PureExpr::TwMerge { id, .. }
+            | PureExpr::NumericAdd { id, .. }
+            | PureExpr::NumericSubtract { id, .. }
+            | PureExpr::NumericMultiply { id, .. }
+            | PureExpr::NumericNegation { id, .. }
+            | PureExpr::BooleanNegation { id, .. }
+            | PureExpr::BooleanLogicalAnd { id, .. }
+            | PureExpr::BooleanLogicalOr { id, .. }
+            | PureExpr::Equals { id, .. }
+            | PureExpr::LessThan { id, .. }
+            | PureExpr::LessThanOrEqual { id, .. }
+            | PureExpr::ArrayLength { id, .. }
+            | PureExpr::ArrayIsEmpty { id, .. }
+            | PureExpr::StringIsEmpty { id, .. }
+            | PureExpr::OptionIsSome { id, .. }
+            | PureExpr::OptionIsNone { id, .. }
+            | PureExpr::IntToString { id, .. }
+            | PureExpr::FloatToInt { id, .. }
+            | PureExpr::IntToFloat { id, .. } => id,
+        }
+    }
+
+    /// Apply `f` to each direct child expression, without rebuilding.
+    ///
+    /// The read-only counterpart to `map_children`, and it treats binding
+    /// structure the same way: binders are not distinguished from any other
+    /// child, so a visitor that cares about scope must intercept `Let`,
+    /// `Match` and `FragmentFor` before falling through to this.
+    pub fn for_each_child(&self, f: &mut impl FnMut(&PureExpr)) {
+        match self {
+            PureExpr::Let { value, body, .. } => {
+                f(value);
+                f(body);
+            }
+
+            PureExpr::Match { match_, .. } => match match_ {
+                Match::Bool {
+                    subject,
+                    true_body,
+                    false_body,
+                } => {
+                    f(subject);
+                    f(true_body);
+                    f(false_body);
+                }
+                Match::Option {
+                    subject,
+                    some_arm_body,
+                    none_arm_body,
+                    ..
+                } => {
+                    f(subject);
+                    f(some_arm_body);
+                    f(none_arm_body);
+                }
+                Match::Enum { subject, arms } => {
+                    f(subject);
+                    for arm in arms {
+                        f(&arm.body);
+                    }
+                }
+            },
+
+            PureExpr::FragmentFor { source, body, .. } => {
+                match &**source {
+                    PureForSource::Array(array) => f(array),
+                    PureForSource::RangeInclusive { start, end } => {
+                        f(start);
+                        f(end);
+                    }
+                }
+                f(body);
+            }
+
+            PureExpr::FieldAccess { record, .. } => f(record),
+
+            PureExpr::FragmentEscape { expr, .. } => f(expr),
+
+            PureExpr::FragmentConcat { parts, .. } | PureExpr::StringConcat { parts, .. } => {
+                for part in parts {
+                    f(part);
+                }
+            }
+
+            PureExpr::FunctionCall { args, .. } => {
+                for arg in args {
+                    f(&arg.expr);
+                }
+            }
+
+            PureExpr::ArrayLiteral { elements, .. } => {
+                for element in elements {
+                    f(element);
+                }
+            }
+
+            PureExpr::RecordLiteral { fields, .. } | PureExpr::EnumLiteral { fields, .. } => {
+                for (_, value) in fields {
+                    f(value);
+                }
+            }
+
+            PureExpr::OptionLiteral { value, .. } => {
+                if let Some(value) = value {
+                    f(value);
+                }
+            }
+
+            PureExpr::TwMerge { operand, .. }
+            | PureExpr::NumericNegation { operand, .. }
+            | PureExpr::BooleanNegation { operand, .. } => f(operand),
+
+            PureExpr::NumericAdd { left, right, .. }
+            | PureExpr::NumericSubtract { left, right, .. }
+            | PureExpr::NumericMultiply { left, right, .. }
+            | PureExpr::BooleanLogicalAnd { left, right, .. }
+            | PureExpr::BooleanLogicalOr { left, right, .. }
+            | PureExpr::Equals { left, right, .. }
+            | PureExpr::LessThan { left, right, .. }
+            | PureExpr::LessThanOrEqual { left, right, .. } => {
+                f(left);
+                f(right);
+            }
+
+            PureExpr::ArrayLength { array, .. } | PureExpr::ArrayIsEmpty { array, .. } => f(array),
+
+            PureExpr::StringIsEmpty { string, .. } => f(string),
+
+            PureExpr::OptionIsSome { option, .. } | PureExpr::OptionIsNone { option, .. } => {
+                f(option);
+            }
+
+            PureExpr::IntToString { value, .. }
+            | PureExpr::FloatToInt { value, .. }
+            | PureExpr::IntToFloat { value, .. } => f(value),
+
+            PureExpr::VariableReference { .. }
+            | PureExpr::StringLiteral { .. }
+            | PureExpr::FragmentRaw { .. }
+            | PureExpr::BooleanLiteral { .. }
+            | PureExpr::FloatLiteral { .. }
+            | PureExpr::IntLiteral { .. } => {}
+        }
+    }
+
     /// Rebuild this expression with `f` applied to each direct child
     /// expression. Does not recurse: passes drive their own recursion,
     /// typically via a catch-all arm `expr => expr.map_children(...)` for
@@ -801,10 +967,10 @@ impl PureExpr {
     }
 }
 
-impl PureViewDeclaration {
+impl PurePageDeclaration {
     pub fn to_doc(&self) -> BoxDoc<'_> {
         BoxDoc::nil()
-            .append("view ")
+            .append("page ")
             .append(self.name.as_str())
             .append(BoxDoc::text("("))
             .append(params_to_doc(&self.parameters))
@@ -1242,7 +1408,7 @@ impl fmt::Display for PureExpr {
     }
 }
 
-impl fmt::Display for PureViewDeclaration {
+impl fmt::Display for PurePageDeclaration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "{}", self.to_doc().pretty(60))
     }
@@ -1265,8 +1431,8 @@ impl fmt::Display for PureModule {
         for function in &self.functions {
             write!(f, "{}", function)?;
         }
-        for view in &self.views {
-            write!(f, "{}", view)?;
+        for page in &self.pages {
+            write!(f, "{}", page)?;
         }
         Ok(())
     }

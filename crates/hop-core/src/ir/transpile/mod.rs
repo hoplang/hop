@@ -11,7 +11,7 @@ use crate::expr::typing::type_registry::{ResolvedType, TypeRegistry};
 use crate::ir::ir_var::IrVar;
 use crate::ir::writer_module::{
     WriterArgument, WriterExpr, WriterForSource, WriterFunctionDeclaration, WriterModule,
-    WriterStatement, WriterViewDeclaration,
+    WriterPageDeclaration, WriterStatement,
 };
 use crate::symbols::field_name::FieldName;
 use crate::symbols::function_name::FunctionName;
@@ -21,11 +21,11 @@ pub type Doc<'a> = DocBuilder<'a, Arena<'a>>;
 
 pub trait Transpiler {
     // Module-level transpilation
-    fn transpile_view<'a>(
+    fn transpile_page<'a>(
         &mut self,
         arena: &'a Arena<'a>,
         name: &'a TypeName,
-        view: &'a WriterViewDeclaration,
+        page: &'a WriterPageDeclaration,
     ) -> Doc<'a>;
     fn transpile_module(&mut self, module: &WriterModule, registry: &TypeRegistry) -> String;
     /// The registry of the module currently being transpiled. Used to

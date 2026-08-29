@@ -1,3 +1,3 @@
-pub mod inlining;
+pub mod assembly;
 pub mod parsing;
 pub mod typing;

@@ -150,8 +150,8 @@ fn typecheck_rust(code: &str) -> Result<(), String> {
 }
 
 fn execute_evaluator(module: &PureModule) -> Result<String, String> {
-    let view_name = TypeName::new("Test").unwrap();
-    evaluator::evaluate_view(module, &view_name, HashMap::new())
+    let page_name = TypeName::new("Test").unwrap();
+    evaluator::evaluate_page(module, &page_name, HashMap::new())
         .map_err(|e| format!("Evaluator failed: {}", e))
 }
 
@@ -377,8 +377,8 @@ mod tests {
         arbtest::arbtest(|u| {
             let (module, registry) = random_module_with_test_view(u);
             let pure = module.to_string();
-            let view_name = TypeName::new("Test").unwrap();
-            let expected = evaluator::evaluate_view(&module, &view_name, HashMap::new())
+            let page_name = TypeName::new("Test").unwrap();
+            let expected = evaluator::evaluate_page(&module, &page_name, HashMap::new())
                 .unwrap_or_else(|e| panic!("Evaluator failed:\n{e}\n\nPure:\n{pure}"))
                 .trim()
                 .to_string();
@@ -407,8 +407,8 @@ mod tests {
         arbtest::arbtest(|u| {
             let (module, registry) = random_module_with_test_view(u);
             let pure = module.to_string();
-            let view_name = TypeName::new("Test").unwrap();
-            let expected = evaluator::evaluate_view(&module, &view_name, HashMap::new())
+            let page_name = TypeName::new("Test").unwrap();
+            let expected = evaluator::evaluate_page(&module, &page_name, HashMap::new())
                 .unwrap_or_else(|e| panic!("Evaluator failed:\n{e}\n\nPure:\n{pure}"))
                 .trim()
                 .to_string();
@@ -453,7 +453,7 @@ mod tests {
                 record Flag {
                   value: Bool,
                 }
-                view Test() {
+                page Test() {
                   for v0 in [Flag {value: true}] {
                     let v1 = v0.value in {
                       let v2 = v1 in {
@@ -472,7 +472,7 @@ mod tests {
                 record Flag {
                   value: Bool,
                 }
-                view Test() {
+                page Test() {
                   for v0 in [Flag {value: true}] {
                     let v1 = v0.value in {
                       let v2 = v1 in {
@@ -532,7 +532,7 @@ mod tests {
                 record Count {
                   n: Int,
                 }
-                view Test() {
+                page Test() {
                   for v0 in [Count {n: 57}] {
                     let v1 = v0.n in {
                       let v2 = v1 in {
@@ -551,7 +551,7 @@ mod tests {
                 record Count {
                   n: Int,
                 }
-                view Test() {
+                page Test() {
                   for v0 in [Count {n: 57}] {
                     let v1 = v0.n in {
                       let v2 = v1 in {
@@ -609,7 +609,7 @@ mod tests {
                 record Flag {
                   value: Bool,
                 }
-                view Test() {
+                page Test() {
                   for v0 in [Flag {value: true}] {
                     let v1 = v0.value in {
                       let v2 = v1 in {
@@ -625,7 +625,7 @@ mod tests {
                 record Flag {
                   value: Bool,
                 }
-                view Test() {
+                page Test() {
                   for v0 in [Flag {value: true}] {
                     let v1 = v0.value in {
                       let v2 = v1 in {
@@ -687,7 +687,7 @@ mod tests {
                 record Flag {
                   value: Bool,
                 }
-                view Test() {
+                page Test() {
                   for v0 in [Flag {value: true}] {
                     let v1 = v0.value in {
                       let v2 = v1 in {
@@ -707,7 +707,7 @@ mod tests {
                 record Flag {
                   value: Bool,
                 }
-                view Test() {
+                page Test() {
                   for v0 in [Flag {value: true}] {
                     let v1 = v0.value in {
                       let v2 = v1 in {
@@ -768,7 +768,7 @@ mod tests {
                 record Flag {
                   value: Bool,
                 }
-                view Test() {
+                page Test() {
                   for v0 in [Flag {value: true}] {
                     let v1 = v0.value in {
                       let v2 = v1 in {
@@ -787,7 +787,7 @@ mod tests {
                 record Flag {
                   value: Bool,
                 }
-                view Test() {
+                page Test() {
                   for v0 in [Flag {value: true}] {
                     let v1 = v0.value in {
                       let v2 = v1 in {
@@ -841,26 +841,478 @@ mod tests {
             r#"<button class="btn" id="submit">Hi</button>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
-                  let v0 = "Hi" in {
-                    let v1 = v0 in {
-                      write("<button")
-                      write(" class=\"")
-                      write_string(tw_merge("btn"))
-                      write("\"")
-                      write(" id=\"submit\"")
-                      write(">")
-                      write_string(v1)
-                      write("</button>")
-                    }
-                  }
+                fn Button(label@v0: String, rest@v1: Fragment) -> Fragment {
+                  write("<button")
+                  write(" class=\"")
+                  write_string(tw_merge("btn"))
+                  write("\"")
+                  write_fragment(v1)
+                  write(">")
+                  write_string(v0)
+                  write("</button>")
+                }
+                page Test() {
+                  call Button(label = "Hi", rest = {
+                    write(" id=\"submit\"")
+                  })
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("<button class=\"btn\" id=\"submit\">Hi</button>")
                 }
                 -- expected output --
                 <button class="btn" id="submit">Hi</button>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn rest_chains_past_a_call_cycle() {
+        // First and Second call each other, so they share a call cycle, but
+        // the rests run straight down to Leaf's div. Both pick up `title`.
+        check(
+            indoc! {r#"
+                component Leaf(title: String = "d") {
+                  <div>
+                    {title}
+                  </div>
+                }
+
+                component First(
+                  n: Int,
+                  ...rest,
+                ) {
+                  <Second n={n} ...rest/>
+                }
+
+                component Second(
+                  n: Int,
+                  ...rest,
+                ) {
+                  <Leaf ...rest/>
+                  <if {0 < n}>
+                    <First n={n - 1}/>
+                  </if>
+                }
+
+                view Test {
+                  <First n={1} title="x"/>
+                }
+            "#},
+            r#"<div>x</div><div>d</div>"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                fn First(
+                  n@v0: Int,
+                  title@v1: String,
+                  rest@v2: Fragment,
+                ) -> Fragment {
+                  call Second(n = v0, title = v1, rest = {
+                    write_fragment(v2)
+                  })
+                }
+                fn Leaf(title@v3: String) -> Fragment {
+                  write("<div")
+                  write(">")
+                  write_string(v3)
+                  write("</div>")
+                }
+                fn Second(
+                  n@v4: Int,
+                  title@v5: String,
+                  rest@v6: Fragment,
+                ) -> Fragment {
+                  call Leaf(title = v5)
+                  match (0 < v4) {
+                    true => {
+                      call First(n = (v4 - 1), title = "d", rest = {})
+                    }
+                    false => {
+                    }
+                  }
+                }
+                page Test() {
+                  call First(n = 1, title = "x", rest = {})
+                }
+                -- ir (optimized) --
+                fn First(
+                  n@v0: Int,
+                  title@v1: String,
+                  rest@v2: Fragment,
+                ) -> Fragment {
+                  call Second(n = v0, title = v1, rest = {
+                    write_fragment(v2)
+                  })
+                }
+                fn Second(
+                  n@v4: Int,
+                  title@v5: String,
+                  rest@v6: Fragment,
+                ) -> Fragment {
+                  write("<div>")
+                  write_string(v5)
+                  write("</div>")
+                  match (0 < v4) {
+                    true => {
+                      call First(n = (v4 - 1), title = "d", rest = {})
+                    }
+                    false => {
+                    }
+                  }
+                }
+                page Test() {
+                  call First(n = 1, title = "x", rest = {})
+                }
+                -- expected output --
+                <div>x</div><div>d</div>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn rest_chains_through_a_component_to_an_element() {
+        check(
+            indoc! {r#"
+                component Base(...rest) {
+                  <div ...rest>
+                  </div>
+                }
+
+                component Card(
+                  title: String,
+                  ...rest,
+                ) {
+                  <section>
+                    <h1>
+                      {title}
+                    </h1>
+                    <Base ...rest/>
+                  </section>
+                }
+
+                view Test {
+                  <Card title="Hi" id="x" data-k="v"/>
+                }
+            "#},
+            r#"<section><h1>Hi</h1><div id="x" data-k="v"></div></section>"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                fn Base(rest@v0: Fragment) -> Fragment {
+                  write("<div")
+                  write_fragment(v0)
+                  write(">")
+                  write("</div>")
+                }
+                fn Card(title@v1: String, rest@v2: Fragment) -> Fragment {
+                  write("<section")
+                  write(">")
+                  write("<h1")
+                  write(">")
+                  write_string(v1)
+                  write("</h1>")
+                  call Base(rest = {
+                    write_fragment(v2)
+                  })
+                  write("</section>")
+                }
+                page Test() {
+                  call Card(title = "Hi", rest = {
+                    write(" id=\"x\"")
+                    write(" data-k=\"v\"")
+                  })
+                }
+                -- ir (optimized) --
+                page Test() {
+                  write("<section><h1>Hi</h1><div id=\"x\" data-k=\"v\"></div></section>")
+                }
+                -- expected output --
+                <section><h1>Hi</h1><div id="x" data-k="v"></div></section>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn rest_reaches_a_spread_target_nested_in_control_flow() {
+        check(
+            indoc! {r#"
+                component Wrapper(
+                  show: Bool,
+                  ...rest,
+                ) {
+                  <if {show}>
+                    <div ...rest>
+                    </div>
+                  </if>
+                }
+
+                view Test {
+                  <Wrapper show={true} id="x"/>
+                }
+            "#},
+            r#"<div id="x"></div>"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                fn Wrapper(show@v0: Bool, rest@v1: Fragment) -> Fragment {
+                  match v0 {
+                    true => {
+                      write("<div")
+                      write_fragment(v1)
+                      write(">")
+                      write("</div>")
+                    }
+                    false => {
+                    }
+                  }
+                }
+                page Test() {
+                  call Wrapper(show = true, rest = {
+                    write(" id=\"x\"")
+                  })
+                }
+                -- ir (optimized) --
+                page Test() {
+                  write("<div id=\"x\"></div>")
+                }
+                -- expected output --
+                <div id="x"></div>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn valueless_attribute_travels_through_rest() {
+        check(
+            indoc! {r#"
+                component Button(...rest) {
+                  <button ...rest>
+                  </button>
+                }
+
+                view Test {
+                  <Button disabled/>
+                }
+            "#},
+            r#"<button disabled></button>"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                fn Button(rest@v0: Fragment) -> Fragment {
+                  write("<button")
+                  write_fragment(v0)
+                  write(">")
+                  write("</button>")
+                }
+                page Test() {
+                  call Button(rest = {
+                    write(" disabled")
+                  })
+                }
+                -- ir (optimized) --
+                page Test() {
+                  write("<button disabled></button>")
+                }
+                -- expected output --
+                <button disabled></button>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn rest_escapes_attribute_values() {
+        check(
+            indoc! {r#"
+                component Panel(...rest) {
+                  <div ...rest>
+                  </div>
+                }
+
+                view Test {
+                  <Panel title={"a'b<c&d"}/>
+                }
+            "#},
+            r#"<div title="a&#39;b&lt;c&amp;d"></div>"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                fn Panel(rest@v0: Fragment) -> Fragment {
+                  write("<div")
+                  write_fragment(v0)
+                  write(">")
+                  write("</div>")
+                }
+                page Test() {
+                  call Panel(rest = {
+                    write(" title=\"")
+                    write_string("a'b<c&d")
+                    write("\"")
+                  })
+                }
+                -- ir (optimized) --
+                page Test() {
+                  write("<div title=\"a&#39;b&lt;c&amp;d\"></div>")
+                }
+                -- expected output --
+                <div title="a&#39;b&lt;c&amp;d"></div>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn rest_reaches_a_void_element() {
+        check(
+            indoc! {r#"
+                component Icon(...rest) {
+                  <img ...rest>
+                }
+
+                view Test {
+                  <Icon src="a.png" alt="a"/>
+                }
+            "#},
+            r#"<img src="a.png" alt="a">"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                fn Icon(rest@v0: Fragment) -> Fragment {
+                  write("<img")
+                  write_fragment(v0)
+                  write(">")
+                }
+                page Test() {
+                  call Icon(rest = {
+                    write(" src=\"a.png\"")
+                    write(" alt=\"a\"")
+                  })
+                }
+                -- ir (optimized) --
+                page Test() {
+                  write("<img src=\"a.png\" alt=\"a\">")
+                }
+                -- expected output --
+                <img src="a.png" alt="a">
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn empty_rest_contributes_no_attributes() {
+        check(
+            indoc! {r#"
+                component A(...rest) {
+                  <div ...rest>
+                  </div>
+                }
+
+                view Test {
+                  <A/>
+                }
+            "#},
+            r#"<div></div>"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                fn A(rest@v0: Fragment) -> Fragment {
+                  write("<div")
+                  write_fragment(v0)
+                  write(">")
+                  write("</div>")
+                }
+                page Test() {
+                  call A(rest = {})
+                }
+                -- ir (optimized) --
+                page Test() {
+                  write("<div></div>")
+                }
+                -- expected output --
+                <div></div>
                 -- eval (unoptimized) --
                 OK
                 -- eval (optimized) --
@@ -901,37 +1353,30 @@ mod tests {
             r#"<button class="p-2" data-foo="bar">Hi</button>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
-                  let v0 = {
+                fn Button(
+                  class@v0: String,
+                  children@v1: Fragment,
+                  rest@v2: Fragment,
+                ) -> Fragment {
+                  write("<button")
+                  write(" class=\"")
+                  write_string(tw_merge(v0))
+                  write("\"")
+                  write_fragment(v2)
+                  write(">")
+                  write_fragment(v1)
+                  write("</button>")
+                }
+                page Test() {
+                  call Button(class = "p-2", children = {
                     write("Hi")
-                  } in {
-                    let v1 = "p-2" in {
-                      let v2 = v0 in {
-                        let v3 = v1 in {
-                          write("<button")
-                          write(" class=\"")
-                          write_string(tw_merge(v3))
-                          write("\"")
-                          write(" data-foo=\"bar\"")
-                          write(">")
-                          write_fragment(v2)
-                          write("</button>")
-                        }
-                      }
-                    }
-                  }
+                  }, rest = {
+                    write(" data-foo=\"bar\"")
+                  })
                 }
                 -- ir (optimized) --
-                view Test() {
-                  let v0 = {
-                    write("Hi")
-                  } in {
-                    let v2 = v0 in {
-                      write("<button class=\"p-2\" data-foo=\"bar\">")
-                      write_fragment(v2)
-                      write("</button>")
-                    }
-                  }
+                page Test() {
+                  write("<button class=\"p-2\" data-foo=\"bar\">Hi</button>")
                 }
                 -- expected output --
                 <button class="p-2" data-foo="bar">Hi</button>
@@ -974,33 +1419,29 @@ mod tests {
             r#"<button class="builtin" data-x="y">Hi</button>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
-                  let v0 = {
+                fn Button(
+                  children@v0: Fragment,
+                  rest@v1: Fragment,
+                ) -> Fragment {
+                  write("<button")
+                  write(" class=\"")
+                  write_string(tw_merge("builtin"))
+                  write("\"")
+                  write_fragment(v1)
+                  write(">")
+                  write_fragment(v0)
+                  write("</button>")
+                }
+                page Test() {
+                  call Button(children = {
                     write("Hi")
-                  } in {
-                    let v1 = v0 in {
-                      write("<button")
-                      write(" class=\"")
-                      write_string(tw_merge("builtin"))
-                      write("\"")
-                      write(" data-x=\"y\"")
-                      write(">")
-                      write_fragment(v1)
-                      write("</button>")
-                    }
-                  }
+                  }, rest = {
+                    write(" data-x=\"y\"")
+                  })
                 }
                 -- ir (optimized) --
-                view Test() {
-                  let v0 = {
-                    write("Hi")
-                  } in {
-                    let v1 = v0 in {
-                      write("<button class=\"builtin\" data-x=\"y\">")
-                      write_fragment(v1)
-                      write("</button>")
-                    }
-                  }
+                page Test() {
+                  write("<button class=\"builtin\" data-x=\"y\">Hi</button>")
                 }
                 -- expected output --
                 <button class="builtin" data-x="y">Hi</button>
@@ -1037,14 +1478,19 @@ mod tests {
             r#"<svg viewBox="0 0 100 100"></svg>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                fn Svg(rest@v0: Fragment) -> Fragment {
                   write("<svg")
-                  write(" viewBox=\"0 0 100 100\"")
+                  write_fragment(v0)
                   write(">")
                   write("</svg>")
                 }
+                page Test() {
+                  call Svg(rest = {
+                    write(" viewBox=\"0 0 100 100\"")
+                  })
+                }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("<svg viewBox=\"0 0 100 100\"></svg>")
                 }
                 -- expected output --
@@ -1087,18 +1533,23 @@ mod tests {
             r#"<div>hi</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
-                  let v0 = "hi" in {
-                    let v1 = v0 in {
-                      write("<div")
-                      write(">")
-                      write_string(v1)
-                      write("</div>")
-                    }
-                  }
+                fn Card(title@v0: String) -> Fragment {
+                  write("<div")
+                  write(">")
+                  write_string(v0)
+                  write("</div>")
+                }
+                fn Wrapper(
+                  title@v1: String,
+                  rest@v2: Fragment,
+                ) -> Fragment {
+                  call Card(title = v1)
+                }
+                page Test() {
+                  call Wrapper(title = "hi", rest = {})
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("<div>hi</div>")
                 }
                 -- expected output --
@@ -1141,18 +1592,20 @@ mod tests {
             r#"<div>explicit</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
-                  let v0 = "explicit" in {
-                    let v1 = v0 in {
-                      write("<div")
-                      write(">")
-                      write_string(v1)
-                      write("</div>")
-                    }
-                  }
+                fn Card(title@v0: String) -> Fragment {
+                  write("<div")
+                  write(">")
+                  write_string(v0)
+                  write("</div>")
+                }
+                fn Wrapper(rest@v1: Fragment) -> Fragment {
+                  call Card(title = "explicit")
+                }
+                page Test() {
+                  call Wrapper(rest = {})
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("<div>explicit</div>")
                 }
                 -- expected output --
@@ -1204,23 +1657,28 @@ mod tests {
                 record User {
                   name: String,
                 }
-                view Test() {
+                fn Card(user@v1: test::User) -> Fragment {
+                  write("<div")
+                  write(">")
+                  write_string(v1.name)
+                  write("</div>")
+                }
+                fn Wrapper(
+                  user@v2: test::User,
+                  rest@v3: Fragment,
+                ) -> Fragment {
+                  call Card(user = v2)
+                }
+                page Test() {
                   let v0 = User {name: "Ada"} in {
-                    let v1 = v0 in {
-                      let v2 = v1 in {
-                        write("<div")
-                        write(">")
-                        write_string(v2.name)
-                        write("</div>")
-                      }
-                    }
+                    call Wrapper(user = v0, rest = {})
                   }
                 }
                 -- ir (optimized) --
                 record User {
                   name: String,
                 }
-                view Test() {
+                page Test() {
                   write("<div>Ada</div>")
                 }
                 -- expected output --
@@ -1269,7 +1727,7 @@ mod tests {
                 record Flag {
                   value: String,
                 }
-                view Test() {
+                page Test() {
                   let v0 = "outer" in {
                     for v1 in [Flag {value: "x"}] {
                       let v2 = v1.value in {
@@ -1286,7 +1744,7 @@ mod tests {
                 record Flag {
                   value: String,
                 }
-                view Test() {
+                page Test() {
                   for v1 in [Flag {value: "x"}] {
                     let v2 = v1.value in {
                       let v3 = v2 in {
@@ -1346,26 +1804,37 @@ mod tests {
             r#"<div>n<div>t</div></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
-                  let v0 = "t" in {
-                    let v1 = "n" in {
-                      let v2 = v0 in {
-                        let v3 = v1 in {
-                          write("<div")
-                          write(">")
-                          write_string(v3)
-                          write("<div")
-                          write(">")
-                          write_string(v2)
-                          write("</div>")
-                          write("</div>")
-                        }
-                      }
-                    }
-                  }
+                fn Bar(
+                  name@v0: String,
+                  title@v1: String,
+                  rest@v2: Fragment,
+                ) -> Fragment {
+                  write("<div")
+                  write(">")
+                  write_string(v0)
+                  call Card(title = v1)
+                  write("</div>")
+                }
+                fn Baz(
+                  name@v3: String,
+                  title@v4: String,
+                  rest@v5: Fragment,
+                ) -> Fragment {
+                  call Bar(name = v3, title = v4, rest = {
+                    write_fragment(v5)
+                  })
+                }
+                fn Card(title@v6: String) -> Fragment {
+                  write("<div")
+                  write(">")
+                  write_string(v6)
+                  write("</div>")
+                }
+                page Test() {
+                  call Baz(name = "n", title = "t", rest = {})
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("<div>n<div>t</div></div>")
                 }
                 -- expected output --
@@ -1410,24 +1879,26 @@ mod tests {
             r#"<div>positive</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
-                  let v0 = 3 in {
-                    let v1 = v0 in {
-                      match (0 < v1) {
-                        true => {
-                          write("<div")
-                          write(">")
-                          write("positive")
-                          write("</div>")
-                        }
-                        false => {
-                        }
-                      }
+                fn Card(count@v0: Int) -> Fragment {
+                  match (0 < v0) {
+                    true => {
+                      write("<div")
+                      write(">")
+                      write("positive")
+                      write("</div>")
+                    }
+                    false => {
                     }
                   }
                 }
+                fn Wrapper(count@v1: Int, rest@v2: Fragment) -> Fragment {
+                  call Card(count = v1)
+                }
+                page Test() {
+                  call Wrapper(count = 3, rest = {})
+                }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("<div>positive</div>")
                 }
                 -- expected output --
@@ -1475,25 +1946,31 @@ mod tests {
             r#"<div data-foo="bar">positive</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
-                  let v0 = 3 in {
-                    let v1 = v0 in {
-                      write("<div")
-                      write(" data-foo=\"bar\"")
-                      write(">")
-                      match (0 < v1) {
-                        true => {
-                          write("positive")
-                        }
-                        false => {
-                        }
-                      }
-                      write("</div>")
+                fn A(count@v0: Int, rest@v1: Fragment) -> Fragment {
+                  write("<div")
+                  write_fragment(v1)
+                  write(">")
+                  match (0 < v0) {
+                    true => {
+                      write("positive")
+                    }
+                    false => {
                     }
                   }
+                  write("</div>")
+                }
+                fn B(count@v2: Int, rest@v3: Fragment) -> Fragment {
+                  call A(count = v2, rest = {
+                    write_fragment(v3)
+                  })
+                }
+                page Test() {
+                  call B(count = 3, rest = {
+                    write(" data-foo=\"bar\"")
+                  })
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("<div data-foo=\"bar\">positive</div>")
                 }
                 -- expected output --
@@ -1542,29 +2019,34 @@ mod tests {
             r#"<div>deep</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
-                  let v0 = {
+                fn Bar(
+                  children@v0: Fragment,
+                  rest@v1: Fragment,
+                ) -> Fragment {
+                  call Foo(children = v0)
+                }
+                fn Baz(
+                  children@v2: Fragment,
+                  rest@v3: Fragment,
+                ) -> Fragment {
+                  call Bar(children = v2, rest = {
+                    write_fragment(v3)
+                  })
+                }
+                fn Foo(children@v4: Fragment) -> Fragment {
+                  write("<div")
+                  write(">")
+                  write_fragment(v4)
+                  write("</div>")
+                }
+                page Test() {
+                  call Baz(children = {
                     write("deep")
-                  } in {
-                    let v1 = v0 in {
-                      write("<div")
-                      write(">")
-                      write_fragment(v1)
-                      write("</div>")
-                    }
-                  }
+                  }, rest = {})
                 }
                 -- ir (optimized) --
-                view Test() {
-                  let v0 = {
-                    write("deep")
-                  } in {
-                    let v1 = v0 in {
-                      write("<div>")
-                      write_fragment(v1)
-                      write("</div>")
-                    }
-                  }
+                page Test() {
+                  write("<div>deep</div>")
                 }
                 -- expected output --
                 <div>deep</div>
@@ -1613,30 +2095,31 @@ mod tests {
             r#"<div class="x"><span class="x"></span></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
-                  let v0 = "x" in {
-                    let v1 = v0 in {
-                      write("<div")
-                      write(" class=\"")
-                      write_string(tw_merge(v1))
-                      write("\"")
-                      write(">")
-                      let v2 = "x" in {
-                        let v3 = v2 in {
-                          write("<span")
-                          write(" class=\"")
-                          write_string(tw_merge(v3))
-                          write("\"")
-                          write(">")
-                          write("</span>")
-                        }
-                      }
-                      write("</div>")
-                    }
-                  }
+                fn Inner(class@v0: String, rest@v1: Fragment) -> Fragment {
+                  write("<span")
+                  write(" class=\"")
+                  write_string(tw_merge(v0))
+                  write("\"")
+                  write_fragment(v1)
+                  write(">")
+                  write("</span>")
+                }
+                fn Outer(class@v2: String, rest@v3: Fragment) -> Fragment {
+                  write("<div")
+                  write(" class=\"")
+                  write_string(tw_merge(v2))
+                  write("\"")
+                  write(">")
+                  call Inner(class = "x", rest = {
+                    write_fragment(v3)
+                  })
+                  write("</div>")
+                }
+                page Test() {
+                  call Outer(class = "x", rest = {})
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("<div class=\"x\"><span class=\"x\"></span></div>")
                 }
                 -- expected output --
@@ -1691,52 +2174,39 @@ mod tests {
             r#"<div class="primary">click</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
-                  let v0 = "primary" in {
-                    let v1 = {
-                      write("click")
-                    } in {
-                      let v2 = v0 in {
-                        let v3 = v1 in {
-                          let v4 = v2 in {
-                            let v5 = {
-                              write_fragment(v3)
-                            } in {
-                              let v6 = v4 in {
-                                let v7 = v5 in {
-                                  write("<div")
-                                  write(" class=\"")
-                                  write_string(tw_merge(v6))
-                                  write("\"")
-                                  write(">")
-                                  write_fragment(v7)
-                                  write("</div>")
-                                }
-                              }
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
+                fn Button(
+                  children@v0: Fragment,
+                  class@v1: String,
+                  rest@v2: Fragment,
+                ) -> Fragment {
+                  call Foo(children = {
+                    write_fragment(v0)
+                  }, class = v1, rest = {
+                    write_fragment(v2)
+                  })
+                }
+                fn Foo(
+                  children@v3: Fragment,
+                  class@v4: String,
+                  rest@v5: Fragment,
+                ) -> Fragment {
+                  write("<div")
+                  write(" class=\"")
+                  write_string(tw_merge(v4))
+                  write("\"")
+                  write_fragment(v5)
+                  write(">")
+                  write_fragment(v3)
+                  write("</div>")
+                }
+                page Test() {
+                  call Button(children = {
+                    write("click")
+                  }, class = "primary", rest = {})
                 }
                 -- ir (optimized) --
-                view Test() {
-                  let v1 = {
-                    write("click")
-                  } in {
-                    let v3 = v1 in {
-                      let v5 = {
-                        write_fragment(v3)
-                      } in {
-                        let v7 = v5 in {
-                          write("<div class=\"primary\">")
-                          write_fragment(v7)
-                          write("</div>")
-                        }
-                      }
-                    }
-                  }
+                page Test() {
+                  write("<div class=\"primary\">click</div>")
                 }
                 -- expected output --
                 <div class="primary">click</div>
@@ -1780,20 +2250,28 @@ mod tests {
             r#"<span class="y"></span>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
-                  let v0 = "y" in {
-                    let v1 = v0 in {
-                      write("<span")
-                      write(" class=\"")
-                      write_string(tw_merge(v1))
-                      write("\"")
-                      write(">")
-                      write("</span>")
-                    }
-                  }
+                fn Inner(class@v0: String, rest@v1: Fragment) -> Fragment {
+                  write("<span")
+                  write(" class=\"")
+                  write_string(tw_merge(v0))
+                  write("\"")
+                  write_fragment(v1)
+                  write(">")
+                  write("</span>")
+                }
+                fn Wrapper(
+                  class@v2: String,
+                  rest@v3: Fragment,
+                ) -> Fragment {
+                  call Inner(class = v2, rest = {
+                    write_fragment(v3)
+                  })
+                }
+                page Test() {
+                  call Wrapper(class = "y", rest = {})
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("<span class=\"y\"></span>")
                 }
                 -- expected output --
@@ -1841,24 +2319,25 @@ mod tests {
             r#"<div class="main"></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
-                  let v0 = "main" in {
-                    let v1 = v0 in {
-                      let v2 = v1 in {
-                        let v3 = v2 in {
-                          write("<div")
-                          write(" class=\"")
-                          write_string(tw_merge(v3))
-                          write("\"")
-                          write(">")
-                          write("</div>")
-                        }
-                      }
-                    }
-                  }
+                fn A(class@v0: String, rest@v1: Fragment) -> Fragment {
+                  write("<div")
+                  write(" class=\"")
+                  write_string(tw_merge(v0))
+                  write("\"")
+                  write_fragment(v1)
+                  write(">")
+                  write("</div>")
+                }
+                fn B(class@v2: String, rest@v3: Fragment) -> Fragment {
+                  call A(class = v2, rest = {
+                    write_fragment(v3)
+                  })
+                }
+                page Test() {
+                  call B(class = "main", rest = {})
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("<div class=\"main\"></div>")
                 }
                 -- expected output --
@@ -1906,24 +2385,25 @@ mod tests {
             r#"<div class="b"></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
-                  let v0 = "b" in {
-                    let v1 = v0 in {
-                      let v2 = v1 in {
-                        let v3 = v2 in {
-                          write("<div")
-                          write(" class=\"")
-                          write_string(tw_merge(v3))
-                          write("\"")
-                          write(">")
-                          write("</div>")
-                        }
-                      }
-                    }
-                  }
+                fn A(class@v0: String, rest@v1: Fragment) -> Fragment {
+                  write("<div")
+                  write(" class=\"")
+                  write_string(tw_merge(v0))
+                  write("\"")
+                  write_fragment(v1)
+                  write(">")
+                  write("</div>")
+                }
+                fn B(class@v2: String, rest@v3: Fragment) -> Fragment {
+                  call A(class = v2, rest = {
+                    write_fragment(v3)
+                  })
+                }
+                page Test() {
+                  call B(class = "b", rest = {})
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("<div class=\"b\"></div>")
                 }
                 -- expected output --
@@ -1969,18 +2449,23 @@ mod tests {
             r#"<span>x</span>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
-                  let v0 = "x" in {
-                    let v1 = v0 in {
-                      write("<span")
-                      write(">")
-                      write_string(v1)
-                      write("</span>")
-                    }
-                  }
+                fn A(label@v0: String, rest@v1: Fragment) -> Fragment {
+                  write("<span")
+                  write_fragment(v1)
+                  write(">")
+                  write_string(v0)
+                  write("</span>")
+                }
+                fn B(label@v2: String, rest@v3: Fragment) -> Fragment {
+                  call A(label = v2, rest = {
+                    write_fragment(v3)
+                  })
+                }
+                page Test() {
+                  call B(label = "x", rest = {})
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("<span>x</span>")
                 }
                 -- expected output --
@@ -2030,18 +2515,28 @@ mod tests {
             r#"<span>x</span>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
-                  let v0 = "x" in {
-                    let v1 = v0 in {
-                      write("<span")
-                      write(">")
-                      write_string(v1)
-                      write("</span>")
-                    }
-                  }
+                fn Leaf(label@v0: String, rest@v1: Fragment) -> Fragment {
+                  write("<span")
+                  write_fragment(v1)
+                  write(">")
+                  write_string(v0)
+                  write("</span>")
+                }
+                fn Mid(label@v2: String, rest@v3: Fragment) -> Fragment {
+                  call Leaf(label = v2, rest = {
+                    write_fragment(v3)
+                  })
+                }
+                fn Top(label@v4: String, rest@v5: Fragment) -> Fragment {
+                  call Mid(label = v4, rest = {
+                    write_fragment(v5)
+                  })
+                }
+                page Test() {
+                  call Top(label = "x", rest = {})
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("<span>x</span>")
                 }
                 -- expected output --
@@ -2083,15 +2578,25 @@ mod tests {
             r#"<span title="a" lang="en"></span>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                fn Inner(rest@v0: Fragment) -> Fragment {
                   write("<span")
-                  write(" title=\"a\"")
-                  write(" lang=\"en\"")
+                  write_fragment(v0)
                   write(">")
                   write("</span>")
                 }
+                fn Wrapper(rest@v1: Fragment) -> Fragment {
+                  call Inner(rest = {
+                    write(" title=\"a\"")
+                    write_fragment(v1)
+                  })
+                }
+                page Test() {
+                  call Wrapper(rest = {
+                    write(" lang=\"en\"")
+                  })
+                }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("<span title=\"a\" lang=\"en\"></span>")
                 }
                 -- expected output --
@@ -2139,25 +2644,31 @@ mod tests {
             r#"<div data-x="y">focusable</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
-                  let v0 = 2 in {
-                    let v1 = v0 in {
-                      write("<div")
-                      write(" data-x=\"y\"")
-                      write(">")
-                      match (0 < v1) {
-                        true => {
-                          write("focusable")
-                        }
-                        false => {
-                        }
-                      }
-                      write("</div>")
+                fn A(tabindex@v0: Int, rest@v1: Fragment) -> Fragment {
+                  write("<div")
+                  write_fragment(v1)
+                  write(">")
+                  match (0 < v0) {
+                    true => {
+                      write("focusable")
+                    }
+                    false => {
                     }
                   }
+                  write("</div>")
+                }
+                fn B(tabindex@v2: Int, rest@v3: Fragment) -> Fragment {
+                  call A(tabindex = v2, rest = {
+                    write_fragment(v3)
+                  })
+                }
+                page Test() {
+                  call B(tabindex = 2, rest = {
+                    write(" data-x=\"y\"")
+                  })
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("<div data-x=\"y\">focusable</div>")
                 }
                 -- expected output --
@@ -2206,7 +2717,7 @@ mod tests {
             "mapped:hello",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = Option[String]::Some("hello") in {
                     let v3 = match v0 {
                       Some(v1) => let v2 = v1 in Option[String]::Some(v2),
@@ -2227,7 +2738,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("mapped:hello")
                 }
                 -- expected output --
@@ -2275,7 +2786,7 @@ mod tests {
                   x: String,
                   y: String,
                 }
-                view Test() {
+                page Test() {
                   let v3 = let v0 = Point {
                     x: "hi",
                     y: "bye",
@@ -2289,7 +2800,7 @@ mod tests {
                   x: String,
                   y: String,
                 }
-                view Test() {
+                page Test() {
                   write("got:hi")
                 }
                 -- expected output --
@@ -2337,7 +2848,7 @@ mod tests {
                   x: String,
                   y: String,
                 }
-                view Test() {
+                page Test() {
                   let v1 = let v0 = Point {x: "hi", y: "bye"} in v0.x in {
                     write("got:")
                     write_string(v1)
@@ -2348,7 +2859,7 @@ mod tests {
                   x: String,
                   y: String,
                 }
-                view Test() {
+                page Test() {
                   write("got:hi")
                 }
                 -- expected output --
@@ -2388,7 +2899,7 @@ mod tests {
             "got:hi",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   match Option[String]::Some("hi") {
                     Some(v0) => {
                       let v1 = v0 in {
@@ -2402,7 +2913,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("got:hi")
                 }
                 -- expected output --
@@ -2450,7 +2961,7 @@ mod tests {
             "inner",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = Option[String]::Some("inner") in {
                     let v3 = Option[String]::Some(match v0 {
                       Some(v1) => let v2 = v1 in v2,
@@ -2470,7 +2981,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("inner")
                 }
                 -- expected output --
@@ -2510,28 +3021,19 @@ mod tests {
             "[a][b]",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
-                  let v0 = "a" in {
-                    let v1 = v0 in {
-                      let v2 = v1 in {
-                        write("[")
-                        write_string(v2)
-                        write("]")
-                      }
-                    }
-                  }
-                  let v3 = "b" in {
-                    let v4 = v3 in {
-                      let v5 = v4 in {
-                        write("[")
-                        write_string(v5)
-                        write("]")
-                      }
-                    }
+                fn Tag(text@v0: String) -> Fragment {
+                  let v1 = v0 in {
+                    write("[")
+                    write_string(v1)
+                    write("]")
                   }
                 }
+                page Test() {
+                  call Tag(text = "a")
+                  call Tag(text = "b")
+                }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("[a][b]")
                 }
                 -- expected output --
@@ -2580,30 +3082,25 @@ mod tests {
             "<p>B</p><p>A</p>",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                fn Swap(a@v2: String, b@v3: String) -> Fragment {
+                  write("<p")
+                  write(">")
+                  write_string(v2)
+                  write("</p>")
+                  write("<p")
+                  write(">")
+                  write_string(v3)
+                  write("</p>")
+                }
+                page Test() {
                   let v0 = "A" in {
                     let v1 = "B" in {
-                      let v2 = v0 in {
-                        let v3 = v1 in {
-                          let v4 = v2 in {
-                            let v5 = v3 in {
-                              write("<p")
-                              write(">")
-                              write_string(v5)
-                              write("</p>")
-                              write("<p")
-                              write(">")
-                              write_string(v4)
-                              write("</p>")
-                            }
-                          }
-                        }
-                      }
+                      call Swap(a = v1, b = v0)
                     }
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("<p>B</p><p>A</p>")
                 }
                 -- expected output --
@@ -2649,31 +3146,39 @@ mod tests {
             r#"<div id="outer">a</div><div id="outer">b</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                fn Rows(
+                  items@v1: Array[String],
+                  rest@v2: Fragment,
+                ) -> Fragment {
+                  for v3 in v1 {
+                    write("<div")
+                    write_fragment(v2)
+                    write(">")
+                    write_string(v3)
+                    write("</div>")
+                  }
+                }
+                page Test() {
                   let v0 = "outer" in {
-                    let v1 = ["a", "b"] in {
-                      let v2 = v0 in {
-                        let v3 = v1 in {
-                          for v4 in v3 {
-                            write("<div")
-                            write(" id=\"")
-                            write_string(v2)
-                            write("\"")
-                            write(">")
-                            write_string(v4)
-                            write("</div>")
-                          }
-                        }
-                      }
-                    }
+                    call Rows(items = ["a", "b"], rest = {
+                      write(" id=\"")
+                      write_string(v0)
+                      write("\"")
+                    })
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
-                  for v4 in ["a", "b"] {
-                    write("<div id=\"outer\">")
-                    write_string(v4)
-                    write("</div>")
+                page Test() {
+                  let v5 = {
+                    write(" id=\"outer\"")
+                  } in {
+                    for v6 in ["a", "b"] {
+                      write("<div")
+                      write_fragment(v5)
+                      write(">")
+                      write_string(v6)
+                      write("</div>")
+                    }
                   }
                 }
                 -- expected output --
@@ -2711,7 +3216,7 @@ mod tests {
             "yesNO",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = true in {
                     write_string(match v0 {true => "yes", false => "no"})
                   }
@@ -2720,7 +3225,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("yesNO")
                 }
                 -- expected output --
@@ -2760,7 +3265,7 @@ mod tests {
             "main",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = "" in {
                     let v1 = "main" in {
                       write_string(match (v0 == "") {
@@ -2771,7 +3276,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("main")
                 }
                 -- expected output --
@@ -2810,7 +3315,7 @@ mod tests {
             "some,NONE",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = Option[String]::Some("hi") in {
                     write_string(match v0 {
                       Some(_) => "some",
@@ -2826,7 +3331,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("some,NONE")
                 }
                 -- expected output --
@@ -2875,7 +3380,7 @@ mod tests {
             "TF,F",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = true in {
                     let v1 = false in {
                       write_string(match v0 {
@@ -2895,7 +3400,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("TF,F")
                 }
                 -- expected output --
@@ -2930,13 +3435,13 @@ mod tests {
             "-123",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = (-123) in {
                     write_string(v0.to_string())
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("-123")
                 }
                 -- expected output --
@@ -2971,13 +3476,13 @@ mod tests {
             "-2",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = (-2.9) in {
                     write_string(v0.to_int().to_string())
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("-2")
                 }
                 -- expected output --
@@ -3012,14 +3517,14 @@ mod tests {
             "<h1>Hello, World!</h1>",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   write("<h1")
                   write(">")
                   write("Hello, World!")
                   write("</h1>")
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("<h1>Hello, World!</h1>")
                 }
                 -- expected output --
@@ -3056,14 +3561,14 @@ mod tests {
             "<h1>Hello, World!</h1>",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   write("<h1")
                   write(">")
                   write("Hello, World!")
                   write("</h1>")
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("<h1>Hello, World!</h1>")
                 }
                 -- expected output --
@@ -3098,7 +3603,7 @@ mod tests {
             "Hello, Alice!",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = "Alice" in {
                     write("Hello, ")
                     write_string(v0)
@@ -3106,7 +3611,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("Hello, Alice!")
                 }
                 -- expected output --
@@ -3146,7 +3651,7 @@ mod tests {
             "Visible",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = true in {
                     match v0 {
                       true => {
@@ -3165,7 +3670,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("Visible")
                 }
                 -- expected output --
@@ -3200,14 +3705,14 @@ mod tests {
             "a,b,c,",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   for v0 in ["a", "b", "c"] {
                     write_string(v0)
                     write(",")
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   for v0 in ["a", "b", "c"] {
                     write_string(v0)
                     write(",")
@@ -3247,7 +3752,7 @@ mod tests {
             "x",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   for v0 in [true] {
                     match v0 {
                       true => {
@@ -3259,7 +3764,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   for v0 in [true] {
                     match v0 {
                       true => {
@@ -3302,14 +3807,14 @@ mod tests {
             "1,2,3,",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   for v0 in 1..=3 {
                     write_string(v0.to_string())
                     write(",")
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   for v0 in 1..=3 {
                     write_string(v0.to_string())
                     write(",")
@@ -3347,13 +3852,13 @@ mod tests {
             "012345",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   for v0 in 0..=5 {
                     write_string(v0.to_string())
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   for v0 in 0..=5 {
                     write_string(v0.to_string())
                   }
@@ -3392,7 +3897,7 @@ mod tests {
             "(1,1)(1,2)(2,1)(2,2)",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   for v0 in 1..=2 {
                     for v1 in 1..=2 {
                       write("(")
@@ -3404,7 +3909,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   for v0 in 1..=2 {
                     for v1 in 1..=2 {
                       write("(")
@@ -3447,13 +3952,13 @@ mod tests {
             "&lt;div&gt;Hello &amp; world&lt;/div&gt;",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = "<div>Hello & world</div>" in {
                     write_string(v0)
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("&lt;div&gt;Hello &amp; world&lt;/div&gt;")
                 }
                 -- expected output --
@@ -3488,13 +3993,13 @@ mod tests {
             "Hello from let",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = "Hello from let" in {
                     write_string(v0)
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("Hello from let")
                 }
                 -- expected output --
@@ -3537,7 +4042,7 @@ mod tests {
             "<span class=\"a px-2 py-1\">a!?</span><span class=\"b px-2 py-1\">b!?</span>",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   for v0 in ["a", "b"] {
                     write("<span")
                     write(" class=\"")
@@ -3549,7 +4054,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   for v0 in ["a", "b"] {
                     write("<span class=\"")
                     write_string(tw_merge((v0 + " px-2 py-1")))
@@ -3592,7 +4097,7 @@ mod tests {
             "Hello World",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = "Hello" in {
                     let v1 = " World" in {
                       write_string((v0 + v1))
@@ -3600,7 +4105,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("Hello World")
                 }
                 -- expected output --
@@ -3637,7 +4142,7 @@ mod tests {
             "[A][B]",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   for v0 in ["A", "B"] {
                     let v1 = "[" in {
                       write_string(v1)
@@ -3647,7 +4152,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   for v0 in ["A", "B"] {
                     write("[")
                     write_string(v0)
@@ -3686,7 +4191,7 @@ mod tests {
             "equals",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   match (("foo" + "bar") == "foobar") {
                     true => {
                       write("equals")
@@ -3696,7 +4201,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("equals")
                 }
                 -- expected output --
@@ -3734,7 +4239,7 @@ mod tests {
             "3 &lt; 5",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   match (3 < 5) {
                     true => {
                       write("3 &lt; 5")
@@ -3751,7 +4256,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("3 &lt; 5")
                 }
                 -- expected output --
@@ -3789,7 +4294,7 @@ mod tests {
             "1.5 &lt; 2.5",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   match (1.5 < 2.5) {
                     true => {
                       write("1.5 &lt; 2.5")
@@ -3806,7 +4311,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("1.5 &lt; 2.5")
                 }
                 -- expected output --
@@ -3848,7 +4353,7 @@ mod tests {
             "yes",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = true in {
                     match v0 {
                       true => {
@@ -3861,7 +4366,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("yes")
                 }
                 -- expected output --
@@ -3903,7 +4408,7 @@ mod tests {
             "no",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = false in {
                     match v0 {
                       true => {
@@ -3916,7 +4421,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("no")
                 }
                 -- expected output --
@@ -3963,7 +4468,7 @@ mod tests {
                   name: String,
                   age: Int,
                 }
-                view Test() {
+                page Test() {
                   let v0 = Person {name: "Alice", age: 30} in {
                     write_string(v0.name)
                     match (v0.age == 30) {
@@ -3980,7 +4485,7 @@ mod tests {
                   name: String,
                   age: Int,
                 }
-                view Test() {
+                page Test() {
                   write("Alice:30")
                 }
                 -- expected output --
@@ -4024,7 +4529,7 @@ mod tests {
                   first: String,
                   second: String,
                 }
-                view Test() {
+                page Test() {
                   let v0 = Pair {second: "b", first: "a"} in {
                     write_string(v0.first)
                     write("-")
@@ -4036,7 +4541,7 @@ mod tests {
                   first: String,
                   second: String,
                 }
-                view Test() {
+                page Test() {
                   write("a-b")
                 }
                 -- expected output --
@@ -4085,7 +4590,7 @@ mod tests {
                 enum Shape {
                   Rect {width: String, height: String},
                 }
-                view Test() {
+                page Test() {
                   let v0 = Shape::Rect {height: "b", width: "a"} in {
                     match v0 {
                       Shape::Rect(width: v1, height: v2) => {
@@ -4104,7 +4609,7 @@ mod tests {
                 enum Shape {
                   Rect {width: String, height: String},
                 }
-                view Test() {
+                page Test() {
                   write("a-b")
                 }
                 -- expected output --
@@ -4162,7 +4667,7 @@ mod tests {
                   name: String,
                   address: Address,
                 }
-                view Test() {
+                page Test() {
                   let v0 = Person {
                     name: "Alice",
                     address: Address {city: "Paris", zip: "75001"},
@@ -4181,7 +4686,7 @@ mod tests {
                   name: String,
                   address: Address,
                 }
-                view Test() {
+                page Test() {
                   write("Alice,Paris")
                 }
                 -- expected output --
@@ -4220,7 +4725,7 @@ mod tests {
             "correct",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = 3 in {
                     let v1 = 7 in {
                       match ((v0 + v1) == 10) {
@@ -4234,7 +4739,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("correct")
                 }
                 -- expected output --
@@ -4273,7 +4778,7 @@ mod tests {
             "correct",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = 10 in {
                     let v1 = 3 in {
                       match ((v0 - v1) == 7) {
@@ -4287,7 +4792,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("correct")
                 }
                 -- expected output --
@@ -4326,7 +4831,7 @@ mod tests {
             "correct",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = 4 in {
                     let v1 = 5 in {
                       match ((v0 * v1) == 20) {
@@ -4340,7 +4845,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("correct")
                 }
                 -- expected output --
@@ -4386,7 +4891,7 @@ mod tests {
             "TT",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = true in {
                     let v1 = true in {
                       match (v0 && v1) {
@@ -4411,7 +4916,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("TT")
                 }
                 -- expected output --
@@ -4457,7 +4962,7 @@ mod tests {
             "FT",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = false in {
                     let v1 = true in {
                       match (v0 || v1) {
@@ -4482,7 +4987,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("FT")
                 }
                 -- expected output --
@@ -4523,7 +5028,7 @@ mod tests {
             "AB",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   match (3 <= 5) {
                     true => {
                       write("A")
@@ -4547,7 +5052,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("AB")
                 }
                 -- expected output --
@@ -4589,7 +5094,7 @@ mod tests {
             "hello",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = Option[String]::Some("hello") in {
                     match v0 {
                       Some(v1) => {
@@ -4604,7 +5109,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("hello")
                 }
                 -- expected output --
@@ -4646,7 +5151,7 @@ mod tests {
             "some",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = Option[String]::Some("hello") in {
                     match v0 {
                       Some(_) => {
@@ -4659,7 +5164,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("some")
                 }
                 -- expected output --
@@ -4707,7 +5212,7 @@ mod tests {
             "inner",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = Option[String]::Some("inner") in {
                     let v3 = Option[String]::Some(match v0 {
                       Some(v1) => let v2 = v1 in v2,
@@ -4727,7 +5232,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("inner")
                 }
                 -- expected output --
@@ -4769,7 +5274,7 @@ mod tests {
             "[a][_][b]",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   for v0 in [
                     Option[String]::Some("a"),
                     Option[String]::None,
@@ -4790,7 +5295,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   for v0 in [
                     Option[String]::Some("a"),
                     Option[String]::None,
@@ -4857,7 +5362,7 @@ mod tests {
                   Green,
                   Blue,
                 }
-                view Test() {
+                page Test() {
                   let v0 = Color::Green in {
                     write_string(match v0 {
                       Color::Red => "red",
@@ -4872,7 +5377,7 @@ mod tests {
                   Green,
                   Blue,
                 }
-                view Test() {
+                page Test() {
                   write("green")
                 }
                 -- expected output --
@@ -4928,7 +5433,7 @@ mod tests {
                   Green,
                   Blue,
                 }
-                view Test() {
+                page Test() {
                   let v0 = Color::Blue in {
                     match v0 {
                       Color::Red => {
@@ -4949,7 +5454,7 @@ mod tests {
                   Green,
                   Blue,
                 }
-                view Test() {
+                page Test() {
                   write("blue")
                 }
                 -- expected output --
@@ -5006,7 +5511,7 @@ mod tests {
                   Success {value: String},
                   Failure {message: String},
                 }
-                view Test() {
+                page Test() {
                   let v0 = Outcome::Success {value: "hello"} in {
                     match v0 {
                       Outcome::Success(value: v1) => {
@@ -5029,7 +5534,7 @@ mod tests {
                   Success {value: String},
                   Failure {message: String},
                 }
-                view Test() {
+                page Test() {
                   write("Ok:hello")
                 }
                 -- expected output --
@@ -5082,7 +5587,7 @@ mod tests {
                   Tagged {tag: String},
                   Plain,
                 }
-                view Test() {
+                page Test() {
                   let v0 = Item::Tagged {tag: "news"} in {
                     match v0 {
                       Item::Tagged(tag: v1) => {
@@ -5102,7 +5607,7 @@ mod tests {
                   Tagged {tag: String},
                   Plain,
                 }
-                view Test() {
+                page Test() {
                   write("tag:news")
                 }
                 -- expected output --
@@ -5155,7 +5660,7 @@ mod tests {
                   Success {value: String},
                   Failure {message: String},
                 }
-                view Test() {
+                page Test() {
                   let v4 = match Outcome::Success {value: "hi"} {
                     Outcome::Success {value: v0} => let v1 = v0 in v1,
                     Outcome::Failure {message: v2} => let v3 = v2 in v3,
@@ -5169,7 +5674,7 @@ mod tests {
                   Success {value: String},
                   Failure {message: String},
                 }
-                view Test() {
+                page Test() {
                   write("got:hi")
                 }
                 -- expected output --
@@ -5227,22 +5732,21 @@ mod tests {
                   Green,
                   Blue,
                 }
-                view Test() {
-                  let v0 = Color::Green in {
-                    let v1 = v0 in {
-                      match v1 {
-                        Color::Red => {
-                          write("red")
-                        }
-                        Color::Green => {
-                          write("green")
-                        }
-                        Color::Blue => {
-                          write("blue")
-                        }
-                      }
+                fn Badge(color@v0: test::Color) -> Fragment {
+                  match v0 {
+                    Color::Red => {
+                      write("red")
+                    }
+                    Color::Green => {
+                      write("green")
+                    }
+                    Color::Blue => {
+                      write("blue")
                     }
                   }
+                }
+                page Test() {
+                  call Badge(color = Color::Green)
                 }
                 -- ir (optimized) --
                 enum Color {
@@ -5250,7 +5754,7 @@ mod tests {
                   Green,
                   Blue,
                 }
-                view Test() {
+                page Test() {
                   write("green")
                 }
                 -- expected output --
@@ -5309,7 +5813,7 @@ mod tests {
                   Success {value: String},
                   Failure {message: String},
                 }
-                view Test() {
+                page Test() {
                   let v0 = Outcome::Failure {message: "something went wrong"} in {
                     match v0 {
                       Outcome::Success(value: v1) => {
@@ -5332,7 +5836,7 @@ mod tests {
                   Success {value: String},
                   Failure {message: String},
                 }
-                view Test() {
+                page Test() {
                   write("Err:something went wrong")
                 }
                 -- expected output --
@@ -5393,7 +5897,7 @@ mod tests {
                   Win {code: String, body: String},
                   Lose {reason: String},
                 }
-                view Test() {
+                page Test() {
                   let v0 = Response::Win {code: "200", body: "OK"} in {
                     match v0 {
                       Response::Win(code: v1, body: v2) => {
@@ -5419,7 +5923,7 @@ mod tests {
                   Win {code: String, body: String},
                   Lose {reason: String},
                 }
-                view Test() {
+                page Test() {
                   write("200:OK")
                 }
                 -- expected output --
@@ -5476,7 +5980,7 @@ mod tests {
                   Success {value: String},
                   Failure {message: String},
                 }
-                view Test() {
+                page Test() {
                   let v0 = Outcome::Success {value: "hello"} in {
                     match v0 {
                       Outcome::Success(value: v1) => {
@@ -5499,7 +6003,7 @@ mod tests {
                   Success {value: String},
                   Failure {message: String},
                 }
-                view Test() {
+                page Test() {
                   write("Ok:hello")
                 }
                 -- expected output --
@@ -5534,13 +6038,13 @@ mod tests {
             "3",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = ["a", "b", "c"] in {
                     write_string(v0.len().to_string())
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("3")
                 }
                 -- expected output --
@@ -5575,13 +6079,13 @@ mod tests {
             "0",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = [] in {
                     write_string(v0.len().to_string())
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("0")
                 }
                 -- expected output --
@@ -5618,7 +6122,7 @@ mod tests {
             "has two",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = ["x", "y"] in {
                     match (v0.len() == 2) {
                       true => {
@@ -5630,7 +6134,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("has two")
                 }
                 -- expected output --
@@ -5667,7 +6171,7 @@ mod tests {
             "less than 5",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = ["a"] in {
                     match (v0.len() < 5) {
                       true => {
@@ -5679,7 +6183,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("less than 5")
                 }
                 -- expected output --
@@ -5714,13 +6218,13 @@ mod tests {
             "5",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = [1, 2, 3, 4, 5] in {
                     write_string(v0.len().to_string())
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("5")
                 }
                 -- expected output --
@@ -5762,7 +6266,7 @@ mod tests {
             "empty",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = [] in {
                     match v0.is_empty() {
                       true => {
@@ -5775,7 +6279,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("empty")
                 }
                 -- expected output --
@@ -5817,7 +6321,7 @@ mod tests {
             "not empty",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = ["a", "b"] in {
                     match v0.is_empty() {
                       true => {
@@ -5830,7 +6334,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("not empty")
                 }
                 -- expected output --
@@ -5872,7 +6376,7 @@ mod tests {
             "has numbers",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = [1, 2, 3] in {
                     match v0.is_empty() {
                       true => {
@@ -5885,7 +6389,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("has numbers")
                 }
                 -- expected output --
@@ -5920,13 +6424,13 @@ mod tests {
             "42",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = 42 in {
                     write_string(v0.to_string())
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("42")
                 }
                 -- expected output --
@@ -5961,13 +6465,13 @@ mod tests {
             "0",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = 0 in {
                     write_string(v0.to_string())
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("0")
                 }
                 -- expected output --
@@ -6002,13 +6506,13 @@ mod tests {
             "Count: 5",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = 5 in {
                     write_string(("Count: " + v0.to_string()))
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("Count: 5")
                 }
                 -- expected output --
@@ -6043,13 +6547,13 @@ mod tests {
             "3",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = 3.7 in {
                     write_string(v0.to_int().to_string())
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("3")
                 }
                 -- expected output --
@@ -6084,13 +6588,13 @@ mod tests {
             "5",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = 5 in {
                     write_string(v0.to_int().to_string())
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("5")
                 }
                 -- expected output --
@@ -6125,13 +6629,13 @@ mod tests {
             "xxx",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   for _ in 0..=2 {
                     write("x")
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   for _ in 0..=2 {
                     write("x")
                   }
@@ -6171,7 +6675,7 @@ mod tests {
             "yy",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   for v0 in ["a", "b"] {
                     match false {
                       true => {
@@ -6184,7 +6688,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   for _ in ["a", "b"] {
                     write("y")
                   }
@@ -6223,7 +6727,7 @@ mod tests {
             "***",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = ["a", "b", "c"] in {
                     for _ in v0 {
                       write("*")
@@ -6231,7 +6735,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   for _ in ["a", "b", "c"] {
                     write("*")
                   }
@@ -6270,7 +6774,7 @@ mod tests {
             "......",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   for _ in 0..=1 {
                     for _ in 0..=2 {
                       write(".")
@@ -6278,7 +6782,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   for _ in 0..=1 {
                     for _ in 0..=2 {
                       write(".")
@@ -6319,7 +6823,7 @@ mod tests {
             "1122",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   for v0 in 1..=2 {
                     for _ in 0..=1 {
                       write_string(v0.to_string())
@@ -6327,7 +6831,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   for v0 in 1..=2 {
                     for _ in 0..=1 {
                       write_string(v0.to_string())
@@ -6364,11 +6868,11 @@ mod tests {
             "3",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   write_string([1, 2, 3].len().to_string())
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("3")
                 }
                 -- expected output --
@@ -6401,11 +6905,11 @@ mod tests {
             "3",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   write_string((1 + 2).to_string())
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("3")
                 }
                 -- expected output --
@@ -6438,11 +6942,11 @@ mod tests {
             "42",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   write_string(42.to_string())
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("42")
                 }
                 -- expected output --
@@ -6489,7 +6993,7 @@ mod tests {
             "deep",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = Option[Option[String]]::Some(Option[String]::Some("deep")) in {
                     match v0 {
                       Some(v1) => {
@@ -6511,7 +7015,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("deep")
                 }
                 -- expected output --
@@ -6553,7 +7057,7 @@ mod tests {
             "some",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = Option[String]::Some("x") in {
                     match v0 {
                       Some(_) => {
@@ -6566,7 +7070,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("some")
                 }
                 -- expected output --
@@ -6608,7 +7112,7 @@ mod tests {
             "none",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = Option[String]::None in {
                     match v0 {
                       Some(_) => {
@@ -6621,7 +7125,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("none")
                 }
                 -- expected output --
@@ -6656,7 +7160,7 @@ mod tests {
             "some",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = Option[String]::Some("x") in {
                     write_string(match v0 {
                       Some(_) => "some",
@@ -6665,7 +7169,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("some")
                 }
                 -- expected output --
@@ -6700,7 +7204,7 @@ mod tests {
             "none",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = Option[String]::None in {
                     write_string(match v0 {
                       Some(_) => "some",
@@ -6709,7 +7213,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("none")
                 }
                 -- expected output --
@@ -6755,7 +7259,7 @@ mod tests {
             "some-some",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = Option[Option[String]]::Some(Option[String]::Some("x")) in {
                     match v0 {
                       Some(v1) => {
@@ -6775,7 +7279,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("some-some")
                 }
                 -- expected output --
@@ -6818,7 +7322,7 @@ mod tests {
             "some",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = Option[Option[String]]::Some(Option[String]::Some("x")) in {
                     match v0 {
                       Some(_) => {
@@ -6831,7 +7335,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("some")
                 }
                 -- expected output --
@@ -6889,7 +7393,7 @@ mod tests {
                   Success {value: String},
                   Failure {message: String},
                 }
-                view Test() {
+                page Test() {
                   let v0 = Outcome::Success {value: "hello"} in {
                     match v0 {
                       Outcome::Success => {
@@ -6906,7 +7410,7 @@ mod tests {
                   Success {value: String},
                   Failure {message: String},
                 }
-                view Test() {
+                page Test() {
                   write("ok")
                 }
                 -- expected output --
@@ -6964,7 +7468,7 @@ mod tests {
                   Success {value: String},
                   Failure {message: String},
                 }
-                view Test() {
+                page Test() {
                   let v0 = Outcome::Failure {message: "failed"} in {
                     match v0 {
                       Outcome::Success => {
@@ -6981,7 +7485,7 @@ mod tests {
                   Success {value: String},
                   Failure {message: String},
                 }
-                view Test() {
+                page Test() {
                   write("err")
                 }
                 -- expected output --
@@ -7030,7 +7534,7 @@ mod tests {
                   name: String,
                   age: Int,
                 }
-                view Test() {
+                page Test() {
                   let v0 = Person {name: "Alice", age: 30} in {
                     let v1 = v0.age in {
                       let v2 = v1 in {
@@ -7045,7 +7549,7 @@ mod tests {
                   name: String,
                   age: Int,
                 }
-                view Test() {
+                page Test() {
                   write("age:30")
                 }
                 -- expected output --
@@ -7098,7 +7602,7 @@ mod tests {
             "triple-some",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = Option[Option[Option[String]]]::Some(Option[Option[String]]::Some(Option[String]::Some("value"))) in {
                     match v0 {
                       Some(v1) => {
@@ -7125,7 +7629,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("triple-some")
                 }
                 -- expected output --
@@ -7205,7 +7709,7 @@ mod tests {
                   Success {value: test::Inner},
                   Failure {message: String},
                 }
-                view Test() {
+                page Test() {
                   let v0 = Outer::Success {value: Inner::Success {value: "deep"}} in {
                     match v0 {
                       Outer::Success(value: v1) => {
@@ -7233,7 +7737,7 @@ mod tests {
                   Success {value: test::Inner},
                   Failure {message: String},
                 }
-                view Test() {
+                page Test() {
                   write("ok-ok")
                 }
                 -- expected output --
@@ -7269,13 +7773,13 @@ mod tests {
             "t",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = true in {
                     write_string(match v0 {true => "t", false => "f"})
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("t")
                 }
                 -- expected output --
@@ -7311,13 +7815,13 @@ mod tests {
             "f",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = false in {
                     write_string(match v0 {true => "t", false => "f"})
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("f")
                 }
                 -- expected output --
@@ -7364,7 +7868,7 @@ mod tests {
             "outer:inner",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   match Option[String]::Some("outer") {
                     Some(v0) => {
                       let v1 = v0 in {
@@ -7388,7 +7892,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("outer:inner")
                 }
                 -- expected output --
@@ -7439,7 +7943,7 @@ mod tests {
             "value:hello",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = Option[Option[String]]::Some(Option[String]::Some("hello")) in {
                     match v0 {
                       Some(v1) => {
@@ -7464,7 +7968,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("value:hello")
                 }
                 -- expected output --
@@ -7504,7 +8008,7 @@ mod tests {
             r#"<div class="foo bar baz"></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   write("<div")
                   write(" class=\"")
                   write_string(tw_merge(("foo" + " " + "bar" + " " + "baz")))
@@ -7513,7 +8017,7 @@ mod tests {
                   write("</div>")
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("<div class=\"foo bar baz\"></div>")
                 }
                 -- expected output --
@@ -7548,13 +8052,13 @@ mod tests {
             "removed",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = "removed" in {
                     write_string(v0)
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("removed")
                 }
                 -- expected output --
@@ -7590,7 +8094,7 @@ mod tests {
             r#"<div class="my-class"></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = "my-class" in {
                     write("<div")
                     write(" class=\"")
@@ -7601,7 +8105,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("<div class=\"my-class\"></div>")
                 }
                 -- expected output --
@@ -7638,7 +8142,7 @@ mod tests {
             r#"<span>on</span>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = "on" in {
                     write("<span")
                     write(">")
@@ -7647,7 +8151,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("<span>on</span>")
                 }
                 -- expected output --
@@ -7682,7 +8186,7 @@ mod tests {
             r#"<input type="button">"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = "button" in {
                     write("<input")
                     write(" type=\"")
@@ -7692,7 +8196,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("<input type=\"button\">")
                 }
                 -- expected output --
@@ -7727,7 +8231,7 @@ mod tests {
             r#"<label for="email">Email</label>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   write("<label")
                   write(" for=\"email\"")
                   write(">")
@@ -7735,7 +8239,7 @@ mod tests {
                   write("</label>")
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("<label for=\"email\">Email</label>")
                 }
                 -- expected output --
@@ -7772,17 +8276,17 @@ mod tests {
             "ok",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   write("ok")
                 }
-                view Other(delete@v0: String) {
+                page Other(delete@v0: String) {
                   write_string(v0)
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("ok")
                 }
-                view Other(delete@v0: String) {
+                page Other(delete@v0: String) {
                   write_string(v0)
                 }
                 -- expected output --
@@ -7819,17 +8323,17 @@ mod tests {
             "ok",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   write("ok")
                 }
-                view Other(type@v0: String) {
+                page Other(type@v0: String) {
                   write_string(v0)
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("ok")
                 }
-                view Other(type@v0: String) {
+                page Other(type@v0: String) {
                   write_string(v0)
                 }
                 -- expected output --
@@ -7879,7 +8383,7 @@ mod tests {
                     }
                   }
                 }
-                view Test() {
+                page Test() {
                   call Countdown(delete = 3)
                 }
                 -- ir (optimized) --
@@ -7893,7 +8397,7 @@ mod tests {
                     }
                   }
                 }
-                view Test() {
+                page Test() {
                   call Countdown(delete = 3)
                 }
                 -- expected output --
@@ -7943,7 +8447,7 @@ mod tests {
                     }
                   }
                 }
-                view Test() {
+                page Test() {
                   call Countdown(type = 3)
                 }
                 -- ir (optimized) --
@@ -7957,7 +8461,7 @@ mod tests {
                     }
                   }
                 }
-                view Test() {
+                page Test() {
                   call Countdown(type = 3)
                 }
                 -- expected output --
@@ -7994,7 +8498,7 @@ mod tests {
             "&quot; \\ foo\nbar foo\tbar C:\\Users\\name",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   write_string("\"")
                   write(" ")
                   write_string("\\")
@@ -8006,7 +8510,7 @@ mod tests {
                   write_string("C:\\Users\\name")
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("&quot; \\ foo\nbar foo\tbar C:\\Users\\name")
                 }
                 -- expected output --
@@ -8060,7 +8564,7 @@ mod tests {
                   name: String,
                   value: String,
                 }
-                view Test() {
+                page Test() {
                   let v0 = [
                     Item {name: "a", value: "1"},
                     Item {name: "b", value: "2"},
@@ -8079,7 +8583,7 @@ mod tests {
                   name: String,
                   value: String,
                 }
-                view Test() {
+                page Test() {
                   for v1 in [
                     Item {name: "a", value: "1"},
                     Item {name: "b", value: "2"},
@@ -8154,7 +8658,7 @@ mod tests {
                   name: String,
                   address: Address,
                 }
-                view Test() {
+                page Test() {
                   let v0 = [
                     Person {
                       name: "alice",
@@ -8179,7 +8683,7 @@ mod tests {
                   name: String,
                   address: Address,
                 }
-                view Test() {
+                page Test() {
                   for v1 in [
                     Person {
                       name: "alice",
@@ -8251,7 +8755,7 @@ mod tests {
                 record Target {
                   label: String,
                 }
-                view Test() {
+                page Test() {
                   let v0 = [
                     Source {name: "a", value: "1"},
                     Source {name: "b", value: "2"},
@@ -8273,7 +8777,7 @@ mod tests {
                 record Target {
                   label: String,
                 }
-                view Test() {
+                page Test() {
                   for v1 in [
                     Source {name: "a", value: "1"},
                     Source {name: "b", value: "2"},
@@ -8340,7 +8844,7 @@ mod tests {
                 record Item {
                   name: String,
                 }
-                view Test() {
+                page Test() {
                   let v0 = [Item {name: "a"}, Item {name: "b"}] in {
                     for v1 in v0 {
                       let v2 = Option[String]::Some(v1.name) in {
@@ -8364,7 +8868,7 @@ mod tests {
                 record Item {
                   name: String,
                 }
-                view Test() {
+                page Test() {
                   for v1 in [Item {name: "a"}, Item {name: "b"}] {
                     let v2 = Option[String]::Some(v1.name) in {
                       match v2 {
@@ -8418,7 +8922,7 @@ mod tests {
             "[hello world]",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = "hello" in {
                     let v1 = "world" in {
                       let v2 = ((v0 + " ") + v1) in {
@@ -8430,7 +8934,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("[hello world]")
                 }
                 -- expected output --
@@ -8474,7 +8978,7 @@ mod tests {
                 record Greeting {
                   message: String,
                 }
-                view Test() {
+                page Test() {
                   let v0 = Greeting {message: ("hello" + " world")} in {
                     write_string(v0.message)
                   }
@@ -8483,7 +8987,7 @@ mod tests {
                 record Greeting {
                   message: String,
                 }
-                view Test() {
+                page Test() {
                   write("hello world")
                 }
                 -- expected output --
@@ -8520,7 +9024,7 @@ mod tests {
             "[42]",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = 42 in {
                     let v1 = v0.to_string() in {
                       write("[")
@@ -8530,7 +9034,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("[42]")
                 }
                 -- expected output --
@@ -8574,7 +9078,7 @@ mod tests {
                 record Container {
                   items: Array[String],
                 }
-                view Test() {
+                page Test() {
                   let v0 = Container {items: ["a", "b"]} in {
                     for v1 in v0.items {
                       write("[")
@@ -8587,7 +9091,7 @@ mod tests {
                 record Container {
                   items: Array[String],
                 }
-                view Test() {
+                page Test() {
                   for v1 in ["a", "b"] {
                     write("[")
                     write_string(v1)
@@ -8633,7 +9137,7 @@ mod tests {
                 record Label {
                   text: String,
                 }
-                view Test() {
+                page Test() {
                   let v0 = Label {text: 42.to_string()} in {
                     write("[")
                     write_string(v0.text)
@@ -8644,7 +9148,7 @@ mod tests {
                 record Label {
                   text: String,
                 }
-                view Test() {
+                page Test() {
                   write("[42]")
                 }
                 -- expected output --
@@ -8697,7 +9201,7 @@ mod tests {
                 record Outer {
                   inner: Inner,
                 }
-                view Test() {
+                page Test() {
                   let v0 = Outer {inner: Inner {values: ["x", "y"]}} in {
                     for v1 in v0.inner.values {
                       write("[")
@@ -8713,7 +9217,7 @@ mod tests {
                 record Outer {
                   inner: Inner,
                 }
-                view Test() {
+                page Test() {
                   for v1 in ["x", "y"] {
                     write("[")
                     write_string(v1)
@@ -8759,7 +9263,7 @@ mod tests {
                 record Foo {
                   a: String,
                 }
-                view Test() {
+                page Test() {
                   let v0 = Foo {a: "hello"} in {
                     let v1 = Foo {a: v0.a} in {
                       write("[")
@@ -8774,7 +9278,7 @@ mod tests {
                 record Foo {
                   a: String,
                 }
-                view Test() {
+                page Test() {
                   write("[hello][hello]")
                 }
                 -- expected output --
@@ -8823,7 +9327,7 @@ mod tests {
                 record Foo {
                   a: String,
                 }
-                view Test() {
+                page Test() {
                   let v0 = Foo {a: "hello"} in {
                     let v1 = true in {
                       let v2 = match v1 {
@@ -8843,7 +9347,7 @@ mod tests {
                 record Foo {
                   a: String,
                 }
-                view Test() {
+                page Test() {
                   write("[hello][hello]")
                 }
                 -- expected output --
@@ -8889,7 +9393,7 @@ mod tests {
                   value: String,
                   children: Array[test::TreeNode],
                 }
-                view Test() {
+                page Test() {
                   let v0 = TreeNode {value: "leaf", children: []} in {
                     write_string(v0.value)
                   }
@@ -8899,7 +9403,7 @@ mod tests {
                   value: String,
                   children: Array[test::TreeNode],
                 }
-                view Test() {
+                page Test() {
                   write("leaf")
                 }
                 -- expected output --
@@ -8943,7 +9447,7 @@ mod tests {
                   value: String,
                   next: Option[test::Node],
                 }
-                view Test() {
+                page Test() {
                   let v0 = Node {
                     value: "first",
                     next: Option[test::Node]::None,
@@ -8956,7 +9460,7 @@ mod tests {
                   value: String,
                   next: Option[test::Node],
                 }
-                view Test() {
+                page Test() {
                   write("first")
                 }
                 -- expected output --
@@ -9011,7 +9515,7 @@ mod tests {
                   Literal {value: String},
                   Neg {inner: test::Expr},
                 }
-                view Test() {
+                page Test() {
                   let v0 = Expr::Literal {value: "42"} in {
                     match v0 {
                       Expr::Literal(value: v1) => {
@@ -9030,7 +9534,7 @@ mod tests {
                   Literal {value: String},
                   Neg {inner: test::Expr},
                 }
-                view Test() {
+                page Test() {
                   write("42")
                 }
                 -- expected output --
@@ -9089,7 +9593,7 @@ mod tests {
                   Literal {value: String},
                   Neg {inner: test::Expr},
                 }
-                view Test() {
+                page Test() {
                   let v0 = Expr::Neg {inner: Expr::Literal {value: "42"}} in {
                     match v0 {
                       Expr::Literal(value: v1) => {
@@ -9109,7 +9613,7 @@ mod tests {
                   Literal {value: String},
                   Neg {inner: test::Expr},
                 }
-                view Test() {
+                page Test() {
                   write("neg")
                 }
                 -- expected output --
@@ -9160,7 +9664,7 @@ mod tests {
                   name: String,
                   parent: Option[test::File],
                 }
-                view Test() {
+                page Test() {
                   let v0 = Folder {
                     name: "root",
                     parent: Option[test::File]::None,
@@ -9176,7 +9680,7 @@ mod tests {
                   name: String,
                   parent: Option[test::File],
                 }
-                view Test() {
+                page Test() {
                   write("root")
                 }
                 -- expected output --
@@ -9245,7 +9749,7 @@ mod tests {
                 record Node {
                   next: Option[test::Leaf],
                 }
-                view Test() {
+                page Test() {
                   let v0 = Leaf {back: Option[test::Expr]::None} in {
                     match v0.back {
                       Some(_) => {
@@ -9268,7 +9772,7 @@ mod tests {
                 record Node {
                   next: Option[test::Leaf],
                 }
-                view Test() {
+                page Test() {
                   write("none")
                 }
                 -- expected output --
@@ -9314,7 +9818,7 @@ mod tests {
                   value: String,
                   next: Option[test::Node],
                 }
-                view Test() {
+                page Test() {
                   let v0 = Option[test::Node]::None in {
                     let v1 = Node {value: "head", next: v0} in {
                       write_string(v1.value)
@@ -9326,7 +9830,7 @@ mod tests {
                   value: String,
                   next: Option[test::Node],
                 }
-                view Test() {
+                page Test() {
                   write("head")
                 }
                 -- expected output --
@@ -9380,7 +9884,7 @@ mod tests {
                   value: String,
                   next: Option[test::Node],
                 }
-                view Test() {
+                page Test() {
                   let v0 = Node {
                     value: "leaf",
                     next: Option[test::Node]::None,
@@ -9401,7 +9905,7 @@ mod tests {
                   value: String,
                   next: Option[test::Node],
                 }
-                view Test() {
+                page Test() {
                   write("head")
                 }
                 -- expected output --
@@ -9445,7 +9949,7 @@ mod tests {
                   value: String,
                   next: Option[Option[test::Node]],
                 }
-                view Test() {
+                page Test() {
                   let v0 = Node {
                     value: "node",
                     next: Option[Option[test::Node]]::None,
@@ -9458,7 +9962,7 @@ mod tests {
                   value: String,
                   next: Option[Option[test::Node]],
                 }
-                view Test() {
+                page Test() {
                   write("node")
                 }
                 -- expected output --
@@ -9521,7 +10025,7 @@ mod tests {
                   value: String,
                   next: Option[Option[test::Node]],
                 }
-                view Test() {
+                page Test() {
                   let v0 = Node {
                     value: "head",
                     next: Option[Option[test::Node]]::Some(Option[test::Node]::Some(Node {
@@ -9555,7 +10059,7 @@ mod tests {
                   value: String,
                   next: Option[Option[test::Node]],
                 }
-                view Test() {
+                page Test() {
                   write("tail")
                 }
                 -- expected output --
@@ -9615,7 +10119,7 @@ mod tests {
                   value: String,
                   next: Option[test::Node],
                 }
-                view Test() {
+                page Test() {
                   let v0 = Node {
                     value: "node",
                     next: Option[test::Node]::None,
@@ -9640,7 +10144,7 @@ mod tests {
                   value: String,
                   next: Option[test::Node],
                 }
-                view Test() {
+                page Test() {
                   write("node")
                 }
                 -- expected output --
@@ -9699,7 +10203,7 @@ mod tests {
                   name: String,
                   a: Option[test::A],
                 }
-                view Test() {
+                page Test() {
                   let v0 = A {
                     b: B {name: "b", a: Option[test::A]::None},
                   } in {
@@ -9722,7 +10226,7 @@ mod tests {
                   name: String,
                   a: Option[test::A],
                 }
-                view Test() {
+                page Test() {
                   write("bnone")
                 }
                 -- expected output --
@@ -9802,7 +10306,7 @@ mod tests {
                   t: Tree,
                   rest: Option[test::Tree],
                 }
-                view Test() {
+                page Test() {
                   let v0 = Tree::Node {label: "a", left: Tree::Leaf, right: Option[test::Tree]::None} in {
                     match v0 {
                       Tree::Node(label: v1, left: v2, right: v3) => {
@@ -9839,7 +10343,7 @@ mod tests {
                   t: Tree,
                   rest: Option[test::Tree],
                 }
-                view Test() {
+                page Test() {
                   write("anone")
                 }
                 -- expected output --
@@ -9906,7 +10410,7 @@ mod tests {
                   Email {address: String, label: Option[String]},
                   Anonymous,
                 }
-                view Test() {
+                page Test() {
                   let v0 = Contact::Email {address: "a@b.c", label: Option[String]::Some("work")} in {
                     match v0 {
                       Contact::Email(address: v1, label: v2) => {
@@ -9937,7 +10441,7 @@ mod tests {
                   Email {address: String, label: Option[String]},
                   Anonymous,
                 }
-                view Test() {
+                page Test() {
                   write("a@b.cwork")
                 }
                 -- expected output --
@@ -9974,17 +10478,16 @@ mod tests {
             "Hello, World!",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
-                  let v0 = "World" in {
-                    let v1 = v0 in {
-                      write("Hello, ")
-                      write_string(v1)
-                      write("!")
-                    }
-                  }
+                fn Greeting(name@v0: String) -> Fragment {
+                  write("Hello, ")
+                  write_string(v0)
+                  write("!")
+                }
+                page Test() {
+                  call Greeting(name = "World")
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("Hello, World!")
                 }
                 -- expected output --
@@ -10033,43 +10536,33 @@ mod tests {
             r#"<div class="card"><h2>Hello</h2><p>world</p></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
-                  let v0 = {
+                fn Card(
+                  title@v0: String,
+                  children@v1: Fragment,
+                ) -> Fragment {
+                  write("<div")
+                  write(" class=\"")
+                  write_string(tw_merge("card"))
+                  write("\"")
+                  write(">")
+                  write("<h2")
+                  write(">")
+                  write_string(v0)
+                  write("</h2>")
+                  write_fragment(v1)
+                  write("</div>")
+                }
+                page Test() {
+                  call Card(title = "Hello", children = {
                     write("<p")
                     write(">")
                     write("world")
                     write("</p>")
-                  } in {
-                    let v1 = "Hello" in {
-                      let v2 = v0 in {
-                        let v3 = v1 in {
-                          write("<div")
-                          write(" class=\"")
-                          write_string(tw_merge("card"))
-                          write("\"")
-                          write(">")
-                          write("<h2")
-                          write(">")
-                          write_string(v3)
-                          write("</h2>")
-                          write_fragment(v2)
-                          write("</div>")
-                        }
-                      }
-                    }
-                  }
+                  })
                 }
                 -- ir (optimized) --
-                view Test() {
-                  let v0 = {
-                    write("<p>world</p>")
-                  } in {
-                    let v2 = v0 in {
-                      write("<div class=\"card\"><h2>Hello</h2>")
-                      write_fragment(v2)
-                      write("</div>")
-                    }
-                  }
+                page Test() {
+                  write("<div class=\"card\"><h2>Hello</h2><p>world</p></div>")
                 }
                 -- expected output --
                 <div class="card"><h2>Hello</h2><p>world</p></div>
@@ -10119,55 +10612,38 @@ mod tests {
             r#"<div class="outer"><div class="inner"><p>hello</p></div></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
-                  let v0 = {
+                fn Inner(children@v0: Fragment) -> Fragment {
+                  write("<div")
+                  write(" class=\"")
+                  write_string(tw_merge("inner"))
+                  write("\"")
+                  write(">")
+                  write_fragment(v0)
+                  write("</div>")
+                }
+                fn Outer(children@v1: Fragment) -> Fragment {
+                  write("<div")
+                  write(" class=\"")
+                  write_string(tw_merge("outer"))
+                  write("\"")
+                  write(">")
+                  call Inner(children = {
+                    write_fragment(v1)
+                  })
+                  write("</div>")
+                }
+                page Test() {
+                  call Outer(children = {
                     write("<p")
                     write(">")
                     write("hello")
                     write("</p>")
-                  } in {
-                    let v1 = v0 in {
-                      write("<div")
-                      write(" class=\"")
-                      write_string(tw_merge("outer"))
-                      write("\"")
-                      write(">")
-                      let v2 = {
-                        write_fragment(v1)
-                      } in {
-                        let v3 = v2 in {
-                          write("<div")
-                          write(" class=\"")
-                          write_string(tw_merge("inner"))
-                          write("\"")
-                          write(">")
-                          write_fragment(v3)
-                          write("</div>")
-                        }
-                      }
-                      write("</div>")
-                    }
-                  }
+                  })
                 }
                 -- ir (optimized) --
-                view Test() {
-                  let v0 = {
-                    write("<p>hello</p>")
-                  } in {
-                    let v1 = v0 in {
-                      write("<div class=\"outer\">")
-                      let v2 = {
-                        write_fragment(v1)
-                      } in {
-                        let v3 = v2 in {
-                          write("<div class=\"inner\">")
-                          write_fragment(v3)
-                          write("</div>")
-                        }
-                      }
-                      write("</div>")
-                    }
-                  }
+                page Test() {
+                  write("<div class=\"outer\"><div class=\"inner\"><p>hello</p></div>")
+                  write("</div>")
                 }
                 -- expected output --
                 <div class="outer"><div class="inner"><p>hello</p></div></div>
@@ -10229,19 +10705,36 @@ mod tests {
             r#"<div class="layout"><header><h1>Welcome</h1></header><main><p>Hello world</p></main><footer><p>Copyright 2024</p></footer></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
-                  let v2 = {
-                    let v0 = "Welcome" in {
-                      let v1 = v0 in {
-                        write("<header")
-                        write(">")
-                        write("<h1")
-                        write(">")
-                        write_string(v1)
-                        write("</h1>")
-                        write("</header>")
-                      }
-                    }
+                fn Footer() -> Fragment {
+                  write("<footer")
+                  write(">")
+                  write("<p")
+                  write(">")
+                  write("Copyright 2024")
+                  write("</p>")
+                  write("</footer>")
+                }
+                fn Header(title@v0: String) -> Fragment {
+                  write("<header")
+                  write(">")
+                  write("<h1")
+                  write(">")
+                  write_string(v0)
+                  write("</h1>")
+                  write("</header>")
+                }
+                fn Layout(children@v1: Fragment) -> Fragment {
+                  write("<div")
+                  write(" class=\"")
+                  write_string(tw_merge("layout"))
+                  write("\"")
+                  write(">")
+                  write_fragment(v1)
+                  write("</div>")
+                }
+                page Test() {
+                  call Layout(children = {
+                    call Header(title = "Welcome")
                     write("<main")
                     write(">")
                     write("<p")
@@ -10249,37 +10742,14 @@ mod tests {
                     write("Hello world")
                     write("</p>")
                     write("</main>")
-                    write("<footer")
-                    write(">")
-                    write("<p")
-                    write(">")
-                    write("Copyright 2024")
-                    write("</p>")
-                    write("</footer>")
-                  } in {
-                    let v3 = v2 in {
-                      write("<div")
-                      write(" class=\"")
-                      write_string(tw_merge("layout"))
-                      write("\"")
-                      write(">")
-                      write_fragment(v3)
-                      write("</div>")
-                    }
-                  }
+                    call Footer()
+                  })
                 }
                 -- ir (optimized) --
-                view Test() {
-                  let v2 = {
-                    write("<header><h1>Welcome</h1></header><main><p>Hello world</p>")
-                    write("</main><footer><p>Copyright 2024</p></footer>")
-                  } in {
-                    let v3 = v2 in {
-                      write("<div class=\"layout\">")
-                      write_fragment(v3)
-                      write("</div>")
-                    }
-                  }
+                page Test() {
+                  write("<div class=\"layout\">")
+                  write("<header><h1>Welcome</h1></header><main><p>Hello world</p>")
+                  write("</main><footer><p>Copyright 2024</p></footer></div>")
                 }
                 -- expected output --
                 <div class="layout"><header><h1>Welcome</h1></header><main><p>Hello world</p></main><footer><p>Copyright 2024</p></footer></div>
@@ -10324,43 +10794,40 @@ mod tests {
             r#"<div class="first"><span>hi</span></div><div class="second"><span>hi</span></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
-                  let v0 = {
+                fn Repeat(children@v0: Fragment) -> Fragment {
+                  write("<div")
+                  write(" class=\"")
+                  write_string(tw_merge("first"))
+                  write("\"")
+                  write(">")
+                  write_fragment(v0)
+                  write("</div>")
+                  write("<div")
+                  write(" class=\"")
+                  write_string(tw_merge("second"))
+                  write("\"")
+                  write(">")
+                  write_fragment(v0)
+                  write("</div>")
+                }
+                page Test() {
+                  call Repeat(children = {
                     write("<span")
                     write(">")
                     write("hi")
                     write("</span>")
-                  } in {
-                    let v1 = v0 in {
-                      write("<div")
-                      write(" class=\"")
-                      write_string(tw_merge("first"))
-                      write("\"")
-                      write(">")
-                      write_fragment(v1)
-                      write("</div>")
-                      write("<div")
-                      write(" class=\"")
-                      write_string(tw_merge("second"))
-                      write("\"")
-                      write(">")
-                      write_fragment(v1)
-                      write("</div>")
-                    }
-                  }
+                  })
                 }
                 -- ir (optimized) --
-                view Test() {
-                  let v0 = {
+                page Test() {
+                  let v1 = {
                     write("<span>hi</span>")
                   } in {
-                    let v1 = v0 in {
-                      write("<div class=\"first\">")
-                      write_fragment(v1)
-                      write("</div><div class=\"second\">")
-                      write_fragment(v1)
-                      write("</div>")
-                    }
+                    write("<div class=\"first\">")
+                    write_fragment(v1)
+                    write("</div><div class=\"second\">")
+                    write_fragment(v1)
+                    write("</div>")
                   }
                 }
                 -- expected output --
@@ -10426,26 +10893,25 @@ mod tests {
                   value: String,
                   next: Option[test::Node],
                 }
-                fn NodeView(node@v1: test::Node) -> Fragment {
-                  let v2 = v1.value in {
-                    let v3 = v2 in {
-                      write("<strong")
-                      write(">")
-                      write_string(v3)
-                      write("</strong>")
-                    }
-                  }
-                  match v1.next {
-                    Some(v4) => {
-                      let v5 = v4 in {
-                        call NodeView(node = v5)
+                fn Badge(text@v1: String) -> Fragment {
+                  write("<strong")
+                  write(">")
+                  write_string(v1)
+                  write("</strong>")
+                }
+                fn NodeView(node@v2: test::Node) -> Fragment {
+                  call Badge(text = v2.value)
+                  match v2.next {
+                    Some(v3) => {
+                      let v4 = v3 in {
+                        call NodeView(node = v4)
                       }
                     }
                     None => {
                     }
                   }
                 }
-                view Test() {
+                page Test() {
                   let v0 = Node {
                     value: "a",
                     next: Option[test::Node]::Some(Node {
@@ -10461,25 +10927,21 @@ mod tests {
                   value: String,
                   next: Option[test::Node],
                 }
-                fn NodeView(node@v1: test::Node) -> Fragment {
-                  let v2 = v1.value in {
-                    let v3 = v2 in {
-                      write("<strong>")
-                      write_string(v3)
-                      write("</strong>")
-                    }
-                  }
-                  match v1.next {
-                    Some(v4) => {
-                      let v5 = v4 in {
-                        call NodeView(node = v5)
+                fn NodeView(node@v2: test::Node) -> Fragment {
+                  write("<strong>")
+                  write_string(v2.value)
+                  write("</strong>")
+                  match v2.next {
+                    Some(v3) => {
+                      let v4 = v3 in {
+                        call NodeView(node = v4)
                       }
                     }
                     None => {
                     }
                   }
                 }
-                view Test() {
+                page Test() {
                   call NodeView(node = Node {
                     value: "a",
                     next: Option[test::Node]::Some(Node {
@@ -10567,7 +11029,7 @@ mod tests {
                     }
                   }
                 }
-                view Test() {
+                page Test() {
                   let v0 = Node {
                     value: "a",
                     next: Option[test::Node]::Some(Node {
@@ -10600,7 +11062,7 @@ mod tests {
                     }
                   }
                 }
-                view Test() {
+                page Test() {
                   call NodeView(node = Node {
                     value: "a",
                     next: Option[test::Node]::Some(Node {
@@ -10648,18 +11110,17 @@ mod tests {
             r#"<div>New card</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
-                  let v0 = "New card" in {
-                    let v1 = v0 in {
-                      write("<div")
-                      write(">")
-                      write_string(v1)
-                      write("</div>")
-                    }
-                  }
+                fn Card(title@v0: String) -> Fragment {
+                  write("<div")
+                  write(">")
+                  write_string(v0)
+                  write("</div>")
+                }
+                page Test() {
+                  call Card(title = "New card")
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("<div>New card</div>")
                 }
                 -- expected output --
@@ -10698,18 +11159,17 @@ mod tests {
             r#"<div>Custom title</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
-                  let v0 = "Custom title" in {
-                    let v1 = v0 in {
-                      write("<div")
-                      write(">")
-                      write_string(v1)
-                      write("</div>")
-                    }
-                  }
+                fn Card(title@v0: String) -> Fragment {
+                  write("<div")
+                  write(">")
+                  write_string(v0)
+                  write("</div>")
+                }
+                page Test() {
+                  call Card(title = "Custom title")
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("<div>Custom title</div>")
                 }
                 -- expected output --
@@ -10751,24 +11211,19 @@ mod tests {
             r#"<div>Hello - No subtitle</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
-                  let v0 = "No subtitle" in {
-                    let v1 = "Hello" in {
-                      let v2 = v0 in {
-                        let v3 = v1 in {
-                          write("<div")
-                          write(">")
-                          write_string(v3)
-                          write(" - ")
-                          write_string(v2)
-                          write("</div>")
-                        }
-                      }
-                    }
-                  }
+                fn Card(title@v0: String, subtitle@v1: String) -> Fragment {
+                  write("<div")
+                  write(">")
+                  write_string(v0)
+                  write(" - ")
+                  write_string(v1)
+                  write("</div>")
+                }
+                page Test() {
+                  call Card(title = "Hello", subtitle = "No subtitle")
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("<div>Hello - No subtitle</div>")
                 }
                 -- expected output --
@@ -10810,24 +11265,19 @@ mod tests {
             r#"<div>Hello - World</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
-                  let v0 = "World" in {
-                    let v1 = "Hello" in {
-                      let v2 = v0 in {
-                        let v3 = v1 in {
-                          write("<div")
-                          write(">")
-                          write_string(v3)
-                          write(" - ")
-                          write_string(v2)
-                          write("</div>")
-                        }
-                      }
-                    }
-                  }
+                fn Card(title@v0: String, subtitle@v1: String) -> Fragment {
+                  write("<div")
+                  write(">")
+                  write_string(v0)
+                  write(" - ")
+                  write_string(v1)
+                  write("</div>")
+                }
+                page Test() {
+                  call Card(title = "Hello", subtitle = "World")
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("<div>Hello - World</div>")
                 }
                 -- expected output --
@@ -10870,30 +11320,25 @@ mod tests {
             r#"<div>Default - Custom - End</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
-                  let v0 = "End" in {
-                    let v1 = "Custom" in {
-                      let v2 = "Default" in {
-                        let v3 = v0 in {
-                          let v4 = v1 in {
-                            let v5 = v2 in {
-                              write("<div")
-                              write(">")
-                              write_string(v5)
-                              write(" - ")
-                              write_string(v4)
-                              write(" - ")
-                              write_string(v3)
-                              write("</div>")
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
+                fn Card(
+                  title@v0: String,
+                  subtitle@v1: String,
+                  footer@v2: String,
+                ) -> Fragment {
+                  write("<div")
+                  write(">")
+                  write_string(v0)
+                  write(" - ")
+                  write_string(v1)
+                  write(" - ")
+                  write_string(v2)
+                  write("</div>")
+                }
+                page Test() {
+                  call Card(title = "Default", subtitle = "Custom", footer = "End")
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("<div>Default - Custom - End</div>")
                 }
                 -- expected output --
@@ -10938,36 +11383,28 @@ mod tests {
             r#"<div class="card"><h2>Hello</h2></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
-                  let v0 = {} in {
-                    let v1 = "Hello" in {
-                      let v2 = v0 in {
-                        let v3 = v1 in {
-                          write("<div")
-                          write(" class=\"")
-                          write_string(tw_merge("card"))
-                          write("\"")
-                          write(">")
-                          write("<h2")
-                          write(">")
-                          write_string(v3)
-                          write("</h2>")
-                          write_fragment(v2)
-                          write("</div>")
-                        }
-                      }
-                    }
-                  }
+                fn Card(
+                  title@v0: String,
+                  children@v1: Fragment,
+                ) -> Fragment {
+                  write("<div")
+                  write(" class=\"")
+                  write_string(tw_merge("card"))
+                  write("\"")
+                  write(">")
+                  write("<h2")
+                  write(">")
+                  write_string(v0)
+                  write("</h2>")
+                  write_fragment(v1)
+                  write("</div>")
+                }
+                page Test() {
+                  call Card(title = "Hello", children = {})
                 }
                 -- ir (optimized) --
-                view Test() {
-                  let v0 = {} in {
-                    let v2 = v0 in {
-                      write("<div class=\"card\"><h2>Hello</h2>")
-                      write_fragment(v2)
-                      write("</div>")
-                    }
-                  }
+                page Test() {
+                  write("<div class=\"card\"><h2>Hello</h2></div>")
                 }
                 -- expected output --
                 <div class="card"><h2>Hello</h2></div>
@@ -11016,69 +11453,35 @@ mod tests {
             r#"<div class="card"><h2>With</h2><p>body</p></div><div class="card"><h2>Without</h2></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
-                  let v0 = {
+                fn Card(
+                  title@v0: String,
+                  children@v1: Fragment,
+                ) -> Fragment {
+                  write("<div")
+                  write(" class=\"")
+                  write_string(tw_merge("card"))
+                  write("\"")
+                  write(">")
+                  write("<h2")
+                  write(">")
+                  write_string(v0)
+                  write("</h2>")
+                  write_fragment(v1)
+                  write("</div>")
+                }
+                page Test() {
+                  call Card(title = "With", children = {
                     write("<p")
                     write(">")
                     write("body")
                     write("</p>")
-                  } in {
-                    let v1 = "With" in {
-                      let v2 = v0 in {
-                        let v3 = v1 in {
-                          write("<div")
-                          write(" class=\"")
-                          write_string(tw_merge("card"))
-                          write("\"")
-                          write(">")
-                          write("<h2")
-                          write(">")
-                          write_string(v3)
-                          write("</h2>")
-                          write_fragment(v2)
-                          write("</div>")
-                        }
-                      }
-                    }
-                  }
-                  let v4 = {} in {
-                    let v5 = "Without" in {
-                      let v6 = v4 in {
-                        let v7 = v5 in {
-                          write("<div")
-                          write(" class=\"")
-                          write_string(tw_merge("card"))
-                          write("\"")
-                          write(">")
-                          write("<h2")
-                          write(">")
-                          write_string(v7)
-                          write("</h2>")
-                          write_fragment(v6)
-                          write("</div>")
-                        }
-                      }
-                    }
-                  }
+                  })
+                  call Card(title = "Without", children = {})
                 }
                 -- ir (optimized) --
-                view Test() {
-                  let v0 = {
-                    write("<p>body</p>")
-                  } in {
-                    let v2 = v0 in {
-                      write("<div class=\"card\"><h2>With</h2>")
-                      write_fragment(v2)
-                      write("</div>")
-                    }
-                  }
-                  let v4 = {} in {
-                    let v6 = v4 in {
-                      write("<div class=\"card\"><h2>Without</h2>")
-                      write_fragment(v6)
-                      write("</div>")
-                    }
-                  }
+                page Test() {
+                  write("<div class=\"card\"><h2>With</h2><p>body</p></div>")
+                  write("<div class=\"card\"><h2>Without</h2></div>")
                 }
                 -- expected output --
                 <div class="card"><h2>With</h2><p>body</p></div><div class="card"><h2>Without</h2></div>
@@ -11119,7 +11522,7 @@ mod tests {
             "empty",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = "" in {
                     match v0.is_empty() {
                       true => {
@@ -11132,7 +11535,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("empty")
                 }
                 -- expected output --
@@ -11174,7 +11577,7 @@ mod tests {
             "not empty",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = "hello" in {
                     match v0.is_empty() {
                       true => {
@@ -11187,7 +11590,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("not empty")
                 }
                 -- expected output --
@@ -11229,7 +11632,7 @@ mod tests {
             "yes",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = Option[String]::Some("hello") in {
                     match v0.is_some() {
                       true => {
@@ -11242,7 +11645,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("yes")
                 }
                 -- expected output --
@@ -11284,7 +11687,7 @@ mod tests {
             "no",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = Option[String]::None in {
                     match v0.is_some() {
                       true => {
@@ -11297,7 +11700,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("no")
                 }
                 -- expected output --
@@ -11339,7 +11742,7 @@ mod tests {
             "yes",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = Option[String]::None in {
                     match v0.is_none() {
                       true => {
@@ -11352,7 +11755,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("yes")
                 }
                 -- expected output --
@@ -11394,7 +11797,7 @@ mod tests {
             "no",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = Option[String]::Some("hello") in {
                     match v0.is_none() {
                       true => {
@@ -11407,7 +11810,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("no")
                 }
                 -- expected output --
@@ -11444,7 +11847,7 @@ mod tests {
             "x",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = Option[Bool]::None in {
                     match (true == v0.is_none()) {
                       true => {
@@ -11456,7 +11859,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("x")
                 }
                 -- expected output --
@@ -11491,7 +11894,7 @@ mod tests {
             "x",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   match ("a".is_empty() == "b".is_empty()) {
                     true => {
                       write("x")
@@ -11501,7 +11904,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("x")
                 }
                 -- expected output --
@@ -11534,11 +11937,11 @@ mod tests {
             "hello world",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   write("hello world")
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("hello world")
                 }
                 -- expected output --
@@ -11572,13 +11975,13 @@ mod tests {
             "hello world",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   write("hello")
                   write(" ")
                   write("world")
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("hello world")
                 }
                 -- expected output --
@@ -11641,68 +12044,41 @@ mod tests {
                 enum Item {
                   Todo {label: String, done: Bool},
                 }
-                view Test() {
-                  let v0 = Item::Todo {label: "Buy milk", done: true} in {
-                    let v1 = v0 in {
-                      match v1 {
-                        Item::Todo(label: v2, done: v3) => {
-                          let v4 = v2 in {
-                            let v5 = v3 in {
-                              match v5 {
-                                true => {
-                                  write("[x]")
-                                }
-                                false => {
-                                }
-                              }
-                              match (!v5) {
-                                true => {
-                                  write("[ ]")
-                                }
-                                false => {
-                                }
-                              }
-                              write_string(v4)
+                fn RenderItem(item@v0: test::Item) -> Fragment {
+                  match v0 {
+                    Item::Todo(label: v1, done: v2) => {
+                      let v3 = v1 in {
+                        let v4 = v2 in {
+                          match v4 {
+                            true => {
+                              write("[x]")
+                            }
+                            false => {
                             }
                           }
+                          match (!v4) {
+                            true => {
+                              write("[ ]")
+                            }
+                            false => {
+                            }
+                          }
+                          write_string(v3)
                         }
                       }
                     }
                   }
+                }
+                page Test() {
+                  call RenderItem(item = Item::Todo {label: "Buy milk", done: true})
                   write(",")
-                  let v6 = Item::Todo {label: "Walk dog", done: false} in {
-                    let v7 = v6 in {
-                      match v7 {
-                        Item::Todo(label: v8, done: v9) => {
-                          let v10 = v8 in {
-                            let v11 = v9 in {
-                              match v11 {
-                                true => {
-                                  write("[x]")
-                                }
-                                false => {
-                                }
-                              }
-                              match (!v11) {
-                                true => {
-                                  write("[ ]")
-                                }
-                                false => {
-                                }
-                              }
-                              write_string(v10)
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
+                  call RenderItem(item = Item::Todo {label: "Walk dog", done: false})
                 }
                 -- ir (optimized) --
                 enum Item {
                   Todo {label: String, done: Bool},
                 }
-                view Test() {
+                page Test() {
                   write("[x]Buy milk,[ ]Walk dog")
                 }
                 -- expected output --
@@ -11769,82 +12145,39 @@ mod tests {
                   MinutesAgo {count: Int},
                   HoursAgo {count: Int},
                 }
-                view Test() {
-                  let v0 = TimeAgo::MinutesAgo {count: 1} in {
-                    let v1 = v0 in {
-                      match v1 {
-                        TimeAgo::MinutesAgo(count: v2) => {
-                          let v3 = v2 in {
-                            write_string(match (v3 == 1) {
-                              true => "1 minute ago",
-                              false => (v3.to_string() + " minutes ago"),
-                            })
-                          }
-                        }
-                        TimeAgo::HoursAgo(count: v4) => {
-                          let v5 = v4 in {
-                            write_string(match (v5 == 1) {
-                              true => "1 hour ago",
-                              false => (v5.to_string() + " hours ago"),
-                            })
-                          }
-                        }
+                fn Render(time@v0: test::TimeAgo) -> Fragment {
+                  match v0 {
+                    TimeAgo::MinutesAgo(count: v1) => {
+                      let v2 = v1 in {
+                        write_string(match (v2 == 1) {
+                          true => "1 minute ago",
+                          false => (v2.to_string() + " minutes ago"),
+                        })
+                      }
+                    }
+                    TimeAgo::HoursAgo(count: v3) => {
+                      let v4 = v3 in {
+                        write_string(match (v4 == 1) {
+                          true => "1 hour ago",
+                          false => (v4.to_string() + " hours ago"),
+                        })
                       }
                     }
                   }
+                }
+                page Test() {
+                  call Render(time = TimeAgo::MinutesAgo {count: 1})
                   write(",")
-                  let v6 = TimeAgo::MinutesAgo {count: 5} in {
-                    let v7 = v6 in {
-                      match v7 {
-                        TimeAgo::MinutesAgo(count: v8) => {
-                          let v9 = v8 in {
-                            write_string(match (v9 == 1) {
-                              true => "1 minute ago",
-                              false => (v9.to_string() + " minutes ago"),
-                            })
-                          }
-                        }
-                        TimeAgo::HoursAgo(count: v10) => {
-                          let v11 = v10 in {
-                            write_string(match (v11 == 1) {
-                              true => "1 hour ago",
-                              false => (v11.to_string() + " hours ago"),
-                            })
-                          }
-                        }
-                      }
-                    }
-                  }
+                  call Render(time = TimeAgo::MinutesAgo {count: 5})
                   write(",")
-                  let v12 = TimeAgo::HoursAgo {count: 1} in {
-                    let v13 = v12 in {
-                      match v13 {
-                        TimeAgo::MinutesAgo(count: v14) => {
-                          let v15 = v14 in {
-                            write_string(match (v15 == 1) {
-                              true => "1 minute ago",
-                              false => (v15.to_string() + " minutes ago"),
-                            })
-                          }
-                        }
-                        TimeAgo::HoursAgo(count: v16) => {
-                          let v17 = v16 in {
-                            write_string(match (v17 == 1) {
-                              true => "1 hour ago",
-                              false => (v17.to_string() + " hours ago"),
-                            })
-                          }
-                        }
-                      }
-                    }
-                  }
+                  call Render(time = TimeAgo::HoursAgo {count: 1})
                 }
                 -- ir (optimized) --
                 enum TimeAgo {
                   MinutesAgo {count: Int},
                   HoursAgo {count: Int},
                 }
-                view Test() {
+                page Test() {
                   write("1 minute ago,5 minutes ago,1 hour ago")
                 }
                 -- expected output --
@@ -11899,27 +12232,26 @@ mod tests {
                 enum CodeBlock {
                   Snippet {language: String, code: String},
                 }
-                view Test() {
-                  let v0 = CodeBlock::Snippet {language: "rust", code: "fn main()"} in {
-                    let v1 = v0 in {
-                      match v1 {
-                        CodeBlock::Snippet(code: v2) => {
-                          let v3 = v2 in {
-                            write("<code")
-                            write(">")
-                            write_string(v3)
-                            write("</code>")
-                          }
-                        }
+                fn RenderCode(block@v0: test::CodeBlock) -> Fragment {
+                  match v0 {
+                    CodeBlock::Snippet(code: v1) => {
+                      let v2 = v1 in {
+                        write("<code")
+                        write(">")
+                        write_string(v2)
+                        write("</code>")
                       }
                     }
                   }
+                }
+                page Test() {
+                  call RenderCode(block = CodeBlock::Snippet {language: "rust", code: "fn main()"})
                 }
                 -- ir (optimized) --
                 enum CodeBlock {
                   Snippet {language: String, code: String},
                 }
-                view Test() {
+                page Test() {
                   write("<code>fn main()</code>")
                 }
                 -- expected output --
@@ -11983,42 +12315,41 @@ mod tests {
                   Link {href: String},
                   Button {disabled: Bool, type: String},
                 }
-                view Test() {
-                  let v0 = ButtonElement::Button {disabled: false, type: "submit"} in {
-                    let v1 = v0 in {
-                      match v1 {
-                        ButtonElement::Link(href: v2) => {
-                          let v3 = v2 in {
-                            write("<a")
-                            write(" href=\"")
-                            write_string(v3)
-                            write("\"")
-                            write(">")
-                            write("link")
-                            write("</a>")
-                          }
-                        }
-                        ButtonElement::Button(type: v4) => {
-                          let v5 = v4 in {
-                            write("<button")
-                            write(" type=\"")
-                            write_string(v5)
-                            write("\"")
-                            write(">")
-                            write("btn")
-                            write("</button>")
-                          }
-                        }
+                fn Render(el@v0: test::ButtonElement) -> Fragment {
+                  match v0 {
+                    ButtonElement::Link(href: v1) => {
+                      let v2 = v1 in {
+                        write("<a")
+                        write(" href=\"")
+                        write_string(v2)
+                        write("\"")
+                        write(">")
+                        write("link")
+                        write("</a>")
+                      }
+                    }
+                    ButtonElement::Button(type: v3) => {
+                      let v4 = v3 in {
+                        write("<button")
+                        write(" type=\"")
+                        write_string(v4)
+                        write("\"")
+                        write(">")
+                        write("btn")
+                        write("</button>")
                       }
                     }
                   }
+                }
+                page Test() {
+                  call Render(el = ButtonElement::Button {disabled: false, type: "submit"})
                 }
                 -- ir (optimized) --
                 enum ButtonElement {
                   Link {href: String},
                   Button {disabled: Bool, type: String},
                 }
-                view Test() {
+                page Test() {
                   write("<button type=\"submit\">btn</button>")
                 }
                 -- expected output --
@@ -12090,7 +12421,7 @@ mod tests {
                   id: String,
                   title: String,
                 }
-                view Test() {
+                page Test() {
                   let v0 = Option[test::Target]::Some(Target {
                     id: "1",
                     title: "hello",
@@ -12131,7 +12462,7 @@ mod tests {
                   id: String,
                   title: String,
                 }
-                view Test() {
+                page Test() {
                   for v4 in [Option[String]::Some("hello")] {
                     match v4 {
                       Some(v5) => {
@@ -12180,7 +12511,7 @@ mod tests {
             r#"<img src="/hop_assets/logo.svg">"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   write("<img")
                   write(" src=\"")
                   write_string("/hop_assets/logo.svg")
@@ -12188,7 +12519,7 @@ mod tests {
                   write(">")
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("<img src=\"/hop_assets/logo.svg\">")
                 }
                 -- expected output --
@@ -12225,7 +12556,7 @@ mod tests {
             r#"<img src="/static/v1/logo-a1b2c3d4.svg">"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   write("<img")
                   write(" src=\"")
                   write_string("/static/v1/logo-a1b2c3d4.svg")
@@ -12233,7 +12564,7 @@ mod tests {
                   write(">")
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("<img src=\"/static/v1/logo-a1b2c3d4.svg\">")
                 }
                 -- expected output --
@@ -12303,7 +12634,7 @@ mod tests {
                     }
                   }
                 }
-                view Test() {
+                page Test() {
                   call Nest(depth = 2, children = {
                     write("<b")
                     write(">")
@@ -12326,7 +12657,7 @@ mod tests {
                     }
                   }
                 }
-                view Test() {
+                page Test() {
                   call Nest(depth = 2, children = {
                     write("<b>x</b>")
                   })
@@ -12373,35 +12704,30 @@ mod tests {
             "<div><b>hi</b></div>",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
-                  let v0 = {
+                fn Foo(children@v0: Fragment) -> Fragment {
+                  let v1 = v0 in {
+                    write("<div")
+                    write(">")
+                    write_fragment(v1)
+                    write("</div>")
+                  }
+                }
+                page Test() {
+                  call Foo(children = {
                     write("<b")
                     write(">")
                     write("hi")
                     write("</b>")
-                  } in {
-                    let v1 = v0 in {
-                      let v2 = v1 in {
-                        write("<div")
-                        write(">")
-                        write_fragment(v2)
-                        write("</div>")
-                      }
-                    }
-                  }
+                  })
                 }
                 -- ir (optimized) --
-                view Test() {
-                  let v0 = {
+                page Test() {
+                  let v3 = {
                     write("<b>hi</b>")
                   } in {
-                    let v1 = v0 in {
-                      let v2 = v1 in {
-                        write("<div>")
-                        write_fragment(v2)
-                        write("</div>")
-                      }
-                    }
+                    write("<div>")
+                    write_fragment(v3)
+                    write("</div>")
                   }
                 }
                 -- expected output --
@@ -12450,49 +12776,109 @@ mod tests {
             "<section><em>z</em></section>",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
-                  let v0 = {
+                fn Inner(children@v0: Fragment) -> Fragment {
+                  write("<em")
+                  write(">")
+                  write_fragment(v0)
+                  write("</em>")
+                }
+                fn Outer(children@v1: Fragment) -> Fragment {
+                  write("<section")
+                  write(">")
+                  call Inner(children = {
+                    write_fragment(v1)
+                  })
+                  write("</section>")
+                }
+                page Test() {
+                  call Outer(children = {
                     write("z")
-                  } in {
-                    let v1 = v0 in {
-                      write("<section")
-                      write(">")
-                      let v2 = {
-                        write_fragment(v1)
-                      } in {
-                        let v3 = v2 in {
-                          write("<em")
-                          write(">")
-                          write_fragment(v3)
-                          write("</em>")
-                        }
-                      }
-                      write("</section>")
-                    }
-                  }
+                  })
                 }
                 -- ir (optimized) --
-                view Test() {
-                  let v0 = {
-                    write("z")
-                  } in {
-                    let v1 = v0 in {
-                      write("<section>")
-                      let v2 = {
-                        write_fragment(v1)
-                      } in {
-                        let v3 = v2 in {
-                          write("<em>")
-                          write_fragment(v3)
-                          write("</em>")
-                        }
-                      }
-                      write("</section>")
-                    }
-                  }
+                page Test() {
+                  write("<section><em>z</em></section>")
                 }
                 -- expected output --
                 <section><em>z</em></section>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn recursive_component_carries_a_rest() {
+        check(
+            indoc! {r#"
+                component Nest(
+                  n: Int,
+                  ...rest,
+                ) {
+                  <div ...rest>
+                    <if {0 < n}>
+                      <Nest n={n - 1}/>
+                    </if>
+                  </div>
+                }
+
+                view Test {
+                  <Nest n={2} id="root"/>
+                }
+            "#},
+            r#"<div id="root"><div><div></div></div></div>"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                fn Nest(n@v0: Int, rest@v1: Fragment) -> Fragment {
+                  write("<div")
+                  write_fragment(v1)
+                  write(">")
+                  match (0 < v0) {
+                    true => {
+                      call Nest(n = (v0 - 1), rest = {})
+                    }
+                    false => {
+                    }
+                  }
+                  write("</div>")
+                }
+                page Test() {
+                  call Nest(n = 2, rest = {
+                    write(" id=\"root\"")
+                  })
+                }
+                -- ir (optimized) --
+                fn Nest(n@v0: Int, rest@v1: Fragment) -> Fragment {
+                  write("<div")
+                  write_fragment(v1)
+                  write(">")
+                  match (0 < v0) {
+                    true => {
+                      call Nest(n = (v0 - 1), rest = {})
+                    }
+                    false => {
+                    }
+                  }
+                  write("</div>")
+                }
+                page Test() {
+                  call Nest(n = 2, rest = {
+                    write(" id=\"root\"")
+                  })
+                }
+                -- expected output --
+                <div id="root"><div><div></div></div></div>
                 -- eval (unoptimized) --
                 OK
                 -- eval (optimized) --
@@ -12538,7 +12924,7 @@ mod tests {
                     }
                   }
                 }
-                view Test() {
+                page Test() {
                   call Countdown(n = 3)
                 }
                 -- ir (optimized) --
@@ -12552,7 +12938,7 @@ mod tests {
                     }
                   }
                 }
-                view Test() {
+                page Test() {
                   call Countdown(n = 3)
                 }
                 -- expected output --
@@ -12621,7 +13007,7 @@ mod tests {
                     }
                   }
                 }
-                view Test() {
+                page Test() {
                   call Loop(n = 2, label = Option[String]::Some("a"))
                 }
                 -- ir (optimized) --
@@ -12644,7 +13030,7 @@ mod tests {
                     }
                   }
                 }
-                view Test() {
+                page Test() {
                   call Loop(n = 2, label = Option[String]::Some("a"))
                 }
                 -- expected output --
@@ -12695,7 +13081,7 @@ mod tests {
                     }
                   }
                 }
-                view Test() {
+                page Test() {
                   let v0 = Option[String]::Some("a") in {
                     call C(x = v0)
                     call C(x = v0)
@@ -12711,7 +13097,7 @@ mod tests {
                     }
                   }
                 }
-                view Test() {
+                page Test() {
                   call C(x = Option[String]::Some("a"))
                   call C(x = Option[String]::Some("a"))
                 }
@@ -12763,75 +13149,75 @@ mod tests {
             "even",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Odd(n@v0: Int) -> Fragment {
+                fn Even(n@v0: Int) -> Fragment {
                   match (v0 == 0) {
-                    true => {
-                      write("odd")
-                    }
-                    false => {
-                    }
-                  }
-                  match (0 < v0) {
-                    true => {
-                      call Even(n = (v0 - 1))
-                    }
-                    false => {
-                    }
-                  }
-                }
-                fn Even(n@v1: Int) -> Fragment {
-                  match (v1 == 0) {
                     true => {
                       write("even")
                     }
                     false => {
                     }
                   }
-                  match (0 < v1) {
+                  match (0 < v0) {
                     true => {
-                      call Odd(n = (v1 - 1))
+                      call Odd(n = (v0 - 1))
                     }
                     false => {
                     }
                   }
                 }
-                view Test() {
+                fn Odd(n@v1: Int) -> Fragment {
+                  match (v1 == 0) {
+                    true => {
+                      write("odd")
+                    }
+                    false => {
+                    }
+                  }
+                  match (0 < v1) {
+                    true => {
+                      call Even(n = (v1 - 1))
+                    }
+                    false => {
+                    }
+                  }
+                }
+                page Test() {
                   call Even(n = 4)
                 }
                 -- ir (optimized) --
-                fn Odd(n@v0: Int) -> Fragment {
+                fn Even(n@v0: Int) -> Fragment {
                   match (v0 == 0) {
-                    true => {
-                      write("odd")
-                    }
-                    false => {
-                    }
-                  }
-                  match (0 < v0) {
-                    true => {
-                      call Even(n = (v0 - 1))
-                    }
-                    false => {
-                    }
-                  }
-                }
-                fn Even(n@v1: Int) -> Fragment {
-                  match (v1 == 0) {
                     true => {
                       write("even")
                     }
                     false => {
                     }
                   }
-                  match (0 < v1) {
+                  match (0 < v0) {
                     true => {
-                      call Odd(n = (v1 - 1))
+                      call Odd(n = (v0 - 1))
                     }
                     false => {
                     }
                   }
                 }
-                view Test() {
+                fn Odd(n@v1: Int) -> Fragment {
+                  match (v1 == 0) {
+                    true => {
+                      write("odd")
+                    }
+                    false => {
+                    }
+                  }
+                  match (0 < v1) {
+                    true => {
+                      call Even(n = (v1 - 1))
+                    }
+                    false => {
+                    }
+                  }
+                }
+                page Test() {
                   call Even(n = 4)
                 }
                 -- expected output --
@@ -12873,7 +13259,7 @@ mod tests {
                 record R {
                   f: Bool,
                 }
-                view Test() {
+                page Test() {
                   match R {f: true}.f {
                     true => {
                       write("x")
@@ -12886,7 +13272,7 @@ mod tests {
                 record R {
                   f: Bool,
                 }
-                view Test() {
+                page Test() {
                   write("x")
                 }
                 -- expected output --
@@ -12930,7 +13316,7 @@ mod tests {
                     call C(p = [])
                   }
                 }
-                view Test() {
+                page Test() {
                   call C(p = ["a"])
                 }
                 -- ir (optimized) --
@@ -12939,7 +13325,7 @@ mod tests {
                     call C(p = [])
                   }
                 }
-                view Test() {
+                page Test() {
                   call C(p = ["a"])
                 }
                 -- expected output --
@@ -12994,7 +13380,7 @@ mod tests {
                     }
                   }
                 }
-                view Test() {
+                page Test() {
                   call C(p = ["a"])
                 }
                 -- ir (optimized) --
@@ -13010,7 +13396,7 @@ mod tests {
                     }
                   }
                 }
-                view Test() {
+                page Test() {
                   call C(p = ["a"])
                 }
                 -- expected output --
@@ -13060,34 +13446,33 @@ mod tests {
             "<span>yes</span>",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
-                  let v0 = Option[Bool]::Some(true) in {
-                    let v1 = v0 in {
+                fn OptBool(checked@v0: Option[Bool]) -> Fragment {
+                  match v0 {
+                    Some(v1) => {
                       match v1 {
-                        Some(v2) => {
-                          match v2 {
-                            true => {
-                              write("<span")
-                              write(">")
-                              write("yes")
-                              write("</span>")
-                            }
-                            false => {
-                              write("<span")
-                              write(">")
-                              write("no")
-                              write("</span>")
-                            }
-                          }
+                        true => {
+                          write("<span")
+                          write(">")
+                          write("yes")
+                          write("</span>")
                         }
-                        None => {
+                        false => {
+                          write("<span")
+                          write(">")
+                          write("no")
+                          write("</span>")
                         }
                       }
                     }
+                    None => {
+                    }
                   }
                 }
+                page Test() {
+                  call OptBool(checked = Option[Bool]::Some(true))
+                }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("<span>yes</span>")
                 }
                 -- expected output --
@@ -13135,7 +13520,7 @@ mod tests {
             "tt",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   let v0 = Option[Option[Bool]]::Some(Option[Bool]::Some(true)) in {
                     match v0 {
                       Some(v1) => {
@@ -13162,7 +13547,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   write("tt")
                 }
                 -- expected output --
@@ -13199,7 +13584,7 @@ mod tests {
             "23",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   for v0 in [1, 2, 3] {
                     match (1 < v0) {
                       true => {
@@ -13211,7 +13596,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   for v0 in [1, 2, 3] {
                     match (1 < v0) {
                       true => {
@@ -13256,7 +13641,7 @@ mod tests {
             "a",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   for v0 in ["a", "b"] {
                     match (v0 == "a") {
                       true => {
@@ -13268,7 +13653,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   for v0 in ["a", "b"] {
                     match (v0 == "a") {
                       true => {
@@ -13313,7 +13698,7 @@ mod tests {
             "big",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   for v0 in [1.5, 2.5] {
                     match (2 < v0) {
                       true => {
@@ -13325,7 +13710,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   for v0 in [1.5, 2.5] {
                     match (2 < v0) {
                       true => {
@@ -13370,7 +13755,7 @@ mod tests {
             "x",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                page Test() {
                   for v0 in [true, false] {
                     match (v0 && true) {
                       true => {
@@ -13382,7 +13767,7 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   for v0 in [true, false] {
                     match (v0 && true) {
                       true => {
@@ -13433,18 +13818,17 @@ mod tests {
             "<span>a</span>",
             expect![[r#"
                 -- ir (unoptimized) --
-                view Test() {
+                fn Show(label@v1: String) -> Fragment {
+                  write("<span")
+                  write(">")
+                  write_string(v1)
+                  write("</span>")
+                }
+                page Test() {
                   for v0 in ["a", "b"] {
                     match (v0 == "a") {
                       true => {
-                        let v1 = v0 in {
-                          let v2 = v1 in {
-                            write("<span")
-                            write(">")
-                            write_string(v2)
-                            write("</span>")
-                          }
-                        }
+                        call Show(label = v0)
                       }
                       false => {
                       }
@@ -13452,17 +13836,13 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                view Test() {
+                page Test() {
                   for v0 in ["a", "b"] {
                     match (v0 == "a") {
                       true => {
-                        let v1 = v0 in {
-                          let v2 = v1 in {
-                            write("<span>")
-                            write_string(v2)
-                            write("</span>")
-                          }
-                        }
+                        write("<span>")
+                        write_string(v0)
+                        write("</span>")
                       }
                       false => {
                       }
@@ -13510,7 +13890,7 @@ mod tests {
                 record Foo {
                   class: String,
                 }
-                view Test() {
+                page Test() {
                   let v0 = Foo {class: "a"} in {
                     write("<div")
                     write(">")
@@ -13522,7 +13902,7 @@ mod tests {
                 record Foo {
                   class: String,
                 }
-                view Test() {
+                page Test() {
                   write("<div>a</div>")
                 }
                 -- expected output --
@@ -13566,7 +13946,7 @@ mod tests {
                 record Foo {
                   function: String,
                 }
-                view Test() {
+                page Test() {
                   let v0 = Foo {function: "a"} in {
                     write("<div")
                     write(">")
@@ -13578,7 +13958,7 @@ mod tests {
                 record Foo {
                   function: String,
                 }
-                view Test() {
+                page Test() {
                   write("<div>a</div>")
                 }
                 -- expected output --
@@ -13622,7 +14002,7 @@ mod tests {
                 record Foo {
                   protected: String,
                 }
-                view Test() {
+                page Test() {
                   let v0 = Foo {protected: "a"} in {
                     write("<div")
                     write(">")
@@ -13634,7 +14014,7 @@ mod tests {
                 record Foo {
                   protected: String,
                 }
-                view Test() {
+                page Test() {
                   write("<div>a</div>")
                 }
                 -- expected output --
@@ -13678,7 +14058,7 @@ mod tests {
                 record Foo {
                   eval: String,
                 }
-                view Test() {
+                page Test() {
                   let v0 = Foo {eval: "a"} in {
                     write("<div")
                     write(">")
@@ -13690,7 +14070,7 @@ mod tests {
                 record Foo {
                   eval: String,
                 }
-                view Test() {
+                page Test() {
                   write("<div>a</div>")
                 }
                 -- expected output --
@@ -13740,7 +14120,7 @@ mod tests {
                 enum E {
                   A {class: String},
                 }
-                view Test() {
+                page Test() {
                   let v0 = E::A {class: "a"} in {
                     match v0 {
                       E::A(class: v1) => {
@@ -13758,7 +14138,7 @@ mod tests {
                 enum E {
                   A {class: String},
                 }
-                view Test() {
+                page Test() {
                   write("<div>a</div>")
                 }
                 -- expected output --
@@ -13802,7 +14182,7 @@ mod tests {
                 record Math {
                   x: Int,
                 }
-                view Test() {
+                page Test() {
                   let v0 = Math {x: 4} in {
                     let v1 = 5 in {
                       write_string((v0.x * v1).to_string())
@@ -13813,7 +14193,7 @@ mod tests {
                 record Math {
                   x: Int,
                 }
-                view Test() {
+                page Test() {
                   write("20")
                 }
                 -- expected output --
@@ -13855,7 +14235,7 @@ mod tests {
                 record Number {
                   x: Float,
                 }
-                view Test() {
+                page Test() {
                   let v0 = Number {x: 3.7} in {
                     write_string(v0.x.to_int().to_string())
                   }
@@ -13864,7 +14244,7 @@ mod tests {
                 record Number {
                   x: Float,
                 }
-                view Test() {
+                page Test() {
                   write("3")
                 }
                 -- expected output --
@@ -13892,14 +14272,14 @@ mod tests {
             indoc! {r#"
                 record State {
                   query: String,
-                  page: Int,
+                  num: Int,
                 }
 
                 view Test {
-                  <let {base = State {query: "a", page: 1}}>
-                    <let {next = State {...base, page: 2}}>
+                  <let {base = State {query: "a", num: 1}}>
+                    <let {next = State {...base, num: 2}}>
                       {next.query}
-                      {next.page.to_string()}
+                      {next.num.to_string()}
                     </let>
                   </let>
                 }
@@ -13909,23 +14289,23 @@ mod tests {
                 -- ir (unoptimized) --
                 record State {
                   query: String,
-                  page: Int,
+                  num: Int,
                 }
-                view Test() {
-                  let v0 = State {query: "a", page: 1} in {
-                    let v1 = State {query: v0.query, page: 2} in {
+                page Test() {
+                  let v0 = State {query: "a", num: 1} in {
+                    let v1 = State {query: v0.query, num: 2} in {
                       write_string(v1.query)
                       write(" ")
-                      write_string(v1.page.to_string())
+                      write_string(v1.num.to_string())
                     }
                   }
                 }
                 -- ir (optimized) --
                 record State {
                   query: String,
-                  page: Int,
+                  num: Int,
                 }
-                view Test() {
+                page Test() {
                   write("a 2")
                 }
                 -- expected output --
@@ -13953,14 +14333,14 @@ mod tests {
             indoc! {r#"
                 record State {
                   query: String,
-                  page: Int,
+                  num: Int,
                 }
 
                 view Test {
-                  <let {base = State {query: "a", page: 1}}>
-                    <let {next = State {...base, query: "b", page: 2}}>
+                  <let {base = State {query: "a", num: 1}}>
+                    <let {next = State {...base, query: "b", num: 2}}>
                       {next.query}
-                      {next.page.to_string()}
+                      {next.num.to_string()}
                     </let>
                   </let>
                 }
@@ -13970,23 +14350,23 @@ mod tests {
                 -- ir (unoptimized) --
                 record State {
                   query: String,
-                  page: Int,
+                  num: Int,
                 }
-                view Test() {
-                  let v0 = State {query: "a", page: 1} in {
-                    let v1 = State {query: "b", page: 2} in {
+                page Test() {
+                  let v0 = State {query: "a", num: 1} in {
+                    let v1 = State {query: "b", num: 2} in {
                       write_string(v1.query)
                       write(" ")
-                      write_string(v1.page.to_string())
+                      write_string(v1.num.to_string())
                     }
                   }
                 }
                 -- ir (optimized) --
                 record State {
                   query: String,
-                  page: Int,
+                  num: Int,
                 }
-                view Test() {
+                page Test() {
                   write("b 2")
                 }
                 -- expected output --
@@ -14014,13 +14394,13 @@ mod tests {
             indoc! {r#"
                 record State {
                   query: String,
-                  page: Int,
+                  num: Int,
                 }
 
                 view Test {
-                  <for {s in [State {query: "a", page: 7}]}>
+                  <for {s in [State {query: "a", num: 7}]}>
                     {State {...s, query: "x"}.query}
-                    {State {...s, query: "x"}.page.to_string()}
+                    {State {...s, query: "x"}.num.to_string()}
                   </for>
                 }
             "#},
@@ -14029,27 +14409,27 @@ mod tests {
                 -- ir (unoptimized) --
                 record State {
                   query: String,
-                  page: Int,
+                  num: Int,
                 }
-                view Test() {
-                  for v0 in [State {query: "a", page: 7}] {
-                    write_string(State {query: "x", page: v0.page}.query)
+                page Test() {
+                  for v0 in [State {query: "a", num: 7}] {
+                    write_string(State {query: "x", num: v0.num}.query)
                     write(" ")
                     write_string(State {
                       query: "x",
-                      page: v0.page,
-                    }.page.to_string())
+                      num: v0.num,
+                    }.num.to_string())
                   }
                 }
                 -- ir (optimized) --
                 record State {
                   query: String,
-                  page: Int,
+                  num: Int,
                 }
-                view Test() {
-                  for v0 in [State {query: "a", page: 7}] {
+                page Test() {
+                  for v0 in [State {query: "a", num: 7}] {
                     write("x ")
-                    write_string(v0.page.to_string())
+                    write_string(v0.num.to_string())
                   }
                 }
                 -- expected output --
@@ -14106,34 +14486,26 @@ mod tests {
                   label: String,
                   selected: Bool,
                 }
-                view Test() {
+                fn Row(item@v1: test::Item) -> Fragment {
+                  write("<div")
+                  write(">")
+                  write_string(v1.label)
+                  write("</div>")
+                }
+                page Test() {
                   for v0 in [Item {label: "a", selected: false}] {
                     match v0.selected {
                       true => {
-                        let v1 = Item {
+                        call Row(item = Item {
                           label: "on",
                           selected: v0.selected,
-                        } in {
-                          let v2 = v1 in {
-                            write("<div")
-                            write(">")
-                            write_string(v2.label)
-                            write("</div>")
-                          }
-                        }
+                        })
                       }
                       false => {
-                        let v3 = Item {
+                        call Row(item = Item {
                           label: "off",
                           selected: v0.selected,
-                        } in {
-                          let v4 = v3 in {
-                            write("<div")
-                            write(">")
-                            write_string(v4.label)
-                            write("</div>")
-                          }
-                        }
+                        })
                       }
                     }
                   }
@@ -14143,32 +14515,14 @@ mod tests {
                   label: String,
                   selected: Bool,
                 }
-                view Test() {
+                page Test() {
                   for v0 in [Item {label: "a", selected: false}] {
                     match v0.selected {
                       true => {
-                        let v1 = Item {
-                          label: "on",
-                          selected: v0.selected,
-                        } in {
-                          let v2 = v1 in {
-                            write("<div>")
-                            write_string(v2.label)
-                            write("</div>")
-                          }
-                        }
+                        write("<div>on</div>")
                       }
                       false => {
-                        let v3 = Item {
-                          label: "off",
-                          selected: v0.selected,
-                        } in {
-                          let v4 = v3 in {
-                            write("<div>")
-                            write_string(v4.label)
-                            write("</div>")
-                          }
-                        }
+                        write("<div>off</div>")
                       }
                     }
                   }
@@ -14232,25 +14586,21 @@ mod tests {
                   query: String,
                   settings: Settings,
                 }
-                view Test() {
-                  let v0 = Settings {theme: "light", compact: true} in {
-                    let v1 = State {query: "q", settings: v0} in {
-                      let v2 = v1 in {
-                        let v4 = let v3 = v2.settings in Settings {
-                          theme: "dark",
-                          compact: v3.compact,
-                        } in {
-                          let v5 = State {
-                            query: v2.query,
-                            settings: v4,
-                          } in {
-                            write_string(v5.query)
-                            write(" ")
-                            write_string(v5.settings.theme)
-                          }
-                        }
-                      }
+                fn Dark(s@v1: test::State) -> Fragment {
+                  let v3 = let v2 = v1.settings in Settings {
+                    theme: "dark",
+                    compact: v2.compact,
+                  } in {
+                    let v4 = State {query: v1.query, settings: v3} in {
+                      write_string(v4.query)
+                      write(" ")
+                      write_string(v4.settings.theme)
                     }
+                  }
+                }
+                page Test() {
+                  let v0 = Settings {theme: "light", compact: true} in {
+                    call Dark(s = State {query: "q", settings: v0})
                   }
                 }
                 -- ir (optimized) --
@@ -14262,7 +14612,7 @@ mod tests {
                   query: String,
                   settings: Settings,
                 }
-                view Test() {
+                page Test() {
                   write("q dark")
                 }
                 -- expected output --
@@ -14305,7 +14655,7 @@ mod tests {
                   x: String,
                   y: String,
                 }
-                view Test() {
+                page Test() {
                   write_string(let v0 = Foo {x: "bar", y: "baz"} in Foo {
                     x: v0.x,
                     y: "foo",
@@ -14321,7 +14671,7 @@ mod tests {
                   x: String,
                   y: String,
                 }
-                view Test() {
+                page Test() {
                   write("bar foo")
                 }
                 -- expected output --
@@ -14367,10 +14717,7 @@ mod tests {
             "<div>0,1,2,3,20</div>",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn foo(x@v1: Int) -> Int {
-                  (v1 + 10)
-                }
-                view Test() {
+                fn Wrapper() -> Fragment {
                   write("<div")
                   write(">")
                   for v0 in 0..=call foo(x = (-7)) {
@@ -14380,18 +14727,20 @@ mod tests {
                   write_string(call foo(x = 10).to_string())
                   write("</div>")
                 }
-                -- ir (optimized) --
                 fn foo(x@v1: Int) -> Int {
                   (v1 + 10)
                 }
-                view Test() {
+                page Test() {
+                  call Wrapper()
+                }
+                -- ir (optimized) --
+                page Test() {
                   write("<div>")
-                  for v0 in 0..=call foo(x = -7) {
-                    write_string(v0.to_string())
+                  for v4 in 0..=3 {
+                    write_string(v4.to_string())
                     write(",")
                   }
-                  write_string(call foo(x = 10).to_string())
-                  write("</div>")
+                  write("20</div>")
                 }
                 -- expected output --
                 <div>0,1,2,3,20</div>

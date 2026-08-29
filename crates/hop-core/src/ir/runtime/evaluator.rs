@@ -14,35 +14,35 @@ use thiserror::Error;
 use crate::expr::patterns::{EnumPattern, Match};
 use crate::ir::pure_module::{PureForSource, PureFunctionDeclaration, PureModule};
 
-pub fn evaluate_view(
+pub fn evaluate_page(
     module: &PureModule,
-    view_name: &TypeName,
+    page_name: &TypeName,
     args: HashMap<VarName, Value>,
 ) -> Result<String, EvalError> {
-    let view = module
-        .views
+    let page = module
+        .pages
         .iter()
-        .find(|view| &view.name == view_name)
-        .ok_or_else(|| EvalError::ViewNotFound {
-            view: view_name.clone(),
+        .find(|page| &page.name == page_name)
+        .ok_or_else(|| EvalError::PageNotFound {
+            page: page_name.clone(),
         })?;
 
     let mut env = VariableEnv::new();
 
-    for param in &view.parameters {
+    for param in &page.parameters {
         if let Some(value) = args.get(param.name()) {
             env.insert(param.var.id, value.clone());
         } else {
             return Err(EvalError::MissingParameter {
-                view: view.name.clone(),
+                page: page.name.clone(),
                 param: param.name().clone(),
             });
         }
     }
 
-    let value = evaluate_expr(&view.body, &mut env, &module.functions)?;
+    let value = evaluate_expr(&page.body, &mut env, &module.functions)?;
     let Value::String(html) = value else {
-        panic!("View body must evaluate to a Fragment");
+        panic!("Page body must evaluate to a Fragment");
     };
 
     Ok(html)
@@ -51,10 +51,10 @@ pub fn evaluate_view(
 /// Errors the evaluator can produce.
 #[derive(Debug, Error)]
 pub enum EvalError {
-    #[error("View '{view}' not found in module")]
-    ViewNotFound { view: TypeName },
-    #[error("Missing required parameter '{param}' for view '{view}'")]
-    MissingParameter { view: TypeName, param: VarName },
+    #[error("Page '{page}' not found in module")]
+    PageNotFound { page: TypeName },
+    #[error("Missing required parameter '{param}' for page '{page}'")]
+    MissingParameter { page: TypeName, param: VarName },
 }
 
 /// Variable environment for the evaluator.
@@ -657,8 +657,8 @@ mod tests {
         arbtest::arbtest(|u| {
             let (module, registry) = random_module(u);
             let mut rng = StdRng::seed_from_u64(u.arbitrary()?);
-            for view in &module.views {
-                let args: HashMap<VarName, Value> = view
+            for page in &module.pages {
+                let args: HashMap<VarName, Value> = page
                     .parameters
                     .iter()
                     .map(|p| {
@@ -668,7 +668,7 @@ mod tests {
                         )
                     })
                     .collect();
-                evaluate_view(&module, &view.name, args).unwrap();
+                evaluate_page(&module, &page.name, args).unwrap();
             }
             Ok(())
         });
@@ -680,9 +680,9 @@ mod tests {
             .into_iter()
             .map(|(k, v)| (VarName::new(k).unwrap(), v))
             .collect();
-        let view_name = module.views[0].name.clone();
+        let page_name = module.pages[0].name.clone();
         let after =
-            evaluate_view(&module, &view_name, args_map).expect("Evaluation should succeed");
+            evaluate_page(&module, &page_name, args_map).expect("Evaluation should succeed");
 
         let output = format!("-- before --\n{}\n-- after --\n{}\n", before, after);
         expected.assert_eq(&output);
@@ -700,7 +700,7 @@ mod tests {
             vec![],
             expect![[r#"
                 -- before --
-                view Test() {
+                page Test() {
                   escape((2147483647 + 1).to_string())
                 }
 
@@ -719,7 +719,7 @@ mod tests {
             vec![],
             expect![[r#"
                 -- before --
-                view Test() {
+                page Test() {
                   raw("<div>Hello World</div>")
                 }
 
@@ -743,7 +743,7 @@ mod tests {
             )],
             expect![[r#"
                 -- before --
-                view Test(content@v0: String) {
+                page Test(content@v0: String) {
                   escape(v0)
                 }
 
@@ -764,7 +764,7 @@ mod tests {
             vec![("show", Value::Bool(true))],
             expect![[r#"
                 -- before --
-                view Test(show@v0: Bool) {
+                page Test(show@v0: Bool) {
                   match v0 {
                     true => raw("<div>Visible</div>"),
                     false => concat(),
@@ -788,7 +788,7 @@ mod tests {
             vec![("show", Value::Bool(false))],
             expect![[r#"
                 -- before --
-                view Test(show@v0: Bool) {
+                page Test(show@v0: Bool) {
                   match v0 {
                     true => raw("<div>Hidden</div>"),
                     false => concat(),
@@ -825,7 +825,7 @@ mod tests {
             )],
             expect![[r#"
                 -- before --
-                view Test(items@v0: Array[String]) {
+                page Test(items@v0: Array[String]) {
                   concat(
                     raw("<li>"),
                     escape(v1),
@@ -853,7 +853,7 @@ mod tests {
             vec![],
             expect![[r#"
                 -- before --
-                view Test() {
+                page Test() {
                   let v0 = raw("<b>hi</b>") in v0
                 }
 
@@ -870,8 +870,8 @@ mod tests {
             .build();
 
         // Call without providing the required argument
-        let view_name = TypeName::new("Test").unwrap();
-        let result = evaluate_view(&module, &view_name, HashMap::new());
+        let page_name = TypeName::new("Test").unwrap();
+        let result = evaluate_page(&module, &page_name, HashMap::new());
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.to_string().contains("Missing required parameter"));
@@ -897,7 +897,7 @@ mod tests {
                 fn C(p0@v0: Int, p1@v1: Int) -> Fragment {
                   escape(v1.to_string())
                 }
-                view Test(p0@v2: Int) {
+                page Test(p0@v2: Int) {
                   call C(p0 = 999, p1 = v2)
                 }
 

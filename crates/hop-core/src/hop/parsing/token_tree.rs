@@ -79,7 +79,6 @@ pub fn parse_tree(
         match token {
             // Leaf tokens - return immediately as single-node trees
             Token::Comment { .. }
-            | Token::Doctype { .. }
             | Token::Text { .. }
             | Token::Newline { .. }
             | Token::TextExpression { .. }
@@ -143,7 +142,6 @@ fn parse_nested_tree(
     while let Some(token) = tokenizer.next(iter, errors) {
         match token {
             Token::Comment { .. }
-            | Token::Doctype { .. }
             | Token::Text { .. }
             | Token::Newline { .. }
             | Token::TextExpression { .. }

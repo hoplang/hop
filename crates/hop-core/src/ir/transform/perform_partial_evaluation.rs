@@ -698,10 +698,10 @@ mod tests {
     use std::collections::HashMap;
 
     use super::*;
-    use crate::ir::pure_module::{PureFunctionDeclaration, PureModule, PureViewDeclaration};
+    use crate::ir::pure_module::{PureFunctionDeclaration, PureModule, PurePageDeclaration};
     use crate::ir::pure_module_builder::PureModuleBuilder;
     use crate::ir::pure_module_generator::random_module;
-    use crate::ir::runtime::evaluator::evaluate_view;
+    use crate::ir::runtime::evaluator::evaluate_page;
     use crate::ir::runtime::random::random_value;
     use crate::ir::runtime::value::Value;
     use crate::symbols::type_name::TypeName;
@@ -715,11 +715,11 @@ mod tests {
             let (module, registry) = random_module(u);
             let mut rng = StdRng::seed_from_u64(u.arbitrary()?);
 
-            let view_args: Vec<(TypeName, HashMap<VarName, Value>)> = module
-                .views
+            let page_args: Vec<(TypeName, HashMap<VarName, Value>)> = module
+                .pages
                 .iter()
-                .map(|view| {
-                    let args = view
+                .map(|page| {
+                    let args = page
                         .parameters
                         .iter()
                         .map(|p| {
@@ -729,20 +729,20 @@ mod tests {
                             )
                         })
                         .collect();
-                    (view.name.clone(), args)
+                    (page.name.clone(), args)
                 })
                 .collect();
 
-            let before: Vec<String> = view_args
+            let before: Vec<String> = page_args
                 .iter()
-                .map(|(view_name, args)| evaluate_view(&module, view_name, args.clone()).unwrap())
+                .map(|(page_name, args)| evaluate_page(&module, page_name, args.clone()).unwrap())
                 .collect();
 
             let module = run(module);
 
-            let after: Vec<String> = view_args
+            let after: Vec<String> = page_args
                 .iter()
-                .map(|(view_name, args)| evaluate_view(&module, view_name, args.clone()).unwrap())
+                .map(|(page_name, args)| evaluate_page(&module, page_name, args.clone()).unwrap())
                 .collect();
 
             assert_eq!(before, after);
@@ -752,13 +752,13 @@ mod tests {
 
     fn run(module: PureModule) -> PureModule {
         let mut expr_ids = module.expr_ids;
-        let views = module
-            .views
+        let pages = module
+            .pages
             .into_iter()
-            .map(|view| PureViewDeclaration {
-                name: view.name,
-                parameters: view.parameters,
-                body: perform_partial_evaluation(view.body, &mut expr_ids),
+            .map(|page| PurePageDeclaration {
+                name: page.name,
+                parameters: page.parameters,
+                body: perform_partial_evaluation(page.body, &mut expr_ids),
             })
             .collect();
         let functions = module
@@ -772,7 +772,7 @@ mod tests {
             })
             .collect();
         PureModule {
-            views,
+            pages,
             functions,
             records: module.records,
             enums: module.enums,
@@ -803,7 +803,7 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                view Test() {
+                page Test() {
                   concat(
                     match (!(!true)) {
                       true => raw("yes"),
@@ -813,7 +813,7 @@ mod tests {
                 }
 
                 -- after --
-                view Test() {
+                page Test() {
                   concat(raw("yes"))
                 }
             "#]],
@@ -834,12 +834,12 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                view Test(flag@v0: Bool) {
+                page Test(flag@v0: Bool) {
                   concat(match v0 {true => raw("yes"), false => raw("no")})
                 }
 
                 -- after --
-                view Test(flag@v0: Bool) {
+                page Test(flag@v0: Bool) {
                   concat(match v0 {true => raw("yes"), false => raw("no")})
                 }
             "#]],
@@ -861,12 +861,12 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                view Test() {
+                page Test() {
                   let v0 = "Hello" in concat(escape(v0), escape(v0))
                 }
 
                 -- after --
-                view Test() {
+                page Test() {
                   concat(escape("Hello"), escape("Hello"))
                 }
             "#]],
@@ -888,12 +888,12 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                view Test(dyn@v0: String) {
+                page Test(dyn@v0: String) {
                   escape(tw_merge((v0 + " " + "b" + " " + "c" + " " + "d")))
                 }
 
                 -- after --
-                view Test(dyn@v0: String) {
+                page Test(dyn@v0: String) {
                   escape(tw_merge((v0 + " b c d")))
                 }
             "#]],
@@ -913,12 +913,12 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                view Test(dyn@v0: String) {
+                page Test(dyn@v0: String) {
                   escape(tw_merge(((v0 + "a") + ("b" + v0))))
                 }
 
                 -- after --
-                view Test(dyn@v0: String) {
+                page Test(dyn@v0: String) {
                   escape(tw_merge((v0 + "ab" + v0)))
                 }
             "#]],
@@ -935,12 +935,12 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                view Test(dyn@v0: String) {
+                page Test(dyn@v0: String) {
                   escape(tw_merge(("" + v0 + "")))
                 }
 
                 -- after --
-                view Test(dyn@v0: String) {
+                page Test(dyn@v0: String) {
                   escape(tw_merge(v0))
                 }
             "#]],
@@ -961,12 +961,12 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                view Test() {
+                page Test() {
                   let v0 = "World" in concat(escape(("Hello, " + v0)))
                 }
 
                 -- after --
-                view Test() {
+                page Test() {
                   concat(escape("Hello, World"))
                 }
             "#]],
@@ -987,7 +987,7 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                view Test() {
+                page Test() {
                   concat(
                     match ("a" == "b") {
                       true => raw("equal"),
@@ -997,7 +997,7 @@ mod tests {
                 }
 
                 -- after --
-                view Test() {
+                page Test() {
                   concat(raw("different"))
                 }
             "#]],
@@ -1016,12 +1016,12 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                view Test() {
+                page Test() {
                   concat(escape((2147483647 + 1).to_string()))
                 }
 
                 -- after --
-                view Test() {
+                page Test() {
                   concat(escape("-2147483648"))
                 }
             "#]],
@@ -1040,14 +1040,14 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                view Test() {
+                page Test() {
                   concat(
                     escape(1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000.to_int().to_string()),
                   )
                 }
 
                 -- after --
-                view Test() {
+                page Test() {
                   concat(escape("2147483647"))
                 }
             "#]],
@@ -1069,7 +1069,7 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                view Test() {
+                page Test() {
                   concat(
                     match Option[String]::Some("present") {
                       Some(v0) => escape(v0),
@@ -1079,7 +1079,7 @@ mod tests {
                 }
 
                 -- after --
-                view Test() {
+                page Test() {
                   concat(escape("present"))
                 }
             "#]],
@@ -1101,7 +1101,7 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                view Test() {
+                page Test() {
                   concat(
                     match Option[String]::None {
                       Some(v0) => escape(v0),
@@ -1111,7 +1111,7 @@ mod tests {
                 }
 
                 -- after --
-                view Test() {
+                page Test() {
                   concat(raw("none"))
                 }
             "#]],
@@ -1154,7 +1154,7 @@ mod tests {
                   Active {since: String, by: String},
                   Inactive,
                 }
-                view Test() {
+                page Test() {
                   concat(
                     match Status::Active {since: "today", by: "admin"} {
                       Status::Active {since: v0, by: v1} => escape((v0 + (" / " + v1))),
@@ -1168,7 +1168,7 @@ mod tests {
                   Active {since: String, by: String},
                   Inactive,
                 }
-                view Test() {
+                page Test() {
                   concat(escape("today / admin"))
                 }
             "#]],
@@ -1208,7 +1208,7 @@ mod tests {
                   Active {since: String},
                   Inactive,
                 }
-                view Test() {
+                page Test() {
                   let v0 = Status::Active {since: "now"} in concat(
                     match v0 {
                       Status::Active {since: v1} => escape(v1),
@@ -1222,7 +1222,7 @@ mod tests {
                   Active {since: String},
                   Inactive,
                 }
-                view Test() {
+                page Test() {
                   concat(escape("now"))
                 }
             "#]],
@@ -1250,7 +1250,7 @@ mod tests {
                 enum Wrap {
                   Value {inner: String},
                 }
-                view Test(x@v0: String) {
+                page Test(x@v0: String) {
                   concat(
                     match Wrap::Value {inner: v0} {
                       Wrap::Value {inner: v1} => escape(v1),
@@ -1262,7 +1262,7 @@ mod tests {
                 enum Wrap {
                   Value {inner: String},
                 }
-                view Test(x@v0: String) {
+                page Test(x@v0: String) {
                   concat(let v1 = v0 in escape(v1))
                 }
             "#]],
@@ -1290,7 +1290,7 @@ mod tests {
                   name: String,
                   title: String,
                 }
-                view Test(dynamic@v0: String) {
+                page Test(dynamic@v0: String) {
                   concat(escape(User {name: "Ada", title: v0}.name))
                 }
 
@@ -1299,7 +1299,7 @@ mod tests {
                   name: String,
                   title: String,
                 }
-                view Test(dynamic@v0: String) {
+                page Test(dynamic@v0: String) {
                   concat(escape("Ada"))
                 }
             "#]],
@@ -1318,12 +1318,12 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                view Test(x@v0: Int) {
+                page Test(x@v0: Int) {
                   concat(escape([v0, 2].len().to_string()))
                 }
 
                 -- after --
-                view Test(x@v0: Int) {
+                page Test(x@v0: Int) {
                   concat(escape("2"))
                 }
             "#]],
@@ -1344,14 +1344,14 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                view Test() {
+                page Test() {
                   concat(
                     escape(tw_merge(("px-4" + " " + "py-2" + " " + "p-6"))),
                   )
                 }
 
                 -- after --
-                view Test() {
+                page Test() {
                   concat(escape("p-6"))
                 }
             "#]],

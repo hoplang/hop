@@ -159,9 +159,11 @@ fn parse_doctype(
         ));
         return None;
     };
-    Some(Token::Doctype {
-        range: left_angle_to_bang.to(right_angle),
-    })
+    errors.push(ParseError::new(
+        ParseErrorKind::DoctypeNotAllowed {},
+        left_angle_to_bang.to(right_angle),
+    ));
+    None
 }
 
 /// Parse a markup declaration from the iterator.
@@ -887,13 +889,6 @@ impl Tokenizer {
                     self.prev_was_inline = false;
                     return Some(Token::Comment { range });
                 }
-                Token::Doctype { range } => {
-                    // Don't emit Newline before doctype
-                    self.pending_newline = None;
-                    self.trim_next_start = false;
-                    self.prev_was_inline = false;
-                    return Some(Token::Doctype { range });
-                }
             }
         }
     }
@@ -1599,12 +1594,12 @@ mod tests {
     }
 
     #[test]
-    fn accepts_doctype() {
-        accept(
+    fn rejects_doctype() {
+        reject(
             "<!DOCTYPE   html>",
             expect![[r#"
-                -- tokens --
-                Doctype
+                -- errors --
+                <!doctype> declarations are not allowed: one is inserted automatically
                 <!DOCTYPE   html>
                 ^^^^^^^^^^^^^^^^^
             "#]],
@@ -2190,7 +2185,7 @@ mod tests {
             r#"<input type='number'/>"#,
             expect![[r#"
                 -- errors --
-                Single-quoted attribute values are not supported; use double quotes
+                Single-quoted attribute values are not supported: use double quotes
                 <input type='number'/>
                             ^^^^^^^^
                 -- tokens --

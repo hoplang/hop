@@ -7,28 +7,32 @@ use crate::document_id::DocumentId;
 use crate::expr::Type;
 use crate::expr::TypedExpr;
 use crate::expr::patterns::{EnumMatchArm, Match};
-use crate::hop::inlining::inlined_node::{InlinedNode, InlinedValue};
-use crate::hop::inlining::{InlinedComponentDeclaration, InlinedViewDeclaration};
+use crate::hop::assembly::AssembledPageDeclaration;
 use crate::hop::typing::typed_ast::{
-    TypedEnumDeclaration, TypedFunctionDeclaration, TypedRecordDeclaration,
+    TypedComponentDeclaration, TypedEnumDeclaration, TypedFunctionDeclaration,
+    TypedRecordDeclaration,
 };
-use crate::hop::typing::typed_node::{TypedAttributeValue, TypedLoopSource};
+use crate::hop::typing::typed_node::{
+    TypedArgumentValue, TypedAttribute, TypedAttributeValue, TypedLoopSource, TypedNode,
+};
 use crate::ir::expr_id::ExprId;
 use crate::ir::expr_id::ExprIdCounter;
 use crate::ir::ir_var::IrVar;
 use crate::ir::pure_module::PureForSource;
 use crate::ir::var_id::VarId;
 use crate::ir::var_id::VarIdCounter;
+use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
+use std::collections::HashMap;
 
 use super::pure_module::{
-    PureArgument, PureExpr, PureFunctionDeclaration, PureModule, PureViewDeclaration,
+    PureArgument, PureExpr, PureFunctionDeclaration, PureModule, PurePageDeclaration,
 };
 use super::writer_module::{WriterEnumDeclaration, WriterParameter, WriterRecordDeclaration};
 
 pub fn compile(
-    views: Vec<InlinedViewDeclaration>,
-    components: Vec<InlinedComponentDeclaration>,
+    pages: Vec<AssembledPageDeclaration>,
+    components: &[(DocumentId, &TypedComponentDeclaration)],
     source_functions: &[&TypedFunctionDeclaration],
     records: &[&TypedRecordDeclaration],
     enums: &[&TypedEnumDeclaration],
@@ -36,15 +40,25 @@ pub fn compile(
 ) -> PureModule {
     let mut expr_ids = ExprIdCounter::new();
     let mut var_ids = VarIdCounter::new();
-    let mut compiler = Compiler::new(&mut expr_ids, &mut var_ids, asset_rewriter);
+    // A component's rest parameter is passed like any other argument, so a
+    // call site needs the name the callee gave it.
+    let rest_params: HashMap<(DocumentId, TypeName), VarName> = components
+        .iter()
+        .filter_map(|(module, decl)| {
+            decl.rest_param
+                .as_ref()
+                .map(|rest| ((module.clone(), decl.component_name.clone()), rest.clone()))
+        })
+        .collect();
+    let mut compiler = Compiler::new(&mut expr_ids, &mut var_ids, asset_rewriter, rest_params);
 
-    let views = views
+    let pages = pages
         .into_iter()
-        .map(|view| compiler.compile_view_decl(view))
+        .map(|page| compiler.compile_page_decl(page))
         .collect();
     let mut functions: Vec<PureFunctionDeclaration> = components
-        .into_iter()
-        .map(|decl| compiler.compile_component_decl(decl))
+        .iter()
+        .map(|(_, decl)| compiler.compile_component_decl(decl))
         .collect();
     functions.extend(
         source_functions
@@ -74,7 +88,7 @@ pub fn compile(
     enums.sort_by(|a, b| a.name.cmp(&b.name));
 
     PureModule {
-        views,
+        pages,
         functions,
         records,
         enums,
@@ -88,6 +102,8 @@ struct Compiler<'a> {
     var_id_counter: &'a mut VarIdCounter,
     scopes: Vec<Vec<(VarName, VarId)>>,
     asset_rewriter: Option<Arc<dyn AssetRewriter>>,
+    /// The name each rest-carrying component gave its rest parameter.
+    rest_params: HashMap<(DocumentId, TypeName), VarName>,
 }
 
 impl<'a> Compiler<'a> {
@@ -95,32 +111,44 @@ impl<'a> Compiler<'a> {
         expr_id_counter: &'a mut ExprIdCounter,
         var_id_counter: &'a mut VarIdCounter,
         asset_rewriter: Option<Arc<dyn AssetRewriter>>,
+        rest_params: HashMap<(DocumentId, TypeName), VarName>,
     ) -> Self {
         Compiler {
             expr_id_counter,
             var_id_counter,
             scopes: vec![Vec::new()],
             asset_rewriter,
+            rest_params,
         }
     }
 
     fn compile_component_decl(
         &mut self,
-        decl: InlinedComponentDeclaration,
+        decl: &TypedComponentDeclaration,
     ) -> PureFunctionDeclaration {
         self.push_scope();
 
         let mut parameters = Vec::with_capacity(decl.params.len());
-        for param in decl.params {
+        for param in &decl.params {
             parameters.push(WriterParameter {
                 var: self.bind(&param.var_name),
-                name: param.var_name,
-                typ: param.var_type,
+                name: param.var_name.clone(),
+                typ: param.var_type.clone(),
+            });
+        }
+
+        // The rest is an ordinary parameter holding pre-rendered attribute
+        // text.
+        if let Some(rest) = &decl.rest_param {
+            parameters.push(WriterParameter {
+                var: self.bind(rest),
+                name: rest.clone(),
+                typ: Arc::new(Type::Fragment),
             });
         }
 
         let declaration = PureFunctionDeclaration {
-            name: decl.name.into(),
+            name: decl.component_name.clone().into(),
             parameters,
             return_type: Arc::new(Type::Fragment),
             body: self.compile_nodes(&decl.children),
@@ -154,11 +182,11 @@ impl<'a> Compiler<'a> {
         declaration
     }
 
-    fn compile_view_decl(&mut self, view: InlinedViewDeclaration) -> PureViewDeclaration {
+    fn compile_page_decl(&mut self, page: AssembledPageDeclaration) -> PurePageDeclaration {
         self.push_scope();
 
-        let mut parameters = Vec::with_capacity(view.params.len());
-        for param in view.params {
+        let mut parameters = Vec::with_capacity(page.params.len());
+        for param in page.params {
             parameters.push(WriterParameter {
                 var: self.bind(&param.var_name),
                 name: param.var_name,
@@ -166,10 +194,10 @@ impl<'a> Compiler<'a> {
             });
         }
 
-        let declaration = PureViewDeclaration {
-            name: view.name,
+        let declaration = PurePageDeclaration {
+            name: page.name,
             parameters,
-            body: self.compile_nodes(&view.children),
+            body: self.compile_nodes(&page.children),
         };
         self.pop_scope();
         declaration
@@ -209,7 +237,7 @@ impl<'a> Compiler<'a> {
         panic!("undefined variable: {name}");
     }
 
-    fn compile_nodes(&mut self, nodes: &[InlinedNode]) -> PureExpr {
+    fn compile_nodes(&mut self, nodes: &[TypedNode]) -> PureExpr {
         let mut parts = Vec::new();
         for node in nodes {
             self.compile_node(node, &mut parts);
@@ -220,16 +248,16 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn compile_node(&mut self, node: &InlinedNode, output: &mut Vec<PureExpr>) {
+    fn compile_node(&mut self, node: &TypedNode, output: &mut Vec<PureExpr>) {
         match node {
-            InlinedNode::Text { value } => {
+            TypedNode::Text { value } => {
                 output.push(PureExpr::FragmentRaw {
                     content: value.to_string(),
                     id: self.next_expr_id(),
                 });
             }
 
-            InlinedNode::TextExpression { expression } => {
+            TypedNode::TextExpression { expression } => {
                 if matches!(expression.as_type(), Type::Fragment) {
                     output.push(self.compile_expr(expression));
                 } else {
@@ -240,9 +268,10 @@ impl<'a> Compiler<'a> {
                 }
             }
 
-            InlinedNode::Html {
+            TypedNode::Html {
                 element,
                 attributes,
+                rest_spread,
                 children,
             } => {
                 output.push(PureExpr::FragmentRaw {
@@ -250,15 +279,17 @@ impl<'a> Compiler<'a> {
                     id: self.next_expr_id(),
                 });
                 for attr in attributes {
-                    if let Some(val) = &attr.value {
-                        self.compile_attribute(&attr.name, val, output);
-                    } else {
-                        // Boolean attribute
-                        output.push(PureExpr::FragmentRaw {
-                            content: format!(" {}", attr.name.as_str()),
-                            id: self.next_expr_id(),
-                        });
-                    }
+                    self.compile_attribute_opt(attr, output);
+                }
+                // The spread lands after the element's own attributes,
+                // whatever position `...rest` was written in..
+                if let Some(rest) = rest_spread {
+                    let var = self.resolve(rest);
+                    output.push(PureExpr::VariableReference {
+                        value: var,
+                        kind: Arc::new(Type::Fragment),
+                        id: self.next_expr_id(),
+                    });
                 }
                 output.push(PureExpr::FragmentRaw {
                     content: ">".to_string(),
@@ -275,7 +306,7 @@ impl<'a> Compiler<'a> {
                 }
             }
 
-            InlinedNode::If {
+            TypedNode::If {
                 condition,
                 children,
                 ..
@@ -294,7 +325,7 @@ impl<'a> Compiler<'a> {
                 });
             }
 
-            InlinedNode::For {
+            TypedNode::For {
                 var_name,
                 source,
                 children,
@@ -323,19 +354,12 @@ impl<'a> Compiler<'a> {
                 });
             }
 
-            InlinedNode::Doctype { value } => {
-                output.push(PureExpr::FragmentRaw {
-                    content: value.to_string(),
-                    id: self.next_expr_id(),
-                });
-            }
-
-            InlinedNode::Let {
+            TypedNode::Let {
                 var,
                 value,
                 children,
             } => {
-                let value = self.compile_inlined_value(value);
+                let value = self.compile_expr(value);
                 self.push_scope();
                 let pure_var = self.bind(var);
                 let body = self.compile_nodes(children);
@@ -349,7 +373,7 @@ impl<'a> Compiler<'a> {
                 });
             }
 
-            InlinedNode::Match { match_ } => {
+            TypedNode::Match { match_ } => {
                 let compiled_match = match match_ {
                     Match::Bool {
                         subject,
@@ -409,17 +433,38 @@ impl<'a> Compiler<'a> {
                 });
             }
 
-            InlinedNode::ComponentInvocation {
+            TypedNode::ComponentInvocation {
                 component_name,
+                component_module,
                 args,
+                extra_attributes,
+                rest_spread,
             } => {
-                let compiled_args: Vec<PureArgument> = args
+                let mut compiled_args: Vec<PureArgument> = args
                     .iter()
                     .map(|arg| PureArgument {
                         name: arg.name.clone(),
-                        expr: self.compile_inlined_value(&arg.value),
+                        expr: self.compile_argument_value(&arg.value),
                     })
                     .collect();
+
+                let callee = (component_module.clone(), component_name.clone());
+                if let Some(rest_param) = self.rest_params.get(&callee).cloned() {
+                    compiled_args.push(PureArgument {
+                        name: rest_param,
+                        expr: self.compile_rest(extra_attributes, rest_spread.as_ref()),
+                    });
+                } else {
+                    // A spread into a callee that declares no rest is not a
+                    // mistake: the spread was carrying typed parameters, and
+                    // those are passed explicitly above, so nothing is left
+                    // for it to forward.
+                    assert!(
+                        extra_attributes.is_empty(),
+                        "<{}> declares no rest, but the call site supplies attributes for one",
+                        component_name.as_str()
+                    );
+                }
 
                 output.push(PureExpr::FunctionCall {
                     function_name: component_name.clone().into(),
@@ -431,10 +476,47 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn compile_inlined_value(&mut self, value: &InlinedValue) -> PureExpr {
+    /// Render the attributes a call site passes on to the callee's rest into
+    /// the text they will occupy inside an open tag: ` name="value"`, escaped
+    /// exactly as if written on the element directly.
+    fn compile_rest(
+        &mut self,
+        extra_attributes: &[TypedAttribute],
+        rest_spread: Option<&VarName>,
+    ) -> PureExpr {
+        let mut parts = Vec::new();
+        for attr in extra_attributes {
+            self.compile_attribute_opt(attr, &mut parts);
+        }
+        if let Some(rest) = rest_spread {
+            let var = self.resolve(rest);
+            parts.push(PureExpr::VariableReference {
+                value: var,
+                kind: Arc::new(Type::Fragment),
+                id: self.next_expr_id(),
+            });
+        }
+        PureExpr::FragmentConcat {
+            parts,
+            id: self.next_expr_id(),
+        }
+    }
+
+    fn compile_argument_value(&mut self, value: &TypedArgumentValue) -> PureExpr {
         match value {
-            InlinedValue::Expr(expr) => self.compile_expr(expr),
-            InlinedValue::Fragment(nodes) => self.compile_nodes(nodes),
+            TypedArgumentValue::Expr(expr) => self.compile_expr(expr),
+            TypedArgumentValue::Fragment(nodes) => self.compile_nodes(nodes),
+        }
+    }
+
+    fn compile_attribute_opt(&mut self, attr: &TypedAttribute, output: &mut Vec<PureExpr>) {
+        match &attr.value {
+            Some(value) => self.compile_attribute(&attr.name, value, output),
+            // A valueless attribute is its own text.
+            None => output.push(PureExpr::FragmentRaw {
+                content: format!(" {}", attr.name.as_str()),
+                id: self.next_expr_id(),
+            }),
         }
     }
 
@@ -474,9 +556,11 @@ impl<'a> Compiler<'a> {
                 }
             }
             TypedAttributeValue::Expression(expr) => {
-                debug_assert!(
+                assert!(
                     expr.as_type() == &Type::String,
-                    "Attribute expression values must evaluate to String"
+                    "attribute `{}` holds {}, but attribute values must be String",
+                    name.as_str(),
+                    expr.as_type()
                 );
                 // String attributes: output attribute="value"
                 output.push(PureExpr::FragmentRaw {
@@ -915,15 +999,15 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
-    use crate::hop::inlining::builder::{build_inlined_view, build_inlined_view_no_params};
+    use crate::hop::typing::typed_ast_builder::{build_page, build_page_no_params};
     use expect_test::{Expect, expect};
 
-    fn check(view: InlinedViewDeclaration, expected: Expect) {
-        let before = view.to_string();
+    fn check(page: AssembledPageDeclaration, expected: Expect) {
+        let before = page.to_string();
         let mut expr_ids = ExprIdCounter::new();
         let mut var_ids = VarIdCounter::new();
-        let compiled_view =
-            Compiler::new(&mut expr_ids, &mut var_ids, None).compile_view_decl(view);
+        let compiled_view = Compiler::new(&mut expr_ids, &mut var_ids, None, HashMap::new())
+            .compile_page_decl(page);
         let after = compiled_view.to_string();
         let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
         expected.assert_eq(&output);
@@ -932,17 +1016,17 @@ mod tests {
     #[test]
     fn should_compile_simple_text() {
         check(
-            build_inlined_view_no_params("MainComp", |t| {
+            build_page_no_params("MainComp", |t| {
                 t.text("Hello World");
             }),
             expect![[r#"
                 -- before --
-                view MainComp() {
+                page MainComp() {
                   Hello World
                 }
 
                 -- after --
-                view MainComp() {
+                page MainComp() {
                   concat(raw("Hello World"))
                 }
             "#]],
@@ -952,19 +1036,19 @@ mod tests {
     #[test]
     fn should_compile_text_expression() {
         check(
-            build_inlined_view("MainComp", [("name", Type::String)], |t| {
+            build_page("MainComp", [("name", Type::String)], |t| {
                 t.text("Hello ");
                 t.text_expr(t.var_expr("name"));
             }),
             expect![[r#"
                 -- before --
-                view MainComp(name: String) {
+                page MainComp(name: String) {
                   Hello 
                   {name}
                 }
 
                 -- after --
-                view MainComp(name@v0: String) {
+                page MainComp(name@v0: String) {
                   concat(raw("Hello "), escape(v0))
                 }
             "#]],
@@ -974,21 +1058,21 @@ mod tests {
     #[test]
     fn should_compile_html_element() {
         check(
-            build_inlined_view_no_params("MainComp", |t| {
+            build_page_no_params("MainComp", |t| {
                 t.div(vec![], |t| {
                     t.text("Content");
                 });
             }),
             expect![[r#"
                 -- before --
-                view MainComp() {
+                page MainComp() {
                   <div>
                     Content
                   </div>
                 }
 
                 -- after --
-                view MainComp() {
+                page MainComp() {
                   concat(
                     raw("<div"),
                     raw(">"),
@@ -1003,7 +1087,7 @@ mod tests {
     #[test]
     fn should_compile_if_node() {
         check(
-            build_inlined_view("MainComp", [("show", Type::Bool)], |t| {
+            build_page("MainComp", [("show", Type::Bool)], |t| {
                 t.if_node(t.var_expr("show"), |t| {
                     t.div(vec![], |t| {
                         t.text("Visible");
@@ -1012,7 +1096,7 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                view MainComp(show: Bool) {
+                page MainComp(show: Bool) {
                   <if {show}>
                     <div>
                       Visible
@@ -1021,7 +1105,7 @@ mod tests {
                 }
 
                 -- after --
-                view MainComp(show@v0: Bool) {
+                page MainComp(show@v0: Bool) {
                   concat(
                     match v0 {
                       true => concat(
@@ -1041,7 +1125,7 @@ mod tests {
     #[test]
     fn should_compile_for_node() {
         check(
-            build_inlined_view(
+            build_page(
                 "MainComp",
                 vec![("items", Type::Array(Arc::new(Type::String)))],
                 |t| {
@@ -1056,7 +1140,7 @@ mod tests {
             ),
             expect![[r#"
                 -- before --
-                view MainComp(items: Array[String]) {
+                page MainComp(items: Array[String]) {
                   <ul>
                     <for {item in items}>
                       <li>
@@ -1067,7 +1151,7 @@ mod tests {
                 }
 
                 -- after --
-                view MainComp(items@v0: Array[String]) {
+                page MainComp(items@v0: Array[String]) {
                   concat(
                     raw("<ul"),
                     raw(">"),
@@ -1087,7 +1171,7 @@ mod tests {
     #[test]
     fn should_compile_static_attributes() {
         check(
-            build_inlined_view_no_params("MainComp", |t| {
+            build_page_no_params("MainComp", |t| {
                 t.div(
                     vec![("class", t.attr_str("base")), ("id", t.attr_str("test"))],
                     |t| {
@@ -1097,14 +1181,14 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                view MainComp() {
+                page MainComp() {
                   <div class="base" id="test">
                     Content
                   </div>
                 }
 
                 -- after --
-                view MainComp() {
+                page MainComp() {
                   concat(
                     raw("<div"),
                     raw(" class=\""),
@@ -1123,7 +1207,7 @@ mod tests {
     #[test]
     fn should_compile_dynamic_attributes() {
         check(
-            build_inlined_view("MainComp", [("cls", Type::String)], |t| {
+            build_page("MainComp", [("cls", Type::String)], |t| {
                 t.div(
                     vec![
                         ("class", t.attr_str("base")),
@@ -1136,14 +1220,14 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                view MainComp(cls: String) {
+                page MainComp(cls: String) {
                   <div class="base" data-value={cls}>
                     Content
                   </div>
                 }
 
                 -- after --
-                view MainComp(cls@v0: String) {
+                page MainComp(cls@v0: String) {
                   concat(
                     raw("<div"),
                     raw(" class=\""),
@@ -1164,7 +1248,7 @@ mod tests {
     #[test]
     fn should_tw_merge_both_static_and_dynamic_class_attributes() {
         check(
-            build_inlined_view_no_params("MainComp", |t| {
+            build_page_no_params("MainComp", |t| {
                 t.div(vec![("class", t.attr_str("p-1 p-2"))], |t| {
                     t.text("static");
                 });
@@ -1182,7 +1266,7 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                view MainComp() {
+                page MainComp() {
                   <div class="p-1 p-2">
                     static
                   </div>
@@ -1192,7 +1276,7 @@ mod tests {
                 }
 
                 -- after --
-                view MainComp() {
+                page MainComp() {
                   concat(
                     raw("<div"),
                     raw(" class=\""),
@@ -1217,7 +1301,7 @@ mod tests {
     #[test]
     fn should_generate_development_mode_bootstrap() {
         check(
-            build_inlined_view(
+            build_page(
                 "TestComp",
                 vec![("name", Type::String), ("count", Type::String)],
                 |t| {
@@ -1231,7 +1315,7 @@ mod tests {
             ),
             expect![[r#"
                 -- before --
-                view TestComp(name: String, count: String) {
+                page TestComp(name: String, count: String) {
                   <div>
                     Hello 
                     {name}
@@ -1241,7 +1325,7 @@ mod tests {
                 }
 
                 -- after --
-                view TestComp(name@v0: String, count@v1: String) {
+                page TestComp(name@v0: String, count@v1: String) {
                   concat(
                     raw("<div"),
                     raw(">"),
@@ -1259,7 +1343,7 @@ mod tests {
     #[test]
     fn should_compile_bool_match_node() {
         check(
-            build_inlined_view("TestComp", vec![("flag", Type::Bool)], |t| {
+            build_page("TestComp", vec![("flag", Type::Bool)], |t| {
                 t.bool_match_node(
                     t.var_expr("flag"),
                     |t| {
@@ -1272,7 +1356,7 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                view TestComp(flag: Bool) {
+                page TestComp(flag: Bool) {
                   <match {flag}>
                     <case {true}>
                       yes
@@ -1284,7 +1368,7 @@ mod tests {
                 }
 
                 -- after --
-                view TestComp(flag@v0: Bool) {
+                page TestComp(flag@v0: Bool) {
                   concat(
                     match v0 {
                       true => concat(raw("yes")),
@@ -1299,21 +1383,21 @@ mod tests {
     #[test]
     fn should_compile_inline_script() {
         check(
-            build_inlined_view_no_params("MainComp", |t| {
+            build_page_no_params("MainComp", |t| {
                 t.html("script", vec![], |t| {
                     t.text("alert(\"hi\")");
                 });
             }),
             expect![[r#"
                 -- before --
-                view MainComp() {
+                page MainComp() {
                   <script>
                     alert("hi")
                   </script>
                 }
 
                 -- after --
-                view MainComp() {
+                page MainComp() {
                   concat(
                     raw("<script"),
                     raw(">"),
@@ -1328,17 +1412,17 @@ mod tests {
     #[test]
     fn should_compile_void_element() {
         check(
-            build_inlined_view_no_params("MainComp", |t| {
+            build_page_no_params("MainComp", |t| {
                 t.html("br", vec![], |_| {});
             }),
             expect![[r#"
                 -- before --
-                view MainComp() {
+                page MainComp() {
                   <br></br>
                 }
 
                 -- after --
-                view MainComp() {
+                page MainComp() {
                   concat(raw("<br"), raw(">"))
                 }
             "#]],

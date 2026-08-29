@@ -8,7 +8,7 @@ use crate::ir::ir_var::IrVar;
 use crate::ir::var_id::{VarId, VarIdCounter};
 use crate::ir::writer_module::{
     WriterArgument, WriterExpr, WriterForSource, WriterFunctionBody, WriterFunctionDeclaration,
-    WriterModule, WriterParameter, WriterStatement, WriterViewDeclaration,
+    WriterModule, WriterPageDeclaration, WriterParameter, WriterStatement,
 };
 use crate::symbols::field_name::FieldName;
 use crate::symbols::function_name::FunctionName;
@@ -261,7 +261,7 @@ impl Transpiler for TsTranspiler {
 
         let arena = &Arena::new();
 
-        let views = &module.views;
+        let pages = &module.pages;
         let records = &module.records;
 
         let mut result = arena.nil();
@@ -467,12 +467,12 @@ impl Transpiler for TsTranspiler {
                 .append(arena.hardline());
         }
 
-        let view_docs: Vec<_> = views
+        let page_docs: Vec<_> = pages
             .iter()
-            .map(|view| self.transpile_view(arena, &view.name, view))
+            .map(|page| self.transpile_page(arena, &page.name, page))
             .collect();
         result =
-            result.append(arena.intersperse(view_docs, arena.hardline().append(arena.hardline())));
+            result.append(arena.intersperse(page_docs, arena.hardline().append(arena.hardline())));
 
         // Prepend escapeHtml function if needed (after transpilation determined it's used)
         if self.needs_escape_html {
@@ -600,13 +600,13 @@ impl Transpiler for TsTranspiler {
         }
     }
 
-    fn transpile_view<'a>(
+    fn transpile_page<'a>(
         &mut self,
         arena: &'a Arena<'a>,
         name: &'a TypeName,
-        view: &'a WriterViewDeclaration,
+        page: &'a WriterPageDeclaration,
     ) -> Doc<'a> {
-        let parameters = self.transpile_parameter_list(arena, &view.parameters);
+        let parameters = self.transpile_parameter_list(arena, &page.parameters);
         arena
             .text("export function ")
             .append(arena.text(name.as_ref()))
@@ -619,7 +619,7 @@ impl Transpiler for TsTranspiler {
                     .append(arena.line())
                     .append(arena.text("let output: string = \"\";"))
                     .append(arena.line())
-                    .append(self.transpile_statements(arena, &view.body))
+                    .append(self.transpile_statements(arena, &page.body))
                     .append(arena.line())
                     .append(arena.text("return output;"))
                     .append(arena.line())
@@ -1827,7 +1827,7 @@ mod tests {
                 .view_no_params("HelloWorld", |t| t.raw("<h1>Hello, World!</h1>\n")),
             expect![[r#"
                 -- before --
-                view HelloWorld() {
+                page HelloWorld() {
                   write("<h1>Hello, World!</h1>\n")
                 }
 
@@ -1864,7 +1864,7 @@ mod tests {
             ),
             expect![[r#"
                 -- before --
-                view UserInfo(name@v0: String, age@v1: String) {
+                page UserInfo(name@v0: String, age@v1: String) {
                   write("<div>\n")
                   write("<h2>Name: ")
                   write_string(v0)
@@ -1929,7 +1929,7 @@ mod tests {
             ),
             expect![[r#"
                 -- before --
-                view ConditionalDisplay(title@v0: String, show@v1: Bool) {
+                page ConditionalDisplay(title@v0: String, show@v1: Bool) {
                   match v1 {
                     true => {
                       write("<h1>")
@@ -1990,7 +1990,7 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                view ListItems(items@v0: Array[String]) {
+                page ListItems(items@v0: Array[String]) {
                   write("<ul>\n")
                   for v1 in v0 {
                     write("<li>")
@@ -2038,7 +2038,7 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                view Counter() {
+                page Counter() {
                   for v0 in 1..=3 {
                     write_string(v0.to_string())
                     write(" ")
@@ -2087,7 +2087,7 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                view GreetingCard() {
+                page GreetingCard() {
                   let v0 = "Hello from hop!" in {
                     write("<div class=\"card\">\n")
                     write("<p>")
@@ -2141,7 +2141,7 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                view TestMainComp() {
+                page TestMainComp() {
                   write("<div data-hop-id=\"test/card-comp\">")
                   let v0 = "Hello World" in {
                     write("<h2>")
@@ -2195,7 +2195,7 @@ mod tests {
             ),
             expect![[r#"
                 -- before --
-                view RenderHtml(
+                page RenderHtml(
                   safe_content@v0: Fragment,
                   user_input@v1: String,
                 ) {
@@ -2271,7 +2271,7 @@ mod tests {
                   age: Int,
                   active: Bool,
                 }
-                view UserProfile(user@v0: test::User) {
+                page UserProfile(user@v0: test::User) {
                   write("<div>")
                   write_string(v0.name)
                   write("</div>")
@@ -2341,7 +2341,7 @@ mod tests {
                   name: String,
                   age: Int,
                 }
-                view CreateUser() {
+                page CreateUser() {
                   write("<div>")
                   write_string(User {name: "John", age: 30}.name)
                   write("</div>")
@@ -2397,7 +2397,7 @@ mod tests {
                   value: Int,
                   next: Option[test::Node],
                 }
-                view Test(node@v0: test::Node) {
+                page Test(node@v0: test::Node) {
                   write_string(v0.value.to_string())
                 }
 
@@ -2461,7 +2461,7 @@ mod tests {
                   Cons {head: Int, tail: test::IntList},
                   Nil,
                 }
-                view Test() {
+                page Test() {
                   write("hello")
                 }
 
@@ -2507,7 +2507,7 @@ mod tests {
                   value: Int,
                   next: Option[test::Node],
                 }
-                view Test() {
+                page Test() {
                   let v0 = Node {
                     value: 2,
                     next: Option[test::Node]::Some(Node {
@@ -2589,7 +2589,7 @@ mod tests {
                   Green,
                   Blue,
                 }
-                view ColorName(color@v0: test::Color) {
+                page ColorName(color@v0: test::Color) {
                   write_string(match v0 {
                     Color::Red => "red",
                     Color::Green => "green",
@@ -2647,7 +2647,7 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                view IsActive(active@v0: Bool) {
+                page IsActive(active@v0: Bool) {
                   write_string(match v0 {true => "yes", false => "no"})
                 }
 
@@ -2682,7 +2682,7 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                view CheckOption(opt@v0: Option[Int]) {
+                page CheckOption(opt@v0: Option[Int]) {
                   write_string(match v0 {
                     Some(_) => "has value",
                     None => "empty",
@@ -2761,7 +2761,7 @@ mod tests {
             ),
             expect![[r#"
                 -- before --
-                view CheckNestedOption(opt@v0: Option[Option[Bool]]) {
+                page CheckNestedOption(opt@v0: Option[Option[Bool]]) {
                   write_string(match v0 {
                     Some(v1) => match v1 {
                       Some(v2) => match v2 {
@@ -2836,7 +2836,7 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                view LetExpr(name@v0: String) {
+                page LetExpr(name@v0: String) {
                   write_string(let v1 = v0 in v1)
                 }
 
@@ -2882,7 +2882,7 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                view DisplayOption(opt@v0: Option[String]) {
+                page DisplayOption(opt@v0: Option[String]) {
                   match v0 {
                     Some(v1) => {
                       write("<span>Found: ")
@@ -2964,7 +2964,7 @@ mod tests {
             ),
             expect![[r#"
                 -- before --
-                view TestOptionLiteral(
+                page TestOptionLiteral(
                   opt1@v0: Option[String],
                   opt2@v1: Option[String],
                 ) {
@@ -3039,7 +3039,7 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                view TestInlineMatch() {
+                page TestInlineMatch() {
                   let v0 = Option[String]::Some("world") in {
                     match v0 {
                       Some(v1) => {
@@ -3118,7 +3118,7 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                view Test() {
+                page Test() {
                   match Option[String]::Some("x") {
                     Some(v0) => {
                       match Option[String]::Some(v0) {
@@ -3200,7 +3200,7 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                view IsActive(active@v0: Bool) {
+                page IsActive(active@v0: Bool) {
                   write_string(match (!v0) {true => "yes", false => "no"})
                 }
 
@@ -3254,7 +3254,7 @@ mod tests {
                   Success {value: Int},
                   Failure {message: String},
                 }
-                view ShowOutcome(r@v0: test::Outcome) {
+                page ShowOutcome(r@v0: test::Outcome) {
                   write("<div>")
                   let v1 = Outcome::Success {value: 42} in {
                     write_string("Created Ok!")
@@ -3324,7 +3324,7 @@ mod tests {
                   Success {value: String},
                   Failure {message: String},
                 }
-                view ShowOutcome(r@v0: test::Outcome) {
+                page ShowOutcome(r@v0: test::Outcome) {
                   match v0 {
                     Outcome::Success(value: v1) => {
                       write("Value: ")
@@ -3391,7 +3391,7 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                view Test() {
+                page Test() {
                   let v0 = {
                     write("<b>hi</b>")
                   } in {
@@ -3436,7 +3436,7 @@ mod tests {
                 fn Frag() -> Fragment {
                   write("<b>hi</b>")
                 }
-                view Test() {
+                page Test() {
                   let v0 = {
                     call Frag()
                   } in {
@@ -3489,7 +3489,7 @@ mod tests {
                 fn format_price(price@v0: Int) -> Int {
                   v0
                 }
-                view Test() {
+                page Test() {
                   write_string(call format_price(price = 5).to_string())
                 }
 
@@ -3543,7 +3543,7 @@ mod tests {
                 fn foo(x@v0: Int) -> Int {
                   (v0 + 10)
                 }
-                view Test() {
+                page Test() {
                   write("<div>")
                   for v1 in 0..=call foo(x = -7) {
                     write_string(v1.to_string())

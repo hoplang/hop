@@ -1,8 +1,8 @@
 use super::parsed_ast::{
     self, ParsedAst, ParsedAttribute, ParsedComponentDeclaration, ParsedDeclaration,
     ParsedEnumDeclaration, ParsedEnumDeclarationVariant, ParsedFunctionDeclaration,
-    ParsedImportDeclaration, ParsedRecordDeclaration, ParsedRecordDeclarationField,
-    ParsedViewDeclaration, RestSpreadTarget,
+    ParsedImportDeclaration, ParsedPageDeclaration, ParsedRecordDeclaration,
+    ParsedRecordDeclarationField, RestSpreadTarget,
 };
 use super::parsed_node::{ParsedLetBinding, ParsedLoopSource, ParsedMatchCase, ParsedNode};
 use super::token_tree::{TokenTree, parse_tree};
@@ -92,7 +92,14 @@ pub fn parse(
                 if let Some(view) =
                     parse_view_declaration(&mut iter, &mut comments, errors, pub_range)
                 {
-                    declarations.push(ParsedDeclaration::View(view));
+                    declarations.push(ParsedDeclaration::Page(view));
+                }
+            }
+            Some((expr::Token::Page, _)) => {
+                if let Some(page) =
+                    parse_page_declaration(&mut iter, &mut comments, errors, pub_range)
+                {
+                    declarations.push(ParsedDeclaration::Page(page));
                 }
             }
             Some((expr::Token::Fn, _)) => {
@@ -623,25 +630,17 @@ fn parse_component_declaration(
     })
 }
 
-/// Parse an view declaration from a document cursor.
-///
-/// Syntax: `view Name(param: Type, ...) { ... }`
-///
-/// Returns `None` if parsing fails.
-fn parse_view_declaration(
+fn parse_page_or_view_header(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut Vec<ParseError>,
-    pub_range: Option<DocumentRange>,
-) -> Option<ParsedViewDeclaration> {
-    // Consume the 'view' keyword
-    let Some((expr::Token::View, keyword_range)) =
-        expr::tokenizer::next_collecting_comments(iter, comments, errors)
-    else {
-        return None;
-    };
-
-    // Parse the view name (must be PascalCase)
+    keyword_range: &DocumentRange,
+) -> Option<(
+    TypeName,
+    DocumentRange,
+    Vec<parsed_ast::ParsedParameter>,
+    DocumentRange,
+)> {
     let (name_str, name_range) =
         match expr::tokenizer::next_collecting_comments(iter, comments, errors) {
             Some((expr::Token::TypeName(name_str), range)) => (name_str, range),
@@ -655,13 +654,12 @@ fn parse_view_declaration(
             None => {
                 errors.push(ParseError::new(
                     ParseErrorKind::ExpectedTypeNameButGotEof {},
-                    keyword_range,
+                    keyword_range.clone(),
                 ));
                 return None;
             }
         };
 
-    // Parse parameters (parentheses are optional if no parameters)
     let (params, params_range) = if let Some(left_paren) =
         expr::tokenizer::advance_if(iter, comments, errors, expr::Token::LeftParen)
     {
@@ -709,15 +707,53 @@ fn parse_view_declaration(
         &expr::Token::LeftBrace,
     )?;
 
-    let mut children = Vec::new();
-    let mut spreads = Vec::new();
-    let mut tokenizer = Tokenizer::new();
+    let name = match TypeName::new(&name_str) {
+        Ok(name) => name,
+        Err(error) => {
+            errors.push(ParseError::new(
+                ParseErrorKind::InvalidTypeName { error },
+                name_range,
+            ));
+            return None;
+        }
+    };
 
+    Some((name, name_range, params, body_start))
+}
+
+fn parse_node_sequence(
+    iter: &mut Peekable<DocumentCursor>,
+    comments: &mut VecDeque<DocumentRange>,
+    errors: &mut Vec<ParseError>,
+    spreads: &mut Vec<SpreadOccurrence>,
+) -> Vec<ParsedNode> {
+    let mut nodes = Vec::new();
+    let mut tokenizer = Tokenizer::new();
     while let Some(tree) = parse_tree(&mut tokenizer, iter, errors) {
-        if let Some(node) = construct_node(tree, comments, errors, &mut spreads) {
-            children.push(node);
+        if let Some(node) = construct_node(tree, comments, errors, spreads) {
+            nodes.push(node);
         }
     }
+    nodes
+}
+
+fn parse_view_declaration(
+    iter: &mut Peekable<DocumentCursor>,
+    comments: &mut VecDeque<DocumentRange>,
+    errors: &mut Vec<ParseError>,
+    pub_range: Option<DocumentRange>,
+) -> Option<ParsedPageDeclaration> {
+    let Some((expr::Token::View, keyword_range)) =
+        expr::tokenizer::next_collecting_comments(iter, comments, errors)
+    else {
+        return None;
+    };
+
+    let (name, name_range, params, body_start) =
+        parse_page_or_view_header(iter, comments, errors, &keyword_range)?;
+
+    let mut spreads = Vec::new();
+    let body = parse_node_sequence(iter, comments, errors, &mut spreads);
 
     let body_end = expr::tokenizer::expect_opposite(
         iter,
@@ -737,23 +773,116 @@ fn parse_view_declaration(
             occ.target.spread_range().clone(),
         ));
     }
-    let name = match TypeName::new(&name_str) {
-        Ok(name) => name,
-        Err(error) => {
-            errors.push(ParseError::new(
-                ParseErrorKind::InvalidTypeName { error },
-                name_range,
-            ));
-            return None;
-        }
-    };
-    Some(ParsedViewDeclaration {
+    Some(ParsedPageDeclaration {
         name,
         name_range,
         params,
-        children,
+        head: Vec::new(),
+        body,
         range,
         pub_range,
+        is_view: true,
+    })
+}
+
+fn parse_page_declaration(
+    iter: &mut Peekable<DocumentCursor>,
+    comments: &mut VecDeque<DocumentRange>,
+    errors: &mut Vec<ParseError>,
+    pub_range: Option<DocumentRange>,
+) -> Option<ParsedPageDeclaration> {
+    let Some((expr::Token::Page, keyword_range)) =
+        expr::tokenizer::next_collecting_comments(iter, comments, errors)
+    else {
+        return None;
+    };
+
+    let (name, name_range, params, outer_body_start) =
+        parse_page_or_view_header(iter, comments, errors, &keyword_range)?;
+
+    let mut spreads = Vec::new();
+
+    let head = if let Some((expr::Token::Identifier(word), _)) = expr::tokenizer::next_if(
+        iter,
+        comments,
+        errors,
+        |(token, _)| matches!(token, expr::Token::Identifier(word) if word.as_str() == "head"),
+    ) {
+        debug_assert_eq!(word.as_str(), "head");
+        let head_start = expr::tokenizer::expect_token(
+            iter,
+            comments,
+            errors,
+            &name_range,
+            &expr::Token::LeftBrace,
+        )?;
+        let head = parse_node_sequence(iter, comments, errors, &mut spreads);
+        expr::tokenizer::expect_opposite(
+            iter,
+            comments,
+            errors,
+            &expr::Token::LeftBrace,
+            &head_start,
+        )?;
+        head
+    } else {
+        Vec::new()
+    };
+
+    let Some((expr::Token::Identifier(word), body_keyword_range)) = expr::tokenizer::next_if(
+        iter,
+        comments,
+        errors,
+        |(token, _)| matches!(token, expr::Token::Identifier(word) if word.as_str() == "body"),
+    ) else {
+        let range = match expr::tokenizer::peek_past_comments(iter) {
+            Some((_, range)) => range,
+            None => name_range.clone(),
+        };
+        errors.push(ParseError::new(
+            ParseErrorKind::ExpectedPageBodyBlock {},
+            range,
+        ));
+        return None;
+    };
+    debug_assert_eq!(word.as_str(), "body");
+    let body_start = expr::tokenizer::expect_token(
+        iter,
+        comments,
+        errors,
+        &body_keyword_range,
+        &expr::Token::LeftBrace,
+    )?;
+    let body = parse_node_sequence(iter, comments, errors, &mut spreads);
+    expr::tokenizer::expect_opposite(iter, comments, errors, &expr::Token::LeftBrace, &body_start)?;
+
+    let outer_body_end = expr::tokenizer::expect_opposite(
+        iter,
+        comments,
+        errors,
+        &expr::Token::LeftBrace,
+        &outer_body_start,
+    )?;
+    let start_range = pub_range.clone().unwrap_or_else(|| keyword_range.clone());
+    let range = start_range.to(outer_body_end);
+    // Pages cannot declare a rest parameter, so any spread in head/body fails to name one.
+    for occ in &spreads {
+        errors.push(ParseError::new(
+            ParseErrorKind::SpreadNotDeclaredRest {
+                name: occ.spread_name.clone(),
+            },
+            occ.target.spread_range().clone(),
+        ));
+    }
+    Some(ParsedPageDeclaration {
+        name,
+        name_range,
+        params,
+        head,
+        body,
+        range,
+        pub_range,
+        is_view: false,
     })
 }
 
@@ -889,10 +1018,6 @@ fn construct_node(
             // ClosingTags are not present in the token tree
             unreachable!()
         }
-        Token::Doctype { range } => Some(ParsedNode::Doctype {
-            value: range.to_cheap_string(),
-            range,
-        }),
         Token::Text { range } => Some(ParsedNode::Text { range }),
         Token::Newline { range } => Some(ParsedNode::Newline { range }),
         Token::TextExpression { content, range } => {
@@ -1845,8 +1970,8 @@ mod tests {
     }
 
     #[test]
-    fn accepts_doctype_tags_inside_components() {
-        accept(
+    fn rejects_doctype_tags_inside_components() {
+        reject(
             indoc! {"
                 component Main(foo: String) {
                     <!DOCTYPE html>
@@ -1858,16 +1983,10 @@ mod tests {
                 }
             "},
             expect![[r#"
-                component Main(foo: String) {
-                  <!DOCTYPE html>
-                  <html>
-                    <body>
-                      <div>
-                        hello world
-                      </div>
-                    </body>
-                  </html>
-                }
+                error: <!doctype> declarations are not allowed: one is inserted automatically
+                1 | component Main(foo: String) {
+                2 |     <!DOCTYPE html>
+                  |     ^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -3731,6 +3850,11 @@ mod tests {
                 error: Type name 'Error' is a reserved word
                 1 | view Error() {
                   |      ^^^^^
+
+                error: Unexpected text at top level
+                1 | view Error() {
+                2 |     <div>Hello</div>
+                  |     ^
             "#]],
         );
     }
@@ -3820,6 +3944,109 @@ mod tests {
                 error: Default values are not allowed on view parameters
                 1 | view Index(name: String = "World") {
                   |                         ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_page_declaration() {
+        accept(
+            indoc! {r#"
+                page Index(name: String) {
+                    head {
+                        <title>My page</title>
+                    }
+                    body {
+                        <div>Hello {name}</div>
+                    }
+                }
+            "#},
+            expect![[r#"
+                page Index(name: String) {
+                  head {
+                    <title>
+                      My page
+                    </title>
+                  }
+                  body {
+                    <div>
+                      Hello {name}
+                    </div>
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_page_declaration_without_head() {
+        accept(
+            indoc! {"
+                page Index() {
+                    body {
+                        <div>Hello</div>
+                    }
+                }
+            "},
+            expect![[r#"
+                page Index {
+                  body {
+                    <div>
+                      Hello
+                    </div>
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_page_declaration_without_body() {
+        reject(
+            indoc! {"
+                page Index() {
+                    head {
+                        <title>My page</title>
+                    }
+                }
+            "},
+            expect![[r#"
+                error: Expected a 'body' block
+                4 |     }
+                5 | }
+                  | ^
+
+                error: Unexpected text at top level
+                4 |     }
+                5 | }
+                  | ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_page_declaration_with_body_before_head() {
+        reject(
+            indoc! {"
+                page Index() {
+                    body {
+                        <div>Hello</div>
+                    }
+                    head {
+                        <title>My page</title>
+                    }
+                }
+            "},
+            expect![[r#"
+                error: Expected token '}' but got 'head'
+                4 |     }
+                5 |     head {
+                  |     ^^^^
+
+                error: Unexpected text at top level
+                4 |     }
+                5 |     head {
+                  |          ^
             "#]],
         );
     }

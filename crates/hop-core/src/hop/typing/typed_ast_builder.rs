@@ -1,33 +1,30 @@
 use std::cell::RefCell;
 use std::sync::Arc;
 
-use super::inlined_ast::InlinedViewDeclaration;
-use super::inlined_node::InlinedNode;
 use crate::document::CheapString;
 use crate::expr::Type;
 use crate::expr::TypedExpr;
+use crate::hop::assembly::AssembledPageDeclaration;
 use crate::hop::typing::typed_ast::TypedParameter;
-use crate::hop::typing::typed_node::{TypedAttribute, TypedAttributeValue, TypedLoopSource};
+use crate::hop::typing::typed_node::{
+    TypedAttribute, TypedAttributeValue, TypedLoopSource, TypedNode,
+};
 use crate::html::HtmlElement;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 
-pub fn build_inlined_view_no_params<F>(tag_name: &str, children_fn: F) -> InlinedViewDeclaration
+pub fn build_page_no_params<F>(page_name: &str, children_fn: F) -> AssembledPageDeclaration
 where
-    F: FnOnce(&mut InlinedAstBuilder),
+    F: FnOnce(&mut TypedAstBuilder),
 {
-    let mut builder = InlinedAstBuilder::new(vec![]);
+    let mut builder = TypedAstBuilder::new(vec![]);
     children_fn(&mut builder);
-    builder.build(tag_name)
+    builder.build(page_name)
 }
 
-pub fn build_inlined_view<F, P, T>(
-    view_name: &str,
-    params: P,
-    children_fn: F,
-) -> InlinedViewDeclaration
+pub fn build_page<F, P, T>(page_name: &str, params: P, children_fn: F) -> AssembledPageDeclaration
 where
-    F: FnOnce(&mut InlinedAstBuilder),
+    F: FnOnce(&mut TypedAstBuilder),
     P: IntoIterator<Item = (&'static str, T)>,
     T: Into<Arc<Type>>,
 {
@@ -35,18 +32,18 @@ where
         .into_iter()
         .map(|(k, v)| (k.to_string(), v.into()))
         .collect();
-    let mut builder = InlinedAstBuilder::new(params_owned);
+    let mut builder = TypedAstBuilder::new(params_owned);
     children_fn(&mut builder);
-    builder.build(view_name)
+    builder.build(page_name)
 }
 
-pub struct InlinedAstBuilder {
+pub struct TypedAstBuilder {
     var_stack: RefCell<Vec<(String, Arc<Type>)>>,
     params: Vec<TypedParameter>,
-    children: Vec<InlinedNode>,
+    children: Vec<TypedNode>,
 }
 
-impl InlinedAstBuilder {
+impl TypedAstBuilder {
     fn new(params: Vec<(String, Arc<Type>)>) -> Self {
         let initial_vars = params.clone();
 
@@ -72,9 +69,9 @@ impl InlinedAstBuilder {
         }
     }
 
-    fn build(self, view_name: &str) -> InlinedViewDeclaration {
-        InlinedViewDeclaration {
-            name: TypeName::new(view_name).unwrap(),
+    fn build(self, page_name: &str) -> AssembledPageDeclaration {
+        AssembledPageDeclaration {
+            name: TypeName::new(page_name).unwrap(),
             params: self.params,
             children: self.children,
         }
@@ -107,7 +104,7 @@ impl InlinedAstBuilder {
     }
 
     pub fn text(&mut self, s: &str) {
-        self.children.push(InlinedNode::Text {
+        self.children.push(TypedNode::Text {
             value: CheapString::new(s.to_string()),
         });
     }
@@ -115,7 +112,7 @@ impl InlinedAstBuilder {
     pub fn text_expr(&mut self, expr: TypedExpr) {
         assert_eq!(*expr.as_type(), Type::String, "{}", expr);
         self.children
-            .push(InlinedNode::TextExpression { expression: expr });
+            .push(TypedNode::TextExpression { expression: expr });
     }
 
     pub fn if_node<F>(&mut self, cond: TypedExpr, children_fn: F)
@@ -125,7 +122,7 @@ impl InlinedAstBuilder {
         assert_eq!(*cond.as_type(), Type::Bool, "{}", cond);
         let mut inner_builder = self.new_scoped();
         children_fn(&mut inner_builder);
-        self.children.push(InlinedNode::If {
+        self.children.push(TypedNode::If {
             condition: cond,
             children: inner_builder.children,
         });
@@ -150,16 +147,10 @@ impl InlinedAstBuilder {
 
         self.var_stack.borrow_mut().pop();
 
-        self.children.push(InlinedNode::For {
+        self.children.push(TypedNode::For {
             var_name: Some(VarName::try_from(var.to_string()).unwrap()),
             source: TypedLoopSource::Array(array),
             children,
-        });
-    }
-
-    pub fn doctype(&mut self, value: &str) {
-        self.children.push(InlinedNode::Doctype {
-            value: CheapString::new(value.to_string()),
         });
     }
 
@@ -182,10 +173,11 @@ impl InlinedAstBuilder {
             })
             .collect();
 
-        self.children.push(InlinedNode::Html {
+        self.children.push(TypedNode::Html {
             element: HtmlElement::parse(tag_name)
                 .expect("builder html() called with an unrecognized tag name"),
             attributes: attrs,
+            rest_spread: None,
             children: inner_builder.children,
         });
     }
@@ -243,7 +235,7 @@ impl InlinedAstBuilder {
         let mut false_builder = self.new_scoped();
         false_children_fn(&mut false_builder);
 
-        self.children.push(InlinedNode::Match {
+        self.children.push(TypedNode::Match {
             match_: Match::Bool {
                 subject: Box::new(subject),
                 true_body: Box::new(true_builder.children),
@@ -258,18 +250,18 @@ mod tests {
     use super::*;
     use expect_test::{Expect, expect};
 
-    fn check(component: InlinedViewDeclaration, expected: Expect) {
-        expected.assert_eq(&format!("{}\n", component.to_doc().pretty(60)));
+    fn check(page: AssembledPageDeclaration, expected: Expect) {
+        expected.assert_eq(&format!("{}\n", page.to_doc().pretty(60)));
     }
 
     #[test]
     fn simple_text() {
         check(
-            build_inlined_view_no_params("Hello", |b| {
+            build_page_no_params("Hello", |b| {
                 b.text("Hello, World!");
             }),
             expect![[r#"
-                view Hello() {
+                page Hello() {
                   Hello, World!
                 }
             "#]],
@@ -279,13 +271,13 @@ mod tests {
     #[test]
     fn html_with_attributes() {
         check(
-            build_inlined_view_no_params("Card", |b| {
+            build_page_no_params("Card", |b| {
                 b.div(vec![("class", b.attr_str("container"))], |b| {
                     b.text("Content");
                 });
             }),
             expect![[r#"
-                view Card() {
+                page Card() {
                   <div class="container">
                     Content
                   </div>
@@ -297,12 +289,12 @@ mod tests {
     #[test]
     fn component_with_params() {
         check(
-            build_inlined_view("Greeting", [("name", Type::String)], |b| {
+            build_page("Greeting", [("name", Type::String)], |b| {
                 b.text("Hello, ");
                 b.text_expr(b.var_expr("name"));
             }),
             expect![[r#"
-                view Greeting(name: String) {
+                page Greeting(name: String) {
                   Hello, 
                   {name}
                 }
@@ -313,7 +305,7 @@ mod tests {
     #[test]
     fn for_loop_with_scoped_variable() {
         check(
-            build_inlined_view(
+            build_page(
                 "ItemList",
                 [("items", Type::Array(Arc::new(Type::String)))],
                 |b| {
@@ -327,7 +319,7 @@ mod tests {
                 },
             ),
             expect![[r#"
-                view ItemList(items: Array[String]) {
+                page ItemList(items: Array[String]) {
                   <ul>
                     <for {item in items}>
                       <li>
@@ -343,7 +335,7 @@ mod tests {
     #[test]
     fn if_conditional() {
         check(
-            build_inlined_view("Toggle", [("visible", Type::Bool)], |b| {
+            build_page("Toggle", [("visible", Type::Bool)], |b| {
                 b.if_node(b.var_expr("visible"), |b| {
                     b.div(vec![], |b| {
                         b.text("Shown");
@@ -351,7 +343,7 @@ mod tests {
                 });
             }),
             expect![[r#"
-                view Toggle(visible: Bool) {
+                page Toggle(visible: Bool) {
                   <if {visible}>
                     <div>
                       Shown
@@ -365,7 +357,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "Variable 'missing' not found in scope")]
     fn panics_on_undefined_variable() {
-        build_inlined_view_no_params("Bad", |b| {
+        build_page_no_params("Bad", |b| {
             b.text_expr(b.var_expr("missing"));
         });
     }
@@ -373,7 +365,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "Variable 'item' not found in scope")]
     fn loop_variable_not_accessible_outside_loop() {
-        build_inlined_view(
+        build_page(
             "Bad",
             [("items", Type::Array(Arc::new(Type::String)))],
             |b| {

@@ -1004,9 +1004,9 @@ mod tests {
     #[test]
     fn accepts_record_literal_with_spread_of_field_access() {
         accept(
-            "State {...app.state, page: 1}",
+            "State {...app.state, num: 1}",
             expect![[r#"
-                State {...app.state, page: 1}
+                State {...app.state, num: 1}
             "#]],
         );
     }

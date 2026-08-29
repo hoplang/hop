@@ -113,6 +113,18 @@ impl Display for FunctionName {
     }
 }
 
+impl PartialOrd for FunctionName {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for FunctionName {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.as_str().cmp(other.as_str())
+    }
+}
+
 impl AsRef<str> for FunctionName {
     fn as_ref(&self) -> &str {
         self.value.as_str()

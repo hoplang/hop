@@ -3,17 +3,17 @@ use crate::expr::typing::r#type::Type;
 use crate::ir::ir_var::IrVar;
 
 use super::pure_module::{
-    PureExpr, PureForSource, PureFunctionDeclaration, PureModule, PureViewDeclaration,
+    PureExpr, PureForSource, PureFunctionDeclaration, PureModule, PurePageDeclaration,
 };
 use super::writer_module::{
     WriterArgument, WriterExpr, WriterForSource, WriterFunctionBody, WriterFunctionDeclaration,
-    WriterModule, WriterStatement, WriterViewDeclaration,
+    WriterModule, WriterPageDeclaration, WriterStatement,
 };
 
 /// Lower a whole PureModule into a WriterModule.
 pub fn lower_pure(module: PureModule) -> WriterModule {
     WriterModule {
-        views: module.views.into_iter().map(lower_view).collect(),
+        pages: module.pages.into_iter().map(lower_page).collect(),
         functions: module.functions.into_iter().map(lower_function).collect(),
         records: module.records,
         enums: module.enums,
@@ -21,10 +21,10 @@ pub fn lower_pure(module: PureModule) -> WriterModule {
     }
 }
 
-fn lower_view(decl: PureViewDeclaration) -> WriterViewDeclaration {
+fn lower_page(decl: PurePageDeclaration) -> WriterPageDeclaration {
     let mut body = Vec::new();
     lower_output(decl.body, &mut body);
-    WriterViewDeclaration {
+    WriterPageDeclaration {
         name: decl.name,
         parameters: decl.parameters,
         body,
@@ -87,7 +87,7 @@ fn lower_output(expr: PureExpr, out: &mut Vec<WriterStatement>) {
             kind,
             ..
         } => {
-            debug_assert!(
+            assert!(
                 matches!(*kind, Type::Fragment),
                 "non-Fragment function call in output position: {}",
                 function_name
@@ -124,7 +124,7 @@ fn lower_output(expr: PureExpr, out: &mut Vec<WriterStatement>) {
         }
 
         PureExpr::VariableReference { ref kind, .. } | PureExpr::FieldAccess { ref kind, .. } => {
-            debug_assert!(
+            assert!(
                 matches!(**kind, Type::Fragment),
                 "non-Fragment expression in output position: {:?}",
                 expr

@@ -3,9 +3,6 @@ use std::fmt::{self, Display};
 
 #[derive(Debug)]
 pub enum Token {
-    Doctype {
-        range: DocumentRange,
-    },
     Comment {
         range: DocumentRange,
     },
@@ -75,8 +72,7 @@ pub enum TokenizedAttributeValue {
 impl Token {
     pub fn range(&self) -> &DocumentRange {
         match self {
-            Token::Doctype { range }
-            | Token::Comment { range }
+            Token::Comment { range }
             | Token::OpeningTag { range, .. }
             | Token::ClosingTag { range, .. }
             | Token::Text { range }
@@ -118,9 +114,6 @@ impl Display for Token {
             }
             Token::Newline { .. } => {
                 write!(f, "Newline")
-            }
-            Token::Doctype { .. } => {
-                write!(f, "Doctype")
             }
             Token::ClosingTag { tag_name, .. } => {
                 writeln!(f, "ClosingTag(")?;

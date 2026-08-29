@@ -33,9 +33,9 @@ pub fn find_node_at_position(ast: &ParsedAst, position: DocumentPosition) -> Opt
         }
     }
 
-    for n in ast.get_view_declarations() {
+    for n in ast.get_page_declarations() {
         if n.range.contains_position(position) {
-            for child in &n.children {
+            for child in n.head.iter().chain(n.body.iter()) {
                 if let Some(node) = find_node_at_position_in_node(child, position) {
                     return Some(node);
                 }
@@ -227,24 +227,6 @@ mod tests {
                 ^
             "},
             expect!["No node found at position"],
-        );
-    }
-
-    #[test]
-    fn should_find_doctype() {
-        check_find_node_at_position(
-            indoc! {"
-                component Main {
-                    <!DOCTYPE html>
-                     ^
-                    <div>Content</div>
-                }
-            "},
-            expect![[r#"
-                range
-                2 |     <!DOCTYPE html>
-                  |     ^^^^^^^^^^^^^^^
-            "#]],
         );
     }
 

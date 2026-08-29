@@ -1,8 +1,8 @@
 use super::parsed_ast::{
     ParsedAst, ParsedAttribute, ParsedAttributeValue, ParsedComponentDeclaration,
     ParsedDeclaration, ParsedEnumDeclaration, ParsedEnumDeclarationVariant,
-    ParsedFunctionDeclaration, ParsedImportDeclaration, ParsedParameter, ParsedRecordDeclaration,
-    ParsedRecordDeclarationField, ParsedViewDeclaration,
+    ParsedFunctionDeclaration, ParsedImportDeclaration, ParsedPageDeclaration, ParsedParameter,
+    ParsedRecordDeclaration, ParsedRecordDeclarationField,
 };
 use super::parsed_node::{ParsedLetBinding, ParsedMatchCase, ParsedNode};
 use crate::document::DocumentRange;
@@ -129,7 +129,7 @@ fn format_declaration<'a>(
         ParsedDeclaration::Component(component) => {
             format_component_declaration(arena, component, comments)
         }
-        ParsedDeclaration::View(view) => format_view_declaration(arena, view, comments),
+        ParsedDeclaration::Page(page) => format_page_declaration(arena, page, comments),
         ParsedDeclaration::Function(function) => {
             format_function_declaration(arena, function, comments)
         }
@@ -361,25 +361,25 @@ fn format_component_declaration<'a>(
         .append(arena.text("}"))
 }
 
-fn format_view_declaration<'a>(
+fn format_page_declaration<'a>(
     arena: &'a Arena<'a>,
-    view: &'a ParsedViewDeclaration,
+    page: &'a ParsedPageDeclaration,
     comments: &mut VecDeque<&'a DocumentRange>,
 ) -> DocBuilder<'a, Arena<'a>> {
-    let leading_comments = drain_comments_before(arena, comments, view.range.start());
+    let leading_comments = drain_comments_before(arena, comments, page.range.start());
 
     // Format parameters (omit parentheses if no parameters)
-    let params_doc = if view.params.is_empty() {
+    let params_doc = if page.params.is_empty() {
         arena.nil()
     } else {
         let mut params_inner = arena.nil();
-        let force_multiline = view.params.len() >= 2;
+        let force_multiline = page.params.len() >= 2;
         let line_break = if force_multiline {
             arena.hardline()
         } else {
             arena.line()
         };
-        for (i, param) in view.params.iter().enumerate() {
+        for (i, param) in page.params.iter().enumerate() {
             if i > 0 {
                 params_inner = params_inner
                     .append(arena.text(","))
@@ -406,19 +406,47 @@ fn format_view_declaration<'a>(
         }
     };
 
-    let pub_prefix = if view.pub_range.is_some() {
+    let pub_prefix = if page.pub_range.is_some() {
         arena.text("pub ")
     } else {
         arena.nil()
     };
+
+    let keyword = if page.is_view { "view" } else { "page" };
+
+    let body_doc = if page.is_view {
+        format_children(arena, &page.body, comments)
+    } else {
+        let mut inner = arena.nil();
+        if !page.head.is_empty() {
+            inner = inner
+                .append(arena.text("head {"))
+                .append(format_children(arena, &page.head, comments))
+                .append(arena.text("}"))
+                .append(arena.hardline());
+        }
+        inner
+            .append(arena.text("body {"))
+            .append(format_children(arena, &page.body, comments))
+            .append(arena.text("}"))
+    };
+
     leading_comments
         .append(pub_prefix)
-        .append(arena.text("view"))
+        .append(arena.text(keyword))
         .append(arena.text(" "))
-        .append(arena.text(view.name.as_str()))
+        .append(arena.text(page.name.as_str()))
         .append(params_doc)
         .append(arena.text(" {"))
-        .append(format_children(arena, &view.children, comments))
+        .append(if page.is_view {
+            body_doc
+        } else {
+            arena
+                .hardline()
+                .append(body_doc)
+                .nest(2)
+                .append(arena.hardline())
+        })
         .append(arena.text("}"))
 }
 
@@ -713,7 +741,6 @@ fn format_node<'a>(
                 .append(arena.text("</let>"))
         }
         ParsedNode::Comment { range } => arena.text(range.as_str()),
-        ParsedNode::Doctype { value, .. } => arena.text(value.as_str()),
         ParsedNode::Match { subject, cases, .. } => {
             let cases_doc = if cases.is_empty() {
                 arena.nil()

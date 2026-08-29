@@ -28,7 +28,6 @@ pub struct ComponentSignature {
     pub module: DocumentId,
     pub params: Vec<ParamEntry>,
     pub tail: Tail,
-    pub is_recursive: bool,
 }
 
 #[derive(Debug, Clone)]

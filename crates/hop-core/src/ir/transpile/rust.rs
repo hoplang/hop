@@ -10,7 +10,7 @@ use crate::expr::typing::type_registry::{ResolvedType, TypeRegistry};
 use crate::ir::ir_var::IrVar;
 use crate::ir::writer_module::{
     WriterArgument, WriterExpr, WriterForSource, WriterFunctionBody, WriterFunctionDeclaration,
-    WriterModule, WriterStatement, WriterViewDeclaration,
+    WriterModule, WriterPageDeclaration, WriterStatement,
 };
 use crate::symbols::field_name::FieldName;
 use crate::symbols::function_name::FunctionName;
@@ -374,20 +374,20 @@ impl RustTranspiler {
         }
     }
 
-    fn transpile_view_struct<'a>(
+    fn transpile_page_struct<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        view: &'a WriterViewDeclaration,
+        page: &'a WriterPageDeclaration,
     ) -> Doc<'a> {
-        let struct_name = view.name.as_str();
-        if view.parameters.is_empty() {
+        let struct_name = page.name.as_str();
+        if page.parameters.is_empty() {
             arena
                 .text("pub struct ")
                 .append(arena.text(struct_name))
                 .append(arena.text(" {}"))
         } else {
             let fields = arena.intersperse(
-                view.parameters.iter().map(|param| {
+                page.parameters.iter().map(|param| {
                     arena
                         .text("pub ")
                         .append(arena.text(Self::escape_ident(param.name().as_str())))
@@ -428,7 +428,7 @@ impl Transpiler for RustTranspiler {
 
         let arena = &Arena::new();
 
-        let views = &module.views;
+        let pages = &module.pages;
         let records = &module.records;
 
         let mut result = arena.nil();
@@ -510,10 +510,10 @@ impl Transpiler for RustTranspiler {
                 .append(arena.line());
         }
 
-        // Add view struct definitions
-        for view in views {
+        // Add page struct definitions
+        for page in pages {
             result = result
-                .append(self.transpile_view_struct(arena, view))
+                .append(self.transpile_page_struct(arena, page))
                 .append(arena.line())
                 .append(arena.line());
         }
@@ -525,10 +525,10 @@ impl Transpiler for RustTranspiler {
                 .append(arena.line());
         }
 
-        // Transpile each view's View impl
-        for (i, view) in views.iter().enumerate() {
-            result = result.append(self.transpile_view(arena, &view.name, view));
-            if i < views.len() - 1 {
+        // Transpile each page's View impl
+        for (i, page) in pages.iter().enumerate() {
+            result = result.append(self.transpile_page(arena, &page.name, page));
+            if i < pages.len() - 1 {
                 result = result.append(arena.line());
             }
         }
@@ -578,7 +578,7 @@ impl Transpiler for RustTranspiler {
         }
 
         // Prepend View trait definition
-        if !module.views.is_empty() {
+        if !module.pages.is_empty() {
             let view_trait = arena
                 .text("pub trait View {")
                 .append(
@@ -619,11 +619,11 @@ impl Transpiler for RustTranspiler {
         }
     }
 
-    fn transpile_view<'a>(
+    fn transpile_page<'a>(
         &mut self,
         arena: &'a Arena<'a>,
         name: &'a TypeName,
-        view: &'a WriterViewDeclaration,
+        page: &'a WriterPageDeclaration,
     ) -> Doc<'a> {
         let struct_name = name.as_str();
 
@@ -631,9 +631,9 @@ impl Transpiler for RustTranspiler {
         let mut write_body = arena.nil();
 
         // Destructure self into local variables
-        if !view.parameters.is_empty() {
+        if !page.parameters.is_empty() {
             let field_names = arena.intersperse(
-                view.parameters.iter().map(|param| {
+                page.parameters.iter().map(|param| {
                     arena
                         .text(Self::escape_ident(param.name().as_str()))
                         .append(arena.text(": "))
@@ -650,7 +650,7 @@ impl Transpiler for RustTranspiler {
                 .append(arena.hardline());
         }
 
-        write_body = write_body.append(self.transpile_statements(arena, &view.body));
+        write_body = write_body.append(self.transpile_statements(arena, &page.body));
 
         let write_fn = arena
             .text("fn write(self, output: &mut String) {")
@@ -1920,7 +1920,7 @@ mod tests {
             PureModuleBuilder::new().view_no_params("Test", |t| t.raw("<h1>Hello, World!</h1>\n")),
             expect![[r#"
                 -- before --
-                view Test() {
+                page Test() {
                   write("<h1>Hello, World!</h1>\n")
                 }
 
@@ -1961,10 +1961,10 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
-                view First() {
+                page First() {
                   write("<h1>First</h1>")
                 }
-                view Second(title@v0: String) {
+                page Second(title@v0: String) {
                   write_string(v0)
                 }
 
@@ -2033,7 +2033,7 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                view Test(show@v0: Bool) {
+                page Test(show@v0: Bool) {
                   match v0 {
                     true => {
                       write("<h1>Visible</h1>")
@@ -2085,7 +2085,7 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                view Test() {
+                page Test() {
                   for v0 in 1..=3 {
                     write_string(v0.to_string())
                   }
@@ -2146,7 +2146,7 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                view Test() {
+                page Test() {
                   match Option[String]::Some("x") {
                     Some(v0) => {
                       write("some: ")
@@ -2220,7 +2220,7 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                view Test(opt@v0: Option[String]) {
+                page Test(opt@v0: Option[String]) {
                   match v0 {
                     Some(v1) => {
                       write("some: ")
@@ -2298,7 +2298,7 @@ mod tests {
                   value: Int,
                   next: Option[test::Node],
                 }
-                view Test(node@v0: test::Node) {
+                page Test(node@v0: test::Node) {
                   write_string(v0.value.to_string())
                 }
 
@@ -2369,7 +2369,7 @@ mod tests {
                   Cons {head: Int, tail: test::IntList},
                   Nil,
                 }
-                view Test() {
+                page Test() {
                   write("hello")
                 }
 
@@ -2425,7 +2425,7 @@ mod tests {
                   value: Int,
                   next: Option[test::Node],
                 }
-                view Test() {
+                page Test() {
                   let v0 = Node {
                     value: 2,
                     next: Option[test::Node]::Some(Node {
@@ -2512,7 +2512,7 @@ mod tests {
                   Cons {head: Int, tail: test::IntList},
                   Nil,
                 }
-                view Test() {
+                page Test() {
                   let v0 = IntList::Cons {head: 1, tail: IntList::Nil} in {
                     write("done")
                   }
@@ -2572,7 +2572,7 @@ mod tests {
                 record B {
                   a: Option[test::A],
                 }
-                view Test() {
+                page Test() {
                   let v0 = B {
                     a: Option[test::A]::Some(A {
                       b: B {a: Option[test::A]::None},
@@ -2655,7 +2655,7 @@ mod tests {
                     }
                   }
                 }
-                view Test() {
+                page Test() {
                   call Badge(color = Color::Green)
                 }
 
@@ -2715,7 +2715,7 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                view Test() {
+                page Test() {
                   let v0 = {
                     write("<b>hi</b>")
                   } in {
@@ -2772,7 +2772,7 @@ mod tests {
                 fn Frag() -> Fragment {
                   write("<b>hi</b>")
                 }
-                view Test() {
+                page Test() {
                   let v0 = {
                     call Frag()
                   } in {
@@ -2835,7 +2835,7 @@ mod tests {
                 fn format_price(price@v0: Int) -> Int {
                   v0
                 }
-                view Test() {
+                page Test() {
                   write_string(call format_price(price = 5).to_string())
                 }
 
@@ -2908,7 +2908,7 @@ mod tests {
                 fn foo(x@v0: Int) -> Int {
                   (v0 + 10)
                 }
-                view Test() {
+                page Test() {
                   write("<div>")
                   for v1 in 0..=call foo(x = -7) {
                     write_string(v1.to_string())

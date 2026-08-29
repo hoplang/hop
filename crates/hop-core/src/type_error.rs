@@ -85,6 +85,9 @@ pub(crate) enum TypeErrorKind {
     #[error("Unused variable {var_name}")]
     UnusedVariable { var_name: VarName },
 
+    #[error("<{tag}> is not allowed here")]
+    HtmlStructureTagNotAllowed { tag: &'static str },
+
     #[error("Unused import '{import_name}'")]
     UnusedImport { import_name: TypeName },
 
@@ -114,11 +117,8 @@ pub(crate) enum TypeErrorKind {
     #[error("Component `{component}` does not accept attribute `{attr}`")]
     ComponentDoesNotAcceptAttribute { component: TypeName, attr: String },
 
-    #[error("Component {component} is recursive and cannot use rest parameters")]
-    RecursiveComponentWithRest { component: TypeName },
-
-    #[error("Rest cannot be forwarded into recursive component {component}")]
-    RestForwardedIntoRecursive { component: TypeName },
+    #[error("Rest spread of {component} forms a cycle and never reaches an element")]
+    RestSpreadCycle { component: TypeName },
 
     #[error("Mismatched type: expected `{expected}` got `{found}`")]
     ArgumentTypeMismatch {

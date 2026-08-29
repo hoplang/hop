@@ -10,7 +10,7 @@ use crate::document_id::DocumentId;
 use crate::document_position::DocumentPosition;
 use crate::expr::typing::type_export::TypeExport;
 use crate::expr::typing::type_registry::TypeRegistry;
-use crate::hop::inlining::transform::TailwindInjection;
+use crate::hop::assembly::TailwindInjection;
 use crate::hop::parsing::find_node::find_node_at_position;
 use crate::hop::parsing::format;
 use crate::hop::parsing::parsed_ast::ParsedAst;
@@ -530,23 +530,22 @@ impl Program {
         diagnostics
     }
 
-    /// Evaluate an view given module and view name.
-    fn evaluate_view_with_values(
+    /// Evaluate a page given a module and page name.
+    fn evaluate_page_with_values(
         &self,
         document_id: &DocumentId,
-        view_name: &TypeName,
+        page_name: &TypeName,
         args: HashMap<VarName, ir::runtime::value::Value>,
         generated_tailwind_css: Option<&str>,
         skip_optimization: bool,
-        disable_links: bool,
         asset_rewriter: Option<Arc<dyn AssetRewriter>>,
     ) -> Result<String> {
         // Refuse to evaluate if there are errors in any module
         if self.parse_errors.values().any(|errors| !errors.is_empty()) {
-            anyhow::bail!("Cannot evaluate view: program has parse errors");
+            anyhow::bail!("Cannot evaluate page: program has parse errors");
         }
         if self.type_errors.values().any(|errors| !errors.is_empty()) {
-            anyhow::bail!("Cannot evaluate view: program has type errors");
+            anyhow::bail!("Cannot evaluate page: program has type errors");
         }
         // Validate that the module exists
         let module = self.get_typed_modules().get(document_id).ok_or_else(|| {
@@ -561,75 +560,73 @@ impl Program {
             )
         })?;
 
-        // Check if the view exists in this module
-        let view_exists = module
-            .get_view_declarations()
+        // Check if the page exists in this module
+        let page_exists = module
+            .get_page_declarations()
             .iter()
-            .any(|ep| ep.name.as_str() == view_name.as_str());
+            .any(|ep| ep.name.as_str() == page_name.as_str());
 
-        if !view_exists {
-            let available_views: Vec<_> = module
-                .get_view_declarations()
+        if !page_exists {
+            let available_pages: Vec<_> = module
+                .get_page_declarations()
                 .iter()
                 .map(|ep| ep.name.as_str())
                 .collect();
 
             anyhow::bail!(
-                "View '{}' not found in module '{}'. Available views: {}",
-                view_name,
+                "Page '{}' not found in module '{}'. Available pages: {}",
+                page_name,
                 document_id,
-                available_views.join(", ")
+                available_pages.join(", ")
             );
         }
 
         // Use orchestrate_pure to handle inlining and compilation
-        // Pass the view filter to only compile the requested view
+        // Pass the page filter to only compile the requested page
         let pure_module = orchestrate_pure(
             self.get_typed_modules(),
             OrchestrateOptions {
                 skip_optimization,
-                disable_links,
-                view_filter: Some((document_id.clone(), view_name.clone())),
+                page_filter: Some((document_id.clone(), page_name.clone())),
                 asset_rewriter,
                 tailwind_injection: generated_tailwind_css.map(TailwindInjection::Inline),
                 ..Default::default()
             },
         );
 
-        let str = ir::runtime::evaluator::evaluate_view(&pure_module, view_name, args)?;
+        let str = ir::runtime::evaluator::evaluate_page(&pure_module, page_name, args)?;
 
         Ok(str)
     }
 
-    /// Evaluate a view with randomly generated parameter values using the given RNG.
-    pub fn evaluate_view_with_random_values(
+    /// Evaluate a page with randomly generated parameter values using the given RNG.
+    pub fn evaluate_page_with_random_values(
         &self,
-        view: &str,
+        page: &str,
         rng: &mut impl Rng,
         generated_tailwind_css: Option<&str>,
         skip_optimization: bool,
-        disable_links: bool,
         asset_rewriter: Option<Arc<dyn AssetRewriter>>,
     ) -> Result<String> {
         let document_id = self
-            .find_module_for_view(view)
+            .find_module_for_page(page)
             .map_err(anyhow::Error::msg)?;
-        let view_name =
-            TypeName::new(view).map_err(|e| anyhow::anyhow!("Invalid view name: {}", e))?;
+        let page_name =
+            TypeName::new(page).map_err(|e| anyhow::anyhow!("Invalid page name: {}", e))?;
 
         let typed_ast = self.get_typed_modules().get(&document_id).ok_or_else(|| {
             anyhow::anyhow!("Module '{}' not found in typed modules", document_id)
         })?;
 
-        let view_decl = typed_ast
-            .get_view_declarations()
+        let page_decl = typed_ast
+            .get_page_declarations()
             .iter()
-            .find(|ep| ep.name.as_str() == view)
+            .find(|ep| ep.name.as_str() == page)
             .ok_or_else(|| {
-                anyhow::anyhow!("View '{}' not found in module '{}'", view, document_id)
+                anyhow::anyhow!("Page '{}' not found in module '{}'", page, document_id)
             })?;
 
-        let params = view_decl
+        let params = page_decl
             .params
             .iter()
             .map(|param| {
@@ -645,13 +642,12 @@ impl Program {
             })
             .collect::<HashMap<_, _>>();
 
-        self.evaluate_view_with_values(
+        self.evaluate_page_with_values(
             &document_id,
-            &view_name,
+            &page_name,
             params,
             generated_tailwind_css,
             skip_optimization,
-            disable_links,
             asset_rewriter,
         )
     }
@@ -698,24 +694,24 @@ impl Program {
         &self.type_registry
     }
 
-    /// Find which module contains a given view.
-    pub fn find_module_for_view(&self, view: &str) -> Result<DocumentId, String> {
-        let mut all_views = Vec::new();
+    /// Find which module contains a given page.
+    pub fn find_module_for_page(&self, page: &str) -> Result<DocumentId, String> {
+        let mut all_pages = Vec::new();
 
         for (document_id, ast) in &self.typed_asts {
-            for ep in ast.get_view_declarations() {
-                if ep.name.as_str() == view {
+            for ep in ast.get_page_declarations() {
+                if ep.name.as_str() == page {
                     return Ok(document_id.clone());
                 }
-                all_views.push(ep.name.to_string());
+                all_pages.push(ep.name.to_string());
             }
         }
 
-        all_views.sort();
+        all_pages.sort();
         Err(format!(
-            "View '{}' not found. Available views: {}",
-            view,
-            all_views.join(", ")
+            "Page '{}' not found. Available pages: {}",
+            page,
+            all_pages.join(", ")
         ))
     }
 }
@@ -2451,7 +2447,7 @@ mod tests {
         let main_module = DocumentId::new("main.hop").unwrap();
         let hello_world = TypeName::new("HelloWorld").unwrap();
         let result = program
-            .evaluate_view_with_values(&main_module, &hello_world, args, None, false, false, None)
+            .evaluate_page_with_values(&main_module, &hello_world, args, None, false, None)
             .expect("Should evaluate successfully");
 
         assert!(result.contains("<h1>Hello Alice!</h1>"));
@@ -2459,12 +2455,11 @@ mod tests {
         // Test evaluating another-comp view without parameters
         let another_comp = TypeName::new("AnotherComp").unwrap();
         let result = program
-            .evaluate_view_with_values(
+            .evaluate_page_with_values(
                 &main_module,
                 &another_comp,
                 HashMap::new(),
                 None,
-                false,
                 false,
                 None,
             )
@@ -2474,12 +2469,11 @@ mod tests {
 
         // Test error when view doesn't exist
         let non_existent = TypeName::new("NonExistent").unwrap();
-        let result = program.evaluate_view_with_values(
+        let result = program.evaluate_page_with_values(
             &main_module,
             &non_existent,
             HashMap::new(),
             None,
-            false,
             false,
             None,
         );
@@ -2488,7 +2482,7 @@ mod tests {
             result
                 .unwrap_err()
                 .to_string()
-                .contains("View 'NonExistent' not found in module 'main.hop'")
+                .contains("Page 'NonExistent' not found in module 'main.hop'")
         );
     }
 

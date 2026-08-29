@@ -13,7 +13,7 @@ use crate::expr::{self, ComponentSignature, ParamEntry, Tail, Type, TypeBinding,
 use crate::hop::parsing::parsed_ast::ParsedDeclaration;
 use crate::hop::parsing::parsed_ast::{
     ParsedAttribute, ParsedComponentDeclaration, ParsedEnumDeclaration, ParsedFunctionDeclaration,
-    ParsedImportDeclaration, ParsedParameter, ParsedRecordDeclaration, ParsedViewDeclaration,
+    ParsedImportDeclaration, ParsedPageDeclaration, ParsedParameter, ParsedRecordDeclaration,
     RestSpreadTarget,
 };
 use crate::hop::typing::definition_link::DefinitionLink;
@@ -34,7 +34,7 @@ use crate::hop::parsing::parsed_ast::{ParsedAst, ParsedAttributeValue};
 use crate::hop::parsing::parsed_node::{ParsedLetBinding, ParsedLoopSource, ParsedNode};
 use crate::hop::typing::typed_ast::{
     TypedAst, TypedComponentDeclaration, TypedEnumDeclaration, TypedFunctionDeclaration,
-    TypedParameter, TypedRecordDeclaration, TypedViewDeclaration,
+    TypedPageDeclaration, TypedParameter, TypedRecordDeclaration,
 };
 use crate::hop::typing::typed_node::{
     TypedArgument, TypedArgumentValue, TypedAttribute, TypedAttributeValue, TypedLoopSource,
@@ -111,7 +111,7 @@ fn typecheck_module(
 
     let mut typed_records = Vec::new();
     let mut typed_enums = Vec::new();
-    let mut typed_views = Vec::new();
+    let mut typed_pages = Vec::new();
 
     let component_snake_names: HashMap<String, TypeName> = parsed_ast
         .get_component_declarations()
@@ -176,7 +176,6 @@ fn typecheck_module(
                         module: parsed_ast.document_id.clone(),
                         params: Vec::new(),
                         tail: Tail::Closed,
-                        is_recursive: false,
                     }),
                     c.tag_name.clone(),
                 );
@@ -189,9 +188,9 @@ fn typecheck_module(
                     ));
                 }
             }
-            ParsedDeclaration::View(v) => {
+            ParsedDeclaration::Page(v) => {
                 let insertion =
-                    type_env.insert_local(v.name.clone(), TypeBinding::View, v.name_range.clone());
+                    type_env.insert_local(v.name.clone(), TypeBinding::Page, v.name_range.clone());
                 if insertion.is_err() {
                     errors.push(TypeError::new(
                         TypeErrorKind::TypeNameIsAlreadyDefined {
@@ -294,46 +293,54 @@ fn typecheck_module(
         call_graph.set_dependencies(name.clone(), deps);
     }
 
-    let mut typed_component_declarations = Vec::new();
+    let mut pending_components = Vec::new();
     for scc in call_graph.sorted_sccs() {
-        let is_recursive =
-            scc.len() > 1 || scc.iter().any(|name| call_graph.depends_on(name, name));
-        let mut pending = Vec::new();
         for name in &scc {
-            pending.push(register_component_signature(
+            pending_components.push(register_component_signature(
                 component_by_name[name],
                 &parsed_ast.document_id,
-                is_recursive,
                 &mut type_env,
                 registry,
                 errors,
-                annotations,
-                definition_links,
-                asset_references,
-            ));
-        }
-        for p in pending {
-            typed_component_declarations.push(check_component_body(
-                p,
-                &parsed_ast.document_id,
-                is_recursive,
-                registry,
-                errors,
-                &mut var_env,
-                &mut type_env,
-                &mut module_exports,
                 annotations,
                 definition_links,
                 asset_references,
             ));
         }
     }
+
+    // Settle every signature before checking a single body: a call site needs
+    // the parameters its callee ends up forwarding, and those are not known
+    // until the rest has been followed to wherever it lands.
+    let forwarded_params = resolve_rest_targets(
+        &component_by_name,
+        &parsed_ast.document_id,
+        &mut type_env,
+        errors,
+    );
+
+    let mut typed_component_declarations = Vec::new();
+    for p in pending_components {
+        typed_component_declarations.push(check_component_body(
+            p,
+            &parsed_ast.document_id,
+            &forwarded_params,
+            registry,
+            errors,
+            &mut var_env,
+            &mut type_env,
+            &mut module_exports,
+            annotations,
+            definition_links,
+            asset_references,
+        ));
+    }
     // Sort by name for stable output
     typed_component_declarations.sort_by(|a, b| a.component_name.cmp(&b.component_name));
 
-    for view in parsed_ast.get_view_declarations() {
-        typed_views.push(check_view_declaration(
-            view,
+    for page in parsed_ast.get_page_declarations() {
+        typed_pages.push(check_page_declaration(
+            page,
             registry,
             errors,
             &mut var_env,
@@ -360,7 +367,7 @@ fn typecheck_module(
         typed_component_declarations,
         typed_records,
         typed_enums,
-        typed_views,
+        typed_pages,
         typed_functions,
     )
 }
@@ -551,7 +558,6 @@ struct PendingComponent<'a> {
 fn register_component_signature<'a>(
     component: &'a ParsedComponentDeclaration,
     document_id: &DocumentId,
-    is_recursive: bool,
     type_env: &mut TypeEnv,
     registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
@@ -562,8 +568,6 @@ fn register_component_signature<'a>(
     let ParsedComponentDeclaration {
         params,
         component_name,
-        tag_name,
-        rest_param,
         ..
     } = component;
 
@@ -652,20 +656,10 @@ fn register_component_signature<'a>(
         }
     }
 
-    if is_recursive && rest_param.is_some() {
-        errors.push(TypeError::new(
-            TypeErrorKind::RecursiveComponentWithRest {
-                component: component_name.clone(),
-            },
-            tag_name.clone(),
-        ));
-    }
-
     let component_signature = ComponentSignature {
         module: document_id.clone(),
         params: declared_params.clone(),
         tail: Tail::Closed,
-        is_recursive,
     };
 
     type_env.replace_binding(component_name, TypeBinding::Component(component_signature));
@@ -678,10 +672,159 @@ fn register_component_signature<'a>(
     }
 }
 
+/// Follow every component's rest to wherever it lands, and record which of the
+/// target's parameters it carries.
+///
+/// A component spreads its rest exactly once, the parser rejects a second
+/// spread, so the spread relation is a function, and following it either
+/// reaches an HTML element, leaves the module for an import, or comes back to a
+/// component already on the path. Only that last case has no tail to assign.
+///
+/// This is deliberately not the call graph. Two components can call each other
+/// while their rests run down a perfectly straight line to an element, and that
+/// line is what decides the tail.
+///
+/// Returns the forwarded parameters per component, which the declarations need
+/// and which the settled signatures no longer distinguish from declared ones.
+fn resolve_rest_targets(
+    component_by_name: &HashMap<TypeName, &ParsedComponentDeclaration>,
+    document_id: &DocumentId,
+    type_env: &mut TypeEnv,
+    errors: &mut Vec<TypeError>,
+) -> HashMap<TypeName, Vec<ParamEntry>> {
+    let mut spread_graph: DependencyGraph<TypeName> = DependencyGraph::new();
+    for (name, component) in component_by_name {
+        let mut target = BTreeSet::new();
+        if let Some(RestSpreadTarget::Component { callee, .. }) = &component.rest_target {
+            // A spread into an import is already settled: modules are checked
+            // in import order, and imports cannot form a cycle.
+            if component_by_name.contains_key(callee) {
+                target.insert(callee.clone());
+            }
+        }
+        spread_graph.set_dependencies(name.clone(), target);
+    }
+
+    let mut forwarded_params = HashMap::new();
+    for scc in spread_graph.sorted_sccs() {
+        // With one spread per component an SCC is a cycle outright, whether it
+        // runs through several components or a component straight back to
+        // itself. Every member spreads into another member, so every member is
+        // where the rest fails to land.
+        let is_cycle = scc.len() > 1 || scc.iter().any(|name| spread_graph.depends_on(name, name));
+
+        for name in &scc {
+            let Some(component) = component_by_name.get(name) else {
+                continue;
+            };
+            let Some((TypeBinding::Component(provisional), _)) = type_env.lookup(name) else {
+                continue;
+            };
+            // Nothing has extended this signature yet, so its parameters are
+            // exactly the declared ones.
+            let declared: Vec<ParamEntry> = provisional.params.clone();
+
+            let (forwarded, tail) = if is_cycle {
+                if let Some(target) = &component.rest_target {
+                    errors.push(TypeError::new(
+                        TypeErrorKind::RestSpreadCycle {
+                            component: name.clone(),
+                        },
+                        target.spread_range().clone(),
+                    ));
+                }
+                (Vec::new(), Tail::Closed)
+            } else {
+                rest_target_signature(component, &declared, type_env)
+            };
+
+            let mut params = declared;
+            params.extend(forwarded.iter().cloned());
+            type_env.replace_binding(
+                name,
+                TypeBinding::Component(ComponentSignature {
+                    module: document_id.clone(),
+                    params,
+                    tail,
+                }),
+            );
+            forwarded_params.insert(name.clone(), forwarded);
+        }
+    }
+    forwarded_params
+}
+
+/// Where this component's rest lands, and the callee parameters it carries.
+///
+/// Only reads the declaration and the target's settled signature, so it runs
+/// before any body is checked.
+fn rest_target_signature(
+    component: &ParsedComponentDeclaration,
+    declared: &[ParamEntry],
+    type_env: &mut TypeEnv,
+) -> (Vec<ParamEntry>, Tail) {
+    let declared_names: Vec<&VarName> = declared.iter().map(|p| &p.name).collect();
+    match &component.rest_target {
+        Some(RestSpreadTarget::Element {
+            element,
+            supplied_attrs,
+            ..
+        }) => (
+            Vec::new(),
+            Tail::Html {
+                element: element.clone(),
+                reserved: supplied_attrs.clone(),
+            },
+        ),
+        Some(RestSpreadTarget::Component {
+            callee,
+            supplied_attrs,
+            has_children,
+            ..
+        }) => match type_env.lookup(callee) {
+            Some((TypeBinding::Component(callee_sig), _)) => {
+                let tail = match callee_sig.tail.clone() {
+                    Tail::Html {
+                        element,
+                        mut reserved,
+                    } => {
+                        let callee_param_names: HashSet<&str> =
+                            callee_sig.params.iter().map(|p| p.name.as_str()).collect();
+                        for attr in supplied_attrs {
+                            let a = attr.as_str();
+                            if !callee_param_names.contains(a)
+                                && !reserved.iter().any(|r| r.as_str() == a)
+                            {
+                                reserved.push(attr.clone());
+                            }
+                        }
+                        Tail::Html { element, reserved }
+                    }
+                    Tail::Closed => Tail::Closed,
+                };
+                let covered_by_rest = |p: &ParamEntry| {
+                    !(supplied_attrs.iter().any(|a| a.as_str() == p.name.as_str())
+                        || (*has_children && p.name.as_str() == "children")
+                        || declared_names.contains(&&p.name))
+                };
+                let forwarded = callee_sig
+                    .params
+                    .iter()
+                    .filter(|p| covered_by_rest(p))
+                    .cloned()
+                    .collect::<Vec<_>>();
+                (forwarded, tail)
+            }
+            _ => (Vec::new(), Tail::Closed),
+        },
+        None => (Vec::new(), Tail::Closed),
+    }
+}
+
 fn check_component_body(
     pending: PendingComponent<'_>,
     document_id: &DocumentId,
-    is_recursive: bool,
+    forwarded_params: &HashMap<TypeName, Vec<ParamEntry>>,
     registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
     var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
@@ -704,7 +847,6 @@ fn check_component_body(
         tag_name,
         closing_tag_name,
         rest_param,
-        rest_target,
         pub_range,
         ..
     } = component;
@@ -757,82 +899,23 @@ fn check_component_body(
         });
     }
 
-    let (forwarded, tail) = match rest_target {
-        Some(RestSpreadTarget::Element {
-            element,
-            supplied_attrs,
-            ..
-        }) => (
-            Vec::new(),
-            Tail::Html {
-                element: element.clone(),
-                reserved: supplied_attrs.clone(),
-            },
-        ),
-        Some(RestSpreadTarget::Component {
-            callee,
-            supplied_attrs,
-            has_children,
-            spread_range,
-            ..
-        }) => match type_env.lookup(callee) {
-            Some((TypeBinding::Component(callee_sig), _)) => {
-                if callee_sig.is_recursive {
-                    errors.push(TypeError::new(
-                        TypeErrorKind::RestForwardedIntoRecursive {
-                            component: callee.clone(),
-                        },
-                        spread_range.clone(),
-                    ));
-                    (Vec::new(), Tail::Closed)
-                } else {
-                    let tail = match callee_sig.tail.clone() {
-                        Tail::Html {
-                            element,
-                            mut reserved,
-                        } => {
-                            let callee_param_names: HashSet<&str> =
-                                callee_sig.params.iter().map(|p| p.name.as_str()).collect();
-                            for attr in supplied_attrs {
-                                let a = attr.as_str();
-                                if !callee_param_names.contains(a)
-                                    && !reserved.iter().any(|r| r.as_str() == a)
-                                {
-                                    reserved.push(attr.clone());
-                                }
-                            }
-                            Tail::Html { element, reserved }
-                        }
-                        Tail::Closed => Tail::Closed,
-                    };
-                    let covered_by_rest = |p: &ParamEntry| {
-                        !(supplied_attrs.iter().any(|a| a.as_str() == p.name.as_str())
-                            || (*has_children && p.name.as_str() == "children")
-                            || declared_names.contains(&p.name))
-                    };
-                    let forwarded = callee_sig
-                        .params
-                        .iter()
-                        .filter(|p| covered_by_rest(p))
-                        .cloned()
-                        .collect::<Vec<_>>();
-                    (forwarded, tail)
-                }
-            }
-            _ => (Vec::new(), Tail::Closed),
-        },
-        None => (Vec::new(), Tail::Closed),
-    };
-    let mut extended_params = declared_params;
-    extended_params.extend(forwarded);
+    let mut typed_params = typed_params;
+    if let Some(forwarded) = forwarded_params.get(component_name) {
+        typed_params.extend(forwarded.iter().map(|param| TypedParameter {
+            var_name: param.name.clone(),
+            var_type: param.typ.clone(),
+            examples: None,
+        }));
+    }
 
-    let signature = ComponentSignature {
-        module: document_id.clone(),
-        params: extended_params,
-        tail,
-        is_recursive,
+    let signature = match type_env.lookup(component_name) {
+        Some((TypeBinding::Component(settled), _)) => settled.clone(),
+        _ => ComponentSignature {
+            module: document_id.clone(),
+            params: declared_params,
+            tail: Tail::Closed,
+        },
     };
-    type_env.replace_binding(component_name, TypeBinding::Component(signature.clone()));
     module_exports.insert(
         component_name.clone(),
         TypeExport::Component {
@@ -847,12 +930,11 @@ fn check_component_body(
         params: typed_params,
         rest_param: rest_param.as_ref().map(|(name, _)| name.clone()),
         children: typed_children,
-        is_recursive,
     }
 }
 
-fn check_view_declaration(
-    view: &ParsedViewDeclaration,
+fn check_page_declaration(
+    page: &ParsedPageDeclaration,
     registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
     var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
@@ -860,13 +942,14 @@ fn check_view_declaration(
     annotations: &mut Vec<TypeAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
     asset_references: &mut Vec<AssetReference>,
-) -> TypedViewDeclaration {
-    let ParsedViewDeclaration {
+) -> TypedPageDeclaration {
+    let ParsedPageDeclaration {
         params,
-        children,
+        head,
+        body,
         name,
         ..
-    } = view;
+    } = page;
 
     let mut pushed_params = Vec::new();
     let mut typed_params = Vec::new();
@@ -912,22 +995,49 @@ fn check_view_declaration(
         });
     }
 
-    let typed_children = children
-        .iter()
-        .filter_map(|child| {
-            typecheck_node(
-                child,
-                &[],
-                registry,
-                errors,
-                var_env,
-                type_env,
-                annotations,
-                definition_links,
-                asset_references,
-            )
-        })
-        .collect::<Vec<_>>();
+    let typecheck_list = |nodes: &[ParsedNode],
+                          errors: &mut Vec<TypeError>,
+                          var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
+                          type_env: &mut TypeEnv,
+                          annotations: &mut Vec<TypeAnnotation>,
+                          definition_links: &mut Vec<DefinitionLink>,
+                          asset_references: &mut Vec<AssetReference>| {
+        nodes
+            .iter()
+            .filter_map(|child| {
+                typecheck_node(
+                    child,
+                    &[],
+                    registry,
+                    errors,
+                    var_env,
+                    type_env,
+                    annotations,
+                    definition_links,
+                    asset_references,
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+
+    let typed_head = typecheck_list(
+        head,
+        errors,
+        var_env,
+        type_env,
+        annotations,
+        definition_links,
+        asset_references,
+    );
+    let typed_body = typecheck_list(
+        body,
+        errors,
+        var_env,
+        type_env,
+        annotations,
+        definition_links,
+        asset_references,
+    );
 
     for param in pushed_params.iter().rev() {
         let (name, _, accessed) = var_env.pop();
@@ -939,10 +1049,11 @@ fn check_view_declaration(
         }
     }
 
-    TypedViewDeclaration {
+    TypedPageDeclaration {
         name: name.clone(),
         params: typed_params,
-        children: typed_children,
+        head: typed_head,
+        body: typed_body,
     }
 }
 
@@ -1540,12 +1651,25 @@ fn typecheck_node(
 
         ParsedNode::Html {
             element,
-            tag_name: _,
+            tag_name,
             closing_tag_name: _,
             attributes,
             children,
             range: _,
         } => {
+            let disallowed_tag = match element {
+                HtmlElement::Head => Some("head"),
+                HtmlElement::Body => Some("body"),
+                HtmlElement::Html => Some("html"),
+                _ => None,
+            };
+            if let Some(tag) = disallowed_tag {
+                errors.push(TypeError::new(
+                    TypeErrorKind::HtmlStructureTagNotAllowed { tag },
+                    tag_name.clone(),
+                ));
+            }
+
             let typed_attributes = typecheck_attributes(
                 attributes,
                 element,
@@ -1743,10 +1867,6 @@ fn typecheck_node(
         }),
 
         ParsedNode::Comment { .. } => None,
-
-        ParsedNode::Doctype { value, range: _ } => Some(TypedNode::Doctype {
-            value: value.clone(),
-        }),
     }
 }
 
@@ -1991,7 +2111,15 @@ fn typecheck_arguments(
         .iter()
         .filter_map(|param| {
             if covered_by_rest(param) {
-                return None;
+                // Read the value from the enclosing component, whose signature
+                // was extended with this parameter for exactly this purpose.
+                return Some(TypedArgument {
+                    name: param.name.clone(),
+                    value: TypedArgumentValue::Expr(TypedExpr::Var {
+                        value: param.name.clone(),
+                        kind: param.typ.clone(),
+                    }),
+                });
             }
             typed_args
                 .iter()
@@ -6956,10 +7084,10 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                record State { query: String, page: Int }
+                record State { query: String, num: Int }
                 record App { state: State }
                 component Main(app: App) {
-                  <let {next = State {...app.state, page: 1}}>
+                  <let {next = State {...app.state, num: 1}}>
                     <div>{next.query}</div>
                   </let>
                 }
@@ -6968,7 +7096,7 @@ mod tests {
                 -- main.hop --
                 record State {
                   query: String,
-                  page: Int,
+                  num: Int,
                 }
 
                 record App {
@@ -6976,7 +7104,7 @@ mod tests {
                 }
 
                 component Main(app: main::App) {
-                  <let {next = let v__0 = app.state in State {query: v__0.query, page: 1}}>
+                  <let {next = let v__0 = app.state in State {query: v__0.query, num: 1}}>
                     <div>
                       {next.query}
                     </div>
@@ -7446,11 +7574,69 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                view Main() {
-                  <div>
-                    Hello
-                  </div>
+                page Main() {
+                  body {
+                    <div>
+                      Hello
+                    </div>
+                  }
                 }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_head_and_body_and_html_tags_inside_view() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                view Main() {
+                  <html>
+                    <head></head>
+                    <body>Hello</body>
+                  </html>
+                }
+            "#},
+            expect![[r#"
+                error: <html> is not allowed here
+                  --> main.hop (line 2, col 4)
+                1 | view Main() {
+                2 |   <html>
+                  |    ^^^^
+
+                error: <head> is not allowed here
+                  --> main.hop (line 3, col 6)
+                2 |   <html>
+                3 |     <head></head>
+                  |      ^^^^
+
+                error: <body> is not allowed here
+                  --> main.hop (line 4, col 6)
+                3 |     <head></head>
+                4 |     <body>Hello</body>
+                  |      ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_head_tag_inside_page_body_block() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                page Main() {
+                  head {}
+                  body {
+                    <head></head>
+                  }
+                }
+            "#},
+            expect![[r#"
+                error: <head> is not allowed here
+                  --> main.hop (line 4, col 6)
+                3 |   body {
+                4 |     <head></head>
+                  |      ^^^^
             "#]],
         );
     }
@@ -7466,12 +7652,14 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                view Main(name: String) {
-                  <div>
-                    Hello, 
-                    {name}
-                    !
-                  </div>
+                page Main(name: String) {
+                  body {
+                    <div>
+                      Hello, 
+                      {name}
+                      !
+                    </div>
+                  }
                 }
             "#]],
         );
@@ -7488,14 +7676,16 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                view Main(name: String, age: Int) {
-                  <div>
-                    Hello, 
-                    {name}
-                    ! You are 
-                    {age.to_string()}
-                     years old.
-                  </div>
+                page Main(name: String, age: Int) {
+                  body {
+                    <div>
+                      Hello, 
+                      {name}
+                      ! You are 
+                      {age.to_string()}
+                       years old.
+                    </div>
+                  }
                 }
             "#]],
         );
@@ -7524,8 +7714,10 @@ mod tests {
                   </div>
                 }
 
-                view Main(name: String) {
-                  <Greeting name={name}/>
+                page Main(name: String) {
+                  body {
+                    <Greeting name={name}/>
+                  }
                 }
             "#]],
         );
@@ -7786,8 +7978,8 @@ mod tests {
     }
 
     #[test]
-    fn rejects_rest_on_recursive_component() {
-        reject(
+    fn accepts_rest_on_recursive_component() {
+        accept(
             indoc! {r#"
                 -- main.hop --
                 component Foo(...rest) {
@@ -7795,10 +7987,12 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Component Foo is recursive and cannot use rest parameters
-                  --> main.hop (line 1, col 11)
-                1 | component Foo(...rest) {
-                  |           ^^^
+                -- main.hop --
+                component Foo(...rest) {
+                  <div ...rest>
+                    <Foo/>
+                  </div>
+                }
             "#]],
         );
     }
@@ -7845,10 +8039,12 @@ mod tests {
                   </button>
                 }
 
-                view Main() {
-                  <Button class={"p-2"} children={{
-                    Hi
-                  }} data-foo="bar"/>
+                page Main() {
+                  body {
+                    <Button class={"p-2"} children={{
+                      Hi
+                    }} data-foo="bar"/>
+                  }
                 }
             "#]],
         );
@@ -7874,10 +8070,12 @@ mod tests {
                   </button>
                 }
 
-                view Main() {
-                  <Button children={{
-                    Hi
-                  }} data-x="y"/>
+                page Main() {
+                  body {
+                    <Button children={{
+                      Hi
+                    }} data-x="y"/>
+                  }
                 }
             "#]],
         );
@@ -7945,8 +8143,10 @@ mod tests {
                   <svg ...rest></svg>
                 }
 
-                view Main() {
-                  <Svg viewBox="0 0 100 100"/>
+                page Main() {
+                  body {
+                    <Svg viewBox="0 0 100 100"/>
+                  }
                 }
             "#]],
         );
@@ -7975,12 +8175,14 @@ mod tests {
                   </div>
                 }
 
-                component Wrapper(...rest) {
-                  <Card ...rest/>
+                component Wrapper(title: String, ...rest) {
+                  <Card title={title} ...rest/>
                 }
 
-                view Main() {
-                  <Wrapper title={"hi"}/>
+                page Main() {
+                  body {
+                    <Wrapper title={"hi"}/>
+                  }
                 }
             "#]],
         );
@@ -8013,8 +8215,10 @@ mod tests {
                   <Card title={"explicit"} ...rest/>
                 }
 
-                view Main() {
-                  <Wrapper/>
+                page Main() {
+                  body {
+                    <Wrapper/>
+                  }
                 }
             "#]],
         );
@@ -8100,8 +8304,8 @@ mod tests {
     }
 
     #[test]
-    fn rejects_rest_forwarded_into_recursive_component() {
-        reject(
+    fn accepts_rest_forwarded_into_recursive_component() {
+        accept(
             indoc! {r#"
                 -- main.hop --
                 component Tree(x: Int) {
@@ -8113,15 +8317,26 @@ mod tests {
                     <Tree ...rest/>
                 }
                 view Main {
-                    <Wrapper/>
+                    <Wrapper x={1}/>
                 }
             "#},
             expect![[r#"
-                error: Rest cannot be forwarded into recursive component Tree
-                  --> main.hop (line 7, col 11)
-                 6 | component Wrapper(...rest) {
-                 7 |     <Tree ...rest/>
-                   |           ^^^^^^^
+                -- main.hop --
+                component Tree(x: Int) {
+                  <div>
+                    <Tree x={x}/>
+                  </div>
+                }
+
+                component Wrapper(x: Int, ...rest) {
+                  <Tree x={x} ...rest/>
+                }
+
+                page Main() {
+                  body {
+                    <Wrapper x={1}/>
+                  }
+                }
             "#]],
         );
     }
@@ -8160,8 +8375,8 @@ mod tests {
                   <Wrapper user={user}/>
                 }
 
-                component Wrapper(...rest) {
-                  <Card ...rest/>
+                component Wrapper(user: main::User, ...rest) {
+                  <Card user={user} ...rest/>
                 }
             "#]],
         );
@@ -8190,15 +8405,15 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Bar(name: String, ...rest) {
+                component Bar(name: String, title: String, ...rest) {
                   <div>
                     {name}
-                    <Card ...rest/>
+                    <Card title={title} ...rest/>
                   </div>
                 }
 
-                component Baz(...rest) {
-                  <Bar ...rest/>
+                component Baz(name: String, title: String, ...rest) {
+                  <Bar name={name} title={title} ...rest/>
                 }
 
                 component Card(title: String) {
@@ -8207,8 +8422,10 @@ mod tests {
                   </div>
                 }
 
-                view Main() {
-                  <Baz name={"n"} title={"t"}/>
+                page Main() {
+                  body {
+                    <Baz name={"n"} title={"t"}/>
+                  }
                 }
             "#]],
         );
@@ -8297,12 +8514,14 @@ mod tests {
                   </if>
                 }
 
-                component Wrapper(...rest) {
-                  <Card ...rest/>
+                component Wrapper(count: Int, ...rest) {
+                  <Card count={count} ...rest/>
                 }
 
-                view Main() {
-                  <Wrapper count={3}/>
+                page Main() {
+                  body {
+                    <Wrapper count={3}/>
+                  }
                 }
             "#]],
         );
@@ -8337,12 +8556,14 @@ mod tests {
                   </div>
                 }
 
-                component B(...rest) {
-                  <A ...rest/>
+                component B(count: Int, ...rest) {
+                  <A count={count} ...rest/>
                 }
 
-                view Main() {
-                  <B count={3} data-foo="bar"/>
+                page Main() {
+                  body {
+                    <B count={3} data-foo="bar"/>
+                  }
                 }
             "#]],
         );
@@ -8446,12 +8667,12 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Bar(...rest) {
-                  <Foo ...rest/>
+                component Bar(children: Fragment, ...rest) {
+                  <Foo children={children} ...rest/>
                 }
 
-                component Baz(...rest) {
-                  <Bar ...rest/>
+                component Baz(children: Fragment, ...rest) {
+                  <Bar children={children} ...rest/>
                 }
 
                 component Foo(children: Fragment) {
@@ -8460,10 +8681,12 @@ mod tests {
                   </div>
                 }
 
-                view Main() {
-                  <Baz children={{
-                    deep
-                  }}/>
+                page Main() {
+                  body {
+                    <Baz children={{
+                      deep
+                    }}/>
+                  }
                 }
             "#]],
         );
@@ -8523,8 +8746,10 @@ mod tests {
                   </div>
                 }
 
-                view Main() {
-                  <Outer class={"x"}/>
+                page Main() {
+                  body {
+                    <Outer class={"x"}/>
+                  }
                 }
             "#]],
         );
@@ -8563,10 +8788,12 @@ mod tests {
                   </div>
                 }
 
-                view Main() {
-                  <Button children={{
-                    click
-                  }} class={"primary"}/>
+                page Main() {
+                  body {
+                    <Button children={{
+                      click
+                    }} class={"primary"}/>
+                  }
                 }
             "#]],
         );
@@ -8593,12 +8820,14 @@ mod tests {
                   <span class={class} ...rest></span>
                 }
 
-                component Wrapper(...rest) {
-                  <Inner ...rest/>
+                component Wrapper(class: String, ...rest) {
+                  <Inner class={class} ...rest/>
                 }
 
-                view Main() {
-                  <Wrapper class={"y"}/>
+                page Main() {
+                  body {
+                    <Wrapper class={"y"}/>
+                  }
                 }
             "#]],
         );
@@ -8629,8 +8858,10 @@ mod tests {
                   <A class={class} ...rest/>
                 }
 
-                view Main() {
-                  <B class={"main"}/>
+                page Main() {
+                  body {
+                    <B class={"main"}/>
+                  }
                 }
             "#]],
         );
@@ -8661,8 +8892,10 @@ mod tests {
                   <A class={class} ...rest/>
                 }
 
-                view Main() {
-                  <B class={"b"}/>
+                page Main() {
+                  body {
+                    <B class={"b"}/>
+                  }
                 }
             "#]],
         );
@@ -8691,12 +8924,14 @@ mod tests {
                   </span>
                 }
 
-                component B(...rest) {
-                  <A ...rest/>
+                component B(label: String, ...rest) {
+                  <A label={label} ...rest/>
                 }
 
-                view Main() {
-                  <B label={"x"}/>
+                page Main() {
+                  body {
+                    <B label={"x"}/>
+                  }
                 }
             "#]],
         );
@@ -8728,16 +8963,18 @@ mod tests {
                   </span>
                 }
 
-                component Mid(...rest) {
-                  <Leaf ...rest/>
+                component Mid(label: String, ...rest) {
+                  <Leaf label={label} ...rest/>
                 }
 
-                component Top(...rest) {
-                  <Mid ...rest/>
+                component Top(label: String, ...rest) {
+                  <Mid label={label} ...rest/>
                 }
 
-                view Main() {
-                  <Top label={"x"}/>
+                page Main() {
+                  body {
+                    <Top label={"x"}/>
+                  }
                 }
             "#]],
         );
@@ -8818,8 +9055,10 @@ mod tests {
                   <Inner title="a" ...rest/>
                 }
 
-                view Main() {
-                  <Wrapper lang="en"/>
+                page Main() {
+                  body {
+                    <Wrapper lang="en"/>
+                  }
                 }
             "#]],
         );
@@ -8907,12 +9146,14 @@ mod tests {
                   </div>
                 }
 
-                component B(...rest) {
-                  <A ...rest/>
+                component B(tabindex: Int, ...rest) {
+                  <A tabindex={tabindex} ...rest/>
                 }
 
-                view Main() {
-                  <B tabindex={2} data-x="y"/>
+                page Main() {
+                  body {
+                    <B tabindex={2} data-x="y"/>
+                  }
                 }
             "#]],
         );
@@ -9037,8 +9278,10 @@ mod tests {
                   <div></div>
                 }
 
-                view Main() {
-                  <Later/>
+                page Main() {
+                  body {
+                    <Later/>
+                  }
                 }
             "#]],
         );
@@ -9083,8 +9326,102 @@ mod tests {
     }
 
     #[test]
-    fn rejects_rest_param_on_mutually_recursive_component() {
+    fn rejects_rest_forwarded_into_the_component_itself() {
+        // The self-loop case of forwarding within a cycle: Foo's own
+        // signature is the provisional one while its body is checked.
         reject(
+            indoc! {r#"
+                -- main.hop --
+                component Foo(...rest) {
+                    <Foo ...rest/>
+                }
+            "#},
+            expect![[r#"
+                error: Rest spread of Foo forms a cycle and never reaches an element
+                  --> main.hop (line 2, col 10)
+                1 | component Foo(...rest) {
+                2 |     <Foo ...rest/>
+                  |          ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_extra_attribute_on_a_self_call() {
+        // Foo's tail is the div whether <Foo> is written inside its own body
+        // or outside it, because the spread is followed before either is
+        // checked.
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                component Foo(...rest) {
+                    <div ...rest><Foo id="x"/></div>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                component Foo(...rest) {
+                  <div ...rest>
+                    <Foo id="x"/>
+                  </div>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_rest_forwarded_into_a_cycle_member_with_a_default() {
+        // First and Second call each other, but their rests run straight down
+        // to Leaf's div, so both tails are known. Second's signature gains
+        // `title` from Leaf and First's gains it from Second.
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                component Leaf(title: String = "d") {
+                    <div>{title}</div>
+                }
+                component First(...rest) {
+                    <Second ...rest/>
+                }
+                component Second(...rest) {
+                    <Leaf ...rest/>
+                    <First/>
+                }
+                view Main {
+                    <First/>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                component First(title: String, ...rest) {
+                  <Second title={title} ...rest/>
+                }
+
+                component Leaf(title: String) {
+                  <div>
+                    {title}
+                  </div>
+                }
+
+                component Second(title: String, ...rest) {
+                  <Leaf title={title} ...rest/>
+                  <First title={"d"}/>
+                }
+
+                page Main() {
+                  body {
+                    <First title={"d"}/>
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_rest_forwarded_through_a_call_cycle() {
+        // Second calls First back, but no rest is spread into it, so the
+        // spread relation is acyclic and the call cycle does not matter.
+        accept(
             indoc! {r#"
                 -- main.hop --
                 component First(n: Int, ...rest) {
@@ -9096,23 +9433,21 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Component First is recursive and cannot use rest parameters
-                  --> main.hop (line 1, col 11)
-                1 | component First(n: Int, ...rest) {
-                  |           ^^^^^
+                -- main.hop --
+                component First(n: Int, ...rest) {
+                  <Second n={n} ...rest/>
+                }
 
-                error: Rest cannot be forwarded into recursive component Second
-                  --> main.hop (line 2, col 19)
-                1 | component First(n: Int, ...rest) {
-                2 |     <Second n={n} ...rest/>
-                  |                   ^^^^^^^
+                component Second(n: Int) {
+                  <First n={n}/>
+                }
             "#]],
         );
     }
 
     #[test]
-    fn rejects_rest_forwarded_into_mutually_recursive_component() {
-        reject(
+    fn accepts_rest_forwarded_into_mutually_recursive_component() {
+        accept(
             indoc! {r#"
                 -- main.hop --
                 component Outer(...rest) {
@@ -9128,11 +9463,18 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Rest cannot be forwarded into recursive component First
-                  --> main.hop (line 2, col 12)
-                 1 | component Outer(...rest) {
-                 2 |     <First ...rest/>
-                   |            ^^^^^^^
+                -- main.hop --
+                component First(n: Int) {
+                  <Second n={n}/>
+                }
+
+                component Outer(n: Int, ...rest) {
+                  <First n={n} ...rest/>
+                }
+
+                component Second(n: Int) {
+                  <First n={n}/>
+                }
             "#]],
         );
     }
@@ -9614,10 +9956,12 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                view Main() {
-                  <div>
-                    {shout("hi")}
-                  </div>
+                page Main() {
+                  body {
+                    <div>
+                      {shout("hi")}
+                    </div>
+                  }
                 }
 
                 fn shout(name: String) -> String {
