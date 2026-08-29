@@ -484,7 +484,6 @@ pub trait Transpiler {
             WriterExpr::Let {
                 var, value, body, ..
             } => self.transpile_let(arena, var, value, body),
-            WriterExpr::TwMerge { operand, .. } => self.transpile_expr(arena, operand),
             WriterExpr::ArrayLength { array, .. } => self.transpile_array_length(arena, array),
             WriterExpr::ArrayIsEmpty { array, .. } => self.transpile_array_is_empty(arena, array),
             WriterExpr::StringIsEmpty { string, .. } => {

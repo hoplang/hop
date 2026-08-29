@@ -264,12 +264,6 @@ pub enum WriterExpr {
     /// N-ary mappend over String-typed parts.
     StringConcat { parts: Vec<WriterExpr> },
 
-    /// A TwMerge expression, applied at the class attribute boundary.
-    ///
-    /// Must hold an expression of type String.
-    /// Returns a String.
-    TwMerge { operand: Box<WriterExpr> },
-
     /// A NumericAdd expression.
     ///
     /// Must hold two expressions of the same NumericType.
@@ -636,7 +630,6 @@ impl WriterExpr {
             WriterExpr::FragmentLiteral { .. } => Arc::new(Type::Fragment),
 
             WriterExpr::StringConcat { .. }
-            | WriterExpr::TwMerge { .. }
             | WriterExpr::StringLiteral { .. }
             | WriterExpr::IntToString { .. } => Arc::new(Type::String),
 
@@ -692,7 +685,6 @@ impl WriterExpr {
             WriterExpr::FragmentLiteral { .. } => &FRAGMENT_TYPE,
 
             WriterExpr::StringConcat { .. }
-            | WriterExpr::TwMerge { .. }
             | WriterExpr::StringLiteral { .. }
             | WriterExpr::IntToString { .. } => &STRING_TYPE,
 
@@ -1052,9 +1044,6 @@ impl WriterExpr {
                 .append(value.to_doc())
                 .append(BoxDoc::text(" in "))
                 .append(body.to_doc()),
-            WriterExpr::TwMerge { operand: value, .. } => BoxDoc::text("tw_merge(")
-                .append(value.to_doc())
-                .append(BoxDoc::text(")")),
             WriterExpr::ArrayLength { array, .. } => array.to_doc().append(BoxDoc::text(".len()")),
             WriterExpr::ArrayIsEmpty { array, .. } => {
                 array.to_doc().append(BoxDoc::text(".is_empty()"))

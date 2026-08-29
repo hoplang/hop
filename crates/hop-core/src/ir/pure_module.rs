@@ -204,12 +204,6 @@ pub enum PureExpr {
     /// N-ary mappend over String-typed parts.
     StringConcat { parts: Vec<PureExpr>, id: ExprId },
 
-    /// A TwMerge expression, applied at the class attribute boundary.
-    ///
-    /// Must hold an expression of type String.
-    /// Returns a String.
-    TwMerge { operand: Box<PureExpr>, id: ExprId },
-
     /// A NumericAdd expression.
     ///
     /// Must hold two expressions of the same NumericType.
@@ -387,7 +381,6 @@ impl PureExpr {
             | PureExpr::FragmentFor { .. } => Arc::new(Type::Fragment),
 
             PureExpr::StringConcat { .. }
-            | PureExpr::TwMerge { .. }
             | PureExpr::StringLiteral { .. }
             | PureExpr::IntToString { .. } => Arc::new(Type::String),
 
@@ -447,7 +440,6 @@ impl PureExpr {
             | PureExpr::FragmentFor { .. } => &FRAGMENT_TYPE,
 
             PureExpr::StringConcat { .. }
-            | PureExpr::TwMerge { .. }
             | PureExpr::StringLiteral { .. }
             | PureExpr::IntToString { .. } => &STRING_TYPE,
 
@@ -499,7 +491,6 @@ impl PureExpr {
             | PureExpr::EnumLiteral { id, .. }
             | PureExpr::OptionLiteral { id, .. }
             | PureExpr::StringConcat { id, .. }
-            | PureExpr::TwMerge { id, .. }
             | PureExpr::NumericAdd { id, .. }
             | PureExpr::NumericSubtract { id, .. }
             | PureExpr::NumericMultiply { id, .. }
@@ -607,8 +598,7 @@ impl PureExpr {
                 }
             }
 
-            PureExpr::TwMerge { operand, .. }
-            | PureExpr::NumericNegation { operand, .. }
+            PureExpr::NumericNegation { operand, .. }
             | PureExpr::BooleanNegation { operand, .. } => f(operand),
 
             PureExpr::NumericAdd { left, right, .. }
@@ -810,11 +800,6 @@ impl PureExpr {
 
             PureExpr::StringConcat { parts, id } => PureExpr::StringConcat {
                 parts: parts.into_iter().map(&mut *f).collect(),
-                id,
-            },
-
-            PureExpr::TwMerge { operand, id } => PureExpr::TwMerge {
-                operand: Box::new(f(*operand)),
                 id,
             },
 
@@ -1148,9 +1133,6 @@ impl PureExpr {
                     parts.iter().map(|part| part.to_doc()),
                     BoxDoc::text(" + "),
                 ))
-                .append(BoxDoc::text(")")),
-            PureExpr::TwMerge { operand, .. } => BoxDoc::text("tw_merge(")
-                .append(operand.to_doc())
                 .append(BoxDoc::text(")")),
             PureExpr::NumericAdd { left, right, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))

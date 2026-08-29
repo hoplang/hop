@@ -942,19 +942,6 @@ impl PureBuilder {
         }
     }
 
-    pub fn tw_merge(&self, value: PureExpr) -> PureExpr {
-        assert_eq!(
-            *value.as_type(),
-            Type::String,
-            "TwMerge expects String operand, got: {}",
-            value
-        );
-        PureExpr::TwMerge {
-            operand: Box::new(value),
-            id: self.next_expr_id(),
-        }
-    }
-
     pub fn array_length(&self, operand: PureExpr) -> PureExpr {
         assert!(
             matches!(operand.as_type(), Type::Array(_)),

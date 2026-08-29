@@ -142,7 +142,6 @@ fn lower_output(expr: PureExpr, out: &mut Vec<WriterStatement>) {
         | PureExpr::EnumLiteral { .. }
         | PureExpr::OptionLiteral { .. }
         | PureExpr::StringConcat { .. }
-        | PureExpr::TwMerge { .. }
         | PureExpr::NumericAdd { .. }
         | PureExpr::NumericSubtract { .. }
         | PureExpr::NumericMultiply { .. }
@@ -407,10 +406,6 @@ fn lower_value(expr: PureExpr) -> WriterExpr {
 
         PureExpr::StringConcat { parts, .. } => WriterExpr::StringConcat {
             parts: parts.into_iter().map(lower_value).collect(),
-        },
-
-        PureExpr::TwMerge { operand, .. } => WriterExpr::TwMerge {
-            operand: Box::new(lower_value(*operand)),
         },
 
         PureExpr::NumericAdd {

@@ -485,7 +485,6 @@ dependencies = [
  "rand_regex",
  "regex-syntax",
  "serde",
- "tailwind-merge",
  "tempfile",
  "thiserror",
  "toml",

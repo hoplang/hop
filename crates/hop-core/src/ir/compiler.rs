@@ -529,31 +529,10 @@ impl<'a> Compiler<'a> {
     ) {
         match value {
             TypedAttributeValue::String(s) => {
-                if name.as_str() == "class" {
-                    output.push(PureExpr::FragmentRaw {
-                        content: format!(" {}=\"", name.as_str()),
-                        id: self.next_expr_id(),
-                    });
-                    output.push(PureExpr::FragmentEscape {
-                        expr: Box::new(PureExpr::TwMerge {
-                            operand: Box::new(PureExpr::StringLiteral {
-                                value: s.clone(),
-                                id: self.next_expr_id(),
-                            }),
-                            id: self.next_expr_id(),
-                        }),
-                        id: self.next_expr_id(),
-                    });
-                    output.push(PureExpr::FragmentRaw {
-                        content: "\"".to_string(),
-                        id: self.next_expr_id(),
-                    });
-                } else {
-                    output.push(PureExpr::FragmentRaw {
-                        content: format!(" {}=\"{}\"", name.as_str(), s.as_str()),
-                        id: self.next_expr_id(),
-                    });
-                }
+                output.push(PureExpr::FragmentRaw {
+                    content: format!(" {}=\"{}\"", name.as_str(), s.as_str()),
+                    id: self.next_expr_id(),
+                });
             }
             TypedAttributeValue::Expression(expr) => {
                 assert!(
@@ -567,17 +546,8 @@ impl<'a> Compiler<'a> {
                     content: format!(" {}=\"", name.as_str()),
                     id: self.next_expr_id(),
                 });
-                // Wrap class attribute values in TwMerge for Tailwind class merging
-                let expr = if name.as_str() == "class" {
-                    PureExpr::TwMerge {
-                        operand: Box::new(self.compile_expr(expr)),
-                        id: self.next_expr_id(),
-                    }
-                } else {
-                    self.compile_expr(expr)
-                };
                 output.push(PureExpr::FragmentEscape {
-                    expr: Box::new(expr),
+                    expr: Box::new(self.compile_expr(expr)),
                     id: self.next_expr_id(),
                 });
                 output.push(PureExpr::FragmentRaw {
@@ -1191,9 +1161,7 @@ mod tests {
                 page MainComp() {
                   concat(
                     raw("<div"),
-                    raw(" class=\""),
-                    escape(tw_merge("base")),
-                    raw("\""),
+                    raw(" class=\"base\""),
                     raw(" id=\"test\""),
                     raw(">"),
                     raw("Content"),
@@ -1230,67 +1198,12 @@ mod tests {
                 page MainComp(cls@v0: String) {
                   concat(
                     raw("<div"),
-                    raw(" class=\""),
-                    escape(tw_merge("base")),
-                    raw("\""),
+                    raw(" class=\"base\""),
                     raw(" data-value=\""),
                     escape(v0),
                     raw("\""),
                     raw(">"),
                     raw("Content"),
-                    raw("</div>"),
-                  )
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_tw_merge_both_static_and_dynamic_class_attributes() {
-        check(
-            build_page_no_params("MainComp", |t| {
-                t.div(vec![("class", t.attr_str("p-1 p-2"))], |t| {
-                    t.text("static");
-                });
-                t.div(
-                    vec![(
-                        "class",
-                        t.attr_expr(TypedExpr::StringLiteral {
-                            value: CheapString::new("p-1 p-2".to_string()),
-                        }),
-                    )],
-                    |t| {
-                        t.text("expression");
-                    },
-                );
-            }),
-            expect![[r#"
-                -- before --
-                page MainComp() {
-                  <div class="p-1 p-2">
-                    static
-                  </div>
-                  <div class={"p-1 p-2"}>
-                    expression
-                  </div>
-                }
-
-                -- after --
-                page MainComp() {
-                  concat(
-                    raw("<div"),
-                    raw(" class=\""),
-                    escape(tw_merge("p-1 p-2")),
-                    raw("\""),
-                    raw(">"),
-                    raw("static"),
-                    raw("</div>"),
-                    raw("<div"),
-                    raw(" class=\""),
-                    escape(tw_merge("p-1 p-2")),
-                    raw("\""),
-                    raw(">"),
-                    raw("expression"),
                     raw("</div>"),
                   )
                 }

@@ -8,7 +8,6 @@ use crate::{
     html::write_escaped_html,
 };
 use std::collections::HashMap;
-use tailwind_merge::tw_merge;
 use thiserror::Error;
 
 use crate::expr::patterns::{EnumPattern, Match};
@@ -573,13 +572,6 @@ fn evaluate_expr(
             let result = evaluate_expr(body, env, function_decls)?;
             env.remove(&var.id);
             Ok(result)
-        }
-        PureExpr::TwMerge { operand, .. } => {
-            let val = evaluate_expr(operand, env, function_decls)?;
-            match val {
-                Value::String(s) => Ok(Value::String(tw_merge(&s))),
-                _ => panic!("TwMerge requires a string argument"),
-            }
         }
         PureExpr::ArrayLength { array, .. } => {
             let array_val = evaluate_expr(array, env, function_decls)?;

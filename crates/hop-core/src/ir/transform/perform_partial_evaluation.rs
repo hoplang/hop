@@ -5,7 +5,6 @@ use crate::expr::patterns::{EnumPattern, Match};
 use crate::ir::expr_id::ExprIdCounter;
 use crate::ir::pure_module::PureExpr;
 use crate::ir::var_id::VarId;
-use tailwind_merge::tw_merge;
 
 /// A pass that evaluates the constant parts of a Pure expression at compile
 /// time.
@@ -200,17 +199,6 @@ fn try_fold(expr: PureExpr) -> PureExpr {
                 PureExpr::BooleanLiteral { value: !value, id }
             }
             operand => PureExpr::BooleanNegation {
-                operand: Box::new(operand),
-                id,
-            },
-        },
-
-        PureExpr::TwMerge { operand, id } => match *operand {
-            PureExpr::StringLiteral { value, .. } => PureExpr::StringLiteral {
-                value: CheapString::new(tw_merge(value.as_str())),
-                id,
-            },
-            operand => PureExpr::TwMerge {
                 operand: Box::new(operand),
                 id,
             },
@@ -571,7 +559,6 @@ fn is_const(expr: &PureExpr) -> bool {
         | PureExpr::FragmentFor { .. }
         | PureExpr::FunctionCall { .. }
         | PureExpr::StringConcat { .. }
-        | PureExpr::TwMerge { .. }
         | PureExpr::NumericAdd { .. }
         | PureExpr::NumericSubtract { .. }
         | PureExpr::NumericMultiply { .. }
@@ -669,7 +656,6 @@ fn instantiate(expr: &PureExpr, expr_ids: &mut ExprIdCounter) -> PureExpr {
         | PureExpr::FragmentFor { .. }
         | PureExpr::FunctionCall { .. }
         | PureExpr::StringConcat { .. }
-        | PureExpr::TwMerge { .. }
         | PureExpr::NumericAdd { .. }
         | PureExpr::NumericSubtract { .. }
         | PureExpr::NumericMultiply { .. }
@@ -878,23 +864,18 @@ mod tests {
         check(
             PureModuleBuilder::new()
                 .view("Test", vec![("dyn", "String")], |t| {
-                    t.escape(t.tw_merge(t.join(vec![
-                        t.var("dyn"),
-                        t.str("b"),
-                        t.str("c"),
-                        t.str("d"),
-                    ])))
+                    t.escape(t.join(vec![t.var("dyn"), t.str("b"), t.str("c"), t.str("d")]))
                 })
                 .build(),
             expect![[r#"
                 -- before --
                 page Test(dyn@v0: String) {
-                  escape(tw_merge((v0 + " " + "b" + " " + "c" + " " + "d")))
+                  escape((v0 + " " + "b" + " " + "c" + " " + "d"))
                 }
 
                 -- after --
                 page Test(dyn@v0: String) {
-                  escape(tw_merge((v0 + " b c d")))
+                  escape((v0 + " b c d"))
                 }
             "#]],
         );
@@ -905,21 +886,21 @@ mod tests {
         check(
             PureModuleBuilder::new()
                 .view("Test", vec![("dyn", "String")], |t| {
-                    t.escape(t.tw_merge(t.string_concat(vec![
+                    t.escape(t.string_concat(vec![
                         t.string_concat(vec![t.var("dyn"), t.str("a")]),
                         t.string_concat(vec![t.str("b"), t.var("dyn")]),
-                    ])))
+                    ]))
                 })
                 .build(),
             expect![[r#"
                 -- before --
                 page Test(dyn@v0: String) {
-                  escape(tw_merge(((v0 + "a") + ("b" + v0))))
+                  escape(((v0 + "a") + ("b" + v0)))
                 }
 
                 -- after --
                 page Test(dyn@v0: String) {
-                  escape(tw_merge((v0 + "ab" + v0)))
+                  escape((v0 + "ab" + v0))
                 }
             "#]],
         );
@@ -930,18 +911,18 @@ mod tests {
         check(
             PureModuleBuilder::new()
                 .view("Test", vec![("dyn", "String")], |t| {
-                    t.escape(t.tw_merge(t.string_concat(vec![t.str(""), t.var("dyn"), t.str("")])))
+                    t.escape(t.string_concat(vec![t.str(""), t.var("dyn"), t.str("")]))
                 })
                 .build(),
             expect![[r#"
                 -- before --
                 page Test(dyn@v0: String) {
-                  escape(tw_merge(("" + v0 + "")))
+                  escape(("" + v0 + ""))
                 }
 
                 -- after --
                 page Test(dyn@v0: String) {
-                  escape(tw_merge(v0))
+                  escape(v0)
                 }
             "#]],
         );
@@ -1325,34 +1306,6 @@ mod tests {
                 -- after --
                 page Test(x@v0: Int) {
                   concat(escape("2"))
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_evaluate_tw_merge_with_constant_strings() {
-        check(
-            PureModuleBuilder::new()
-                .view_no_params("Test", |t| {
-                    t.concat(vec![t.escape(t.tw_merge(t.join(vec![
-                        t.str("px-4"),
-                        t.str("py-2"),
-                        t.str("p-6"),
-                    ])))])
-                })
-                .build(),
-            expect![[r#"
-                -- before --
-                page Test() {
-                  concat(
-                    escape(tw_merge(("px-4" + " " + "py-2" + " " + "p-6"))),
-                  )
-                }
-
-                -- after --
-                page Test() {
-                  concat(escape("p-6"))
                 }
             "#]],
         );

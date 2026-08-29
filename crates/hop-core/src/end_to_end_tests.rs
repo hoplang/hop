@@ -843,9 +843,7 @@ mod tests {
                 -- ir (unoptimized) --
                 fn Button(label@v0: String, rest@v1: Fragment) -> Fragment {
                   write("<button")
-                  write(" class=\"")
-                  write_string(tw_merge("btn"))
-                  write("\"")
+                  write(" class=\"btn\"")
                   write_fragment(v1)
                   write(">")
                   write_string(v0)
@@ -1360,7 +1358,7 @@ mod tests {
                 ) -> Fragment {
                   write("<button")
                   write(" class=\"")
-                  write_string(tw_merge(v0))
+                  write_string(v0)
                   write("\"")
                   write_fragment(v2)
                   write(">")
@@ -1424,9 +1422,7 @@ mod tests {
                   rest@v1: Fragment,
                 ) -> Fragment {
                   write("<button")
-                  write(" class=\"")
-                  write_string(tw_merge("builtin"))
-                  write("\"")
+                  write(" class=\"builtin\"")
                   write_fragment(v1)
                   write(">")
                   write_fragment(v0)
@@ -2098,7 +2094,7 @@ mod tests {
                 fn Inner(class@v0: String, rest@v1: Fragment) -> Fragment {
                   write("<span")
                   write(" class=\"")
-                  write_string(tw_merge(v0))
+                  write_string(v0)
                   write("\"")
                   write_fragment(v1)
                   write(">")
@@ -2107,7 +2103,7 @@ mod tests {
                 fn Outer(class@v2: String, rest@v3: Fragment) -> Fragment {
                   write("<div")
                   write(" class=\"")
-                  write_string(tw_merge(v2))
+                  write_string(v2)
                   write("\"")
                   write(">")
                   call Inner(class = "x", rest = {
@@ -2192,7 +2188,7 @@ mod tests {
                 ) -> Fragment {
                   write("<div")
                   write(" class=\"")
-                  write_string(tw_merge(v4))
+                  write_string(v4)
                   write("\"")
                   write_fragment(v5)
                   write(">")
@@ -2253,7 +2249,7 @@ mod tests {
                 fn Inner(class@v0: String, rest@v1: Fragment) -> Fragment {
                   write("<span")
                   write(" class=\"")
-                  write_string(tw_merge(v0))
+                  write_string(v0)
                   write("\"")
                   write_fragment(v1)
                   write(">")
@@ -2322,7 +2318,7 @@ mod tests {
                 fn A(class@v0: String, rest@v1: Fragment) -> Fragment {
                   write("<div")
                   write(" class=\"")
-                  write_string(tw_merge(v0))
+                  write_string(v0)
                   write("\"")
                   write_fragment(v1)
                   write(">")
@@ -2388,7 +2384,7 @@ mod tests {
                 fn A(class@v0: String, rest@v1: Fragment) -> Fragment {
                   write("<div")
                   write(" class=\"")
-                  write_string(tw_merge(v0))
+                  write_string(v0)
                   write("\"")
                   write_fragment(v1)
                   write(">")
@@ -4046,7 +4042,7 @@ mod tests {
                   for v0 in ["a", "b"] {
                     write("<span")
                     write(" class=\"")
-                    write_string(tw_merge((v0 + " " + "px-2" + " " + "py-1")))
+                    write_string((v0 + " " + "px-2" + " " + "py-1"))
                     write("\"")
                     write(">")
                     write_string(((v0 + "!") + "?"))
@@ -4057,8 +4053,8 @@ mod tests {
                 page Test() {
                   for v0 in ["a", "b"] {
                     write("<span class=\"")
-                    write_string(tw_merge((v0 + " px-2 py-1")))
-                    write("\">")
+                    write_string(v0)
+                    write(" px-2 py-1\">")
                     write_string(v0)
                     write("!?</span>")
                   }
@@ -8011,7 +8007,7 @@ mod tests {
                 page Test() {
                   write("<div")
                   write(" class=\"")
-                  write_string(tw_merge(("foo" + " " + "bar" + " " + "baz")))
+                  write_string(("foo" + " " + "bar" + " " + "baz"))
                   write("\"")
                   write(">")
                   write("</div>")
@@ -8098,7 +8094,7 @@ mod tests {
                   let v0 = "my-class" in {
                     write("<div")
                     write(" class=\"")
-                    write_string(tw_merge(v0))
+                    write_string(v0)
                     write("\"")
                     write(">")
                     write("</div>")
@@ -10541,9 +10537,7 @@ mod tests {
                   children@v1: Fragment,
                 ) -> Fragment {
                   write("<div")
-                  write(" class=\"")
-                  write_string(tw_merge("card"))
-                  write("\"")
+                  write(" class=\"card\"")
                   write(">")
                   write("<h2")
                   write(">")
@@ -10614,18 +10608,14 @@ mod tests {
                 -- ir (unoptimized) --
                 fn Inner(children@v0: Fragment) -> Fragment {
                   write("<div")
-                  write(" class=\"")
-                  write_string(tw_merge("inner"))
-                  write("\"")
+                  write(" class=\"inner\"")
                   write(">")
                   write_fragment(v0)
                   write("</div>")
                 }
                 fn Outer(children@v1: Fragment) -> Fragment {
                   write("<div")
-                  write(" class=\"")
-                  write_string(tw_merge("outer"))
-                  write("\"")
+                  write(" class=\"outer\"")
                   write(">")
                   call Inner(children = {
                     write_fragment(v1)
@@ -10725,9 +10715,7 @@ mod tests {
                 }
                 fn Layout(children@v1: Fragment) -> Fragment {
                   write("<div")
-                  write(" class=\"")
-                  write_string(tw_merge("layout"))
-                  write("\"")
+                  write(" class=\"layout\"")
                   write(">")
                   write_fragment(v1)
                   write("</div>")
@@ -10796,16 +10784,12 @@ mod tests {
                 -- ir (unoptimized) --
                 fn Repeat(children@v0: Fragment) -> Fragment {
                   write("<div")
-                  write(" class=\"")
-                  write_string(tw_merge("first"))
-                  write("\"")
+                  write(" class=\"first\"")
                   write(">")
                   write_fragment(v0)
                   write("</div>")
                   write("<div")
-                  write(" class=\"")
-                  write_string(tw_merge("second"))
-                  write("\"")
+                  write(" class=\"second\"")
                   write(">")
                   write_fragment(v0)
                   write("</div>")
@@ -11388,9 +11372,7 @@ mod tests {
                   children@v1: Fragment,
                 ) -> Fragment {
                   write("<div")
-                  write(" class=\"")
-                  write_string(tw_merge("card"))
-                  write("\"")
+                  write(" class=\"card\"")
                   write(">")
                   write("<h2")
                   write(">")
@@ -11458,9 +11440,7 @@ mod tests {
                   children@v1: Fragment,
                 ) -> Fragment {
                   write("<div")
-                  write(" class=\"")
-                  write_string(tw_merge("card"))
-                  write("\"")
+                  write(" class=\"card\"")
                   write(">")
                   write("<h2")
                   write(">")

@@ -882,8 +882,8 @@ mod tests {
                     output += "<!doctype html><html><head><meta charset=\"utf-8\"><meta";
                     output += " content=\"width=device-width, initial-scale=1\"";
                     output += " name=\"viewport\"><link rel=\"stylesheet\"";
-                    output += " href=\"/styles-00000000.css\"></head><body><div class=\"";
-                    output += "text-red-500\">hi</div></body></html>";
+                    output += " href=\"/styles-00000000.css\"></head><body><div";
+                    output += " class=\"text-red-500\">hi</div></body></html>";
                     return output;
                 }
                 -- dist/public/styles-00000000.css --

@@ -162,7 +162,6 @@ impl RustTranspiler {
             | WriterExpr::OptionLiteral { .. }
             | WriterExpr::Match { .. }
             | WriterExpr::StringConcat { .. }
-            | WriterExpr::TwMerge { .. }
             | WriterExpr::NumericAdd { .. }
             | WriterExpr::NumericSubtract { .. }
             | WriterExpr::NumericMultiply { .. }
@@ -1190,7 +1189,6 @@ impl Transpiler for RustTranspiler {
             | WriterExpr::OptionLiteral { .. }
             | WriterExpr::Match { .. }
             | WriterExpr::StringConcat { .. }
-            | WriterExpr::TwMerge { .. }
             | WriterExpr::NumericAdd { .. }
             | WriterExpr::NumericSubtract { .. }
             | WriterExpr::NumericMultiply { .. }
