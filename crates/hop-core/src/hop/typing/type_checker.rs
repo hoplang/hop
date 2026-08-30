@@ -2,7 +2,6 @@ use super::type_annotation::TypeAnnotation;
 use crate::asset_reference::AssetReference;
 use crate::dependency_graph::DependencyGraph;
 use crate::document::{CheapString, DocumentRange};
-use crate::error_collection::ErrorCollectionExt;
 use crate::expr::patterns::compiler::compile_match;
 use crate::expr::typing::r#type::EnumVariant;
 use crate::expr::typing::type_checker::{decision_to_typed_expr, resolve_type, typecheck_expr};
@@ -476,7 +475,7 @@ fn check_record_declaration(
 
     for field in fields {
         let Some(resolved_type) =
-            errors.ok_or_add(resolve_type(&field.field_type, type_env, definition_links))
+            resolve_type(&field.field_type, type_env, definition_links, errors)
         else {
             continue;
         };
@@ -523,8 +522,7 @@ fn check_enum_declaration(
     for variant in variants {
         let mut typed_fields = Vec::new();
         for (field_name, field_name_range, field_type, examples) in &variant.fields {
-            let Some(resolved_type) =
-                errors.ok_or_add(resolve_type(field_type, type_env, definition_links))
+            let Some(resolved_type) = resolve_type(field_type, type_env, definition_links, errors)
             else {
                 continue;
             };
@@ -595,7 +593,7 @@ fn register_component_signature<'a>(
             }
 
             let Some(param_type) =
-                errors.ok_or_add(resolve_type(&param.var_type, type_env, definition_links))
+                resolve_type(&param.var_type, type_env, definition_links, errors)
             else {
                 continue;
             };
@@ -605,7 +603,7 @@ fn register_component_signature<'a>(
                     // Use a fresh variable scope, default values
                     // are not allowed to reference eachother.
                     let mut fresh_var_env = VariableScope::new();
-                    if let Some(typed_default) = errors.ok_or_add(typecheck_expr(
+                    if let Some(typed_default) = typecheck_expr(
                         default_expr,
                         Some(&param_type),
                         &mut fresh_var_env,
@@ -614,7 +612,8 @@ fn register_component_signature<'a>(
                         annotations,
                         definition_links,
                         asset_references,
-                    )) {
+                        errors,
+                    ) {
                         let default_type = typed_default.get_type();
                         if *default_type != *param_type {
                             errors.push(TypeError::new(
@@ -1142,8 +1141,7 @@ fn check_page_declaration(
             continue;
         }
 
-        let Some(param_type) =
-            errors.ok_or_add(resolve_type(&param.var_type, type_env, definition_links))
+        let Some(param_type) = resolve_type(&param.var_type, type_env, definition_links, errors)
         else {
             continue;
         };
@@ -1263,8 +1261,7 @@ fn register_function_signature<'a>(
             continue;
         }
 
-        let Some(param_type) =
-            errors.ok_or_add(resolve_type(&param.var_type, type_env, definition_links))
+        let Some(param_type) = resolve_type(&param.var_type, type_env, definition_links, errors)
         else {
             continue;
         };
@@ -1288,11 +1285,7 @@ fn register_function_signature<'a>(
         });
     }
 
-    let return_type = errors.ok_or_add(resolve_type(
-        &function.return_type,
-        type_env,
-        definition_links,
-    ))?;
+    let return_type = resolve_type(&function.return_type, type_env, definition_links, errors)?;
 
     type_env
         .insert_local_function(
@@ -1339,7 +1332,7 @@ fn check_function_body(
         );
     }
 
-    let typed_body = errors.ok_or_add(typecheck_expr(
+    let typed_body = typecheck_expr(
         &function.body,
         Some(&return_type),
         &mut var_env,
@@ -1348,7 +1341,8 @@ fn check_function_body(
         annotations,
         definition_links,
         asset_references,
-    ));
+        errors,
+    );
 
     for (param, _) in resolved_params.iter().rev() {
         let (name, _, accessed) = var_env.pop();
@@ -1414,7 +1408,7 @@ fn typecheck_node(
                 })
                 .collect();
 
-            let typed_condition = errors.ok_or_add(typecheck_expr(
+            let typed_condition = typecheck_expr(
                 condition,
                 None,
                 var_env,
@@ -1423,7 +1417,8 @@ fn typecheck_node(
                 annotations,
                 definition_links,
                 asset_references,
-            ))?;
+                errors,
+            )?;
 
             let condition_type = typed_condition.get_type();
             if *condition_type != Type::Bool {
@@ -1457,7 +1452,7 @@ fn typecheck_node(
             // Type check the loop source and determine element type
             let (typed_source, element_type) = match &**source {
                 ParsedLoopSource::Array(array_expr) => {
-                    let typed_array = errors.ok_or_add(typecheck_expr(
+                    let typed_array = typecheck_expr(
                         array_expr,
                         None,
                         var_env,
@@ -1466,7 +1461,8 @@ fn typecheck_node(
                         annotations,
                         definition_links,
                         asset_references,
-                    ))?;
+                        errors,
+                    )?;
                     let array_type = typed_array.get_type();
                     let element_type = match array_type.as_ref() {
                         Type::Array(inner) => inner.clone(),
@@ -1481,7 +1477,7 @@ fn typecheck_node(
                     (TypedLoopSource::Array(typed_array), element_type)
                 }
                 ParsedLoopSource::RangeInclusive { start, end } => {
-                    let typed_start = errors.ok_or_add(typecheck_expr(
+                    let typed_start = typecheck_expr(
                         start,
                         None,
                         var_env,
@@ -1490,8 +1486,9 @@ fn typecheck_node(
                         annotations,
                         definition_links,
                         asset_references,
-                    ))?;
-                    let typed_end = errors.ok_or_add(typecheck_expr(
+                        errors,
+                    )?;
+                    let typed_end = typecheck_expr(
                         end,
                         None,
                         var_env,
@@ -1500,7 +1497,8 @@ fn typecheck_node(
                         annotations,
                         definition_links,
                         asset_references,
-                    ))?;
+                        errors,
+                    )?;
 
                     // Both bounds must be Int
                     let start_type = typed_start.get_type();
@@ -1609,8 +1607,7 @@ fn typecheck_node(
                 // Resolve the declared type, if an annotation is present.
                 let declared_type = match &binding.var_type {
                     Some(parsed_type) => {
-                        let Some(t) =
-                            errors.ok_or_add(resolve_type(parsed_type, type_env, definition_links))
+                        let Some(t) = resolve_type(parsed_type, type_env, definition_links, errors)
                         else {
                             continue;
                         };
@@ -1649,7 +1646,7 @@ fn typecheck_node(
                 // Type-check the value. An annotation acts as the expected type;
                 // otherwise the value is checked with no expectation and its
                 // inferred type becomes the binding's type.
-                let Some(typed_value) = errors.ok_or_add(typecheck_expr(
+                let Some(typed_value) = typecheck_expr(
                     &binding.value_expr,
                     declared_type.as_ref(),
                     var_env,
@@ -1658,7 +1655,8 @@ fn typecheck_node(
                     annotations,
                     definition_links,
                     asset_references,
-                )) else {
+                    errors,
+                ) else {
                     continue;
                 };
 
@@ -1926,7 +1924,7 @@ fn typecheck_node(
             expression,
             range: _,
         } => {
-            if let Some(typed_expr) = errors.ok_or_add(typecheck_expr(
+            if let Some(typed_expr) = typecheck_expr(
                 expression,
                 None,
                 var_env,
@@ -1935,7 +1933,8 @@ fn typecheck_node(
                 annotations,
                 definition_links,
                 asset_references,
-            )) {
+                errors,
+            ) {
                 let expr_type = typed_expr.get_type();
                 match *expr_type {
                     Type::Fragment => Some(typed_expr),
@@ -1956,7 +1955,7 @@ fn typecheck_node(
         }
 
         ParsedNode::Match { subject, cases, .. } => {
-            let typed_subject = errors.ok_or_add(typecheck_expr(
+            let typed_subject = typecheck_expr(
                 subject,
                 None,
                 var_env,
@@ -1965,7 +1964,8 @@ fn typecheck_node(
                 annotations,
                 definition_links,
                 asset_references,
-            ))?;
+                errors,
+            )?;
 
             let subject_type = typed_subject.get_type();
             if !subject_type.is_matchable() {
@@ -1978,20 +1978,21 @@ fn typecheck_node(
                 return None;
             }
 
-            let typed_patterns = errors.ok_or_add(
-                cases
-                    .iter()
-                    .map(|case| typecheck_pattern(&case.pattern, subject_type.clone(), registry))
-                    .collect::<Result<Vec<_>, _>>(),
-            )?;
+            let typed_patterns = cases
+                .iter()
+                .map(|case| {
+                    typecheck_pattern(&case.pattern, subject_type.clone(), registry, errors)
+                })
+                .collect::<Option<Vec<_>>>()?;
 
-            let decision = errors.ok_or_add(compile_match(
+            let decision = compile_match(
                 var_env.fresh_var_counter(),
                 registry,
                 &typed_patterns,
                 subject_type,
                 subject.range(),
-            ))?;
+                errors,
+            )?;
 
             let typed_bodies = cases
                 .iter()
@@ -2103,7 +2104,7 @@ fn typecheck_attribute_value(
 ) -> Option<TypedAttributeValue> {
     match value {
         Some(ParsedAttributeValue::Expression(expr)) => {
-            let typed_expr = errors.ok_or_add(typecheck_expr(
+            let typed_expr = typecheck_expr(
                 expr,
                 None,
                 var_env,
@@ -2112,7 +2113,8 @@ fn typecheck_attribute_value(
                 annotations,
                 definition_links,
                 asset_references,
-            ))?;
+                errors,
+            )?;
             if *typed_expr.get_type() != Type::String {
                 errors.push(TypeError::new(
                     TypeErrorKind::ArgumentTypeMismatch {
@@ -2277,7 +2279,7 @@ fn typecheck_arguments(
             },
         };
 
-        let Some(typed_expr) = errors.ok_or_add(typecheck_expr(
+        let Some(typed_expr) = typecheck_expr(
             &arg_expr,
             Some(param_type),
             var_env,
@@ -2286,7 +2288,8 @@ fn typecheck_arguments(
             annotations,
             definition_links,
             asset_references,
-        )) else {
+            errors,
+        ) else {
             continue;
         };
         let arg_type = typed_expr.get_type();

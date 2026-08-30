@@ -124,12 +124,13 @@ pub fn typecheck_pattern(
     parsed: &ParsedMatchPattern,
     subject_type: Arc<Type>,
     registry: &TypeRegistry,
-) -> Result<TypedMatchPattern, TypeError> {
+    errors: &mut Vec<TypeError>,
+) -> Option<TypedMatchPattern> {
     match parsed {
-        ParsedMatchPattern::Wildcard { range } => Ok(TypedMatchPattern::Wildcard {
+        ParsedMatchPattern::Wildcard { range } => Some(TypedMatchPattern::Wildcard {
             range: range.clone(),
         }),
-        ParsedMatchPattern::Binding { name, range } => Ok(TypedMatchPattern::Binding {
+        ParsedMatchPattern::Binding { name, range } => Some(TypedMatchPattern::Binding {
             name: name.clone(),
             typ: subject_type,
             range: range.clone(),
@@ -143,7 +144,7 @@ pub fn typecheck_pattern(
             ..
         } => match (constructor, registry.resolve(&subject_type)) {
             (Constructor::BooleanTrue | Constructor::BooleanFalse, Some(ResolvedType::Bool)) => {
-                Ok(TypedMatchPattern::Constructor {
+                Some(TypedMatchPattern::Constructor {
                     constructor: constructor.clone(),
                     typ: subject_type.clone(),
                     args: Vec::new(),
@@ -159,9 +160,10 @@ pub fn typecheck_pattern(
                         inner_pattern,
                         inner_type.clone(),
                         registry,
+                        errors,
                     )?);
                 }
-                Ok(TypedMatchPattern::Constructor {
+                Some(TypedMatchPattern::Constructor {
                     constructor: constructor.clone(),
                     typ: subject_type.clone(),
                     args: typed_args,
@@ -171,7 +173,7 @@ pub fn typecheck_pattern(
             }
 
             (Constructor::OptionNone, Some(ResolvedType::Option(_))) => {
-                Ok(TypedMatchPattern::Constructor {
+                Some(TypedMatchPattern::Constructor {
                     constructor: constructor.clone(),
                     typ: subject_type.clone(),
                     args: Vec::new(),
@@ -192,13 +194,14 @@ pub fn typecheck_pattern(
                 }),
             ) => {
                 if pattern_enum_name != subject_enum_name {
-                    return Err(TypeError::new(
+                    errors.push(TypeError::new(
                         TypeErrorKind::MatchPatternEnumMismatch {
                             pattern_enum: pattern_enum_name.clone(),
                             subject_enum: subject_enum_name.clone(),
                         },
                         range.clone(),
                     ));
+                    return None;
                 }
 
                 let variant_fields = variants
@@ -207,13 +210,14 @@ pub fn typecheck_pattern(
                     .map(|variant| variant.fields.as_slice());
 
                 let Some(variant_fields) = variant_fields else {
-                    return Err(TypeError::new(
+                    errors.push(TypeError::new(
                         TypeErrorKind::UndefinedEnumVariant {
                             enum_name: pattern_enum_name.clone(),
                             variant_name: pattern_variant_name.clone(),
                         },
                         range.clone(),
                     ));
+                    return None;
                 };
 
                 let mut typed_fields = Vec::new();
@@ -228,11 +232,16 @@ pub fn typecheck_pattern(
                             typed_fields.push(TypedField {
                                 name: field_name.clone(),
                                 index,
-                                pattern: typecheck_pattern(field_pattern, typ.clone(), registry)?,
+                                pattern: typecheck_pattern(
+                                    field_pattern,
+                                    typ.clone(),
+                                    registry,
+                                    errors,
+                                )?,
                             });
                         }
                         None => {
-                            return Err(TypeError::new(
+                            errors.push(TypeError::new(
                                 TypeErrorKind::EnumVariantUnknownField {
                                     enum_name: pattern_enum_name.clone(),
                                     variant_name: pattern_variant_name.clone(),
@@ -240,6 +249,7 @@ pub fn typecheck_pattern(
                                 },
                                 field_name_range.clone(),
                             ));
+                            return None;
                         }
                     }
                 }
@@ -252,7 +262,7 @@ pub fn typecheck_pattern(
                         .filter(|(name, _, _)| !pattern_field_names.contains(&name))
                         .map(|(name, _, _)| name.clone())
                         .collect::<Vec<_>>();
-                    return Err(TypeError::new(
+                    errors.push(TypeError::new(
                         TypeErrorKind::EnumVariantMissingFields {
                             enum_name: pattern_enum_name.clone(),
                             variant_name: pattern_variant_name.clone(),
@@ -260,9 +270,10 @@ pub fn typecheck_pattern(
                         },
                         constructor_range.clone(),
                     ));
+                    return None;
                 }
 
-                Ok(TypedMatchPattern::Constructor {
+                Some(TypedMatchPattern::Constructor {
                     constructor: constructor.clone(),
                     typ: subject_type.clone(),
                     args: Vec::new(),
@@ -282,13 +293,14 @@ pub fn typecheck_pattern(
                 }),
             ) => {
                 if pattern_type_name != subject_type_name {
-                    return Err(TypeError::new(
+                    errors.push(TypeError::new(
                         TypeErrorKind::MatchPatternRecordMismatch {
                             pattern_record: pattern_type_name.clone(),
                             subject_record: subject_type_name.clone(),
                         },
                         range.clone(),
                     ));
+                    return None;
                 }
 
                 let mut typed_fields = Vec::new();
@@ -303,17 +315,23 @@ pub fn typecheck_pattern(
                             typed_fields.push(TypedField {
                                 name: field_name.clone(),
                                 index,
-                                pattern: typecheck_pattern(field_pattern, typ.clone(), registry)?,
+                                pattern: typecheck_pattern(
+                                    field_pattern,
+                                    typ.clone(),
+                                    registry,
+                                    errors,
+                                )?,
                             });
                         }
                         None => {
-                            return Err(TypeError::new(
+                            errors.push(TypeError::new(
                                 TypeErrorKind::RecordUnknownField {
                                     field_name: field_name.clone(),
                                     record_name: pattern_type_name.clone(),
                                 },
                                 field_name_range.clone(),
                             ));
+                            return None;
                         }
                     }
                 }
@@ -326,16 +344,17 @@ pub fn typecheck_pattern(
                         .filter(|(name, _, _)| !pattern_field_names.contains(&name))
                         .map(|(name, _, _)| name.clone())
                         .collect::<Vec<_>>();
-                    return Err(TypeError::new(
+                    errors.push(TypeError::new(
                         TypeErrorKind::RecordMissingFields {
                             record_name: pattern_type_name.clone(),
                             missing_fields,
                         },
                         constructor_range.clone(),
                     ));
+                    return None;
                 }
 
-                Ok(TypedMatchPattern::Constructor {
+                Some(TypedMatchPattern::Constructor {
                     constructor: constructor.clone(),
                     typ: subject_type.clone(),
                     args: Vec::new(),
@@ -344,13 +363,16 @@ pub fn typecheck_pattern(
                 })
             }
 
-            _ => Err(TypeError::new(
-                TypeErrorKind::MatchPatternTypeMismatch {
-                    expected: subject_type.clone(),
-                    found: parsed.to_string(),
-                },
-                range.clone(),
-            )),
+            _ => {
+                errors.push(TypeError::new(
+                    TypeErrorKind::MatchPatternTypeMismatch {
+                        expected: subject_type.clone(),
+                        found: parsed.to_string(),
+                    },
+                    range.clone(),
+                ));
+                None
+            }
         },
     }
 }
@@ -387,12 +409,13 @@ mod tests {
             _ => panic!("Expected match expression"),
         };
 
+        let mut type_errors = Vec::new();
         let result = patterns
             .iter()
-            .map(|p| typecheck_pattern(p, subject_type.clone(), types.registry()))
-            .collect::<Result<Vec<_>, _>>();
+            .map(|p| typecheck_pattern(p, subject_type.clone(), types.registry(), &mut type_errors))
+            .collect::<Option<Vec<_>>>();
         match result {
-            Ok(typed) => (
+            Some(typed) => (
                 typed
                     .iter()
                     .map(|p| p.to_string())
@@ -400,12 +423,12 @@ mod tests {
                     .join("\n"),
                 true,
             ),
-            Err(e) => (
+            None => (
                 DocumentAnnotator::new()
                     .with_label("error")
                     .without_location()
                     .without_line_numbers()
-                    .annotate(types.module(), [e])
+                    .annotate(types.module(), type_errors)
                     .render(),
                 false,
             ),

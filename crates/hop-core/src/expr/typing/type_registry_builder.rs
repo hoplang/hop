@@ -282,12 +282,19 @@ impl TestTypes {
         }
         let mut type_env = self.type_env();
         let mut definition_links = Vec::new();
-        resolve_type(&parsed, &mut type_env, &mut definition_links).unwrap_or_else(|error| {
+        let mut type_errors = Vec::new();
+        resolve_type(
+            &parsed,
+            &mut type_env,
+            &mut definition_links,
+            &mut type_errors,
+        )
+        .unwrap_or_else(|| {
             let rendered = DocumentAnnotator::new()
                 .with_label("error")
                 .without_location()
                 .without_line_numbers()
-                .annotate(&self.module, [error])
+                .annotate(&self.module, type_errors)
                 .render();
             panic!("failed to resolve type `{type_str}`:\n{rendered}")
         })

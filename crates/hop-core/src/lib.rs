@@ -1,6 +1,5 @@
 mod css;
 mod dependency_graph;
-mod error_collection;
 mod expr;
 mod hop;
 mod html;

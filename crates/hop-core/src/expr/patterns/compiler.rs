@@ -261,13 +261,15 @@ pub fn compile_match(
     patterns: &[TypedMatchPattern],
     subject_type: Arc<Type>,
     subject_range: &DocumentRange,
-) -> Result<Decision, TypeError> {
+    errors: &mut Vec<TypeError>,
+) -> Option<Decision> {
     // Check for empty arms
     if patterns.is_empty() {
-        return Err(TypeError::new(
+        errors.push(TypeError::new(
             TypeErrorKind::MatchNoArms {},
             subject_range.clone(),
         ));
+        return None;
     }
 
     let subject_var = fresh_var(fresh_vars, subject_type);
@@ -303,22 +305,24 @@ pub fn compile_match(
         .collect();
     if let Some(&first_unreachable) = unreachable.first() {
         let pattern = &patterns[first_unreachable];
-        return Err(TypeError::new(
+        errors.push(TypeError::new(
             TypeErrorKind::MatchUnreachableArm {
                 pattern: Box::new(pattern.clone()),
             },
             pattern.range().clone(),
         ));
+        return None;
     }
 
     // Check for missing patterns
     if !missing_patterns.is_empty() {
         let mut missing: Vec<String> = missing_patterns.into_iter().collect();
         missing.sort();
-        return Err(TypeError::new(
+        errors.push(TypeError::new(
             TypeErrorKind::MatchMissingVariants { variants: missing },
             subject_range.clone(),
         ));
+        return None;
     }
 
     // Tree is guaranteed to be Some if there are no missing patterns
@@ -327,14 +331,15 @@ pub fn compile_match(
     // Check for useless match (Success with no bindings)
     if let Decision::Success(body) = &tree {
         if body.bindings.is_empty() {
-            return Err(TypeError::new(
+            errors.push(TypeError::new(
                 TypeErrorKind::MatchUseless {},
                 subject_range.clone(),
             ));
+            return None;
         }
     }
 
-    Ok(tree)
+    Some(tree)
 }
 
 fn compile_rows(
@@ -787,11 +792,12 @@ mod tests {
         // Pattern typechecking is covered by the `typed` module tests. Any error
         // here means the test uses a pattern that does not typecheck, so panic
         // rather than exercise the compiler with invalid input.
+        let mut type_errors = Vec::new();
         let typed_patterns = patterns
             .iter()
-            .map(|p| typecheck_pattern(p, subject_type.clone(), types.registry()))
-            .collect::<Result<Vec<_>, _>>()
-            .unwrap_or_else(|e| panic!("pattern failed to typecheck: {e:?}"));
+            .map(|p| typecheck_pattern(p, subject_type.clone(), types.registry(), &mut type_errors))
+            .collect::<Option<Vec<_>>>()
+            .unwrap_or_else(|| panic!("pattern failed to typecheck: {type_errors:?}"));
 
         let mut fresh_vars = FreshVarCounter::new();
         let result = compile_match(
@@ -800,16 +806,17 @@ mod tests {
             &typed_patterns,
             subject_type,
             &subject_range,
+            &mut type_errors,
         );
 
         match result {
-            Ok(decision) => (format_decision(&decision, 0), true),
-            Err(e) => (
+            Some(decision) => (format_decision(&decision, 0), true),
+            None => (
                 DocumentAnnotator::new()
                     .with_label("error")
                     .without_location()
                     .without_line_numbers()
-                    .annotate(types.module(), [e])
+                    .annotate(types.module(), type_errors)
                     .render(),
                 false,
             ),

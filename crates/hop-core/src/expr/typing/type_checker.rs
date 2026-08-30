@@ -28,7 +28,8 @@ pub fn resolve_type(
     parsed_type: &ParsedType,
     type_env: &mut TypeEnv,
     definition_links: &mut Vec<DefinitionLink>,
-) -> Result<Arc<Type>, TypeError> {
+    errors: &mut Vec<TypeError>,
+) -> Option<Arc<Type>> {
     let (typ, _) = match parsed_type {
         ParsedType::String { range } => (Arc::new(Type::String), range),
         ParsedType::Bool { range } => (Arc::new(Type::Bool), range),
@@ -36,22 +37,23 @@ pub fn resolve_type(
         ParsedType::Float { range } => (Arc::new(Type::Float), range),
         ParsedType::Fragment { range } => (Arc::new(Type::Fragment), range),
         ParsedType::Option { element, range } => {
-            let elem_type = resolve_type(element, type_env, definition_links)?;
+            let elem_type = resolve_type(element, type_env, definition_links, errors)?;
             (Arc::new(Type::Option(elem_type)), range)
         }
         ParsedType::Array { element, range } => {
-            let elem_type = resolve_type(element, type_env, definition_links)?;
+            let elem_type = resolve_type(element, type_env, definition_links, errors)?;
             (Arc::new(Type::Array(elem_type)), range)
         }
         ParsedType::Named { name, range } => {
-            let (binding, def_range) = type_env.lookup(name).ok_or_else(|| {
-                TypeError::new(
+            let Some((binding, def_range)) = type_env.lookup(name) else {
+                errors.push(TypeError::new(
                     TypeErrorKind::UndefinedType {
                         type_name: name.clone(),
                     },
                     range.clone(),
-                )
-            })?;
+                ));
+                return None;
+            };
             match binding {
                 TypeBinding::Type(typ) => {
                     let typ = typ.clone();
@@ -62,15 +64,16 @@ pub fn resolve_type(
                     (typ, range)
                 }
                 TypeBinding::Component(_) | TypeBinding::Page => {
-                    return Err(TypeError::new(
+                    errors.push(TypeError::new(
                         TypeErrorKind::ComponentUsedAsType { name: name.clone() },
                         range.clone(),
                     ));
+                    return None;
                 }
             }
         }
     };
-    Ok(typ)
+    Some(typ)
 }
 
 /// Resolve a parsed Expr to a typed Expr.
@@ -86,7 +89,8 @@ pub fn typecheck_expr(
     annotations: &mut Vec<TypeAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
     asset_references: &mut Vec<AssetReference>,
-) -> Result<TypedExpr, TypeError> {
+    errors: &mut Vec<TypeError>,
+) -> Option<TypedExpr> {
     match parsed_expr {
         ParsedExpr::Var {
             value: var_name, ..
@@ -101,25 +105,28 @@ pub fn typecheck_expr(
                     use_range: parsed_expr.range().clone(),
                     definition_range: def_range.clone(),
                 });
-                Ok(TypedExpr::Var {
+                Some(TypedExpr::Var {
                     value: var_name.clone(),
                     kind: var_type.clone(),
                 })
             } else {
-                Err(TypeError::new(
+                errors.push(TypeError::new(
                     TypeErrorKind::UndefinedVariable {
                         name: var_name.clone(),
                     },
                     parsed_expr.range().clone(),
-                ))
+                ));
+                None
             }
         }
-        ParsedExpr::BooleanLiteral { value, .. } => Ok(TypedExpr::BooleanLiteral { value: *value }),
-        ParsedExpr::StringLiteral { value, .. } => Ok(TypedExpr::StringLiteral {
+        ParsedExpr::BooleanLiteral { value, .. } => {
+            Some(TypedExpr::BooleanLiteral { value: *value })
+        }
+        ParsedExpr::StringLiteral { value, .. } => Some(TypedExpr::StringLiteral {
             value: value.clone(),
         }),
-        ParsedExpr::IntLiteral { value, .. } => Ok(TypedExpr::IntLiteral { value: *value }),
-        ParsedExpr::FloatLiteral { value, .. } => Ok(TypedExpr::FloatLiteral { value: *value }),
+        ParsedExpr::IntLiteral { value, .. } => Some(TypedExpr::IntLiteral { value: *value }),
+        ParsedExpr::FloatLiteral { value, .. } => Some(TypedExpr::FloatLiteral { value: *value }),
         ParsedExpr::FieldAccess {
             record,
             field,
@@ -135,6 +142,7 @@ pub fn typecheck_expr(
                 annotations,
                 definition_links,
                 asset_references,
+                errors,
             )?;
             let base_type = typed_base.as_type();
 
@@ -147,27 +155,31 @@ pub fn typecheck_expr(
                     if let Some((_, field_type, _)) =
                         fields.iter().find(|(f, _, _)| f.as_str() == field.as_str())
                     {
-                        Ok(TypedExpr::FieldAccess {
+                        Some(TypedExpr::FieldAccess {
                             kind: field_type.clone(),
                             record: Box::new(typed_base),
                             field: field.clone(),
                         })
                     } else {
-                        Err(TypeError::new(
+                        errors.push(TypeError::new(
                             TypeErrorKind::FieldNotFoundInRecord {
                                 field: field.clone(),
                                 record_name: record_name.clone(),
                             },
                             range.clone(),
-                        ))
+                        ));
+                        None
                     }
                 }
-                _ => Err(TypeError::new(
-                    TypeErrorKind::CannotUseAsRecord {
-                        typ: typed_base.get_type(),
-                    },
-                    record.range().clone(),
-                )),
+                _ => {
+                    errors.push(TypeError::new(
+                        TypeErrorKind::CannotUseAsRecord {
+                            typ: typed_base.get_type(),
+                        },
+                        record.range().clone(),
+                    ));
+                    None
+                }
             }
         }
         ParsedExpr::BinaryOp {
@@ -176,8 +188,11 @@ pub fn typecheck_expr(
             right,
             ..
         } => {
-            // Try left first; if it fails (e.g., None without context), try right first
-            // to infer left's type from right
+            // Try left first, if it fails, try right to infer left's type from right.
+            // Both attempts are speculative, so they collect into scratch
+            // sinks, only the errors of whichever attempt we settle on are
+            // reported.
+            let mut left_errors = Vec::new();
             let typed_left = typecheck_expr(
                 left,
                 None,
@@ -187,30 +202,45 @@ pub fn typecheck_expr(
                 annotations,
                 definition_links,
                 asset_references,
-            )
-            .or_else(|left_err| {
-                let typed_right = typecheck_expr(
-                    right,
-                    None,
-                    var_env,
-                    type_env,
-                    registry,
-                    annotations,
-                    definition_links,
-                    asset_references,
-                )?;
-                typecheck_expr(
-                    left,
-                    Some(&typed_right.get_type()),
-                    var_env,
-                    type_env,
-                    registry,
-                    annotations,
-                    definition_links,
-                    asset_references,
-                )
-                .map_err(|_| left_err)
-            })?;
+                &mut left_errors,
+            );
+            let typed_left = match typed_left {
+                Some(typed_left) => typed_left,
+                None => {
+                    let mut retry_errors = Vec::new();
+                    let retried = typecheck_expr(
+                        right,
+                        None,
+                        var_env,
+                        type_env,
+                        registry,
+                        annotations,
+                        definition_links,
+                        asset_references,
+                        &mut retry_errors,
+                    )
+                    .and_then(|typed_right| {
+                        typecheck_expr(
+                            left,
+                            Some(&typed_right.get_type()),
+                            var_env,
+                            type_env,
+                            registry,
+                            annotations,
+                            definition_links,
+                            asset_references,
+                            &mut retry_errors,
+                        )
+                    });
+                    match retried {
+                        Some(typed_left) => typed_left,
+                        None => {
+                            errors.append(&mut left_errors);
+                            return None;
+                        }
+                    }
+                }
+            };
             // Use left's type as context for right (allows Some(1) == None)
             let typed_right = typecheck_expr(
                 right,
@@ -221,40 +251,44 @@ pub fn typecheck_expr(
                 annotations,
                 definition_links,
                 asset_references,
+                errors,
             )?;
 
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
             let Some(left_comparable) = left_type.as_equatable_type() else {
-                return Err(TypeError::new(
+                errors.push(TypeError::new(
                     TypeErrorKind::TypeIsNotComparable {
                         t: typed_left.get_type(),
                     },
                     left.range().clone(),
                 ));
+                return None;
             };
 
             let Some(right_comparable) = right_type.as_equatable_type() else {
-                return Err(TypeError::new(
+                errors.push(TypeError::new(
                     TypeErrorKind::TypeIsNotComparable {
                         t: typed_right.get_type(),
                     },
                     right.range().clone(),
                 ));
+                return None;
             };
 
             if left_comparable != right_comparable {
-                return Err(TypeError::new(
+                errors.push(TypeError::new(
                     TypeErrorKind::CannotCompareTypes {
                         left: typed_left.get_type(),
                         right: typed_right.get_type(),
                     },
                     parsed_expr.range().clone(),
                 ));
+                return None;
             }
 
-            Ok(TypedExpr::Equals {
+            Some(TypedExpr::Equals {
                 left: Box::new(typed_left),
                 right: Box::new(typed_right),
                 operand_types: left_comparable,
@@ -275,7 +309,8 @@ pub fn typecheck_expr(
                 annotations,
                 definition_links,
                 asset_references,
-            )?;
+                errors,
+            );
             let typed_right = typecheck_expr(
                 right,
                 None,
@@ -285,39 +320,44 @@ pub fn typecheck_expr(
                 annotations,
                 definition_links,
                 asset_references,
-            )?;
+                errors,
+            );
+            let (typed_left, typed_right) = (typed_left?, typed_right?);
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
             let Some(left_comparable) = left_type.as_equatable_type() else {
-                return Err(TypeError::new(
+                errors.push(TypeError::new(
                     TypeErrorKind::TypeIsNotComparable {
                         t: typed_left.get_type(),
                     },
                     left.range().clone(),
                 ));
+                return None;
             };
 
             let Some(right_comparable) = right_type.as_equatable_type() else {
-                return Err(TypeError::new(
+                errors.push(TypeError::new(
                     TypeErrorKind::TypeIsNotComparable {
                         t: typed_right.get_type(),
                     },
                     right.range().clone(),
                 ));
+                return None;
             };
 
             if left_comparable != right_comparable {
-                return Err(TypeError::new(
+                errors.push(TypeError::new(
                     TypeErrorKind::CannotCompareTypes {
                         left: typed_left.get_type(),
                         right: typed_right.get_type(),
                     },
                     parsed_expr.range().clone(),
                 ));
+                return None;
             }
 
-            Ok(TypedExpr::NotEquals {
+            Some(TypedExpr::NotEquals {
                 left: Box::new(typed_left),
                 right: Box::new(typed_right),
                 operand_types: left_comparable,
@@ -338,7 +378,8 @@ pub fn typecheck_expr(
                 annotations,
                 definition_links,
                 asset_references,
-            )?;
+                errors,
+            );
             let typed_right = typecheck_expr(
                 right,
                 None,
@@ -348,40 +389,45 @@ pub fn typecheck_expr(
                 annotations,
                 definition_links,
                 asset_references,
-            )?;
+                errors,
+            );
+            let (typed_left, typed_right) = (typed_left?, typed_right?);
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
-            let left_comparable = left_type.as_comparable_type().ok_or_else(|| {
-                TypeError::new(
+            let Some(left_comparable) = left_type.as_comparable_type() else {
+                errors.push(TypeError::new(
                     TypeErrorKind::TypeIsNotComparable {
                         t: typed_left.get_type(),
                     },
                     left.range().clone(),
-                )
-            })?;
+                ));
+                return None;
+            };
 
-            let right_comparable = right_type.as_comparable_type().ok_or_else(|| {
-                TypeError::new(
+            let Some(right_comparable) = right_type.as_comparable_type() else {
+                errors.push(TypeError::new(
                     TypeErrorKind::TypeIsNotComparable {
                         t: typed_right.get_type(),
                     },
                     right.range().clone(),
-                )
-            })?;
+                ));
+                return None;
+            };
 
             // Both operands must be the same comparable type
             if left_comparable != right_comparable {
-                return Err(TypeError::new(
+                errors.push(TypeError::new(
                     TypeErrorKind::CannotCompareTypes {
                         left: typed_left.get_type(),
                         right: typed_right.get_type(),
                     },
                     parsed_expr.range().clone(),
                 ));
+                return None;
             }
 
-            Ok(TypedExpr::LessThan {
+            Some(TypedExpr::LessThan {
                 left: Box::new(typed_left),
                 right: Box::new(typed_right),
                 operand_types: left_comparable,
@@ -403,7 +449,8 @@ pub fn typecheck_expr(
                 annotations,
                 definition_links,
                 asset_references,
-            )?;
+                errors,
+            );
             let typed_right = typecheck_expr(
                 right,
                 None,
@@ -413,40 +460,45 @@ pub fn typecheck_expr(
                 annotations,
                 definition_links,
                 asset_references,
-            )?;
+                errors,
+            );
+            let (typed_left, typed_right) = (typed_left?, typed_right?);
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
-            let left_comparable = left_type.as_comparable_type().ok_or_else(|| {
-                TypeError::new(
+            let Some(left_comparable) = left_type.as_comparable_type() else {
+                errors.push(TypeError::new(
                     TypeErrorKind::TypeIsNotComparable {
                         t: typed_left.get_type(),
                     },
                     left.range().clone(),
-                )
-            })?;
+                ));
+                return None;
+            };
 
-            let right_comparable = right_type.as_comparable_type().ok_or_else(|| {
-                TypeError::new(
+            let Some(right_comparable) = right_type.as_comparable_type() else {
+                errors.push(TypeError::new(
                     TypeErrorKind::TypeIsNotComparable {
                         t: typed_right.get_type(),
                     },
                     right.range().clone(),
-                )
-            })?;
+                ));
+                return None;
+            };
 
             // Both operands must be the same comparable type
             if left_comparable != right_comparable {
-                return Err(TypeError::new(
+                errors.push(TypeError::new(
                     TypeErrorKind::CannotCompareTypes {
                         left: typed_left.get_type(),
                         right: typed_right.get_type(),
                     },
                     parsed_expr.range().clone(),
                 ));
+                return None;
             }
 
-            Ok(TypedExpr::GreaterThan {
+            Some(TypedExpr::GreaterThan {
                 left: Box::new(typed_left),
                 right: Box::new(typed_right),
                 operand_types: left_comparable,
@@ -468,7 +520,8 @@ pub fn typecheck_expr(
                 annotations,
                 definition_links,
                 asset_references,
-            )?;
+                errors,
+            );
             let typed_right = typecheck_expr(
                 right,
                 None,
@@ -478,40 +531,45 @@ pub fn typecheck_expr(
                 annotations,
                 definition_links,
                 asset_references,
-            )?;
+                errors,
+            );
+            let (typed_left, typed_right) = (typed_left?, typed_right?);
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
-            let left_comparable = left_type.as_comparable_type().ok_or_else(|| {
-                TypeError::new(
+            let Some(left_comparable) = left_type.as_comparable_type() else {
+                errors.push(TypeError::new(
                     TypeErrorKind::TypeIsNotComparable {
                         t: typed_left.get_type(),
                     },
                     left.range().clone(),
-                )
-            })?;
+                ));
+                return None;
+            };
 
-            let right_comparable = right_type.as_comparable_type().ok_or_else(|| {
-                TypeError::new(
+            let Some(right_comparable) = right_type.as_comparable_type() else {
+                errors.push(TypeError::new(
                     TypeErrorKind::TypeIsNotComparable {
                         t: typed_right.get_type(),
                     },
                     right.range().clone(),
-                )
-            })?;
+                ));
+                return None;
+            };
 
             // Both operands must be the same comparable type
             if left_comparable != right_comparable {
-                return Err(TypeError::new(
+                errors.push(TypeError::new(
                     TypeErrorKind::CannotCompareTypes {
                         left: typed_left.get_type(),
                         right: typed_right.get_type(),
                     },
                     parsed_expr.range().clone(),
                 ));
+                return None;
             }
 
-            Ok(TypedExpr::LessThanOrEqual {
+            Some(TypedExpr::LessThanOrEqual {
                 left: Box::new(typed_left),
                 right: Box::new(typed_right),
                 operand_types: left_comparable,
@@ -532,7 +590,8 @@ pub fn typecheck_expr(
                 annotations,
                 definition_links,
                 asset_references,
-            )?;
+                errors,
+            );
             let typed_right = typecheck_expr(
                 right,
                 None,
@@ -542,40 +601,45 @@ pub fn typecheck_expr(
                 annotations,
                 definition_links,
                 asset_references,
-            )?;
+                errors,
+            );
+            let (typed_left, typed_right) = (typed_left?, typed_right?);
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
-            let left_comparable = left_type.as_comparable_type().ok_or_else(|| {
-                TypeError::new(
+            let Some(left_comparable) = left_type.as_comparable_type() else {
+                errors.push(TypeError::new(
                     TypeErrorKind::TypeIsNotComparable {
                         t: typed_left.get_type(),
                     },
                     left.range().clone(),
-                )
-            })?;
+                ));
+                return None;
+            };
 
-            let right_comparable = right_type.as_comparable_type().ok_or_else(|| {
-                TypeError::new(
+            let Some(right_comparable) = right_type.as_comparable_type() else {
+                errors.push(TypeError::new(
                     TypeErrorKind::TypeIsNotComparable {
                         t: typed_right.get_type(),
                     },
                     right.range().clone(),
-                )
-            })?;
+                ));
+                return None;
+            };
 
             // Both operands must be the same comparable type
             if left_comparable != right_comparable {
-                return Err(TypeError::new(
+                errors.push(TypeError::new(
                     TypeErrorKind::CannotCompareTypes {
                         left: typed_left.get_type(),
                         right: typed_right.get_type(),
                     },
                     parsed_expr.range().clone(),
                 ));
+                return None;
             }
 
-            Ok(TypedExpr::GreaterThanOrEqual {
+            Some(TypedExpr::GreaterThanOrEqual {
                 left: Box::new(typed_left),
                 right: Box::new(typed_right),
                 operand_types: left_comparable,
@@ -596,7 +660,8 @@ pub fn typecheck_expr(
                 annotations,
                 definition_links,
                 asset_references,
-            )?;
+                errors,
+            );
             let typed_right = typecheck_expr(
                 right,
                 None,
@@ -606,26 +671,30 @@ pub fn typecheck_expr(
                 annotations,
                 definition_links,
                 asset_references,
-            )?;
+                errors,
+            );
+            let (typed_left, typed_right) = (typed_left?, typed_right?);
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
             // LogicalAnd only works with Bool expressions
             if *left_type != Type::Bool {
-                return Err(TypeError::new(
+                errors.push(TypeError::new(
                     TypeErrorKind::LogicalAndTypeMismatch {},
                     left.range().clone(),
                 ));
+                return None;
             }
 
             if *right_type != Type::Bool {
-                return Err(TypeError::new(
+                errors.push(TypeError::new(
                     TypeErrorKind::LogicalAndTypeMismatch {},
                     right.range().clone(),
                 ));
+                return None;
             }
 
-            Ok(TypedExpr::BooleanLogicalAnd {
+            Some(TypedExpr::BooleanLogicalAnd {
                 left: Box::new(typed_left),
                 right: Box::new(typed_right),
             })
@@ -645,7 +714,8 @@ pub fn typecheck_expr(
                 annotations,
                 definition_links,
                 asset_references,
-            )?;
+                errors,
+            );
             let typed_right = typecheck_expr(
                 right,
                 None,
@@ -655,25 +725,29 @@ pub fn typecheck_expr(
                 annotations,
                 definition_links,
                 asset_references,
-            )?;
+                errors,
+            );
+            let (typed_left, typed_right) = (typed_left?, typed_right?);
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
             if *left_type != Type::Bool {
-                return Err(TypeError::new(
+                errors.push(TypeError::new(
                     TypeErrorKind::LogicalOrTypeMismatch {},
                     left.range().clone(),
                 ));
+                return None;
             }
 
             if *right_type != Type::Bool {
-                return Err(TypeError::new(
+                errors.push(TypeError::new(
                     TypeErrorKind::LogicalOrTypeMismatch {},
                     right.range().clone(),
                 ));
+                return None;
             }
 
-            Ok(TypedExpr::BooleanLogicalOr {
+            Some(TypedExpr::BooleanLogicalOr {
                 left: Box::new(typed_left),
                 right: Box::new(typed_right),
             })
@@ -693,7 +767,8 @@ pub fn typecheck_expr(
                 annotations,
                 definition_links,
                 asset_references,
-            )?;
+                errors,
+            );
             let typed_right = typecheck_expr(
                 right,
                 None,
@@ -703,33 +778,36 @@ pub fn typecheck_expr(
                 annotations,
                 definition_links,
                 asset_references,
-            )?;
+                errors,
+            );
+            let (typed_left, typed_right) = (typed_left?, typed_right?);
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
             match (left_type, right_type) {
-                (Type::String, Type::String) => Ok(TypedExpr::StringConcat {
+                (Type::String, Type::String) => Some(TypedExpr::StringConcat {
                     parts: vec![typed_left, typed_right],
                 }),
-                (Type::Int, Type::Int) => Ok(TypedExpr::NumericAdd {
+                (Type::Int, Type::Int) => Some(TypedExpr::NumericAdd {
                     left: Box::new(typed_left),
                     right: Box::new(typed_right),
                     operand_types: NumericType::Int,
                 }),
-                (Type::Float, Type::Float) => Ok(TypedExpr::NumericAdd {
+                (Type::Float, Type::Float) => Some(TypedExpr::NumericAdd {
                     left: Box::new(typed_left),
                     right: Box::new(typed_right),
                     operand_types: NumericType::Float,
                 }),
                 _ => {
                     // Incompatible types for addition
-                    Err(TypeError::new(
+                    errors.push(TypeError::new(
                         TypeErrorKind::IncompatibleTypesForAddition {
                             left_type: typed_left.get_type(),
                             right_type: typed_right.get_type(),
                         },
                         left.range().clone().to(right.range().clone()),
-                    ))
+                    ));
+                    None
                 }
             }
         }
@@ -748,7 +826,8 @@ pub fn typecheck_expr(
                 annotations,
                 definition_links,
                 asset_references,
-            )?;
+                errors,
+            );
             let typed_right = typecheck_expr(
                 right,
                 None,
@@ -758,30 +837,33 @@ pub fn typecheck_expr(
                 annotations,
                 definition_links,
                 asset_references,
-            )?;
+                errors,
+            );
+            let (typed_left, typed_right) = (typed_left?, typed_right?);
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
             match (left_type, right_type) {
-                (Type::Int, Type::Int) => Ok(TypedExpr::NumericSubtract {
+                (Type::Int, Type::Int) => Some(TypedExpr::NumericSubtract {
                     left: Box::new(typed_left),
                     right: Box::new(typed_right),
                     operand_types: NumericType::Int,
                 }),
-                (Type::Float, Type::Float) => Ok(TypedExpr::NumericSubtract {
+                (Type::Float, Type::Float) => Some(TypedExpr::NumericSubtract {
                     left: Box::new(typed_left),
                     right: Box::new(typed_right),
                     operand_types: NumericType::Float,
                 }),
                 _ => {
                     // Incompatible types for subtraction
-                    Err(TypeError::new(
+                    errors.push(TypeError::new(
                         TypeErrorKind::IncompatibleTypesForSubtraction {
                             left_type: typed_left.get_type(),
                             right_type: typed_right.get_type(),
                         },
                         left.range().clone().to(right.range().clone()),
-                    ))
+                    ));
+                    None
                 }
             }
         }
@@ -800,7 +882,8 @@ pub fn typecheck_expr(
                 annotations,
                 definition_links,
                 asset_references,
-            )?;
+                errors,
+            );
             let typed_right = typecheck_expr(
                 right,
                 None,
@@ -810,30 +893,33 @@ pub fn typecheck_expr(
                 annotations,
                 definition_links,
                 asset_references,
-            )?;
+                errors,
+            );
+            let (typed_left, typed_right) = (typed_left?, typed_right?);
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
             match (left_type, right_type) {
-                (Type::Int, Type::Int) => Ok(TypedExpr::NumericMultiply {
+                (Type::Int, Type::Int) => Some(TypedExpr::NumericMultiply {
                     left: Box::new(typed_left),
                     right: Box::new(typed_right),
                     operand_types: NumericType::Int,
                 }),
-                (Type::Float, Type::Float) => Ok(TypedExpr::NumericMultiply {
+                (Type::Float, Type::Float) => Some(TypedExpr::NumericMultiply {
                     left: Box::new(typed_left),
                     right: Box::new(typed_right),
                     operand_types: NumericType::Float,
                 }),
                 _ => {
                     // Incompatible types for multiplication
-                    Err(TypeError::new(
+                    errors.push(TypeError::new(
                         TypeErrorKind::IncompatibleTypesForMultiplication {
                             left_type: typed_left.get_type(),
                             right_type: typed_right.get_type(),
                         },
                         left.range().clone().to(right.range().clone()),
-                    ))
+                    ));
+                    None
                 }
             }
         }
@@ -847,19 +933,21 @@ pub fn typecheck_expr(
                 annotations,
                 definition_links,
                 asset_references,
+                errors,
             )?;
             let operand_type = typed_operand.as_type();
 
             if *operand_type != Type::Bool {
-                return Err(TypeError::new(
+                errors.push(TypeError::new(
                     TypeErrorKind::BooleanNegationTypeMismatch {
                         found: typed_operand.get_type(),
                     },
                     operand.range().clone(),
                 ));
+                return None;
             }
 
-            Ok(TypedExpr::BooleanNegation {
+            Some(TypedExpr::BooleanNegation {
                 operand: Box::new(typed_operand),
             })
         }
@@ -873,24 +961,28 @@ pub fn typecheck_expr(
                 annotations,
                 definition_links,
                 asset_references,
+                errors,
             )?;
             let operand_type = typed_operand.as_type();
 
             match operand_type {
-                Type::Int => Ok(TypedExpr::NumericNegation {
+                Type::Int => Some(TypedExpr::NumericNegation {
                     operand: Box::new(typed_operand),
                     operand_type: NumericType::Int,
                 }),
-                Type::Float => Ok(TypedExpr::NumericNegation {
+                Type::Float => Some(TypedExpr::NumericNegation {
                     operand: Box::new(typed_operand),
                     operand_type: NumericType::Float,
                 }),
-                _ => Err(TypeError::new(
-                    TypeErrorKind::NumericNegationTypeMismatch {
-                        found: typed_operand.get_type(),
-                    },
-                    operand.range().clone(),
-                )),
+                _ => {
+                    errors.push(TypeError::new(
+                        TypeErrorKind::NumericNegationTypeMismatch {
+                            found: typed_operand.get_type(),
+                        },
+                        operand.range().clone(),
+                    ));
+                    None
+                }
             }
         }
         ParsedExpr::ArrayLiteral { elements, range } => {
@@ -899,13 +991,14 @@ pub fn typecheck_expr(
                 let elem_type = match inferred_type.map(|t| t.as_ref()) {
                     Some(Type::Array(elem)) => elem.clone(),
                     _ => {
-                        return Err(TypeError::new(
+                        errors.push(TypeError::new(
                             TypeErrorKind::CannotInferEmptyArrayType {},
                             range.clone(),
                         ));
+                        return None;
                     }
                 };
-                Ok(TypedExpr::ArrayLiteral {
+                Some(TypedExpr::ArrayLiteral {
                     elements: vec![],
                     kind: Arc::new(Type::Array(elem_type)),
                 })
@@ -917,9 +1010,8 @@ pub fn typecheck_expr(
                     _ => None,
                 };
 
-                let mut typed_elements = Vec::new();
+                let mut typed_elements = Vec::with_capacity(elements.len());
 
-                // Check the type of the first element
                 let first_typed = typecheck_expr(
                     &elements[0],
                     expected_elem_type.as_ref(),
@@ -929,40 +1021,51 @@ pub fn typecheck_expr(
                     annotations,
                     definition_links,
                     asset_references,
-                )?;
-                let first_type = first_typed.get_type();
-                typed_elements.push(first_typed);
+                    errors,
+                );
+                let first_type = first_typed.as_ref().map(|typed| typed.get_type());
+                typed_elements.extend(first_typed);
 
                 // Check that all elements have the same type
                 // Use first element's type as context for subsequent elements
-                let elem_context = expected_elem_type.as_ref().unwrap_or(&first_type);
+                let elem_context = expected_elem_type.as_ref().or(first_type.as_ref());
                 for element in elements.iter().skip(1) {
-                    let typed_element = typecheck_expr(
+                    let Some(typed_element) = typecheck_expr(
                         element,
-                        Some(elem_context),
+                        elem_context,
                         var_env,
                         type_env,
                         registry,
                         annotations,
                         definition_links,
                         asset_references,
-                    )?;
+                        errors,
+                    ) else {
+                        continue;
+                    };
                     let element_type = typed_element.get_type();
-                    if *element_type != *first_type {
-                        return Err(TypeError::new(
-                            TypeErrorKind::ArrayElementTypeMismatch {
-                                expected: first_type.clone(),
-                                found: element_type,
-                            },
-                            element.range().clone(),
-                        ));
+                    if let Some(first_type) = &first_type {
+                        if *element_type != **first_type {
+                            errors.push(TypeError::new(
+                                TypeErrorKind::ArrayElementTypeMismatch {
+                                    expected: first_type.clone(),
+                                    found: element_type,
+                                },
+                                element.range().clone(),
+                            ));
+                            continue;
+                        }
                     }
                     typed_elements.push(typed_element);
                 }
 
-                Ok(TypedExpr::ArrayLiteral {
+                if typed_elements.len() != elements.len() {
+                    return None;
+                }
+
+                Some(TypedExpr::ArrayLiteral {
                     elements: typed_elements,
-                    kind: Arc::new(Type::Array(first_type)),
+                    kind: Arc::new(Type::Array(first_type?)),
                 })
             }
         }
@@ -974,24 +1077,26 @@ pub fn typecheck_expr(
             range,
         } => {
             // Check if the record type is defined
-            let (binding, def_range) = type_env.lookup(record_name).ok_or_else(|| {
-                TypeError::new(
+            let Some((binding, def_range)) = type_env.lookup(record_name) else {
+                errors.push(TypeError::new(
                     TypeErrorKind::UndefinedRecord {
                         record_name: record_name.clone(),
                     },
                     range.clone(),
-                )
-            })?;
+                ));
+                return None;
+            };
             let def_range = def_range.clone();
             let record_type = match binding {
                 TypeBinding::Type(typ) => typ.clone(),
                 TypeBinding::Component(_) | TypeBinding::Page => {
-                    return Err(TypeError::new(
+                    errors.push(TypeError::new(
                         TypeErrorKind::UndefinedRecord {
                             record_name: record_name.clone(),
                         },
                         range.clone(),
                     ));
+                    return None;
                 }
             };
 
@@ -1012,12 +1117,13 @@ pub fn typecheck_expr(
                 ..
             }) = registry.resolve(&record_type)
             else {
-                return Err(TypeError::new(
+                errors.push(TypeError::new(
                     TypeErrorKind::UndefinedRecord {
                         record_name: record_name.clone(),
                     },
                     range.clone(),
                 ));
+                return None;
             };
 
             // Build a map of expected fields from the record type
@@ -1040,50 +1146,53 @@ pub fn typecheck_expr(
                         annotations,
                         definition_links,
                         asset_references,
+                        errors,
                     )?;
                     let subject_type = typed_subject.get_type();
                     if *subject_type != *record_type {
-                        return Err(TypeError::new(
+                        errors.push(TypeError::new(
                             TypeErrorKind::RecordSpreadTypeMismatch {
                                 expected: record_type.clone(),
                                 found: subject_type,
                             },
                             subject.range().clone(),
                         ));
+                        return None;
                     }
                     Some(typed_subject)
                 }
                 None => None,
             };
 
-            // Check for unknown fields, duplicate fields, and type mismatches
             let mut typed_fields = Vec::new();
             let mut provided_fields = HashSet::new();
 
             for (field_name, field_value) in fields {
                 // Check if this field exists in the record
-                let expected_type = expected_fields.get(field_name).ok_or_else(|| {
-                    TypeError::new(
+                let Some(expected_type) = expected_fields.get(field_name) else {
+                    errors.push(TypeError::new(
                         TypeErrorKind::RecordUnknownField {
                             field_name: field_name.clone(),
                             record_name: record_name.clone(),
                         },
                         field_value.range().clone(),
-                    )
-                })?;
+                    ));
+                    continue;
+                };
 
                 if !provided_fields.insert(field_name.clone()) {
-                    return Err(TypeError::new(
+                    errors.push(TypeError::new(
                         TypeErrorKind::RecordDuplicateField {
                             field_name: field_name.clone(),
                             record_name: record_name.clone(),
                         },
                         field_value.range().clone(),
                     ));
+                    continue;
                 }
 
                 // Type check the field value with expected type for bidirectional checking
-                let typed_value = typecheck_expr(
+                let Some(typed_value) = typecheck_expr(
                     field_value,
                     Some(expected_type),
                     var_env,
@@ -1092,12 +1201,15 @@ pub fn typecheck_expr(
                     annotations,
                     definition_links,
                     asset_references,
-                )?;
+                    errors,
+                ) else {
+                    continue;
+                };
                 let actual_type = typed_value.get_type();
 
                 // Check that the types match
                 if *actual_type != **expected_type {
-                    return Err(TypeError::new(
+                    errors.push(TypeError::new(
                         TypeErrorKind::RecordLiteralFieldTypeMismatch {
                             field_name: field_name.clone(),
                             expected: expected_type.clone(),
@@ -1105,9 +1217,15 @@ pub fn typecheck_expr(
                         },
                         field_value.range().clone(),
                     ));
+                    continue;
                 }
 
                 typed_fields.push((field_name.clone(), typed_value));
+            }
+
+            // The desugaring below assumes every explicit field was typechecked.
+            if typed_fields.len() != fields.len() {
+                return None;
             }
 
             let Some(typed_spread) = typed_spread else {
@@ -1118,16 +1236,17 @@ pub fn typecheck_expr(
                     .cloned()
                     .collect::<Vec<_>>();
                 if !missing_fields.is_empty() {
-                    return Err(TypeError::new(
+                    errors.push(TypeError::new(
                         TypeErrorKind::RecordMissingFields {
                             record_name: record_name.clone(),
                             missing_fields,
                         },
                         range.clone(),
                     ));
+                    return None;
                 }
 
-                return Ok(TypedExpr::RecordLiteral {
+                return Some(TypedExpr::RecordLiteral {
                     record_name: record_name.clone(),
                     fields: typed_fields,
                     kind: record_type,
@@ -1144,7 +1263,7 @@ pub fn typecheck_expr(
                 .iter()
                 .all(|(name, _, _)| provided_fields.contains(name))
             {
-                return Ok(TypedExpr::RecordLiteral {
+                return Some(TypedExpr::RecordLiteral {
                     record_name: record_name.clone(),
                     fields: typed_fields,
                     kind: record_type,
@@ -1183,7 +1302,7 @@ pub fn typecheck_expr(
                 fields: all_fields,
                 kind: record_type.clone(),
             };
-            Ok(match subject_to_bind {
+            Some(match subject_to_bind {
                 Some(subject) => TypedExpr::Let {
                     var: subject_var,
                     value: Box::new(subject),
@@ -1202,24 +1321,26 @@ pub fn typecheck_expr(
             range,
         } => {
             // Look up the enum type in the type environment
-            let (binding, def_range) = type_env.lookup(enum_name).ok_or_else(|| {
-                TypeError::new(
+            let Some((binding, def_range)) = type_env.lookup(enum_name) else {
+                errors.push(TypeError::new(
                     TypeErrorKind::UndefinedEnum {
                         enum_name: enum_name.clone(),
                     },
                     range.clone(),
-                )
-            })?;
+                ));
+                return None;
+            };
             let def_range = def_range.clone();
             let enum_type = match binding {
                 TypeBinding::Type(typ) => typ.clone(),
                 TypeBinding::Component(_) | TypeBinding::Page => {
-                    return Err(TypeError::new(
+                    errors.push(TypeError::new(
                         TypeErrorKind::UndefinedEnum {
                             enum_name: enum_name.clone(),
                         },
                         range.clone(),
                     ));
+                    return None;
                 }
             };
 
@@ -1236,12 +1357,13 @@ pub fn typecheck_expr(
 
             // Verify it's actually an enum type and get the variant's fields
             let Some(ResolvedType::Enum { variants, .. }) = registry.resolve(&enum_type) else {
-                return Err(TypeError::new(
+                errors.push(TypeError::new(
                     TypeErrorKind::UndefinedEnum {
                         enum_name: enum_name.clone(),
                     },
                     range.clone(),
                 ));
+                return None;
             };
             let variant_fields = match variants
                 .iter()
@@ -1249,13 +1371,14 @@ pub fn typecheck_expr(
             {
                 Some(variant) => variant.fields.clone(),
                 None => {
-                    return Err(TypeError::new(
+                    errors.push(TypeError::new(
                         TypeErrorKind::UndefinedEnumVariant {
                             enum_name: enum_name.clone(),
                             variant_name: variant_name.clone(),
                         },
                         range.clone(),
                     ));
+                    return None;
                 }
             };
 
@@ -1264,9 +1387,7 @@ pub fn typecheck_expr(
                 let mut typed_fields = Vec::new();
                 let mut provided_field_names: HashSet<FieldName> = HashSet::new();
 
-                // Type check each provided field
                 for (field_name, field_name_range, field_expr) in fields {
-                    // Check if field exists in variant definition
                     let expected_field = variant_fields
                         .iter()
                         .find(|(name, _, _)| name.as_str() == field_name.as_str());
@@ -1274,7 +1395,7 @@ pub fn typecheck_expr(
                     match expected_field {
                         Some((_, expected_type, _)) => {
                             if !provided_field_names.insert(field_name.clone()) {
-                                return Err(TypeError::new(
+                                errors.push(TypeError::new(
                                     TypeErrorKind::EnumVariantDuplicateField {
                                         enum_name: enum_name.clone(),
                                         variant_name: variant_name.clone(),
@@ -1282,10 +1403,10 @@ pub fn typecheck_expr(
                                     },
                                     field_name_range.clone(),
                                 ));
+                                continue;
                             }
 
-                            // Type check the field expression
-                            let typed_field_expr = typecheck_expr(
+                            let Some(typed_field_expr) = typecheck_expr(
                                 field_expr,
                                 Some(expected_type),
                                 var_env,
@@ -1294,12 +1415,14 @@ pub fn typecheck_expr(
                                 annotations,
                                 definition_links,
                                 asset_references,
-                            )?;
+                                errors,
+                            ) else {
+                                continue;
+                            };
 
-                            // Verify type matches
                             let actual_type = typed_field_expr.get_type();
                             if *actual_type != **expected_type {
-                                return Err(TypeError::new(
+                                errors.push(TypeError::new(
                                     TypeErrorKind::EnumVariantFieldTypeMismatch {
                                         enum_name: enum_name.clone(),
                                         variant_name: variant_name.clone(),
@@ -1309,12 +1432,13 @@ pub fn typecheck_expr(
                                     },
                                     field_expr.range().clone(),
                                 ));
+                                continue;
                             }
 
                             typed_fields.push((field_name.clone(), typed_field_expr));
                         }
                         None => {
-                            return Err(TypeError::new(
+                            errors.push(TypeError::new(
                                 TypeErrorKind::EnumVariantUnknownField {
                                     enum_name: enum_name.clone(),
                                     variant_name: variant_name.clone(),
@@ -1326,14 +1450,17 @@ pub fn typecheck_expr(
                     }
                 }
 
-                // Check for missing fields
+                if typed_fields.len() != fields.len() {
+                    return None;
+                }
+
                 let missing_fields: Vec<FieldName> = variant_fields
                     .iter()
                     .filter(|(name, _, _)| !provided_field_names.contains(name))
                     .map(|(name, _, _)| name.clone())
                     .collect();
                 if !missing_fields.is_empty() {
-                    return Err(TypeError::new(
+                    errors.push(TypeError::new(
                         TypeErrorKind::EnumVariantMissingFields {
                             enum_name: enum_name.clone(),
                             variant_name: variant_name.clone(),
@@ -1341,12 +1468,13 @@ pub fn typecheck_expr(
                         },
                         constructor_range.clone(),
                     ));
+                    return None;
                 }
 
                 typed_fields
             };
 
-            Ok(TypedExpr::EnumLiteral {
+            Some(TypedExpr::EnumLiteral {
                 enum_name: enum_name.clone(),
                 variant_name: variant_name.clone(),
                 fields: typed_fields,
@@ -1373,9 +1501,10 @@ pub fn typecheck_expr(
                         annotations,
                         definition_links,
                         asset_references,
+                        errors,
                     )?;
                     let inner_type = typed_inner.get_type();
-                    Ok(TypedExpr::OptionLiteral {
+                    Some(TypedExpr::OptionLiteral {
                         value: Some(Box::new(typed_inner)),
                         kind: Arc::new(Type::Option(inner_type)),
                     })
@@ -1385,20 +1514,21 @@ pub fn typecheck_expr(
                     let elem_type = match inferred_type.map(|t| t.as_ref()) {
                         Some(Type::Option(elem)) => elem.clone(),
                         _ => {
-                            return Err(TypeError::new(
+                            errors.push(TypeError::new(
                                 TypeErrorKind::CannotInferNoneType {},
                                 range.clone(),
                             ));
+                            return None;
                         }
                     };
-                    Ok(TypedExpr::OptionLiteral {
+                    Some(TypedExpr::OptionLiteral {
                         value: None,
                         kind: Arc::new(Type::Option(elem_type)),
                     })
                 }
             }
         }
-        ParsedExpr::FragmentEmpty { .. } => Ok(TypedExpr::FragmentConcat { nodes: Vec::new() }),
+        ParsedExpr::FragmentEmpty { .. } => Some(TypedExpr::FragmentConcat { nodes: Vec::new() }),
         ParsedExpr::Match { subject, arms, .. } => {
             let typed_subject = typecheck_expr(
                 subject,
@@ -1409,30 +1539,33 @@ pub fn typecheck_expr(
                 annotations,
                 definition_links,
                 asset_references,
+                errors,
             )?;
 
             let subject_type = typed_subject.get_type();
             if !subject_type.is_matchable() {
-                return Err(TypeError::new(
+                errors.push(TypeError::new(
                     TypeErrorKind::MatchNotImplementedForType {
                         found: subject_type,
                     },
                     subject.range().clone(),
                 ));
+                return None;
             }
             let typed_patterns = arms
                 .iter()
-                .map(|arm| typecheck_pattern(&arm.pattern, subject_type.clone(), registry))
-                .collect::<Result<Vec<_>, _>>()?;
+                .map(|arm| typecheck_pattern(&arm.pattern, subject_type.clone(), registry, errors))
+                .collect::<Option<Vec<_>>>()?;
+
             let tree = compile_match(
                 var_env.fresh_var_counter(),
                 registry,
                 &typed_patterns,
                 subject_type,
                 subject.range(),
-            )?;
-
-            let (typed_bodies, result_type) = typecheck_arm_bodies(
+                errors,
+            );
+            let arm_bodies = typecheck_arm_bodies(
                 arms,
                 &typed_patterns,
                 var_env,
@@ -1441,9 +1574,11 @@ pub fn typecheck_expr(
                 annotations,
                 definition_links,
                 asset_references,
-            )?;
+                errors,
+            );
+            let (tree, (typed_bodies, result_type)) = (tree?, arm_bodies?);
 
-            Ok(decision_to_typed_expr(
+            Some(decision_to_typed_expr(
                 &tree,
                 &typed_bodies,
                 result_type,
@@ -1462,7 +1597,7 @@ pub fn typecheck_expr(
 
                 let mut typed_args = Vec::with_capacity(args.len());
                 for arg in args {
-                    let typed = typecheck_expr(
+                    let Some(typed) = typecheck_expr(
                         arg,
                         Some(&string_type),
                         var_env,
@@ -1471,9 +1606,12 @@ pub fn typecheck_expr(
                         annotations,
                         definition_links,
                         asset_references,
-                    )?;
+                        errors,
+                    ) else {
+                        continue;
+                    };
                     if typed.as_type() != &Type::String {
-                        return Err(TypeError::new(
+                        errors.push(TypeError::new(
                             TypeErrorKind::MacroArgumentTypeMismatch {
                                 macro_name: "join".to_string(),
                                 expected: Arc::new(Type::String),
@@ -1481,8 +1619,13 @@ pub fn typecheck_expr(
                             },
                             arg.range().clone(),
                         ));
+                        continue;
                     }
                     typed_args.push(typed);
+                }
+
+                if typed_args.len() != args.len() {
+                    return None;
                 }
 
                 annotations.push(TypeAnnotation::Description {
@@ -1501,32 +1644,33 @@ pub fn typecheck_expr(
                     }
                     parts.push(arg);
                 }
-                Ok(TypedExpr::StringConcat { parts })
+                Some(TypedExpr::StringConcat { parts })
             }
             "asset" => {
-                // Exactly one argument
                 if args.len() != 1 {
-                    return Err(TypeError::new(
+                    errors.push(TypeError::new(
                         TypeErrorKind::AssetMacroArity { actual: args.len() },
                         range.clone(),
                     ));
+                    return None;
                 }
                 // Must be a string literal
                 let (path, path_range) = match &args[0] {
                     ParsedExpr::StringLiteral { value, range } => (value.clone(), range.clone()),
                     other => {
-                        return Err(TypeError::new(
+                        errors.push(TypeError::new(
                             TypeErrorKind::AssetMacroNonLiteralArg {},
                             other.range().clone(),
                         ));
+                        return None;
                     }
                 };
-                // Must start with `/`
                 if !path.as_str().starts_with('/') {
-                    return Err(TypeError::new(
+                    errors.push(TypeError::new(
                         TypeErrorKind::AssetPathMustBeAbsolute {},
                         path_range,
                     ));
+                    return None;
                 }
 
                 let document_id = DocumentId::new(path.trim_start_matches('/')).unwrap();
@@ -1544,7 +1688,7 @@ pub fn typecheck_expr(
                     range: subject_range.clone(),
                 });
 
-                Ok(TypedExpr::Asset { path })
+                Some(TypedExpr::Asset { path })
             }
             _ => unreachable!("Unknown macro '{}' should be caught at parse time", name),
         },
@@ -1563,6 +1707,7 @@ pub fn typecheck_expr(
                 annotations,
                 definition_links,
                 asset_references,
+                errors,
             )?;
             let receiver_type = typed_receiver.get_type();
 
@@ -1573,7 +1718,7 @@ pub fn typecheck_expr(
                         description: "Returns the number of elements in the array.".to_string(),
                         range: method_range.clone(),
                     });
-                    Ok(TypedExpr::ArrayLength {
+                    Some(TypedExpr::ArrayLength {
                         array: Box::new(typed_receiver),
                     })
                 }
@@ -1583,17 +1728,17 @@ pub fn typecheck_expr(
                         description: "Returns `true` if the array is empty.".to_string(),
                         range: method_range.clone(),
                     });
-                    Ok(TypedExpr::ArrayIsEmpty {
+                    Some(TypedExpr::ArrayIsEmpty {
                         array: Box::new(typed_receiver),
                     })
                 }
-                (Type::Int, "to_string") => Ok(TypedExpr::IntToString {
+                (Type::Int, "to_string") => Some(TypedExpr::IntToString {
                     value: Box::new(typed_receiver),
                 }),
-                (Type::Int, "to_float") => Ok(TypedExpr::IntToFloat {
+                (Type::Int, "to_float") => Some(TypedExpr::IntToFloat {
                     value: Box::new(typed_receiver),
                 }),
-                (Type::Float, "to_int") => Ok(TypedExpr::FloatToInt {
+                (Type::Float, "to_int") => Some(TypedExpr::FloatToInt {
                     value: Box::new(typed_receiver),
                 }),
                 (Type::String, "is_empty") => {
@@ -1602,7 +1747,7 @@ pub fn typecheck_expr(
                         description: "Returns `true` if the string is empty.".to_string(),
                         range: method_range.clone(),
                     });
-                    Ok(TypedExpr::StringIsEmpty {
+                    Some(TypedExpr::StringIsEmpty {
                         string: Box::new(typed_receiver),
                     })
                 }
@@ -1612,7 +1757,7 @@ pub fn typecheck_expr(
                         description: "Returns `true` if the option contains a value.".to_string(),
                         range: method_range.clone(),
                     });
-                    Ok(TypedExpr::OptionIsSome {
+                    Some(TypedExpr::OptionIsSome {
                         option: Box::new(typed_receiver),
                     })
                 }
@@ -1622,17 +1767,20 @@ pub fn typecheck_expr(
                         description: "Returns `true` if the option is `None`.".to_string(),
                         range: method_range.clone(),
                     });
-                    Ok(TypedExpr::OptionIsNone {
+                    Some(TypedExpr::OptionIsNone {
                         option: Box::new(typed_receiver),
                     })
                 }
-                _ => Err(TypeError::new(
-                    TypeErrorKind::MethodNotAvailable {
-                        method: method.clone(),
-                        typ: receiver_type,
-                    },
-                    range.clone(),
-                )),
+                _ => {
+                    errors.push(TypeError::new(
+                        TypeErrorKind::MethodNotAvailable {
+                            method: method.clone(),
+                            typ: receiver_type,
+                        },
+                        range.clone(),
+                    ));
+                    None
+                }
             }
         }
         ParsedExpr::FunctionCall {
@@ -1641,17 +1789,18 @@ pub fn typecheck_expr(
             args,
             range,
         } => {
-            let (signature, def_range) = type_env.lookup_function(name).ok_or_else(|| {
-                TypeError::new(
+            let Some((signature, def_range)) = type_env.lookup_function(name) else {
+                errors.push(TypeError::new(
                     TypeErrorKind::UndefinedFunction { name: name.clone() },
                     name_range.clone(),
-                )
-            })?;
+                ));
+                return None;
+            };
             let signature = signature.clone();
             let def_range = def_range.clone();
 
             if args.len() != signature.params.len() {
-                return Err(TypeError::new(
+                errors.push(TypeError::new(
                     TypeErrorKind::FunctionArgumentCountMismatch {
                         name: name.clone(),
                         expected: signature.params.len(),
@@ -1659,6 +1808,7 @@ pub fn typecheck_expr(
                     },
                     range.clone(),
                 ));
+                return None;
             }
 
             definition_links.push(DefinitionLink {
@@ -1668,7 +1818,7 @@ pub fn typecheck_expr(
 
             let mut typed_args = Vec::with_capacity(args.len());
             for (arg, param) in args.iter().zip(signature.params.iter()) {
-                let typed_arg = typecheck_expr(
+                let Some(typed_arg) = typecheck_expr(
                     arg,
                     Some(&param.typ),
                     var_env,
@@ -1677,10 +1827,13 @@ pub fn typecheck_expr(
                     annotations,
                     definition_links,
                     asset_references,
-                )?;
+                    errors,
+                ) else {
+                    continue;
+                };
                 let arg_type = typed_arg.get_type();
                 if *arg_type != *param.typ {
-                    return Err(TypeError::new(
+                    errors.push(TypeError::new(
                         TypeErrorKind::FunctionArgumentTypeMismatch {
                             name: name.clone(),
                             param_name: param.name.clone(),
@@ -1689,11 +1842,16 @@ pub fn typecheck_expr(
                         },
                         arg.range().clone(),
                     ));
+                    continue;
                 }
                 typed_args.push((param.name.clone(), typed_arg));
             }
 
-            Ok(TypedExpr::FunctionCall {
+            if typed_args.len() != args.len() {
+                return None;
+            }
+
+            Some(TypedExpr::FunctionCall {
                 function_name: name.clone().into(),
                 args: typed_args,
                 kind: signature.return_type.clone(),
@@ -1753,27 +1911,28 @@ fn typecheck_arm_bodies(
     annotations: &mut Vec<TypeAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
     asset_references: &mut Vec<AssetReference>,
-) -> Result<(Vec<TypedExpr>, Arc<Type>), TypeError> {
+    errors: &mut Vec<TypeError>,
+) -> Option<(Vec<TypedExpr>, Arc<Type>)> {
     let mut typed_bodies = Vec::new();
     let mut result_type: Option<Arc<Type>> = None;
 
     for (arm, typed_pattern) in arms.iter().zip(typed_patterns) {
-        // Collect definition links for enum variant references in patterns
         collect_pattern_definition_links(&arm.pattern, type_env, definition_links);
 
-        // Extract binding variables from the pattern and add them to the environment
         let bindings = typed_pattern.bindings();
-        let mut pushed_count = 0;
+        let mut arm_ok = true;
+        let mut pushed = Vec::new();
         for (name, typ, range) in &bindings {
             match var_env.push(name.clone(), (typ.clone(), range.clone())) {
                 Ok(_) => {
-                    pushed_count += 1;
+                    pushed.push(range);
                 }
                 Err(_) => {
-                    return Err(TypeError::new(
+                    errors.push(TypeError::new(
                         TypeErrorKind::VariableAlreadyDefined { name: name.clone() },
                         range.clone(),
                     ));
+                    arm_ok = false;
                 }
             }
         }
@@ -1788,19 +1947,24 @@ fn typecheck_arm_bodies(
             annotations,
             definition_links,
             asset_references,
-        )?;
-        let body_type = typed_body.get_type();
+            errors,
+        );
 
-        // Remove bindings from environment and check for unused bindings
-        for (_, _, range) in bindings.iter().rev().take(pushed_count) {
+        for range in pushed.iter().rev() {
             let (name, _, accessed) = var_env.pop();
             if !accessed {
-                return Err(TypeError::new(
+                errors.push(TypeError::new(
                     TypeErrorKind::MatchUnusedBinding { name },
-                    range.clone(),
+                    (*range).clone(),
                 ));
+                arm_ok = false;
             }
         }
+
+        let Some(typed_body) = typed_body else {
+            continue;
+        };
+        let body_type = typed_body.get_type();
 
         match &result_type {
             None => {
@@ -1808,21 +1972,28 @@ fn typecheck_arm_bodies(
             }
             Some(expected) => {
                 if *body_type != **expected {
-                    return Err(TypeError::new(
+                    errors.push(TypeError::new(
                         TypeErrorKind::MatchArmTypeMismatch {
                             expected: expected.clone(),
                             found: body_type,
                         },
                         arm.body.range().clone(),
                     ));
+                    arm_ok = false;
                 }
             }
         }
 
-        typed_bodies.push(typed_body);
+        if arm_ok {
+            typed_bodies.push(typed_body);
+        }
     }
 
-    Ok((typed_bodies, result_type.unwrap()))
+    if typed_bodies.len() != arms.len() {
+        return None;
+    }
+
+    Some((typed_bodies, result_type?))
 }
 
 /// Convert a compiled Decision tree into a TypedExpr.
@@ -2052,6 +2223,7 @@ mod tests {
         let mut annotations = Vec::new();
         let mut definition_links = Vec::new();
 
+        let mut type_errors = Vec::new();
         match typecheck_expr(
             &expr,
             None,
@@ -2061,14 +2233,15 @@ mod tests {
             &mut annotations,
             &mut definition_links,
             &mut asset_references,
+            &mut type_errors,
         ) {
-            Ok(typed_expr) => (typed_expr.as_type().to_string(), true),
-            Err(e) => (
+            Some(typed_expr) => (typed_expr.as_type().to_string(), true),
+            None => (
                 DocumentAnnotator::new()
                     .with_label("error")
                     .without_location()
                     .without_line_numbers()
-                    .annotate(types.module(), [e])
+                    .annotate(types.module(), type_errors)
                     .render(),
                 false,
             ),
@@ -2099,6 +2272,42 @@ mod tests {
             panic!("expected a type error, but expression typechecked to: {actual}");
         }
         expected.assert_eq(&actual);
+    }
+
+    #[test]
+    fn reports_an_error_for_each_broken_operand() {
+        reject(
+            TypeRegistryBuilder::new(),
+            &[],
+            "left + right",
+            expect![[r#"
+                error: Undefined variable: left
+                left + right
+                ^^^^
+
+                error: Undefined variable: right
+                left + right
+                       ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn reports_an_error_for_each_broken_argument() {
+        reject(
+            TypeRegistryBuilder::new(),
+            &[("count", "Int")],
+            "join!(count, count)",
+            expect![[r#"
+                error: Mismatched type for 'join': expected `String` got `Int`
+                join!(count, count)
+                      ^^^^^
+
+                error: Mismatched type for 'join': expected `String` got `Int`
+                join!(count, count)
+                             ^^^^^
+            "#]],
+        );
     }
 
     #[test]
@@ -4964,6 +5173,10 @@ mod tests {
                 }
             "#},
             expect![[r#"
+                error: Unused binding 'n' in match arm
+                    User{name: n, age: a} => "hello",
+                               ^
+
                 error: Unused binding 'a' in match arm
                     User{name: n, age: a} => "hello",
                                        ^
