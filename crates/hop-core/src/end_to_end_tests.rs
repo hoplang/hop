@@ -1180,6 +1180,71 @@ mod tests {
 
     #[test]
     #[ignore]
+    fn rest_reaches_a_spread_target_nested_in_match() {
+        check(
+            indoc! {r#"
+                component Wrapper(
+                  show: Bool,
+                  ...rest,
+                ) {
+                  <match {show}>
+                    <case {true}>
+                      <div ...rest>
+                      </div>
+                    </case>
+                    <case {false}>
+                    </case>
+                  </match>
+                }
+
+                view Test {
+                  <Wrapper show={true} id="x"/>
+                }
+            "#},
+            r#"<div id="x"></div>"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                fn Wrapper(show@v0: Bool, rest@v1: Fragment) -> Fragment {
+                  match v0 {
+                    true => {
+                      write("<div")
+                      write_fragment(v1)
+                      write(">")
+                      write("</div>")
+                    }
+                    false => {
+                    }
+                  }
+                }
+                page Test() {
+                  call Wrapper(show = true, rest = {
+                    write(" id=\"x\"")
+                  })
+                }
+                -- ir (optimized) --
+                page Test() {
+                  write("<div id=\"x\"></div>")
+                }
+                -- expected output --
+                <div id="x"></div>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
     fn rest_escapes_attribute_values() {
         check(
             indoc! {r#"

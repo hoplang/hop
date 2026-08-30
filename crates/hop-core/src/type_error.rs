@@ -120,6 +120,15 @@ pub(crate) enum TypeErrorKind {
     #[error("Rest spread of {component} forms a cycle and never reaches an element")]
     RestSpreadCycle { component: TypeName },
 
+    #[error("Component {component} declares rest parameter '{name}' but never spreads it")]
+    RestNeverSpread { component: TypeName, name: VarName },
+
+    #[error("Rest parameter '{name}' is spread more than once")]
+    RestSpreadMoreThanOnce { name: VarName },
+
+    #[error("Spread '...{name}' does not refer to a declared rest parameter")]
+    SpreadNotDeclaredRest { name: VarName },
+
     #[error("Mismatched type: expected `{expected}` got `{found}`")]
     ArgumentTypeMismatch {
         expected: Arc<Type>,

@@ -4,9 +4,7 @@ use crate::expr::parsing::token::Token;
 use crate::symbols::field_name::InvalidFieldNameError;
 use crate::symbols::module_name::InvalidModuleNameError;
 use crate::symbols::type_name::InvalidTypeNameError;
-use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::InvalidVarNameError;
-use crate::symbols::var_name::VarName;
 use thiserror::Error;
 
 #[derive(Debug, Clone)]
@@ -211,15 +209,6 @@ pub(crate) enum ParseErrorKind {
 
     #[error("At most one rest parameter is allowed")]
     DuplicateRestParam,
-
-    #[error("Component {component} declares rest parameter '{name}' but never spreads it")]
-    RestNeverSpread { component: TypeName, name: VarName },
-
-    #[error("Rest parameter '{name}' is spread more than once")]
-    RestSpreadMoreThanOnce { name: VarName },
-
-    #[error("Spread '...{name}' does not refer to a declared rest parameter")]
-    SpreadNotDeclaredRest { name: VarName },
 
     #[error("At most one spread is allowed in a record literal")]
     DuplicateSpreadInRecordLiteral,

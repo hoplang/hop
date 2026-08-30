@@ -14,7 +14,6 @@ use crate::hop::parsing::parsed_ast::ParsedDeclaration;
 use crate::hop::parsing::parsed_ast::{
     ParsedAttribute, ParsedComponentDeclaration, ParsedEnumDeclaration, ParsedFunctionDeclaration,
     ParsedImportDeclaration, ParsedPageDeclaration, ParsedParameter, ParsedRecordDeclaration,
-    RestSpreadTarget,
 };
 use crate::hop::typing::definition_link::DefinitionLink;
 use crate::html::HtmlElement;
@@ -305,10 +304,28 @@ fn typecheck_module(
         }
     }
 
+    // Pair each component's rest parameter with the spread that forwards it.
+    // This is purely syntactic, so it runs before any signature is settled, and
+    // in declaration order to keep diagnostics stable.
+    let mut rest_targets: HashMap<TypeName, Option<RestSpreadTarget>> = HashMap::new();
+    for component in parsed_ast.get_component_declarations() {
+        let mut spreads = Vec::new();
+        collect_spreads(&component.children, &mut spreads);
+        rest_targets.insert(
+            component.component_name.clone(),
+            pair_rest_spread(
+                &component.component_name,
+                component.rest_param.as_ref(),
+                spreads,
+                errors,
+            ),
+        );
+    }
+
     // Settle every signature before checking a single body: a call site needs
     // the parameters its callee ends up forwarding, and those are not known
     // until the rest has been followed to wherever it lands.
-    let forwarded_params = resolve_rest_targets(&component_by_name, &mut type_env, errors);
+    let forwarded_params = resolve_rest_targets(&rest_targets, &mut type_env, errors);
 
     let mut typed_component_declarations = Vec::new();
     for p in pending_components {
@@ -663,6 +680,155 @@ fn register_component_signature<'a>(
     }
 }
 
+/// Where a component's rest lands, and enough of the site it lands on to
+/// decide the tail.
+#[derive(Debug, Clone)]
+enum RestSpreadTarget {
+    Element {
+        element: HtmlElement,
+        supplied_attrs: Vec<CheapString>,
+        spread_range: DocumentRange,
+    },
+    Component {
+        callee: TypeName,
+        supplied_attrs: Vec<CheapString>,
+        has_children: bool,
+        spread_range: DocumentRange,
+    },
+}
+
+impl RestSpreadTarget {
+    fn spread_range(&self) -> &DocumentRange {
+        match self {
+            RestSpreadTarget::Element { spread_range, .. } => spread_range,
+            RestSpreadTarget::Component { spread_range, .. } => spread_range,
+        }
+    }
+}
+
+/// A `...name` spread attribute found in a body, with the target it lands on.
+struct SpreadOccurrence {
+    spread_name: VarName,
+    target: RestSpreadTarget,
+}
+
+/// The named attributes written at a spread's site, which the rest cannot
+/// supply a second time.
+fn named_attrs(attributes: &[ParsedAttribute]) -> Vec<CheapString> {
+    attributes
+        .iter()
+        .filter_map(|a| match a {
+            ParsedAttribute::Named { name, .. } => Some(name.to_cheap_string()),
+            ParsedAttribute::Spread { .. } => None,
+        })
+        .collect()
+}
+
+/// Collect every `...name` spread in a body, in source order.
+///
+/// A node's own attributes are visited before its children, so the first
+/// occurrence found is the first one written. Match children live inside the
+/// cases rather than in `children()`, so they are descended into explicitly.
+fn collect_spreads(nodes: &[ParsedNode], out: &mut Vec<SpreadOccurrence>) {
+    for node in nodes {
+        match node {
+            ParsedNode::Html {
+                element,
+                attributes,
+                children,
+                ..
+            } => {
+                for attr in attributes {
+                    if let ParsedAttribute::Spread { name, range } = attr {
+                        out.push(SpreadOccurrence {
+                            spread_name: name.clone(),
+                            target: RestSpreadTarget::Element {
+                                element: element.clone(),
+                                supplied_attrs: named_attrs(attributes),
+                                spread_range: range.clone(),
+                            },
+                        });
+                    }
+                }
+                collect_spreads(children, out);
+            }
+            ParsedNode::ComponentInvocation {
+                component_name,
+                args,
+                children,
+                ..
+            } => {
+                for attr in args {
+                    if let ParsedAttribute::Spread { name, range } = attr {
+                        out.push(SpreadOccurrence {
+                            spread_name: name.clone(),
+                            target: RestSpreadTarget::Component {
+                                callee: component_name.clone(),
+                                supplied_attrs: named_attrs(args),
+                                has_children: children.is_some(),
+                                spread_range: range.clone(),
+                            },
+                        });
+                    }
+                }
+                collect_spreads(children.as_deref().unwrap_or(&[]), out);
+            }
+            ParsedNode::Match { cases, .. } => {
+                for case in cases {
+                    collect_spreads(&case.children, out);
+                }
+            }
+            other => collect_spreads(other.children(), out),
+        }
+    }
+}
+
+/// Pair a declaration's rest parameter with the single spread that forwards it.
+///
+/// Every spread must name the declared rest, and a declared rest must be spread
+/// exactly once. Pages and views cannot declare one, so they pass `None` and
+/// every spread they contain is rejected.
+fn pair_rest_spread(
+    owner: &TypeName,
+    rest_param: Option<&(VarName, DocumentRange)>,
+    spreads: Vec<SpreadOccurrence>,
+    errors: &mut Vec<TypeError>,
+) -> Option<RestSpreadTarget> {
+    let rest_name = rest_param.map(|(name, _)| name);
+    let mut valid: Vec<SpreadOccurrence> = Vec::new();
+    for occ in spreads {
+        match rest_name {
+            Some(rn) if occ.spread_name == *rn => valid.push(occ),
+            _ => errors.push(TypeError::new(
+                TypeErrorKind::SpreadNotDeclaredRest {
+                    name: occ.spread_name.clone(),
+                },
+                occ.target.spread_range().clone(),
+            )),
+        }
+    }
+    for occ in valid.iter().skip(1) {
+        errors.push(TypeError::new(
+            TypeErrorKind::RestSpreadMoreThanOnce {
+                name: occ.spread_name.clone(),
+            },
+            occ.target.spread_range().clone(),
+        ));
+    }
+    if let Some((name, range)) = rest_param {
+        if valid.is_empty() {
+            errors.push(TypeError::new(
+                TypeErrorKind::RestNeverSpread {
+                    component: owner.clone(),
+                    name: name.clone(),
+                },
+                range.clone(),
+            ));
+        }
+    }
+    valid.into_iter().next().map(|occ| occ.target)
+}
+
 /// Follow every component's rest to wherever it lands, and record which of the
 /// target's parameters it carries.
 ///
@@ -678,17 +844,17 @@ fn register_component_signature<'a>(
 /// Returns the forwarded parameters per component, which the declarations need
 /// and which the settled signatures no longer distinguish from declared ones.
 fn resolve_rest_targets(
-    component_by_name: &HashMap<TypeName, &ParsedComponentDeclaration>,
+    rest_targets: &HashMap<TypeName, Option<RestSpreadTarget>>,
     type_env: &mut TypeEnv,
     errors: &mut Vec<TypeError>,
 ) -> HashMap<TypeName, Vec<ParamEntry>> {
     let mut spread_graph: DependencyGraph<TypeName> = DependencyGraph::new();
-    for (name, component) in component_by_name {
+    for (name, rest_target) in rest_targets {
         let mut target = BTreeSet::new();
-        if let Some(RestSpreadTarget::Component { callee, .. }) = &component.rest_target {
+        if let Some(RestSpreadTarget::Component { callee, .. }) = rest_target {
             // A spread into an import is already settled: modules are checked
             // in import order, and imports cannot form a cycle.
-            if component_by_name.contains_key(callee) {
+            if rest_targets.contains_key(callee) {
                 target.insert(callee.clone());
             }
         }
@@ -704,7 +870,7 @@ fn resolve_rest_targets(
         let is_cycle = scc.len() > 1 || scc.iter().any(|name| spread_graph.depends_on(name, name));
 
         for name in &scc {
-            let Some(component) = component_by_name.get(name) else {
+            let Some(rest_target) = rest_targets.get(name) else {
                 continue;
             };
             let Some((TypeBinding::Component(provisional), _)) = type_env.lookup(name) else {
@@ -716,7 +882,7 @@ fn resolve_rest_targets(
             let rest_param = provisional.rest_param.clone();
 
             let (forwarded, tail) = if is_cycle {
-                if let Some(target) = &component.rest_target {
+                if let Some(target) = rest_target {
                     errors.push(TypeError::new(
                         TypeErrorKind::RestSpreadCycle {
                             component: name.clone(),
@@ -726,7 +892,7 @@ fn resolve_rest_targets(
                 }
                 (Vec::new(), Tail::Closed)
             } else {
-                rest_target_signature(component, &declared, type_env)
+                rest_target_signature(rest_target.as_ref(), &declared, type_env)
             };
 
             let mut params = declared;
@@ -751,12 +917,12 @@ fn resolve_rest_targets(
 /// Only reads the declaration and the target's settled signature, so it runs
 /// before any body is checked.
 fn rest_target_signature(
-    component: &ParsedComponentDeclaration,
+    rest_target: Option<&RestSpreadTarget>,
     declared: &[ParamEntry],
     type_env: &mut TypeEnv,
 ) -> (Vec<ParamEntry>, Tail) {
     let declared_names: Vec<&VarName> = declared.iter().map(|p| &p.name).collect();
-    match &component.rest_target {
+    match rest_target {
         Some(RestSpreadTarget::Element {
             element,
             supplied_attrs,
@@ -953,6 +1119,13 @@ fn check_page_declaration(
         name,
         ..
     } = page;
+
+    // Pages and views cannot declare a rest parameter, so any spread in the
+    // head or body fails to name one.
+    let mut spreads = Vec::new();
+    collect_spreads(head, &mut spreads);
+    collect_spreads(body, &mut spreads);
+    pair_rest_spread(name, None, spreads, errors);
 
     let mut pushed_params = Vec::new();
     let mut typed_params = Vec::new();
@@ -7905,6 +8078,127 @@ mod tests {
                 4 | view Main {
                 5 |     <Foo class="a" data-x="y"/>
                   |                    ^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_rest_param_never_spread() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component Foo(...rest) {
+                  <div></div>
+                }
+            "#},
+            expect![[r#"
+                error: Component Foo declares rest parameter 'rest' but never spreads it
+                  --> main.hop (line 1, col 15)
+                1 | component Foo(...rest) {
+                  |               ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_spread_without_declared_rest() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component Foo() {
+                  <div ...rest></div>
+                }
+            "#},
+            expect![[r#"
+                error: Spread '...rest' does not refer to a declared rest parameter
+                  --> main.hop (line 2, col 8)
+                1 | component Foo() {
+                2 |   <div ...rest></div>
+                  |        ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_rest_spread_more_than_once() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component Foo(...rest) {
+                  <div ...rest><span ...rest></span></div>
+                }
+            "#},
+            expect![[r#"
+                error: Rest parameter 'rest' is spread more than once
+                  --> main.hop (line 2, col 22)
+                1 | component Foo(...rest) {
+                2 |   <div ...rest><span ...rest></span></div>
+                  |                      ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_spread_in_view() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                view Main {
+                  <div ...rest></div>
+                }
+            "#},
+            expect![[r#"
+                error: Spread '...rest' does not refer to a declared rest parameter
+                  --> main.hop (line 2, col 8)
+                1 | view Main {
+                2 |   <div ...rest></div>
+                  |        ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_spread_in_page_head() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                page Main() {
+                  head {
+                    <meta ...rest/>
+                  }
+                  body {}
+                }
+            "#},
+            expect![[r#"
+                error: Spread '...rest' does not refer to a declared rest parameter
+                  --> main.hop (line 3, col 11)
+                2 |   head {
+                3 |     <meta ...rest/>
+                  |           ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_spread_inside_match_without_declared_rest() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component Foo(show: Bool) {
+                  <match {show}>
+                    <case {true}>
+                      <div ...rest></div>
+                    </case>
+                    <case {false}></case>
+                  </match>
+                }
+            "#},
+            expect![[r#"
+                error: Spread '...rest' does not refer to a declared rest parameter
+                  --> main.hop (line 4, col 12)
+                3 |     <case {true}>
+                4 |       <div ...rest></div>
+                  |            ^^^^^^^
             "#]],
         );
     }
