@@ -3,18 +3,64 @@ use std::sync::Arc;
 
 use crate::document::CheapString;
 use crate::expr::patterns::{EnumPattern, Match};
-use crate::hop::typing::typed_node::TypedNode;
+use crate::html::HtmlElement;
 use crate::symbols::field_name::FieldName;
+use crate::symbols::function_name::FunctionName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use pretty::BoxDoc;
 
 use super::r#type::{ComparableType, EquatableType, NumericType, Type};
 
+/// The source of iteration in a for loop - either an array or an inclusive range.
+#[derive(Debug, Clone)]
+pub enum TypedLoopSource {
+    /// Iterate over elements of an array
+    Array(TypedExpr),
+    /// Iterate over an inclusive integer range
+    RangeInclusive { start: TypedExpr, end: TypedExpr },
+}
+
+#[derive(Debug, Clone)]
+pub enum TypedAttributeValue {
+    Expression(TypedExpr),
+    String(CheapString),
+}
+
+impl TypedAttributeValue {
+    pub fn to_doc(&self) -> BoxDoc<'_> {
+        match self {
+            TypedAttributeValue::Expression(expr) => BoxDoc::text("escape(")
+                .append(expr.to_doc())
+                .append(BoxDoc::text(")")),
+            TypedAttributeValue::String(s) => BoxDoc::text(format!("raw({:?})", s.as_str())),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct TypedAttribute {
+    pub name: CheapString,
+    pub value: Option<TypedAttributeValue>,
+}
+
+impl TypedAttribute {
+    pub fn to_doc(&self) -> BoxDoc<'_> {
+        let name_doc = BoxDoc::text(self.name.as_str());
+        match &self.value {
+            Some(value) => name_doc.append(BoxDoc::text(": ")).append(value.to_doc()),
+            None => name_doc,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum TypedExpr {
     /// A variable expression, e.g. foo
-    Var { value: VarName, kind: Arc<Type> },
+    Var {
+        value: VarName,
+        kind: Arc<Type>,
+    },
 
     /// A field access expression, e.g. foo.bar
     FieldAccess {
@@ -24,16 +70,24 @@ pub enum TypedExpr {
     },
 
     /// A string literal expression, e.g. "foo bar"
-    StringLiteral { value: CheapString },
+    StringLiteral {
+        value: CheapString,
+    },
 
     /// A boolean literal expression, e.g. true
-    BooleanLiteral { value: bool },
+    BooleanLiteral {
+        value: bool,
+    },
 
     /// A float literal expression, e.g. 2.5
-    FloatLiteral { value: f64 },
+    FloatLiteral {
+        value: f64,
+    },
 
     /// An integer literal expression, e.g. 42
-    IntLiteral { value: i32 },
+    IntLiteral {
+        value: i32,
+    },
 
     /// An array literal expression, e.g. [1, 2, 3]
     ArrayLiteral {
@@ -72,7 +126,9 @@ pub enum TypedExpr {
 
     /// String concatenation expression for joining a sequence of string
     /// expressions.
-    StringConcat { parts: Vec<Self> },
+    StringConcat {
+        parts: Vec<Self>,
+    },
 
     /// Numeric addition expression for adding numeric values
     NumericAdd {
@@ -96,7 +152,9 @@ pub enum TypedExpr {
     },
 
     /// Boolean negation expression
-    BooleanNegation { operand: Box<Self> },
+    BooleanNegation {
+        operand: Box<Self>,
+    },
 
     /// Numeric negation expression
     NumericNegation {
@@ -105,10 +163,16 @@ pub enum TypedExpr {
     },
 
     /// Boolean logical AND expression
-    BooleanLogicalAnd { left: Box<Self>, right: Box<Self> },
+    BooleanLogicalAnd {
+        left: Box<Self>,
+        right: Box<Self>,
+    },
 
     /// Boolean logical OR expression
-    BooleanLogicalOr { left: Box<Self>, right: Box<Self> },
+    BooleanLogicalOr {
+        left: Box<Self>,
+        right: Box<Self>,
+    },
 
     /// Equals expression
     Equals {
@@ -160,46 +224,138 @@ pub enum TypedExpr {
         kind: Arc<Type>,
     },
 
+    /// FoldMap over a monoid
+    For {
+        var_name: Option<VarName>,
+        source: Box<TypedLoopSource>,
+        body: Box<Self>,
+        kind: Arc<Type>,
+    },
+
     /// Array length expression, e.g. items.len()
-    ArrayLength { array: Box<Self> },
+    ArrayLength {
+        array: Box<Self>,
+    },
 
     /// Array is empty expression, e.g. items.is_empty()
-    ArrayIsEmpty { array: Box<Self> },
+    ArrayIsEmpty {
+        array: Box<Self>,
+    },
 
     /// String is empty expression, e.g. name.is_empty()
-    StringIsEmpty { string: Box<Self> },
+    StringIsEmpty {
+        string: Box<Self>,
+    },
 
     /// Option is_some expression, e.g. maybe_value.is_some()
-    OptionIsSome { option: Box<Self> },
+    OptionIsSome {
+        option: Box<Self>,
+    },
 
     /// Option is_none expression, e.g. maybe_value.is_none()
-    OptionIsNone { option: Box<Self> },
+    OptionIsNone {
+        option: Box<Self>,
+    },
 
     /// Int to string conversion, e.g. count.to_string()
-    IntToString { value: Box<Self> },
+    IntToString {
+        value: Box<Self>,
+    },
 
     /// Float to int conversion, e.g. price.to_int()
-    FloatToInt { value: Box<Self> },
+    FloatToInt {
+        value: Box<Self>,
+    },
 
     /// Int to float conversion, e.g. count.to_float()
-    IntToFloat { value: Box<Self> },
+    IntToFloat {
+        value: Box<Self>,
+    },
 
-    /// An empty Fragment literal, e.g. `Fragment::empty()`
-    FragmentEmpty,
+    /// Concatenation of fragments
+    FragmentConcat {
+        nodes: Vec<Self>,
+    },
 
-    /// A Fragment literal holding markup
-    Fragment { nodes: Vec<TypedNode> },
+    /// Literal markup text, e.g. `Hello`.
+    /// Trusted and emitted without escaping.
+    FragmentRaw {
+        value: CheapString,
+    },
+
+    /// An interpolation in markup, e.g. `{name}`.
+    /// HTML-escapes a String-typed expression into a Fragment.
+    FragmentEscape {
+        expr: Box<Self>,
+    },
+
+    /// An HTML element, e.g. `<div class="x">...</div>`
+    FragmentHtml {
+        element: HtmlElement,
+        attrs: Box<Self>,
+        children: Box<Self>,
+    },
+
+    AttrsConcat {
+        parts: Vec<Self>,
+    },
+
+    AttrsLiteral {
+        attributes: Vec<TypedAttribute>,
+    },
 
     /// An asset path, e.g. asset!("/logo.svg").
     /// Resolved to a concrete string literal at IR compile time based on build mode.
-    Asset { path: CheapString },
+    Asset {
+        path: CheapString,
+    },
 
     /// A function call expression, e.g. foo(1, 2)
     FunctionCall {
-        function_name: VarName,
+        function_name: FunctionName,
         args: Vec<(VarName, Self)>,
         kind: Arc<Type>,
     },
+}
+
+fn concat_to_doc(nodes: &[TypedExpr]) -> BoxDoc<'_> {
+    if nodes.is_empty() {
+        BoxDoc::text("concat()")
+    } else {
+        BoxDoc::text("concat(")
+            .append(
+                BoxDoc::line_()
+                    .append(BoxDoc::intersperse(
+                        nodes.iter().map(|node| node.to_doc()),
+                        BoxDoc::text(",").append(BoxDoc::line()),
+                    ))
+                    .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
+                    .append(BoxDoc::line_())
+                    .nest(2)
+                    .group(),
+            )
+            .append(BoxDoc::text(")"))
+    }
+}
+
+fn bracketed_to_doc(items: Vec<BoxDoc<'_>>) -> BoxDoc<'_> {
+    if items.is_empty() {
+        BoxDoc::text("[]")
+    } else {
+        BoxDoc::text("[")
+            .append(
+                BoxDoc::line_()
+                    .append(BoxDoc::intersperse(
+                        items,
+                        BoxDoc::text(",").append(BoxDoc::line()),
+                    ))
+                    .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
+                    .append(BoxDoc::line_())
+                    .nest(2)
+                    .group(),
+            )
+            .append(BoxDoc::text("]"))
+    }
 }
 
 impl TypedExpr {
@@ -213,6 +369,7 @@ impl TypedExpr {
             | TypedExpr::OptionLiteral { kind, .. }
             | TypedExpr::Match { kind, .. }
             | TypedExpr::Let { kind, .. }
+            | TypedExpr::For { kind, .. }
             | TypedExpr::FunctionCall { kind, .. } => kind.clone(),
 
             TypedExpr::FloatLiteral { .. } | TypedExpr::IntToFloat { .. } => Arc::new(Type::Float),
@@ -251,7 +408,12 @@ impl TypedExpr {
 
             TypedExpr::ArrayLength { .. } | TypedExpr::FloatToInt { .. } => Arc::new(Type::Int),
 
-            TypedExpr::FragmentEmpty | TypedExpr::Fragment { .. } => Arc::new(Type::Fragment),
+            TypedExpr::FragmentConcat { .. }
+            | TypedExpr::FragmentRaw { .. }
+            | TypedExpr::FragmentEscape { .. }
+            | TypedExpr::FragmentHtml { .. } => Arc::new(Type::Fragment),
+
+            TypedExpr::AttrsConcat { .. } | TypedExpr::AttrsLiteral { .. } => Arc::new(Type::Attrs),
         }
     }
 
@@ -261,6 +423,7 @@ impl TypedExpr {
         static FLOAT_TYPE: Type = Type::Float;
         static INT_TYPE: Type = Type::Int;
         static FRAGMENT_TYPE: Type = Type::Fragment;
+        static ATTRS_TYPE: Type = Type::Attrs;
 
         match self {
             TypedExpr::Var { kind, .. }
@@ -271,6 +434,7 @@ impl TypedExpr {
             | TypedExpr::OptionLiteral { kind, .. }
             | TypedExpr::Match { kind, .. }
             | TypedExpr::Let { kind, .. }
+            | TypedExpr::For { kind, .. }
             | TypedExpr::FunctionCall { kind, .. } => kind.as_ref(),
 
             TypedExpr::FloatLiteral { .. } | TypedExpr::IntToFloat { .. } => &FLOAT_TYPE,
@@ -309,7 +473,12 @@ impl TypedExpr {
 
             TypedExpr::ArrayLength { .. } | TypedExpr::FloatToInt { .. } => &INT_TYPE,
 
-            TypedExpr::FragmentEmpty | TypedExpr::Fragment { .. } => &FRAGMENT_TYPE,
+            TypedExpr::FragmentConcat { .. }
+            | TypedExpr::FragmentRaw { .. }
+            | TypedExpr::FragmentEscape { .. }
+            | TypedExpr::FragmentHtml { .. } => &FRAGMENT_TYPE,
+
+            TypedExpr::AttrsConcat { .. } | TypedExpr::AttrsLiteral { .. } => &ATTRS_TYPE,
         }
     }
 
@@ -328,53 +497,41 @@ impl TypedExpr {
             TypedExpr::BooleanLiteral { value, .. } => BoxDoc::text(value.to_string()),
             TypedExpr::FloatLiteral { value, .. } => BoxDoc::text(value.to_string()),
             TypedExpr::IntLiteral { value, .. } => BoxDoc::text(value.to_string()),
-            TypedExpr::ArrayLiteral { elements, .. } => {
-                if elements.is_empty() {
-                    BoxDoc::text("[]")
-                } else {
-                    BoxDoc::text("[")
-                        .append(
-                            BoxDoc::line_()
-                                .append(BoxDoc::intersperse(
-                                    elements.iter().map(|e| e.to_doc()),
-                                    BoxDoc::text(",").append(BoxDoc::line()),
-                                ))
-                                .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
-                                .append(BoxDoc::line_())
-                                .nest(2)
-                                .group(),
-                        )
-                        .append(BoxDoc::text("]"))
-                }
-            }
+            TypedExpr::ArrayLiteral { elements, .. } => BoxDoc::text("[")
+                .append(
+                    BoxDoc::line_()
+                        .append(BoxDoc::intersperse(
+                            elements.iter().map(|e| e.to_doc()),
+                            BoxDoc::text(",").append(BoxDoc::line()),
+                        ))
+                        .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
+                        .append(BoxDoc::line_())
+                        .nest(2)
+                        .group(),
+                )
+                .append(BoxDoc::text("]")),
             TypedExpr::RecordLiteral {
                 record_name,
                 fields,
                 ..
-            } => {
-                if fields.is_empty() {
-                    BoxDoc::text(record_name.as_str()).append(BoxDoc::text(" {}"))
-                } else {
-                    BoxDoc::text(record_name.as_str())
-                        .append(BoxDoc::text(" {"))
-                        .append(
-                            BoxDoc::line_()
-                                .append(BoxDoc::intersperse(
-                                    fields.iter().map(|(key, value)| {
-                                        BoxDoc::text(key.as_str())
-                                            .append(BoxDoc::text(": "))
-                                            .append(value.to_doc())
-                                    }),
-                                    BoxDoc::text(",").append(BoxDoc::line()),
-                                ))
-                                .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
-                                .append(BoxDoc::line_())
-                                .nest(2)
-                                .group(),
-                        )
-                        .append(BoxDoc::text("}"))
-                }
-            }
+            } => BoxDoc::text(record_name.as_str())
+                .append(BoxDoc::text(" {"))
+                .append(
+                    BoxDoc::line_()
+                        .append(BoxDoc::intersperse(
+                            fields.iter().map(|(key, value)| {
+                                BoxDoc::text(key.as_str())
+                                    .append(BoxDoc::text(": "))
+                                    .append(value.to_doc())
+                            }),
+                            BoxDoc::text(",").append(BoxDoc::line()),
+                        ))
+                        .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
+                        .append(BoxDoc::line_())
+                        .nest(2)
+                        .group(),
+                )
+                .append(BoxDoc::text("}")),
             TypedExpr::StringConcat { parts } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(BoxDoc::intersperse(
@@ -489,41 +646,33 @@ impl TypedExpr {
                 None => BoxDoc::text("None"),
             },
             TypedExpr::Match { match_, .. } => match match_ {
-                Match::Enum { subject, arms } => {
-                    if arms.is_empty() {
-                        BoxDoc::text("match ")
-                            .append(subject.to_doc())
-                            .append(BoxDoc::text(" {}"))
-                    } else {
-                        BoxDoc::text("match ")
-                            .append(subject.to_doc())
-                            .append(BoxDoc::text(" {"))
-                            .append(
-                                BoxDoc::line_()
-                                    .append(BoxDoc::intersperse(
-                                        arms.iter().map(|arm| {
-                                            let pattern_doc = match &arm.pattern {
-                                                EnumPattern::Variant {
-                                                    enum_name,
-                                                    variant_name,
-                                                } => BoxDoc::text(enum_name.as_str())
-                                                    .append(BoxDoc::text("::"))
-                                                    .append(BoxDoc::text(variant_name.as_str())),
-                                            };
-                                            pattern_doc
-                                                .append(BoxDoc::text(" => "))
-                                                .append(arm.body.to_doc())
-                                        }),
-                                        BoxDoc::text(",").append(BoxDoc::line()),
-                                    ))
-                                    .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
-                                    .append(BoxDoc::line_())
-                                    .nest(2)
-                                    .group(),
-                            )
-                            .append(BoxDoc::text("}"))
-                    }
-                }
+                Match::Enum { subject, arms } => BoxDoc::text("match ")
+                    .append(subject.to_doc())
+                    .append(BoxDoc::text(" {"))
+                    .append(
+                        BoxDoc::line_()
+                            .append(BoxDoc::intersperse(
+                                arms.iter().map(|arm| {
+                                    let pattern_doc = match &arm.pattern {
+                                        EnumPattern::Variant {
+                                            enum_name,
+                                            variant_name,
+                                        } => BoxDoc::text(enum_name.as_str())
+                                            .append(BoxDoc::text("::"))
+                                            .append(BoxDoc::text(variant_name.as_str())),
+                                    };
+                                    pattern_doc
+                                        .append(BoxDoc::text(" => "))
+                                        .append(arm.body.to_doc())
+                                }),
+                                BoxDoc::text(",").append(BoxDoc::line()),
+                            ))
+                            .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
+                            .append(BoxDoc::line_())
+                            .nest(2)
+                            .group(),
+                    )
+                    .append(BoxDoc::text("}")),
                 Match::Bool {
                     subject,
                     true_body,
@@ -610,23 +759,68 @@ impl TypedExpr {
             TypedExpr::IntToString { value } => value.to_doc().append(BoxDoc::text(".to_string()")),
             TypedExpr::FloatToInt { value } => value.to_doc().append(BoxDoc::text(".to_int()")),
             TypedExpr::IntToFloat { value } => value.to_doc().append(BoxDoc::text(".to_float()")),
-            TypedExpr::FragmentEmpty => BoxDoc::text("Fragment::empty()"),
-            TypedExpr::Fragment { nodes } => {
-                if nodes.is_empty() {
-                    BoxDoc::text("{}")
-                } else {
-                    BoxDoc::text("{")
-                        .append(
-                            BoxDoc::line()
-                                .append(BoxDoc::intersperse(
-                                    nodes.iter().map(|c| c.to_doc()),
-                                    BoxDoc::line(),
-                                ))
-                                .nest(2),
-                        )
-                        .append(BoxDoc::line())
-                        .append(BoxDoc::text("}"))
+            TypedExpr::FragmentConcat { nodes } => concat_to_doc(nodes),
+            TypedExpr::AttrsConcat { parts } => concat_to_doc(parts),
+            TypedExpr::AttrsLiteral { attributes } => {
+                bracketed_to_doc(attributes.iter().map(|attr| attr.to_doc()).collect())
+            }
+            TypedExpr::FragmentRaw { value } => BoxDoc::text("raw(")
+                .append(BoxDoc::text(format!("{:?}", value.as_str())))
+                .append(")"),
+            TypedExpr::FragmentEscape { expr } => BoxDoc::text("{")
+                .append(expr.to_doc())
+                .append(BoxDoc::text("}")),
+            TypedExpr::For {
+                var_name,
+                source,
+                body,
+                ..
+            } => {
+                let source_doc = match &**source {
+                    TypedLoopSource::Array(expr) => expr.to_doc(),
+                    TypedLoopSource::RangeInclusive { start, end } => start
+                        .to_doc()
+                        .append(BoxDoc::text("..="))
+                        .append(end.to_doc()),
+                };
+                let var_doc = match var_name {
+                    Some(name) => BoxDoc::text(name.as_str()),
+                    None => BoxDoc::text("_"),
+                };
+                BoxDoc::text("for ")
+                    .append(var_doc)
+                    .append(BoxDoc::text(" in "))
+                    .append(source_doc)
+                    .append(BoxDoc::text(" {"))
+                    .append(BoxDoc::line().append(body.to_doc()).nest(2))
+                    .append(BoxDoc::line())
+                    .append(BoxDoc::text("}"))
+            }
+            TypedExpr::FragmentHtml {
+                element,
+                attrs,
+                children,
+            } => {
+                let mut sections = vec![
+                    BoxDoc::text(format!("tag: {:?}", element.as_str())),
+                    BoxDoc::text("attrs: ").append(attrs.to_doc()),
+                ];
+                if !element.is_void() {
+                    sections.push(BoxDoc::text("children: ").append(children.to_doc()));
                 }
+                BoxDoc::text("html(")
+                    .append(
+                        BoxDoc::line_()
+                            .append(BoxDoc::intersperse(
+                                sections,
+                                BoxDoc::text(",").append(BoxDoc::line()),
+                            ))
+                            .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
+                            .append(BoxDoc::line_())
+                            .nest(2)
+                            .group(),
+                    )
+                    .append(BoxDoc::text(")"))
             }
             TypedExpr::Asset { path } => BoxDoc::text("asset!(\"")
                 .append(BoxDoc::text(path.as_str()))
@@ -635,26 +829,24 @@ impl TypedExpr {
                 function_name,
                 args,
                 ..
-            } => {
-                if args.is_empty() {
-                    BoxDoc::text(function_name.as_str()).append(BoxDoc::text("()"))
-                } else {
-                    BoxDoc::text(function_name.as_str())
-                        .append(BoxDoc::text("("))
-                        .append(
-                            BoxDoc::line_()
-                                .append(BoxDoc::intersperse(
-                                    args.iter().map(|(_, e)| e.to_doc()),
-                                    BoxDoc::text(",").append(BoxDoc::line()),
-                                ))
-                                .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
-                                .append(BoxDoc::line_())
-                                .nest(2)
-                                .group(),
-                        )
-                        .append(BoxDoc::text(")"))
-                }
-            }
+            } => BoxDoc::text(function_name.as_str())
+                .append(BoxDoc::text("("))
+                .append(
+                    BoxDoc::line_()
+                        .append(BoxDoc::intersperse(
+                            args.iter().map(|(name, e)| {
+                                BoxDoc::text(name.as_str())
+                                    .append(BoxDoc::text(": "))
+                                    .append(e.to_doc())
+                            }),
+                            BoxDoc::text(",").append(BoxDoc::line()),
+                        ))
+                        .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
+                        .append(BoxDoc::line_())
+                        .nest(2)
+                        .group(),
+                )
+                .append(BoxDoc::text(")")),
         }
     }
 }

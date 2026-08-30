@@ -18,22 +18,18 @@ pub enum Type {
     Int,
     Float,
     Fragment,
+    Attrs,
     Array(Arc<Type>),
     Option(Arc<Type>),
     Named { module: DocumentId, name: TypeName },
 }
 
 #[derive(Debug, Clone)]
-pub struct ComponentSignature {
-    pub module: DocumentId,
-    pub params: Vec<ParamEntry>,
-    pub tail: Tail,
-}
-
-#[derive(Debug, Clone)]
 pub struct FunctionSignature {
     pub params: Vec<ParamEntry>,
     pub return_type: Arc<Type>,
+    pub tail: Tail,
+    pub rest_param: Option<VarName>,
 }
 
 #[derive(Debug, Clone)]
@@ -129,7 +125,11 @@ impl Type {
             Type::String => Some(EquatableType::String),
             Type::Int => Some(EquatableType::Int),
             Type::Float => Some(EquatableType::Float),
-            Type::Option(_) | Type::Fragment | Type::Array(_) | Type::Named { .. } => None,
+            Type::Option(_)
+            | Type::Fragment
+            | Type::Attrs
+            | Type::Array(_)
+            | Type::Named { .. } => None,
         }
     }
 
@@ -140,6 +140,7 @@ impl Type {
             Type::Bool
             | Type::String
             | Type::Fragment
+            | Type::Attrs
             | Type::Array(_)
             | Type::Option(_)
             | Type::Named { .. } => None,
@@ -150,7 +151,12 @@ impl Type {
     pub fn is_matchable(&self) -> bool {
         match self {
             Type::Bool | Type::Option(_) | Type::Named { .. } => true,
-            Type::String | Type::Int | Type::Float | Type::Fragment | Type::Array(_) => false,
+            Type::String
+            | Type::Int
+            | Type::Float
+            | Type::Fragment
+            | Type::Attrs
+            | Type::Array(_) => false,
         }
     }
 }
@@ -169,6 +175,7 @@ impl<'a> Type {
             Type::Int => BoxDoc::text("Int"),
             Type::Bool => BoxDoc::text("Bool"),
             Type::Fragment => BoxDoc::text("Fragment"),
+            Type::Attrs => BoxDoc::text("Attrs"),
             Type::Array(elem_type) => BoxDoc::nil()
                 .append(BoxDoc::text("Array["))
                 .append(elem_type.to_doc())

@@ -58,6 +58,7 @@ impl TypeRegistry {
             Type::Int => Some(ResolvedType::Int),
             Type::Float => Some(ResolvedType::Float),
             Type::Fragment => Some(ResolvedType::Fragment),
+            Type::Attrs => None,
             Type::Array(inner) => Some(ResolvedType::Array(inner)),
             Type::Option(inner) => Some(ResolvedType::Option(inner)),
             Type::Named { module, name } => match self.defs.get(module)?.get(name)? {

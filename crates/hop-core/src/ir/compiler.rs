@@ -7,13 +7,10 @@ use crate::document_id::DocumentId;
 use crate::expr::Type;
 use crate::expr::TypedExpr;
 use crate::expr::patterns::{EnumMatchArm, Match};
+use crate::expr::{TypedAttribute, TypedAttributeValue, TypedLoopSource};
 use crate::hop::assembly::AssembledPageDeclaration;
 use crate::hop::typing::typed_ast::{
-    TypedComponentDeclaration, TypedEnumDeclaration, TypedFunctionDeclaration,
-    TypedRecordDeclaration,
-};
-use crate::hop::typing::typed_node::{
-    TypedAttribute, TypedAttributeValue, TypedLoopSource, TypedNode,
+    TypedEnumDeclaration, TypedFunctionDeclaration, TypedRecordDeclaration,
 };
 use crate::ir::expr_id::ExprId;
 use crate::ir::expr_id::ExprIdCounter;
@@ -21,9 +18,7 @@ use crate::ir::ir_var::IrVar;
 use crate::ir::pure_module::PureForSource;
 use crate::ir::var_id::VarId;
 use crate::ir::var_id::VarIdCounter;
-use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
-use std::collections::HashMap;
 
 use super::pure_module::{
     PureArgument, PureExpr, PureFunctionDeclaration, PureModule, PurePageDeclaration,
@@ -32,7 +27,6 @@ use super::writer_module::{WriterEnumDeclaration, WriterParameter, WriterRecordD
 
 pub fn compile(
     pages: Vec<AssembledPageDeclaration>,
-    components: &[(DocumentId, &TypedComponentDeclaration)],
     source_functions: &[&TypedFunctionDeclaration],
     records: &[&TypedRecordDeclaration],
     enums: &[&TypedEnumDeclaration],
@@ -40,31 +34,16 @@ pub fn compile(
 ) -> PureModule {
     let mut expr_ids = ExprIdCounter::new();
     let mut var_ids = VarIdCounter::new();
-    // A component's rest parameter is passed like any other argument, so a
-    // call site needs the name the callee gave it.
-    let rest_params: HashMap<(DocumentId, TypeName), VarName> = components
-        .iter()
-        .filter_map(|(module, decl)| {
-            decl.rest_param
-                .as_ref()
-                .map(|rest| ((module.clone(), decl.component_name.clone()), rest.clone()))
-        })
-        .collect();
-    let mut compiler = Compiler::new(&mut expr_ids, &mut var_ids, asset_rewriter, rest_params);
+    let mut compiler = Compiler::new(&mut expr_ids, &mut var_ids, asset_rewriter);
 
     let pages = pages
         .into_iter()
         .map(|page| compiler.compile_page_decl(page))
         .collect();
-    let mut functions: Vec<PureFunctionDeclaration> = components
+    let functions: Vec<PureFunctionDeclaration> = source_functions
         .iter()
-        .map(|(_, decl)| compiler.compile_component_decl(decl))
+        .map(|decl| compiler.compile_function_decl(decl))
         .collect();
-    functions.extend(
-        source_functions
-            .iter()
-            .map(|decl| compiler.compile_function_decl(decl)),
-    );
 
     // Records and enums carry no code, so they are converted as-is. Both are
     // sorted by name since callers collect them from an unordered set of
@@ -102,8 +81,6 @@ struct Compiler<'a> {
     var_id_counter: &'a mut VarIdCounter,
     scopes: Vec<Vec<(VarName, VarId)>>,
     asset_rewriter: Option<Arc<dyn AssetRewriter>>,
-    /// The name each rest-carrying component gave its rest parameter.
-    rest_params: HashMap<(DocumentId, TypeName), VarName>,
 }
 
 impl<'a> Compiler<'a> {
@@ -111,50 +88,13 @@ impl<'a> Compiler<'a> {
         expr_id_counter: &'a mut ExprIdCounter,
         var_id_counter: &'a mut VarIdCounter,
         asset_rewriter: Option<Arc<dyn AssetRewriter>>,
-        rest_params: HashMap<(DocumentId, TypeName), VarName>,
     ) -> Self {
         Compiler {
             expr_id_counter,
             var_id_counter,
             scopes: vec![Vec::new()],
             asset_rewriter,
-            rest_params,
         }
-    }
-
-    fn compile_component_decl(
-        &mut self,
-        decl: &TypedComponentDeclaration,
-    ) -> PureFunctionDeclaration {
-        self.push_scope();
-
-        let mut parameters = Vec::with_capacity(decl.params.len());
-        for param in &decl.params {
-            parameters.push(WriterParameter {
-                var: self.bind(&param.var_name),
-                name: param.var_name.clone(),
-                typ: param.var_type.clone(),
-            });
-        }
-
-        // The rest is an ordinary parameter holding pre-rendered attribute
-        // text.
-        if let Some(rest) = &decl.rest_param {
-            parameters.push(WriterParameter {
-                var: self.bind(rest),
-                name: rest.clone(),
-                typ: Arc::new(Type::Fragment),
-            });
-        }
-
-        let declaration = PureFunctionDeclaration {
-            name: decl.component_name.clone().into(),
-            parameters,
-            return_type: Arc::new(Type::Fragment),
-            body: self.compile_expr(&decl.body),
-        };
-        self.pop_scope();
-        declaration
     }
 
     fn compile_function_decl(
@@ -168,12 +108,18 @@ impl<'a> Compiler<'a> {
             parameters.push(WriterParameter {
                 var: self.bind(&param.var_name),
                 name: param.var_name.clone(),
-                typ: param.var_type.clone(),
+                typ: {
+                    let kind: &Arc<Type> = &param.var_type;
+                    match **kind {
+                        Type::Attrs => Arc::new(Type::Fragment),
+                        _ => kind.clone(),
+                    }
+                },
             });
         }
 
         let declaration = PureFunctionDeclaration {
-            name: decl.name.clone().into(),
+            name: decl.name.clone(),
             parameters,
             return_type: decl.return_type.clone(),
             body: self.compile_expr(&decl.body),
@@ -197,7 +143,7 @@ impl<'a> Compiler<'a> {
         let declaration = PurePageDeclaration {
             name: page.name,
             parameters,
-            body: self.compile_nodes(&page.children),
+            body: self.compile_expr(&page.body),
         };
         self.pop_scope();
         declaration
@@ -237,306 +183,25 @@ impl<'a> Compiler<'a> {
         panic!("undefined variable: {name}");
     }
 
-    fn compile_nodes(&mut self, nodes: &[TypedNode]) -> PureExpr {
-        let mut parts = Vec::new();
-        for node in nodes {
-            self.compile_node(node, &mut parts);
-        }
-        PureExpr::FragmentConcat {
-            parts,
-            id: self.next_expr_id(),
-        }
-    }
-
-    fn compile_node(&mut self, node: &TypedNode, output: &mut Vec<PureExpr>) {
-        match node {
-            TypedNode::Text { value } => {
-                output.push(PureExpr::FragmentRaw {
-                    content: value.to_string(),
-                    id: self.next_expr_id(),
-                });
-            }
-
-            TypedNode::TextExpression { expression } => {
-                if matches!(expression.as_type(), Type::Fragment) {
-                    output.push(self.compile_expr(expression));
-                } else {
-                    output.push(PureExpr::FragmentEscape {
-                        expr: Box::new(self.compile_expr(expression)),
-                        id: self.next_expr_id(),
-                    });
-                }
-            }
-
-            TypedNode::Html {
-                element,
-                attributes,
-                rest_spread,
-                children,
-            } => {
-                output.push(PureExpr::FragmentRaw {
-                    content: format!("<{}", element.as_str()),
-                    id: self.next_expr_id(),
-                });
-                for attr in attributes {
-                    self.compile_attribute_opt(attr, output);
-                }
-                // The spread lands after the element's own attributes,
-                // whatever position `...rest` was written in..
-                if let Some(rest) = rest_spread {
-                    let var = self.resolve(rest);
-                    output.push(PureExpr::VariableReference {
-                        value: var,
-                        kind: Arc::new(Type::Fragment),
-                        id: self.next_expr_id(),
-                    });
-                }
-                output.push(PureExpr::FragmentRaw {
-                    content: ">".to_string(),
-                    id: self.next_expr_id(),
-                });
-                if !element.is_void() {
-                    for child in children {
-                        self.compile_node(child, output);
-                    }
-                    output.push(PureExpr::FragmentRaw {
-                        content: format!("</{}>", element.as_str()),
-                        id: self.next_expr_id(),
-                    });
-                }
-            }
-
-            TypedNode::If {
-                condition,
-                children,
-                ..
-            } => {
-                output.push(PureExpr::Match {
-                    match_: Match::Bool {
-                        subject: Box::new(self.compile_expr(condition)),
-                        true_body: Box::new(self.compile_nodes(children)),
-                        false_body: Box::new(PureExpr::FragmentConcat {
-                            parts: Vec::new(),
-                            id: self.next_expr_id(),
-                        }),
-                    },
-                    kind: Arc::new(Type::Fragment),
-                    id: self.next_expr_id(),
-                });
-            }
-
-            TypedNode::For {
-                var_name,
-                source,
-                children,
-                ..
-            } => {
-                let pure_source = match source {
-                    TypedLoopSource::Array(array_expr) => {
-                        PureForSource::Array(self.compile_expr(array_expr))
-                    }
-                    TypedLoopSource::RangeInclusive { start, end } => {
-                        PureForSource::RangeInclusive {
-                            start: self.compile_expr(start),
-                            end: self.compile_expr(end),
-                        }
-                    }
-                };
-                self.push_scope();
-                let var = var_name.as_ref().map(|name| self.bind(name));
-                let body = self.compile_nodes(children);
-                self.pop_scope();
-                output.push(PureExpr::FragmentFor {
-                    var,
-                    source: Box::new(pure_source),
-                    body: Box::new(body),
-                    id: self.next_expr_id(),
-                });
-            }
-
-            TypedNode::Let {
-                var,
-                value,
-                children,
-            } => {
-                let value = self.compile_expr(value);
-                self.push_scope();
-                let pure_var = self.bind(var);
-                let body = self.compile_nodes(children);
-                self.pop_scope();
-                output.push(PureExpr::Let {
-                    var: pure_var,
-                    value: Box::new(value),
-                    body: Box::new(body),
-                    kind: Arc::new(Type::Fragment),
-                    id: self.next_expr_id(),
-                });
-            }
-
-            TypedNode::Match { match_ } => {
-                let compiled_match = match match_ {
-                    Match::Bool {
-                        subject,
-                        true_body,
-                        false_body,
-                    } => Match::Bool {
-                        subject: Box::new(self.compile_expr(subject)),
-                        true_body: Box::new(self.compile_nodes(true_body)),
-                        false_body: Box::new(self.compile_nodes(false_body)),
-                    },
-                    Match::Option {
-                        subject,
-                        some_arm_binding,
-                        some_arm_body,
-                        none_arm_body,
-                    } => {
-                        let subject = Box::new(self.compile_expr(subject));
-                        self.push_scope();
-                        let binding = some_arm_binding.as_ref().map(|name| self.bind(name));
-                        let some_body = self.compile_nodes(some_arm_body);
-                        self.pop_scope();
-                        let none_body = self.compile_nodes(none_arm_body);
-                        Match::Option {
-                            subject,
-                            some_arm_binding: binding,
-                            some_arm_body: Box::new(some_body),
-                            none_arm_body: Box::new(none_body),
-                        }
-                    }
-                    Match::Enum { subject, arms } => {
-                        let subject = Box::new(self.compile_expr(subject));
-                        let arms = arms
-                            .iter()
-                            .map(|arm| {
-                                self.push_scope();
-                                let bindings = arm
-                                    .bindings
-                                    .iter()
-                                    .map(|(field, name)| (field.clone(), self.bind(name)))
-                                    .collect();
-                                let body = self.compile_nodes(&arm.body);
-                                self.pop_scope();
-                                EnumMatchArm {
-                                    pattern: arm.pattern.clone(),
-                                    bindings,
-                                    body,
-                                }
-                            })
-                            .collect();
-                        Match::Enum { subject, arms }
-                    }
-                };
-                output.push(PureExpr::Match {
-                    match_: compiled_match,
-                    kind: Arc::new(Type::Fragment),
-                    id: self.next_expr_id(),
-                });
-            }
-
-            TypedNode::ComponentInvocation {
-                component_name,
-                component_module,
-                args,
-                extra_attributes,
-                rest_spread,
-            } => {
-                let mut compiled_args: Vec<PureArgument> = args
-                    .iter()
-                    .map(|arg| PureArgument {
-                        name: arg.name.clone(),
-                        expr: self.compile_expr(&arg.value),
-                    })
-                    .collect();
-
-                let callee = (component_module.clone(), component_name.clone());
-                if let Some(rest_param) = self.rest_params.get(&callee).cloned() {
-                    compiled_args.push(PureArgument {
-                        name: rest_param,
-                        expr: self.compile_rest(extra_attributes, rest_spread.as_ref()),
-                    });
-                } else {
-                    // A spread into a callee that declares no rest is not a
-                    // mistake: the spread was carrying typed parameters, and
-                    // those are passed explicitly above, so nothing is left
-                    // for it to forward.
-                    assert!(
-                        extra_attributes.is_empty(),
-                        "<{}> declares no rest, but the call site supplies attributes for one",
-                        component_name.as_str()
-                    );
-                }
-
-                output.push(PureExpr::FunctionCall {
-                    function_name: component_name.clone().into(),
-                    args: compiled_args,
-                    kind: Arc::new(Type::Fragment),
-                    id: self.next_expr_id(),
-                });
-            }
-        }
-    }
-
-    /// Render the attributes a call site passes on to the callee's rest into
-    /// the text they will occupy inside an open tag: ` name="value"`, escaped
-    /// exactly as if written on the element directly.
-    fn compile_rest(
-        &mut self,
-        extra_attributes: &[TypedAttribute],
-        rest_spread: Option<&VarName>,
-    ) -> PureExpr {
-        let mut parts = Vec::new();
-        for attr in extra_attributes {
-            self.compile_attribute_opt(attr, &mut parts);
-        }
-        if let Some(rest) = rest_spread {
-            let var = self.resolve(rest);
-            parts.push(PureExpr::VariableReference {
-                value: var,
-                kind: Arc::new(Type::Fragment),
-                id: self.next_expr_id(),
-            });
-        }
-        PureExpr::FragmentConcat {
-            parts,
-            id: self.next_expr_id(),
-        }
-    }
-
-    fn compile_attribute_opt(&mut self, attr: &TypedAttribute, output: &mut Vec<PureExpr>) {
+    fn compile_attribute(&mut self, attr: &TypedAttribute, output: &mut Vec<PureExpr>) {
         match &attr.value {
-            Some(value) => self.compile_attribute(&attr.name, value, output),
-            // A valueless attribute is its own text.
             None => output.push(PureExpr::FragmentRaw {
                 content: format!(" {}", attr.name.as_str()),
                 id: self.next_expr_id(),
             }),
-        }
-    }
-
-    /// Helper to compile an attribute to PureIR fragment parts
-    fn compile_attribute(
-        &mut self,
-        name: &CheapString,
-        value: &TypedAttributeValue,
-        output: &mut Vec<PureExpr>,
-    ) {
-        match value {
-            TypedAttributeValue::String(s) => {
-                output.push(PureExpr::FragmentRaw {
-                    content: format!(" {}=\"{}\"", name.as_str(), s.as_str()),
-                    id: self.next_expr_id(),
-                });
-            }
-            TypedAttributeValue::Expression(expr) => {
+            Some(TypedAttributeValue::String(s)) => output.push(PureExpr::FragmentRaw {
+                content: format!(" {}=\"{}\"", attr.name.as_str(), s.as_str()),
+                id: self.next_expr_id(),
+            }),
+            Some(TypedAttributeValue::Expression(expr)) => {
                 assert!(
                     expr.as_type() == &Type::String,
                     "attribute `{}` holds {}, but attribute values must be String",
-                    name.as_str(),
+                    attr.name.as_str(),
                     expr.as_type()
                 );
-                // String attributes: output attribute="value"
                 output.push(PureExpr::FragmentRaw {
-                    content: format!(" {}=\"", name.as_str()),
+                    content: format!(" {}=\"", attr.name.as_str()),
                     id: self.next_expr_id(),
                 });
                 output.push(PureExpr::FragmentEscape {
@@ -557,7 +222,10 @@ impl<'a> Compiler<'a> {
         match expr {
             TypedExpr::Var { value, kind, .. } => PureExpr::VariableReference {
                 value: self.resolve(value),
-                kind: kind.clone(),
+                kind: match **kind {
+                    Type::Attrs => Arc::new(Type::Fragment),
+                    _ => kind.clone(),
+                },
                 id: expr_id,
             },
             TypedExpr::FieldAccess {
@@ -836,17 +504,73 @@ impl<'a> Compiler<'a> {
                 kind: kind.clone(),
                 id: expr_id,
             },
-            TypedExpr::Fragment { nodes } => self.compile_nodes(nodes),
-            TypedExpr::FragmentEmpty => PureExpr::FragmentConcat {
-                parts: Vec::new(),
+            TypedExpr::FragmentConcat { nodes } => {
+                let mut parts = Vec::with_capacity(nodes.len());
+                for node in nodes {
+                    assert_eq!(
+                        *node.as_type(),
+                        Type::Fragment,
+                        "FragmentConcat must hold Fragments, but holds {node}"
+                    );
+                    parts.push(self.compile_expr(node));
+                }
+                PureExpr::FragmentConcat { parts, id: expr_id }
+            }
+            TypedExpr::AttrsConcat { parts } => PureExpr::FragmentConcat {
+                parts: parts.iter().map(|part| self.compile_expr(part)).collect(),
                 id: expr_id,
             },
+            TypedExpr::AttrsLiteral { attributes } => {
+                let mut parts = Vec::new();
+                for attr in attributes {
+                    self.compile_attribute(attr, &mut parts);
+                }
+                PureExpr::FragmentConcat { parts, id: expr_id }
+            }
+            TypedExpr::FragmentRaw { value } => PureExpr::FragmentRaw {
+                content: value.to_string(),
+                id: expr_id,
+            },
+            TypedExpr::FragmentEscape { expr } => {
+                assert_eq!(
+                    *expr.as_type(),
+                    Type::String,
+                    "FragmentEscape must hold a String, but holds {expr}"
+                );
+                PureExpr::FragmentEscape {
+                    expr: Box::new(self.compile_expr(expr)),
+                    id: expr_id,
+                }
+            }
+            TypedExpr::FragmentHtml {
+                element,
+                attrs,
+                children,
+            } => {
+                let mut parts = vec![PureExpr::FragmentRaw {
+                    content: format!("<{}", element.as_str()),
+                    id: self.next_expr_id(),
+                }];
+                parts.push(self.compile_expr(attrs));
+                parts.push(PureExpr::FragmentRaw {
+                    content: ">".to_string(),
+                    id: self.next_expr_id(),
+                });
+                if !element.is_void() {
+                    parts.push(self.compile_expr(children));
+                    parts.push(PureExpr::FragmentRaw {
+                        content: format!("</{}>", element.as_str()),
+                        id: self.next_expr_id(),
+                    });
+                }
+                PureExpr::FragmentConcat { parts, id: expr_id }
+            }
             TypedExpr::FunctionCall {
                 function_name,
                 args,
                 kind,
             } => PureExpr::FunctionCall {
-                function_name: function_name.clone().into(),
+                function_name: function_name.clone(),
                 args: args
                     .iter()
                     .map(|(name, value)| PureArgument {
@@ -873,6 +597,39 @@ impl<'a> Compiler<'a> {
                     value,
                     body,
                     kind: kind.clone(),
+                    id: expr_id,
+                }
+            }
+            TypedExpr::For {
+                var_name,
+                source,
+                body,
+                kind,
+            } => {
+                assert_eq!(
+                    **kind,
+                    Type::Fragment,
+                    "For must fold into a Fragment, but folds into {kind}"
+                );
+                let pure_source = match &**source {
+                    TypedLoopSource::Array(array_expr) => {
+                        PureForSource::Array(self.compile_expr(array_expr))
+                    }
+                    TypedLoopSource::RangeInclusive { start, end } => {
+                        PureForSource::RangeInclusive {
+                            start: self.compile_expr(start),
+                            end: self.compile_expr(end),
+                        }
+                    }
+                };
+                self.push_scope();
+                let var = var_name.as_ref().map(|name| self.bind(name));
+                let body = Box::new(self.compile_expr(body));
+                self.pop_scope();
+                PureExpr::FragmentFor {
+                    var,
+                    source: Box::new(pure_source),
+                    body,
                     id: expr_id,
                 }
             }
@@ -970,8 +727,8 @@ mod tests {
         let before = page.to_string();
         let mut expr_ids = ExprIdCounter::new();
         let mut var_ids = VarIdCounter::new();
-        let compiled_view = Compiler::new(&mut expr_ids, &mut var_ids, None, HashMap::new())
-            .compile_page_decl(page);
+        let compiled_view =
+            Compiler::new(&mut expr_ids, &mut var_ids, None).compile_page_decl(page);
         let after = compiled_view.to_string();
         let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
         expected.assert_eq(&output);
@@ -986,7 +743,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 page MainComp() {
-                  Hello World
+                  concat(raw("Hello World"))
                 }
 
                 -- after --
@@ -1007,8 +764,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 page MainComp(name: String) {
-                  Hello 
-                  {name}
+                  concat(raw("Hello "), {name})
                 }
 
                 -- after --
@@ -1030,18 +786,25 @@ mod tests {
             expect![[r#"
                 -- before --
                 page MainComp() {
-                  <div>
-                    Content
-                  </div>
+                  concat(
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: concat(raw("Content")),
+                    ),
+                  )
                 }
 
                 -- after --
                 page MainComp() {
                   concat(
-                    raw("<div"),
-                    raw(">"),
-                    raw("Content"),
-                    raw("</div>"),
+                    concat(
+                      raw("<div"),
+                      concat(),
+                      raw(">"),
+                      concat(raw("Content")),
+                      raw("</div>"),
+                    ),
                   )
                 }
             "#]],
@@ -1061,11 +824,18 @@ mod tests {
             expect![[r#"
                 -- before --
                 page MainComp(show: Bool) {
-                  <if {show}>
-                    <div>
-                      Visible
-                    </div>
-                  </if>
+                  concat(
+                    match show {
+                      true => concat(
+                        html(
+                          tag: "div",
+                          attrs: [],
+                          children: concat(raw("Visible")),
+                        ),
+                      ),
+                      false => concat(),
+                    },
+                  )
                 }
 
                 -- after --
@@ -1074,10 +844,13 @@ mod tests {
                     match v0 {
                       true => {
                         concat(
-                          raw("<div"),
-                          raw(">"),
-                          raw("Visible"),
-                          raw("</div>"),
+                          concat(
+                            raw("<div"),
+                            concat(),
+                            raw(">"),
+                            concat(raw("Visible")),
+                            raw("</div>"),
+                          ),
                         )
                       }
                       false => { concat() }
@@ -1107,24 +880,47 @@ mod tests {
             expect![[r#"
                 -- before --
                 page MainComp(items: Array[String]) {
-                  <ul>
-                    <for {item in items}>
-                      <li>
-                        {item}
-                      </li>
-                    </for>
-                  </ul>
+                  concat(
+                    html(
+                      tag: "ul",
+                      attrs: [],
+                      children: concat(
+                        for item in items {
+                          concat(
+                            html(
+                              tag: "li",
+                              attrs: [],
+                              children: concat({item}),
+                            ),
+                          )
+                        },
+                      ),
+                    ),
+                  )
                 }
 
                 -- after --
                 page MainComp(items@v0: Array[String]) {
                   concat(
-                    raw("<ul"),
-                    raw(">"),
-                    for v1 in v0 {
-                      concat(raw("<li"), raw(">"), escape(v1), raw("</li>"))
-                    },
-                    raw("</ul>"),
+                    concat(
+                      raw("<ul"),
+                      concat(),
+                      raw(">"),
+                      concat(
+                        for v1 in v0 {
+                          concat(
+                            concat(
+                              raw("<li"),
+                              concat(),
+                              raw(">"),
+                              concat(escape(v1)),
+                              raw("</li>"),
+                            ),
+                          )
+                        },
+                      ),
+                      raw("</ul>"),
+                    ),
                   )
                 }
             "#]],
@@ -1145,20 +941,25 @@ mod tests {
             expect![[r#"
                 -- before --
                 page MainComp() {
-                  <div class="base" id="test">
-                    Content
-                  </div>
+                  concat(
+                    html(
+                      tag: "div",
+                      attrs: [class: raw("base"), id: raw("test")],
+                      children: concat(raw("Content")),
+                    ),
+                  )
                 }
 
                 -- after --
                 page MainComp() {
                   concat(
-                    raw("<div"),
-                    raw(" class=\"base\""),
-                    raw(" id=\"test\""),
-                    raw(">"),
-                    raw("Content"),
-                    raw("</div>"),
+                    concat(
+                      raw("<div"),
+                      concat(raw(" class=\"base\""), raw(" id=\"test\"")),
+                      raw(">"),
+                      concat(raw("Content")),
+                      raw("</div>"),
+                    ),
                   )
                 }
             "#]],
@@ -1182,22 +983,30 @@ mod tests {
             expect![[r#"
                 -- before --
                 page MainComp(cls: String) {
-                  <div class="base" data-value={cls}>
-                    Content
-                  </div>
+                  concat(
+                    html(
+                      tag: "div",
+                      attrs: [class: raw("base"), data-value: escape(cls)],
+                      children: concat(raw("Content")),
+                    ),
+                  )
                 }
 
                 -- after --
                 page MainComp(cls@v0: String) {
                   concat(
-                    raw("<div"),
-                    raw(" class=\"base\""),
-                    raw(" data-value=\""),
-                    escape(v0),
-                    raw("\""),
-                    raw(">"),
-                    raw("Content"),
-                    raw("</div>"),
+                    concat(
+                      raw("<div"),
+                      concat(
+                        raw(" class=\"base\""),
+                        raw(" data-value=\""),
+                        escape(v0),
+                        raw("\""),
+                      ),
+                      raw(">"),
+                      concat(raw("Content")),
+                      raw("</div>"),
+                    ),
                   )
                 }
             "#]],
@@ -1222,24 +1031,35 @@ mod tests {
             expect![[r#"
                 -- before --
                 page TestComp(name: String, count: String) {
-                  <div>
-                    Hello 
-                    {name}
-                    , count: 
-                    {count}
-                  </div>
+                  concat(
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: concat(
+                        raw("Hello "),
+                        {name},
+                        raw(", count: "),
+                        {count},
+                      ),
+                    ),
+                  )
                 }
 
                 -- after --
                 page TestComp(name@v0: String, count@v1: String) {
                   concat(
-                    raw("<div"),
-                    raw(">"),
-                    raw("Hello "),
-                    escape(v0),
-                    raw(", count: "),
-                    escape(v1),
-                    raw("</div>"),
+                    concat(
+                      raw("<div"),
+                      concat(),
+                      raw(">"),
+                      concat(
+                        raw("Hello "),
+                        escape(v0),
+                        raw(", count: "),
+                        escape(v1),
+                      ),
+                      raw("</div>"),
+                    ),
                   )
                 }
             "#]],
@@ -1263,14 +1083,12 @@ mod tests {
             expect![[r#"
                 -- before --
                 page TestComp(flag: Bool) {
-                  <match {flag}>
-                    <case {true}>
-                      yes
-                    </case>
-                    <case {false}>
-                      no
-                    </case>
-                  </match>
+                  concat(
+                    match flag {
+                      true => concat(raw("yes")),
+                      false => concat(raw("no")),
+                    },
+                  )
                 }
 
                 -- after --
@@ -1297,18 +1115,25 @@ mod tests {
             expect![[r#"
                 -- before --
                 page MainComp() {
-                  <script>
-                    alert("hi")
-                  </script>
+                  concat(
+                    html(
+                      tag: "script",
+                      attrs: [],
+                      children: concat(raw("alert(\"hi\")")),
+                    ),
+                  )
                 }
 
                 -- after --
                 page MainComp() {
                   concat(
-                    raw("<script"),
-                    raw(">"),
-                    raw("alert(\"hi\")"),
-                    raw("</script>"),
+                    concat(
+                      raw("<script"),
+                      concat(),
+                      raw(">"),
+                      concat(raw("alert(\"hi\")")),
+                      raw("</script>"),
+                    ),
                   )
                 }
             "#]],
@@ -1324,12 +1149,12 @@ mod tests {
             expect![[r#"
                 -- before --
                 page MainComp() {
-                  <br></br>
+                  concat(html(tag: "br", attrs: []))
                 }
 
                 -- after --
                 page MainComp() {
-                  concat(raw("<br"), raw(">"))
+                  concat(concat(raw("<br"), concat(), raw(">")))
                 }
             "#]],
         );

@@ -1,6 +1,7 @@
 use crate::document::CheapString;
+use crate::expr::TypedExpr;
+use crate::expr::{TypedAttribute, TypedAttributeValue};
 use crate::hop::typing::typed_ast::{TypedPageDeclaration, TypedParameter};
-use crate::hop::typing::typed_node::{TypedAttribute, TypedAttributeValue, TypedNode};
 use crate::html::HtmlElement;
 use crate::symbols::type_name::TypeName;
 use pretty::BoxDoc;
@@ -23,7 +24,7 @@ pub enum TailwindInjection<'a> {
 pub struct AssembledPageDeclaration {
     pub name: TypeName,
     pub params: Vec<TypedParameter>,
-    pub children: Vec<TypedNode>,
+    pub body: TypedExpr,
 }
 
 impl AssembledPageDeclaration {
@@ -35,7 +36,7 @@ impl AssembledPageDeclaration {
         Self {
             name: page.name,
             params: page.params,
-            children: page.body,
+            body: page.body,
         }
     }
 }
@@ -51,30 +52,19 @@ impl AssembledPageDeclaration {
             BoxDoc::text(", "),
         );
 
-        let header = BoxDoc::text("page")
+        BoxDoc::text("page")
             .append(BoxDoc::space())
             .append(BoxDoc::text(self.name.as_str()))
             .append(BoxDoc::text("("))
             .append(params_doc)
-            .append(BoxDoc::text(")"))
-            .append(BoxDoc::space())
-            .append(BoxDoc::text("{"));
-
-        if self.children.is_empty() {
-            header.append(BoxDoc::text("}"))
-        } else {
-            header
-                .append(
-                    BoxDoc::line()
-                        .append(BoxDoc::intersperse(
-                            self.children.iter().map(|c| c.to_doc()),
-                            BoxDoc::line(),
-                        ))
-                        .nest(2),
-                )
-                .append(BoxDoc::line())
-                .append(BoxDoc::text("}"))
-        }
+            .append(BoxDoc::text(") {"))
+            .append(
+                BoxDoc::line()
+                    .append(self.body.to_doc())
+                    .nest(2)
+                    .append(BoxDoc::line()),
+            )
+            .append(BoxDoc::text("}"))
     }
 }
 
@@ -94,11 +84,12 @@ pub fn assemble_page(
 ) -> AssembledPageDeclaration {
     let TypedPageDeclaration {
         name,
-        mut head,
+        head,
         body,
         params,
     } = page;
 
+    let mut head = fragment_nodes(head);
     head.splice(0..0, create_meta_elements());
     if let Some(injection) = tailwind_injection {
         head.push(create_tailwind_element(injection));
@@ -107,30 +98,40 @@ pub fn assemble_page(
         head.push(create_script_element(src));
     }
 
-    let doctype = TypedNode::Text {
+    let doctype = TypedExpr::FragmentRaw {
         value: CheapString::new("<!doctype html>".to_string()),
     };
     let html = create_html_element(
         HtmlElement::Html,
         vec![
             create_html_element(HtmlElement::Head, head),
-            create_html_element(HtmlElement::Body, body),
+            create_html_element(HtmlElement::Body, fragment_nodes(body)),
         ],
     );
 
     AssembledPageDeclaration {
         name,
         params,
-        children: vec![doctype, html],
+        body: TypedExpr::FragmentConcat {
+            nodes: vec![doctype, html],
+        },
     }
 }
 
-fn create_html_element(element: HtmlElement, children: Vec<TypedNode>) -> TypedNode {
-    TypedNode::Html {
+fn fragment_nodes(expr: TypedExpr) -> Vec<TypedExpr> {
+    match expr {
+        TypedExpr::FragmentConcat { nodes } => nodes,
+        other => vec![other],
+    }
+}
+
+fn create_html_element(element: HtmlElement, children: Vec<TypedExpr>) -> TypedExpr {
+    TypedExpr::FragmentHtml {
         element,
-        attributes: Vec::new(),
-        rest_spread: None,
-        children,
+        attrs: Box::new(TypedExpr::AttrsLiteral {
+            attributes: Vec::new(),
+        }),
+        children: Box::new(TypedExpr::FragmentConcat { nodes: children }),
     }
 }
 
@@ -143,67 +144,74 @@ fn create_attribute(name: &str, value: &str) -> TypedAttribute {
     }
 }
 
-fn create_meta_elements() -> Vec<TypedNode> {
+fn create_meta_elements() -> Vec<TypedExpr> {
     vec![
-        TypedNode::Html {
+        TypedExpr::FragmentHtml {
             element: HtmlElement::Meta,
-            attributes: vec![create_attribute("charset", "utf-8")],
-            rest_spread: None,
-            children: vec![],
+            attrs: Box::new(TypedExpr::AttrsLiteral {
+                attributes: vec![create_attribute("charset", "utf-8")],
+            }),
+            children: Box::new(TypedExpr::FragmentConcat { nodes: vec![] }),
         },
-        TypedNode::Html {
+        TypedExpr::FragmentHtml {
             element: HtmlElement::Meta,
-            attributes: vec![
-                create_attribute("content", "width=device-width, initial-scale=1"),
-                create_attribute("name", "viewport"),
-            ],
-            rest_spread: None,
-            children: vec![],
+            attrs: Box::new(TypedExpr::AttrsLiteral {
+                attributes: vec![
+                    create_attribute("content", "width=device-width, initial-scale=1"),
+                    create_attribute("name", "viewport"),
+                ],
+            }),
+            children: Box::new(TypedExpr::FragmentConcat { nodes: vec![] }),
         },
     ]
 }
 
-fn create_style_element(css_content: &str) -> TypedNode {
-    let css_text = TypedNode::Text {
+fn create_style_element(css_content: &str) -> TypedExpr {
+    let css_text = TypedExpr::FragmentRaw {
         value: CheapString::new(css_content.to_string()),
     };
 
-    TypedNode::Html {
+    TypedExpr::FragmentHtml {
         element: HtmlElement::Style,
-        attributes: Vec::new(),
-        rest_spread: None,
-        children: vec![css_text],
+        attrs: Box::new(TypedExpr::AttrsLiteral {
+            attributes: Vec::new(),
+        }),
+        children: Box::new(TypedExpr::FragmentConcat {
+            nodes: vec![css_text],
+        }),
     }
 }
 
-fn create_link_element(href: &str) -> TypedNode {
-    TypedNode::Html {
+fn create_link_element(href: &str) -> TypedExpr {
+    TypedExpr::FragmentHtml {
         element: HtmlElement::Link,
-        attributes: vec![
-            create_attribute("rel", "stylesheet"),
-            create_attribute("href", href),
-        ],
-        rest_spread: None,
-        children: vec![],
+        attrs: Box::new(TypedExpr::AttrsLiteral {
+            attributes: vec![
+                create_attribute("rel", "stylesheet"),
+                create_attribute("href", href),
+            ],
+        }),
+        children: Box::new(TypedExpr::FragmentConcat { nodes: vec![] }),
     }
 }
 
-fn create_tailwind_element(injection: TailwindInjection<'_>) -> TypedNode {
+fn create_tailwind_element(injection: TailwindInjection<'_>) -> TypedExpr {
     match injection {
         TailwindInjection::Inline(css) => create_style_element(css),
         TailwindInjection::Link { href } => create_link_element(href),
     }
 }
 
-fn create_script_element(src: &str) -> TypedNode {
-    TypedNode::Html {
+fn create_script_element(src: &str) -> TypedExpr {
+    TypedExpr::FragmentHtml {
         element: HtmlElement::Script,
-        attributes: vec![
-            create_attribute("type", "module"),
-            create_attribute("src", src),
-        ],
-        rest_spread: None,
-        children: vec![],
+        attrs: Box::new(TypedExpr::AttrsLiteral {
+            attributes: vec![
+                create_attribute("type", "module"),
+                create_attribute("src", src),
+            ],
+        }),
+        children: Box::new(TypedExpr::FragmentConcat { nodes: vec![] }),
     }
 }
 
@@ -212,32 +220,36 @@ mod tests {
     use super::*;
     use expect_test::{Expect, expect};
 
-    fn text(value: &str) -> TypedNode {
-        TypedNode::Text {
+    fn text(value: &str) -> TypedExpr {
+        TypedExpr::FragmentRaw {
             value: CheapString::new(value.to_string()),
         }
     }
 
-    fn element(tag_name: &str, children: Vec<TypedNode>) -> TypedNode {
-        TypedNode::Html {
+    fn element(tag_name: &str, children: Vec<TypedExpr>) -> TypedExpr {
+        TypedExpr::FragmentHtml {
             element: HtmlElement::parse(tag_name).expect("unrecognized tag name"),
-            attributes: Vec::new(),
-            rest_spread: None,
-            children,
+            attrs: Box::new(TypedExpr::AttrsLiteral {
+                attributes: Vec::new(),
+            }),
+            children: Box::new(TypedExpr::FragmentConcat { nodes: children }),
         }
     }
 
-    fn page(page_name: &str, head: Vec<TypedNode>, body: Vec<TypedNode>) -> TypedPageDeclaration {
+    fn page(page_name: &str, head: Vec<TypedExpr>, body: Vec<TypedExpr>) -> TypedPageDeclaration {
         TypedPageDeclaration {
             name: TypeName::new(page_name).unwrap(),
-            head,
-            body,
+            head: TypedExpr::FragmentConcat { nodes: head },
+            body: TypedExpr::FragmentConcat { nodes: body },
             params: Vec::new(),
         }
     }
 
     fn format_children(page: &AssembledPageDeclaration) -> String {
-        page.children
+        let TypedExpr::FragmentConcat { nodes } = &page.body else {
+            panic!("an assembled page body is a Fragment literal");
+        };
+        nodes
             .iter()
             .map(|child| child.to_string())
             .collect::<Vec<_>>()
@@ -261,14 +273,28 @@ mod tests {
             None,
             None,
             expect![[r#"
-                <!doctype html>
-                <html>
-                  <head>
-                    <meta charset="utf-8"></meta>
-                    <meta content="width=device-width, initial-scale=1" name="viewport"></meta>
-                  </head>
-                  <body></body>
-                </html>
+                raw("<!doctype html>")
+                html(
+                  tag: "html",
+                  attrs: [],
+                  children: concat(
+                    html(
+                      tag: "head",
+                      attrs: [],
+                      children: concat(
+                        html(tag: "meta", attrs: [charset: raw("utf-8")]),
+                        html(
+                          tag: "meta",
+                          attrs: [
+                            content: raw("width=device-width, initial-scale=1"),
+                            name: raw("viewport"),
+                          ],
+                        ),
+                      ),
+                    ),
+                    html(tag: "body", attrs: [], children: concat()),
+                  ),
+                )
             "#]],
         );
     }
@@ -284,19 +310,37 @@ mod tests {
             None,
             None,
             expect![[r#"
-                <!doctype html>
-                <html>
-                  <head>
-                    <meta charset="utf-8"></meta>
-                    <meta content="width=device-width, initial-scale=1" name="viewport"></meta>
-                    <title>
-                      My Page
-                    </title>
-                  </head>
-                  <body>
-                    Hello World
-                  </body>
-                </html>
+                raw("<!doctype html>")
+                html(
+                  tag: "html",
+                  attrs: [],
+                  children: concat(
+                    html(
+                      tag: "head",
+                      attrs: [],
+                      children: concat(
+                        html(tag: "meta", attrs: [charset: raw("utf-8")]),
+                        html(
+                          tag: "meta",
+                          attrs: [
+                            content: raw("width=device-width, initial-scale=1"),
+                            name: raw("viewport"),
+                          ],
+                        ),
+                        html(
+                          tag: "title",
+                          attrs: [],
+                          children: concat(raw("My Page")),
+                        ),
+                      ),
+                    ),
+                    html(
+                      tag: "body",
+                      attrs: [],
+                      children: concat(raw("Hello World")),
+                    ),
+                  ),
+                )
             "#]],
         );
     }
@@ -310,17 +354,35 @@ mod tests {
             Some(TailwindInjection::Inline(css)),
             None,
             expect![[r#"
-                <!doctype html>
-                <html>
-                  <head>
-                    <meta charset="utf-8"></meta>
-                    <meta content="width=device-width, initial-scale=1" name="viewport"></meta>
-                    <style>
-                      .text-red { color: red; }
-                    </style>
-                  </head>
-                  <body></body>
-                </html>
+                raw("<!doctype html>")
+                html(
+                  tag: "html",
+                  attrs: [],
+                  children: concat(
+                    html(
+                      tag: "head",
+                      attrs: [],
+                      children: concat(
+                        html(tag: "meta", attrs: [charset: raw("utf-8")]),
+                        html(
+                          tag: "meta",
+                          attrs: [
+                            content: raw("width=device-width, initial-scale=1"),
+                            name: raw("viewport"),
+                          ],
+                        ),
+                        html(
+                          tag: "style",
+                          attrs: [],
+                          children: concat(
+                            raw(".text-red { color: red; }"),
+                          ),
+                        ),
+                      ),
+                    ),
+                    html(tag: "body", attrs: [], children: concat()),
+                  ),
+                )
             "#]],
         );
     }
@@ -334,15 +396,35 @@ mod tests {
             }),
             None,
             expect![[r#"
-                <!doctype html>
-                <html>
-                  <head>
-                    <meta charset="utf-8"></meta>
-                    <meta content="width=device-width, initial-scale=1" name="viewport"></meta>
-                    <link rel="stylesheet" href="/styles-deadbeef.css"></link>
-                  </head>
-                  <body></body>
-                </html>
+                raw("<!doctype html>")
+                html(
+                  tag: "html",
+                  attrs: [],
+                  children: concat(
+                    html(
+                      tag: "head",
+                      attrs: [],
+                      children: concat(
+                        html(tag: "meta", attrs: [charset: raw("utf-8")]),
+                        html(
+                          tag: "meta",
+                          attrs: [
+                            content: raw("width=device-width, initial-scale=1"),
+                            name: raw("viewport"),
+                          ],
+                        ),
+                        html(
+                          tag: "link",
+                          attrs: [
+                            rel: raw("stylesheet"),
+                            href: raw("/styles-deadbeef.css"),
+                          ],
+                        ),
+                      ),
+                    ),
+                    html(tag: "body", attrs: [], children: concat()),
+                  ),
+                )
             "#]],
         );
     }
@@ -354,15 +436,36 @@ mod tests {
             None,
             Some("/scripts-deadbeef.js"),
             expect![[r#"
-                <!doctype html>
-                <html>
-                  <head>
-                    <meta charset="utf-8"></meta>
-                    <meta content="width=device-width, initial-scale=1" name="viewport"></meta>
-                    <script type="module" src="/scripts-deadbeef.js"></script>
-                  </head>
-                  <body></body>
-                </html>
+                raw("<!doctype html>")
+                html(
+                  tag: "html",
+                  attrs: [],
+                  children: concat(
+                    html(
+                      tag: "head",
+                      attrs: [],
+                      children: concat(
+                        html(tag: "meta", attrs: [charset: raw("utf-8")]),
+                        html(
+                          tag: "meta",
+                          attrs: [
+                            content: raw("width=device-width, initial-scale=1"),
+                            name: raw("viewport"),
+                          ],
+                        ),
+                        html(
+                          tag: "script",
+                          attrs: [
+                            type: raw("module"),
+                            src: raw("/scripts-deadbeef.js"),
+                          ],
+                          children: concat(),
+                        ),
+                      ),
+                    ),
+                    html(tag: "body", attrs: [], children: concat()),
+                  ),
+                )
             "#]],
         );
     }
@@ -374,16 +477,32 @@ mod tests {
             None,
             None,
             expect![[r#"
-                <!doctype html>
-                <html>
-                  <head>
-                    <meta charset="utf-8"></meta>
-                    <meta content="width=device-width, initial-scale=1" name="viewport"></meta>
-                  </head>
-                  <body>
-                    Hello World
-                  </body>
-                </html>
+                raw("<!doctype html>")
+                html(
+                  tag: "html",
+                  attrs: [],
+                  children: concat(
+                    html(
+                      tag: "head",
+                      attrs: [],
+                      children: concat(
+                        html(tag: "meta", attrs: [charset: raw("utf-8")]),
+                        html(
+                          tag: "meta",
+                          attrs: [
+                            content: raw("width=device-width, initial-scale=1"),
+                            name: raw("viewport"),
+                          ],
+                        ),
+                      ),
+                    ),
+                    html(
+                      tag: "body",
+                      attrs: [],
+                      children: concat(raw("Hello World")),
+                    ),
+                  ),
+                )
             "#]],
         );
     }

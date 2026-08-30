@@ -6,7 +6,7 @@ use crate::document_annotator::DocumentAnnotator;
 use crate::document_id::DocumentId;
 use crate::expr::ExamplesAnnotation;
 use crate::expr::parsing::parse_type::parse_type;
-use crate::expr::typing::r#type::{EnumVariant, FunctionSignature, ParamEntry, Type};
+use crate::expr::typing::r#type::{EnumVariant, FunctionSignature, ParamEntry, Tail, Type};
 use crate::expr::typing::type_checker::resolve_type;
 use crate::expr::typing::type_env::TypeBinding;
 use crate::expr::typing::type_env::TypeEnv;
@@ -218,6 +218,8 @@ impl TypeRegistryBuilder {
                     let signature = FunctionSignature {
                         params,
                         return_type: types.resolve(&return_type),
+                        tail: Tail::Closed,
+                        rest_param: None,
                     };
                     if types.functions.insert(var_name(&name), signature).is_some() {
                         panic!("duplicate declaration of function `{name}`");

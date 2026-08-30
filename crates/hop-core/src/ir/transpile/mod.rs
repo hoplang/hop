@@ -133,6 +133,7 @@ pub trait Transpiler {
             Type::Float => self.transpile_float_type(arena),
             Type::Int => self.transpile_int_type(arena),
             Type::Fragment => self.transpile_fragment_type(arena),
+            Type::Attrs => unreachable!("Attrs is erased to Fragment before the IR"),
             Type::Array(elem) => self.transpile_array_type(arena, elem),
             Type::Option(inner) => self.transpile_option_type(arena, inner),
             Type::Named { name, .. } => {

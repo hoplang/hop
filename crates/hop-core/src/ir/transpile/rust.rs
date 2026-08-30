@@ -347,6 +347,7 @@ impl RustTranspiler {
         match t {
             Type::Bool | Type::Int | Type::Float | Type::Option(_) => false,
             Type::String | Type::Fragment | Type::Array(_) | Type::Named { .. } => true,
+            Type::Attrs => unreachable!("Attrs is erased to Fragment before the IR"),
         }
     }
 
@@ -361,6 +362,7 @@ impl RustTranspiler {
                 self.needs_fragment = true;
                 arena.text("&Fragment")
             }
+            Type::Attrs => unreachable!("Attrs is erased to Fragment before the IR"),
             Type::Array(elem) => arena
                 .text("&[")
                 .append(self.transpile_type(arena, elem))

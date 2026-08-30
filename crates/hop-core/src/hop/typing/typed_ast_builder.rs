@@ -4,11 +4,9 @@ use std::sync::Arc;
 use crate::document::CheapString;
 use crate::expr::Type;
 use crate::expr::TypedExpr;
+use crate::expr::{TypedAttribute, TypedAttributeValue, TypedLoopSource};
 use crate::hop::assembly::AssembledPageDeclaration;
 use crate::hop::typing::typed_ast::TypedParameter;
-use crate::hop::typing::typed_node::{
-    TypedAttribute, TypedAttributeValue, TypedLoopSource, TypedNode,
-};
 use crate::html::HtmlElement;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
@@ -40,7 +38,7 @@ where
 pub struct TypedAstBuilder {
     var_stack: RefCell<Vec<(String, Arc<Type>)>>,
     params: Vec<TypedParameter>,
-    children: Vec<TypedNode>,
+    children: Vec<TypedExpr>,
 }
 
 impl TypedAstBuilder {
@@ -73,7 +71,9 @@ impl TypedAstBuilder {
         AssembledPageDeclaration {
             name: TypeName::new(page_name).unwrap(),
             params: self.params,
-            children: self.children,
+            body: TypedExpr::FragmentConcat {
+                nodes: self.children,
+            },
         }
     }
 
@@ -104,15 +104,16 @@ impl TypedAstBuilder {
     }
 
     pub fn text(&mut self, s: &str) {
-        self.children.push(TypedNode::Text {
+        self.children.push(TypedExpr::FragmentRaw {
             value: CheapString::new(s.to_string()),
         });
     }
 
     pub fn text_expr(&mut self, expr: TypedExpr) {
         assert_eq!(*expr.as_type(), Type::String, "{}", expr);
-        self.children
-            .push(TypedNode::TextExpression { expression: expr });
+        self.children.push(TypedExpr::FragmentEscape {
+            expr: Box::new(expr),
+        });
     }
 
     pub fn if_node<F>(&mut self, cond: TypedExpr, children_fn: F)
@@ -120,12 +121,7 @@ impl TypedAstBuilder {
         F: FnOnce(&mut Self),
     {
         assert_eq!(*cond.as_type(), Type::Bool, "{}", cond);
-        let mut inner_builder = self.new_scoped();
-        children_fn(&mut inner_builder);
-        self.children.push(TypedNode::If {
-            condition: cond,
-            children: inner_builder.children,
-        });
+        self.bool_match_node(cond, children_fn, |_| {});
     }
 
     pub fn for_node<F>(&mut self, var: &str, array: TypedExpr, body_fn: F)
@@ -147,10 +143,11 @@ impl TypedAstBuilder {
 
         self.var_stack.borrow_mut().pop();
 
-        self.children.push(TypedNode::For {
+        self.children.push(TypedExpr::For {
             var_name: Some(VarName::try_from(var.to_string()).unwrap()),
-            source: TypedLoopSource::Array(array),
-            children,
+            source: Box::new(TypedLoopSource::Array(array)),
+            body: Box::new(TypedExpr::FragmentConcat { nodes: children }),
+            kind: Arc::new(Type::Fragment),
         });
     }
 
@@ -173,12 +170,13 @@ impl TypedAstBuilder {
             })
             .collect();
 
-        self.children.push(TypedNode::Html {
+        self.children.push(TypedExpr::FragmentHtml {
             element: HtmlElement::parse(tag_name)
                 .expect("builder html() called with an unrecognized tag name"),
-            attributes: attrs,
-            rest_spread: None,
-            children: inner_builder.children,
+            attrs: Box::new(TypedExpr::AttrsLiteral { attributes: attrs }),
+            children: Box::new(TypedExpr::FragmentConcat {
+                nodes: inner_builder.children,
+            }),
         });
     }
 
@@ -235,12 +233,17 @@ impl TypedAstBuilder {
         let mut false_builder = self.new_scoped();
         false_children_fn(&mut false_builder);
 
-        self.children.push(TypedNode::Match {
+        self.children.push(TypedExpr::Match {
             match_: Match::Bool {
                 subject: Box::new(subject),
-                true_body: Box::new(true_builder.children),
-                false_body: Box::new(false_builder.children),
+                true_body: Box::new(TypedExpr::FragmentConcat {
+                    nodes: true_builder.children,
+                }),
+                false_body: Box::new(TypedExpr::FragmentConcat {
+                    nodes: false_builder.children,
+                }),
             },
+            kind: Arc::new(Type::Fragment),
         });
     }
 }
@@ -262,7 +265,7 @@ mod tests {
             }),
             expect![[r#"
                 page Hello() {
-                  Hello, World!
+                  concat(raw("Hello, World!"))
                 }
             "#]],
         );
@@ -278,9 +281,13 @@ mod tests {
             }),
             expect![[r#"
                 page Card() {
-                  <div class="container">
-                    Content
-                  </div>
+                  concat(
+                    html(
+                      tag: "div",
+                      attrs: [class: raw("container")],
+                      children: concat(raw("Content")),
+                    ),
+                  )
                 }
             "#]],
         );
@@ -295,8 +302,7 @@ mod tests {
             }),
             expect![[r#"
                 page Greeting(name: String) {
-                  Hello, 
-                  {name}
+                  concat(raw("Hello, "), {name})
                 }
             "#]],
         );
@@ -320,13 +326,23 @@ mod tests {
             ),
             expect![[r#"
                 page ItemList(items: Array[String]) {
-                  <ul>
-                    <for {item in items}>
-                      <li>
-                        {item}
-                      </li>
-                    </for>
-                  </ul>
+                  concat(
+                    html(
+                      tag: "ul",
+                      attrs: [],
+                      children: concat(
+                        for item in items {
+                          concat(
+                            html(
+                              tag: "li",
+                              attrs: [],
+                              children: concat({item}),
+                            ),
+                          )
+                        },
+                      ),
+                    ),
+                  )
                 }
             "#]],
         );
@@ -344,11 +360,18 @@ mod tests {
             }),
             expect![[r#"
                 page Toggle(visible: Bool) {
-                  <if {visible}>
-                    <div>
-                      Shown
-                    </div>
-                  </if>
+                  concat(
+                    match visible {
+                      true => concat(
+                        html(
+                          tag: "div",
+                          attrs: [],
+                          children: concat(raw("Shown")),
+                        ),
+                      ),
+                      false => concat(),
+                    },
+                  )
                 }
             "#]],
         );

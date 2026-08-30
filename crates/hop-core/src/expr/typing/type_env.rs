@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use super::r#type::{ComponentSignature, FunctionSignature, Type};
+use super::r#type::{FunctionSignature, Type};
 use crate::document::DocumentRange;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
@@ -9,7 +9,7 @@ use crate::symbols::var_name::VarName;
 #[derive(Debug, Clone)]
 pub enum TypeBinding {
     Type(Arc<Type>),
-    Component(ComponentSignature),
+    Component(FunctionSignature),
     Page,
 }
 

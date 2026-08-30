@@ -4,12 +4,12 @@ use crate::dependency_graph::DependencyGraph;
 use crate::document::{CheapString, DocumentRange};
 use crate::error_collection::ErrorCollectionExt;
 use crate::expr::patterns::compiler::compile_match;
-use crate::expr::typing::r#type::{EnumVariant, FunctionSignature};
-use crate::expr::typing::type_checker::{resolve_type, typecheck_expr};
+use crate::expr::typing::r#type::EnumVariant;
+use crate::expr::typing::type_checker::{decision_to_typed_expr, resolve_type, typecheck_expr};
 use crate::expr::typing::type_env::TypeEnv;
 use crate::expr::typing::type_export::TypeExport;
 use crate::expr::typing::type_registry::{TypeDef, TypeRegistry};
-use crate::expr::{self, ComponentSignature, ParamEntry, Tail, Type, TypeBinding, TypedExpr};
+use crate::expr::{self, FunctionSignature, ParamEntry, Tail, Type, TypeBinding, TypedExpr};
 use crate::hop::parsing::parsed_ast::ParsedDeclaration;
 use crate::hop::parsing::parsed_ast::{
     ParsedAttribute, ParsedComponentDeclaration, ParsedEnumDeclaration, ParsedFunctionDeclaration,
@@ -27,17 +27,14 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
 use crate::document_id::DocumentId;
-use crate::expr::patterns::compiler::Decision;
+use crate::expr::patterns::Match;
 use crate::expr::patterns::typed::typecheck_pattern;
-use crate::expr::patterns::{EnumMatchArm, EnumPattern, Match};
+use crate::expr::{TypedAttribute, TypedAttributeValue, TypedLoopSource};
 use crate::hop::parsing::parsed_ast::{ParsedAst, ParsedAttributeValue};
 use crate::hop::parsing::parsed_node::{ParsedLetBinding, ParsedLoopSource, ParsedNode};
 use crate::hop::typing::typed_ast::{
-    TypedAst, TypedComponentDeclaration, TypedEnumDeclaration, TypedFunctionDeclaration,
-    TypedPageDeclaration, TypedParameter, TypedRecordDeclaration,
-};
-use crate::hop::typing::typed_node::{
-    TypedArgument, TypedAttribute, TypedAttributeValue, TypedLoopSource, TypedNode,
+    TypedAst, TypedEnumDeclaration, TypedFunctionDeclaration, TypedPageDeclaration, TypedParameter,
+    TypedRecordDeclaration,
 };
 
 pub fn typecheck(
@@ -171,10 +168,11 @@ fn typecheck_module(
                 // correctly.
                 let insertion = type_env.insert_local(
                     c.component_name.clone(),
-                    TypeBinding::Component(ComponentSignature {
-                        module: parsed_ast.document_id.clone(),
+                    TypeBinding::Component(FunctionSignature {
                         params: Vec::new(),
+                        return_type: Arc::new(Type::Fragment),
                         tail: Tail::Closed,
+                        rest_param: c.rest_param.as_ref().map(|(name, _)| name.clone()),
                     }),
                     c.tag_name.clone(),
                 );
@@ -297,7 +295,6 @@ fn typecheck_module(
         for name in &scc {
             pending_components.push(register_component_signature(
                 component_by_name[name],
-                &parsed_ast.document_id,
                 &mut type_env,
                 registry,
                 errors,
@@ -311,18 +308,12 @@ fn typecheck_module(
     // Settle every signature before checking a single body: a call site needs
     // the parameters its callee ends up forwarding, and those are not known
     // until the rest has been followed to wherever it lands.
-    let forwarded_params = resolve_rest_targets(
-        &component_by_name,
-        &parsed_ast.document_id,
-        &mut type_env,
-        errors,
-    );
+    let forwarded_params = resolve_rest_targets(&component_by_name, &mut type_env, errors);
 
     let mut typed_component_declarations = Vec::new();
     for p in pending_components {
         typed_component_declarations.push(check_component_body(
             p,
-            &parsed_ast.document_id,
             &forwarded_params,
             registry,
             errors,
@@ -335,7 +326,7 @@ fn typecheck_module(
         ));
     }
     // Sort by name for stable output
-    typed_component_declarations.sort_by(|a, b| a.component_name.cmp(&b.component_name));
+    typed_component_declarations.sort_by(|a, b| a.name.as_str().cmp(b.name.as_str()));
 
     for page in parsed_ast.get_page_declarations() {
         typed_pages.push(check_page_declaration(
@@ -362,12 +353,13 @@ fn typecheck_module(
     // Persist the exports as the module's interface for other modules
     exports.insert(parsed_ast.document_id.clone(), module_exports);
 
+    typed_component_declarations.extend(typed_functions);
+
     TypedAst::new(
-        typed_component_declarations,
         typed_records,
         typed_enums,
         typed_pages,
-        typed_functions,
+        typed_component_declarations,
     )
 }
 
@@ -556,7 +548,6 @@ struct PendingComponent<'a> {
 
 fn register_component_signature<'a>(
     component: &'a ParsedComponentDeclaration,
-    document_id: &DocumentId,
     type_env: &mut TypeEnv,
     registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
@@ -655,10 +646,11 @@ fn register_component_signature<'a>(
         }
     }
 
-    let component_signature = ComponentSignature {
-        module: document_id.clone(),
+    let component_signature = FunctionSignature {
         params: declared_params.clone(),
+        return_type: Arc::new(Type::Fragment),
         tail: Tail::Closed,
+        rest_param: component.rest_param.as_ref().map(|(name, _)| name.clone()),
     };
 
     type_env.replace_binding(component_name, TypeBinding::Component(component_signature));
@@ -687,7 +679,6 @@ fn register_component_signature<'a>(
 /// and which the settled signatures no longer distinguish from declared ones.
 fn resolve_rest_targets(
     component_by_name: &HashMap<TypeName, &ParsedComponentDeclaration>,
-    document_id: &DocumentId,
     type_env: &mut TypeEnv,
     errors: &mut Vec<TypeError>,
 ) -> HashMap<TypeName, Vec<ParamEntry>> {
@@ -722,6 +713,7 @@ fn resolve_rest_targets(
             // Nothing has extended this signature yet, so its parameters are
             // exactly the declared ones.
             let declared: Vec<ParamEntry> = provisional.params.clone();
+            let rest_param = provisional.rest_param.clone();
 
             let (forwarded, tail) = if is_cycle {
                 if let Some(target) = &component.rest_target {
@@ -741,10 +733,11 @@ fn resolve_rest_targets(
             params.extend(forwarded.iter().cloned());
             type_env.replace_binding(
                 name,
-                TypeBinding::Component(ComponentSignature {
-                    module: document_id.clone(),
+                TypeBinding::Component(FunctionSignature {
                     params,
+                    return_type: Arc::new(Type::Fragment),
                     tail,
+                    rest_param,
                 }),
             );
             forwarded_params.insert(name.clone(), forwarded);
@@ -822,7 +815,6 @@ fn rest_target_signature(
 
 fn check_component_body(
     pending: PendingComponent<'_>,
-    document_id: &DocumentId,
     forwarded_params: &HashMap<TypeName, Vec<ParamEntry>>,
     registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
@@ -832,7 +824,7 @@ fn check_component_body(
     annotations: &mut Vec<TypeAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
     asset_references: &mut Vec<AssetReference>,
-) -> TypedComponentDeclaration {
+) -> TypedFunctionDeclaration {
     let PendingComponent {
         component,
         resolved_params,
@@ -909,10 +901,11 @@ fn check_component_body(
 
     let signature = match type_env.lookup(component_name) {
         Some((TypeBinding::Component(settled), _)) => settled.clone(),
-        _ => ComponentSignature {
-            module: document_id.clone(),
+        _ => FunctionSignature {
             params: declared_params,
+            return_type: Arc::new(Type::Fragment),
             tail: Tail::Closed,
+            rest_param: rest_param.as_ref().map(|(name, _)| name.clone()),
         },
     };
     module_exports.insert(
@@ -924,11 +917,20 @@ fn check_component_body(
         },
     );
 
-    TypedComponentDeclaration {
-        component_name: component_name.clone(),
+    // The rest is an ordinary parameter holding pre-rendered attribute text.
+    if let Some((rest, _)) = rest_param {
+        typed_params.push(TypedParameter {
+            var_name: rest.clone(),
+            var_type: Arc::new(Type::Attrs),
+            examples: None,
+        });
+    }
+
+    TypedFunctionDeclaration {
+        name: component_name.clone().into(),
         params: typed_params,
-        rest_param: rest_param.as_ref().map(|(name, _)| name.clone()),
-        body: TypedExpr::Fragment {
+        return_type: Arc::new(Type::Fragment),
+        body: TypedExpr::FragmentConcat {
             nodes: typed_children,
         },
     }
@@ -1053,8 +1055,8 @@ fn check_page_declaration(
     TypedPageDeclaration {
         name: name.clone(),
         params: typed_params,
-        head: typed_head,
-        body: typed_body,
+        head: TypedExpr::FragmentConcat { nodes: typed_head },
+        body: TypedExpr::FragmentConcat { nodes: typed_body },
     }
 }
 
@@ -1125,6 +1127,8 @@ fn register_function_signature<'a>(
             FunctionSignature {
                 params: declared_params,
                 return_type: return_type.clone(),
+                tail: Tail::Closed,
+                rest_param: None,
             },
             function.name_range.clone(),
         )
@@ -1196,7 +1200,7 @@ fn check_function_body(
     }
 
     Some(TypedFunctionDeclaration {
-        name: function.name.clone(),
+        name: function.name.clone().into(),
         params: typed_params,
         return_type,
         body: typed_body,
@@ -1213,7 +1217,7 @@ fn typecheck_node(
     annotations: &mut Vec<TypeAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
     asset_references: &mut Vec<AssetReference>,
-) -> Option<TypedNode> {
+) -> Option<TypedExpr> {
     match node {
         ParsedNode::If {
             condition,
@@ -1258,9 +1262,15 @@ fn typecheck_node(
                 ));
             }
 
-            Some(TypedNode::If {
-                condition: typed_condition,
-                children: typed_children,
+            Some(TypedExpr::Match {
+                match_: Match::Bool {
+                    subject: Box::new(typed_condition),
+                    true_body: Box::new(TypedExpr::FragmentConcat {
+                        nodes: typed_children,
+                    }),
+                    false_body: Box::new(TypedExpr::FragmentConcat { nodes: Vec::new() }),
+                },
+                kind: Arc::new(Type::Fragment),
             })
         }
 
@@ -1404,10 +1414,13 @@ fn typecheck_node(
                 }
             }
 
-            Some(TypedNode::For {
+            Some(TypedExpr::For {
                 var_name: var_name.clone(),
-                source: typed_source,
-                children: typed_children,
+                source: Box::new(typed_source),
+                body: Box::new(TypedExpr::FragmentConcat {
+                    nodes: typed_children,
+                }),
+                kind: Arc::new(Type::Fragment),
             })
         }
 
@@ -1522,7 +1535,7 @@ fn typecheck_node(
             }
 
             // Type-check children with all variables in scope
-            let typed_children: Vec<TypedNode> = children
+            let typed_children: Vec<TypedExpr> = children
                 .iter()
                 .filter_map(|child| {
                     typecheck_node(
@@ -1552,16 +1565,20 @@ fn typecheck_node(
 
             // Build nested Let structure from innermost to outermost
             // Start with children, then wrap with each binding in reverse order
-            let mut result = typed_children;
+            let mut result = TypedExpr::FragmentConcat {
+                nodes: typed_children,
+            };
             for (binding, typed_value) in typed_bindings.into_iter().rev() {
-                result = vec![TypedNode::Let {
+                let kind = result.get_type();
+                result = TypedExpr::Let {
                     var: binding.var_name.clone(),
-                    value: typed_value,
-                    children: result,
-                }];
+                    value: Box::new(typed_value),
+                    body: Box::new(result),
+                    kind,
+                };
             }
 
-            result.into_iter().next()
+            Some(result)
         }
 
         ParsedNode::ComponentInvocation {
@@ -1591,10 +1608,10 @@ fn typecheck_node(
                 .collect::<Vec<_>>();
 
             // Look up the component signature from type_env
-            let (component_module, callee_params, callee_tail, component_def_range) =
+            let (callee_rest_param, callee_params, callee_tail, component_def_range) =
                 match type_env.lookup(component_name) {
                     Some((TypeBinding::Component(sig), def_range)) => (
-                        sig.module.clone(),
+                        sig.rest_param.clone(),
                         sig.params.clone(),
                         sig.tail.clone(),
                         def_range.clone(),
@@ -1641,12 +1658,29 @@ fn typecheck_node(
                 asset_references,
             );
 
-            Some(TypedNode::ComponentInvocation {
-                component_name: component_name.clone(),
-                component_module,
-                args: resolved_args,
-                extra_attributes,
-                rest_spread,
+            let mut args = resolved_args;
+
+            match callee_rest_param {
+                Some(rest_param) => {
+                    args.push((rest_param, attrs_expr(extra_attributes, rest_spread)));
+                }
+                None => {
+                    // A spread into a callee that declares no rest is not a
+                    // mistake: the spread was carrying typed parameters, and
+                    // those are passed explicitly above, so nothing is left
+                    // for it to forward.
+                    assert!(
+                        extra_attributes.is_empty(),
+                        "<{}> declares no rest, but the call site supplies attributes for one",
+                        component_name.as_str()
+                    );
+                }
+            }
+
+            Some(TypedExpr::FunctionCall {
+                function_name: component_name.clone().into(),
+                args,
+                kind: Arc::new(Type::Fragment),
             })
         }
 
@@ -1700,14 +1734,18 @@ fn typecheck_node(
                 })
                 .collect();
 
-            Some(TypedNode::Html {
+            Some(TypedExpr::FragmentHtml {
                 element: element.clone(),
-                attributes: typed_attributes,
-                rest_spread: attributes.iter().find_map(|a| match a {
-                    ParsedAttribute::Spread { name, .. } => Some(name.clone()),
-                    ParsedAttribute::Named { .. } => None,
+                attrs: Box::new(attrs_expr(
+                    typed_attributes,
+                    attributes.iter().find_map(|a| match a {
+                        ParsedAttribute::Spread { name, .. } => Some(name.clone()),
+                        ParsedAttribute::Named { .. } => None,
+                    }),
+                )),
+                children: Box::new(TypedExpr::FragmentConcat {
+                    nodes: typed_children,
                 }),
-                children: typed_children,
             })
         }
 
@@ -1726,15 +1764,19 @@ fn typecheck_node(
                 asset_references,
             )) {
                 let expr_type = typed_expr.get_type();
-                if *expr_type != Type::String && *expr_type != Type::Fragment {
-                    errors.push(TypeError::new(
-                        TypeErrorKind::TextExpressionTypeMismatch { found: expr_type },
-                        expression.range().clone(),
-                    ));
+                match *expr_type {
+                    Type::Fragment => Some(typed_expr),
+                    Type::String => Some(TypedExpr::FragmentEscape {
+                        expr: Box::new(typed_expr),
+                    }),
+                    _ => {
+                        errors.push(TypeError::new(
+                            TypeErrorKind::TextExpressionTypeMismatch { found: expr_type },
+                            expression.range().clone(),
+                        ));
+                        None
+                    }
                 }
-                Some(TypedNode::TextExpression {
-                    expression: typed_expr,
-                })
             } else {
                 None
             }
@@ -1841,13 +1883,18 @@ fn typecheck_node(
                         }
                     }
 
-                    typed_children
+                    TypedExpr::FragmentConcat {
+                        nodes: typed_children,
+                    }
                 })
                 .collect::<Vec<_>>();
 
-            let result = decision_to_typed_nodes(&decision, &typed_bodies, Some(typed_subject));
-
-            result.into_iter().next()
+            Some(decision_to_typed_expr(
+                &decision,
+                &typed_bodies,
+                Arc::new(Type::Fragment),
+                Some(typed_subject),
+            ))
         }
 
         ParsedNode::Text { range } => {
@@ -1855,7 +1902,7 @@ fn typecheck_node(
             if range.as_str().trim().is_empty() {
                 None
             } else {
-                Some(TypedNode::Text {
+                Some(TypedExpr::FragmentRaw {
                     value: range.to_cheap_string(),
                 })
             }
@@ -1863,7 +1910,7 @@ fn typecheck_node(
 
         // Newlines between inline content represent a space (HTML whitespace collapsing)
         // The tokenizer only emits Newlines when they're semantically significant
-        ParsedNode::Newline { .. } => Some(TypedNode::Text {
+        ParsedNode::Newline { .. } => Some(TypedExpr::FragmentRaw {
             value: CheapString::new(" ".to_string()),
         }),
 
@@ -1915,11 +1962,27 @@ fn typecheck_attribute_value(
     }
 }
 
+fn attrs_expr(attributes: Vec<TypedAttribute>, spread: Option<VarName>) -> TypedExpr {
+    let literal = TypedExpr::AttrsLiteral { attributes };
+    match spread {
+        Some(name) => TypedExpr::AttrsConcat {
+            parts: vec![
+                literal,
+                TypedExpr::Var {
+                    value: name,
+                    kind: Arc::new(Type::Attrs),
+                },
+            ],
+        },
+        None => literal,
+    }
+}
+
 fn typecheck_arguments(
     args: &[ParsedAttribute],
     callee_params: &[ParamEntry],
     callee_tail: &Tail,
-    children: Option<Vec<TypedNode>>,
+    children: Option<Vec<TypedExpr>>,
     component_name: &TypeName,
     component_name_opening_range: &DocumentRange,
     caller_params: &[VarName],
@@ -1930,7 +1993,11 @@ fn typecheck_arguments(
     annotations: &mut Vec<TypeAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
     asset_references: &mut Vec<AssetReference>,
-) -> (Vec<TypedArgument>, Vec<TypedAttribute>, Option<VarName>) {
+) -> (
+    Vec<(VarName, TypedExpr)>,
+    Vec<TypedAttribute>,
+    Option<VarName>,
+) {
     let has_body = children.is_some();
     let children_param = callee_params
         .iter()
@@ -1971,7 +2038,7 @@ fn typecheck_arguments(
             && !caller_params.contains(&param.name)
     };
 
-    let mut typed_args = Vec::new();
+    let mut typed_args: Vec<(VarName, TypedExpr)> = Vec::new();
     let mut extra_attributes: Vec<TypedAttribute> = Vec::new();
     for arg in args {
         let (arg_name_range, arg_value) = match arg {
@@ -2062,10 +2129,7 @@ fn typecheck_arguments(
             continue;
         }
 
-        typed_args.push(TypedArgument {
-            name: VarName::new(arg_name).unwrap(),
-            value: typed_expr,
-        });
+        typed_args.push((VarName::new(arg_name).unwrap(), typed_expr));
     }
 
     if has_body && has_explicit_children_arg {
@@ -2076,12 +2140,12 @@ fn typecheck_arguments(
     }
 
     if synthesize_children_arg {
-        typed_args.push(TypedArgument {
-            name: VarName::new("children").unwrap(),
-            value: TypedExpr::Fragment {
+        typed_args.push((
+            VarName::new("children").unwrap(),
+            TypedExpr::FragmentConcat {
                 nodes: children.unwrap_or_default(),
             },
-        });
+        ));
     }
 
     let missing_args: Vec<&str> = callee_params
@@ -2110,29 +2174,26 @@ fn typecheck_arguments(
 
     // Resolve the call arguments into parameter-definition order, filling
     // in default values for any omitted optional parameters.
-    let resolved_args: Vec<TypedArgument> = callee_params
+    let resolved_args: Vec<(VarName, TypedExpr)> = callee_params
         .iter()
         .filter_map(|param| {
             if covered_by_rest(param) {
                 // Read the value from the enclosing component, whose signature
                 // was extended with this parameter for exactly this purpose.
-                return Some(TypedArgument {
-                    name: param.name.clone(),
-                    value: TypedExpr::Var {
+                return Some((
+                    param.name.clone(),
+                    TypedExpr::Var {
                         value: param.name.clone(),
                         kind: param.typ.clone(),
                     },
-                });
+                ));
             }
             typed_args
                 .iter()
-                .find(|arg| arg.name.as_str() == param.name.as_str())
-                .map(|arg| arg.value.clone())
+                .find(|(name, _)| name.as_str() == param.name.as_str())
+                .map(|(_, value)| value.clone())
                 .or_else(|| param.default.clone())
-                .map(|value| TypedArgument {
-                    name: param.name.clone(),
-                    value,
-                })
+                .map(|value| (param.name.clone(), value))
         })
         .collect();
 
@@ -2214,178 +2275,6 @@ fn typecheck_html_attribute(
         name: name.to_cheap_string(),
         value: typed_value,
     })
-}
-
-/// Convert a compiled Decision tree into a Vec<TypedNode>.
-/// This is used for node-level match statements (as opposed to expression-level matches).
-///
-/// The root subject, when present, is the expression for the root switch node,
-/// used in place of a synthetic variable. Only the outermost call supplies it.
-fn decision_to_typed_nodes(
-    decision: &Decision,
-    typed_bodies: &[Vec<TypedNode>],
-    root_subject: Option<TypedExpr>,
-) -> Vec<TypedNode> {
-    match decision {
-        Decision::Success(body) => {
-            let mut result = typed_bodies[body.value].clone();
-            // The root binding binds the subject expression directly; nested
-            // bindings read fresh field/payload vars (root_subject is None).
-            let mut root_subject = root_subject;
-            // Wrap with Let nodes for each binding (in reverse order so first binding is outermost)
-            for binding in body.bindings.iter().rev() {
-                let value = root_subject.take().unwrap_or_else(|| TypedExpr::Var {
-                    value: binding.source_name.clone(),
-                    kind: binding.typ.clone(),
-                });
-                result = vec![TypedNode::Let {
-                    var: binding.name.clone(),
-                    value,
-                    children: result,
-                }];
-            }
-            result
-        }
-
-        Decision::SwitchBool {
-            variable,
-            true_case,
-            false_case,
-        } => {
-            let subject = Box::new(root_subject.unwrap_or_else(|| TypedExpr::Var {
-                value: variable.name.clone(),
-                kind: variable.typ.clone(),
-            }));
-            vec![TypedNode::Match {
-                match_: Match::Bool {
-                    subject,
-                    true_body: Box::new(decision_to_typed_nodes(
-                        &true_case.body,
-                        typed_bodies,
-                        None,
-                    )),
-                    false_body: Box::new(decision_to_typed_nodes(
-                        &false_case.body,
-                        typed_bodies,
-                        None,
-                    )),
-                },
-            }]
-        }
-
-        Decision::SwitchOption {
-            variable,
-            some_case,
-            none_case,
-        } => {
-            let subject = Box::new(root_subject.unwrap_or_else(|| TypedExpr::Var {
-                value: variable.name.clone(),
-                kind: variable.typ.clone(),
-            }));
-            vec![TypedNode::Match {
-                match_: Match::Option {
-                    subject,
-                    some_arm_binding: some_case.bound_name.clone(),
-                    some_arm_body: Box::new(decision_to_typed_nodes(
-                        &some_case.body,
-                        typed_bodies,
-                        None,
-                    )),
-                    none_arm_body: Box::new(decision_to_typed_nodes(
-                        &none_case.body,
-                        typed_bodies,
-                        None,
-                    )),
-                },
-            }]
-        }
-
-        Decision::SwitchEnum { variable, cases } => {
-            let subject = Box::new(root_subject.unwrap_or_else(|| TypedExpr::Var {
-                value: variable.name.clone(),
-                kind: variable.typ.clone(),
-            }));
-
-            let arms = cases
-                .iter()
-                .map(|case| {
-                    let pattern = EnumPattern::Variant {
-                        enum_name: case.enum_name.clone(),
-                        variant_name: case.variant_name.clone(),
-                    };
-
-                    // Filter out wildcard bindings (bound_name is None)
-                    let bindings: Vec<_> = case
-                        .bindings
-                        .iter()
-                        .filter_map(|b| {
-                            b.bound_name
-                                .as_ref()
-                                .map(|name| (b.field_name.clone(), name.clone()))
-                        })
-                        .collect();
-
-                    let body = decision_to_typed_nodes(&case.body, typed_bodies, None);
-                    EnumMatchArm {
-                        pattern,
-                        bindings,
-                        body,
-                    }
-                })
-                .collect();
-
-            vec![TypedNode::Match {
-                match_: Match::Enum { subject, arms },
-            }]
-        }
-
-        Decision::SwitchRecord { variable, case } => {
-            // The variable the fields are read from: the subject itself when it
-            // is already a variable, otherwise the synthetic variable which is
-            // bound to the subject expression below.
-            let (record_name, record_typ, subject_to_bind) = match root_subject {
-                Some(TypedExpr::Var { value, kind }) => (value, kind, None),
-                Some(subject) => (variable.name.clone(), variable.typ.clone(), Some(subject)),
-                None => (variable.name.clone(), variable.typ.clone(), None),
-            };
-
-            let mut body = decision_to_typed_nodes(&case.body, typed_bodies, None);
-
-            // Wrap with Let nodes for each field (using FieldAccess)
-            // Iterate in reverse so bindings are in the correct order
-            // Skip wildcard bindings (bound_name is None)
-            for binding in case.bindings.iter().rev() {
-                let Some(bound_name) = &binding.bound_name else {
-                    continue;
-                };
-
-                // Create field access: subject.field_name
-                let field_access = TypedExpr::FieldAccess {
-                    record: Box::new(TypedExpr::Var {
-                        value: record_name.clone(),
-                        kind: record_typ.clone(),
-                    }),
-                    field: binding.field_name.clone(),
-                    kind: binding.typ.clone(),
-                };
-
-                body = vec![TypedNode::Let {
-                    var: bound_name.clone(),
-                    value: field_access,
-                    children: body,
-                }];
-            }
-
-            match subject_to_bind {
-                Some(subject) => vec![TypedNode::Let {
-                    var: record_name,
-                    value: subject,
-                    children: body,
-                }],
-                None => body,
-            }
-        }
-    }
 }
 
 fn validate_examples_annotation(
@@ -2753,10 +2642,8 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Card(children: Fragment) {
-                  <div>
-                    {children}
-                  </div>
+                fn Card(children: Fragment) -> Fragment {
+                  concat(html(tag: "div", attrs: [], children: concat(children)))
                 }
             "#]],
         );
@@ -2777,14 +2664,12 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Card(children: Fragment) {
-                  <div>
-                    {children}
-                  </div>
+                fn Card(children: Fragment) -> Fragment {
+                  concat(html(tag: "div", attrs: [], children: concat(children)))
                 }
 
-                component Main {
-                  <Card children={{}}/>
+                fn Main() -> Fragment {
+                  concat(Card(children: concat()))
                 }
             "#]],
         );
@@ -2828,14 +2713,12 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Card(children: Fragment) {
-                  <div>
-                    {children}
-                  </div>
+                fn Card(children: Fragment) -> Fragment {
+                  concat(html(tag: "div", attrs: [], children: concat(children)))
                 }
 
-                component Main {
-                  <Card children={{}}/>
+                fn Main() -> Fragment {
+                  concat(Card(children: concat()))
                 }
             "#]],
         );
@@ -2856,14 +2739,12 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Card(children: Fragment) {
-                  <div>
-                    {children}
-                  </div>
+                fn Card(children: Fragment) -> Fragment {
+                  concat(html(tag: "div", attrs: [], children: concat(children)))
                 }
 
-                component Main(children: Fragment) {
-                  <Card children={children}/>
+                fn Main(children: Fragment) -> Fragment {
+                  concat(Card(children: children))
                 }
             "#]],
         );
@@ -2903,12 +2784,14 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Tree(children: Fragment) {
-                  <div>
-                    <Tree children={{
-                      {children}
-                    }}/>
-                  </div>
+                fn Tree(children: Fragment) -> Fragment {
+                  concat(
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: concat(Tree(children: concat(children))),
+                    ),
+                  )
                 }
             "#]],
         );
@@ -2987,7 +2870,9 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Main {}
+                fn Main() -> Fragment {
+                  concat()
+                }
             "#]],
         );
     }
@@ -3026,12 +2911,14 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Main {
-                  <h1>
-                    Hello, 
-                    <Main/>
-                    !
-                  </h1>
+                fn Main() -> Fragment {
+                  concat(
+                    html(
+                      tag: "h1",
+                      attrs: [],
+                      children: concat(raw("Hello, "), Main(), raw("!")),
+                    ),
+                  )
                 }
             "#]],
         );
@@ -3220,15 +3107,13 @@ mod tests {
             "#},
             expect![[r#"
                 -- other.hop --
-                component Foo {
-                  <span>
-                    hi
-                  </span>
+                fn Foo() -> Fragment {
+                  concat(html(tag: "span", attrs: [], children: concat(raw("hi"))))
                 }
 
                 -- main.hop --
-                component Main {
-                  <Foo/>
+                fn Main() -> Fragment {
+                  concat(Foo())
                 }
             "#]],
         );
@@ -3256,10 +3141,8 @@ mod tests {
                 }
 
                 -- main.hop --
-                component Main(foo: other::Foo) {
-                  <div>
-                    {foo.name}
-                  </div>
+                fn Main(foo: other::Foo) -> Fragment {
+                  concat(html(tag: "div", attrs: [], children: concat({foo.name})))
                 }
             "#]],
         );
@@ -3292,10 +3175,16 @@ mod tests {
                 }
 
                 -- main.hop --
-                component Main(color: other::Color) {
-                  <div>
-                    {match color {Color::Red => "red", Color::Green => "green"}}
-                  </div>
+                fn Main(color: other::Color) -> Fragment {
+                  concat(
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: concat(
+                        {match color {Color::Red => "red", Color::Green => "green"}},
+                      ),
+                    ),
+                  )
                 }
             "#]],
         );
@@ -3338,10 +3227,14 @@ mod tests {
             "#},
             expect![[r#"
                 -- other.hop --
-                component Foo {}
+                fn Foo() -> Fragment {
+                  concat()
+                }
 
                 -- main.hop --
-                component Foo {}
+                fn Foo() -> Fragment {
+                  concat()
+                }
             "#]],
         );
     }
@@ -3587,16 +3480,17 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Foo {
-                  <Main a={true} b={"foo"}/>
+                fn Foo() -> Fragment {
+                  concat(Main(a: true, b: "foo"))
                 }
 
-                component Main(a: Bool, b: String) {
-                  <if {a}>
-                    <div>
-                      {b}
-                    </div>
-                  </if>
+                fn Main(a: Bool, b: String) -> Fragment {
+                  concat(
+                    match a {
+                      true => concat(html(tag: "div", attrs: [], children: concat({b}))),
+                      false => concat(),
+                    },
+                  )
                 }
             "#]],
         );
@@ -3736,10 +3630,8 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Main(params: String) {
-                  <div>
-                    {params}
-                  </div>
+                fn Main(params: String) -> Fragment {
+                  concat(html(tag: "div", attrs: [], children: concat({params})))
                 }
             "#]],
         );
@@ -3758,12 +3650,15 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component ToggleComp(enabled: Bool) {
-                  <if {enabled}>
-                    <div>
-                      Enabled
-                    </div>
-                  </if>
+                fn ToggleComp(enabled: Bool) -> Fragment {
+                  concat(
+                    match enabled {
+                      true => concat(
+                        html(tag: "div", attrs: [], children: concat(raw("Enabled"))),
+                      ),
+                      false => concat(),
+                    },
+                  )
                 }
             "#]],
         );
@@ -3782,12 +3677,15 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component CounterComp(count: Float) {
-                  <if {(count == 0)}>
-                    <div>
-                      Zero
-                    </div>
-                  </if>
+                fn CounterComp(count: Float) -> Fragment {
+                  concat(
+                    match (count == 0) {
+                      true => concat(
+                        html(tag: "div", attrs: [], children: concat(raw("Zero"))),
+                      ),
+                      false => concat(),
+                    },
+                  )
                 }
             "#]],
         );
@@ -3826,11 +3724,15 @@ mod tests {
                   items: Array[main::Item],
                 }
 
-                component Main(params: main::Params) {
-                  <for {item in params.items}>
-                    <if {item.active}></if>
-                    <if {item.name}></if>
-                  </for>
+                fn Main(params: main::Params) -> Fragment {
+                  concat(
+                    for item in params.items {
+                      concat(
+                        match item.active {true => concat(), false => concat()},
+                        match item.name {true => concat(), false => concat()},
+                      )
+                    },
+                  )
                 }
             "#]],
         );
@@ -3849,12 +3751,12 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component ListComp(items: Array[String]) {
-                  <for {item in items}>
-                    <div>
-                      {item}
-                    </div>
-                  </for>
+                fn ListComp(items: Array[String]) -> Fragment {
+                  concat(
+                    for item in items {
+                      concat(html(tag: "div", attrs: [], children: concat({item})))
+                    },
+                  )
                 }
             "#]],
         );
@@ -3883,12 +3785,15 @@ mod tests {
                   y: String,
                 }
 
-                component Main(params: main::Params) {
-                  <if {(params.x == params.y)}>
-                    <div>
-                      Values are equal
-                    </div>
-                  </if>
+                fn Main(params: main::Params) -> Fragment {
+                  concat(
+                    match (params.x == params.y) {
+                      true => concat(
+                        html(tag: "div", attrs: [], children: concat(raw("Values are equal"))),
+                      ),
+                      false => concat(),
+                    },
+                  )
                 }
             "#]],
         );
@@ -3922,13 +3827,15 @@ mod tests {
                   b: Bool,
                 }
 
-                component Main(params: Array[main::Item]) {
-                  <for {j in params}>
-                    <if {j.a}></if>
-                  </for>
-                  <for {j in params}>
-                    <if {j.b}></if>
-                  </for>
+                fn Main(params: Array[main::Item]) -> Fragment {
+                  concat(
+                    for j in params {
+                      concat(match j.a {true => concat(), false => concat()})
+                    },
+                    for j in params {
+                      concat(match j.b {true => concat(), false => concat()})
+                    },
+                  )
                 }
             "#]],
         );
@@ -3948,10 +3855,8 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Main(i: Array[Bool]) {
-                  <for {j in i}>
-                    <if {j}></if>
-                  </for>
+                fn Main(i: Array[Bool]) -> Fragment {
+                  concat(for j in i { concat(match j {true => concat(), false => concat()}) })
                 }
             "#]],
         );
@@ -3974,14 +3879,16 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Main(i: Array[Array[Bool]]) {
-                  <for {j in i}>
-                    <for {k in j}>
-                      <if {k}>
-                        ok!
-                      </if>
-                    </for>
-                  </for>
+                fn Main(i: Array[Array[Bool]]) -> Fragment {
+                  concat(
+                    for j in i {
+                      concat(
+                        for k in j {
+                          concat(match k {true => concat(raw("ok!")), false => concat()})
+                        },
+                      )
+                    },
+                  )
                 }
             "#]],
         );
@@ -4039,12 +3946,15 @@ mod tests {
                   title: String,
                 }
 
-                component WidgetComp(config: a::bar::Config) {
-                  <if {config.enabled}>
-                    <div>
-                      {config.title}
-                    </div>
-                  </if>
+                fn WidgetComp(config: a::bar::Config) -> Fragment {
+                  concat(
+                    match config.enabled {
+                      true => concat(
+                        html(tag: "div", attrs: [], children: concat({config.title})),
+                      ),
+                      false => concat(),
+                    },
+                  )
                 }
 
                 -- foo.hop --
@@ -4052,10 +3962,8 @@ mod tests {
                   items: Array[a::bar::Config],
                 }
 
-                component PanelComp(data: foo::Data) {
-                  <for {item in data.items}>
-                    <WidgetComp config={item}/>
-                  </for>
+                fn PanelComp(data: foo::Data) -> Fragment {
+                  concat(for item in data.items { concat(WidgetComp(config: item)) })
                 }
 
                 -- main.hop --
@@ -4067,8 +3975,8 @@ mod tests {
                   dashboard: foo::Data,
                 }
 
-                component Main(settings: main::Settings) {
-                  <PanelComp data={settings.dashboard}/>
+                fn Main(settings: main::Settings) -> Fragment {
+                  concat(PanelComp(data: settings.dashboard))
                 }
             "#]],
         );
@@ -4177,10 +4085,14 @@ mod tests {
                   theme: String,
                 }
 
-                component Main(user: main::User) {
-                  <a href={user.url} class={user.theme}>
-                    Link
-                  </a>
+                fn Main(user: main::User) -> Fragment {
+                  concat(
+                    html(
+                      tag: "a",
+                      attrs: [href: escape(user.url), class: escape(user.theme)],
+                      children: concat(raw("Link")),
+                    ),
+                  )
                 }
             "#]],
         );
@@ -4205,16 +4117,12 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Bar {
-                  <Main children={{
-                    Here's the content for the children
-                  }}/>
+                fn Bar() -> Fragment {
+                  concat(Main(children: concat(raw("Here's the content for the children"))))
                 }
 
-                component Main(children: Fragment) {
-                  <strong>
-                    {children}
-                  </strong>
+                fn Main(children: Fragment) -> Fragment {
+                  concat(html(tag: "strong", attrs: [], children: concat(children)))
                 }
             "#]],
         );
@@ -4262,12 +4170,15 @@ mod tests {
                   is_active: Bool,
                 }
 
-                component Main(user: main::User) {
-                  <if {user.is_active}>
-                    <div>
-                      User is active
-                    </div>
-                  </if>
+                fn Main(user: main::User) -> Fragment {
+                  concat(
+                    match user.is_active {
+                      true => concat(
+                        html(tag: "div", attrs: [], children: concat(raw("User is active"))),
+                      ),
+                      false => concat(),
+                    },
+                  )
                 }
             "#]],
         );
@@ -4453,16 +4364,16 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component ListItems(items: Array[String]) {
-                  <for {item in items}>
-                    <li>
-                      {item}
-                    </li>
-                  </for>
+                fn ListItems(items: Array[String]) -> Fragment {
+                  concat(
+                    for item in items {
+                      concat(html(tag: "li", attrs: [], children: concat({item})))
+                    },
+                  )
                 }
 
-                component Main {
-                  <ListItems items={[]}/>
+                fn Main() -> Fragment {
+                  concat(ListItems(items: []))
                 }
             "#]],
         );
@@ -4542,7 +4453,9 @@ mod tests {
                   friend: main::User,
                 }
 
-                component Main {}
+                fn Main() -> Fragment {
+                  concat()
+                }
             "#]],
         );
     }
@@ -4571,7 +4484,9 @@ mod tests {
                   city: String,
                 }
 
-                component Main {}
+                fn Main() -> Fragment {
+                  concat()
+                }
             "#]],
         );
     }
@@ -4592,10 +4507,8 @@ mod tests {
                   name: String,
                 }
 
-                component Main(user: main::User) {
-                  <div>
-                    {user.name}
-                  </div>
+                fn Main(user: main::User) -> Fragment {
+                  concat(html(tag: "div", attrs: [], children: concat({user.name})))
                 }
             "#]],
         );
@@ -4623,10 +4536,8 @@ mod tests {
                   address: main::Address,
                 }
 
-                component Main(user: main::User) {
-                  <div>
-                    {user.address.city}
-                  </div>
+                fn Main(user: main::User) -> Fragment {
+                  concat(html(tag: "div", attrs: [], children: concat({user.address.city})))
                 }
             "#]],
         );
@@ -4698,16 +4609,21 @@ mod tests {
                   app: main::App,
                 }
 
-                component Main(params: main::Params) {
-                  <if {params.app.ui.theme.dark}>
-                    ok!
-                  </if>
-                  <if {params.app.api.endpoints.users.enabled}>
-                    ok!
-                  </if>
-                  <if {params.app.database.connection.ssl}>
-                    ok!
-                  </if>
+                fn Main(params: main::Params) -> Fragment {
+                  concat(
+                    match params.app.ui.theme.dark {
+                      true => concat(raw("ok!")),
+                      false => concat(),
+                    },
+                    match params.app.api.endpoints.users.enabled {
+                      true => concat(raw("ok!")),
+                      false => concat(),
+                    },
+                    match params.app.database.connection.ssl {
+                      true => concat(raw("ok!")),
+                      false => concat(),
+                    },
+                  )
                 }
             "#]],
         );
@@ -4798,7 +4714,9 @@ mod tests {
                   city: String,
                 }
 
-                component Foo {}
+                fn Foo() -> Fragment {
+                  concat()
+                }
 
                 -- bar.hop --
                 record User {
@@ -4806,15 +4724,13 @@ mod tests {
                   address: foo::Address,
                 }
 
-                component Bar(user: bar::User) {
-                  <div>
-                    {user.address.city}
-                  </div>
+                fn Bar(user: bar::User) -> Fragment {
+                  concat(html(tag: "div", attrs: [], children: concat({user.address.city})))
                 }
 
                 -- baz.hop --
-                component Baz {
-                  <Bar user={User {name: "Alice", address: Address {city: "NYC"}}}/>
+                fn Baz() -> Fragment {
+                  concat(Bar(user: User {name: "Alice", address: Address {city: "NYC"}}))
                 }
             "#]],
         );
@@ -4855,19 +4771,25 @@ mod tests {
                   Blue,
                 }
 
-                component ColorDisplay(color: colors::Color) {
-                  <div>
-                    {match color {
-                      Color::Red => "red",
-                      Color::Green => "green",
-                      Color::Blue => "blue",
-                    }}
-                  </div>
+                fn ColorDisplay(color: colors::Color) -> Fragment {
+                  concat(
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: concat(
+                        {match color {
+                          Color::Red => "red",
+                          Color::Green => "green",
+                          Color::Blue => "blue",
+                        }},
+                      ),
+                    ),
+                  )
                 }
 
                 -- main.hop --
-                component Main {
-                  <ColorDisplay color={Color::Red}/>
+                fn Main() -> Fragment {
+                  concat(ColorDisplay(color: Color::Red))
                 }
             "#]],
         );
@@ -5010,14 +4932,20 @@ mod tests {
                   Blue,
                 }
 
-                component Main(color: main::Color) {
-                  <div>
-                    {match color {
-                      Color::Red => "red",
-                      Color::Green => "green",
-                      Color::Blue => "blue",
-                    }}
-                  </div>
+                fn Main(color: main::Color) -> Fragment {
+                  concat(
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: concat(
+                        {match color {
+                          Color::Red => "red",
+                          Color::Green => "green",
+                          Color::Blue => "blue",
+                        }},
+                      ),
+                    ),
+                  )
                 }
             "#]],
         );
@@ -5194,13 +5122,19 @@ mod tests {
                   Inactive,
                 }
 
-                component Main(user: main::User) {
-                  <div>
-                    {match user.status {
-                      Status::Active => "active",
-                      Status::Inactive => "inactive",
-                    }}
-                  </div>
+                fn Main(user: main::User) -> Fragment {
+                  concat(
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: concat(
+                        {match user.status {
+                          Status::Active => "active",
+                          Status::Inactive => "inactive",
+                        }},
+                      ),
+                    ),
+                  )
                 }
             "#]],
         );
@@ -5233,10 +5167,8 @@ mod tests {
                   value: String,
                 }
 
-                component Main(o: main::Outer) {
-                  <div>
-                    {o.inner.value}
-                  </div>
+                fn Main(o: main::Outer) -> Fragment {
+                  concat(html(tag: "div", attrs: [], children: concat({o.inner.value})))
                 }
             "#]],
         );
@@ -5273,10 +5205,8 @@ mod tests {
                   backups: Array[main::Folder],
                 }
 
-                component Main(root: main::Folder) {
-                  <div>
-                    {root.name}
-                  </div>
+                fn Main(root: main::Folder) -> Fragment {
+                  concat(html(tag: "div", attrs: [], children: concat({root.name})))
                 }
             "#]],
         );
@@ -5316,21 +5246,17 @@ mod tests {
                   Branch{children: Array[main::Tree]},
                 }
 
-                component Main(t: main::Tree) {
-                  <match {t.root}>
-                    <case {Node::Leaf{label: v__1}}>
-                      <let {label = v__1}>
-                        {label}
-                      </let>
-                    </case>
-                    <case {Node::Branch{children: v__2}}>
-                      <let {children = v__2}>
-                        <for {_ in children}>
-                          ...
-                        </for>
-                      </let>
-                    </case>
-                  </match>
+                fn Main(t: main::Tree) -> Fragment {
+                  concat(
+                    match t.root {
+                      Node::Leaf => let label = v__1 in concat({label}),
+                      Node::Branch => let children = v__2 in concat(
+                        for _ in children {
+                          concat(raw("..."))
+                        },
+                      ),
+                    },
+                  )
                 }
             "#]],
         );
@@ -5382,14 +5308,12 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Greeting(name: String) {
-                  Hello, 
-                  {name}
-                  !
+                fn Greeting(name: String) -> Fragment {
+                  concat(raw("Hello, "), {name}, raw("!"))
                 }
 
-                component Main {
-                  <Greeting name={"World"}/>
+                fn Main() -> Fragment {
+                  concat(Greeting(name: "World"))
                 }
             "#]],
         );
@@ -5409,14 +5333,12 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Greeting(name: String) {
-                  Hello, 
-                  {name}
-                  !
+                fn Greeting(name: String) -> Fragment {
+                  concat(raw("Hello, "), {name}, raw("!"))
                 }
 
-                component Main {
-                  <Greeting name={"Claude"}/>
+                fn Main() -> Fragment {
+                  concat(Greeting(name: "Claude"))
                 }
             "#]],
         );
@@ -5436,15 +5358,12 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Main {
-                  <UserCard name={"Alice"} role={"user"}/>
+                fn Main() -> Fragment {
+                  concat(UserCard(name: "Alice", role: "user"))
                 }
 
-                component UserCard(name: String, role: String) {
-                  {name}
-                   (
-                  {role}
-                  )
+                fn UserCard(name: String, role: String) -> Fragment {
+                  concat({name}, raw(" ("), {role}, raw(")"))
                 }
             "#]],
         );
@@ -5540,14 +5459,12 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component ItemList(items: Array[String]) {
-                  <for {item in items}>
-                    {item}
-                  </for>
+                fn ItemList(items: Array[String]) -> Fragment {
+                  concat(for item in items { concat({item}) })
                 }
 
-                component Main {
-                  <ItemList items={[]}/>
+                fn Main() -> Fragment {
+                  concat(ItemList(items: []))
                 }
             "#]],
         );
@@ -5573,12 +5490,12 @@ mod tests {
                   enabled: Bool,
                 }
 
-                component Main {
-                  <Settings config={Config {name: "default", enabled: true}}/>
+                fn Main() -> Fragment {
+                  concat(Settings(config: Config {name: "default", enabled: true}))
                 }
 
-                component Settings(config: main::Config) {
-                  {config.name}
+                fn Settings(config: main::Config) -> Fragment {
+                  concat({config.name})
                 }
             "#]],
         );
@@ -5608,16 +5525,18 @@ mod tests {
                   Pending,
                 }
 
-                component Badge(status: main::Status) {
-                  {match status {
-                    Status::Active => "active",
-                    Status::Inactive => "not active",
-                    Status::Pending => "not active",
-                  }}
+                fn Badge(status: main::Status) -> Fragment {
+                  concat(
+                    {match status {
+                      Status::Active => "active",
+                      Status::Inactive => "not active",
+                      Status::Pending => "not active",
+                    }},
+                  )
                 }
 
-                component Main {
-                  <Badge status={Status::Active {since: 2000}}/>
+                fn Main() -> Fragment {
+                  concat(Badge(status: Status::Active {since: 2000}))
                 }
             "#]],
         );
@@ -5637,12 +5556,12 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Greeting(name: Option[String]) {
-                  <if {name.is_none()}></if>
+                fn Greeting(name: Option[String]) -> Fragment {
+                  concat(match name.is_none() {true => concat(), false => concat()})
                 }
 
-                component Main {
-                  <Greeting name={Some("World")}/>
+                fn Main() -> Fragment {
+                  concat(Greeting(name: Some("World")))
                 }
             "#]],
         );
@@ -5662,12 +5581,12 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Greeting(name: Option[String]) {
-                  <if {name.is_none()}></if>
+                fn Greeting(name: Option[String]) -> Fragment {
+                  concat(match name.is_none() {true => concat(), false => concat()})
                 }
 
-                component Main {
-                  <Greeting name={None}/>
+                fn Main() -> Fragment {
+                  concat(Greeting(name: None))
                 }
             "#]],
         );
@@ -5687,12 +5606,12 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Greeting(name: Option[String]) {
-                  <if {name.is_none()}></if>
+                fn Greeting(name: Option[String]) -> Fragment {
+                  concat(match name.is_none() {true => concat(), false => concat()})
                 }
 
-                component Main {
-                  <Greeting name={None}/>
+                fn Main() -> Fragment {
+                  concat(Greeting(name: None))
                 }
             "#]],
         );
@@ -5712,12 +5631,12 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Greeting(name: Option[String]) {
-                  <if {name.is_none()}></if>
+                fn Greeting(name: Option[String]) -> Fragment {
+                  concat(match name.is_none() {true => concat(), false => concat()})
                 }
 
-                component Main {
-                  <Greeting name={Some("World")}/>
+                fn Main() -> Fragment {
+                  concat(Greeting(name: Some("World")))
                 }
             "#]],
         );
@@ -5763,18 +5682,13 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Main(x: Option[String]) {
-                  <match {x}>
-                    <case {Some(v__1)}>
-                      <let {y = v__1}>
-                        found 
-                        {y}
-                      </let>
-                    </case>
-                    <case {None}>
-                      nothing
-                    </case>
-                  </match>
+                fn Main(x: Option[String]) -> Fragment {
+                  concat(
+                    match x {
+                      Some(v__1) => let y = v__1 in concat(raw("found "), {y}),
+                      None => concat(raw("nothing")),
+                    },
+                  )
                 }
             "#]],
         );
@@ -5802,18 +5716,14 @@ mod tests {
                   Blue,
                 }
 
-                component Main(c: main::Color) {
-                  <match {c}>
-                    <case {Color::Red}>
-                      red
-                    </case>
-                    <case {Color::Green}>
-                      green
-                    </case>
-                    <case {Color::Blue}>
-                      blue
-                    </case>
-                  </match>
+                fn Main(c: main::Color) -> Fragment {
+                  concat(
+                    match c {
+                      Color::Red => concat(raw("red")),
+                      Color::Green => concat(raw("green")),
+                      Color::Blue => concat(raw("blue")),
+                    },
+                  )
                 }
             "#]],
         );
@@ -5843,17 +5753,13 @@ mod tests {
                   Inactive,
                 }
 
-                component Main {
-                  <match {Status::Active {name: "test"}}>
-                    <case {Status::Active{name: v__1}}>
-                      <let {n = v__1}>
-                        {n}
-                      </let>
-                    </case>
-                    <case {Status::Inactive}>
-                      none
-                    </case>
-                  </match>
+                fn Main() -> Fragment {
+                  concat(
+                    match Status::Active {name: "test"} {
+                      Status::Active => let n = v__1 in concat({n}),
+                      Status::Inactive => concat(raw("none")),
+                    },
+                  )
                 }
             "#]],
         );
@@ -5873,15 +5779,8 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Main(flag: Bool) {
-                  <match {flag}>
-                    <case {true}>
-                      yes
-                    </case>
-                    <case {false}>
-                      no
-                    </case>
-                  </match>
+                fn Main(flag: Bool) -> Fragment {
+                  concat(match flag {true => concat(raw("yes")), false => concat(raw("no"))})
                 }
             "#]],
         );
@@ -5926,17 +5825,15 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Main(x: Option[String]) {
-                  <match {x}>
-                    <case {Some(v__1)}>
-                      <let {name = v__1}>
-                        <div class={name}></div>
-                      </let>
-                    </case>
-                    <case {None}>
-                      nothing
-                    </case>
-                  </match>
+                fn Main(x: Option[String]) -> Fragment {
+                  concat(
+                    match x {
+                      Some(v__1) => let name = v__1 in concat(
+                        html(tag: "div", attrs: [class: escape(name)], children: concat()),
+                      ),
+                      None => concat(raw("nothing")),
+                    },
+                  )
                 }
             "#]],
         );
@@ -6223,26 +6120,18 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Main(x: Option[Option[String]]) {
-                  <match {x}>
-                    <case {Some(v__1)}>
-                      <let {inner = v__1}>
-                        <match {inner}>
-                          <case {Some(v__3)}>
-                            <let {s = v__3}>
-                              {s}
-                            </let>
-                          </case>
-                          <case {None}>
-                            inner none
-                          </case>
-                        </match>
-                      </let>
-                    </case>
-                    <case {None}>
-                      outer none
-                    </case>
-                  </match>
+                fn Main(x: Option[Option[String]]) -> Fragment {
+                  concat(
+                    match x {
+                      Some(v__1) => let inner = v__1 in concat(
+                        match inner {
+                          Some(v__3) => let s = v__3 in concat({s}),
+                          None => concat(raw("inner none")),
+                        },
+                      ),
+                      None => concat(raw("outer none")),
+                    },
+                  )
                 }
             "#]],
         );
@@ -6264,19 +6153,17 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Main(items: Array[Option[String]]) {
-                  <for {item in items}>
-                    <match {item}>
-                      <case {Some(v__1)}>
-                        <let {s = v__1}>
-                          {s}
-                        </let>
-                      </case>
-                      <case {None}>
-                        -
-                      </case>
-                    </match>
-                  </for>
+                fn Main(items: Array[Option[String]]) -> Fragment {
+                  concat(
+                    for item in items {
+                      concat(
+                        match item {
+                          Some(v__1) => let s = v__1 in concat({s}),
+                          None => concat(raw("-")),
+                        },
+                      )
+                    },
+                  )
                 }
             "#]],
         );
@@ -6300,15 +6187,13 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Main(x: Option[String]) {
-                  <match {x}>
-                    <case {Some(_)}>
-                      found something
-                    </case>
-                    <case {None}>
-                      nothing
-                    </case>
-                  </match>
+                fn Main(x: Option[String]) -> Fragment {
+                  concat(
+                    match x {
+                      Some(_) => concat(raw("found something")),
+                      None => concat(raw("nothing")),
+                    },
+                  )
                 }
             "#]],
         );
@@ -6333,28 +6218,20 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Main(r1: Option[String], r2: Option[Bool]) {
-                  <match {r1}>
-                    <case {Some(v__1)}>
-                      <let {bound = v__1}>
-                        {bound}
-                      </let>
-                    </case>
-                    <case {None}>
-                      <match {r2}>
-                        <case {Some(v__3)}>
-                          <let {bound = v__3}>
-                            <if {bound}>
-                              yes
-                            </if>
-                          </let>
-                        </case>
-                        <case {None}>
-                          both none
-                        </case>
-                      </match>
-                    </case>
-                  </match>
+                fn Main(r1: Option[String], r2: Option[Bool]) -> Fragment {
+                  concat(
+                    match r1 {
+                      Some(v__1) => let bound = v__1 in concat({bound}),
+                      None => concat(
+                        match r2 {
+                          Some(v__3) => let bound = v__3 in concat(
+                            match bound {true => concat(raw("yes")), false => concat()},
+                          ),
+                          None => concat(raw("both none")),
+                        },
+                      ),
+                    },
+                  )
                 }
             "#]],
         );
@@ -6379,17 +6256,13 @@ mod tests {
                   name: Option[String],
                 }
 
-                component Main(user: main::User) {
-                  <match {user.name}>
-                    <case {Some(v__1)}>
-                      <let {n = v__1}>
-                        {n}
-                      </let>
-                    </case>
-                    <case {None}>
-                      anonymous
-                    </case>
-                  </match>
+                fn Main(user: main::User) -> Fragment {
+                  concat(
+                    match user.name {
+                      Some(v__1) => let n = v__1 in concat({n}),
+                      None => concat(raw("anonymous")),
+                    },
+                  )
                 }
             "#]],
         );
@@ -6432,19 +6305,18 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Main(show: Bool, x: Option[String]) {
-                  <if {show}>
-                    <match {x}>
-                      <case {Some(v__1)}>
-                        <let {v = v__1}>
-                          {v}
-                        </let>
-                      </case>
-                      <case {None}>
-                        none
-                      </case>
-                    </match>
-                  </if>
+                fn Main(show: Bool, x: Option[String]) -> Fragment {
+                  concat(
+                    match show {
+                      true => concat(
+                        match x {
+                          Some(v__1) => let v = v__1 in concat({v}),
+                          None => concat(raw("none")),
+                        },
+                      ),
+                      false => concat(),
+                    },
+                  )
                 }
             "#]],
         );
@@ -6466,23 +6338,23 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Main(x: Option[String]) {
-                  <div>
-                    <match {x}>
-                      <case {Some(v__1)}>
-                        <let {v = v__1}>
-                          <span>
-                            {v}
-                          </span>
-                        </let>
-                      </case>
-                      <case {None}>
-                        <span>
-                          none
-                        </span>
-                      </case>
-                    </match>
-                  </div>
+                fn Main(x: Option[String]) -> Fragment {
+                  concat(
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: concat(
+                        match x {
+                          Some(v__1) => let v = v__1 in concat(
+                            html(tag: "span", attrs: [], children: concat({v})),
+                          ),
+                          None => concat(
+                            html(tag: "span", attrs: [], children: concat(raw("none"))),
+                          ),
+                        },
+                      ),
+                    ),
+                  )
                 }
             "#]],
         );
@@ -6743,8 +6615,8 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Main {
-                  <my-widget foo="x"></my-widget>
+                fn Main() -> Fragment {
+                  concat(html(tag: "my-widget", attrs: [foo: raw("x")], children: concat()))
                 }
             "#]],
         );
@@ -6780,10 +6652,8 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Main {
-                  <a href="/">
-                    link
-                  </a>
+                fn Main() -> Fragment {
+                  concat(html(tag: "a", attrs: [href: raw("/")], children: concat(raw("link"))))
                 }
             "#]],
         );
@@ -6827,16 +6697,14 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Btn(children: Fragment, ...rest) {
-                  <button ...rest>
-                    {children}
-                  </button>
+                fn Btn(children: Fragment, rest: Attrs) -> Fragment {
+                  concat(
+                    html(tag: "button", attrs: concat([], rest), children: concat(children)),
+                  )
                 }
 
-                component Main {
-                  <Btn children={{
-                    click
-                  }} disabled/>
+                fn Main() -> Fragment {
+                  concat(Btn(children: concat(raw("click")), rest: [disabled]))
                 }
             "#]],
         );
@@ -6853,8 +6721,14 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Main {
-                  <div data-x="1" aria-label="hello"></div>
+                fn Main() -> Fragment {
+                  concat(
+                    html(
+                      tag: "div",
+                      attrs: [data-x: raw("1"), aria-label: raw("hello")],
+                      children: concat(),
+                    ),
+                  )
                 }
             "#]],
         );
@@ -6871,10 +6745,16 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Main {
-                  <svg viewBox="0 0 10 10">
-                    <path d="M0 0 L10 10"></path>
-                  </svg>
+                fn Main() -> Fragment {
+                  concat(
+                    html(
+                      tag: "svg",
+                      attrs: [viewBox: raw("0 0 10 10")],
+                      children: concat(
+                        html(tag: "path", attrs: [d: raw("M0 0 L10 10")], children: concat()),
+                      ),
+                    ),
+                  )
                 }
             "#]],
         );
@@ -6914,13 +6794,12 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Main {
-                  <let {name = "World"}>
-                    <div>
-                      Hello 
-                      {name}
-                    </div>
-                  </let>
+                fn Main() -> Fragment {
+                  concat(
+                    let name = "World" in concat(
+                      html(tag: "div", attrs: [], children: concat(raw("Hello "), {name})),
+                    ),
+                  )
                 }
             "#]],
         );
@@ -6939,12 +6818,12 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Main {
-                  <let {name = "World"}>
-                    <div>
-                      {name}
-                    </div>
-                  </let>
+                fn Main() -> Fragment {
+                  concat(
+                    let name = "World" in concat(
+                      html(tag: "div", attrs: [], children: concat({name})),
+                    ),
+                  )
                 }
             "#]],
         );
@@ -6963,12 +6842,12 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Main {
-                  <let {count = 42}>
-                    <div>
-                      {count.to_string()}
-                    </div>
-                  </let>
+                fn Main() -> Fragment {
+                  concat(
+                    let count = 42 in concat(
+                      html(tag: "div", attrs: [], children: concat({count.to_string()})),
+                    ),
+                  )
                 }
             "#]],
         );
@@ -6987,12 +6866,16 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Main {
-                  <let {price = 2.5}>
-                    <div>
-                      {price.to_int().to_string()}
-                    </div>
-                  </let>
+                fn Main() -> Fragment {
+                  concat(
+                    let price = 2.5 in concat(
+                      html(
+                        tag: "div",
+                        attrs: [],
+                        children: concat({price.to_int().to_string()}),
+                      ),
+                    ),
+                  )
                 }
             "#]],
         );
@@ -7011,12 +6894,12 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Main {
-                  <let {items = [1, 2, 3]}>
-                    <div>
-                      {items.len().to_string()}
-                    </div>
-                  </let>
+                fn Main() -> Fragment {
+                  concat(
+                    let items = [1, 2, 3] in concat(
+                      html(tag: "div", attrs: [], children: concat({items.len().to_string()})),
+                    ),
+                  )
                 }
             "#]],
         );
@@ -7041,12 +6924,12 @@ mod tests {
                   age: Int,
                 }
 
-                component Main {
-                  <let {user = User {name: "Alice", age: 30}}>
-                    <div>
-                      {user.name}
-                    </div>
-                  </let>
+                fn Main() -> Fragment {
+                  concat(
+                    let user = User {name: "Alice", age: 30} in concat(
+                      html(tag: "div", attrs: [], children: concat({user.name})),
+                    ),
+                  )
                 }
             "#]],
         );
@@ -7071,12 +6954,12 @@ mod tests {
                   age: Int,
                 }
 
-                component Main(user: main::User) {
-                  <let {updated = User {name: "Jane", age: user.age}}>
-                    <div>
-                      {updated.name}
-                    </div>
-                  </let>
+                fn Main(user: main::User) -> Fragment {
+                  concat(
+                    let updated = User {name: "Jane", age: user.age} in concat(
+                      html(tag: "div", attrs: [], children: concat({updated.name})),
+                    ),
+                  )
                 }
             "#]],
         );
@@ -7106,12 +6989,13 @@ mod tests {
                   state: main::State,
                 }
 
-                component Main(app: main::App) {
-                  <let {next = let v__0 = app.state in State {query: v__0.query, num: 1}}>
-                    <div>
-                      {next.query}
-                    </div>
-                  </let>
+                fn Main(app: main::App) -> Fragment {
+                  concat(
+                    let next = let v__0 = app.state in State {
+                      query: v__0.query,
+                      num: 1,
+                    } in concat(html(tag: "div", attrs: [], children: concat({next.query}))),
+                  )
                 }
             "#]],
         );
@@ -7136,12 +7020,12 @@ mod tests {
                   age: Int,
                 }
 
-                component Main(user: main::User) {
-                  <let {updated = User {name: "Jane", age: 30}}>
-                    <div>
-                      {updated.name}
-                    </div>
-                  </let>
+                fn Main(user: main::User) -> Fragment {
+                  concat(
+                    let updated = User {name: "Jane", age: 30} in concat(
+                      html(tag: "div", attrs: [], children: concat({updated.name})),
+                    ),
+                  )
                 }
             "#]],
         );
@@ -7189,15 +7073,12 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Main {
-                  <let {first = "Hello"}>
-                    <let {second = "World"}>
-                      <div>
-                        {first}
-                        {second}
-                      </div>
-                    </let>
-                  </let>
+                fn Main() -> Fragment {
+                  concat(
+                    let first = "Hello" in let second = "World" in concat(
+                      html(tag: "div", attrs: [], children: concat({first}, {second})),
+                    ),
+                  )
                 }
             "#]],
         );
@@ -7216,14 +7097,12 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Main {
-                  <let {greeting = "Hello"}>
-                    <let {shout = greeting}>
-                      <div>
-                        {shout}
-                      </div>
-                    </let>
-                  </let>
+                fn Main() -> Fragment {
+                  concat(
+                    let greeting = "Hello" in let shout = greeting in concat(
+                      html(tag: "div", attrs: [], children: concat({shout})),
+                    ),
+                  )
                 }
             "#]],
         );
@@ -7373,17 +7252,15 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Main {
-                  <let {name = "First"}>
-                    <div>
-                      {name}
-                    </div>
-                  </let>
-                  <let {name = "Second"}>
-                    <div>
-                      {name}
-                    </div>
-                  </let>
+                fn Main() -> Fragment {
+                  concat(
+                    let name = "First" in concat(
+                      html(tag: "div", attrs: [], children: concat({name})),
+                    ),
+                    let name = "Second" in concat(
+                      html(tag: "div", attrs: [], children: concat({name})),
+                    ),
+                  )
                 }
             "#]],
         );
@@ -7423,15 +7300,12 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Main {
-                  <let {first = "Hello"}>
-                    <let {second = "World"}>
-                      <div>
-                        {first}
-                        {second}
-                      </div>
-                    </let>
-                  </let>
+                fn Main() -> Fragment {
+                  concat(
+                    let first = "Hello" in let second = "World" in concat(
+                      html(tag: "div", attrs: [], children: concat({first}, {second})),
+                    ),
+                  )
                 }
             "#]],
         );
@@ -7492,14 +7366,12 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Main {
-                  <let {greeting = "Hello"}>
-                    <let {message = greeting}>
-                      <div>
-                        {message}
-                      </div>
-                    </let>
-                  </let>
+                fn Main() -> Fragment {
+                  concat(
+                    let greeting = "Hello" in let message = greeting in concat(
+                      html(tag: "div", attrs: [], children: concat({message})),
+                    ),
+                  )
                 }
             "#]],
         );
@@ -7520,18 +7392,17 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Main {
-                  <let {x = 0}>
-                    <let {y = (x + 1)}>
-                      <let {z = (y + 2)}>
-                        <if {(z == 3)}>
-                          <div>
-                            correct
-                          </div>
-                        </if>
-                      </let>
-                    </let>
-                  </let>
+                fn Main() -> Fragment {
+                  concat(
+                    let x = 0 in let y = (x + 1) in let z = (y + 2) in concat(
+                      match (z == 3) {
+                        true => concat(
+                          html(tag: "div", attrs: [], children: concat(raw("correct"))),
+                        ),
+                        false => concat(),
+                      },
+                    ),
+                  )
                 }
             "#]],
         );
@@ -7579,9 +7450,7 @@ mod tests {
                 -- main.hop --
                 page Main() {
                   body {
-                    <div>
-                      Hello
-                    </div>
+                    concat(html(tag: "div", attrs: [], children: concat(raw("Hello"))))
                   }
                 }
             "#]],
@@ -7657,11 +7526,13 @@ mod tests {
                 -- main.hop --
                 page Main(name: String) {
                   body {
-                    <div>
-                      Hello, 
-                      {name}
-                      !
-                    </div>
+                    concat(
+                      html(
+                        tag: "div",
+                        attrs: [],
+                        children: concat(raw("Hello, "), {name}, raw("!")),
+                      ),
+                    )
                   }
                 }
             "#]],
@@ -7681,13 +7552,19 @@ mod tests {
                 -- main.hop --
                 page Main(name: String, age: Int) {
                   body {
-                    <div>
-                      Hello, 
-                      {name}
-                      ! You are 
-                      {age.to_string()}
-                       years old.
-                    </div>
+                    concat(
+                      html(
+                        tag: "div",
+                        attrs: [],
+                        children: concat(
+                          raw("Hello, "),
+                          {name},
+                          raw("! You are "),
+                          {age.to_string()},
+                          raw(" years old."),
+                        ),
+                      ),
+                    )
                   }
                 }
             "#]],
@@ -7709,18 +7586,20 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Greeting(name: String) {
-                  <div>
-                    Hello, 
-                    {name}
-                    !
-                  </div>
-                }
-
                 page Main(name: String) {
                   body {
-                    <Greeting name={name}/>
+                    concat(Greeting(name: name))
                   }
+                }
+
+                fn Greeting(name: String) -> Fragment {
+                  concat(
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: concat(raw("Hello, "), {name}, raw("!")),
+                    ),
+                  )
                 }
             "#]],
         );
@@ -7801,7 +7680,9 @@ mod tests {
                   children: Array[main::TreeNode],
                 }
 
-                component Main {}
+                fn Main() -> Fragment {
+                  concat()
+                }
             "#]],
         );
     }
@@ -7826,7 +7707,9 @@ mod tests {
                   Neg{inner: main::Expr},
                 }
 
-                component Main {}
+                fn Main() -> Fragment {
+                  concat()
+                }
             "#]],
         );
     }
@@ -7848,7 +7731,9 @@ mod tests {
                   price: Int,
                 }
 
-                component Main {}
+                fn Main() -> Fragment {
+                  concat()
+                }
             "#]],
         );
     }
@@ -7912,7 +7797,9 @@ mod tests {
                   tags: Array[String],
                 }
 
-                component Main {}
+                fn Main() -> Fragment {
+                  concat()
+                }
             "#]],
         );
     }
@@ -7991,10 +7878,10 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Foo(...rest) {
-                  <div ...rest>
-                    <Foo/>
-                  </div>
+                fn Foo(rest: Attrs) -> Fragment {
+                  concat(
+                    html(tag: "div", attrs: concat([], rest), children: concat(Foo(rest: []))),
+                  )
                 }
             "#]],
         );
@@ -8036,18 +7923,26 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Button(class: String, children: Fragment, ...rest) {
-                  <button class={class} ...rest>
-                    {children}
-                  </button>
-                }
-
                 page Main() {
                   body {
-                    <Button class={"p-2"} children={{
-                      Hi
-                    }} data-foo="bar"/>
+                    concat(
+                      Button(
+                        class: "p-2",
+                        children: concat(raw("Hi")),
+                        rest: [data-foo: raw("bar")],
+                      ),
+                    )
                   }
+                }
+
+                fn Button(class: String, children: Fragment, rest: Attrs) -> Fragment {
+                  concat(
+                    html(
+                      tag: "button",
+                      attrs: concat([class: escape(class)], rest),
+                      children: concat(children),
+                    ),
+                  )
                 }
             "#]],
         );
@@ -8067,18 +7962,20 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Button(children: Fragment, ...rest) {
-                  <button class="builtin" ...rest>
-                    {children}
-                  </button>
-                }
-
                 page Main() {
                   body {
-                    <Button children={{
-                      Hi
-                    }} data-x="y"/>
+                    concat(Button(children: concat(raw("Hi")), rest: [data-x: raw("y")]))
                   }
+                }
+
+                fn Button(children: Fragment, rest: Attrs) -> Fragment {
+                  concat(
+                    html(
+                      tag: "button",
+                      attrs: concat([class: raw("builtin")], rest),
+                      children: concat(children),
+                    ),
+                  )
                 }
             "#]],
         );
@@ -8142,14 +8039,14 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Svg(...rest) {
-                  <svg ...rest></svg>
-                }
-
                 page Main() {
                   body {
-                    <Svg viewBox="0 0 100 100"/>
+                    concat(Svg(rest: [viewBox: raw("0 0 100 100")]))
                   }
+                }
+
+                fn Svg(rest: Attrs) -> Fragment {
+                  concat(html(tag: "svg", attrs: concat([], rest), children: concat()))
                 }
             "#]],
         );
@@ -8172,20 +8069,18 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Card(title: String) {
-                  <div>
-                    {title}
-                  </div>
-                }
-
-                component Wrapper(title: String, ...rest) {
-                  <Card title={title} ...rest/>
-                }
-
                 page Main() {
                   body {
-                    <Wrapper title={"hi"}/>
+                    concat(Wrapper(title: "hi", rest: []))
                   }
+                }
+
+                fn Card(title: String) -> Fragment {
+                  concat(html(tag: "div", attrs: [], children: concat({title})))
+                }
+
+                fn Wrapper(title: String, rest: Attrs) -> Fragment {
+                  concat(Card(title: title))
                 }
             "#]],
         );
@@ -8208,20 +8103,18 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Card(title: String) {
-                  <div>
-                    {title}
-                  </div>
-                }
-
-                component Wrapper(...rest) {
-                  <Card title={"explicit"} ...rest/>
-                }
-
                 page Main() {
                   body {
-                    <Wrapper/>
+                    concat(Wrapper(rest: []))
                   }
+                }
+
+                fn Card(title: String) -> Fragment {
+                  concat(html(tag: "div", attrs: [], children: concat({title})))
+                }
+
+                fn Wrapper(rest: Attrs) -> Fragment {
+                  concat(Card(title: "explicit"))
                 }
             "#]],
         );
@@ -8325,20 +8218,18 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Tree(x: Int) {
-                  <div>
-                    <Tree x={x}/>
-                  </div>
-                }
-
-                component Wrapper(x: Int, ...rest) {
-                  <Tree x={x} ...rest/>
-                }
-
                 page Main() {
                   body {
-                    <Wrapper x={1}/>
+                    concat(Wrapper(x: 1, rest: []))
                   }
+                }
+
+                fn Tree(x: Int) -> Fragment {
+                  concat(html(tag: "div", attrs: [], children: concat(Tree(x: x))))
+                }
+
+                fn Wrapper(x: Int, rest: Attrs) -> Fragment {
+                  concat(Tree(x: x))
                 }
             "#]],
         );
@@ -8368,18 +8259,16 @@ mod tests {
                   name: String,
                 }
 
-                component Card(user: main::User) {
-                  <div>
-                    {user.name}
-                  </div>
+                fn Card(user: main::User) -> Fragment {
+                  concat(html(tag: "div", attrs: [], children: concat({user.name})))
                 }
 
-                component Page(user: main::User) {
-                  <Wrapper user={user}/>
+                fn Page(user: main::User) -> Fragment {
+                  concat(Wrapper(user: user, rest: []))
                 }
 
-                component Wrapper(user: main::User, ...rest) {
-                  <Card user={user} ...rest/>
+                fn Wrapper(user: main::User, rest: Attrs) -> Fragment {
+                  concat(Card(user: user))
                 }
             "#]],
         );
@@ -8408,27 +8297,24 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Bar(name: String, title: String, ...rest) {
-                  <div>
-                    {name}
-                    <Card title={title} ...rest/>
-                  </div>
-                }
-
-                component Baz(name: String, title: String, ...rest) {
-                  <Bar name={name} title={title} ...rest/>
-                }
-
-                component Card(title: String) {
-                  <div>
-                    {title}
-                  </div>
-                }
-
                 page Main() {
                   body {
-                    <Baz name={"n"} title={"t"}/>
+                    concat(Baz(name: "n", title: "t", rest: []))
                   }
+                }
+
+                fn Bar(name: String, title: String, rest: Attrs) -> Fragment {
+                  concat(
+                    html(tag: "div", attrs: [], children: concat({name}, Card(title: title))),
+                  )
+                }
+
+                fn Baz(name: String, title: String, rest: Attrs) -> Fragment {
+                  concat(Bar(name: name, title: title, rest: concat([], rest)))
+                }
+
+                fn Card(title: String) -> Fragment {
+                  concat(html(tag: "div", attrs: [], children: concat({title})))
                 }
             "#]],
         );
@@ -8509,22 +8395,25 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Card(count: Int) {
-                  <if {(count > 0)}>
-                    <div>
-                      positive
-                    </div>
-                  </if>
-                }
-
-                component Wrapper(count: Int, ...rest) {
-                  <Card count={count} ...rest/>
-                }
-
                 page Main() {
                   body {
-                    <Wrapper count={3}/>
+                    concat(Wrapper(count: 3, rest: []))
                   }
+                }
+
+                fn Card(count: Int) -> Fragment {
+                  concat(
+                    match (count > 0) {
+                      true => concat(
+                        html(tag: "div", attrs: [], children: concat(raw("positive"))),
+                      ),
+                      false => concat(),
+                    },
+                  )
+                }
+
+                fn Wrapper(count: Int, rest: Attrs) -> Fragment {
+                  concat(Card(count: count))
                 }
             "#]],
         );
@@ -8551,22 +8440,26 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component A(count: Int, ...rest) {
-                  <div ...rest>
-                    <if {(count > 0)}>
-                      positive
-                    </if>
-                  </div>
-                }
-
-                component B(count: Int, ...rest) {
-                  <A count={count} ...rest/>
-                }
-
                 page Main() {
                   body {
-                    <B count={3} data-foo="bar"/>
+                    concat(B(count: 3, rest: [data-foo: raw("bar")]))
                   }
+                }
+
+                fn A(count: Int, rest: Attrs) -> Fragment {
+                  concat(
+                    html(
+                      tag: "div",
+                      attrs: concat([], rest),
+                      children: concat(
+                        match (count > 0) {true => concat(raw("positive")), false => concat()},
+                      ),
+                    ),
+                  )
+                }
+
+                fn B(count: Int, rest: Attrs) -> Fragment {
+                  concat(A(count: count, rest: concat([], rest)))
                 }
             "#]],
         );
@@ -8670,26 +8563,22 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Bar(children: Fragment, ...rest) {
-                  <Foo children={children} ...rest/>
-                }
-
-                component Baz(children: Fragment, ...rest) {
-                  <Bar children={children} ...rest/>
-                }
-
-                component Foo(children: Fragment) {
-                  <div>
-                    {children}
-                  </div>
-                }
-
                 page Main() {
                   body {
-                    <Baz children={{
-                      deep
-                    }}/>
+                    concat(Baz(children: concat(raw("deep")), rest: []))
                   }
+                }
+
+                fn Bar(children: Fragment, rest: Attrs) -> Fragment {
+                  concat(Foo(children: children))
+                }
+
+                fn Baz(children: Fragment, rest: Attrs) -> Fragment {
+                  concat(Bar(children: children, rest: concat([], rest)))
+                }
+
+                fn Foo(children: Fragment) -> Fragment {
+                  concat(html(tag: "div", attrs: [], children: concat(children)))
                 }
             "#]],
         );
@@ -8739,20 +8628,30 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Inner(class: String, ...rest) {
-                  <span class={class} ...rest></span>
-                }
-
-                component Outer(class: String, ...rest) {
-                  <div class={class}>
-                    <Inner class={"x"} ...rest/>
-                  </div>
-                }
-
                 page Main() {
                   body {
-                    <Outer class={"x"}/>
+                    concat(Outer(class: "x", rest: []))
                   }
+                }
+
+                fn Inner(class: String, rest: Attrs) -> Fragment {
+                  concat(
+                    html(
+                      tag: "span",
+                      attrs: concat([class: escape(class)], rest),
+                      children: concat(),
+                    ),
+                  )
+                }
+
+                fn Outer(class: String, rest: Attrs) -> Fragment {
+                  concat(
+                    html(
+                      tag: "div",
+                      attrs: [class: escape(class)],
+                      children: concat(Inner(class: "x", rest: concat([], rest))),
+                    ),
+                  )
                 }
             "#]],
         );
@@ -8779,24 +8678,24 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Button(children: Fragment, class: String, ...rest) {
-                  <Foo children={{
-                    {children}
-                  }} class={class} ...rest/>
-                }
-
-                component Foo(children: Fragment, class: String, ...rest) {
-                  <div class={class} ...rest>
-                    {children}
-                  </div>
-                }
-
                 page Main() {
                   body {
-                    <Button children={{
-                      click
-                    }} class={"primary"}/>
+                    concat(Button(children: concat(raw("click")), class: "primary", rest: []))
                   }
+                }
+
+                fn Button(children: Fragment, class: String, rest: Attrs) -> Fragment {
+                  concat(Foo(children: concat(children), class: class, rest: concat([], rest)))
+                }
+
+                fn Foo(children: Fragment, class: String, rest: Attrs) -> Fragment {
+                  concat(
+                    html(
+                      tag: "div",
+                      attrs: concat([class: escape(class)], rest),
+                      children: concat(children),
+                    ),
+                  )
                 }
             "#]],
         );
@@ -8819,18 +8718,24 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Inner(class: String, ...rest) {
-                  <span class={class} ...rest></span>
-                }
-
-                component Wrapper(class: String, ...rest) {
-                  <Inner class={class} ...rest/>
-                }
-
                 page Main() {
                   body {
-                    <Wrapper class={"y"}/>
+                    concat(Wrapper(class: "y", rest: []))
                   }
+                }
+
+                fn Inner(class: String, rest: Attrs) -> Fragment {
+                  concat(
+                    html(
+                      tag: "span",
+                      attrs: concat([class: escape(class)], rest),
+                      children: concat(),
+                    ),
+                  )
+                }
+
+                fn Wrapper(class: String, rest: Attrs) -> Fragment {
+                  concat(Inner(class: class, rest: concat([], rest)))
                 }
             "#]],
         );
@@ -8853,18 +8758,24 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component A(class: String, ...rest) {
-                  <div class={class} ...rest></div>
-                }
-
-                component B(class: String, ...rest) {
-                  <A class={class} ...rest/>
-                }
-
                 page Main() {
                   body {
-                    <B class={"main"}/>
+                    concat(B(class: "main", rest: []))
                   }
+                }
+
+                fn A(class: String, rest: Attrs) -> Fragment {
+                  concat(
+                    html(
+                      tag: "div",
+                      attrs: concat([class: escape(class)], rest),
+                      children: concat(),
+                    ),
+                  )
+                }
+
+                fn B(class: String, rest: Attrs) -> Fragment {
+                  concat(A(class: class, rest: concat([], rest)))
                 }
             "#]],
         );
@@ -8887,18 +8798,24 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component A(class: String, ...rest) {
-                  <div class={class} ...rest></div>
-                }
-
-                component B(class: String, ...rest) {
-                  <A class={class} ...rest/>
-                }
-
                 page Main() {
                   body {
-                    <B class={"b"}/>
+                    concat(B(class: "b", rest: []))
                   }
+                }
+
+                fn A(class: String, rest: Attrs) -> Fragment {
+                  concat(
+                    html(
+                      tag: "div",
+                      attrs: concat([class: escape(class)], rest),
+                      children: concat(),
+                    ),
+                  )
+                }
+
+                fn B(class: String, rest: Attrs) -> Fragment {
+                  concat(A(class: class, rest: concat([], rest)))
                 }
             "#]],
         );
@@ -8921,20 +8838,18 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component A(label: String, ...rest) {
-                  <span ...rest>
-                    {label}
-                  </span>
-                }
-
-                component B(label: String, ...rest) {
-                  <A label={label} ...rest/>
-                }
-
                 page Main() {
                   body {
-                    <B label={"x"}/>
+                    concat(B(label: "x", rest: []))
                   }
+                }
+
+                fn A(label: String, rest: Attrs) -> Fragment {
+                  concat(html(tag: "span", attrs: concat([], rest), children: concat({label})))
+                }
+
+                fn B(label: String, rest: Attrs) -> Fragment {
+                  concat(A(label: label, rest: concat([], rest)))
                 }
             "#]],
         );
@@ -8960,24 +8875,22 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Leaf(label: String, ...rest) {
-                  <span ...rest>
-                    {label}
-                  </span>
-                }
-
-                component Mid(label: String, ...rest) {
-                  <Leaf label={label} ...rest/>
-                }
-
-                component Top(label: String, ...rest) {
-                  <Mid label={label} ...rest/>
-                }
-
                 page Main() {
                   body {
-                    <Top label={"x"}/>
+                    concat(Top(label: "x", rest: []))
                   }
+                }
+
+                fn Leaf(label: String, rest: Attrs) -> Fragment {
+                  concat(html(tag: "span", attrs: concat([], rest), children: concat({label})))
+                }
+
+                fn Mid(label: String, rest: Attrs) -> Fragment {
+                  concat(Leaf(label: label, rest: concat([], rest)))
+                }
+
+                fn Top(label: String, rest: Attrs) -> Fragment {
+                  concat(Mid(label: label, rest: concat([], rest)))
                 }
             "#]],
         );
@@ -9050,18 +8963,18 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Inner(...rest) {
-                  <span ...rest></span>
-                }
-
-                component Wrapper(...rest) {
-                  <Inner title="a" ...rest/>
-                }
-
                 page Main() {
                   body {
-                    <Wrapper lang="en"/>
+                    concat(Wrapper(rest: [lang: raw("en")]))
                   }
+                }
+
+                fn Inner(rest: Attrs) -> Fragment {
+                  concat(html(tag: "span", attrs: concat([], rest), children: concat()))
+                }
+
+                fn Wrapper(rest: Attrs) -> Fragment {
+                  concat(Inner(rest: concat([title: raw("a")], rest)))
                 }
             "#]],
         );
@@ -9141,22 +9054,29 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component A(tabindex: Int, ...rest) {
-                  <div ...rest>
-                    <if {(tabindex > 0)}>
-                      focusable
-                    </if>
-                  </div>
-                }
-
-                component B(tabindex: Int, ...rest) {
-                  <A tabindex={tabindex} ...rest/>
-                }
-
                 page Main() {
                   body {
-                    <B tabindex={2} data-x="y"/>
+                    concat(B(tabindex: 2, rest: [data-x: raw("y")]))
                   }
+                }
+
+                fn A(tabindex: Int, rest: Attrs) -> Fragment {
+                  concat(
+                    html(
+                      tag: "div",
+                      attrs: concat([], rest),
+                      children: concat(
+                        match (tabindex > 0) {
+                          true => concat(raw("focusable")),
+                          false => concat(),
+                        },
+                      ),
+                    ),
+                  )
+                }
+
+                fn B(tabindex: Int, rest: Attrs) -> Fragment {
+                  concat(A(tabindex: tabindex, rest: concat([], rest)))
                 }
             "#]],
         );
@@ -9181,16 +9101,12 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Ping(n: Int) {
-                  <if {(n > 0)}>
-                    <Pong n={(n - 1)}/>
-                  </if>
+                fn Ping(n: Int) -> Fragment {
+                  concat(match (n > 0) {true => concat(Pong(n: (n - 1))), false => concat()})
                 }
 
-                component Pong(n: Int) {
-                  <if {(n > 0)}>
-                    <Ping n={(n - 1)}/>
-                  </if>
+                fn Pong(n: Int) -> Fragment {
+                  concat(match (n > 0) {true => concat(Ping(n: (n - 1))), false => concat()})
                 }
             "#]],
         );
@@ -9215,22 +9131,16 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component A(n: Int) {
-                  <if {(n > 0)}>
-                    <B n={(n - 1)}/>
-                  </if>
+                fn A(n: Int) -> Fragment {
+                  concat(match (n > 0) {true => concat(B(n: (n - 1))), false => concat()})
                 }
 
-                component B(n: Int) {
-                  <if {(n > 0)}>
-                    <C n={(n - 1)}/>
-                  </if>
+                fn B(n: Int) -> Fragment {
+                  concat(match (n > 0) {true => concat(C(n: (n - 1))), false => concat()})
                 }
 
-                component C(n: Int) {
-                  <if {(n > 0)}>
-                    <A n={(n - 1)}/>
-                  </if>
+                fn C(n: Int) -> Fragment {
+                  concat(match (n > 0) {true => concat(A(n: (n - 1))), false => concat()})
                 }
             "#]],
         );
@@ -9251,12 +9161,12 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Later {
-                  <div></div>
+                fn Later() -> Fragment {
+                  concat(html(tag: "div", attrs: [], children: concat()))
                 }
 
-                component Main {
-                  <Later/>
+                fn Main() -> Fragment {
+                  concat(Later())
                 }
             "#]],
         );
@@ -9277,14 +9187,14 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Later {
-                  <div></div>
-                }
-
                 page Main() {
                   body {
-                    <Later/>
+                    concat(Later())
                   }
+                }
+
+                fn Later() -> Fragment {
+                  concat(html(tag: "div", attrs: [], children: concat()))
                 }
             "#]],
         );
@@ -9308,21 +9218,17 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Render(item: Option[Int]) {
-                  <match {item}>
-                    <case {Some(v__1)}>
-                      <let {n = v__1}>
-                        <Wrap n={n}/>
-                      </let>
-                    </case>
-                    <case {None}>
-                      done
-                    </case>
-                  </match>
+                fn Render(item: Option[Int]) -> Fragment {
+                  concat(
+                    match item {
+                      Some(v__1) => let n = v__1 in concat(Wrap(n: n)),
+                      None => concat(raw("done")),
+                    },
+                  )
                 }
 
-                component Wrap(n: Int) {
-                  <Render item={Some(n)}/>
+                fn Wrap(n: Int) -> Fragment {
+                  concat(Render(item: Some(n)))
                 }
             "#]],
         );
@@ -9363,10 +9269,14 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Foo(...rest) {
-                  <div ...rest>
-                    <Foo id="x"/>
-                  </div>
+                fn Foo(rest: Attrs) -> Fragment {
+                  concat(
+                    html(
+                      tag: "div",
+                      attrs: concat([], rest),
+                      children: concat(Foo(rest: [id: raw("x")])),
+                    ),
+                  )
                 }
             "#]],
         );
@@ -9396,25 +9306,22 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component First(title: String, ...rest) {
-                  <Second title={title} ...rest/>
-                }
-
-                component Leaf(title: String) {
-                  <div>
-                    {title}
-                  </div>
-                }
-
-                component Second(title: String, ...rest) {
-                  <Leaf title={title} ...rest/>
-                  <First title={"d"}/>
-                }
-
                 page Main() {
                   body {
-                    <First title={"d"}/>
+                    concat(First(title: "d", rest: []))
                   }
+                }
+
+                fn First(title: String, rest: Attrs) -> Fragment {
+                  concat(Second(title: title, rest: concat([], rest)))
+                }
+
+                fn Leaf(title: String) -> Fragment {
+                  concat(html(tag: "div", attrs: [], children: concat({title})))
+                }
+
+                fn Second(title: String, rest: Attrs) -> Fragment {
+                  concat(Leaf(title: title), First(title: "d", rest: []))
                 }
             "#]],
         );
@@ -9437,12 +9344,12 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component First(n: Int, ...rest) {
-                  <Second n={n} ...rest/>
+                fn First(n: Int, rest: Attrs) -> Fragment {
+                  concat(Second(n: n))
                 }
 
-                component Second(n: Int) {
-                  <First n={n}/>
+                fn Second(n: Int) -> Fragment {
+                  concat(First(n: n, rest: []))
                 }
             "#]],
         );
@@ -9467,16 +9374,16 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component First(n: Int) {
-                  <Second n={n}/>
+                fn First(n: Int) -> Fragment {
+                  concat(Second(n: n))
                 }
 
-                component Outer(n: Int, ...rest) {
-                  <First n={n} ...rest/>
+                fn Outer(n: Int, rest: Attrs) -> Fragment {
+                  concat(First(n: n))
                 }
 
-                component Second(n: Int) {
-                  <First n={n}/>
+                fn Second(n: Int) -> Fragment {
+                  concat(First(n: n))
                 }
             "#]],
         );
@@ -9929,12 +9836,14 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                component Foo {
-                  <div>
-                    <for {x in 0..=add_ten(10)}>
-                      {x.to_string()}
-                    </for>
-                  </div>
+                fn Foo() -> Fragment {
+                  concat(
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: concat(for x in 0..=add_ten(x: 10) { concat({x.to_string()}) }),
+                    ),
+                  )
                 }
 
                 fn add_ten(x: Int) -> Int {
@@ -9961,9 +9870,7 @@ mod tests {
                 -- main.hop --
                 page Main() {
                   body {
-                    <div>
-                      {shout("hi")}
-                    </div>
+                    concat(html(tag: "div", attrs: [], children: concat({shout(name: "hi")})))
                   }
                 }
 
@@ -9986,7 +9893,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn spin(n: Int) -> Int {
-                  spin((n + 1))
+                  spin(n: (n + 1))
                 }
             "#]],
         );
@@ -10008,11 +9915,11 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn ping(n: Int) -> Int {
-                  pong(n)
+                  pong(n: n)
                 }
 
                 fn pong(n: Int) -> Int {
-                  ping(n)
+                  ping(n: n)
                 }
             "#]],
         );

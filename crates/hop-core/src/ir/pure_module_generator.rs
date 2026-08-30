@@ -650,6 +650,7 @@ impl PureGenerator<'_, '_> {
         // Note: we use saturating_sub here since we might be forced to construct
         // something deeper than depth.
         match &target {
+            Type::Attrs => unreachable!("Attrs is erased to Fragment before the IR"),
             Type::String => b.str(self.u.choose(STRING_LITERALS).unwrap()),
             Type::Int => {
                 if self.count(0..=7) == 0 {

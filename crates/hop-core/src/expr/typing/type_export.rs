@@ -1,4 +1,4 @@
-use super::r#type::ComponentSignature;
+use super::r#type::FunctionSignature;
 use crate::document::DocumentRange;
 
 /// A type or component exported by a module. Non-pub declarations are
@@ -11,7 +11,7 @@ pub enum TypeExport {
         is_pub: bool,
     },
     Component {
-        signature: ComponentSignature,
+        signature: FunctionSignature,
         definition_range: DocumentRange,
         is_pub: bool,
     },

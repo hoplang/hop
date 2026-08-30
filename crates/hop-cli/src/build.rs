@@ -363,81 +363,81 @@ mod tests {
 
                 export function AlphaPage(): string {
                     let output: string = "";
-                    output += "<!doctype html><html><head><meta charset=\"utf-8\"><meta";
-                    output += " content=\"width=device-width, initial-scale=1\"";
-                    output += " name=\"viewport\"><link rel=\"stylesheet\"";
-                    output += " href=\"/styles-00000000.css\"></head><body><div>Alpha</div>";
-                    output += "</body></html>";
+                    output += "<!doctype html><html><head><meta charset=\"utf-8\">";
+                    output += "<meta content=\"width=device-width, initial-scale=1\"";
+                    output += " name=\"viewport\">";
+                    output += "<link rel=\"stylesheet\" href=\"/styles-00000000.css\"></head>";
+                    output += "<body><div>Alpha</div></body></html>";
                     return output;
                 }
 
                 export function BetaPage(): string {
                     let output: string = "";
-                    output += "<!doctype html><html><head><meta charset=\"utf-8\"><meta";
-                    output += " content=\"width=device-width, initial-scale=1\"";
-                    output += " name=\"viewport\"><link rel=\"stylesheet\"";
-                    output += " href=\"/styles-00000000.css\"></head><body><div>Beta</div>";
-                    output += "</body></html>";
+                    output += "<!doctype html><html><head><meta charset=\"utf-8\">";
+                    output += "<meta content=\"width=device-width, initial-scale=1\"";
+                    output += " name=\"viewport\">";
+                    output += "<link rel=\"stylesheet\" href=\"/styles-00000000.css\"></head>";
+                    output += "<body><div>Beta</div></body></html>";
                     return output;
                 }
 
                 export function DeltaPage(): string {
                     let output: string = "";
-                    output += "<!doctype html><html><head><meta charset=\"utf-8\"><meta";
-                    output += " content=\"width=device-width, initial-scale=1\"";
-                    output += " name=\"viewport\"><link rel=\"stylesheet\"";
-                    output += " href=\"/styles-00000000.css\"></head><body><div>Delta</div>";
-                    output += "</body></html>";
+                    output += "<!doctype html><html><head><meta charset=\"utf-8\">";
+                    output += "<meta content=\"width=device-width, initial-scale=1\"";
+                    output += " name=\"viewport\">";
+                    output += "<link rel=\"stylesheet\" href=\"/styles-00000000.css\"></head>";
+                    output += "<body><div>Delta</div></body></html>";
                     return output;
                 }
 
                 export function EpsilonPage(): string {
                     let output: string = "";
-                    output += "<!doctype html><html><head><meta charset=\"utf-8\"><meta";
-                    output += " content=\"width=device-width, initial-scale=1\"";
-                    output += " name=\"viewport\"><link rel=\"stylesheet\"";
-                    output += " href=\"/styles-00000000.css\"></head><body><div>Epsilon";
-                    output += "</div></body></html>";
+                    output += "<!doctype html><html><head><meta charset=\"utf-8\">";
+                    output += "<meta content=\"width=device-width, initial-scale=1\"";
+                    output += " name=\"viewport\">";
+                    output += "<link rel=\"stylesheet\" href=\"/styles-00000000.css\"></head>";
+                    output += "<body><div>Epsilon</div></body></html>";
                     return output;
                 }
 
                 export function EtaPage(): string {
                     let output: string = "";
-                    output += "<!doctype html><html><head><meta charset=\"utf-8\"><meta";
-                    output += " content=\"width=device-width, initial-scale=1\"";
-                    output += " name=\"viewport\"><link rel=\"stylesheet\"";
-                    output += " href=\"/styles-00000000.css\"></head><body><div>Eta</div>";
-                    output += "</body></html>";
+                    output += "<!doctype html><html><head><meta charset=\"utf-8\">";
+                    output += "<meta content=\"width=device-width, initial-scale=1\"";
+                    output += " name=\"viewport\">";
+                    output += "<link rel=\"stylesheet\" href=\"/styles-00000000.css\"></head>";
+                    output += "<body><div>Eta</div></body></html>";
                     return output;
                 }
 
                 export function GammaPage(): string {
                     let output: string = "";
-                    output += "<!doctype html><html><head><meta charset=\"utf-8\"><meta";
-                    output += " content=\"width=device-width, initial-scale=1\"";
-                    output += " name=\"viewport\"><link rel=\"stylesheet\"";
-                    output += " href=\"/styles-00000000.css\"></head><body><div>Gamma</div>";
-                    output += "</body></html>";
+                    output += "<!doctype html><html><head><meta charset=\"utf-8\">";
+                    output += "<meta content=\"width=device-width, initial-scale=1\"";
+                    output += " name=\"viewport\">";
+                    output += "<link rel=\"stylesheet\" href=\"/styles-00000000.css\"></head>";
+                    output += "<body><div>Gamma</div></body></html>";
                     return output;
                 }
 
                 export function ThetaPage(): string {
                     let output: string = "";
-                    output += "<!doctype html><html><head><meta charset=\"utf-8\"><meta";
-                    output += " content=\"width=device-width, initial-scale=1\"";
-                    output += " name=\"viewport\"><link rel=\"stylesheet\"";
-                    output += " href=\"/styles-00000000.css\"></head><body><div>Theta</div>";
-                    output += "</body></html>";
+                    output += "<!doctype html><html><head><meta charset=\"utf-8\">";
+                    output += "<meta content=\"width=device-width, initial-scale=1\"";
+                    output += " name=\"viewport\">";
+                    output += "<link rel=\"stylesheet\" href=\"/styles-00000000.css\"></head>";
+                    output += "<body><div>Theta</div></body></html>";
                     return output;
                 }
 
                 export function ZetaPage(): string {
                     let output: string = "";
-                    output += "<!doctype html><html><head><meta charset=\"utf-8\"><meta";
-                    output += " content=\"width=device-width, initial-scale=1\"";
-                    output += " name=\"viewport\"><link rel=\"stylesheet\"";
-                    output += " href=\"/styles-00000000.css\"></head><body><div>Zeta</div>";
-                    output += "</body></html>";
+                    output += "<!doctype html><html><head><meta charset=\"utf-8\">";
+                    output += "<meta content=\"width=device-width, initial-scale=1\"";
+                    output += " name=\"viewport\">";
+                    output += "<link rel=\"stylesheet\" href=\"/styles-00000000.css\"></head>";
+                    output += "<body><div>Zeta</div></body></html>";
                     return output;
                 }
                 -- style.css --
@@ -486,10 +486,11 @@ mod tests {
 
                 export function Home(): string {
                     let output: string = "";
-                    output += "<!doctype html><html><head><meta charset=\"utf-8\"><meta";
-                    output += " content=\"width=device-width, initial-scale=1\"";
-                    output += " name=\"viewport\"><link rel=\"icon\" href=\"/logo-ffe99b60.svg\"";
-                    output += "><link rel=\"stylesheet\" href=\"/styles-00000000.css\"></head>";
+                    output += "<!doctype html><html><head><meta charset=\"utf-8\">";
+                    output += "<meta content=\"width=device-width, initial-scale=1\"";
+                    output += " name=\"viewport\">";
+                    output += "<link rel=\"icon\" href=\"/logo-ffe99b60.svg\">";
+                    output += "<link rel=\"stylesheet\" href=\"/styles-00000000.css\"></head>";
                     output += "<body><img src=\"/icons/star-890d8c02.svg\"></body></html>";
                     return output;
                 }
@@ -561,12 +562,12 @@ mod tests {
 
                 export function Home(): string {
                     let output: string = "";
-                    output += "<!doctype html><html><head><meta charset=\"utf-8\"><meta";
-                    output += " content=\"width=device-width, initial-scale=1\"";
-                    output += " name=\"viewport\"><link rel=\"icon\" href=\"";
-                    output += "/static/v1/logo-ffe99b60.svg\"><link rel=\"stylesheet\"";
-                    output += " href=\"/static/v1/styles-00000000.css\"></head><body></body>";
-                    output += "</html>";
+                    output += "<!doctype html><html><head><meta charset=\"utf-8\">";
+                    output += "<meta content=\"width=device-width, initial-scale=1\"";
+                    output += " name=\"viewport\">";
+                    output += "<link rel=\"icon\" href=\"/static/v1/logo-ffe99b60.svg\"><link";
+                    output += " rel=\"stylesheet\" href=\"/static/v1/styles-00000000.css\">";
+                    output += "</head><body></body></html>";
                     return output;
                 }
                 -- dist/public/logo-ffe99b60.svg --
@@ -640,10 +641,11 @@ mod tests {
 
                 export function Home(): string {
                     let output: string = "";
-                    output += "<!doctype html><html><head><meta charset=\"utf-8\"><meta";
-                    output += " content=\"width=device-width, initial-scale=1\"";
-                    output += " name=\"viewport\"><link rel=\"icon\" href=\"/logo-ffe99b60.svg\"";
-                    output += "><link rel=\"stylesheet\" href=\"/styles-00000000.css\"></head>";
+                    output += "<!doctype html><html><head><meta charset=\"utf-8\">";
+                    output += "<meta content=\"width=device-width, initial-scale=1\"";
+                    output += " name=\"viewport\">";
+                    output += "<link rel=\"icon\" href=\"/logo-ffe99b60.svg\">";
+                    output += "<link rel=\"stylesheet\" href=\"/styles-00000000.css\"></head>";
                     output += "<body><img src=\"/icons/star-890d8c02.svg\"></body></html>";
                     return output;
                 }
@@ -738,10 +740,11 @@ mod tests {
 
                 export function Home(): string {
                     let output: string = "";
-                    output += "<!doctype html><html><head><meta charset=\"utf-8\"><meta";
-                    output += " content=\"width=device-width, initial-scale=1\"";
-                    output += " name=\"viewport\"><link rel=\"icon\" href=\"/logo-ffe99b60.svg\"";
-                    output += "><link rel=\"stylesheet\" href=\"/styles-00000000.css\"></head>";
+                    output += "<!doctype html><html><head><meta charset=\"utf-8\">";
+                    output += "<meta content=\"width=device-width, initial-scale=1\"";
+                    output += " name=\"viewport\">";
+                    output += "<link rel=\"icon\" href=\"/logo-ffe99b60.svg\">";
+                    output += "<link rel=\"stylesheet\" href=\"/styles-00000000.css\"></head>";
                     output += "<body><img src=\"/icons/star-890d8c02.svg\"></body></html>";
                     return output;
                 }
@@ -813,12 +816,12 @@ mod tests {
 
                 export function Home(): string {
                     let output: string = "";
-                    output += "<!doctype html><html><head><meta charset=\"utf-8\"><meta";
-                    output += " content=\"width=device-width, initial-scale=1\"";
-                    output += " name=\"viewport\"><link rel=\"stylesheet\"";
-                    output += " href=\"/styles-00000000.css\"></head><body><img src=\"";
-                    output += "/images/a-d8c00d88.svg\"><img src=\"/images/b-d8c00d88.svg\">";
-                    output += "</body></html>";
+                    output += "<!doctype html><html><head><meta charset=\"utf-8\">";
+                    output += "<meta content=\"width=device-width, initial-scale=1\"";
+                    output += " name=\"viewport\">";
+                    output += "<link rel=\"stylesheet\" href=\"/styles-00000000.css\"></head>";
+                    output += "<body><img src=\"/images/a-d8c00d88.svg\">";
+                    output += "<img src=\"/images/b-d8c00d88.svg\"></body></html>";
                     return output;
                 }
                 -- dist/public/images/a-d8c00d88.svg --
@@ -879,11 +882,11 @@ mod tests {
 
                 export function Home(): string {
                     let output: string = "";
-                    output += "<!doctype html><html><head><meta charset=\"utf-8\"><meta";
-                    output += " content=\"width=device-width, initial-scale=1\"";
-                    output += " name=\"viewport\"><link rel=\"stylesheet\"";
-                    output += " href=\"/styles-00000000.css\"></head><body><div";
-                    output += " class=\"text-red-500\">hi</div></body></html>";
+                    output += "<!doctype html><html><head><meta charset=\"utf-8\">";
+                    output += "<meta content=\"width=device-width, initial-scale=1\"";
+                    output += " name=\"viewport\">";
+                    output += "<link rel=\"stylesheet\" href=\"/styles-00000000.css\"></head>";
+                    output += "<body><div class=\"text-red-500\">hi</div></body></html>";
                     return output;
                 }
                 -- dist/public/styles-00000000.css --
@@ -940,11 +943,11 @@ mod tests {
 
                 export function Home(): string {
                     let output: string = "";
-                    output += "<!doctype html><html><head><meta charset=\"utf-8\"><meta";
-                    output += " content=\"width=device-width, initial-scale=1\"";
-                    output += " name=\"viewport\"><title>My page</title><link";
-                    output += " rel=\"stylesheet\" href=\"/styles-00000000.css\"></head><body>";
-                    output += "<div class=\"text-red-500\">hi</div></body></html>";
+                    output += "<!doctype html><html><head><meta charset=\"utf-8\">";
+                    output += "<meta content=\"width=device-width, initial-scale=1\"";
+                    output += " name=\"viewport\"><title>My page</title>";
+                    output += "<link rel=\"stylesheet\" href=\"/styles-00000000.css\"></head>";
+                    output += "<body><div class=\"text-red-500\">hi</div></body></html>";
                     return output;
                 }
                 -- dist/public/styles-00000000.css --
@@ -1002,11 +1005,12 @@ mod tests {
 
                 export function Home(): string {
                     let output: string = "";
-                    output += "<!doctype html><html><head><meta charset=\"utf-8\"><meta";
-                    output += " content=\"width=device-width, initial-scale=1\"";
-                    output += " name=\"viewport\"><link rel=\"stylesheet\"";
-                    output += " href=\"/static/v1/styles-00000000.css\"></head><body><div";
-                    output += " class=\"text-red-500\">hi</div></body></html>";
+                    output += "<!doctype html><html><head><meta charset=\"utf-8\">";
+                    output += "<meta content=\"width=device-width, initial-scale=1\"";
+                    output += " name=\"viewport\"><link";
+                    output += " rel=\"stylesheet\" href=\"/static/v1/styles-00000000.css\">";
+                    output += "</head><body><div class=\"text-red-500\">hi</div></body>";
+                    output += "</html>";
                     return output;
                 }
                 -- dist/public/styles-00000000.css --
@@ -1086,13 +1090,13 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        output.push_str("<!doctype html><html><head><meta charset=\"utf-8\"><meta");
-                        output.push_str(" content=\"width=device-width, initial-scale=1\"");
-                        output.push_str(" name=\"viewport\"><link rel=\"stylesheet\"");
-                        output.push_str(" href=\"/static/v1/styles-00000000.css\"><script");
-                        output.push_str(" type=\"module\" src=\"/static/v1/scripts-27809078.js\">");
-                        output.push_str("</script></head><body><div class=\"text-red-500\">hi</div>");
-                        output.push_str("</body></html>");
+                        output.push_str("<!doctype html><html><head><meta charset=\"utf-8\">");
+                        output.push_str("<meta content=\"width=device-width, initial-scale=1\"");
+                        output.push_str(" name=\"viewport\"><link");
+                        output.push_str(" rel=\"stylesheet\" href=\"/static/v1/styles-00000000.css\">");
+                        output.push_str("<script type=\"module\" src=\"/static/v1/scripts-27809078.js\">");
+                        output.push_str("</script></head>");
+                        output.push_str("<body><div class=\"text-red-500\">hi</div></body></html>");
                     }
                 }
                 -- app.ts --
@@ -1186,12 +1190,13 @@ mod tests {
 
                 export function Home(): string {
                     let output: string = "";
-                    output += "<!doctype html><html><head><meta charset=\"utf-8\"><meta";
-                    output += " content=\"width=device-width, initial-scale=1\"";
-                    output += " name=\"viewport\"><link rel=\"stylesheet\"";
-                    output += " href=\"/styles-00000000.css\"><script type=\"module\"";
-                    output += " src=\"/scripts-27809078.js\"></script></head><body><div";
-                    output += " class=\"text-red-500\">hi</div></body></html>";
+                    output += "<!doctype html><html><head><meta charset=\"utf-8\">";
+                    output += "<meta content=\"width=device-width, initial-scale=1\"";
+                    output += " name=\"viewport\">";
+                    output += "<link rel=\"stylesheet\" href=\"/styles-00000000.css\">";
+                    output += "<script type=\"module\" src=\"/scripts-27809078.js\"></script>";
+                    output += "</head><body><div class=\"text-red-500\">hi</div></body>";
+                    output += "</html>";
                     return output;
                 }
                 -- style.css --
@@ -1233,11 +1238,11 @@ mod tests {
 
                 export function Home(): string {
                     let output: string = "";
-                    output += "<!doctype html><html><head><meta charset=\"utf-8\"><meta";
-                    output += " content=\"width=device-width, initial-scale=1\"";
-                    output += " name=\"viewport\"><link rel=\"stylesheet\"";
-                    output += " href=\"/styles-ca0dd958.css\"></head><body><div>hi</div>";
-                    output += "</body></html>";
+                    output += "<!doctype html><html><head><meta charset=\"utf-8\">";
+                    output += "<meta content=\"width=device-width, initial-scale=1\"";
+                    output += " name=\"viewport\">";
+                    output += "<link rel=\"stylesheet\" href=\"/styles-ca0dd958.css\"></head>";
+                    output += "<body><div>hi</div></body></html>";
                     return output;
                 }
                 -- dist/public/fonts/inter-1c757f7b.woff2 --
@@ -1305,11 +1310,11 @@ mod tests {
 
                 export function Home(): string {
                     let output: string = "";
-                    output += "<!doctype html><html><head><meta charset=\"utf-8\"><meta";
-                    output += " content=\"width=device-width, initial-scale=1\"";
-                    output += " name=\"viewport\"><link rel=\"stylesheet\"";
-                    output += " href=\"/static/v1/styles-25fd2426.css\"></head><body><div>hi";
-                    output += "</div></body></html>";
+                    output += "<!doctype html><html><head><meta charset=\"utf-8\">";
+                    output += "<meta content=\"width=device-width, initial-scale=1\"";
+                    output += " name=\"viewport\"><link";
+                    output += " rel=\"stylesheet\" href=\"/static/v1/styles-25fd2426.css\">";
+                    output += "</head><body><div>hi</div></body></html>";
                     return output;
                 }
                 -- dist/public/fonts/inter-1c757f7b.woff2 --
@@ -1444,11 +1449,11 @@ mod tests {
 
                 export function Home(): string {
                     let output: string = "";
-                    output += "<!doctype html><html><head><meta charset=\"utf-8\"><meta";
-                    output += " content=\"width=device-width, initial-scale=1\"";
-                    output += " name=\"viewport\"><link rel=\"stylesheet\"";
-                    output += " href=\"/styles-dd9995d1.css\"></head><body><div>hi</div>";
-                    output += "</body></html>";
+                    output += "<!doctype html><html><head><meta charset=\"utf-8\">";
+                    output += "<meta content=\"width=device-width, initial-scale=1\"";
+                    output += " name=\"viewport\">";
+                    output += "<link rel=\"stylesheet\" href=\"/styles-dd9995d1.css\"></head>";
+                    output += "<body><div>hi</div></body></html>";
                     return output;
                 }
                 -- dist/public/styles-dd9995d1.css --
@@ -1506,11 +1511,12 @@ mod tests {
 
                 export function Home(): string {
                     let output: string = "";
-                    output += "<!doctype html><html><head><meta charset=\"utf-8\"><meta";
-                    output += " content=\"width=device-width, initial-scale=1\"";
-                    output += " name=\"viewport\"><link rel=\"stylesheet\"";
-                    output += " href=\"/assets/styles-00000000.css\"></head><body><img src=\"";
-                    output += "/assets/logo-ffe99b60.svg\"></body></html>";
+                    output += "<!doctype html><html><head><meta charset=\"utf-8\">";
+                    output += "<meta content=\"width=device-width, initial-scale=1\"";
+                    output += " name=\"viewport\">";
+                    output += "<link rel=\"stylesheet\" href=\"/assets/styles-00000000.css\">";
+                    output += "</head><body><img src=\"/assets/logo-ffe99b60.svg\"></body>";
+                    output += "</html>";
                     return output;
                 }
                 -- dist/public/logo-ffe99b60.svg --

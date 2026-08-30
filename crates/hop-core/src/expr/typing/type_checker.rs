@@ -1398,7 +1398,7 @@ pub fn typecheck_expr(
                 }
             }
         }
-        ParsedExpr::FragmentEmpty { .. } => Ok(TypedExpr::FragmentEmpty),
+        ParsedExpr::FragmentEmpty { .. } => Ok(TypedExpr::FragmentConcat { nodes: Vec::new() }),
         ParsedExpr::Match { subject, arms, .. } => {
             let typed_subject = typecheck_expr(
                 subject,
@@ -1694,7 +1694,7 @@ pub fn typecheck_expr(
             }
 
             Ok(TypedExpr::FunctionCall {
-                function_name: name.clone(),
+                function_name: name.clone().into(),
                 args: typed_args,
                 kind: signature.return_type.clone(),
             })
@@ -1829,7 +1829,7 @@ fn typecheck_arm_bodies(
 ///
 /// The root subject, when present, is the expression for the root switch node,
 /// used in place of a synthetic variable. Only the outermost call supplies it.
-fn decision_to_typed_expr(
+pub fn decision_to_typed_expr(
     decision: &Decision,
     typed_bodies: &[TypedExpr],
     result_type: Arc<Type>,

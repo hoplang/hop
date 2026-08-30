@@ -7,6 +7,6 @@ pub mod type_registry;
 pub mod type_registry_builder;
 pub mod typed_expr;
 
-pub use r#type::{ComponentSignature, ExamplesAnnotation, ParamEntry, Tail, Type};
+pub use r#type::{ExamplesAnnotation, FunctionSignature, ParamEntry, Tail, Type};
 pub use type_env::TypeBinding;
-pub use typed_expr::TypedExpr;
+pub use typed_expr::{TypedAttribute, TypedAttributeValue, TypedExpr, TypedLoopSource};

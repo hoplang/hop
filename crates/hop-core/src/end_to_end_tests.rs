@@ -10758,9 +10758,9 @@ mod tests {
                 }
                 -- ir (optimized) --
                 page Test() {
-                  write("<div class=\"layout\">")
-                  write("<header><h1>Welcome</h1></header><main><p>Hello world</p>")
-                  write("</main><footer><p>Copyright 2024</p></footer></div>")
+                  write("<div class=\"layout\"><header><h1>Welcome</h1></header>")
+                  write("<main><p>Hello world</p></main>")
+                  write("<footer><p>Copyright 2024</p></footer></div>")
                 }
                 -- expected output --
                 <div class="layout"><header><h1>Welcome</h1></header><main><p>Hello world</p></main><footer><p>Copyright 2024</p></footer></div>

@@ -3,8 +3,8 @@ use std::sync::Arc;
 
 use crate::expr::typing::r#type::EnumVariant;
 use crate::expr::{ExamplesAnnotation, Type, TypedExpr};
-use crate::hop::typing::typed_node::TypedNode;
 use crate::symbols::field_name::FieldName;
+use crate::symbols::function_name::FunctionName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use pretty::BoxDoc;
@@ -13,7 +13,6 @@ use pretty::BoxDoc;
 pub struct TypedAst {
     record_declarations: Vec<TypedRecordDeclaration>,
     enum_declarations: Vec<TypedEnumDeclaration>,
-    component_declarations: Vec<TypedComponentDeclaration>,
     page_declarations: Vec<TypedPageDeclaration>,
     function_declarations: Vec<TypedFunctionDeclaration>,
 }
@@ -31,18 +30,10 @@ pub struct TypedEnumDeclaration {
 }
 
 #[derive(Debug, Clone)]
-pub struct TypedComponentDeclaration {
-    pub component_name: TypeName,
-    pub body: TypedExpr,
-    pub params: Vec<TypedParameter>,
-    pub rest_param: Option<VarName>,
-}
-
-#[derive(Debug, Clone)]
 pub struct TypedPageDeclaration {
     pub name: TypeName,
-    pub head: Vec<TypedNode>,
-    pub body: Vec<TypedNode>,
+    pub head: TypedExpr,
+    pub body: TypedExpr,
     pub params: Vec<TypedParameter>,
 }
 
@@ -55,7 +46,7 @@ pub struct TypedParameter {
 
 #[derive(Debug, Clone)]
 pub struct TypedFunctionDeclaration {
-    pub name: VarName,
+    pub name: FunctionName,
     pub params: Vec<TypedParameter>,
     pub return_type: Arc<Type>,
     pub body: TypedExpr,
@@ -63,24 +54,17 @@ pub struct TypedFunctionDeclaration {
 
 impl TypedAst {
     pub fn new(
-        component_declarations: Vec<TypedComponentDeclaration>,
         record_declarations: Vec<TypedRecordDeclaration>,
         enum_declarations: Vec<TypedEnumDeclaration>,
         page_declarations: Vec<TypedPageDeclaration>,
         function_declarations: Vec<TypedFunctionDeclaration>,
     ) -> Self {
         Self {
-            component_declarations,
             record_declarations,
             enum_declarations,
             page_declarations,
             function_declarations,
         }
-    }
-
-    /// Returns a reference to all component declarations in the AST.
-    pub fn get_component_declarations(&self) -> &[TypedComponentDeclaration] {
-        &self.component_declarations
     }
 
     /// Returns a reference to all record declarations in the AST.
@@ -112,10 +96,6 @@ impl TypedAst {
 
         for enum_decl in &self.enum_declarations {
             docs.push(enum_decl.to_doc());
-        }
-
-        for component in &self.component_declarations {
-            docs.push(component.to_doc());
         }
 
         for page in &self.page_declarations {
@@ -200,39 +180,6 @@ impl TypedEnumDeclaration {
     }
 }
 
-impl TypedComponentDeclaration {
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        let params_doc = {
-            let mut parts: Vec<BoxDoc<'_>> = self
-                .params
-                .iter()
-                .map(|param| {
-                    BoxDoc::text(param.var_name.as_str())
-                        .append(BoxDoc::text(": "))
-                        .append(param.var_type.to_doc())
-                })
-                .collect();
-            if let Some(rest) = &self.rest_param {
-                parts.push(BoxDoc::text("...").append(BoxDoc::text(rest.as_str())));
-            }
-            if parts.is_empty() {
-                BoxDoc::nil()
-            } else {
-                BoxDoc::text("(")
-                    .append(BoxDoc::intersperse(parts, BoxDoc::text(", ")))
-                    .append(BoxDoc::text(")"))
-            }
-        };
-
-        BoxDoc::text("component")
-            .append(BoxDoc::space())
-            .append(BoxDoc::text(self.component_name.as_str()))
-            .append(params_doc)
-            .append(BoxDoc::space())
-            .append(self.body.to_doc())
-    }
-}
-
 impl TypedPageDeclaration {
     pub fn to_doc(&self) -> BoxDoc<'_> {
         let params_doc = if self.params.is_empty() {
@@ -258,18 +205,15 @@ impl TypedPageDeclaration {
             .append(BoxDoc::text("{"));
 
         let mut blocks: Vec<BoxDoc<'_>> = Vec::new();
-        if !self.head.is_empty() {
+        if !matches!(&self.head, TypedExpr::FragmentConcat { nodes } if nodes.is_empty()) {
             blocks.push(
                 BoxDoc::text("head {")
                     .append(
                         BoxDoc::line()
-                            .append(BoxDoc::intersperse(
-                                self.head.iter().map(|c| c.to_doc()),
-                                BoxDoc::line(),
-                            ))
+                            .append(self.head.to_doc())
+                            .append(BoxDoc::line())
                             .nest(2),
                     )
-                    .append(BoxDoc::line())
                     .append(BoxDoc::text("}")),
             );
         }
@@ -277,13 +221,10 @@ impl TypedPageDeclaration {
             BoxDoc::text("body {")
                 .append(
                     BoxDoc::line()
-                        .append(BoxDoc::intersperse(
-                            self.body.iter().map(|c| c.to_doc()),
-                            BoxDoc::line(),
-                        ))
+                        .append(self.body.to_doc())
+                        .append(BoxDoc::line())
                         .nest(2),
                 )
-                .append(BoxDoc::line())
                 .append(BoxDoc::text("}")),
         );
 
@@ -334,12 +275,6 @@ impl Display for TypedFunctionDeclaration {
 }
 
 impl Display for TypedPageDeclaration {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "{}", self.to_doc().pretty(60))
-    }
-}
-
-impl Display for TypedComponentDeclaration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "{}", self.to_doc().pretty(60))
     }

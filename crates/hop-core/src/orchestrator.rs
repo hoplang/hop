@@ -62,16 +62,6 @@ pub fn orchestrate_pure(
         })
         .collect();
 
-    let components: Vec<(DocumentId, _)> = document_ids
-        .iter()
-        .flat_map(|id| {
-            typed_asts[id]
-                .get_component_declarations()
-                .iter()
-                .map(|decl| (id.clone(), decl))
-        })
-        .collect();
-
     let functions: Vec<_> = document_ids
         .iter()
         .flat_map(|id| typed_asts[id].get_function_declarations())
@@ -88,7 +78,6 @@ pub fn orchestrate_pure(
 
     let pure_module = compile(
         assembled_pages,
-        &components,
         &functions,
         &records,
         &enums,
