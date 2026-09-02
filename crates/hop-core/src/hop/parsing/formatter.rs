@@ -2137,6 +2137,46 @@ mod tests {
     }
 
     #[test]
+    fn script_content_is_not_reindented() {
+        check(
+            indoc! {"
+                component Main {
+                  <script>
+                    let x = 1;
+                  </script>
+                }
+            "},
+            expect![[r#"
+                component Main {
+                  <script>
+                    let x = 1;
+                  </script>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn style_content_is_not_reindented() {
+        check(
+            indoc! {"
+                component Main {
+                  <style>
+                    .a { color: red; }
+                  </style>
+                }
+            "},
+            expect![[r#"
+                component Main {
+                  <style>
+                    .a { color: red; }
+                  </style>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
     fn nested_components_with_record_attributes_to_doc() {
         check(
             indoc! {r#"

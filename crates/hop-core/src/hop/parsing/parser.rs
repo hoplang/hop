@@ -5,7 +5,7 @@ use super::parsed_ast::{
 };
 use super::parsed_node::{ParsedLetBinding, ParsedLoopSource, ParsedMatchCase, ParsedNode};
 use super::token_tree::{TokenTree, parse_tree};
-use super::tokenizer::Tokenizer;
+use super::whitespace;
 use crate::document::{Document, DocumentCursor, DocumentRange};
 use crate::document_id::DocumentId;
 use crate::expr::parsing::ParsedType;
@@ -542,13 +542,12 @@ fn parse_component_declaration(
 
     // Parse the body - this contains HTML/component nodes
     let mut children = Vec::new();
-    let mut tokenizer = Tokenizer::new();
-
-    while let Some(tree) = parse_tree(&mut tokenizer, iter, errors) {
+    while let Some(tree) = parse_tree(iter, errors) {
         if let Some(node) = construct_node(tree, comments, errors) {
             children.push(node);
         }
     }
+    whitespace::normalize(&mut children);
 
     let body_end = expr::tokenizer::expect_opposite(
         iter,
@@ -680,12 +679,12 @@ fn parse_node_sequence(
     errors: &mut Vec<ParseError>,
 ) -> Vec<ParsedNode> {
     let mut nodes = Vec::new();
-    let mut tokenizer = Tokenizer::new();
-    while let Some(tree) = parse_tree(&mut tokenizer, iter, errors) {
+    while let Some(tree) = parse_tree(iter, errors) {
         if let Some(node) = construct_node(tree, comments, errors) {
             nodes.push(node);
         }
     }
+    whitespace::normalize(&mut nodes);
     nodes
 }
 

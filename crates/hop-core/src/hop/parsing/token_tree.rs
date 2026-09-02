@@ -2,7 +2,7 @@ use std::fmt::{self, Display};
 use std::iter::Peekable;
 
 use super::token::Token;
-use super::tokenizer::Tokenizer;
+use super::tokenizer;
 use crate::document::{DocumentCursor, DocumentRange};
 use crate::html::is_void_element;
 use crate::parse_error::{ParseError, ParseErrorKind};
@@ -69,12 +69,11 @@ impl TokenTree {
 /// We do our best here to construct as much of the tree as possible even
 /// when we encounter errors.
 pub fn parse_tree(
-    tokenizer: &mut Tokenizer,
     iter: &mut Peekable<DocumentCursor>,
     errors: &mut Vec<ParseError>,
 ) -> Option<TokenTree> {
     loop {
-        let token = tokenizer.next(iter, errors)?;
+        let token = tokenizer::next(iter, errors)?;
 
         match token {
             // Leaf tokens - return immediately as single-node trees
@@ -93,7 +92,7 @@ pub fn parse_tree(
                     return Some(TokenTree::new(token));
                 }
                 let tag_name = tag_name.clone();
-                return Some(parse_nested_tree(tokenizer, token, tag_name, iter, errors));
+                return Some(parse_nested_tree(token, tag_name, iter, errors));
             }
 
             Token::ClosingTag { ref tag_name, .. } => {
@@ -123,7 +122,6 @@ pub fn parse_tree(
 /// Uses a stack-based approach to handle nested content until the
 /// matching closing tag is found.
 fn parse_nested_tree(
-    tokenizer: &mut Tokenizer,
     opening_token: Token,
     opening_tag_name: DocumentRange,
     iter: &mut Peekable<DocumentCursor>,
@@ -139,7 +137,7 @@ fn parse_nested_tree(
         tag_name: opening_tag_name,
     }];
 
-    while let Some(token) = tokenizer.next(iter, errors) {
+    while let Some(token) = tokenizer::next(iter, errors) {
         match token {
             Token::Comment { .. }
             | Token::Text { .. }
@@ -280,10 +278,8 @@ mod tests {
         let mut errors = Vec::new();
         let mut iter =
             DocumentCursor::new(DocumentId::new("test.hop").unwrap(), input.to_string()).peekable();
-        let mut tokenizer = Tokenizer::new();
-
         let mut trees = Vec::new();
-        while let Some(tree) = parse_tree(&mut tokenizer, &mut iter, &mut errors) {
+        while let Some(tree) = parse_tree(&mut iter, &mut errors) {
             trees.push(tree);
         }
 
@@ -325,6 +321,12 @@ mod tests {
                   ],
                 )
 
+                TokenTree(
+                  Newline
+                  closing_tag_name: None,
+                  children: [],
+                )
+
             "#]],
         );
     }
@@ -349,12 +351,32 @@ mod tests {
                   closing_tag_name: Some("div"),
                   children: [
                     TokenTree(
+                      Newline
+                      closing_tag_name: None,
+                      children: [],
+                    )
+                    TokenTree(
+                      Text [4 byte, "    "]
+                      closing_tag_name: None,
+                      children: [],
+                    )
+                    TokenTree(
                       OpeningTag(
                         tag_name: "br",
                         attributes: {},
                         expression: None,
                         self_closing: false,
                       )
+                      closing_tag_name: None,
+                      children: [],
+                    )
+                    TokenTree(
+                      Newline
+                      closing_tag_name: None,
+                      children: [],
+                    )
+                    TokenTree(
+                      Text [4 byte, "    "]
                       closing_tag_name: None,
                       children: [],
                     )
@@ -368,7 +390,18 @@ mod tests {
                       closing_tag_name: None,
                       children: [],
                     )
+                    TokenTree(
+                      Newline
+                      closing_tag_name: None,
+                      children: [],
+                    )
                   ],
+                )
+
+                TokenTree(
+                  Newline
+                  closing_tag_name: None,
+                  children: [],
                 )
 
             "#]],
@@ -395,6 +428,16 @@ mod tests {
                   closing_tag_name: Some("div"),
                   children: [
                     TokenTree(
+                      Newline
+                      closing_tag_name: None,
+                      children: [],
+                    )
+                    TokenTree(
+                      Text [4 byte, "    "]
+                      closing_tag_name: None,
+                      children: [],
+                    )
+                    TokenTree(
                       OpeningTag(
                         tag_name: "p",
                         attributes: {},
@@ -409,6 +452,16 @@ mod tests {
                           children: [],
                         )
                       ],
+                    )
+                    TokenTree(
+                      Newline
+                      closing_tag_name: None,
+                      children: [],
+                    )
+                    TokenTree(
+                      Text [4 byte, "    "]
+                      closing_tag_name: None,
+                      children: [],
                     )
                     TokenTree(
                       OpeningTag(
@@ -426,7 +479,18 @@ mod tests {
                         )
                       ],
                     )
+                    TokenTree(
+                      Newline
+                      closing_tag_name: None,
+                      children: [],
+                    )
                   ],
+                )
+
+                TokenTree(
+                  Newline
+                  closing_tag_name: None,
+                  children: [],
                 )
 
             "#]],
