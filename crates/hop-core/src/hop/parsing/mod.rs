@@ -5,6 +5,5 @@ mod parse_nodes;
 pub mod parsed_ast;
 pub mod parsed_node;
 pub mod parser;
-pub mod token;
 pub mod tokenizer;
 mod whitespace;

@@ -1,74 +1,301 @@
 use std::iter::Peekable;
 
-use crate::hop::parsing::token::{Token, TokenizedAttribute, TokenizedAttributeValue};
 use crate::itertools::PeekingExt as _;
 
 use crate::document::{DocumentCursor, DocumentRange};
-use crate::expr;
 use crate::parse_error::{ParseError, ParseErrorKind};
 
-/// Parse the next token from the input.
+#[derive(Debug)]
+pub enum Token {
+    /// Am HTML comment. E.g.
+    /// ```text
+    /// <!-- hello -->
+    /// ^^^^^^^^^^^^^^
+    /// ```
+    Comment { range: DocumentRange },
+    /// The start of a tag. E.g.
+    /// ```text
+    /// <div class="foo">
+    /// ^^^^
+    /// ```
+    OpeningTagStart {
+        tag_name: DocumentRange,
+        range: DocumentRange,
+    },
+    /// A closing tag, read whole. E.g.
+    /// ```text
+    /// </div>
+    /// ^^^^^^
+    /// ```
+    ClosingTag {
+        tag_name: DocumentRange,
+        range: DocumentRange,
+    },
+    /// Static text. E.g.
+    /// ```text
+    /// <div>hello world</div>
+    ///      ^^^^^^^^^^^
+    /// ```
+    Text { range: DocumentRange },
+    /// A newline in text position, kept out of the surrounding Text.
+    Newline { range: DocumentRange },
+    /// The `{` that opens an expression in text position. E.g.
+    /// ```text
+    /// <div>{x.to_string()}</div>
+    ///      ^
+    /// ```
+    ExpressionStart { left_brace: DocumentRange },
+}
+
+/// A token that follows an OpeningTagStart token.
+pub enum TagToken {
+    /// An attribute. E.g.
+    /// ```text
+    /// <div foo="bar">
+    ///      ^^^^^^^^^
+    /// ```
+    /// The `value` field is `None` for value-less attributes.
+    Attribute {
+        name: DocumentRange,
+        value: Option<AttributeString>,
+    },
+    /// The start of an expression-valued attribute. E.g.
+    /// ```text
+    /// <div foo={...}>
+    ///      ^^^^^
+    /// ```
+    AttributeExpressionStart {
+        name: DocumentRange,
+        left_brace: DocumentRange,
+    },
+    /// A spread on a tag, e.g.
+    /// ```text
+    /// <div ...foo>
+    ///      ^^^^^^
+    /// ```
+    Spread {
+        name: DocumentRange,
+        range: DocumentRange,
+    },
+    /// A `{` inside a tag, starting a tag header. E.g.
+    /// ```text
+    /// <if {true}>
+    ///     ^
+    /// ```
+    ExpressionStart { left_brace: DocumentRange },
+    /// The `>` that ends the tag. E.g.
+    /// ```text
+    /// <div>
+    ///     ^
+    /// ```
+    End { range: DocumentRange },
+    /// The `/>` that ends the tag. E.g.
+    /// ```text
+    /// <div/>
+    ///     ^^
+    /// ```
+    SelfClosingEnd { range: DocumentRange },
+}
+
+/// A raw text element's body: everything up to and including its closing tag. E.g.
+/// ```text
+/// <script>let x = 20;</script>
+///         ^^^^^^^^^^^^^^^^^^^^
+/// ```
+pub struct RawTextToken {
+    /// The text between the tags. None when the element was empty.
+    /// E.g.
+    /// ```text
+    /// <script>let x = 20;</script>
+    ///         ^^^^^^^^^^^
+    /// ```
+    pub content: Option<DocumentRange>,
+    /// The `>` that closed the element. E.g.
+    /// ```text
+    /// <script>let x = 20;</script>
+    ///                            ^
+    /// ```
+    pub closing_tag_end: DocumentRange,
+}
+
+/// A quoted attribute value.
+/// The `content` field is `None` for `a=""`.
+pub struct AttributeString {
+    pub content: Option<DocumentRange>,
+    pub quoted_range: DocumentRange,
+}
+
+/// Lex the next token from the input.
 ///
-/// Returns `Some(token)` if a token was parsed, `None` at end of input or
+/// Returns `Some(token)` if a token was lexed, `None` at end of input or
 /// when the input reaches a '}', which closes the enclosing block.
 /// Errors are collected in the `errors` collector.
 pub fn next(iter: &mut Peekable<DocumentCursor>, errors: &mut Vec<ParseError>) -> Option<Token> {
     loop {
         match iter.peek().map(|s| s.ch()) {
             Some('<') => {
-                if let Some(token) = parse_tag(iter, errors) {
+                if let Some(token) = lex_tag(iter, errors) {
                     return Some(token);
                 } else {
                     continue;
                 }
             }
             Some('{') => {
-                if let Some(token) = parse_text_expression(iter, errors) {
-                    return Some(token);
-                } else {
-                    continue;
-                }
+                let left_brace = iter.next().unwrap();
+                return Some(Token::ExpressionStart { left_brace });
             }
             Some('\n') => {
                 let newline = iter.next().unwrap();
                 return Some(Token::Newline { range: newline });
             }
             Some('}') => return None,
-            Some(_) => return Some(parse_text(iter)),
+            Some(_) => return Some(lex_text(iter)),
             None => return None,
         }
     }
 }
 
-/// Find the end of an expression using the expr tokenizer.
+/// Lex the next thing inside an opening tag.
 ///
-/// Expects the current char iterator be on the first character
-/// of an expression.
-///
+/// E.g.
 /// ```text
-/// {x + 2}
-///  ^
+/// <div foo="bar" {x}>
+///      ^^^^^^^^^
 /// ```
-///
-/// Returns None if we reached EOF before finding the closing '}'.
-fn find_expression_end(mut iter: Peekable<DocumentCursor>) -> Option<DocumentRange> {
-    let mut open_braces = 1;
-    let mut errors = Vec::new();
+/// Returns None when the tag does not end the way it should, leaving the
+/// caller to report it against the tag name. An attribute or spread that
+/// could not be read is reported here and skipped over, so that the rest of
+/// the tag is still read.
+pub fn next_tag_token(
+    iter: &mut Peekable<DocumentCursor>,
+    errors: &mut Vec<ParseError>,
+) -> Option<TagToken> {
     loop {
-        let token = expr::tokenizer::next(&mut iter, &mut errors)?;
-        match token {
-            (expr::Token::LeftBrace, _) => {
-                open_braces += 1;
-            }
-            (expr::Token::RightBrace, range) => {
-                open_braces -= 1;
-                if open_braces == 0 {
-                    return Some(range);
-                }
-            }
-            _ => {}
+        skip_whitespace(iter);
+        // consume: '/'
+        if let Some(slash) = iter.next_if(|s| s.ch() == '/') {
+            // consume: '>'
+            let right_angle = iter.next_if(|s| s.ch() == '>')?;
+            return Some(TagToken::SelfClosingEnd {
+                range: slash.to(right_angle),
+            });
         }
+        // consume: '>'
+        if let Some(right_angle) = iter.next_if(|s| s.ch() == '>') {
+            return Some(TagToken::End { range: right_angle });
+        }
+        // consume: '{'
+        if let Some(left_brace) = iter.next_if(|s| s.ch() == '{') {
+            return Some(TagToken::ExpressionStart { left_brace });
+        }
+        // peek: "..."
+        let is_spread = {
+            let mut ahead = iter.clone();
+            (0..3).all(|_| ahead.next().is_some_and(|s| s.ch() == '.'))
+        };
+        if is_spread {
+            // consume: '.'
+            let first_dot = iter.next().unwrap();
+            // consume: '.'
+            iter.next();
+            // consume: '.'
+            let last_dot = iter.next().unwrap();
+            // consume: [a-zA-Z_]
+            let Some(initial) = iter.next_if(|s| s.ch().is_ascii_alphabetic() || s.ch() == '_')
+            else {
+                // Report the dots and carry on with the tag.
+                errors.push(ParseError::new(
+                    ParseErrorKind::MissingVariableNameForSpread {},
+                    first_dot.to(last_dot),
+                ));
+                continue;
+            };
+            // consume: [a-zA-Z_]*
+            let name = initial.extend(
+                iter.peeking_take_while(|s| s.ch().is_ascii_alphanumeric() || s.ch() == '_'),
+            );
+            return Some(TagToken::Spread {
+                range: first_dot.to(name.clone()),
+                name,
+            });
+        }
+        // peek: [a-zA-Z]
+        if iter.peek().is_some_and(|s| s.ch().is_ascii_alphabetic()) {
+            match lex_attribute(iter, errors) {
+                Some(part) => return Some(part),
+                // The attribute was reported; carry on with the tag.
+                None => continue,
+            }
+        }
+        // Nothing here belongs in a tag. Skip past the end of it, so that the
+        // parse resumes after the tag rather than inside it.
+        while iter.next_if(|s| s.ch() != '>').is_some() {}
+        iter.next();
+        return None;
     }
+}
+
+/// Lex a raw text element's content and the closing tag that ends it.
+///
+/// E.g.
+/// ```text
+/// <script>alert(1)</script>
+///         ^^^^^^^^^^^^^^^^^
+/// ```
+/// Returns None at end of input if the closing tag is never found.
+pub fn next_raw_text_token(
+    iter: &mut Peekable<DocumentCursor>,
+    tag_name: &DocumentRange,
+) -> Option<RawTextToken> {
+    /// Whether the iterator is on the element's closing tag.
+    fn peek_closing_tag(iter: &Peekable<DocumentCursor>, tag_name: &DocumentRange) -> bool {
+        let mut iter = iter.clone();
+        // consume: '<'
+        if iter.next().is_none_or(|s| s.ch() != '<') {
+            return false;
+        }
+        // consume: '/'
+        if iter.next().is_none_or(|s| s.ch() != '/') {
+            return false;
+        }
+        // consume: whitespace
+        while iter.peek().is_some_and(|s| s.ch().is_whitespace()) {
+            iter.next();
+        }
+        // consume: tag name
+        for ch in tag_name.as_str().chars() {
+            if iter.next().is_none_or(|s| s.ch() != ch) {
+                return false;
+            }
+        }
+        // consume: whitespace
+        while iter.peek().is_some_and(|s| s.ch().is_whitespace()) {
+            iter.next();
+        }
+        // consume: '>'
+        iter.next().is_some_and(|s| s.ch() == '>')
+    }
+    let mut content: Option<DocumentRange> = None;
+    while !peek_closing_tag(iter, tag_name) {
+        let ch = iter.next()?;
+        content = content.into_iter().chain(Some(ch)).collect();
+    }
+    // consume: '<'
+    iter.next();
+    // consume: '/'
+    iter.next();
+    skip_whitespace(iter);
+    // consume: tag name
+    for _ in tag_name.as_str().chars() {
+        iter.next();
+    }
+    skip_whitespace(iter);
+    // consume: '>'
+    let closing_tag_end = iter.next().unwrap();
+    Some(RawTextToken {
+        content,
+        closing_tag_end,
+    })
 }
 
 fn skip_whitespace(iter: &mut Peekable<DocumentCursor>) {
@@ -77,7 +304,60 @@ fn skip_whitespace(iter: &mut Peekable<DocumentCursor>) {
     }
 }
 
-/// Parse a comment.
+fn lex_tag(iter: &mut Peekable<DocumentCursor>, errors: &mut Vec<ParseError>) -> Option<Token> {
+    let Some(left_angle) = iter.next() else {
+        panic!(
+            "Expected '<' in lex_tag but got {:?}",
+            iter.next().map(|s| s.ch())
+        );
+    };
+    match iter.peek().map(|s| s.ch()) {
+        Some('!') => lex_markup_declaration(iter, errors, left_angle),
+        Some('/') => lex_closing_tag(iter, errors, left_angle),
+        Some(ch) if ch.is_ascii_alphabetic() => Some(lex_opening_tag_start(iter, left_angle)),
+        _ => {
+            errors.push(ParseError::new(
+                ParseErrorKind::UnterminatedTagStart {},
+                left_angle,
+            ));
+            None
+        }
+    }
+}
+
+/// Lex a markup declaration from the iterator.
+///
+/// E.g.
+/// ```text
+/// <!-- hello -->
+///  ^^^^^^^^^^^^^
+/// ```
+/// Expects that the iterator points to the initial '!'.
+fn lex_markup_declaration(
+    iter: &mut Peekable<DocumentCursor>,
+    errors: &mut Vec<ParseError>,
+    left_angle: DocumentRange,
+) -> Option<Token> {
+    let Some(bang) = iter.next_if(|s| s.ch() == '!') else {
+        panic!(
+            "Expected '!' in lex_markup_declaration but got {:?}",
+            iter.next().map(|s| s.ch())
+        );
+    };
+    match iter.peek().map(|s| s.ch()) {
+        Some('-') => lex_comment(iter, errors, left_angle.to(bang)),
+        Some('D' | 'd') => lex_doctype(iter, errors, left_angle.to(bang)),
+        _ => {
+            errors.push(ParseError::new(
+                ParseErrorKind::InvalidMarkupDeclaration {},
+                left_angle.to(bang),
+            ));
+            None
+        }
+    }
+}
+
+/// Lex a comment.
 ///
 /// E.g.
 /// ```text
@@ -85,14 +365,14 @@ fn skip_whitespace(iter: &mut Peekable<DocumentCursor>) {
 ///   ^^^^^^^^^^^^
 /// ```
 /// Expects that the iterator points to the initial '-'.
-fn parse_comment(
+fn lex_comment(
     iter: &mut Peekable<DocumentCursor>,
     errors: &mut Vec<ParseError>,
     left_angle_to_bang: DocumentRange,
 ) -> Option<Token> {
     let Some(first_dash) = iter.next_if(|s| s.ch() == '-') else {
         panic!(
-            "Expected '-' in parse_comment but got {:?}",
+            "Expected '-' in lex_comment but got {:?}",
             iter.next().map(|s| s.ch())
         );
     };
@@ -133,7 +413,17 @@ fn parse_comment(
     }
 }
 
-fn parse_doctype(
+/// Lex a doctype declaration.
+///
+/// E.g.
+/// ```text
+/// <!doctype html>
+///   ^^^^^^^^^^^^^
+/// ```
+/// Expects that the iterator points to the initial 'd'.
+/// Always returns None: a doctype is reported, since one is inserted for
+/// every page, and anything else after the '!' is not a declaration we know.
+fn lex_doctype(
     iter: &mut Peekable<DocumentCursor>,
     errors: &mut Vec<ParseError>,
     left_angle_to_bang: DocumentRange,
@@ -166,362 +456,25 @@ fn parse_doctype(
     None
 }
 
-/// Parse a markup declaration from the iterator.
-///
-/// E.g.
-/// ```text
-/// <!-- hello -->
-///  ^^^^^^^^^^^^^
-/// ```
-/// Expects that the iterator points to the initial '!'.
-fn parse_markup_declaration(
-    iter: &mut Peekable<DocumentCursor>,
-    errors: &mut Vec<ParseError>,
-    left_angle: DocumentRange,
-) -> Option<Token> {
-    let Some(bang) = iter.next_if(|s| s.ch() == '!') else {
-        panic!(
-            "Expected '!' in parse_markup_declaration but got {:?}",
-            iter.next().map(|s| s.ch())
-        );
-    };
-    match iter.peek().map(|s| s.ch()) {
-        Some('-') => parse_comment(iter, errors, left_angle.to(bang)),
-        Some('D' | 'd') => parse_doctype(iter, errors, left_angle.to(bang)),
-        _ => {
-            errors.push(ParseError::new(
-                ParseErrorKind::InvalidMarkupDeclaration {},
-                left_angle.to(bang),
-            ));
-            None
-        }
-    }
-}
-
-/// Parse an attribute from the iterator.
+/// Lex the start of an opening tag.
 ///
 /// E.g.
 /// ```text
 /// <div foo="bar">
-///      ^^^^^^^^^
+///  ^^^
 /// ```
 /// Expects that the iterator points to the initial alphabetic char.
-/// Returns None if a valid attribute could not be parsed from the iterator.
-fn parse_attribute(
-    iter: &mut Peekable<DocumentCursor>,
-    errors: &mut Vec<ParseError>,
-) -> Option<TokenizedAttribute> {
-    // consume: [a-zA-Z]
-    let Some(initial) = iter.next_if(|s| s.ch().is_ascii_alphabetic()) else {
-        panic!(
-            "Expected [a-zA-Z] in parse_attribute but got {:?}",
-            iter.next().map(|s| s.ch())
-        );
-    };
-
-    // consume: ('-' | '_' | ':' | '.' | [a-zA-Z0-9])*
-    let attr_name = initial.extend(iter.peeking_take_while(|s| {
-        s.ch() == '-'
-            || s.ch() == '_'
-            || s.ch() == ':'
-            || s.ch() == '.'
-            || s.ch().is_ascii_alphanumeric()
-    }));
-
-    // consume: whitespace
-    skip_whitespace(iter);
-
-    // consume: '='
-    let Some(eq) = iter.next_if(|s| s.ch() == '=') else {
-        return Some(TokenizedAttribute::Named {
-            name: attr_name.clone(),
-            value: None,
-            range: attr_name,
-        });
-    };
-
-    // consume: whitespace
-    skip_whitespace(iter);
-
-    // Check if value is an expression
-    if iter.peek().map(|s| s.ch()) == Some('{') {
-        // Parse expression value
-        let (expr, expr_range) = parse_expression(iter, errors)?;
-        return Some(TokenizedAttribute::Named {
-            name: attr_name.clone(),
-            value: Some(TokenizedAttributeValue::Expression(expr)),
-            range: attr_name.to(expr_range),
-        });
-    }
-
-    // Parse string value. Only double quotes are allowed as delimiters: a
-    // single-quoted value could contain a `"`, which has no valid escaping in
-    // the double-quoted attribute we emit, so we reject `'` outright. We still
-    // consume the whole single-quoted value so the rest of the tag recovers.
-    if let Some(single_open) = iter.next_if(|s| s.ch() == '\'') {
-        let _value: Option<DocumentRange> = iter.peeking_take_while(|s| s.ch() != '\'').collect();
-        let range = match iter.next_if(|s| s.ch() == '\'') {
-            Some(single_close) => single_open.to(single_close),
-            None => single_open,
-        };
-        errors.push(ParseError::new(
-            ParseErrorKind::SingleQuotedAttributeValue {},
-            range,
-        ));
-        return None;
-    }
-    let Some(open_quote) = iter.next_if(|s| s.ch() == '"') else {
-        errors.push(ParseError::new(
-            ParseErrorKind::ExpectedQuotedAttributeValue {},
-            attr_name.to(eq),
-        ));
-        return None;
-    };
-
-    // consume: attribute value
-    let attr_value: Option<DocumentRange> = iter
-        .peeking_take_while(|s| s.ch() != open_quote.ch())
-        .collect();
-
-    // consume: " or '
-    let Some(close_quote) = iter.next_if(|s| s.ch() == open_quote.ch()) else {
-        errors.push(ParseError::new(
-            ParseErrorKind::UnmatchedCharacter {
-                ch: open_quote.ch(),
-            },
-            open_quote,
-        ));
-        return None;
-    };
-
-    // For empty strings like a="", we still want to return Some(String(...))
-    // to distinguish from valueless attributes like `disabled`
-    let value = Some(TokenizedAttributeValue::String {
-        content: attr_value,
-        quoted_range: open_quote.to(close_quote.clone()),
-    });
-
-    Some(TokenizedAttribute::Named {
-        name: attr_name.clone(),
-        value,
-        range: attr_name.to(close_quote),
-    })
-}
-
-/// Parse an expression.
-///
-/// E.g.
-/// ```text
-/// <div foo="bar" {x: String}>
-///                ^^^^^^^^^^^
-/// ```
-/// Expects that the iterator points to the initial '{'.
-///
-/// Returns None if we reached EOF or if the expression was empty.
-/// Returns Some((expr,range)) if we managed to parse the expression
-/// where expr is the inner range for the expression and range is the
-/// outer (containing the braces).
-fn parse_expression(
-    iter: &mut Peekable<DocumentCursor>,
-    errors: &mut Vec<ParseError>,
-) -> Option<(DocumentRange, DocumentRange)> {
-    // consume '{'
-    let Some(left_brace) = iter.next_if(|s| s.ch() == '{') else {
-        panic!(
-            "Expected '{{' in parse_expression but got {:?}",
-            iter.next().map(|s| s.ch())
-        );
-    };
-    let clone = iter.clone();
-    let Some(found_right_brace) = find_expression_end(clone) else {
-        errors.push(ParseError::new(
-            ParseErrorKind::UnmatchedCharacter {
-                ch: left_brace.ch(),
-            },
-            left_brace,
-        ));
-        return None;
-    };
-    // handle empty expression
-    if left_brace.end() == found_right_brace.start() {
-        let Some(right_brace) = iter.next_if(|s| s.ch() == '}') else {
-            panic!(
-                "Expected '}}' in parse_expression but got {:?}",
-                iter.next().map(|s| s.ch())
-            );
-        };
-        errors.push(ParseError::new(
-            ParseErrorKind::EmptyExpression {},
-            left_brace.to(right_brace),
-        ));
-        return None;
-    }
-    let mut expr = iter.next().unwrap();
-    while iter.peek().unwrap().start() != found_right_brace.start() {
-        expr = expr.to(iter.next()?);
-    }
-    // consume: '}'
-    let Some(right_brace) = iter.next_if(|s| s.ch() == '}') else {
-        panic!(
-            "Expected '}}' in parse_expression but got {:?}",
-            iter.next().map(|s| s.ch())
-        );
-    };
-    Some((expr, left_brace.to(right_brace)))
-}
-
-/// Parse a text expression.
-/// E.g.
-/// ```text
-/// <div>Hello {name}!</div>
-///            ^^^^^^
-/// ```
-/// Expects that the iterator points to the initial '{'.
-fn parse_text_expression(
-    iter: &mut Peekable<DocumentCursor>,
-    errors: &mut Vec<ParseError>,
-) -> Option<Token> {
-    let (content, range) = parse_expression(iter, errors)?;
-    Some(Token::TextExpression { content, range })
-}
-
-/// Parse tag content (attributes and expressions).
-///
-/// E.g.
-/// ```text
-/// <div foo="bar" {x: String}>
-///      ^^^^^^^^^^^^^^^^^^^^^
-/// ```
-fn parse_tag_content(
-    iter: &mut Peekable<DocumentCursor>,
-    errors: &mut Vec<ParseError>,
-) -> (Vec<TokenizedAttribute>, Option<DocumentRange>) {
-    let mut attributes: Vec<TokenizedAttribute> = Vec::new();
-    let mut expression: Option<DocumentRange> = None;
-    loop {
-        skip_whitespace(iter);
-        // Peek ahead to detect `...` spread: three consecutive '.' characters.
-        let next_ch = iter.peek().map(|s| s.ch());
-        let is_spread = next_ch == Some('.') && {
-            let mut clone = iter.clone();
-            clone.next(); // consume first '.'
-            clone.next().is_some_and(|s| s.ch() == '.')
-                && clone.next().is_some_and(|s| s.ch() == '.')
-        };
-        if is_spread {
-            // consume '...'
-            let dot1 = iter.next().unwrap();
-            let _dot2 = iter.next().unwrap();
-            let dot3 = iter.next().unwrap();
-            let dots_range = dot1.clone().to(dot3);
-            // consume identifier
-            let Some(initial) = iter.next_if(|s| s.ch().is_ascii_alphabetic() || s.ch() == '_')
-            else {
-                errors.push(ParseError::new(
-                    ParseErrorKind::UnterminatedOpeningTag {},
-                    dots_range,
-                ));
-                continue;
-            };
-            let name = initial.extend(
-                iter.peeking_take_while(|s| s.ch().is_ascii_alphanumeric() || s.ch() == '_'),
-            );
-            let full_range = dot1.to(name.clone());
-            attributes.push(TokenizedAttribute::Spread {
-                name,
-                range: full_range,
-            });
-            continue;
-        }
-        match next_ch {
-            Some('{') => {
-                let Some((expr, _)) = parse_expression(iter, errors) else {
-                    continue;
-                };
-                expression = Some(expr);
-            }
-            Some(ch) if ch.is_ascii_alphabetic() => {
-                let Some(attr) = parse_attribute(iter, errors) else {
-                    continue;
-                };
-                if attributes.iter().any(|a| match a {
-                    TokenizedAttribute::Named { name, .. } => name.as_str() == attr.name().as_str(),
-                    TokenizedAttribute::Spread { .. } => false,
-                }) {
-                    errors.push(ParseError::new(
-                        ParseErrorKind::DuplicateAttribute {
-                            name: attr.name().to_cheap_string(),
-                        },
-                        attr.name().clone(),
-                    ));
-                } else {
-                    attributes.push(attr);
-                }
-            }
-            _ => {
-                return (attributes, expression);
-            }
-        }
-    }
-}
-
-/// Parse an opening tag.
-///
-/// E.g.
-/// ```text
-/// <div foo="bar" {x: String}>
-///  ^^^^^^^^^^^^^^^^^^^^^^^^^^
-/// ```
-/// Expects that the iterator points to the initial alphabetic char.
-fn parse_opening_tag(
-    iter: &mut Peekable<DocumentCursor>,
-    errors: &mut Vec<ParseError>,
-    left_angle: DocumentRange,
-) -> Option<Token> {
-    // consume: [a-zA-Z]
-    let Some(initial) = iter.next_if(|s| s.ch().is_ascii_alphabetic()) else {
-        panic!(
-            "Expected [a-zA-Z] in parse_opening_tag but got {:?}",
-            iter.next().map(|s| s.ch())
-        );
-    };
-
-    // consume: ('-' | [a-zA-Z0-9])*
+fn lex_opening_tag_start(iter: &mut Peekable<DocumentCursor>, left_angle: DocumentRange) -> Token {
+    let initial = iter.next_if(|s| s.ch().is_ascii_alphabetic()).unwrap();
     let tag_name = initial
         .extend(iter.peeking_take_while(|s| s.ch() == '-' || s.ch().is_ascii_alphanumeric()));
-    // consume: tag content
-    let (attributes, expression) = parse_tag_content(iter, errors);
-
-    // consume: whitespace
-    skip_whitespace(iter);
-
-    // consume: '/'
-    let self_closing = iter.next_if(|s| s.ch() == '/').is_some();
-
-    // consume: '>'
-    let Some(right_angle) = iter.next_if(|s| s.ch() == '>') else {
-        errors.push(ParseError::new(
-            ParseErrorKind::UnterminatedOpeningTag {},
-            tag_name,
-        ));
-        return None;
-    };
-
-    // For raw text tags (script, style), parse the entire element including content and closing tag
-    if is_tag_name_with_raw_content(tag_name.as_str()) && !self_closing {
-        return parse_raw_text_element(iter, errors, left_angle, tag_name, attributes, expression);
-    }
-
-    Some(Token::OpeningTag {
-        self_closing,
+    Token::OpeningTagStart {
+        range: left_angle.to(tag_name.clone()),
         tag_name,
-        attributes,
-        expression,
-        range: left_angle.to(right_angle),
-    })
+    }
 }
 
-/// Parse a closing tag.
+/// Lex a closing tag.
 ///
 /// E.g.
 /// ```text
@@ -529,21 +482,19 @@ fn parse_opening_tag(
 ///       ^^^^^
 /// ```
 /// Expects that the iterator points to the initial '/'.
-fn parse_closing_tag(
+fn lex_closing_tag(
     iter: &mut Peekable<DocumentCursor>,
     errors: &mut Vec<ParseError>,
     left_angle: DocumentRange,
 ) -> Option<Token> {
     let Some(slash) = iter.next_if(|s| s.ch() == '/') else {
         panic!(
-            "Expected '/' in parse_closing_tag but got {:?}",
+            "Expected '/' in lex_closing_tag but got {:?}",
             iter.next().map(|s| s.ch())
         );
     };
-
     // consume: whitespace
     skip_whitespace(iter);
-
     // consume: [a-zA-Z]
     let Some(initial) = iter.next_if(|s| s.ch().is_ascii_alphabetic()) else {
         errors.push(ParseError::new(
@@ -555,10 +506,8 @@ fn parse_closing_tag(
     // consume: ('-' | [a-zA-Z0-9])*
     let tag_name = initial
         .extend(iter.peeking_take_while(|s| s.ch() == '-' || s.ch().is_ascii_alphanumeric()));
-
     // consume: whitespace
     skip_whitespace(iter);
-
     // consume: '>'
     let Some(right_angle) = iter.next_if(|s| s.ch() == '>') else {
         errors.push(ParseError::new(
@@ -573,133 +522,7 @@ fn parse_closing_tag(
     })
 }
 
-fn peek_rawtext_closing_tag(iter: &Peekable<DocumentCursor>, tag_name: &DocumentRange) -> bool {
-    let mut iter = iter.clone();
-    // consume: '<'
-    if iter.next().is_none_or(|s| s.ch() != '<') {
-        return false;
-    }
-
-    // consume: '/'
-    if iter.next().is_none_or(|s| s.ch() != '/') {
-        return false;
-    }
-
-    // consume: whitespace
-    while iter.peek().is_some_and(|s| s.ch().is_whitespace()) {
-        iter.next();
-    }
-
-    // consume: tag name
-    for ch in tag_name.as_str().chars() {
-        if iter.next().is_none_or(|s| s.ch() != ch) {
-            return false;
-        }
-    }
-
-    // consume: whitespace
-    while iter.peek().is_some_and(|s| s.ch().is_whitespace()) {
-        iter.next();
-    }
-
-    // consume: '>'
-    if iter.next().is_none_or(|s| s.ch() != '>') {
-        return false;
-    }
-    true
-}
-
-fn parse_rawtext_content(
-    iter: &mut Peekable<DocumentCursor>,
-    tag_name: &DocumentRange,
-) -> Option<DocumentRange> {
-    let mut raw_text: Option<DocumentRange> = None;
-    loop {
-        if iter.peek().is_none() || peek_rawtext_closing_tag(iter, tag_name) {
-            return raw_text;
-        }
-        if let Some(ch) = iter.next() {
-            raw_text = raw_text.into_iter().chain(Some(ch)).collect();
-        }
-    }
-}
-
-/// Consume the closing tag for a raw text element.
-///
-/// E.g.
-/// ```text
-/// </script>
-/// ^^^^^^^^^
-/// ```
-/// Expects that peek_rawtext_closing_tag returned true.
-/// Returns the range of the '>' character.
-fn consume_rawtext_closing_tag(
-    iter: &mut Peekable<DocumentCursor>,
-    tag_name: &DocumentRange,
-) -> DocumentRange {
-    // consume: '<'
-    iter.next();
-    // consume: '/'
-    iter.next();
-    // consume: whitespace
-    while iter.peek().is_some_and(|s| s.ch().is_whitespace()) {
-        iter.next();
-    }
-    // consume: tag name
-    for _ in tag_name.as_str().chars() {
-        iter.next();
-    }
-    // consume: whitespace
-    while iter.peek().is_some_and(|s| s.ch().is_whitespace()) {
-        iter.next();
-    }
-    // consume: '>'
-    iter.next()
-        .expect("Expected '>' in consume_rawtext_closing_tag")
-}
-
-/// Parse a raw text element (script or style).
-///
-/// E.g.
-/// ```text
-/// <script>alert(1)</script>
-/// ^^^^^^^^^^^^^^^^^^^^^^^^^
-/// ```
-/// This method is called after the opening tag has been parsed up to '>'.
-/// It parses the content and closing tag, returning a RawTextTag token.
-fn parse_raw_text_element(
-    iter: &mut Peekable<DocumentCursor>,
-    errors: &mut Vec<ParseError>,
-    left_angle: DocumentRange,
-    tag_name: DocumentRange,
-    attributes: Vec<TokenizedAttribute>,
-    expression: Option<DocumentRange>,
-) -> Option<Token> {
-    // Parse content until closing tag
-    let content = parse_rawtext_content(iter, &tag_name);
-
-    // Check for EOF
-    if iter.peek().is_none() {
-        errors.push(ParseError::new(
-            ParseErrorKind::UnterminatedOpeningTag {},
-            tag_name.clone(),
-        ));
-        return None;
-    }
-
-    // Consume the closing tag
-    let closing_end = consume_rawtext_closing_tag(iter, &tag_name);
-
-    Some(Token::RawTextTag {
-        tag_name,
-        attributes,
-        expression,
-        content,
-        range: left_angle.to(closing_end),
-    })
-}
-
-/// Parse a text token.
+/// Lex a text token.
 ///
 /// E.g.
 /// ```text
@@ -708,9 +531,9 @@ fn parse_raw_text_element(
 /// ```
 /// Expects that the iterator points to the initial char.
 /// Stops at '<', '{', or '\n' (newlines are emitted as separate tokens).
-fn parse_text(iter: &mut Peekable<DocumentCursor>) -> Token {
+fn lex_text(iter: &mut Peekable<DocumentCursor>) -> Token {
     let Some(initial) = iter.next() else {
-        panic!("Expected an initial char in parse_text but got None");
+        panic!("Expected an initial char in lex_text but got None");
     };
     Token::Text {
         range: initial.extend(iter.peeking_take_while(|s| {
@@ -719,1755 +542,73 @@ fn parse_text(iter: &mut Peekable<DocumentCursor>) -> Token {
     }
 }
 
-fn parse_tag(iter: &mut Peekable<DocumentCursor>, errors: &mut Vec<ParseError>) -> Option<Token> {
-    let Some(left_angle) = iter.next() else {
-        panic!(
-            "Expected '<' in parse_tag but got {:?}",
-            iter.next().map(|s| s.ch())
-        );
+/// Lex an attribute.
+///
+/// E.g.
+/// ```text
+/// <div foo="bar">
+///      ^^^^^^^^^
+/// ```
+/// Expects that the iterator points to the initial alphabetic char.
+/// Returns None if a valid attribute could not be lexed from the iterator.
+fn lex_attribute(
+    iter: &mut Peekable<DocumentCursor>,
+    errors: &mut Vec<ParseError>,
+) -> Option<TagToken> {
+    let initial = iter.next_if(|s| s.ch().is_ascii_alphabetic()).unwrap();
+    let name = initial.extend(iter.peeking_take_while(|s| {
+        matches!(s.ch(), '-' | '_' | ':' | '.') || s.ch().is_ascii_alphanumeric()
+    }));
+    skip_whitespace(iter);
+    // consume: '='
+    let Some(eq) = iter.next_if(|s| s.ch() == '=') else {
+        return Some(TagToken::Attribute { name, value: None });
+    };
+    skip_whitespace(iter);
+    // consume: '{'
+    if let Some(left_brace) = iter.next_if(|s| s.ch() == '{') {
+        return Some(TagToken::AttributeExpressionStart { name, left_brace });
+    }
+    // consume: '\''
+    if let Some(single_open) = iter.next_if(|s| s.ch() == '\'') {
+        // Only double quotes are allowed, report error.
+        let _value: Option<DocumentRange> = iter.peeking_take_while(|s| s.ch() != '\'').collect();
+        let range = match iter.next_if(|s| s.ch() == '\'') {
+            Some(single_close) => single_open.to(single_close),
+            None => single_open,
+        };
+        errors.push(ParseError::new(
+            ParseErrorKind::SingleQuotedAttributeValue {},
+            range,
+        ));
+        return None;
+    }
+    // consume: '"'
+    let Some(open_quote) = iter.next_if(|s| s.ch() == '"') else {
+        errors.push(ParseError::new(
+            ParseErrorKind::ExpectedQuotedAttributeValue {},
+            name.to(eq),
+        ));
+        return None;
+    };
+    // consume: [^"]*
+    let content: Option<DocumentRange> = iter.peeking_take_while(|s| s.ch() != '"').collect();
+    let Some(close_quote) = iter.next_if(|s| s.ch() == '"') else {
+        errors.push(ParseError::new(
+            ParseErrorKind::UnmatchedCharacter {
+                ch: open_quote.ch(),
+            },
+            open_quote,
+        ));
+        return None;
     };
 
-    match iter.peek().map(|s| s.ch()) {
-        Some('!') => parse_markup_declaration(iter, errors, left_angle),
-        Some('/') => parse_closing_tag(iter, errors, left_angle),
-        Some(ch) if ch.is_ascii_alphabetic() => parse_opening_tag(iter, errors, left_angle),
-        _ => {
-            errors.push(ParseError::new(
-                ParseErrorKind::UnterminatedTagStart {},
-                left_angle,
-            ));
-            None
-        }
-    }
-}
-
-fn is_tag_name_with_raw_content(name: &str) -> bool {
-    matches!(name, "script" | "style")
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::annotation::Annotation;
-    use crate::document_id::DocumentId;
-    use crate::{document_annotator::DocumentAnnotator, simple_annotation::SimpleAnnotation};
-
-    use super::*;
-    use expect_test::{Expect, expect};
-    use indoc::indoc;
-
-    fn run_tokenizer(input: &str) -> (Vec<SimpleAnnotation>, Vec<SimpleAnnotation>) {
-        let mut iter =
-            DocumentCursor::new(DocumentId::new("test.hop").unwrap(), input.to_string()).peekable();
-        let mut token_annotations = Vec::new();
-        let mut error_annotations = Vec::new();
-        let mut errors = Vec::new();
-
-        while let Some(token) = next(&mut iter, &mut errors) {
-            token_annotations.push(SimpleAnnotation {
-                message: token.to_string(),
-                range: token.range().clone(),
-            });
-            for err in &errors {
-                error_annotations.push(SimpleAnnotation {
-                    message: err.message(),
-                    range: err.range().clone(),
-                });
-            }
-            errors.clear();
-        }
-        for err in &errors {
-            error_annotations.push(SimpleAnnotation {
-                message: err.message(),
-                range: err.range().clone(),
-            });
-        }
-        (token_annotations, error_annotations)
-    }
-
-    fn render_section(label: &str, annotations: Vec<SimpleAnnotation>) -> String {
-        if annotations.is_empty() {
-            return String::new();
-        }
-        let mut out = format!("-- {label} --\n");
-        out.push_str(
-            &DocumentAnnotator::new()
-                .without_line_numbers()
-                .annotate(&DocumentId::new("test.hop").unwrap(), annotations)
-                .render(),
-        );
-        out
-    }
-
-    fn accept(input: &str, expected: Expect) {
-        let (tokens, errors) = run_tokenizer(input);
-        if !errors.is_empty() {
-            panic!(
-                "expected no tokenizer errors, got:\n{}",
-                render_section("errors", errors)
-            );
-        }
-        expected.assert_eq(&render_section("tokens", tokens));
-    }
-
-    fn reject(input: &str, expected: Expect) {
-        let (tokens, errors) = run_tokenizer(input);
-        if errors.is_empty() {
-            panic!("expected tokenizer errors but got none");
-        }
-        let mut output = String::new();
-        output.push_str(&render_section("errors", errors));
-        output.push_str(&render_section("tokens", tokens));
-        expected.assert_eq(&output);
-    }
-
-    #[test]
-    fn accepts_empty_input() {
-        accept("", expect![""]);
-    }
-
-    #[test]
-    fn accepts_text_on_separate_line() {
-        accept(
-            indoc! {"
-                <div>
-                  hello world
-                </div>
-            "},
-            expect![[r#"
-                -- tokens --
-                OpeningTag(
-                  tag_name: "div",
-                  attributes: {},
-                  expression: None,
-                  self_closing: false,
-                )
-                <div>
-                ^^^^^
-
-                Newline
-                <div>
-                  hello world
-
-                Text [13 byte, "  hello world"]
-                  hello world
-                ^^^^^^^^^^^^^
-
-                Newline
-                  hello world
-                </div>
-
-                ClosingTag(
-                  tag_name: "div",
-                )
-                </div>
-                ^^^^^^
-
-                Newline
-                </div>
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_text_on_multiple_lines() {
-        accept(
-            indoc! {"
-                <div>
-                  hello
-                  world
-                </div>
-            "},
-            expect![[r#"
-                -- tokens --
-                OpeningTag(
-                  tag_name: "div",
-                  attributes: {},
-                  expression: None,
-                  self_closing: false,
-                )
-                <div>
-                ^^^^^
-
-                Newline
-                <div>
-                  hello
-
-                Text [7 byte, "  hello"]
-                  hello
-                ^^^^^^^
-
-                Newline
-                  hello
-                  world
-
-                Text [7 byte, "  world"]
-                  world
-                ^^^^^^^
-
-                Newline
-                  world
-                </div>
-
-                ClosingTag(
-                  tag_name: "div",
-                )
-                </div>
-                ^^^^^^
-
-                Newline
-                </div>
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_inline_text_with_links() {
-        accept(
-            indoc! {r##"
-                <div>
-                  By clicking continue, you agree to our <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>.
-                </div>
-            "##},
-            expect![[r##"
-                -- tokens --
-                OpeningTag(
-                  tag_name: "div",
-                  attributes: {},
-                  expression: None,
-                  self_closing: false,
-                )
-                <div>
-                ^^^^^
-
-                Newline
-                <div>
-                  By clicking continue, you agree to our <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>.
-
-                Text [41 byte, "  By clicking continue, you agree to our "]
-                  By clicking continue, you agree to our <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>.
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-                OpeningTag(
-                  tag_name: "a",
-                  attributes: {
-                    href: String("#"),
-                  },
-                  expression: None,
-                  self_closing: false,
-                )
-                  By clicking continue, you agree to our <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>.
-                                                         ^^^^^^^^^^^^
-
-                Text [16 byte, "Terms of Service"]
-                  By clicking continue, you agree to our <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>.
-                                                                     ^^^^^^^^^^^^^^^^
-
-                ClosingTag(
-                  tag_name: "a",
-                )
-                  By clicking continue, you agree to our <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>.
-                                                                                     ^^^^
-
-                Text [5 byte, " and "]
-                  By clicking continue, you agree to our <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>.
-                                                                                         ^^^^^
-
-                OpeningTag(
-                  tag_name: "a",
-                  attributes: {
-                    href: String("#"),
-                  },
-                  expression: None,
-                  self_closing: false,
-                )
-                  By clicking continue, you agree to our <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>.
-                                                                                              ^^^^^^^^^^^^
-
-                Text [14 byte, "Privacy Policy"]
-                  By clicking continue, you agree to our <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>.
-                                                                                                          ^^^^^^^^^^^^^^
-
-                ClosingTag(
-                  tag_name: "a",
-                )
-                  By clicking continue, you agree to our <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>.
-                                                                                                                        ^^^^
-
-                Text [1 byte, "."]
-                  By clicking continue, you agree to our <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>.
-                                                                                                                            ^
-
-                Newline
-                  By clicking continue, you agree to our <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>.
-                </div>
-
-                ClosingTag(
-                  tag_name: "div",
-                )
-                </div>
-                ^^^^^^
-
-                Newline
-                </div>
-            "##]],
-        );
-    }
-
-    #[test]
-    fn accepts_if_with_expression() {
-        accept(
-            "<if {foo}>",
-            expect![[r#"
-                -- tokens --
-                OpeningTag(
-                  tag_name: "if",
-                  attributes: {},
-                  expression: Some("foo"),
-                  self_closing: false,
-                )
-                <if {foo}>
-                ^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_expression_in_attribute() {
-        accept(
-            r#"<div class={user.theme}>"#,
-            expect![[r#"
-                -- tokens --
-                OpeningTag(
-                  tag_name: "div",
-                  attributes: {
-                    class: Expression("user.theme"),
-                  },
-                  expression: None,
-                  self_closing: false,
-                )
-                <div class={user.theme}>
-                ^^^^^^^^^^^^^^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_mixed_attributes() {
-        accept(
-            r#"<a href={user.url} target="_blank">"#,
-            expect![[r#"
-                -- tokens --
-                OpeningTag(
-                  tag_name: "a",
-                  attributes: {
-                    href: Expression("user.url"),
-                    target: String("_blank"),
-                  },
-                  expression: None,
-                  self_closing: false,
-                )
-                <a href={user.url} target="_blank">
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_input_with_attributes() {
-        accept(
-            r#"<input type="" value="" disabled="">"#,
-            expect![[r#"
-                -- tokens --
-                OpeningTag(
-                  tag_name: "input",
-                  attributes: {
-                    type: String(""),
-                    value: String(""),
-                    disabled: String(""),
-                  },
-                  expression: None,
-                  self_closing: false,
-                )
-                <input type="" value="" disabled="">
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_attributes_without_spaces() {
-        accept(
-            r#"<h1 foo="bar"x="y">"#,
-            expect![[r#"
-                -- tokens --
-                OpeningTag(
-                  tag_name: "h1",
-                  attributes: {
-                    foo: String("bar"),
-                    x: String("y"),
-                  },
-                  expression: None,
-                  self_closing: false,
-                )
-                <h1 foo="bar"x="y">
-                ^^^^^^^^^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_text_over_multiple_lines() {
-        accept(
-            "this\ntext\nspans\nmultiple lines",
-            expect![[r#"
-                -- tokens --
-                Text [4 byte, "this"]
-                this
-                ^^^^
-
-                Newline
-                this
-                text
-
-                Text [4 byte, "text"]
-                text
-                ^^^^
-
-                Newline
-                text
-                spans
-
-                Text [5 byte, "spans"]
-                spans
-                ^^^^^
-
-                Newline
-                spans
-                multiple lines
-
-                Text [14 byte, "multiple lines"]
-                multiple lines
-                ^^^^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_invalid_char_in_middle_of_tag() {
-        reject(
-            "<div!>",
-            expect![[r#"
-                -- errors --
-                Unterminated opening tag
-                <div!>
-                 ^^^
-                -- tokens --
-                Text [2 byte, "!>"]
-                <div!>
-                    ^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_script_with_src() {
-        accept(
-            r#"<script src="https://example.com/script.js"></script>"#,
-            expect![[r#"
-                -- tokens --
-                RawTextTag(
-                  tag_name: "script",
-                  attributes: {
-                    src: String("https://example.com/script.js"),
-                  },
-                  expression: None,
-                  content: None,
-                )
-                <script src="https://example.com/script.js"></script>
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_self_closing_tag() {
-        accept(
-            "<h1 />",
-            expect![[r#"
-                -- tokens --
-                OpeningTag(
-                  tag_name: "h1",
-                  attributes: {},
-                  expression: None,
-                  self_closing: true,
-                )
-                <h1 />
-                ^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_self_closing_tag_with_attributes() {
-        accept(
-            "<h1 foo bar/>",
-            expect![[r#"
-                -- tokens --
-                OpeningTag(
-                  tag_name: "h1",
-                  attributes: {
-                    foo: None,
-                    bar: None,
-                  },
-                  expression: None,
-                  self_closing: true,
-                )
-                <h1 foo bar/>
-                ^^^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_expr_before_attributes() {
-        accept(
-            "<h1 {foo: String} foo bar/>",
-            expect![[r#"
-                -- tokens --
-                OpeningTag(
-                  tag_name: "h1",
-                  attributes: {
-                    foo: None,
-                    bar: None,
-                  },
-                  expression: Some("foo: String"),
-                  self_closing: true,
-                )
-                <h1 {foo: String} foo bar/>
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_simple_comment() {
-        accept(
-            "<p><!-- --></p>",
-            expect![[r#"
-                -- tokens --
-                OpeningTag(
-                  tag_name: "p",
-                  attributes: {},
-                  expression: None,
-                  self_closing: false,
-                )
-                <p><!-- --></p>
-                ^^^
-
-                Comment
-                <p><!-- --></p>
-                   ^^^^^^^^
-
-                ClosingTag(
-                  tag_name: "p",
-                )
-                <p><!-- --></p>
-                           ^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_succeeded_by_text() {
-        accept(
-            indoc! {"
-                <p><!-- -->
-                </p>
-            "},
-            expect![[r#"
-                -- tokens --
-                OpeningTag(
-                  tag_name: "p",
-                  attributes: {},
-                  expression: None,
-                  self_closing: false,
-                )
-                <p><!-- -->
-                ^^^
-
-                Comment
-                <p><!-- -->
-                   ^^^^^^^^
-
-                Newline
-                <p><!-- -->
-                </p>
-
-                ClosingTag(
-                  tag_name: "p",
-                )
-                </p>
-                ^^^^
-
-                Newline
-                </p>
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_comment_with_dashes_inside() {
-        accept(
-            "<!-- Comment with -- dashes -- inside -->",
-            expect![[r#"
-                -- tokens --
-                Comment
-                <!-- Comment with -- dashes -- inside -->
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_multiline_comment() {
-        accept(
-            indoc! {"
-                <p><!--
-                A comment
-                that stretches
-                over several
-                lines --></p>
-            "},
-            expect![[r#"
-                -- tokens --
-                OpeningTag(
-                  tag_name: "p",
-                  attributes: {},
-                  expression: None,
-                  self_closing: false,
-                )
-                <p><!--
-                ^^^
-
-                Comment
-                <p><!--
-                   ^^^^
-                A comment
-                ^^^^^^^^^
-                that stretches
-                ^^^^^^^^^^^^^^
-                over several
-                ^^^^^^^^^^^^
-                lines --></p>
-                ^^^^^^^^^
-
-                ClosingTag(
-                  tag_name: "p",
-                )
-                lines --></p>
-                         ^^^^
-
-                Newline
-                lines --></p>
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_comment_with_quotes() {
-        accept(
-            r#"<!-- This comment has <tags> and "quotes" and 'apostrophes' -->"#,
-            expect![[r#"
-                -- tokens --
-                Comment
-                <!-- This comment has <tags> and "quotes" and 'apostrophes' -->
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_tricky_comments() {
-        accept(
-            indoc! {"
-                <!-- ---><!-- ----><!----><!-----><!-- ---->
-            "},
-            expect![[r#"
-                -- tokens --
-                Comment
-                <!-- ---><!-- ----><!----><!-----><!-- ---->
-                ^^^^^^^^^
-
-                Comment
-                <!-- ---><!-- ----><!----><!-----><!-- ---->
-                         ^^^^^^^^^^
-
-                Comment
-                <!-- ---><!-- ----><!----><!-----><!-- ---->
-                                   ^^^^^^^
-
-                Comment
-                <!-- ---><!-- ----><!----><!-----><!-- ---->
-                                          ^^^^^^^^
-
-                Comment
-                <!-- ---><!-- ----><!----><!-----><!-- ---->
-                                                  ^^^^^^^^^^
-
-                Newline
-                <!-- ---><!-- ----><!----><!-----><!-- ---->
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_textarea_with_content() {
-        accept(
-            indoc! {"
-                <textarea>
-                	<div></div>
-                </textarea>
-            "},
-            expect![[r#"
-                -- tokens --
-                OpeningTag(
-                  tag_name: "textarea",
-                  attributes: {},
-                  expression: None,
-                  self_closing: false,
-                )
-                <textarea>
-                ^^^^^^^^^^
-
-                Newline
-                <textarea>
-                    <div></div>
-
-                Text [1 byte, "\t"]
-                    <div></div>
-                ^^^^
-
-                OpeningTag(
-                  tag_name: "div",
-                  attributes: {},
-                  expression: None,
-                  self_closing: false,
-                )
-                    <div></div>
-                    ^^^^^
-
-                ClosingTag(
-                  tag_name: "div",
-                )
-                    <div></div>
-                         ^^^^^^
-
-                Newline
-                    <div></div>
-                </textarea>
-
-                ClosingTag(
-                  tag_name: "textarea",
-                )
-                </textarea>
-                ^^^^^^^^^^^
-
-                Newline
-                </textarea>
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_doctype() {
-        reject(
-            "<!DOCTYPE   html>",
-            expect![[r#"
-                -- errors --
-                <!doctype> declarations are not allowed: one is inserted automatically
-                <!DOCTYPE   html>
-                ^^^^^^^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_end_tag_with_space() {
-        accept(
-            "</div >",
-            expect![[r#"
-                -- tokens --
-                ClosingTag(
-                  tag_name: "div",
-                )
-                </div >
-                ^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_simple_self_closing_tag() {
-        accept(
-            "<h1/>",
-            expect![[r#"
-                -- tokens --
-                OpeningTag(
-                  tag_name: "h1",
-                  attributes: {},
-                  expression: None,
-                  self_closing: true,
-                )
-                <h1/>
-                ^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_self_closing_tag_with_space() {
-        accept(
-            "<h1 />",
-            expect![[r#"
-                -- tokens --
-                OpeningTag(
-                  tag_name: "h1",
-                  attributes: {},
-                  expression: None,
-                  self_closing: true,
-                )
-                <h1 />
-                ^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_style_with_content() {
-        accept(
-            indoc! {"
-                <style>
-                  body { color: red; }
-                  .class { font-size: 12px; }
-                </style>
-            "},
-            expect![[r#"
-                -- tokens --
-                RawTextTag(
-                  tag_name: "style",
-                  attributes: {},
-                  expression: None,
-                  content: Some("\n  body { color: red; }\n  .class { font-size: 12px; }\n"),
-                )
-                <style>
-                ^^^^^^^
-                  body { color: red; }
-                ^^^^^^^^^^^^^^^^^^^^^^
-                  .class { font-size: 12px; }
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                </style>
-                ^^^^^^^^
-
-                Newline
-                </style>
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_attributes_on_multiple_lines() {
-        accept(
-            indoc! {r#"
-                <div
-                  class="multiline"
-                  id="test"
-                  data-value="something">
-            "#},
-            expect![[r#"
-                -- tokens --
-                OpeningTag(
-                  tag_name: "div",
-                  attributes: {
-                    class: String("multiline"),
-                    id: String("test"),
-                    data-value: String("something"),
-                  },
-                  expression: None,
-                  self_closing: false,
-                )
-                <div
-                ^^^^
-                  class="multiline"
-                ^^^^^^^^^^^^^^^^^^^
-                  id="test"
-                ^^^^^^^^^^^
-                  data-value="something">
-                ^^^^^^^^^^^^^^^^^^^^^^^^^
-
-                Newline
-                  data-value="something">
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_script_with_html_content() {
-        accept(
-            indoc! {r#"
-                <script>
-                  const html = "<title>Nested</title>";
-                  document.write(html);
-                </script>
-            "#},
-            expect![[r#"
-                -- tokens --
-                RawTextTag(
-                  tag_name: "script",
-                  attributes: {},
-                  expression: None,
-                  content: Some("\n  const html = \"<title>Nested</title>\";\n  document.write(html);\n"),
-                )
-                <script>
-                ^^^^^^^^
-                  const html = "<title>Nested</title>";
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                  document.write(html);
-                ^^^^^^^^^^^^^^^^^^^^^^^
-                </script>
-                ^^^^^^^^^
-
-                Newline
-                </script>
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_script_with_whitespace_in_closing_tag() {
-        accept(
-            indoc! {r#"
-                <script>
-                  const html = "";
-                </ script>
-
-                <script>
-                  const html = "";
-                </script  >
-
-                <script>
-                  const html = "";
-                </ script  >
-            "#},
-            expect![[r#"
-                -- tokens --
-                RawTextTag(
-                  tag_name: "script",
-                  attributes: {},
-                  expression: None,
-                  content: Some("\n  const html = \"\";\n"),
-                )
-                <script>
-                ^^^^^^^^
-                  const html = "";
-                ^^^^^^^^^^^^^^^^^^
-                </ script>
-                ^^^^^^^^^^
-
-                Newline
-                </ script>
-
-
-                Newline
-
-                <script>
-
-                RawTextTag(
-                  tag_name: "script",
-                  attributes: {},
-                  expression: None,
-                  content: Some("\n  const html = \"\";\n"),
-                )
-                <script>
-                ^^^^^^^^
-                  const html = "";
-                ^^^^^^^^^^^^^^^^^^
-                </script  >
-                ^^^^^^^^^^^
-
-                Newline
-                </script  >
-
-
-                Newline
-
-                <script>
-
-                RawTextTag(
-                  tag_name: "script",
-                  attributes: {},
-                  expression: None,
-                  content: Some("\n  const html = \"\";\n"),
-                )
-                <script>
-                ^^^^^^^^
-                  const html = "";
-                ^^^^^^^^^^^^^^^^^^
-                </ script  >
-                ^^^^^^^^^^^^
-
-                Newline
-                </ script  >
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_svg_with_many_attributes() {
-        accept(
-            indoc! {r#"
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="16.5" y1="9.4" x2="7.5" y2="4.21"></line>
-                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
-                <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
-                <line x1="12" y1="22.08" x2="12" y2="12"></line>
-                </svg>
-            "#},
-            expect![[r#"
-                -- tokens --
-                OpeningTag(
-                  tag_name: "svg",
-                  attributes: {
-                    xmlns: String("http://www.w3.org/2000/svg"),
-                    width: String("24"),
-                    height: String("24"),
-                    viewBox: String("0 0 24 24"),
-                    fill: String("none"),
-                    stroke: String("currentColor"),
-                    stroke-width: String("2"),
-                    stroke-linecap: String("round"),
-                    stroke-linejoin: String("round"),
-                  },
-                  expression: None,
-                  self_closing: false,
-                )
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-                Newline
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="16.5" y1="9.4" x2="7.5" y2="4.21"></line>
-
-                OpeningTag(
-                  tag_name: "line",
-                  attributes: {
-                    x1: String("16.5"),
-                    y1: String("9.4"),
-                    x2: String("7.5"),
-                    y2: String("4.21"),
-                  },
-                  expression: None,
-                  self_closing: false,
-                )
-                <line x1="16.5" y1="9.4" x2="7.5" y2="4.21"></line>
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-                ClosingTag(
-                  tag_name: "line",
-                )
-                <line x1="16.5" y1="9.4" x2="7.5" y2="4.21"></line>
-                                                            ^^^^^^^
-
-                Newline
-                <line x1="16.5" y1="9.4" x2="7.5" y2="4.21"></line>
-                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
-
-                OpeningTag(
-                  tag_name: "path",
-                  attributes: {
-                    d: String("M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"),
-                  },
-                  expression: None,
-                  self_closing: false,
-                )
-                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-                ClosingTag(
-                  tag_name: "path",
-                )
-                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
-                                                                                                                                                    ^^^^^^^
-
-                Newline
-                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
-                <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
-
-                OpeningTag(
-                  tag_name: "polyline",
-                  attributes: {
-                    points: String("3.27 6.96 12 12.01 20.73 6.96"),
-                  },
-                  expression: None,
-                  self_closing: false,
-                )
-                <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-                ClosingTag(
-                  tag_name: "polyline",
-                )
-                <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
-                                                                 ^^^^^^^^^^^
-
-                Newline
-                <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
-                <line x1="12" y1="22.08" x2="12" y2="12"></line>
-
-                OpeningTag(
-                  tag_name: "line",
-                  attributes: {
-                    x1: String("12"),
-                    y1: String("22.08"),
-                    x2: String("12"),
-                    y2: String("12"),
-                  },
-                  expression: None,
-                  self_closing: false,
-                )
-                <line x1="12" y1="22.08" x2="12" y2="12"></line>
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-                ClosingTag(
-                  tag_name: "line",
-                )
-                <line x1="12" y1="22.08" x2="12" y2="12"></line>
-                                                         ^^^^^^^
-
-                Newline
-                <line x1="12" y1="22.08" x2="12" y2="12"></line>
-                </svg>
-
-                ClosingTag(
-                  tag_name: "svg",
-                )
-                </svg>
-                ^^^^^^
-
-                Newline
-                </svg>
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_div_with_class_and_expression() {
-        accept(
-            indoc! {r#"
-                <div class="test" {bar}>
-            "#},
-            expect![[r#"
-                -- tokens --
-                OpeningTag(
-                  tag_name: "div",
-                  attributes: {
-                    class: String("test"),
-                  },
-                  expression: Some("bar"),
-                  self_closing: false,
-                )
-                <div class="test" {bar}>
-                ^^^^^^^^^^^^^^^^^^^^^^^^
-
-                Newline
-                <div class="test" {bar}>
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_text_with_single_expression() {
-        accept(
-            "<h1>Hello {name}!</h1>",
-            expect![[r#"
-                -- tokens --
-                OpeningTag(
-                  tag_name: "h1",
-                  attributes: {},
-                  expression: None,
-                  self_closing: false,
-                )
-                <h1>Hello {name}!</h1>
-                ^^^^
-
-                Text [6 byte, "Hello "]
-                <h1>Hello {name}!</h1>
-                    ^^^^^^
-
-                TextExpression("name")
-                <h1>Hello {name}!</h1>
-                          ^^^^^^
-
-                Text [1 byte, "!"]
-                <h1>Hello {name}!</h1>
-                                ^
-
-                ClosingTag(
-                  tag_name: "h1",
-                )
-                <h1>Hello {name}!</h1>
-                                 ^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_text_with_multiple_expressions() {
-        accept(
-            "<p>User {user.name} has {user.count} items</p>",
-            expect![[r#"
-                -- tokens --
-                OpeningTag(
-                  tag_name: "p",
-                  attributes: {},
-                  expression: None,
-                  self_closing: false,
-                )
-                <p>User {user.name} has {user.count} items</p>
-                ^^^
-
-                Text [5 byte, "User "]
-                <p>User {user.name} has {user.count} items</p>
-                   ^^^^^
-
-                TextExpression("user.name")
-                <p>User {user.name} has {user.count} items</p>
-                        ^^^^^^^^^^^
-
-                Text [5 byte, " has "]
-                <p>User {user.name} has {user.count} items</p>
-                                   ^^^^^
-
-                TextExpression("user.count")
-                <p>User {user.name} has {user.count} items</p>
-                                        ^^^^^^^^^^^^
-
-                Text [6 byte, " items"]
-                <p>User {user.name} has {user.count} items</p>
-                                                    ^^^^^^
-
-                ClosingTag(
-                  tag_name: "p",
-                )
-                <p>User {user.name} has {user.count} items</p>
-                                                          ^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_text_with_expression_at_start() {
-        accept(
-            "<span>{greeting} world!</span>",
-            expect![[r#"
-                -- tokens --
-                OpeningTag(
-                  tag_name: "span",
-                  attributes: {},
-                  expression: None,
-                  self_closing: false,
-                )
-                <span>{greeting} world!</span>
-                ^^^^^^
-
-                TextExpression("greeting")
-                <span>{greeting} world!</span>
-                      ^^^^^^^^^^
-
-                Text [7 byte, " world!"]
-                <span>{greeting} world!</span>
-                                ^^^^^^^
-
-                ClosingTag(
-                  tag_name: "span",
-                )
-                <span>{greeting} world!</span>
-                                       ^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_text_with_expression_at_end() {
-        accept(
-            "<div>Price: {price}</div>",
-            expect![[r#"
-                -- tokens --
-                OpeningTag(
-                  tag_name: "div",
-                  attributes: {},
-                  expression: None,
-                  self_closing: false,
-                )
-                <div>Price: {price}</div>
-                ^^^^^
-
-                Text [7 byte, "Price: "]
-                <div>Price: {price}</div>
-                     ^^^^^^^
-
-                TextExpression("price")
-                <div>Price: {price}</div>
-                            ^^^^^^^
-
-                ClosingTag(
-                  tag_name: "div",
-                )
-                <div>Price: {price}</div>
-                                   ^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_text_with_expression_containing_braces() {
-        accept(
-            "<div>Price: {{k: v}}</div>",
-            expect![[r#"
-                -- tokens --
-                OpeningTag(
-                  tag_name: "div",
-                  attributes: {},
-                  expression: None,
-                  self_closing: false,
-                )
-                <div>Price: {{k: v}}</div>
-                ^^^^^
-
-                Text [7 byte, "Price: "]
-                <div>Price: {{k: v}}</div>
-                     ^^^^^^^
-
-                TextExpression("{k: v}")
-                <div>Price: {{k: v}}</div>
-                            ^^^^^^^^
-
-                ClosingTag(
-                  tag_name: "div",
-                )
-                <div>Price: {{k: v}}</div>
-                                    ^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_text_with_only_expression() {
-        accept(
-            "<h2>{title}</h2>",
-            expect![[r#"
-                -- tokens --
-                OpeningTag(
-                  tag_name: "h2",
-                  attributes: {},
-                  expression: None,
-                  self_closing: false,
-                )
-                <h2>{title}</h2>
-                ^^^^
-
-                TextExpression("title")
-                <h2>{title}</h2>
-                    ^^^^^^^
-
-                ClosingTag(
-                  tag_name: "h2",
-                )
-                <h2>{title}</h2>
-                           ^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_duplicate_attribute() {
-        reject(
-            r#"<div class="foo" class="bar"></div>"#,
-            expect![[r#"
-                -- errors --
-                Duplicate attribute 'class'
-                <div class="foo" class="bar"></div>
-                                 ^^^^^
-                -- tokens --
-                OpeningTag(
-                  tag_name: "div",
-                  attributes: {
-                    class: String("foo"),
-                  },
-                  expression: None,
-                  self_closing: false,
-                )
-                <div class="foo" class="bar"></div>
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-                ClosingTag(
-                  tag_name: "div",
-                )
-                <div class="foo" class="bar"></div>
-                                             ^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_single_quoted_attribute_value() {
-        reject(
-            r#"<input type='number'/>"#,
-            expect![[r#"
-                -- errors --
-                Single-quoted attribute values are not supported: use double quotes
-                <input type='number'/>
-                            ^^^^^^^^
-                -- tokens --
-                OpeningTag(
-                  tag_name: "input",
-                  attributes: {},
-                  expression: None,
-                  self_closing: true,
-                )
-                <input type='number'/>
-                ^^^^^^^^^^^^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_duplicate_attribute_without_value() {
-        reject(
-            r#"<input required required />"#,
-            expect![[r#"
-                -- errors --
-                Duplicate attribute 'required'
-                <input required required />
-                                ^^^^^^^^
-                -- tokens --
-                OpeningTag(
-                  tag_name: "input",
-                  attributes: {
-                    required: None,
-                  },
-                  expression: None,
-                  self_closing: true,
-                )
-                <input required required />
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_attributes_with_colons_and_dots() {
-        accept(
-            r#"<button x-on:click={handler} x-bind:aria-selected={selected} x-on:click.prevent={other}>"#,
-            expect![[r#"
-                -- tokens --
-                OpeningTag(
-                  tag_name: "button",
-                  attributes: {
-                    x-on:click: Expression("handler"),
-                    x-bind:aria-selected: Expression("selected"),
-                    x-on:click.prevent: Expression("other"),
-                  },
-                  expression: None,
-                  self_closing: false,
-                )
-                <button x-on:click={handler} x-bind:aria-selected={selected} x-on:click.prevent={other}>
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_unterminated_comments() {
-        reject(
-            r#"<!--"#,
-            expect![[r#"
-                -- errors --
-                Unterminated comment
-                <!--
-                ^^^^
-            "#]],
-        );
-        reject(
-            r#"<!-- foo bar"#,
-            expect![[r#"
-                -- errors --
-                Unterminated comment
-                <!-- foo bar
-                ^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_unterminated_opening_tags() {
-        reject(
-            r#"<div <div>"#,
-            expect![[r#"
-                -- errors --
-                Unterminated opening tag
-                <div <div>
-                 ^^^
-                -- tokens --
-                OpeningTag(
-                  tag_name: "div",
-                  attributes: {},
-                  expression: None,
-                  self_closing: false,
-                )
-                <div <div>
-                     ^^^^^
-            "#]],
-        );
-        reject(
-            r#"<div class="foo" <div>"#,
-            expect![[r#"
-                -- errors --
-                Unterminated opening tag
-                <div class="foo" <div>
-                 ^^^
-                -- tokens --
-                OpeningTag(
-                  tag_name: "div",
-                  attributes: {},
-                  expression: None,
-                  self_closing: false,
-                )
-                <div class="foo" <div>
-                                 ^^^^^
-            "#]],
-        );
-        reject(
-            r#"<div"#,
-            expect![[r#"
-                -- errors --
-                Unterminated opening tag
-                <div
-                 ^^^
-            "#]],
-        );
-        reject(
-            r#"<div foo"#,
-            expect![[r#"
-                -- errors --
-                Unterminated opening tag
-                <div foo
-                 ^^^
-            "#]],
-        );
-        reject(
-            r#"<div foo="#,
-            expect![[r#"
-                -- errors --
-                Unterminated opening tag
-                <div foo=
-                 ^^^
-
-                Expected quoted attribute value or expression
-                <div foo=
-                     ^^^^
-            "#]],
-        );
-        reject(
-            r#"<div foo="""#,
-            expect![[r#"
-                -- errors --
-                Unterminated opening tag
-                <div foo=""
-                 ^^^
-            "#]],
-        );
-        reject(
-            r#"<div foo=""#,
-            expect![[r#"
-                -- errors --
-                Unterminated opening tag
-                <div foo="
-                 ^^^
-
-                Unmatched "
-                <div foo="
-                         ^
-            "#]],
-        );
-        reject(
-            r#"<div foo="bar"#,
-            expect![[r#"
-                -- errors --
-                Unterminated opening tag
-                <div foo="bar
-                 ^^^
-
-                Unmatched "
-                <div foo="bar
-                         ^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_unterminated_closing_tags() {
-        reject(
-            r#"</div </div>"#,
-            expect![[r#"
-                -- errors --
-                Unterminated closing tag
-                </div </div>
-                  ^^^
-                -- tokens --
-                ClosingTag(
-                  tag_name: "div",
-                )
-                </div </div>
-                      ^^^^^^
-            "#]],
-        );
-        reject(
-            r#"</div> </div"#,
-            expect![[r#"
-                -- errors --
-                Unterminated closing tag
-                </div> </div
-                         ^^^
-                -- tokens --
-                ClosingTag(
-                  tag_name: "div",
-                )
-                </div> </div
-                ^^^^^^
-
-                Text [1 byte, " "]
-                </div> </div
-                      ^
-            "#]],
-        );
-        reject(
-            r#"</di<div>"#,
-            expect![[r#"
-                -- errors --
-                Unterminated closing tag
-                </di<div>
-                  ^^
-                -- tokens --
-                OpeningTag(
-                  tag_name: "div",
-                  attributes: {},
-                  expression: None,
-                  self_closing: false,
-                )
-                </di<div>
-                    ^^^^^
-            "#]],
-        );
-        reject(
-            r#"</</div"#,
-            expect![[r#"
-                -- errors --
-                Unterminated closing tag
-                </</div
-                ^^
-
-                Unterminated closing tag
-                </</div
-                    ^^^
-            "#]],
-        );
-        reject(
-            r#"<div foo="#,
-            expect![[r#"
-                -- errors --
-                Unterminated opening tag
-                <div foo=
-                 ^^^
-
-                Expected quoted attribute value or expression
-                <div foo=
-                     ^^^^
-            "#]],
-        );
-        reject(
-            r#"<div foo="""#,
-            expect![[r#"
-                -- errors --
-                Unterminated opening tag
-                <div foo=""
-                 ^^^
-            "#]],
-        );
-        reject(
-            r#"<div foo=""#,
-            expect![[r#"
-                -- errors --
-                Unterminated opening tag
-                <div foo="
-                 ^^^
-
-                Unmatched "
-                <div foo="
-                         ^
-            "#]],
-        );
-        reject(
-            r#"<div foo="bar"#,
-            expect![[r#"
-                -- errors --
-                Unterminated opening tag
-                <div foo="bar
-                 ^^^
-
-                Unmatched "
-                <div foo="bar
-                         ^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_raw_text_with_tricky_content() {
-        accept(
-            r#"<script></scri</<<</div></div><</scrip</scrip></cript></script</script</script><div>works!<div>"#,
-            expect![[r#"
-                -- tokens --
-                RawTextTag(
-                  tag_name: "script",
-                  attributes: {},
-                  expression: None,
-                  content: Some("</scri</<<</div></div><</scrip</scrip></cript></script</script"),
-                )
-                <script></scri</<<</div></div><</scrip</scrip></cript></script</script</script><div>works!<div>
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-                OpeningTag(
-                  tag_name: "div",
-                  attributes: {},
-                  expression: None,
-                  self_closing: false,
-                )
-                <script></scri</<<</div></div><</scrip</scrip></cript></script</script</script><div>works!<div>
-                                                                                               ^^^^^
-
-                Text [6 byte, "works!"]
-                <script></scri</<<</div></div><</scrip</scrip></cript></script</script</script><div>works!<div>
-                                                                                                    ^^^^^^
-
-                OpeningTag(
-                  tag_name: "div",
-                  attributes: {},
-                  expression: None,
-                  self_closing: false,
-                )
-                <script></scri</<<</div></div><</scrip</scrip></cript></script</script</script><div>works!<div>
-                                                                                                          ^^^^^
-            "#]],
-        );
-    }
+    // `a=""` keeps a value, to tell it from a valueless `a`.
+    Some(TagToken::Attribute {
+        name,
+        value: Some(AttributeString {
+            content,
+            quoted_range: open_quote.to(close_quote),
+        }),
+    })
 }

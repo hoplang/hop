@@ -836,7 +836,7 @@ fn parse_function_declaration(
     let return_type = parse_type(iter, comments, errors, range)?;
     let body_start =
         expr::tokenizer::expect_token(iter, comments, errors, range, &expr::Token::LeftBrace)?;
-    let body = expr::parse_expr::parse_logical(iter, comments, errors, range)?;
+    let body = expr::parse_expr::parse_expr(iter, comments, errors, range)?;
     let body_end = expr::tokenizer::expect_opposite(
         iter,
         comments,
@@ -1434,6 +1434,126 @@ mod tests {
     }
 
     #[test]
+    fn rejects_unquoted_attribute_value() {
+        reject(
+            "component Main {<div class=foo></div>}",
+            expect![[r#"
+                error: Expected quoted attribute value or expression
+                1 | component Main {<div class=foo></div>}
+                  |                      ^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_single_quoted_attribute_value() {
+        reject(
+            "component Main {<input type='number'/>}",
+            expect![[r#"
+                error: Single-quoted attribute values are not supported: use double quotes
+                1 | component Main {<input type='number'/>}
+                  |                             ^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_markup_declaration() {
+        reject(
+            "component Main {<!foo>}",
+            expect![[r#"
+            error: Invalid markup declaration
+            1 | component Main {<!foo>}
+              |                 ^^
+        "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_unterminated_comment() {
+        reject(
+            "component Main {<!--",
+            expect![[r#"
+            error: Unmatched '{'
+            1 | component Main {<!--
+              |                ^
+
+            error: Unterminated comment
+            1 | component Main {<!--
+              |                 ^^^^
+        "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_unterminated_opening_tag() {
+        reject(
+            "component Main {<div <div>}",
+            expect![[r#"
+            error: Unterminated opening tag
+            1 | component Main {<div <div>}
+              |                  ^^^
+
+            error: Unclosed <div>
+            1 | component Main {<div <div>}
+              |                  ^^^
+        "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_unterminated_closing_tag() {
+        reject(
+            "component Main {<div></div }",
+            expect![[r#"
+            error: Unclosed <div>
+            1 | component Main {<div></div }
+              |                  ^^^
+
+            error: Unterminated closing tag
+            1 | component Main {<div></div }
+              |                        ^^^
+        "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_duplicate_attribute() {
+        reject(
+            r#"component Main {<div class="foo" class="bar"></div>}"#,
+            expect![[r#"
+                error: Duplicate attribute 'class'
+                1 | component Main {<div class="foo" class="bar"></div>}
+                  |                                  ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_spread_without_a_name() {
+        reject(
+            "component Main {<div ...>text</div>}",
+            expect![[r#"
+                error: Missing variable name for spread
+                1 | component Main {<div ...>text</div>}
+                  |                      ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_unterminated_tag_start() {
+        reject(
+            "component Main {< div>}",
+            expect![[r#"
+            error: Unterminated tag start
+            1 | component Main {< div>}
+              |                 ^
+        "#]],
+        );
+    }
+
+    #[test]
     fn rejects_doctype_tags_inside_components() {
         reject(
             indoc! {"
@@ -1504,10 +1624,10 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Expected token 'in' but got end of file
+                error: Expected token 'in' but got '}'
                 1 | component Main {
                 2 |     <for {foo}>
-                  |           ^^^
+                  |              ^
             "#]],
         );
     }
@@ -1528,10 +1648,10 @@ mod tests {
                 2 |     <if {~}>
                   |          ^
 
-                error: Unexpected end of expression
+                error: Unexpected token '}'
                 1 | component Main {
                 2 |     <if {~}>
-                  |          ^
+                  |           ^
             "#]],
         );
     }
@@ -1592,7 +1712,12 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Unexpected token ','
+                error: Unterminated opening tag
+                1 | component Main(style1: String, style2: String, style3: String) {
+                2 |     <div class={style1, style2, style3}>Content</div>
+                  |      ^^^
+
+                error: Expected token '}' but got ','
                 1 | component Main(style1: String, style2: String, style3: String) {
                 2 |     <div class={style1, style2, style3}>Content</div>
                   |                       ^
@@ -2177,9 +2302,9 @@ mod tests {
         reject(
             "component Main {<div>Empty: {}</div>}",
             expect![[r#"
-                error: Empty expression
+                error: Unexpected token '}'
                 1 | component Main {<div>Empty: {}</div>}
-                  |                             ^^
+                  |                              ^
             "#]],
         );
     }
@@ -2976,10 +3101,10 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Expected token '=' but got end of file
+                error: Expected token '=' but got '}'
                 1 | component Main {
                 2 |     <let {x: String}>
-                  |           ^^^^^^^^^
+                  |                    ^
             "#]],
         );
     }
@@ -3110,7 +3235,12 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Unexpected token 'second'
+                error: Unterminated opening tag
+                1 | component Main {
+                2 |     <let {first: String = "a" second: String = "b"}>
+                  |      ^^^
+
+                error: Expected token '}' but got 'second'
                 1 | component Main {
                 2 |     <let {first: String = "a" second: String = "b"}>
                   |                               ^^^^^^
@@ -3330,6 +3460,11 @@ mod tests {
                 }
             "#},
             expect![[r#"
+                error: Unterminated opening tag
+                1 | view Test {
+                2 |   <let {default: String = "x"}>
+                  |    ^^^
+
                 error: Invalid variable name 'default': Variable name is a reserved word
                 1 | view Test {
                 2 |   <let {default: String = "x"}>

@@ -21,6 +21,11 @@ pub fn is_void_element(tag_name: &str) -> bool {
     )
 }
 
+/// Return true if the element's content is text rather than markup.
+pub fn has_raw_content(tag_name: &str) -> bool {
+    matches!(tag_name, "script" | "style")
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HtmlElement {
     Html,

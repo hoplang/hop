@@ -55,9 +55,6 @@ pub(crate) enum ParseErrorKind {
         attr_name: CheapString,
     },
 
-    #[error("Empty expression")]
-    EmptyExpression,
-
     #[error("Missing expression in <match> tag")]
     MissingMatchExpression,
 
@@ -96,6 +93,9 @@ pub(crate) enum ParseErrorKind {
 
     #[error("Unterminated opening tag")]
     UnterminatedOpeningTag,
+
+    #[error("Missing variable name for spread")]
+    MissingVariableNameForSpread,
 
     #[error("Unterminated closing tag")]
     UnterminatedClosingTag,

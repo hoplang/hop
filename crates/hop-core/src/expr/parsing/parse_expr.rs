@@ -11,24 +11,13 @@ use super::parsed_expr::{
 };
 use super::token::Token;
 use super::tokenizer::{
-    advance_if, expect_eof, expect_field_name, expect_opposite, expect_token, expect_type_name,
+    advance_if, expect_field_name, expect_opposite, expect_token, expect_type_name,
     expect_variable_name, next_collecting_comments as next, next_if, parse_delimited_list,
     peek_past_comments as peek,
 };
 use crate::parse_error::{ParseError, ParseErrorKind};
 
 pub fn parse_expr(
-    iter: &mut Peekable<DocumentCursor>,
-    comments: &mut VecDeque<DocumentRange>,
-    errors: &mut Vec<ParseError>,
-    range: &DocumentRange,
-) -> Option<ParsedExpr> {
-    let result = parse_logical(iter, comments, errors, range)?;
-    expect_eof(iter, comments, errors)?;
-    Some(result)
-}
-
-pub fn parse_logical(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut Vec<ParseError>,
@@ -231,7 +220,7 @@ fn parse_array_literal(
         range,
         &Token::LeftBracket,
         &left_bracket,
-        parse_logical,
+        parse_expr,
     )?;
     Some(ParsedExpr::ArrayLiteral {
         elements,
@@ -275,7 +264,7 @@ pub fn parse_primary(
                     range,
                     &Token::LeftParen,
                     &left_paren,
-                    parse_logical,
+                    parse_expr,
                 )?;
                 ParsedExpr::FunctionCall {
                     name: var_name,
@@ -332,7 +321,7 @@ pub fn parse_primary(
             parse_array_literal(iter, comments, errors, range, left_bracket)?
         }
         Some((Token::LeftParen, left_paren)) => {
-            let inner = parse_logical(iter, comments, errors, range)?;
+            let inner = parse_expr(iter, comments, errors, range)?;
             expect_opposite(iter, comments, errors, &Token::LeftParen, &left_paren)?;
             inner
         }
@@ -341,7 +330,7 @@ pub fn parse_primary(
         }
         Some((Token::Some, some_range)) => {
             let left_paren = expect_token(iter, comments, errors, range, &Token::LeftParen)?;
-            let value = parse_logical(iter, comments, errors, range)?;
+            let value = parse_expr(iter, comments, errors, range)?;
             let right_paren =
                 expect_opposite(iter, comments, errors, &Token::LeftParen, &left_paren)?;
             ParsedExpr::OptionLiteral {
@@ -453,7 +442,7 @@ fn parse_macro_invocation(
         range,
         &Token::LeftParen,
         &left_paren,
-        parse_logical,
+        parse_expr,
     )?;
     Some(ParsedExpr::MacroInvocation {
         name: macro_name,
@@ -485,7 +474,7 @@ fn parse_record_literal(
         &left_delim,
         |iter, comments, errors, range| {
             if let Some(spread_range) = advance_if(iter, comments, errors, Token::DotDotDot) {
-                let subject = parse_logical(iter, comments, errors, range)?;
+                let subject = parse_expr(iter, comments, errors, range)?;
                 let spread_range = spread_range.to(subject.range().clone());
                 return Some(Entry::Spread(subject, spread_range));
             }
@@ -493,7 +482,7 @@ fn parse_record_literal(
             expect_token(iter, comments, errors, range, &Token::Colon)?;
             Some(Entry::Field(
                 field_name,
-                parse_logical(iter, comments, errors, range)?,
+                parse_expr(iter, comments, errors, range)?,
             ))
         },
     )?;
@@ -558,7 +547,7 @@ fn parse_enum_literal(
                 Some((
                     field_name,
                     field_name_range,
-                    parse_logical(iter, comments, errors, range)?,
+                    parse_expr(iter, comments, errors, range)?,
                 ))
             },
         )?
@@ -582,7 +571,7 @@ fn parse_match(
     range: &DocumentRange,
     match_range: DocumentRange,
 ) -> Option<ParsedExpr> {
-    let subject = parse_logical(iter, comments, errors, range)?;
+    let subject = parse_expr(iter, comments, errors, range)?;
     let left_brace = expect_token(iter, comments, errors, range, &Token::LeftBrace)?;
     let (arms, right_brace) = parse_delimited_list(
         iter,
@@ -594,7 +583,7 @@ fn parse_match(
         |iter, comments, errors, range| {
             let pattern = parse_match_pattern(iter, comments, errors, range)?;
             expect_token(iter, comments, errors, range, &Token::FatArrow)?;
-            let body = parse_logical(iter, comments, errors, range)?;
+            let body = parse_expr(iter, comments, errors, range)?;
             Some(ParsedMatchArm { pattern, body })
         },
     )?;
@@ -1146,18 +1135,6 @@ mod tests {
     ///////////////////////////////////////////////////////////////////////////
 
     #[test]
-    fn rejects_expr_when_trailing_tokens_are_present() {
-        reject(
-            "x y",
-            expect![[r#"
-                error: Unexpected token 'y'
-                x y
-                  ^
-            "#]],
-        );
-    }
-
-    #[test]
     fn rejects_expr_when_array_bracket_is_unmatched() {
         reject(
             "[foo, bar == [foo, bar]",
@@ -1249,18 +1226,6 @@ mod tests {
                 error: Unmatched '('
                 (x == y
                 ^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_expr_when_closing_paren_has_no_opening() {
-        reject(
-            "x == y)",
-            expect![[r#"
-                error: Unexpected token ')'
-                x == y)
-                      ^
             "#]],
         );
     }

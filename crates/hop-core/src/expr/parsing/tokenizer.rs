@@ -535,23 +535,6 @@ pub fn expect_type_name(
     }
 }
 
-pub fn expect_eof(
-    iter: &mut Peekable<DocumentCursor>,
-    comments: &mut VecDeque<DocumentRange>,
-    errors: &mut Vec<ParseError>,
-) -> Option<()> {
-    match next_collecting_comments(iter, comments, errors) {
-        None => Some(()),
-        Some((token, token_range)) => {
-            errors.push(ParseError::new(
-                ParseErrorKind::UnexpectedToken { token },
-                token_range,
-            ));
-            None
-        }
-    }
-}
-
 pub fn parse_comma_separated<T, F>(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
