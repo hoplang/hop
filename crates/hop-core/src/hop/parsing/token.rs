@@ -69,6 +69,9 @@ pub enum TokenizedAttributeValue {
     Expression(DocumentRange),
 }
 
+/// The parser reads a token's range out of the variant it matches, so this is
+/// only here to annotate a token stream in the tokenizer's own tests.
+#[cfg(test)]
 impl Token {
     pub fn range(&self) -> &DocumentRange {
         match self {

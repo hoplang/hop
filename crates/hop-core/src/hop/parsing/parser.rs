@@ -1,19 +1,15 @@
+use super::parse_nodes::parse_nodes;
 use super::parsed_ast::{
     self, ParsedAst, ParsedComponentDeclaration, ParsedDeclaration, ParsedEnumDeclaration,
     ParsedEnumDeclarationVariant, ParsedFunctionDeclaration, ParsedImportDeclaration,
     ParsedPageDeclaration, ParsedRecordDeclaration, ParsedRecordDeclarationField,
 };
-use super::parsed_node::{ParsedLetBinding, ParsedLoopSource, ParsedMatchCase, ParsedNode};
-use super::token_tree::{TokenTree, parse_tree};
-use super::whitespace;
 use crate::document::{Document, DocumentCursor, DocumentRange};
 use crate::document_id::DocumentId;
 use crate::expr::parsing::ParsedType;
 use crate::expr::parsing::parse_type::parse_type;
 use crate::expr::{self, ExamplesAnnotation};
 use crate::hop::parsing::parsed_ast::ParsedParameter;
-use crate::hop::parsing::token::{Token, TokenizedAttribute, TokenizedAttributeValue};
-use crate::html::HtmlElement;
 use crate::parse_error::{ParseError, ParseErrorKind};
 use crate::symbols::field_name::FieldName;
 use crate::symbols::module_name::ModuleName;
@@ -541,13 +537,7 @@ fn parse_component_declaration(
     )?;
 
     // Parse the body - this contains HTML/component nodes
-    let mut children = Vec::new();
-    while let Some(tree) = parse_tree(iter, errors) {
-        if let Some(node) = construct_node(tree, comments, errors) {
-            children.push(node);
-        }
-    }
-    whitespace::normalize(&mut children);
+    let children = parse_nodes(iter, comments, errors);
 
     let body_end = expr::tokenizer::expect_opposite(
         iter,
@@ -673,21 +663,6 @@ fn parse_page_or_view_header(
     Some((name, name_range, params, body_start))
 }
 
-fn parse_node_sequence(
-    iter: &mut Peekable<DocumentCursor>,
-    comments: &mut VecDeque<DocumentRange>,
-    errors: &mut Vec<ParseError>,
-) -> Vec<ParsedNode> {
-    let mut nodes = Vec::new();
-    while let Some(tree) = parse_tree(iter, errors) {
-        if let Some(node) = construct_node(tree, comments, errors) {
-            nodes.push(node);
-        }
-    }
-    whitespace::normalize(&mut nodes);
-    nodes
-}
-
 fn parse_view_declaration(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
@@ -703,7 +678,7 @@ fn parse_view_declaration(
     let (name, name_range, params, body_start) =
         parse_page_or_view_header(iter, comments, errors, &keyword_range)?;
 
-    let body = parse_node_sequence(iter, comments, errors);
+    let body = parse_nodes(iter, comments, errors);
 
     let body_end = expr::tokenizer::expect_opposite(
         iter,
@@ -755,7 +730,7 @@ fn parse_page_declaration(
             &name_range,
             &expr::Token::LeftBrace,
         )?;
-        let head = parse_node_sequence(iter, comments, errors);
+        let head = parse_nodes(iter, comments, errors);
         expr::tokenizer::expect_opposite(
             iter,
             comments,
@@ -792,7 +767,7 @@ fn parse_page_declaration(
         &body_keyword_range,
         &expr::Token::LeftBrace,
     )?;
-    let body = parse_node_sequence(iter, comments, errors);
+    let body = parse_nodes(iter, comments, errors);
     expr::tokenizer::expect_opposite(iter, comments, errors, &expr::Token::LeftBrace, &body_start)?;
 
     let outer_body_end = expr::tokenizer::expect_opposite(
@@ -878,382 +853,6 @@ fn parse_function_declaration(
         body,
         range: full_range,
     })
-}
-
-fn construct_node(
-    tree: TokenTree,
-    comments: &mut VecDeque<DocumentRange>,
-    errors: &mut Vec<ParseError>,
-) -> Option<ParsedNode> {
-    match tree.token {
-        Token::Comment { range } => Some(ParsedNode::Comment { range }),
-        Token::ClosingTag { .. } => {
-            // ClosingTags are not present in the token tree
-            unreachable!()
-        }
-        Token::Text { range } => Some(ParsedNode::Text { range }),
-        Token::Newline { range } => Some(ParsedNode::Newline { range }),
-        Token::TextExpression { content, range } => {
-            let mut iter = content.cursor().peekable();
-            expr::parse_expr::parse_expr(&mut iter, comments, errors, &content)
-                .map(|expression| ParsedNode::TextExpression { expression, range })
-        }
-        Token::RawTextTag {
-            tag_name,
-            attributes,
-            content,
-            range,
-            ..
-        } => {
-            let attributes = parse_attributes(&attributes, comments, errors);
-
-            // Convert content to a Text child if present
-            let children = content
-                .map(|c| vec![ParsedNode::Text { range: c }])
-                .unwrap_or_default();
-
-            let Some(element) = HtmlElement::parse(tag_name.as_str()) else {
-                errors.push(ParseError::new(
-                    ParseErrorKind::UnknownHtmlElement {
-                        tag: tag_name.to_cheap_string(),
-                    },
-                    tag_name,
-                ));
-                return None;
-            };
-
-            Some(ParsedNode::Html {
-                element,
-                tag_name,
-                closing_tag_name: None,
-                attributes,
-                range,
-                children,
-            })
-        }
-        Token::OpeningTag {
-            tag_name,
-            expression,
-            attributes,
-            range: opening_tag_range,
-            ..
-        } => {
-            // Handle <match> specially - process children as <case> tags
-            if tag_name.as_str() == "match" {
-                errors.extend(disallow_attributes(&attributes, &tag_name));
-                let subject = if let Some(e) = expression {
-                    let mut iter = e.cursor().peekable();
-                    expr::parse_expr::parse_expr(&mut iter, comments, errors, &e)
-                } else {
-                    errors.push(ParseError::new(
-                        ParseErrorKind::MissingMatchExpression {},
-                        opening_tag_range,
-                    ));
-                    None
-                };
-                let Some(subject) = subject else {
-                    // Parse children to collect errors
-                    for child in tree.children {
-                        construct_node(child, comments, errors);
-                    }
-                    return None;
-                };
-
-                // Process children as <case> tags
-                let mut cases = Vec::new();
-                for child_tree in tree.children {
-                    match &child_tree.token {
-                        // Ignore whitespace text and newlines
-                        Token::Text { range, .. } if range.as_str().trim().is_empty() => {
-                            continue;
-                        }
-                        Token::Newline { .. } => {
-                            continue;
-                        }
-                        // Process <case> tags
-                        Token::OpeningTag {
-                            tag_name: case_tag_name,
-                            expression: case_expression,
-                            range: case_opening_range,
-                            ..
-                        } if case_tag_name.as_str() == "case" => {
-                            let Some(pattern_range) = case_expression.clone() else {
-                                errors.push(ParseError::new(
-                                    ParseErrorKind::MissingCasePattern {},
-                                    case_opening_range.clone(),
-                                ));
-                                continue;
-                            };
-                            let pattern = {
-                                let mut iter = pattern_range.cursor().peekable();
-                                expr::parse_expr::parse_match_pattern(
-                                    &mut iter,
-                                    comments,
-                                    errors,
-                                    &pattern_range,
-                                )
-                            };
-                            let Some(pattern) = pattern else {
-                                continue;
-                            };
-                            // Parse case children normally
-                            let case_children: Vec<_> = child_tree
-                                .children
-                                .into_iter()
-                                .filter_map(|c| construct_node(c, comments, errors))
-                                .collect();
-                            cases.push(ParsedMatchCase {
-                                pattern,
-                                children: case_children,
-                            });
-                        }
-                        // Error on other nodes
-                        _ => {
-                            errors.push(ParseError::new(
-                                ParseErrorKind::InvalidMatchChild {},
-                                child_tree.range.clone(),
-                            ));
-                        }
-                    }
-                }
-
-                return Some(ParsedNode::Match {
-                    subject,
-                    cases,
-                    range: tree.range,
-                });
-            }
-
-            let children: Vec<_> = tree
-                .children
-                .into_iter()
-                .filter_map(|child| construct_node(child, comments, errors))
-                .collect();
-
-            match tag_name.as_str() {
-                // <if {...}>
-                "if" => {
-                    errors.extend(disallow_attributes(&attributes, &tag_name));
-                    let condition = if let Some(e) = expression {
-                        let mut iter = e.cursor().peekable();
-                        expr::parse_expr::parse_expr(&mut iter, comments, errors, &e)
-                    } else {
-                        errors.push(ParseError::new(
-                            ParseErrorKind::MissingIfExpression {},
-                            opening_tag_range,
-                        ));
-                        None
-                    }?;
-                    Some(ParsedNode::If {
-                        condition,
-                        range: tree.range.clone(),
-                        children,
-                    })
-                }
-
-                // <for {...}>
-                "for" => {
-                    errors.extend(disallow_attributes(&attributes, &tag_name));
-                    let parse_result = if let Some(e) = expression {
-                        let mut iter = e.cursor().peekable();
-                        parse_loop_header(&mut iter, comments, errors, &e)
-                    } else {
-                        errors.push(ParseError::new(
-                            ParseErrorKind::MissingForExpression {},
-                            opening_tag_range,
-                        ));
-                        None
-                    };
-                    let loop_header = parse_result?;
-                    Some(ParsedNode::For {
-                        var_name: loop_header.var_name,
-                        var_name_range: loop_header.var_name_range,
-                        source: loop_header.loop_source,
-                        range: tree.range.clone(),
-                        children,
-                    })
-                }
-
-                // <let {...}>
-                "let" => {
-                    errors.extend(disallow_attributes(&attributes, &tag_name));
-                    let Some(bindings_range) = expression else {
-                        errors.push(ParseError::new(
-                            ParseErrorKind::MissingLetBinding {},
-                            opening_tag_range,
-                        ));
-                        return None;
-                    };
-                    let parse_result = {
-                        let mut iter = bindings_range.cursor().peekable();
-                        parse_let_bindings(&mut iter, comments, errors, &bindings_range)
-                    };
-                    let parsed_bindings = parse_result?;
-                    let bindings = parsed_bindings
-                        .into_iter()
-                        .map(
-                            |(var_name, var_name_range, var_type, value_expr)| ParsedLetBinding {
-                                var_name,
-                                var_name_range,
-                                var_type,
-                                value_expr,
-                            },
-                        )
-                        .collect();
-                    Some(ParsedNode::Let {
-                        bindings,
-                        bindings_range,
-                        range: tree.range.clone(),
-                        children,
-                    })
-                }
-
-                // <ComponentInvocation> - PascalCase indicates a component
-                name if name.chars().next().is_some_and(|c| c.is_ascii_uppercase()) => {
-                    let component_name = match TypeName::new(name) {
-                        Ok(name) => name,
-                        Err(error) => {
-                            errors.push(ParseError::new(
-                                ParseErrorKind::InvalidTypeName { error },
-                                tag_name.clone(),
-                            ));
-                            return None;
-                        }
-                    };
-
-                    // Error if bare expression {..} is present on component invocation
-                    if let Some(expr_range) = &expression {
-                        errors.push(ParseError::new(
-                            ParseErrorKind::UnexpectedComponentExpression {
-                                tag_name: tag_name.to_cheap_string(),
-                            },
-                            expr_range.clone(),
-                        ));
-                    }
-
-                    let parsed_args = parse_attributes(&attributes, comments, errors);
-
-                    let children = if tree.closing_tag_name.is_some() {
-                        Some(children)
-                    } else {
-                        None
-                    };
-
-                    Some(ParsedNode::ComponentInvocation {
-                        component_name,
-                        component_name_opening_range: tag_name,
-                        component_name_closing_range: tree.closing_tag_name,
-                        args: parsed_args,
-                        range: tree.range,
-                        children,
-                    })
-                }
-
-                _ => {
-                    // Default case: treat as HTML
-                    let attributes = parse_attributes(&attributes, comments, errors);
-
-                    let element = match HtmlElement::parse(tag_name.as_str()) {
-                        Some(element) => element,
-                        None if tag_name.as_str() == "case" => {
-                            HtmlElement::Custom(tag_name.to_cheap_string())
-                        }
-                        None => {
-                            errors.push(ParseError::new(
-                                ParseErrorKind::UnknownHtmlElement {
-                                    tag: tag_name.to_cheap_string(),
-                                },
-                                tag_name.clone(),
-                            ));
-                            return None;
-                        }
-                    };
-
-                    Some(ParsedNode::Html {
-                        element,
-                        tag_name,
-                        closing_tag_name: tree.closing_tag_name,
-                        attributes,
-                        range: tree.range,
-                        children,
-                    })
-                }
-            }
-        }
-    }
-}
-
-struct ParsedLoopHeader {
-    var_name: Option<VarName>,
-    var_name_range: Option<DocumentRange>,
-    loop_source: Box<ParsedLoopSource>,
-}
-
-fn parse_loop_header(
-    iter: &mut Peekable<DocumentCursor>,
-    comments: &mut VecDeque<DocumentRange>,
-    errors: &mut Vec<ParseError>,
-    range: &DocumentRange,
-) -> Option<ParsedLoopHeader> {
-    let (var_name, var_name_range) = if let Some(underscore_range) =
-        expr::tokenizer::advance_if(iter, comments, errors, expr::Token::Underscore)
-    {
-        (None, Some(underscore_range))
-    } else {
-        let (name, name_range) =
-            expr::tokenizer::expect_variable_name(iter, comments, errors, range)?;
-        (Some(name), Some(name_range))
-    };
-    expr::tokenizer::expect_token(iter, comments, errors, range, &expr::Token::In)?;
-    let start_expr = expr::parse_expr::parse_logical(iter, comments, errors, range)?;
-    let source =
-        if expr::tokenizer::advance_if(iter, comments, errors, expr::Token::DotDotEq).is_some() {
-            let end_expr = expr::parse_expr::parse_logical(iter, comments, errors, range)?;
-            ParsedLoopSource::RangeInclusive {
-                start: start_expr,
-                end: end_expr,
-            }
-        } else {
-            ParsedLoopSource::Array(start_expr)
-        };
-    expr::tokenizer::expect_eof(iter, comments, errors)?;
-    Some(ParsedLoopHeader {
-        var_name,
-        var_name_range,
-        loop_source: Box::new(source),
-    })
-}
-
-fn parse_let_bindings(
-    iter: &mut Peekable<DocumentCursor>,
-    comments: &mut VecDeque<DocumentRange>,
-    errors: &mut Vec<ParseError>,
-    range: &DocumentRange,
-) -> Option<Vec<(VarName, DocumentRange, Option<ParsedType>, expr::ParsedExpr)>> {
-    let bindings = expr::tokenizer::parse_comma_separated(
-        iter,
-        comments,
-        errors,
-        range,
-        |iter, comments, errors, range| {
-            let (var_name, var_name_range) =
-                expr::tokenizer::expect_variable_name(iter, comments, errors, range)?;
-            let var_type = if let Some((expr::Token::Colon, _)) =
-                expr::tokenizer::peek_past_comments(iter)
-            {
-                expr::tokenizer::expect_token(iter, comments, errors, range, &expr::Token::Colon)?;
-                Some(parse_type(iter, comments, errors, range)?)
-            } else {
-                None
-            };
-            expr::tokenizer::expect_token(iter, comments, errors, range, &expr::Token::Assign)?;
-            let value_expr = expr::parse_expr::parse_logical(iter, comments, errors, range)?;
-            Some((var_name, var_name_range, var_type, value_expr))
-        },
-        None,
-    )?;
-    expr::tokenizer::expect_eof(iter, comments, errors)?;
-    Some(bindings)
 }
 
 /// Parse a `#[examples(...)]` annotation using the expr tokenizer.
@@ -1348,79 +947,6 @@ fn parse_pattern_annotation(
     } else {
         None
     }
-}
-
-fn parse_attribute(
-    item: &TokenizedAttribute,
-    comments: &mut VecDeque<DocumentRange>,
-    errors: &mut Vec<ParseError>,
-) -> Option<parsed_ast::ParsedAttribute> {
-    match item {
-        TokenizedAttribute::Named { name, value, .. } => {
-            let value = match value {
-                Some(TokenizedAttributeValue::String {
-                    content,
-                    quoted_range,
-                }) => Some(parsed_ast::ParsedAttributeValue::String {
-                    content: content.clone(),
-                    quoted_range: quoted_range.clone(),
-                }),
-                Some(TokenizedAttributeValue::Expression(range)) => {
-                    let mut iter = range.cursor().peekable();
-                    let result = expr::parse_expr::parse_expr(&mut iter, comments, errors, range);
-                    Some(result.map(parsed_ast::ParsedAttributeValue::Expression)?)
-                }
-                None => None,
-            };
-            Some(parsed_ast::ParsedAttribute::Named {
-                name: name.clone(),
-                value,
-            })
-        }
-        TokenizedAttribute::Spread { name, range } => match VarName::new(name.as_str()) {
-            Ok(var_name) => Some(parsed_ast::ParsedAttribute::Spread {
-                name: var_name,
-                range: range.clone(),
-            }),
-            Err(error) => {
-                errors.push(ParseError::new(
-                    ParseErrorKind::InvalidVariableName {
-                        name: name.to_cheap_string(),
-                        error,
-                    },
-                    name.clone(),
-                ));
-                None
-            }
-        },
-    }
-}
-
-fn parse_attributes(
-    attributes: &[TokenizedAttribute],
-    comments: &mut VecDeque<DocumentRange>,
-    errors: &mut Vec<ParseError>,
-) -> Vec<parsed_ast::ParsedAttribute> {
-    attributes
-        .iter()
-        .filter_map(|item| parse_attribute(item, comments, errors))
-        .collect()
-}
-
-fn disallow_attributes<'a>(
-    attributes: &'a [TokenizedAttribute],
-    tag_name: &'a DocumentRange,
-) -> impl Iterator<Item = ParseError> + 'a {
-    attributes.iter().map(move |item| {
-        let (name, range) = (item.name().to_cheap_string(), item.range().clone());
-        ParseError::new(
-            ParseErrorKind::UnrecognizedAttribute {
-                tag_name: tag_name.to_cheap_string(),
-                attr_name: name,
-            },
-            range,
-        )
-    })
 }
 
 #[cfg(test)]
@@ -1773,6 +1299,79 @@ mod tests {
                 2 |     <div>
                 3 |     <p>
                   |      ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_when_a_closing_tag_closes_an_outer_tag() {
+        reject(
+            indoc! {"
+                component Main {
+                    <div><span></div>
+                }
+            "},
+            expect![[r#"
+                error: Unclosed <span>
+                1 | component Main {
+                2 |     <div><span></div>
+                  |           ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_when_a_closing_tag_closes_past_several_open_tags() {
+        reject(
+            indoc! {"
+                component Main {
+                    <div><span><b></div>
+                }
+            "},
+            expect![[r#"
+                error: Unclosed <span>
+                1 | component Main {
+                2 |     <div><span><b></div>
+                  |           ^^^^
+
+                error: Unclosed <b>
+                1 | component Main {
+                2 |     <div><span><b></div>
+                  |                 ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_closing_tag_for_a_tag_that_was_never_opened() {
+        reject(
+            indoc! {"
+                component Main {
+                    <div></p></div>
+                }
+            "},
+            expect![[r#"
+                error: Unmatched </p>
+                1 | component Main {
+                2 |     <div></p></div>
+                  |          ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_closing_tag_once_the_tag_it_names_is_already_closed() {
+        reject(
+            indoc! {"
+                component Main {
+                    <div></div></div>
+                }
+            "},
+            expect![[r#"
+                error: Unmatched </div>
+                1 | component Main {
+                2 |     <div></div></div>
+                  |                ^^^^^^
             "#]],
         );
     }
@@ -2947,6 +2546,43 @@ mod tests {
     }
 
     #[test]
+    fn accepts_self_closing_match_with_no_cases() {
+        accept(
+            "component Main(x: Option[String]) {<match {x}/>}\n",
+            expect![[r#"
+                component Main(x: Option[String]) {
+                  <match {x}></match>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_self_closing_case_with_no_children() {
+        accept(
+            indoc! {r#"
+                component Main(x: Option[String]) {
+                    <match {x}>
+                        <case {Some(y)}>found {y}</case>
+                        <case {None}/>
+                    </match>
+                }
+            "#},
+            expect![[r#"
+                component Main(x: Option[String]) {
+                  <match {x}>
+                    <case {Some(y)}>
+                      found {y}
+                    </case>
+                    <case {None}>
+                    </case>
+                  </match>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
     fn accepts_match_with_option_cases() {
         accept(
             indoc! {r#"
@@ -3175,19 +2811,18 @@ mod tests {
     }
 
     #[test]
-    fn accepts_case_outside_match_as_html() {
-        accept(
+    fn rejects_case_outside_match() {
+        reject(
             indoc! {r#"
                 component Main {
                     <case {true}>standalone case</case>
                 }
             "#},
             expect![[r#"
-                component Main {
-                  <case>
-                    standalone case
-                  </case>
-                }
+                error: <case> is only allowed inside <match>
+                1 | component Main {
+                2 |     <case {true}>standalone case</case>
+                  |      ^^^^
             "#]],
         );
     }
