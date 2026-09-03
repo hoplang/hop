@@ -2119,6 +2119,90 @@ mod tests {
     }
 
     #[test]
+    fn keeps_two_text_expressions_on_the_same_line() {
+        check(
+            indoc! {r#"
+                component Main {
+                  <let {hello = "Hello", world = "World"}>
+                    {hello} {world}
+                  </let>
+                }
+            "#},
+            expect![[r#"
+                component Main {
+                  <let {hello = "Hello", world = "World"}>
+                    {hello} {world}
+                  </let>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn adds_a_space_between_a_text_expression_and_a_tag_on_the_same_line() {
+        check(
+            indoc! {r#"
+                component Main {
+                  <let {hello = "Hello", world = "World"}>
+                    {hello} <b>{world}</b>
+                  </let>
+                }
+            "#},
+            expect![[r#"
+                component Main {
+                  <let {hello = "Hello", world = "World"}>
+                    {hello}{" "}
+                    <b>
+                      {world}
+                    </b>
+                  </let>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn adds_a_space_between_two_tags_on_same_line() {
+        check(
+            indoc! {r#"
+                component Main {
+                    <i>i</i> <b>b</b>
+                }
+            "#},
+            expect![[r#"
+                component Main {
+                  <i>
+                    i
+                  </i>
+                  {" "}
+                  <b>
+                    b
+                  </b>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn adds_a_space_expression_between_text_and_tag_on_single_line() {
+        check(
+            indoc! {"
+                component Main {
+                  hello <b>world</b>
+                }
+            "},
+            expect![[r#"
+                component Main {
+                  hello{" "}
+                  <b>
+                    world
+                  </b>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
     fn whitespace_removal_empty_lines() {
         check(
             indoc! {"

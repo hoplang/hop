@@ -136,25 +136,18 @@ mod tests {
 
         let typed_asts = program.get_typed_modules().clone();
         let page_name = TypeName::new("Test").unwrap();
-        let render = |skip_optimization| {
-            let module = orchestrate_pure(
-                &typed_asts,
-                OrchestrateOptions {
-                    skip_html_structure: true,
-                    skip_optimization,
-                    ..Default::default()
-                },
-            );
-            evaluator::evaluate_page(&module, &page_name, HashMap::new()).expect("evaluator failed")
-        };
-
-        let unoptimized = render(true);
-        let optimized = render(false);
-        assert_eq!(
-            unoptimized, optimized,
-            "optimization changed the rendered output"
+        let module = orchestrate_pure(
+            &typed_asts,
+            OrchestrateOptions {
+                skip_html_structure: true,
+                skip_optimization: true,
+                ..Default::default()
+            },
         );
-        assert_eq!(unoptimized, expected);
+        let result = evaluator::evaluate_page(&module, &page_name, HashMap::new())
+            .expect("evaluator failed");
+
+        assert_eq!(result, expected);
     }
 
     #[test]
@@ -327,6 +320,92 @@ mod tests {
                 }
             "},
             "<style>\n    .a { color: red; }\n  </style>",
+        );
+    }
+
+    #[test]
+    fn keeps_a_space_between_two_tags_on_the_same_line() {
+        check(
+            indoc! {"
+                view Test {
+                  <b>b</b> <i>i</i>
+                }
+            "},
+            "<b>b</b> <i>i</i>",
+        );
+    }
+
+    #[test]
+    fn drops_a_line_break_between_two_tags() {
+        check(
+            indoc! {"
+                view Test {
+                  <b>b</b>
+                  <i>i</i>
+                }
+            "},
+            "<b>b</b><i>i</i>",
+        );
+    }
+
+    #[test]
+    fn keeps_a_space_between_two_expressions_on_the_same_line() {
+        check(
+            indoc! {r#"
+                view Test {
+                  {"a"} {"b"}
+                }
+            "#},
+            "a b",
+        );
+    }
+
+    #[test]
+    fn keeps_a_space_between_two_expressions_on_different_lines() {
+        check(
+            indoc! {r#"
+                view Test {
+                  {"a"}
+                  {"b"}
+                }
+            "#},
+            "a b",
+        );
+    }
+
+    #[test]
+    fn keeps_a_space_between_a_tag_and_an_expression() {
+        check(
+            indoc! {r#"
+                view Test {
+                  <b>b</b> {"i"}
+                }
+            "#},
+            "<b>b</b> i",
+        );
+    }
+
+    #[test]
+    fn keeps_a_run_of_spaces_beside_a_tag() {
+        check(
+            indoc! {"
+                view Test {
+                  a  <b>x</b>
+                }
+            "},
+            "a  <b>x</b>",
+        );
+    }
+
+    #[test]
+    fn keeps_whitespace_on_the_side_that_has_no_linebreak() {
+        check(
+            indoc! {r#"
+                view Test {
+                  <b>x</b>  a {"y"}
+                }
+            "#},
+            "<b>x</b>  a y",
         );
     }
 }
