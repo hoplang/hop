@@ -31,6 +31,18 @@ pub enum Token {
         tag_name: DocumentRange,
         range: DocumentRange,
     },
+    /// The opening tag of a fragment. E.g.
+    /// ```text
+    /// <>hello</>
+    /// ^^
+    /// ```
+    FragmentStart { range: DocumentRange },
+    /// The closing tag of a fragment. E.g.
+    /// ```text
+    /// <>hello</>
+    ///        ^^^
+    /// ```
+    FragmentEnd { range: DocumentRange },
     /// Static text. E.g.
     /// ```text
     /// <div>hello world</div>
@@ -314,6 +326,13 @@ fn lex_tag(iter: &mut Peekable<DocumentCursor>, errors: &mut Vec<ParseError>) ->
     match iter.peek().map(|s| s.ch()) {
         Some('!') => lex_markup_declaration(iter, errors, left_angle),
         Some('/') => lex_closing_tag(iter, errors, left_angle),
+        Some('>') => {
+            // consume: >
+            let right_angle = iter.next().unwrap();
+            Some(Token::FragmentStart {
+                range: left_angle.to(right_angle),
+            })
+        }
         Some(ch) if ch.is_ascii_alphabetic() => Some(lex_opening_tag_start(iter, left_angle)),
         _ => {
             errors.push(ParseError::new(
@@ -495,6 +514,12 @@ fn lex_closing_tag(
     };
     // consume: whitespace
     skip_whitespace(iter);
+    // consume: '>'
+    if let Some(right_angle) = iter.next_if(|s| s.ch() == '>') {
+        return Some(Token::FragmentEnd {
+            range: left_angle.to(right_angle),
+        });
+    }
     // consume: [a-zA-Z]
     let Some(initial) = iter.next_if(|s| s.ch().is_ascii_alphabetic()) else {
         errors.push(ParseError::new(

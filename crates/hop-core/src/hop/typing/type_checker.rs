@@ -1386,6 +1386,29 @@ fn typecheck_node(
     asset_references: &mut Vec<AssetReference>,
 ) -> Option<TypedExpr> {
     match node {
+        ParsedNode::Fragment { children, range: _ } => {
+            let typed_children = children
+                .iter()
+                .filter_map(|child| {
+                    typecheck_node(
+                        child,
+                        caller_params,
+                        registry,
+                        errors,
+                        var_env,
+                        type_env,
+                        annotations,
+                        definition_links,
+                        asset_references,
+                    )
+                })
+                .collect();
+
+            Some(TypedExpr::FragmentConcat {
+                nodes: typed_children,
+            })
+        }
+
         ParsedNode::If {
             condition,
             children,
@@ -2811,6 +2834,37 @@ mod tests {
                 -- main.hop --
                 fn Card(children: Fragment) -> Fragment {
                   concat(html(tag: "div", attrs: [], children: concat(children)))
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_fragment_node() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                component Card {
+                    <div>
+                        <><b>x</b><i>y</i></>
+                    </div>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn Card() -> Fragment {
+                  concat(
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: concat(
+                        concat(
+                          html(tag: "b", attrs: [], children: concat(raw("x"))),
+                          html(tag: "i", attrs: [], children: concat(raw("y"))),
+                        ),
+                      ),
+                    ),
+                  )
                 }
             "#]],
         );

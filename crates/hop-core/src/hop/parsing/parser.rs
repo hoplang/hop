@@ -1281,6 +1281,121 @@ mod tests {
     }
 
     #[test]
+    fn accepts_fragment_with_several_children() {
+        accept(
+            indoc! {"
+                component Main {
+                    <><p>one</p><p>two</p></>
+                }
+            "},
+            expect![[r#"
+                component Main {
+                  <>
+                    <p>
+                      one
+                    </p>
+                    <p>
+                      two
+                    </p>
+                  </>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_empty_fragment() {
+        accept(
+            indoc! {"
+                component Main {
+                    <></>
+                }
+            "},
+            expect![[r#"
+                component Main {
+                  <>
+                  </>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_nested_fragments() {
+        accept(
+            indoc! {"
+                component Main {
+                    <><>one</>two</>
+                }
+            "},
+            expect![[r#"
+                component Main {
+                  <>
+                    <>
+                      one
+                    </>
+                    two
+                  </>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_fragment_inside_an_element() {
+        accept(
+            indoc! {"
+                component Main {
+                    <div><>one</></div>
+                }
+            "},
+            expect![[r#"
+                component Main {
+                  <div>
+                    <>
+                      one
+                    </>
+                  </div>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_whitespace_in_a_closing_fragment_tag() {
+        accept(
+            indoc! {"
+                component Main {
+                    <>one</ >
+                }
+            "},
+            expect![[r#"
+                component Main {
+                  <>
+                    one
+                  </>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_fragment_in_raw_text_as_text() {
+        accept(
+            indoc! {"
+                component Main {
+                    <script><></script>
+                }
+            "},
+            expect![[r#"
+                component Main {
+                  <script><></script>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
     fn rejects_when_tags_are_not_closed() {
         reject(
             indoc! {"
@@ -1372,6 +1487,113 @@ mod tests {
                 1 | component Main {
                 2 |     <div></div></div>
                   |                ^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_when_a_fragment_is_not_closed() {
+        reject(
+            indoc! {"
+                component Main {
+                    <>one
+                }
+            "},
+            expect![[r#"
+                error: Unclosed <>
+                1 | component Main {
+                2 |     <>one
+                  |     ^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_closing_fragment_for_a_fragment_that_was_never_opened() {
+        reject(
+            indoc! {"
+                component Main {
+                    <div></></div>
+                }
+            "},
+            expect![[r#"
+                error: Unmatched </>
+                1 | component Main {
+                2 |     <div></></div>
+                  |          ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_when_a_closing_fragment_closes_an_outer_tag() {
+        reject(
+            indoc! {"
+                component Main {
+                    <><div></>
+                }
+            "},
+            expect![[r#"
+                error: Unclosed <div>
+                1 | component Main {
+                2 |     <><div></>
+                  |        ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_left_angle_that_does_not_open_a_fragment() {
+        reject(
+            indoc! {"
+                component Main {
+                    < >
+                }
+            "},
+            expect![[r#"
+                error: Unterminated tag start
+                1 | component Main {
+                2 |     < >
+                  |     ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_fragment_as_a_child_of_match() {
+        reject(
+            indoc! {"
+                component Main {
+                    <match {x}><>one</></match>
+                }
+            "},
+            expect![[r#"
+                error: Only <case> tags are allowed inside <match>
+                1 | component Main {
+                2 |     <match {x}><>one</></match>
+                  |                ^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_case_wrapped_in_a_fragment() {
+        reject(
+            indoc! {"
+                component Main {
+                    <match {x}><><case {None}>one</case></></match>
+                }
+            "},
+            expect![[r#"
+                error: Only <case> tags are allowed inside <match>
+                1 | component Main {
+                2 |     <match {x}><><case {None}>one</case></></match>
+                  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+                error: <case> is only allowed inside <match>
+                1 | component Main {
+                2 |     <match {x}><><case {None}>one</case></></match>
+                  |                   ^^^^
             "#]],
         );
     }

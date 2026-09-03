@@ -40,6 +40,12 @@ pub(crate) enum ParseErrorKind {
     #[error("Unclosed <{tag}>")]
     UnclosedTag { tag: CheapString },
 
+    #[error("Unmatched </>")]
+    UnmatchedClosingFragment {},
+
+    #[error("Unclosed <>")]
+    UnclosedFragment {},
+
     #[error("<{tag}> should not be closed using a closing tag")]
     ClosedVoidTag { tag: CheapString },
 

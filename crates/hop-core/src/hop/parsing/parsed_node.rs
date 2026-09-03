@@ -81,6 +81,14 @@ pub enum ParsedNode {
     /// E.g. <!-- This is a comment -->
     Comment { range: DocumentRange },
 
+    /// A Fragment node groups children under no tag of its own, so that
+    /// markup with several roots can still be written where one is required.
+    /// E.g. <>hello {name}</>
+    Fragment {
+        children: Vec<ParsedNode>,
+        range: DocumentRange,
+    },
+
     /// An HTML node represents a plain HTML node.
     /// E.g. <div>...</div>
     ///      ^^^^^^^^^^^^^^
@@ -168,6 +176,7 @@ impl ParsedNode {
             | ParsedNode::Let { range, .. }
             | ParsedNode::Match { range, .. }
             | ParsedNode::Comment { range }
+            | ParsedNode::Fragment { range, .. }
             | ParsedNode::Html { range, .. } => range,
         }
     }
@@ -180,6 +189,7 @@ impl ParsedNode {
             ParsedNode::For { children, .. } => children,
             ParsedNode::Let { children, .. } => children,
             ParsedNode::Html { children, .. } => children,
+            ParsedNode::Fragment { children, .. } => children,
             ParsedNode::Match { .. } => &[], // children are inside cases
             ParsedNode::Comment { .. } => &[],
             ParsedNode::Text { .. } => &[],
@@ -286,6 +296,19 @@ impl ParsedNode {
                         .append(BoxDoc::text(">")),
                 }
             }
+            ParsedNode::Fragment { children, .. } => BoxDoc::text("<>")
+                .append(if children.is_empty() {
+                    BoxDoc::nil()
+                } else {
+                    BoxDoc::line()
+                        .append(BoxDoc::intersperse(
+                            children.iter().map(|c| c.to_doc()),
+                            BoxDoc::line(),
+                        ))
+                        .nest(2)
+                        .append(BoxDoc::line())
+                })
+                .append(BoxDoc::text("</>")),
             ParsedNode::If {
                 condition,
                 children,

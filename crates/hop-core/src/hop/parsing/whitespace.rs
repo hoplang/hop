@@ -33,6 +33,7 @@ fn normalize_children(node: &mut ParsedNode) {
             ..
         } => {}
         ParsedNode::Html { children, .. }
+        | ParsedNode::Fragment { children, .. }
         | ParsedNode::If { children, .. }
         | ParsedNode::For { children, .. }
         | ParsedNode::Let { children, .. } => normalize(children),
@@ -423,6 +424,59 @@ mod tests {
                 }
             "#},
             "<b>x</b>  a y",
+        );
+    }
+
+    #[test]
+    fn renders_a_fragment_as_its_children() {
+        check(
+            indoc! {"
+                view Test {
+                  <><b>x</b><i>y</i></>
+                }
+            "},
+            "<b>x</b><i>y</i>",
+        );
+    }
+
+    #[test]
+    fn renders_an_empty_fragment_as_nothing() {
+        check(
+            indoc! {"
+                view Test {
+                  <></>
+                }
+            "},
+            "",
+        );
+    }
+
+    #[test]
+    fn trims_the_children_of_a_fragment_against_its_tags() {
+        check(
+            indoc! {"
+                view Test {
+                  <div>
+                    hello
+                    <>
+                      world
+                    </>
+                  </div>
+                }
+            "},
+            "<div>helloworld</div>",
+        );
+    }
+
+    #[test]
+    fn keeps_a_space_written_beside_a_fragment() {
+        check(
+            indoc! {"
+                view Test {
+                  hello <>world</>
+                }
+            "},
+            "hello world",
         );
     }
 }

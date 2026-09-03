@@ -31,18 +31,28 @@ enum MarkupItem {
 
 /// A closing tag that ended an element.
 struct ClosingTag {
-    tag_name_range: DocumentRange,
+    /// The range of the name, or `None` for `</>`.
+    tag_name_range: Option<DocumentRange>,
     range: DocumentRange,
+}
+
+impl ClosingTag {
+    /// The name this tag has to repeat to close an element, or `None` for
+    /// `</>`.
+    fn name(&self) -> Option<&str> {
+        self.tag_name_range.as_ref().map(|range| range.as_str())
+    }
 }
 
 /// An element whose opening tag has been read but whose closing tag has not.
 struct OpenElement {
-    /// The range of the name in the opening tag. E.g.
+    /// The range identifying the tag: the name in the opening tag, or the
+    /// whole range of a `<>`. E.g.
     /// ```text
     /// <div class="x">
     ///  ^^^
     /// ```
-    tag_name: DocumentRange,
+    tag_name_range: DocumentRange,
     /// The range of the opening tag. E.g.
     /// ```text
     /// <div class="x">
@@ -61,8 +71,21 @@ struct OpenElement {
     children: Vec<MarkupItem>,
 }
 
+impl OpenElement {
+    /// The name a closing tag has to repeat to close this element, or `None`
+    /// for a `<>`, which is closed by the equally nameless `</>`.
+    fn name(&self) -> Option<&str> {
+        match self.header {
+            TagHeader::Fragment => None,
+            _ => Some(self.tag_name_range.as_str()),
+        }
+    }
+}
+
 /// What an opening tag carried, kept until the element can be built.
 enum TagHeader {
+    /// A `<>`, which carries nothing at all.
+    Fragment,
     If {
         cond: Option<ParsedExpr>,
     },
@@ -132,9 +155,10 @@ impl MarkupBuilder {
         }
     }
 
-    /// Whether a closing tag with this name would close anything.
-    fn is_open(&self, tag_name: &str) -> bool {
-        self.open.iter().any(|el| el.tag_name.as_str() == tag_name)
+    /// Whether a closing tag with this name would close anything, where
+    /// `None` is the name a `</>` repeats.
+    fn is_open(&self, tag_name: Option<&str>) -> bool {
+        self.open.iter().any(|el| el.name() == tag_name)
     }
 
     /// Close the element this tag names, along with everything opened inside
@@ -142,7 +166,7 @@ impl MarkupBuilder {
     ///
     /// Expects `is_open` to hold for the tag.
     fn close(&mut self, closing: ClosingTag, errors: &mut Vec<ParseError>) {
-        while self.open.last().unwrap().tag_name.as_str() != closing.tag_name_range.as_str() {
+        while self.open.last().unwrap().name() != closing.name() {
             self.close_innermost(errors);
         }
         let element = self.open.pop().unwrap();
@@ -152,12 +176,13 @@ impl MarkupBuilder {
     /// Close the innermost open element, which never got a closing tag.
     fn close_innermost(&mut self, errors: &mut Vec<ParseError>) {
         let element = self.open.pop().unwrap();
-        errors.push(ParseError::new(
-            ParseErrorKind::UnclosedTag {
-                tag: element.tag_name.to_cheap_string(),
+        let kind = match element.header {
+            TagHeader::Fragment => ParseErrorKind::UnclosedFragment {},
+            _ => ParseErrorKind::UnclosedTag {
+                tag: element.tag_name_range.to_cheap_string(),
             },
-            element.tag_name.clone(),
-        ));
+        };
+        errors.push(ParseError::new(kind, element.tag_name_range.clone()));
         self.append_element(element, None, errors);
     }
 
@@ -224,7 +249,7 @@ pub fn parse_nodes(
                         },
                         range,
                     ));
-                } else if !builder.is_open(tag_name.as_str()) {
+                } else if !builder.is_open(Some(tag_name.as_str())) {
                     errors.push(ParseError::new(
                         ParseErrorKind::UnmatchedClosingTag {
                             tag: tag_name.to_cheap_string(),
@@ -234,11 +259,36 @@ pub fn parse_nodes(
                 } else {
                     builder.close(
                         ClosingTag {
-                            tag_name_range: tag_name,
+                            tag_name_range: Some(tag_name),
                             range,
                         },
                         errors,
                     );
+                }
+            }
+
+            Token::FragmentStart { range } => builder.enter(OpenElement {
+                tag_name_range: range.clone(),
+                opening_range: range,
+                expression_range: None,
+                header: TagHeader::Fragment,
+                children: Vec::new(),
+            }),
+
+            Token::FragmentEnd { range } => {
+                if builder.is_open(None) {
+                    builder.close(
+                        ClosingTag {
+                            tag_name_range: None,
+                            range,
+                        },
+                        errors,
+                    );
+                } else {
+                    errors.push(ParseError::new(
+                        ParseErrorKind::UnmatchedClosingFragment {},
+                        range,
+                    ));
                 }
             }
         }
@@ -415,6 +465,8 @@ fn parse_opening_tag(
                     TagHeader::Component { .. } | TagHeader::Html { .. } => {
                         expr::parse_expr::parse_expr(iter, comments, errors, &left_brace).is_some()
                     }
+
+                    TagHeader::Fragment => unreachable!(),
                 };
                 expression_range = Some(left_brace.clone());
                 if parse_succeeded {
@@ -484,7 +536,7 @@ fn parse_opening_tag(
     };
     (
         OpenElement {
-            tag_name: tag_name_range,
+            tag_name_range,
             opening_range: full_range,
             expression_range,
             header,
@@ -548,21 +600,25 @@ fn close_element(
     errors: &mut Vec<ParseError>,
 ) -> Option<MarkupItem> {
     let OpenElement {
-        tag_name,
+        tag_name_range,
         opening_range,
         expression_range,
         header,
         children,
     } = element;
+    // A `</>` only ever closes a fragment, which has no name to record, so
+    // flattening the two levels of `Option` loses nothing.
     let (closing_tag_name, range) = match closing {
-        Some(closing) => (
-            Some(closing.tag_name_range),
-            opening_range.to(closing.range),
-        ),
+        Some(closing) => (closing.tag_name_range, opening_range.to(closing.range)),
         None => (None, opening_range),
     };
 
     match header {
+        TagHeader::Fragment => Some(MarkupItem::Node(ParsedNode::Fragment {
+            children: expect_nodes(children, errors),
+            range,
+        })),
+
         TagHeader::If { cond: condition } => {
             let children = expect_nodes(children, errors);
             condition.map(|condition| {
@@ -616,7 +672,7 @@ fn close_element(
             let children = expect_nodes(children, errors);
             pattern.map(|pattern| MarkupItem::Case {
                 case: ParsedMatchCase { pattern, children },
-                tag_name_range: tag_name,
+                tag_name_range,
             })
         }
 
@@ -626,7 +682,7 @@ fn close_element(
             name.map(|component_name| {
                 MarkupItem::Node(ParsedNode::ComponentInvocation {
                     component_name,
-                    component_name_opening_range: tag_name,
+                    component_name_opening_range: tag_name_range,
                     component_name_closing_range: closing_tag_name,
                     args,
                     range,
@@ -643,7 +699,7 @@ fn close_element(
             element.map(|element| {
                 MarkupItem::Node(ParsedNode::Html {
                     element,
-                    tag_name,
+                    tag_name: tag_name_range,
                     closing_tag_name,
                     attributes,
                     range,

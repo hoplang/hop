@@ -656,6 +656,10 @@ fn format_node<'a>(
                     .append(arena.text(">")),
             }
         }
+        ParsedNode::Fragment { children, .. } => arena
+            .text("<>")
+            .append(format_children(arena, children, comments))
+            .append(arena.text("</>")),
         ParsedNode::If {
             condition,
             children,
@@ -1419,7 +1423,7 @@ mod tests {
         use std::collections::HashMap;
 
         const STRINGS: &[&str] = &["", " ", "\n", "  \n", "\n  ", "a", "  a", "a \n"];
-        const TAGS: &[&str] = &["div", "span", "b"];
+        const TAGS: &[&str] = &["div", "span", "b", ""];
 
         fn random_nodes(
             u: &mut Unstructured<'_>,
