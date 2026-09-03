@@ -893,36 +893,39 @@ fn format_children<'a>(
             doc = doc.append(arena.line());
         }
 
-        // Special handling for Text nodes: convert whitespace adjacent to blocks to {" "}
         if let ParsedNode::Text { range } = child {
             let text = range.as_str();
-            let has_leading_ws = text.starts_with(|c: char| c.is_whitespace());
-            let has_trailing_ws = text.ends_with(|c: char| c.is_whitespace());
+            let leading_ws = &text[..text.len() - text.trim_start().len()];
+            let trailing_ws = &text[text.trim_end().len()..];
+            let trimmed = text.trim();
             let prev_is_block = prev_node.is_some_and(|n| !is_inline(n));
             let next_is_block = next_node.is_some_and(|n| !is_inline(n));
 
-            // Determine if we need to convert whitespace to {" "}
             // Leading: if prev is block and we inserted a break (not from original newline)
-            let leading_needs_space = has_leading_ws && prev_is_block && !preceded_by_newline;
+            let leading_needs_space =
+                !leading_ws.is_empty() && prev_is_block && !preceded_by_newline;
             // Trailing: if next is block
-            let trailing_needs_space = has_trailing_ws && next_is_block;
+            let trailing_needs_space = !trailing_ws.is_empty() && next_is_block;
 
-            if leading_needs_space || trailing_needs_space {
-                let trimmed = text.trim();
-                if trimmed.is_empty() {
-                    // Pure whitespace - output single {" "}
-                    doc = doc.append(arena.text("{\" \"}"));
+            if trimmed.is_empty() {
+                // Pure whitespace - leading and trailing are the same single run
+                if leading_needs_space || trailing_needs_space {
+                    doc = doc.append(escaped_whitespace(arena, text));
                 } else {
-                    if leading_needs_space {
-                        doc = doc.append(arena.text("{\" \"}"));
-                    }
-                    doc = doc.append(arena.text(trimmed));
-                    if trailing_needs_space {
-                        doc = doc.append(arena.text("{\" \"}"));
-                    }
+                    doc = doc.append(arena.text(text));
                 }
             } else {
-                doc = doc.append(arena.text(text));
+                if leading_needs_space {
+                    doc = doc.append(escaped_whitespace(arena, leading_ws));
+                } else {
+                    doc = doc.append(arena.text(leading_ws));
+                }
+                doc = doc.append(arena.text(trimmed));
+                if trailing_needs_space {
+                    doc = doc.append(escaped_whitespace(arena, trailing_ws));
+                } else {
+                    doc = doc.append(arena.text(trailing_ws));
+                }
             }
         } else {
             doc = doc.append(format_node(arena, child, comments));
@@ -930,6 +933,12 @@ fn format_children<'a>(
     }
 
     arena.line().append(doc).nest(2).append(arena.line())
+}
+
+/// Render a run of whitespace as a text expression, so that it survives the
+/// line break the formatter puts next to it.
+fn escaped_whitespace<'a>(arena: &'a Arena<'a>, whitespace: &str) -> DocBuilder<'a, Arena<'a>> {
+    arena.text(format!("{{\"{whitespace}\"}}"))
 }
 
 fn format_match_case<'a>(
@@ -2197,6 +2206,44 @@ mod tests {
                   <b>
                     world
                   </b>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn keeps_a_run_of_spaces_beside_a_tag() {
+        check(
+            indoc! {"
+                component Main {
+                  a  <b>x</b>
+                }
+            "},
+            expect![[r#"
+                component Main {
+                  a{"  "}
+                  <b>
+                    x
+                  </b>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn keeps_whitespace_on_the_side_that_has_no_linebreak() {
+        check(
+            indoc! {r#"
+                component Main {
+                  <b>x</b>  a {"y"}
+                }
+            "#},
+            expect![[r#"
+                component Main {
+                  <b>
+                    x
+                  </b>
+                  {"  "}a {"y"}
                 }
             "#]],
         );

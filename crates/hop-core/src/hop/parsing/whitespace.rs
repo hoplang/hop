@@ -108,6 +108,7 @@ fn drop_newlines(nodes: &mut Vec<ParsedNode>) {
 mod tests {
     use crate::document::Document;
     use crate::document_id::DocumentId;
+    use crate::hop::parsing::{format, parser};
     use crate::ir::runtime::evaluator;
     use crate::orchestrator::{OrchestrateOptions, orchestrate_pure};
     use crate::program::Program;
@@ -116,6 +117,30 @@ mod tests {
     use std::collections::HashMap;
 
     fn check(source: &str, expected: &str) {
+        assert_eq!(render(source), expected);
+
+        // Formatting a view must not change what it renders.
+        let formatted = reformat(source);
+        assert_eq!(
+            render(&formatted),
+            expected,
+            "render changed after formatting:\n{formatted}"
+        );
+    }
+
+    fn reformat(source: &str) -> String {
+        let document_id = DocumentId::new("test.hop").unwrap();
+        let mut errors = Vec::new();
+        let ast = parser::parse(
+            document_id.clone(),
+            Document::new(document_id, source.to_string()),
+            &mut errors,
+        );
+        assert!(errors.is_empty(), "parse errors: {errors:?}");
+        format(&ast)
+    }
+
+    fn render(source: &str) -> String {
         let document_id = DocumentId::new("test.hop").unwrap();
         let mut program = Program::default();
         program.update_module(
@@ -144,10 +169,7 @@ mod tests {
                 ..Default::default()
             },
         );
-        let result = evaluator::evaluate_page(&module, &page_name, HashMap::new())
-            .expect("evaluator failed");
-
-        assert_eq!(result, expected);
+        evaluator::evaluate_page(&module, &page_name, HashMap::new()).expect("evaluator failed")
     }
 
     #[test]
