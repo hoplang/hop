@@ -1782,7 +1782,7 @@ mod tests {
                   </let>
                 }
             "#},
-            r#"outer x"#,
+            r#"outerx"#,
             expect![[r#"
                 -- ir (unoptimized) --
                 record Flag {
@@ -1794,7 +1794,6 @@ mod tests {
                       let v2 = v1.value in {
                         let v3 = v2 in {
                           write_string(v0)
-                          write(" ")
                           write_string(v3)
                         }
                       }
@@ -1809,14 +1808,14 @@ mod tests {
                   for v1 in [Flag {value: "x"}] {
                     let v2 = v1.value in {
                       let v3 = v2 in {
-                        write("outer ")
+                        write("outer")
                         write_string(v3)
                       }
                     }
                   }
                 }
                 -- expected output --
-                outer x
+                outerx
                 -- eval (unoptimized) --
                 OK
                 -- eval (optimized) --
@@ -2765,7 +2764,8 @@ mod tests {
                     }>
                       <match {mapped}>
                         <case {Some(result)}>
-                          mapped:{result}
+                          mapped:
+                          {result}
                         </case>
                         <case {None}>
                           was-none
@@ -2838,7 +2838,8 @@ mod tests {
                       Point {x: a, y: _} => a,
                     },
                   }>
-                    got:{result}
+                    got:
+                    {result}
                   </let>
                 }
             "#},
@@ -2899,7 +2900,8 @@ mod tests {
                       p => p.x,
                     },
                   }>
-                    got:{result}
+                    got:
+                    {result}
                   </let>
                 }
             "#},
@@ -2952,7 +2954,8 @@ mod tests {
                 view Test {
                   <match {Some("hi")}>
                     <case {Some(x)}>
-                      got:{x}
+                      got:
+                      {x}
                     </case>
                     <case {None}>
                       none
@@ -3073,7 +3076,9 @@ mod tests {
             indoc! {r#"
                 component Tag(text: String) {
                   <let {label: String = text}>
-                    [{label}]
+                    <div>
+                      {label}
+                    </div>
                   </let>
                 }
 
@@ -3082,14 +3087,15 @@ mod tests {
                   <Tag text="b"/>
                 }
             "#},
-            "[a][b]",
+            "<div>a</div><div>b</div>",
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Tag(text@v0: String) -> Fragment {
                   let v1 = v0 in {
-                    write("[")
+                    write("<div")
+                    write(">")
                     write_string(v1)
-                    write("]")
+                    write("</div>")
                   }
                 }
                 page Test() {
@@ -3098,10 +3104,10 @@ mod tests {
                 }
                 -- ir (optimized) --
                 page Test() {
-                  write("[a][b]")
+                  write("<div>a</div><div>b</div>")
                 }
                 -- expected output --
-                [a][b]
+                <div>a</div><div>b</div>
                 -- eval (unoptimized) --
                 OK
                 -- eval (optimized) --
@@ -3670,7 +3676,10 @@ mod tests {
             indoc! {r#"
                 view Test {
                   <let {name: String = "Alice"}>
-                    Hello, {name}!
+                    Hello,
+                    {" "}
+                    {name}
+                    !
                   </let>
                 }
             "#},
@@ -3679,7 +3688,8 @@ mod tests {
                 -- ir (unoptimized) --
                 page Test() {
                   let v0 = "Alice" in {
-                    write("Hello, ")
+                    write("Hello,")
+                    write_string(" ")
                     write_string(v0)
                     write("!")
                   }
@@ -3772,7 +3782,8 @@ mod tests {
             indoc! {r#"
                 view Test {
                   <for {item in ["a", "b", "c"]}>
-                    {item},
+                    {item}
+                    ,
                   </for>
                 }
             "#},
@@ -3874,7 +3885,8 @@ mod tests {
             indoc! {r#"
                 view Test {
                   <for {i in 1..=3}>
-                    {i.to_string()},
+                    {i.to_string()}
+                    ,
                   </for>
                 }
             "#},
@@ -3963,7 +3975,11 @@ mod tests {
                 view Test {
                   <for {i in 1..=2}>
                     <for {j in 1..=2}>
-                      ({i.to_string()},{j.to_string()})
+                      (
+                      {i.to_string()}
+                      ,
+                      {j.to_string()}
+                      )
                     </for>
                   </for>
                 }
@@ -4208,7 +4224,9 @@ mod tests {
                 view Test {
                   <for {item in ["A", "B"]}>
                     <let {prefix: String = "["}>
-                      {prefix}{item}]
+                      {prefix}
+                      {item}
+                      ]
                     </let>
                   </for>
                 }
@@ -4592,7 +4610,9 @@ mod tests {
 
                 view Test {
                   <let {pair: Pair = Pair {second: "b", first: "a"}}>
-                    {pair.first}-{pair.second}
+                    {pair.first}
+                    -
+                    {pair.second}
                   </let>
                 }
             "#},
@@ -4652,7 +4672,9 @@ mod tests {
                   <let {shape = Shape::Rect {height: "b", width: "a"}}>
                     <match {shape}>
                       <case {Shape::Rect {width: w, height: h}}>
-                        {w}-{h}
+                        {w}
+                        -
+                        {h}
                       </case>
                     </match>
                   </let>
@@ -4726,7 +4748,9 @@ mod tests {
                       address: Address {city: "Paris", zip: "75001"},
                     },
                   }>
-                    {person.name},{person.address.city}
+                    {person.name}
+                    ,
+                    {person.address.city}
                   </let>
                 }
             "#},
@@ -5336,7 +5360,9 @@ mod tests {
                   <for {item in [Some("a"), None, Some("b")]}>
                     <match {item}>
                       <case {Some(s)}>
-                        [{s}]
+                        [
+                        {s}
+                        ]
                       </case>
                       <case {None}>
                         [_]
@@ -5569,10 +5595,12 @@ mod tests {
                   }>
                     <match {result}>
                       <case {Outcome::Success {value: v}}>
-                        Ok:{v}
+                        Ok:
+                        {v}
                       </case>
                       <case {Outcome::Failure {message: m}}>
-                        Err:{m}
+                        Err:
+                        {m}
                       </case>
                     </match>
                   </let>
@@ -5645,7 +5673,8 @@ mod tests {
                   <let {item: Item = Item::Tagged {tag: "news"}}>
                     <match {item}>
                       <case {Item::Tagged {tag: t}}>
-                        tag:{t}
+                        tag:
+                        {t}
                       </case>
                       <case {Item::Plain}>
                         plain
@@ -5723,7 +5752,8 @@ mod tests {
                       Outcome::Failure {message: m} => m,
                     },
                   }>
-                    got:{result}
+                    got:
+                    {result}
                   </let>
                 }
             "#},
@@ -5875,10 +5905,12 @@ mod tests {
                   }>
                     <match {result}>
                       <case {Outcome::Success {value: v}}>
-                        Ok:{v}
+                        Ok:
+                        {v}
                       </case>
                       <case {Outcome::Failure {message: m}}>
-                        Err:{m}
+                        Err:
+                        {m}
                       </case>
                     </match>
                   </let>
@@ -5959,10 +5991,13 @@ mod tests {
                   }>
                     <match {resp}>
                       <case {Response::Win {code: c, body: b}}>
-                        {c}:{b}
+                        {c}
+                        :
+                        {b}
                       </case>
                       <case {Response::Lose {reason: r}}>
-                        Error:{r}
+                        Error:
+                        {r}
                       </case>
                     </match>
                   </let>
@@ -6042,10 +6077,12 @@ mod tests {
                   }>
                     <match {result}>
                       <case {Outcome::Success {value}}>
-                        Ok:{value}
+                        Ok:
+                        {value}
                       </case>
                       <case {Outcome::Failure {message}}>
-                        Err:{message}
+                        Err:
+                        {message}
                       </case>
                     </match>
                   </let>
@@ -7599,7 +7636,8 @@ mod tests {
                   <let {person: Person = Person {name: "Alice", age: 30}}>
                     <match {person}>
                       <case {Person {name: _, age: a}}>
-                        age:{a.to_string()}
+                        age:
+                        {a.to_string()}
                       </case>
                     </match>
                   </let>
@@ -7936,7 +7974,9 @@ mod tests {
                     <case {Some(x)}>
                       <match {Some("inner")}>
                         <case {Some(y)}>
-                          {x}:{y}
+                          {x}
+                          :
+                          {y}
                         </case>
                         <case {None}>
                           inner-none
@@ -8010,7 +8050,8 @@ mod tests {
                       <case {Some(inner)}>
                         <match {inner}>
                           <case {Some(value)}>
-                            value:{value}
+                            value:
+                            {value}
                           </case>
                           <case {None}>
                             inner-none
@@ -8579,27 +8620,23 @@ mod tests {
                   {"C:\\Users\\name"}
                 }
             "#},
-            "&quot; \\ foo\nbar foo\tbar C:\\Users\\name",
+            "&quot;\\foo\nbarfoo\tbarC:\\Users\\name",
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
                   write_string("\"")
-                  write(" ")
                   write_string("\\")
-                  write(" ")
                   write_string("foo\nbar")
-                  write(" ")
                   write_string("foo\tbar")
-                  write(" ")
                   write_string("C:\\Users\\name")
                 }
                 -- ir (optimized) --
                 page Test() {
-                  write("&quot; \\ foo\nbar foo\tbar C:\\Users\\name")
+                  write("&quot;\\foo\nbarfoo\tbarC:\\Users\\name")
                 }
                 -- expected output --
-                &quot; \ foo
-                bar foo	bar C:\Users\name
+                &quot;\foo
+                barfoo	barC:\Users\name
                 -- eval (unoptimized) --
                 OK
                 -- eval (optimized) --
@@ -8635,7 +8672,9 @@ mod tests {
                   }>
                     <for {item in items}>
                       <let {n: String = item.name}>
-                        [{n}]
+                        [
+                        {n}
+                        ]
                       </let>
                     </for>
                   </let>
@@ -8726,7 +8765,9 @@ mod tests {
                   }>
                     <for {person in people}>
                       <let {city: String = person.address.city}>
-                        [{city}]
+                        [
+                        {city}
+                        ]
                       </let>
                     </for>
                   </let>
@@ -8823,7 +8864,9 @@ mod tests {
                   }>
                     <for {src in sources}>
                       <let {target: Target = Target {label: src.name}}>
-                        [{target.label}]
+                        [
+                        {target.label}
+                        ]
                       </let>
                     </for>
                   </let>
@@ -8911,7 +8954,9 @@ mod tests {
                       <let {opt: Option[String] = Some(item.name)}>
                         <match {opt}>
                           <case {Some(s)}>
-                            [{s}]
+                            [
+                            {s}
+                            ]
                           </case>
                           <case {None}>
                             [-]
@@ -8997,7 +9042,9 @@ mod tests {
                   <let {a: String = "hello"}>
                     <let {b: String = "world"}>
                       <let {c: String = a + " " + b}>
-                        [{c}]
+                        [
+                        {c}
+                        ]
                       </let>
                     </let>
                   </let>
@@ -9100,7 +9147,9 @@ mod tests {
                 view Test {
                   <let {n: Int = 42}>
                     <let {s: String = n.to_string()}>
-                      [{s}]
+                      [
+                      {s}
+                      ]
                     </let>
                   </let>
                 }
@@ -9151,7 +9200,9 @@ mod tests {
                 view Test {
                   <let {c: Container = Container {items: ["a", "b"]}}>
                     <for {item in c.items}>
-                      [{item}]
+                      [
+                      {item}
+                      ]
                     </for>
                   </let>
                 }
@@ -9211,7 +9262,9 @@ mod tests {
 
                 view Test {
                   <let {l: Label = Label {text: 42.to_string()}}>
-                    [{l.text}]
+                    [
+                    {l.text}
+                    ]
                   </let>
                 }
             "#},
@@ -9271,7 +9324,9 @@ mod tests {
                     o: Outer = Outer {inner: Inner {values: ["x", "y"]}},
                   }>
                     <for {v in o.inner.values}>
-                      [{v}]
+                      [
+                      {v}
+                      ]
                     </for>
                   </let>
                 }
@@ -9337,7 +9392,11 @@ mod tests {
 
                 view Test {
                   <let {x: Foo = Foo {a: "hello"}, y: Foo = Foo {a: x.a}}>
-                    [{x.a}][{y.a}]
+                    [
+                    {x.a}
+                    ][
+                    {y.a}
+                    ]
                   </let>
                 }
             "#},
@@ -9400,7 +9459,11 @@ mod tests {
                         false => "default",
                       },
                     }>
-                      [{result}][{x.a}]
+                      [
+                      {result}
+                      ][
+                      {x.a}
+                      ]
                     </let>
                   </let>
                 }
@@ -9661,7 +9724,8 @@ mod tests {
                   }>
                     <match {e}>
                       <case {Expr::Literal {value: v}}>
-                        lit:{v}
+                        lit:
+                        {v}
                       </case>
                       <case {Expr::Neg {inner: _}}>
                         neg
@@ -10552,7 +10616,10 @@ mod tests {
         check(
             indoc! {r#"
                 component Greeting(name: String) {
-                  Hello, {name}!
+                  Hello,
+                  {" "}
+                  {name}
+                  !
                 }
 
                 view Test {
@@ -10563,7 +10630,8 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Greeting(name@v0: String) -> Fragment {
-                  write("Hello, ")
+                  write("Hello,")
+                  write_string(" ")
                   write_string(v0)
                   write("!")
                 }
@@ -11272,7 +11340,11 @@ mod tests {
                   subtitle: String = "No subtitle",
                 ) {
                   <div>
-                    {title} - {subtitle}
+                    {title}
+                    {" "}
+                    -
+                    {" "}
+                    {subtitle}
                   </div>
                 }
 
@@ -11287,7 +11359,9 @@ mod tests {
                   write("<div")
                   write(">")
                   write_string(v0)
-                  write(" - ")
+                  write_string(" ")
+                  write("-")
+                  write_string(" ")
                   write_string(v1)
                   write("</div>")
                 }
@@ -11326,7 +11400,11 @@ mod tests {
                   subtitle: String = "No subtitle",
                 ) {
                   <div>
-                    {title} - {subtitle}
+                    {title}
+                    {" "}
+                    -
+                    {" "}
+                    {subtitle}
                   </div>
                 }
 
@@ -11341,7 +11419,9 @@ mod tests {
                   write("<div")
                   write(">")
                   write_string(v0)
-                  write(" - ")
+                  write_string(" ")
+                  write("-")
+                  write_string(" ")
                   write_string(v1)
                   write("</div>")
                 }
@@ -11381,7 +11461,15 @@ mod tests {
                   footer: String = "End",
                 ) {
                   <div>
-                    {title} - {subtitle} - {footer}
+                    {title}
+                    {" "}
+                    -
+                    {" "}
+                    {subtitle}
+                    {" "}
+                    -
+                    {" "}
+                    {footer}
                   </div>
                 }
 
@@ -11400,9 +11488,13 @@ mod tests {
                   write("<div")
                   write(">")
                   write_string(v0)
-                  write(" - ")
+                  write_string(" ")
+                  write("-")
+                  write_string(" ")
                   write_string(v1)
-                  write(" - ")
+                  write_string(" ")
+                  write("-")
+                  write_string(" ")
                   write_string(v2)
                   write("</div>")
                 }
@@ -12465,7 +12557,9 @@ mod tests {
                       <for {item in items}>
                         <match {item}>
                           <case {Some(s)}>
-                            [{s}]
+                            [
+                            {s}
+                            ]
                           </case>
                           <case {None}>
                           </case>
@@ -14354,7 +14448,7 @@ mod tests {
                   </let>
                 }
             "#},
-            r#"a 2"#,
+            r#"a2"#,
             expect![[r#"
                 -- ir (unoptimized) --
                 record State {
@@ -14365,7 +14459,6 @@ mod tests {
                   let v0 = State {query: "a", num: 1} in {
                     let v1 = State {query: v0.query, num: 2} in {
                       write_string(v1.query)
-                      write(" ")
                       write_string(v1.num.to_string())
                     }
                   }
@@ -14376,10 +14469,10 @@ mod tests {
                   num: Int,
                 }
                 page Test() {
-                  write("a 2")
+                  write("a2")
                 }
                 -- expected output --
-                a 2
+                a2
                 -- eval (unoptimized) --
                 OK
                 -- eval (optimized) --
@@ -14415,7 +14508,7 @@ mod tests {
                   </let>
                 }
             "#},
-            r#"b 2"#,
+            r#"b2"#,
             expect![[r#"
                 -- ir (unoptimized) --
                 record State {
@@ -14426,7 +14519,6 @@ mod tests {
                   let v0 = State {query: "a", num: 1} in {
                     let v1 = State {query: "b", num: 2} in {
                       write_string(v1.query)
-                      write(" ")
                       write_string(v1.num.to_string())
                     }
                   }
@@ -14437,10 +14529,10 @@ mod tests {
                   num: Int,
                 }
                 page Test() {
-                  write("b 2")
+                  write("b2")
                 }
                 -- expected output --
-                b 2
+                b2
                 -- eval (unoptimized) --
                 OK
                 -- eval (optimized) --
@@ -14474,7 +14566,7 @@ mod tests {
                   </for>
                 }
             "#},
-            r#"x 7"#,
+            r#"x7"#,
             expect![[r#"
                 -- ir (unoptimized) --
                 record State {
@@ -14484,7 +14576,6 @@ mod tests {
                 page Test() {
                   for v0 in [State {query: "a", num: 7}] {
                     write_string(State {query: "x", num: v0.num}.query)
-                    write(" ")
                     write_string(State {
                       query: "x",
                       num: v0.num,
@@ -14498,12 +14589,12 @@ mod tests {
                 }
                 page Test() {
                   for v0 in [State {query: "a", num: 7}] {
-                    write("x ")
+                    write("x")
                     write_string(v0.num.to_string())
                   }
                 }
                 -- expected output --
-                x 7
+                x7
                 -- eval (unoptimized) --
                 OK
                 -- eval (optimized) --
@@ -14645,7 +14736,7 @@ mod tests {
                   </let>
                 }
             "#},
-            r#"q dark"#,
+            r#"qdark"#,
             expect![[r#"
                 -- ir (unoptimized) --
                 record Settings {
@@ -14662,7 +14753,6 @@ mod tests {
                   } in {
                     let v4 = State {query: v1.query, settings: v3} in {
                       write_string(v4.query)
-                      write(" ")
                       write_string(v4.settings.theme)
                     }
                   }
@@ -14682,10 +14772,10 @@ mod tests {
                   settings: Settings,
                 }
                 page Test() {
-                  write("q dark")
+                  write("qdark")
                 }
                 -- expected output --
-                q dark
+                qdark
                 -- eval (unoptimized) --
                 OK
                 -- eval (optimized) --
@@ -14717,7 +14807,7 @@ mod tests {
                   {Foo {...Foo {x: "bar", y: "baz"}, y: "foo"}.y}
                 }
             "#},
-            r#"bar foo"#,
+            r#"barfoo"#,
             expect![[r#"
                 -- ir (unoptimized) --
                 record Foo {
@@ -14728,7 +14818,6 @@ mod tests {
                   write_string(let v0 = Foo {x: "bar", y: "baz"} in {
                     Foo {x: v0.x, y: "foo"}
                   }.x)
-                  write(" ")
                   write_string(let v1 = Foo {x: "bar", y: "baz"} in {
                     Foo {x: v1.x, y: "foo"}
                   }.y)
@@ -14739,10 +14828,10 @@ mod tests {
                   y: String,
                 }
                 page Test() {
-                  write("bar foo")
+                  write("barfoo")
                 }
                 -- expected output --
-                bar foo
+                barfoo
                 -- eval (unoptimized) --
                 OK
                 -- eval (optimized) --
@@ -14771,7 +14860,8 @@ mod tests {
                 component Wrapper {
                   <div>
                     <for {x in 0..=foo(-7)}>
-                      {x.to_string()},
+                      {x.to_string()}
+                      ,
                     </for>
                     {foo(10).to_string()}
                   </div>

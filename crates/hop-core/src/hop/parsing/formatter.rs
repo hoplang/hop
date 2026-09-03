@@ -836,15 +836,6 @@ fn format_node<'a>(
     }
 }
 
-/// Returns true if a node is "inline" content (text or expression).
-/// Inline nodes can stay on the same line unless separated by a Newline.
-fn is_inline(node: &ParsedNode) -> bool {
-    matches!(
-        node,
-        ParsedNode::Text { .. } | ParsedNode::TextExpression { .. }
-    )
-}
-
 fn format_children<'a>(
     arena: &'a Arena<'a>,
     children: &'a [ParsedNode],
@@ -882,9 +873,12 @@ fn format_children<'a>(
         let prev_node = if i > 0 { Some(items[i - 1].1) } else { None };
         let next_node = items.get(i + 1).map(|(_, n)| *n);
 
-        // Decide separator: line break if preceded by newline or adjacent to block element
+        // Decide separator: line break if preceded by a newline, or if either
+        // side is not Text, in which case the break emits nothing.
         let need_break = if let Some(prev) = prev_node {
-            preceded_by_newline || !is_inline(prev) || !is_inline(child)
+            preceded_by_newline
+                || !matches!(prev, ParsedNode::Text { .. })
+                || !matches!(child, ParsedNode::Text { .. })
         } else {
             false
         };
@@ -898,17 +892,16 @@ fn format_children<'a>(
             let leading_ws = &text[..text.len() - text.trim_start().len()];
             let trailing_ws = &text[text.trim_end().len()..];
             let trimmed = text.trim();
-            let prev_is_block = prev_node.is_some_and(|n| !is_inline(n));
-            let next_is_block = next_node.is_some_and(|n| !is_inline(n));
+            let prev_forces_break =
+                prev_node.is_some_and(|n| !matches!(n, ParsedNode::Text { .. }));
+            let next_forces_break =
+                next_node.is_some_and(|n| !matches!(n, ParsedNode::Text { .. }));
 
-            // Leading: if prev is block and we inserted a break (not from original newline)
             let leading_needs_space =
-                !leading_ws.is_empty() && prev_is_block && !preceded_by_newline;
-            // Trailing: if next is block
-            let trailing_needs_space = !trailing_ws.is_empty() && next_is_block;
+                !leading_ws.is_empty() && prev_forces_break && !preceded_by_newline;
+            let trailing_needs_space = !trailing_ws.is_empty() && next_forces_break;
 
             if trimmed.is_empty() {
-                // Pure whitespace - leading and trailing are the same single run
                 if leading_needs_space || trailing_needs_space {
                     doc = doc.append(escaped_whitespace(arena, text));
                 } else {
@@ -916,13 +909,17 @@ fn format_children<'a>(
                 }
             } else {
                 if leading_needs_space {
-                    doc = doc.append(escaped_whitespace(arena, leading_ws));
+                    doc = doc
+                        .append(escaped_whitespace(arena, leading_ws))
+                        .append(arena.line());
                 } else {
                     doc = doc.append(arena.text(leading_ws));
                 }
                 doc = doc.append(arena.text(trimmed));
                 if trailing_needs_space {
-                    doc = doc.append(escaped_whitespace(arena, trailing_ws));
+                    doc = doc
+                        .append(arena.line())
+                        .append(escaped_whitespace(arena, trailing_ws));
                 } else {
                     doc = doc.append(arena.text(trailing_ws));
                 }
@@ -2233,7 +2230,7 @@ mod tests {
     }
 
     #[test]
-    fn keeps_two_text_expressions_on_the_same_line() {
+    fn splits_two_text_expressions_onto_their_own_lines() {
         check(
             indoc! {r#"
                 component Main {
@@ -2245,7 +2242,9 @@ mod tests {
             expect![[r#"
                 component Main {
                   <let {hello = "Hello", world = "World"}>
-                    {hello} {world}
+                    {hello}
+                    {" "}
+                    {world}
                   </let>
                 }
             "#]],
@@ -2265,7 +2264,8 @@ mod tests {
             expect![[r#"
                 component Main {
                   <let {hello = "Hello", world = "World"}>
-                    {hello}{" "}
+                    {hello}
+                    {" "}
                     <b>
                       {world}
                     </b>
@@ -2307,7 +2307,8 @@ mod tests {
             "},
             expect![[r#"
                 component Main {
-                  hello{" "}
+                  hello
+                  {" "}
                   <b>
                     world
                   </b>
@@ -2326,7 +2327,8 @@ mod tests {
             "},
             expect![[r#"
                 component Main {
-                  a{"  "}
+                  a
+                  {"  "}
                   <b>
                     x
                   </b>
@@ -2348,7 +2350,10 @@ mod tests {
                   <b>
                     x
                   </b>
-                  {"  "}a {"y"}
+                  {"  "}
+                  a
+                  {" "}
+                  {"y"}
                 }
             "#]],
         );
@@ -2504,7 +2509,10 @@ mod tests {
             "#},
             expect![[r#"
                 component Greeting(name: String = "World") {
-                  Hello, {name}!
+                  Hello,
+                  {" "}
+                  {name}
+                  !
                 }
             "#]],
         );
@@ -3238,7 +3246,10 @@ mod tests {
             expect![[r#"
                 component Main {
                   <let {name: String = "World"}>
-                    Hello, {name}!
+                    Hello,
+                    {" "}
+                    {name}
+                    !
                   </let>
                 }
             "#]],
@@ -3300,7 +3311,9 @@ mod tests {
             expect![[r#"
                 component Main {
                   <let {first: String = "Hello", second: String = "World"}>
-                    {first} {second}
+                    {first}
+                    {" "}
+                    {second}
                   </let>
                 }
             "#]],
@@ -3321,7 +3334,15 @@ mod tests {
                 component Main {
                   <let {a: Int = 1, b: Int = 2, c: Int = 3}>
                     <div>
-                      {a} + {b} + {c}
+                      {a}
+                      {" "}
+                      +
+                      {" "}
+                      {b}
+                      {" "}
+                      +
+                      {" "}
+                      {c}
                     </div>
                   </let>
                 }
@@ -3397,7 +3418,9 @@ mod tests {
                 component Main {
                   <let {a: String = "outer"}>
                     <let {b: String = "inner"}>
-                      {a} {b}
+                      {a}
+                      {" "}
+                      {b}
                     </let>
                   </let>
                 }
@@ -3523,7 +3546,9 @@ mod tests {
                     last_name: String = "World",
                     // c
                   }>
-                    {first_name} {last_name}
+                    {first_name}
+                    {" "}
+                    {last_name}
                   </let>
                 }
             "#]],
@@ -4137,7 +4162,8 @@ mod tests {
             expect![[r#"
                 component Main {
                   <div>
-                    hello{" "}
+                    hello
+                    {" "}
                     <b>
                       world
                     </b>
@@ -4159,11 +4185,14 @@ mod tests {
             expect![[r#"
                 component Main {
                   <p>
-                    By clicking continue, you agree to our{" "}
+                    By clicking continue, you agree to our
+                    {" "}
                     <a href="/tos">
                       Terms of Service
                     </a>
-                    {" "}and{" "}
+                    {" "}
+                    and
+                    {" "}
                     <a href="/privacy">
                       Privacy Policy
                     </a>
@@ -4210,9 +4239,11 @@ mod tests {
             expect![[r#"
                 component Main {
                   <div>
-                    hello{" "}
+                    hello
+                    {" "}
                     <br>
-                    {" "}world
+                    {" "}
+                    world
                   </div>
                 }
             "#]],
@@ -4254,9 +4285,11 @@ mod tests {
             expect![[r#"
                 component Main {
                   <label>
-                    Name:{" "}
+                    Name:
+                    {" "}
                     <input type="text">
-                    {" "}(required)
+                    {" "}
+                    (required)
                   </label>
                 }
             "#]],
@@ -4301,7 +4334,12 @@ mod tests {
                   num_reviews: String,
                 ) {
                   <span>
-                    {rating} ({num_reviews} reviews)
+                    {rating}
+                    {" "}
+                    (
+                    {num_reviews}
+                    {" "}
+                    reviews)
                   </span>
                 }
             "#]],

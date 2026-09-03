@@ -2075,8 +2075,6 @@ fn typecheck_node(
             value: range.to_cheap_string(),
         }),
 
-        // Newlines between inline content represent a space (HTML whitespace collapsing)
-        // The tokenizer only emits Newlines when they're semantically significant
         ParsedNode::Newline { .. } => Some(TypedExpr::FragmentRaw {
             value: CheapString::new(" ".to_string()),
         }),

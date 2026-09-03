@@ -2234,7 +2234,10 @@ mod tests {
             expect![[r#"
                 component Main {
                   <h1>
-                    Hello {name}!
+                    Hello
+                    {" "}
+                    {name}
+                    !
                   </h1>
                 }
             "#]],
@@ -2248,7 +2251,15 @@ mod tests {
             expect![[r#"
                 component Main {
                   <p>
-                    User {user.name} has {user.count} items
+                    User
+                    {" "}
+                    {user.name}
+                    {" "}
+                    has
+                    {" "}
+                    {user.count}
+                    {" "}
+                    items
                   </p>
                 }
             "#]],
@@ -2262,7 +2273,9 @@ mod tests {
             expect![[r#"
                 component Main {
                   <span>
-                    {greeting} world!
+                    {greeting}
+                    {" "}
+                    world!
                   </span>
                 }
             "#]],
@@ -2276,7 +2289,9 @@ mod tests {
             expect![[r#"
                 component Main {
                   <div>
-                    Price: {price}
+                    Price:
+                    {" "}
+                    {price}
                   </div>
                 }
             "#]],
@@ -2316,7 +2331,9 @@ mod tests {
             expect![[r#"
                 component Main {
                   <p>
-                    Status: {user.profile.status == "active"}
+                    Status:
+                    {" "}
+                    {user.profile.status == "active"}
                   </p>
                 }
             "#]],
@@ -2330,7 +2347,8 @@ mod tests {
             expect![[r#"
                 component Main {
                   <span>
-                    {first}{second}
+                    {first}
+                    {second}
                   </span>
                 }
             "#]],
@@ -2697,7 +2715,9 @@ mod tests {
                 component Main(x: Option[String]) {
                   <match {x}>
                     <case {Some(y)}>
-                      found {y}
+                      found
+                      {" "}
+                      {y}
                     </case>
                     <case {None}>
                     </case>
@@ -2726,7 +2746,9 @@ mod tests {
                 component Main(x: Option[String]) {
                   <match {x}>
                     <case {Some(y)}>
-                      found {y}
+                      found
+                      {" "}
+                      {y}
                     </case>
                     <case {None}>
                       nothing
@@ -2803,10 +2825,14 @@ mod tests {
                 component Main(r: Outcome) {
                   <match {r}>
                     <case {Outcome::Success {value: v}}>
-                      Success: {v}
+                      Success:
+                      {" "}
+                      {v}
                     </case>
                     <case {Outcome::Failure {message: m}}>
-                      Error: {m}
+                      Error:
+                      {" "}
+                      {m}
                     </case>
                   </match>
                 }
@@ -2966,7 +2992,9 @@ mod tests {
                 component Main {
                   <let {name: String = "World"}>
                     <div>
-                      Hello {name}
+                      Hello
+                      {" "}
+                      {name}
                     </div>
                   </let>
                 }
@@ -3040,7 +3068,11 @@ mod tests {
                   <let {a: Int = 1}>
                     <let {b: Int = 2}>
                       <div>
-                        {a} + {b}
+                        {a}
+                        {" "}
+                        +
+                        {" "}
+                        {b}
                       </div>
                     </let>
                   </let>
@@ -3123,7 +3155,9 @@ mod tests {
                 component Main {
                   <let {first: String = "Hello", second: String = "World"}>
                     <div>
-                      {first} {second}
+                      {first}
+                      {" "}
+                      {second}
                     </div>
                   </let>
                 }
@@ -3145,7 +3179,15 @@ mod tests {
                 component Main {
                   <let {a: Int = 1, b: Int = 2, c: Int = 3}>
                     <div>
-                      {a} + {b} + {c}
+                      {a}
+                      {" "}
+                      +
+                      {" "}
+                      {b}
+                      {" "}
+                      +
+                      {" "}
+                      {c}
                     </div>
                   </let>
                 }
@@ -3167,7 +3209,9 @@ mod tests {
                 component Main {
                   <let {name: String = "World"}>
                     <div>
-                      Hello {name}
+                      Hello
+                      {" "}
+                      {name}
                     </div>
                   </let>
                 }
@@ -3189,7 +3233,9 @@ mod tests {
                 component Main {
                   <let {first: String = "Hello", second: String = "World"}>
                     <div>
-                      {first} {second}
+                      {first}
+                      {" "}
+                      {second}
                     </div>
                   </let>
                 }
@@ -3292,7 +3338,9 @@ mod tests {
                   </div>
                   <let {name: String = "World"}>
                     <div>
-                      Hello {name}
+                      Hello
+                      {" "}
+                      {name}
                     </div>
                   </let>
                 }
@@ -3315,7 +3363,9 @@ mod tests {
                 component Main {
                   <let {name: String = "World"}>
                     <div>
-                      Hello {name}
+                      Hello
+                      {" "}
+                      {name}
                     </div>
                   </let>
                   <div>
@@ -3388,7 +3438,10 @@ mod tests {
                   count: Int,
                 ) {
                   <div>
-                    {name}: {count}
+                    {name}
+                    :
+                    {" "}
+                    {count}
                   </div>
                 }
             "#]],
@@ -3605,7 +3658,9 @@ mod tests {
                   }
                   body {
                     <div>
-                      Hello {name}
+                      Hello
+                      {" "}
+                      {name}
                     </div>
                   }
                 }
@@ -3758,7 +3813,9 @@ mod tests {
                 view Index {
                   <let {name: String = "World"}>
                     <div>
-                      Hello {name}
+                      Hello
+                      {" "}
+                      {name}
                     </div>
                   </let>
                 }

@@ -13,8 +13,8 @@ use crate::html::HtmlElement;
 ///
 /// ## 2. Newline-to-Space Conversion
 ///
-/// - Keep a Newline only between two pieces of inline content, i.e. Text or
-///   TextExpression.
+/// - Keep a Newline only between two Text nodes. A newline beside anything
+///   else, a tag or an interpolation, emits nothing.
 ///
 /// The children of raw text elements (`<script>`, `<style>`) are left alone.
 pub fn normalize(nodes: &mut Vec<ParsedNode>) {
@@ -53,13 +53,6 @@ fn normalize_children(node: &mut ParsedNode) {
     }
 }
 
-fn is_inline(node: &ParsedNode) -> bool {
-    matches!(
-        node,
-        ParsedNode::Text { .. } | ParsedNode::TextExpression { .. }
-    )
-}
-
 fn is_newline(node: &ParsedNode) -> bool {
     matches!(node, ParsedNode::Newline { .. })
 }
@@ -91,13 +84,15 @@ fn drop_newlines(nodes: &mut Vec<ParsedNode>) {
             if !is_newline(&nodes[i]) {
                 return true;
             }
-            let preceded_by_inline = nodes[..i]
+            let preceded_by_text = nodes[..i]
                 .iter()
                 .rev()
                 .find(|node| !is_newline(node))
-                .is_some_and(is_inline);
-            let followed_by_inline = nodes.get(i + 1).is_some_and(is_inline);
-            preceded_by_inline && followed_by_inline
+                .is_some_and(|node| matches!(node, ParsedNode::Text { .. }));
+            let followed_by_text = nodes
+                .get(i + 1)
+                .is_some_and(|node| matches!(node, ParsedNode::Text { .. }));
+            preceded_by_text && followed_by_text
         })
         .collect();
     let mut keep = keep.into_iter();
@@ -233,7 +228,7 @@ mod tests {
     }
 
     #[test]
-    fn turns_a_newline_between_text_and_expression_into_a_space() {
+    fn drops_a_newline_between_text_and_expression() {
         check(
             indoc! {r#"
                 view Test {
@@ -243,7 +238,7 @@ mod tests {
                   </div>
                 }
             "#},
-            "<div>hello world</div>",
+            "<div>helloworld</div>",
         );
     }
 
@@ -383,7 +378,7 @@ mod tests {
     }
 
     #[test]
-    fn keeps_a_space_between_two_expressions_on_different_lines() {
+    fn drops_a_newline_between_two_expressions() {
         check(
             indoc! {r#"
                 view Test {
@@ -391,7 +386,7 @@ mod tests {
                   {"b"}
                 }
             "#},
-            "a b",
+            "ab",
         );
     }
 
