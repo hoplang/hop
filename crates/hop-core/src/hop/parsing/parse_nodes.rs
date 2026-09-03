@@ -7,11 +7,10 @@ use super::tokenizer;
 use super::tokenizer::{RawTextToken, TagToken, Token};
 use super::whitespace;
 use crate::document::{DocumentCursor, DocumentRange};
-use crate::expr::parsing::ParsedType;
 use crate::expr::parsing::parse_type::parse_type;
 use crate::expr::parsing::parsed_expr::ParsedMatchPattern;
 use crate::expr::{self, ParsedExpr};
-use crate::html::{HtmlElement, has_raw_content, is_void_element};
+use crate::html::{HtmlElement, is_raw_content_tag, is_void_element_tag};
 use crate::parse_error::{ParseError, ParseErrorKind};
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
@@ -50,6 +49,13 @@ struct OpenElement {
     /// ^^^^^^^^^^^^^^^
     /// ```
     opening_range: DocumentRange,
+    /// The range of the `{...}` the opening tag carried, if it carried one.
+    /// E.g.
+    /// ```text
+    /// <if {done}>
+    ///     ^^^^^^
+    /// ```
+    expression_range: Option<DocumentRange>,
     /// What was read off the opening tag, waiting for the children.
     header: TagHeader,
     children: Vec<MarkupItem>,
@@ -57,11 +63,21 @@ struct OpenElement {
 
 /// What an opening tag carried, kept until the element can be built.
 enum TagHeader {
-    If(Option<ParsedExpr>),
-    For(Option<ParsedLoopHeader>),
-    Let(Option<(Vec<ParsedLetBinding>, DocumentRange)>),
-    Match(Option<ParsedExpr>),
-    Case(Option<ParsedMatchPattern>),
+    If {
+        cond: Option<ParsedExpr>,
+    },
+    For {
+        expr: Option<ParsedLoopHeader>,
+    },
+    Let {
+        bindings: Option<Vec<ParsedLetBinding>>,
+    },
+    Match {
+        expr: Option<ParsedExpr>,
+    },
+    Case {
+        pattern: Option<ParsedMatchPattern>,
+    },
     Component {
         name: Option<TypeName>,
         args: Vec<ParsedAttribute>,
@@ -193,7 +209,7 @@ pub fn parse_nodes(
             }
 
             Token::OpeningTagStart { tag_name, range } => {
-                let (element, end) = read_opening_tag(tag_name, range, iter, comments, errors);
+                let (element, end) = parse_opening_tag(tag_name, range, iter, comments, errors);
                 match end {
                     TagEnd::Open => builder.enter(element),
                     TagEnd::Closed => builder.append_element(element, None, errors),
@@ -201,7 +217,7 @@ pub fn parse_nodes(
             }
 
             Token::ClosingTag { tag_name, range } => {
-                if is_void_element(tag_name.as_str()) {
+                if is_void_element_tag(tag_name.as_str()) {
                     errors.push(ParseError::new(
                         ParseErrorKind::ClosedVoidTag {
                             tag: tag_name.to_cheap_string(),
@@ -241,77 +257,75 @@ enum TagEnd {
     Closed,
 }
 
-/// What a tag's `{...}` held. Its name decides which.
-enum TagExpression {
-    Expr(ParsedExpr),
-    LoopHeader(ParsedLoopHeader),
-    Bindings(Vec<ParsedLetBinding>),
-    Pattern(ParsedMatchPattern),
-}
-
-impl TagExpression {
-    fn expr(self) -> Option<ParsedExpr> {
-        match self {
-            Self::Expr(expr) => Some(expr),
-            _ => None,
-        }
-    }
-
-    fn loop_header(self) -> Option<ParsedLoopHeader> {
-        match self {
-            Self::LoopHeader(header) => Some(header),
-            _ => None,
-        }
-    }
-
-    fn bindings(self) -> Option<Vec<ParsedLetBinding>> {
-        match self {
-            Self::Bindings(bindings) => Some(bindings),
-            _ => None,
-        }
-    }
-
-    fn pattern(self) -> Option<ParsedMatchPattern> {
-        match self {
-            Self::Pattern(pattern) => Some(pattern),
-            _ => None,
-        }
-    }
-}
-
-/// Read an opening tag from just after its name, and say whether children
+/// Parse an opening tag from just after its name, and say whether children
 /// follow it.
-fn read_opening_tag(
-    tag_name: DocumentRange,
-    start: DocumentRange,
+fn parse_opening_tag(
+    tag_name_range: DocumentRange,
+    tag_start_range: DocumentRange,
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut Vec<ParseError>,
 ) -> (OpenElement, TagEnd) {
-    let mut attributes: Vec<ParsedAttribute> = Vec::new();
-    let mut expression: Option<TagExpression> = None;
-    // Set as soon as a `{` is seen.
-    let mut expression_range: Option<DocumentRange> = None;
+    let mut header = match tag_name_range.as_str() {
+        "if" => TagHeader::If { cond: None },
+        "for" => TagHeader::For { expr: None },
+        "let" => TagHeader::Let { bindings: None },
+        "match" => TagHeader::Match { expr: None },
+        "case" => TagHeader::Case { pattern: None },
+        name if name.chars().next().is_some_and(|c| c.is_ascii_uppercase()) => {
+            TagHeader::Component {
+                args: Vec::new(),
+                name: {
+                    match TypeName::new(name) {
+                        Ok(name) => Some(name),
+                        Err(error) => {
+                            errors.push(ParseError::new(
+                                ParseErrorKind::InvalidTypeName { error },
+                                tag_name_range.clone(),
+                            ));
+                            None
+                        }
+                    }
+                },
+            }
+        }
+        _ => TagHeader::Html {
+            attributes: Vec::new(),
+            element: {
+                let element = HtmlElement::parse(tag_name_range.as_str());
+                if element.is_none() {
+                    errors.push(ParseError::new(
+                        ParseErrorKind::UnknownHtmlElement {
+                            tag: tag_name_range.to_cheap_string(),
+                        },
+                        tag_name_range.clone(),
+                    ));
+                }
+                element
+            },
+        },
+    };
     let mut self_closing = false;
-    let mut opening_range = start.clone();
+    let mut full_range = tag_start_range.clone();
+    let mut expression_range: Option<DocumentRange> = None;
 
     loop {
         let Some(part) = tokenizer::next_tag_token(iter, errors) else {
             errors.push(ParseError::new(
                 ParseErrorKind::UnterminatedOpeningTag {},
-                tag_name.clone(),
+                tag_name_range.clone(),
             ));
             break;
         };
         match part {
             TagToken::End { range } => {
-                opening_range = start.clone().to(range);
+                full_range = tag_start_range.clone().to(range);
                 break;
             }
 
             TagToken::SelfClosingEnd { range } => {
                 self_closing = true;
-                opening_range = start.clone().to(range);
+                full_range = tag_start_range.clone().to(range);
                 break;
             }
 
@@ -320,7 +334,12 @@ fn read_opening_tag(
                     content: value.content,
                     quoted_range: value.quoted_range,
                 });
-                push_attribute(&mut attributes, name, value, errors);
+                push_attribute(
+                    &mut header,
+                    &tag_name_range,
+                    ParsedAttribute::Named { name, value },
+                    errors,
+                );
             }
 
             TagToken::AttributeExpressionStart { name, left_brace } => {
@@ -335,16 +354,28 @@ fn read_opening_tag(
                     )
                     .is_some()
                 {
-                    let value = ParsedAttributeValue::Expression(value);
-                    push_attribute(&mut attributes, name, Some(value), errors);
+                    push_attribute(
+                        &mut header,
+                        &tag_name_range,
+                        ParsedAttribute::Named {
+                            name,
+                            value: Some(ParsedAttributeValue::Expression(value)),
+                        },
+                        errors,
+                    );
                 }
             }
 
             TagToken::Spread { name, range } => match VarName::new(name.as_str()) {
-                Ok(var_name) => attributes.push(ParsedAttribute::Spread {
-                    name: var_name,
-                    range,
-                }),
+                Ok(var_name) => push_attribute(
+                    &mut header,
+                    &tag_name_range,
+                    ParsedAttribute::Spread {
+                        name: var_name,
+                        range,
+                    },
+                    errors,
+                ),
                 Err(error) => errors.push(ParseError::new(
                     ParseErrorKind::InvalidVariableName {
                         name: name.to_cheap_string(),
@@ -355,54 +386,107 @@ fn read_opening_tag(
             },
 
             TagToken::ExpressionStart { left_brace } => {
-                match read_tag_expression(&tag_name, left_brace.clone(), iter, comments, errors) {
-                    Some((parsed, range)) => {
-                        expression = Some(parsed);
-                        expression_range = Some(range);
+                let parse_succeeded = match &mut header {
+                    TagHeader::If { cond: expr } | TagHeader::Match { expr } => {
+                        *expr = expr::parse_expr::parse_expr(iter, comments, errors, &left_brace);
+                        expr.is_some()
                     }
-                    None => expression_range = Some(left_brace),
+
+                    TagHeader::For { expr } => {
+                        *expr = parse_loop_header(iter, comments, errors, &left_brace);
+                        expr.is_some()
+                    }
+
+                    TagHeader::Case { pattern } => {
+                        *pattern = expr::parse_expr::parse_match_pattern(
+                            iter,
+                            comments,
+                            errors,
+                            &left_brace,
+                        );
+                        pattern.is_some()
+                    }
+
+                    TagHeader::Let { bindings } => {
+                        *bindings = parse_let_bindings(iter, comments, errors, &left_brace);
+                        bindings.is_some()
+                    }
+
+                    TagHeader::Component { .. } | TagHeader::Html { .. } => {
+                        expr::parse_expr::parse_expr(iter, comments, errors, &left_brace).is_some()
+                    }
+                };
+                expression_range = Some(left_brace.clone());
+                if parse_succeeded {
+                    let right_brace = expr::tokenizer::expect_opposite(
+                        iter,
+                        comments,
+                        errors,
+                        &expr::Token::LeftBrace,
+                        &left_brace,
+                    );
+                    if let Some(right_brace) = right_brace {
+                        expression_range = Some(left_brace.to(right_brace));
+                    }
                 }
             }
         }
     }
 
+    let error = match (&header, &expression_range) {
+        (TagHeader::If { .. }, None) => Some((ParseErrorKind::MissingIfExpression {}, &full_range)),
+        (TagHeader::For { .. }, None) => {
+            Some((ParseErrorKind::MissingForExpression {}, &full_range))
+        }
+        (TagHeader::Let { .. }, None) => Some((ParseErrorKind::MissingLetBinding {}, &full_range)),
+        (TagHeader::Match { .. }, None) => {
+            Some((ParseErrorKind::MissingMatchExpression {}, &full_range))
+        }
+        (TagHeader::Case { .. }, None) => {
+            Some((ParseErrorKind::MissingCasePattern {}, &full_range))
+        }
+        (TagHeader::Component { .. }, Some(range)) => Some((
+            ParseErrorKind::UnexpectedComponentExpression {
+                tag_name: tag_name_range.to_cheap_string(),
+            },
+            range,
+        )),
+        _ => None,
+    };
+    if let Some((kind, range)) = error {
+        errors.push(ParseError::new(kind, range.clone()));
+    }
+
     // A raw text element holds text rather than markup, so its content and
     // closing tag are read here.
-    let raw_text = !self_closing && has_raw_content(tag_name.as_str());
+    let raw_text = !self_closing && is_raw_content_tag(tag_name_range.as_str());
     let mut children = Vec::new();
     if raw_text {
-        match tokenizer::next_raw_text_token(iter, &tag_name) {
+        match tokenizer::next_raw_text_token(iter, &tag_name_range) {
             Some(RawTextToken {
                 content,
                 closing_tag_end,
             }) => {
                 children.extend(content.map(|range| MarkupItem::Node(ParsedNode::Text { range })));
-                opening_range = start.to(closing_tag_end);
+                full_range = tag_start_range.to(closing_tag_end);
             }
             None => errors.push(ParseError::new(
                 ParseErrorKind::UnterminatedOpeningTag {},
-                tag_name.clone(),
+                tag_name_range.clone(),
             )),
         }
     }
 
-    let header = build_header(
-        &tag_name,
-        attributes,
-        expression,
-        expression_range,
-        &opening_range,
-        errors,
-    );
-    let end = if raw_text || self_closing || is_void_element(tag_name.as_str()) {
+    let end = if raw_text || self_closing || is_void_element_tag(tag_name_range.as_str()) {
         TagEnd::Closed
     } else {
         TagEnd::Open
     };
     (
         OpenElement {
-            tag_name,
-            opening_range,
+            tag_name: tag_name_range,
+            opening_range: full_range,
+            expression_range,
             header,
             children,
         },
@@ -410,210 +494,20 @@ fn read_opening_tag(
     )
 }
 
-/// Read the `{...}` on a tag, with the sub-parser its name calls for.
-fn read_tag_expression(
-    tag_name: &DocumentRange,
-    left_brace: DocumentRange,
-    iter: &mut Peekable<DocumentCursor>,
-    comments: &mut VecDeque<DocumentRange>,
-    errors: &mut Vec<ParseError>,
-) -> Option<(TagExpression, DocumentRange)> {
-    let expression = match tag_name.as_str() {
-        "for" => {
-            parse_loop_header(iter, comments, errors, &left_brace).map(TagExpression::LoopHeader)?
-        }
-        "let" => TagExpression::Bindings(
-            parse_let_bindings(iter, comments, errors, &left_brace)?
-                .into_iter()
-                .map(
-                    |(var_name, var_name_range, var_type, value_expr)| ParsedLetBinding {
-                        var_name,
-                        var_name_range,
-                        var_type,
-                        value_expr,
-                    },
-                )
-                .collect(),
-        ),
-        "case" => expr::parse_expr::parse_match_pattern(iter, comments, errors, &left_brace)
-            .map(TagExpression::Pattern)?,
-        _ => expr::parse_expr::parse_expr(iter, comments, errors, &left_brace)
-            .map(TagExpression::Expr)?,
-    };
-    let right_brace = expr::tokenizer::expect_opposite(
-        iter,
-        comments,
-        errors,
-        &expr::Token::LeftBrace,
-        &left_brace,
-    )?;
-    Some((expression, left_brace.to(right_brace)))
-}
-
-/// Build a tag's header from what was read off it.
-fn build_header(
-    tag_name: &DocumentRange,
-    attributes: Vec<ParsedAttribute>,
-    expression: Option<TagExpression>,
-    expression_range: Option<DocumentRange>,
-    opening_range: &DocumentRange,
-    errors: &mut Vec<ParseError>,
-) -> TagHeader {
-    let written = expression_range.is_some();
-    match tag_name.as_str() {
-        "if" => {
-            reject_attributes(&attributes, tag_name, errors);
-            let expression = require_expression(
-                expression,
-                written,
-                ParseErrorKind::MissingIfExpression {},
-                opening_range,
-                errors,
-            );
-            TagHeader::If(expression.and_then(TagExpression::expr))
-        }
-
-        "for" => {
-            reject_attributes(&attributes, tag_name, errors);
-            let expression = require_expression(
-                expression,
-                written,
-                ParseErrorKind::MissingForExpression {},
-                opening_range,
-                errors,
-            );
-            TagHeader::For(expression.and_then(TagExpression::loop_header))
-        }
-
-        "let" => {
-            reject_attributes(&attributes, tag_name, errors);
-            let expression = require_expression(
-                expression,
-                written,
-                ParseErrorKind::MissingLetBinding {},
-                opening_range,
-                errors,
-            );
-            TagHeader::Let(
-                expression
-                    .and_then(TagExpression::bindings)
-                    .zip(expression_range),
-            )
-        }
-
-        "match" => {
-            reject_attributes(&attributes, tag_name, errors);
-            let expression = require_expression(
-                expression,
-                written,
-                ParseErrorKind::MissingMatchExpression {},
-                opening_range,
-                errors,
-            );
-            TagHeader::Match(expression.and_then(TagExpression::expr))
-        }
-
-        "case" => {
-            let expression = require_expression(
-                expression,
-                written,
-                ParseErrorKind::MissingCasePattern {},
-                opening_range,
-                errors,
-            );
-            TagHeader::Case(expression.and_then(TagExpression::pattern))
-        }
-
-        // A PascalCase tag names a component.
-        name if name.chars().next().is_some_and(|c| c.is_ascii_uppercase()) => {
-            let name = match TypeName::new(name) {
-                Ok(name) => Some(name),
-                Err(error) => {
-                    errors.push(ParseError::new(
-                        ParseErrorKind::InvalidTypeName { error },
-                        tag_name.clone(),
-                    ));
-                    None
-                }
-            };
-            // A component takes its arguments as attributes, never as a bare {..}.
-            if let Some(range) = expression_range {
-                errors.push(ParseError::new(
-                    ParseErrorKind::UnexpectedComponentExpression {
-                        tag_name: tag_name.to_cheap_string(),
-                    },
-                    range,
-                ));
-            }
-            TagHeader::Component {
-                name,
-                args: attributes,
-            }
-        }
-
-        _ => {
-            let element = HtmlElement::parse(tag_name.as_str());
-            if element.is_none() {
-                errors.push(ParseError::new(
-                    ParseErrorKind::UnknownHtmlElement {
-                        tag: tag_name.to_cheap_string(),
-                    },
-                    tag_name.clone(),
-                ));
-            }
-            TagHeader::Html {
-                element,
-                attributes,
-            }
-        }
-    }
-}
-
-/// Report a tag's `{...}` as missing when it has none.
-fn require_expression(
-    expression: Option<TagExpression>,
-    written: bool,
-    missing: ParseErrorKind,
-    opening_range: &DocumentRange,
-    errors: &mut Vec<ParseError>,
-) -> Option<TagExpression> {
-    if !written {
-        errors.push(ParseError::new(missing, opening_range.clone()));
-    }
-    expression
-}
-
-/// Add a named attribute, rejecting one the tag already has.
+/// Add an attribute to the tag it was written on, rejecting one on a tag
+/// that takes none and a name the tag already has.
 fn push_attribute(
-    attributes: &mut Vec<ParsedAttribute>,
-    name: DocumentRange,
-    value: Option<ParsedAttributeValue>,
-    errors: &mut Vec<ParseError>,
-) {
-    let duplicate = attributes.iter().any(|attribute| match attribute {
-        ParsedAttribute::Named { name: existing, .. } => existing.as_str() == name.as_str(),
-        ParsedAttribute::Spread { .. } => false,
-    });
-    if duplicate {
-        errors.push(ParseError::new(
-            ParseErrorKind::DuplicateAttribute {
-                name: name.to_cheap_string(),
-            },
-            name,
-        ));
-        return;
-    }
-    attributes.push(ParsedAttribute::Named { name, value });
-}
-
-/// Report the attributes on a tag that takes none.
-fn reject_attributes(
-    attributes: &[ParsedAttribute],
+    header: &mut TagHeader,
     tag_name: &DocumentRange,
+    attribute: ParsedAttribute,
     errors: &mut Vec<ParseError>,
 ) {
-    for attribute in attributes {
-        let (attr_name, range) = match attribute {
+    let (TagHeader::Component {
+        args: attributes, ..
+    }
+    | TagHeader::Html { attributes, .. }) = header
+    else {
+        let (attr_name, range) = match &attribute {
             ParsedAttribute::Named { name, .. } => (name.to_cheap_string(), name.clone()),
             ParsedAttribute::Spread { range, .. } => (range.to_cheap_string(), range.clone()),
         };
@@ -624,7 +518,23 @@ fn reject_attributes(
             },
             range,
         ));
+        return;
+    };
+    if let ParsedAttribute::Named { name, .. } = &attribute
+        && attributes.iter().any(|existing| match existing {
+            ParsedAttribute::Named { name: existing, .. } => existing.as_str() == name.as_str(),
+            ParsedAttribute::Spread { .. } => false,
+        })
+    {
+        errors.push(ParseError::new(
+            ParseErrorKind::DuplicateAttribute {
+                name: name.to_cheap_string(),
+            },
+            name.clone(),
+        ));
+        return;
     }
+    attributes.push(attribute);
 }
 
 /// Build an element from its header and the children that were collected for
@@ -640,6 +550,7 @@ fn close_element(
     let OpenElement {
         tag_name,
         opening_range,
+        expression_range,
         header,
         children,
     } = element;
@@ -652,7 +563,7 @@ fn close_element(
     };
 
     match header {
-        TagHeader::If(condition) => {
+        TagHeader::If { cond: condition } => {
             let children = expect_nodes(children, errors);
             condition.map(|condition| {
                 MarkupItem::Node(ParsedNode::If {
@@ -663,7 +574,7 @@ fn close_element(
             })
         }
 
-        TagHeader::For(header) => {
+        TagHeader::For { expr: header } => {
             let children = expect_nodes(children, errors);
             header.map(|header| {
                 MarkupItem::Node(ParsedNode::For {
@@ -676,19 +587,21 @@ fn close_element(
             })
         }
 
-        TagHeader::Let(bindings) => {
+        TagHeader::Let { bindings } => {
             let children = expect_nodes(children, errors);
-            bindings.map(|(bindings, bindings_range)| {
-                MarkupItem::Node(ParsedNode::Let {
-                    bindings,
-                    bindings_range,
-                    range,
-                    children,
+            bindings
+                .zip(expression_range)
+                .map(|(bindings, bindings_range)| {
+                    MarkupItem::Node(ParsedNode::Let {
+                        bindings,
+                        bindings_range,
+                        range,
+                        children,
+                    })
                 })
-            })
         }
 
-        TagHeader::Match(subject) => {
+        TagHeader::Match { expr: subject } => {
             let cases = expect_cases(children, errors);
             subject.map(|subject| {
                 MarkupItem::Node(ParsedNode::Match {
@@ -699,7 +612,7 @@ fn close_element(
             })
         }
 
-        TagHeader::Case(pattern) => {
+        TagHeader::Case { pattern } => {
             let children = expect_nodes(children, errors);
             pattern.map(|pattern| MarkupItem::Case {
                 case: ParsedMatchCase { pattern, children },
@@ -834,7 +747,7 @@ fn parse_let_bindings(
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut Vec<ParseError>,
     range: &DocumentRange,
-) -> Option<Vec<(VarName, DocumentRange, Option<ParsedType>, ParsedExpr)>> {
+) -> Option<Vec<ParsedLetBinding>> {
     let bindings = expr::tokenizer::parse_comma_separated(
         iter,
         comments,
@@ -853,7 +766,12 @@ fn parse_let_bindings(
             };
             expr::tokenizer::expect_token(iter, comments, errors, range, &expr::Token::Assign)?;
             let value_expr = expr::parse_expr::parse_expr(iter, comments, errors, range)?;
-            Some((var_name, var_name_range, var_type, value_expr))
+            Some(ParsedLetBinding {
+                var_name,
+                var_name_range,
+                var_type,
+                value_expr,
+            })
         },
         Some(&expr::Token::RightBrace),
     )?;

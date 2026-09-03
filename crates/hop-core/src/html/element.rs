@@ -2,7 +2,7 @@ use crate::document::CheapString;
 
 /// Return true if the string represents a void element.
 /// See https://developer.mozilla.org/en-US/docs/Glossary/Void_element
-pub fn is_void_element(tag_name: &str) -> bool {
+pub fn is_void_element_tag(tag_name: &str) -> bool {
     matches!(
         tag_name,
         "area"
@@ -22,7 +22,7 @@ pub fn is_void_element(tag_name: &str) -> bool {
 }
 
 /// Return true if the element's content is text rather than markup.
-pub fn has_raw_content(tag_name: &str) -> bool {
+pub fn is_raw_content_tag(tag_name: &str) -> bool {
     matches!(tag_name, "script" | "style")
 }
 
@@ -463,7 +463,7 @@ impl HtmlElement {
     }
 
     pub fn is_void(&self) -> bool {
-        is_void_element(self.as_str())
+        is_void_element_tag(self.as_str())
     }
 
     /// Return true for SVG elements (attribute-name validation is skipped for them).
