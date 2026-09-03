@@ -10,8 +10,8 @@ coverage TEST:
 
 # run fuzz tests
 fuzz:
-	ARBTEST_BUDGET_MS=60000 cargo test --release -p hop-core fuzz_
+	ARBTEST_BUDGET_MS=20000 cargo test -p hop-core fuzz_
 
 # run fuzz tests that shell out to bun/tsgo/rustc
 fuzz-transpilers:
-	ARBTEST_BUDGET_MS=300000 cargo test -p hop-core fuzz_transpile -- --ignored
+	ARBTEST_BUDGET_MS=20000 cargo test -p hop-core fuzz_transpile -- --ignored

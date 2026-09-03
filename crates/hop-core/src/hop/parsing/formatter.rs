@@ -1413,6 +1413,111 @@ mod tests {
     }
 
     #[test]
+    fn fuzz_formatting_preserves_rendering_and_is_idempotent() {
+        use crate::ir::runtime::evaluator;
+        use crate::orchestrator::{OrchestrateOptions, orchestrate_pure};
+        use crate::program::Program;
+        use crate::symbols::type_name::TypeName;
+        use arbitrary::Unstructured;
+        use std::collections::HashMap;
+
+        const STRINGS: &[&str] = &["", " ", "\n", "  \n", "\n  ", "a", "  a", "a \n"];
+        const TAGS: &[&str] = &["div", "span", "b"];
+
+        fn random_nodes(
+            u: &mut Unstructured<'_>,
+            depth: u32,
+            out: &mut String,
+        ) -> arbitrary::Result<()> {
+            for _ in 0..u.int_in_range(0..=5)? {
+                match u.int_in_range(0..=if depth > 0 { 2 } else { 1 })? {
+                    0 => out.push_str(u.choose(STRINGS)?),
+                    1 => out.push_str("{x}"),
+                    _ => {
+                        let tag = u.choose(TAGS)?;
+                        out.push_str(&format!("<{tag}>"));
+                        random_nodes(u, depth - 1, out)?;
+                        out.push_str(&format!("</{tag}>"));
+                    }
+                }
+            }
+            Ok(())
+        }
+
+        fn format_source(source: &str) -> String {
+            let document_id = DocumentId::new("test.hop").unwrap();
+            let mut errors = Vec::new();
+            let ast = parser::parse(
+                document_id.clone(),
+                Document::new(document_id, source.to_string()),
+                &mut errors,
+            );
+            assert!(
+                errors.is_empty(),
+                "parse errors: {errors:?}\n\nsource:\n{source}"
+            );
+            super::format(&ast)
+        }
+
+        fn render(source: &str) -> String {
+            let document_id = DocumentId::new("test.hop").unwrap();
+            let mut program = Program::default();
+            program.update_module(
+                &document_id,
+                Document::new(document_id.clone(), source.to_string()),
+            );
+            let parse_errors = program.get_parse_errors();
+            assert!(
+                parse_errors.values().all(|e| e.is_empty()),
+                "parse errors: {parse_errors:?}\n\nsource:\n{source}"
+            );
+            let type_errors = program.get_type_errors();
+            assert!(
+                type_errors.values().all(|e| e.is_empty()),
+                "type errors: {type_errors:?}\n\nsource:\n{source}"
+            );
+            let module = orchestrate_pure(
+                &program.get_typed_modules().clone(),
+                OrchestrateOptions {
+                    skip_html_structure: true,
+                    skip_optimization: true,
+                    ..Default::default()
+                },
+            );
+            let page_name = TypeName::new("Test").unwrap();
+            evaluator::evaluate_page(&module, &page_name, HashMap::new()).expect("evaluator failed")
+        }
+
+        arbtest::arbtest(|u| {
+            let source = {
+                let mut body = String::new();
+                random_nodes(u, 4, &mut body)?;
+                if body.contains("{x}") {
+                    let value = u.choose(STRINGS)?;
+                    format!("view Test {{<let {{x: String = {value:?}}}>{body}</let>}}")
+                } else {
+                    format!("view Test {{{body}}}")
+                }
+            };
+
+            let formatted = format_source(&source);
+
+            assert_eq!(
+                render(&source),
+                render(&formatted),
+                "formatting changed the rendered output\n\nsource:\n{source}\n\nformatted:\n{formatted}"
+            );
+
+            let formatted_twice = format_source(&formatted);
+            assert_eq!(
+                formatted, formatted_twice,
+                "formatting is not idempotent\n\nsource:\n{source}\n\nformatted:\n{formatted}"
+            );
+            Ok(())
+        });
+    }
+
+    #[test]
     fn pub_record_to_doc() {
         check(
             indoc! {"
