@@ -279,6 +279,44 @@ mod tests {
     }
 
     #[test]
+    fn preserves_spaces_inside_expression() {
+        check(
+            indoc! {r#"
+                view Test {
+                  {"   "}
+                }
+            "#},
+            "   ",
+        );
+    }
+
+    #[test]
+    fn preserves_content_betwen_two_interpolations_on_single_line() {
+        check(
+            indoc! {r#"
+                view Test {
+                  <let {first: String = "Hello", second: String = "World"}>
+                    <div>{first} {second}</div>
+                  </let>
+                }
+            "#},
+            "<div>Hello World</div>",
+        );
+    }
+
+    #[test]
+    fn preserves_whitespace_before_tag_on_single_line() {
+        check(
+            indoc! {"
+                view Test {
+                  this looks <b>great</b>
+                }
+            "},
+            "this looks <b>great</b>",
+        );
+    }
+
+    #[test]
     fn preserves_style_content_verbatim() {
         check(
             indoc! {"

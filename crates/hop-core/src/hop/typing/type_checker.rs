@@ -2071,16 +2071,9 @@ fn typecheck_node(
             ))
         }
 
-        ParsedNode::Text { range } => {
-            // Skip whitespace-only text nodes (they're formatting artifacts)
-            if range.as_str().trim().is_empty() {
-                None
-            } else {
-                Some(TypedExpr::FragmentRaw {
-                    value: range.to_cheap_string(),
-                })
-            }
-        }
+        ParsedNode::Text { range } => Some(TypedExpr::FragmentRaw {
+            value: range.to_cheap_string(),
+        }),
 
         // Newlines between inline content represent a space (HTML whitespace collapsing)
         // The tokenizer only emits Newlines when they're semantically significant
@@ -7479,7 +7472,11 @@ mod tests {
                 fn Main() -> Fragment {
                   concat(
                     let first = "Hello" in let second = "World" in concat(
-                      html(tag: "div", attrs: [], children: concat({first}, {second})),
+                      html(
+                        tag: "div",
+                        attrs: [],
+                        children: concat({first}, raw(" "), {second}),
+                      ),
                     ),
                   )
                 }
