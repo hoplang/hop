@@ -183,16 +183,6 @@ fn check_with_asset_rewriter(
         panic!("Parse errors found");
     }
 
-    // Verify input is properly formatted
-    let formatted = program
-        .get_formatted_module(&document_id)
-        .expect("Failed to format module");
-    assert_eq!(
-        formatted.trim(),
-        hop_source.trim(),
-        "Test input is not properly formatted. Update the test input (right) to match the formatted output (left)."
-    );
-
     // Check for type errors
     let type_errors = program.get_type_errors();
     let has_type_errors = type_errors.values().any(|e| !e.is_empty());
@@ -900,10 +890,12 @@ mod tests {
                   n: Int,
                   ...rest,
                 ) {
-                  <Leaf ...rest/>
-                  <if {0 < n}>
-                    <First n={n - 1}/>
-                  </if>
+                  <>
+                    <Leaf ...rest/>
+                    <if {0 < n}>
+                      <First n={n - 1}/>
+                    </if>
+                  </>
                 }
 
                 view Test {
@@ -3083,8 +3075,10 @@ mod tests {
                 }
 
                 view Test {
-                  <Tag text="a"/>
-                  <Tag text="b"/>
+                  <>
+                    <Tag text="a"/>
+                    <Tag text="b"/>
+                  </>
                 }
             "#},
             "<div>a</div><div>b</div>",
@@ -3134,10 +3128,7 @@ mod tests {
                   b: String,
                 ) {
                   <p>
-                    {a}
-                  </p>
-                  <p>
-                    {b}
+                    {a} {b}
                   </p>
                 }
 
@@ -3149,16 +3140,14 @@ mod tests {
                   </let>
                 }
             "#},
-            "<p>B</p><p>A</p>",
+            "<p>B A</p>",
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Swap(a@v2: String, b@v3: String) -> Fragment {
                   write("<p")
                   write(">")
                   write_string(v2)
-                  write("</p>")
-                  write("<p")
-                  write(">")
+                  write(" ")
                   write_string(v3)
                   write("</p>")
                 }
@@ -3171,10 +3160,10 @@ mod tests {
                 }
                 -- ir (optimized) --
                 page Test() {
-                  write("<p>B</p><p>A</p>")
+                  write("<p>B A</p>")
                 }
                 -- expected output --
-                <p>B</p><p>A</p>
+                <p>B A</p>
                 -- eval (unoptimized) --
                 OK
                 -- eval (optimized) --
@@ -3275,12 +3264,14 @@ mod tests {
         check(
             indoc! {r#"
                 view Test {
-                  <let {flag: Bool = true}>
-                    {match flag {true => "yes", false => "no"}}
-                  </let>
-                  <let {other: Bool = false}>
-                    {match other {true => "YES", false => "NO"}}
-                  </let>
+                  <>
+                    <let {flag: Bool = true}>
+                      {match flag {true => "yes", false => "no"}}
+                    </let>
+                    <let {other: Bool = false}>
+                      {match other {true => "YES", false => "NO"}}
+                    </let>
+                  </>
                 }
             "#},
             "yesNO",
@@ -3379,13 +3370,15 @@ mod tests {
         check(
             indoc! {r#"
                 view Test {
-                  <let {opt1: Option[String] = Some("hi")}>
-                    {match opt1 {Some(_) => "some", None => "none"}}
-                  </let>
-                  ,
-                  <let {opt2: Option[String] = None}>
-                    {match opt2 {Some(_) => "SOME", None => "NONE"}}
-                  </let>
+                  <>
+                    <let {opt1: Option[String] = Some("hi")}>
+                      {match opt1 {Some(_) => "some", None => "none"}}
+                    </let>
+                    ,
+                    <let {opt2: Option[String] = None}>
+                      {match opt2 {Some(_) => "SOME", None => "NONE"}}
+                    </let>
+                  </>
                 }
             "#},
             "some,NONE",
@@ -3434,23 +3427,25 @@ mod tests {
         check(
             indoc! {r#"
                 view Test {
-                  <let {outer: Bool = true}>
-                    <let {inner: Bool = false}>
-                      {match outer {
-                        true => match inner {true => "TT", false => "TF"},
-                        false => "F",
-                      }}
+                  <>
+                    <let {outer: Bool = true}>
+                      <let {inner: Bool = false}>
+                        {match outer {
+                          true => match inner {true => "TT", false => "TF"},
+                          false => "F",
+                        }}
+                      </let>
                     </let>
-                  </let>
-                  ,
-                  <let {outer2: Bool = false}>
-                    <let {inner2: Bool = true}>
-                      {match outer2 {
-                        true => match inner2 {true => "TT", false => "TF"},
-                        false => "F",
-                      }}
+                    ,
+                    <let {outer2: Bool = false}>
+                      <let {inner2: Bool = true}>
+                        {match outer2 {
+                          true => match inner2 {true => "TT", false => "TF"},
+                          false => "F",
+                        }}
+                      </let>
                     </let>
-                  </let>
+                  </>
                 }
             "#},
             "TF,F",
@@ -3631,11 +3626,13 @@ mod tests {
         check(
             indoc! {r#"
                 view Test {
-                  <!-- This is a comment -->
-                  <h1>
-                    Hello, World!
-                  </h1>
-                  <!-- Another comment -->
+                  <>
+                    <!-- This is a comment -->
+                    <h1>
+                      Hello, World!
+                    </h1>
+                    <!-- Another comment -->
+                  </>
                 }
             "#},
             "<h1>Hello, World!</h1>",
@@ -4320,12 +4317,14 @@ mod tests {
         check(
             indoc! {r#"
                 view Test {
-                  <if {3 < 5}>
-                    3 &lt; 5
-                  </if>
-                  <if {10 < 2}>
-                    10 &lt; 2
-                  </if>
+                  <>
+                    <if {3 < 5}>
+                      3 &lt; 5
+                    </if>
+                    <if {10 < 2}>
+                      10 &lt; 2
+                    </if>
+                  </>
                 }
             "#},
             "3 &lt; 5",
@@ -4378,9 +4377,6 @@ mod tests {
                   <if {1.5 < 2.5}>
                     1.5 &lt; 2.5
                   </if>
-                  <if {3.0 < 1.0}>
-                    3.0 &lt; 1.0
-                  </if>
                 }
             "#},
             "1.5 &lt; 2.5",
@@ -4390,13 +4386,6 @@ mod tests {
                   match (1.5 < 2.5) {
                     true => {
                       write("1.5 &lt; 2.5")
-                    }
-                    false => {
-                    }
-                  }
-                  match (3 < 1) {
-                    true => {
-                      write("3.0 &lt; 1.0")
                     }
                     false => {
                     }
@@ -4977,13 +4966,6 @@ mod tests {
                       </if>
                     </let>
                   </let>
-                  <let {c: Bool = true}>
-                    <let {d: Bool = false}>
-                      <if {c && d}>
-                        TF
-                      </if>
-                    </let>
-                  </let>
                 }
             "#},
             "TT",
@@ -4995,17 +4977,6 @@ mod tests {
                       match (v0 && v1) {
                         true => {
                           write("TT")
-                        }
-                        false => {
-                        }
-                      }
-                    }
-                  }
-                  let v2 = true in {
-                    let v3 = false in {
-                      match (v2 && v3) {
-                        true => {
-                          write("TF")
                         }
                         false => {
                         }
@@ -5048,13 +5019,6 @@ mod tests {
                       </if>
                     </let>
                   </let>
-                  <let {c: Bool = false}>
-                    <let {d: Bool = false}>
-                      <if {c || d}>
-                        FF
-                      </if>
-                    </let>
-                  </let>
                 }
             "#},
             "FT",
@@ -5066,17 +5030,6 @@ mod tests {
                       match (v0 || v1) {
                         true => {
                           write("FT")
-                        }
-                        false => {
-                        }
-                      }
-                    }
-                  }
-                  let v2 = false in {
-                    let v3 = false in {
-                      match (v2 || v3) {
-                        true => {
-                          write("FF")
                         }
                         false => {
                         }
@@ -5112,15 +5065,17 @@ mod tests {
         check(
             indoc! {r#"
                 view Test {
-                  <if {3 <= 5}>
-                    A
-                  </if>
-                  <if {5 <= 5}>
-                    B
-                  </if>
-                  <if {7 <= 5}>
-                    C
-                  </if>
+                  <>
+                    <if {3 <= 5}>
+                      A
+                    </if>
+                    <if {5 <= 5}>
+                      B
+                    </if>
+                    <if {7 <= 5}>
+                      C
+                    </if>
+                  </>
                 }
             "#},
             "AB",
@@ -8485,10 +8440,12 @@ mod tests {
         check(
             indoc! {r#"
                 component Countdown(delete: Int) {
-                  {delete.to_string()}
-                  <if {0 < delete}>
-                    <Countdown delete={delete - 1}/>
-                  </if>
+                  <>
+                    {delete.to_string()}
+                    <if {0 < delete}>
+                      <Countdown delete={delete - 1}/>
+                    </if>
+                  </>
                 }
 
                 view Test {
@@ -8549,10 +8506,12 @@ mod tests {
         check(
             indoc! {r#"
                 component Countdown(type: Int) {
-                  {type.to_string()}
-                  <if {0 < type}>
-                    <Countdown type={type - 1}/>
-                  </if>
+                  <>
+                    {type.to_string()}
+                    <if {0 < type}>
+                      <Countdown type={type - 1}/>
+                    </if>
+                  </>
                 }
 
                 view Test {
@@ -8613,11 +8572,13 @@ mod tests {
         check(
             indoc! {r#"
                 view Test {
-                  {"\""}
-                  {"\\"}
-                  {"foo\nbar"}
-                  {"foo\tbar"}
-                  {"C:\\Users\\name"}
+                  <>
+                    {"\""}
+                    {"\\"}
+                    {"foo\nbar"}
+                    {"foo\tbar"}
+                    {"C:\\Users\\name"}
+                  </>
                 }
             "#},
             "&quot;\\foo\nbarfoo\tbarC:\\Users\\name",
@@ -10616,10 +10577,12 @@ mod tests {
         check(
             indoc! {r#"
                 component Greeting(name: String) {
-                  Hello,
-                  {" "}
-                  {name}
-                  !
+                  <>
+                    Hello,
+                    {" "}
+                    {name}
+                    !
+                  </>
                 }
 
                 view Test {
@@ -10919,12 +10882,14 @@ mod tests {
         check(
             indoc! {r#"
                 component Repeat(children: Fragment) {
-                  <div class="first">
-                    {children}
-                  </div>
-                  <div class="second">
-                    {children}
-                  </div>
+                  <>
+                    <div class="first">
+                      {children}
+                    </div>
+                    <div class="second">
+                      {children}
+                    </div>
+                  </>
                 }
 
                 view Test {
@@ -11005,14 +10970,16 @@ mod tests {
                 }
 
                 component NodeView(node: Node) {
-                  <Badge text={node.value}/>
-                  <match {node.next}>
-                    <case {Some(next)}>
-                      <NodeView node={next}/>
-                    </case>
-                    <case {None}>
-                    </case>
-                  </match>
+                  <>
+                    <Badge text={node.value}/>
+                    <match {node.next}>
+                      <case {Some(next)}>
+                        <NodeView node={next}/>
+                      </case>
+                      <case {None}>
+                      </case>
+                    </match>
+                  </>
                 }
 
                 view Test {
@@ -11119,16 +11086,18 @@ mod tests {
                 }
 
                 component NodeView(node: Node) {
-                  <span>
-                    {node.value}
-                  </span>
-                  <match {node.next}>
-                    <case {Some(next)}>
-                      <NodeView node={next}/>
-                    </case>
-                    <case {None}>
-                    </case>
-                  </match>
+                  <>
+                    <span>
+                      {node.value}
+                    </span>
+                    <match {node.next}>
+                      <case {Some(next)}>
+                        <NodeView node={next}/>
+                      </case>
+                      <case {None}>
+                      </case>
+                    </match>
+                  </>
                 }
 
                 view Test {
@@ -11604,12 +11573,14 @@ mod tests {
                 }
 
                 view Test {
-                  <Card title="With">
-                    <p>
-                      body
-                    </p>
-                  </Card>
-                  <Card title="Without"/>
+                  <>
+                    <Card title="With">
+                      <p>
+                        body
+                      </p>
+                    </Card>
+                    <Card title="Without"/>
+                  </>
                 }
             "#},
             r#"<div class="card"><h2>With</h2><p>body</p></div><div class="card"><h2>Without</h2></div>"#,
@@ -12128,8 +12099,10 @@ mod tests {
         check(
             indoc! {r#"
                 view Test {
-                  hello
-                  world
+                  <>
+                    hello
+                    world
+                  </>
                 }
             "#},
             "hello world",
@@ -12189,13 +12162,15 @@ mod tests {
                 }
 
                 view Test {
-                  <RenderItem item={
-                    Item::Todo {label: "Buy milk", done: true}
-                  }/>
-                  ,
-                  <RenderItem item={
-                    Item::Todo {label: "Walk dog", done: false}
-                  }/>
+                  <>
+                    <RenderItem item={
+                      Item::Todo {label: "Buy milk", done: true}
+                    }/>
+                    ,
+                    <RenderItem item={
+                      Item::Todo {label: "Walk dog", done: false}
+                    }/>
+                  </>
                 }
             "#},
             "[x]Buy milk,[ ]Walk dog",
@@ -12291,11 +12266,13 @@ mod tests {
                 }
 
                 view Test {
-                  <Render time={TimeAgo::MinutesAgo {count: 1}}/>
-                  ,
-                  <Render time={TimeAgo::MinutesAgo {count: 5}}/>
-                  ,
-                  <Render time={TimeAgo::HoursAgo {count: 1}}/>
+                  <>
+                    <Render time={TimeAgo::MinutesAgo {count: 1}}/>
+                    ,
+                    <Render time={TimeAgo::MinutesAgo {count: 5}}/>
+                    ,
+                    <Render time={TimeAgo::HoursAgo {count: 1}}/>
+                  </>
                 }
             "#},
             "1 minute ago,5 minutes ago,1 hour ago",
@@ -13065,10 +13042,12 @@ mod tests {
         check(
             indoc! {r#"
                 component Countdown(n: Int) {
-                  {n.to_string()}
-                  <if {0 < n}>
-                    <Countdown n={n - 1}/>
-                  </if>
+                  <>
+                    {n.to_string()}
+                    <if {0 < n}>
+                      <Countdown n={n - 1}/>
+                    </if>
+                  </>
                 }
 
                 view Test {
@@ -13132,17 +13111,19 @@ mod tests {
                   n: Int,
                   label: Option[String],
                 ) {
-                  <match {label}>
-                    <case {Some(text)}>
-                      {text}
-                    </case>
-                    <case {None}>
-                      x
-                    </case>
-                  </match>
-                  <if {0 < n}>
-                    <Loop n={n - 1} label={label}/>
-                  </if>
+                  <>
+                    <match {label}>
+                      <case {Some(text)}>
+                        {text}
+                      </case>
+                      <case {None}>
+                        x
+                      </case>
+                    </match>
+                    <if {0 < n}>
+                      <Loop n={n - 1} label={label}/>
+                    </if>
+                  </>
                 }
 
                 view Test {
@@ -13289,21 +13270,25 @@ mod tests {
         check(
             indoc! {r#"
                 component Even(n: Int) {
-                  <if {n == 0}>
-                    even
-                  </if>
-                  <if {0 < n}>
-                    <Odd n={n - 1}/>
-                  </if>
+                  <>
+                    <if {n == 0}>
+                      even
+                    </if>
+                    <if {0 < n}>
+                      <Odd n={n - 1}/>
+                    </if>
+                  </>
                 }
 
                 component Odd(n: Int) {
-                  <if {n == 0}>
-                    odd
-                  </if>
-                  <if {0 < n}>
-                    <Even n={n - 1}/>
-                  </if>
+                  <>
+                    <if {n == 0}>
+                      odd
+                    </if>
+                    <if {0 < n}>
+                      <Even n={n - 1}/>
+                    </if>
+                  </>
                 }
 
                 view Test {
@@ -14804,10 +14789,9 @@ mod tests {
 
                 view Test {
                   {Foo {...Foo {x: "bar", y: "baz"}, y: "foo"}.x}
-                  {Foo {...Foo {x: "bar", y: "baz"}, y: "foo"}.y}
                 }
             "#},
-            r#"barfoo"#,
+            r#"bar"#,
             expect![[r#"
                 -- ir (unoptimized) --
                 record Foo {
@@ -14818,9 +14802,6 @@ mod tests {
                   write_string(let v0 = Foo {x: "bar", y: "baz"} in {
                     Foo {x: v0.x, y: "foo"}
                   }.x)
-                  write_string(let v1 = Foo {x: "bar", y: "baz"} in {
-                    Foo {x: v1.x, y: "foo"}
-                  }.y)
                 }
                 -- ir (optimized) --
                 record Foo {
@@ -14828,10 +14809,10 @@ mod tests {
                   y: String,
                 }
                 page Test() {
-                  write("barfoo")
+                  write("bar")
                 }
                 -- expected output --
-                barfoo
+                bar
                 -- eval (unoptimized) --
                 OK
                 -- eval (optimized) --

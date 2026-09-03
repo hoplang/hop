@@ -1,4 +1,4 @@
-use super::parse_nodes::parse_nodes;
+use super::parse_nodes::parse_body;
 use super::parsed_ast::{
     self, ParsedAst, ParsedComponentDeclaration, ParsedDeclaration, ParsedEnumDeclaration,
     ParsedEnumDeclarationVariant, ParsedFunctionDeclaration, ParsedImportDeclaration,
@@ -537,7 +537,7 @@ fn parse_component_declaration(
     )?;
 
     // Parse the body - this contains HTML/component nodes
-    let children = parse_nodes(iter, comments, errors);
+    let children = parse_body(iter, comments, errors, &body_start);
 
     let body_end = expr::tokenizer::expect_opposite(
         iter,
@@ -678,7 +678,7 @@ fn parse_view_declaration(
     let (name, name_range, params, body_start) =
         parse_page_or_view_header(iter, comments, errors, &keyword_range)?;
 
-    let body = parse_nodes(iter, comments, errors);
+    let body = parse_body(iter, comments, errors, &body_start);
 
     let body_end = expr::tokenizer::expect_opposite(
         iter,
@@ -693,7 +693,7 @@ fn parse_view_declaration(
         name,
         name_range,
         params,
-        head: Vec::new(),
+        head: None,
         body,
         range,
         pub_range,
@@ -730,7 +730,7 @@ fn parse_page_declaration(
             &name_range,
             &expr::Token::LeftBrace,
         )?;
-        let head = parse_nodes(iter, comments, errors);
+        let head = parse_body(iter, comments, errors, &head_start);
         expr::tokenizer::expect_opposite(
             iter,
             comments,
@@ -738,9 +738,9 @@ fn parse_page_declaration(
             &expr::Token::LeftBrace,
             &head_start,
         )?;
-        head
+        Some(head)
     } else {
-        Vec::new()
+        None
     };
 
     let Some((expr::Token::Identifier(word), body_keyword_range)) = expr::tokenizer::next_if(
@@ -767,7 +767,7 @@ fn parse_page_declaration(
         &body_keyword_range,
         &expr::Token::LeftBrace,
     )?;
-    let body = parse_nodes(iter, comments, errors);
+    let body = parse_body(iter, comments, errors, &body_start);
     expr::tokenizer::expect_opposite(iter, comments, errors, &expr::Token::LeftBrace, &body_start)?;
 
     let outer_body_end = expr::tokenizer::expect_opposite(
@@ -1122,16 +1122,20 @@ mod tests {
     fn accepts_comment_between_components() {
         accept(
             indoc! {"
-                component First {}
+                component First {<></>}
                 // This is a comment
-                component Second {}
+                component Second {<></>}
             "},
             expect![[r#"
                 component First {
+                  <>
+                  </>
                 }
 
                 // This is a comment
                 component Second {
+                  <>
+                  </>
                 }
             "#]],
         );
@@ -1215,18 +1219,20 @@ mod tests {
                   s: T,
                 }
                 component Main(i: Array[S]) {
-                    <for {j in i}>
-                        <for {k in j.s.t}>
-                            <if {k}>
-                            </if>
-                        </for>
-                    </for>
-                    <for {p in i}>
-                        <for {k in p.s.t}>
-                            <for {item in k}>
+                    <>
+                        <for {j in i}>
+                            <for {k in j.s.t}>
+                                <if {k}>
+                                </if>
                             </for>
                         </for>
-                    </for>
+                        <for {p in i}>
+                            <for {k in p.s.t}>
+                                <for {item in k}>
+                                </for>
+                            </for>
+                        </for>
+                    </>
                 }
             "},
             expect![[r#"
@@ -1239,18 +1245,20 @@ mod tests {
                 }
 
                 component Main(i: Array[S]) {
-                  <for {j in i}>
-                    <for {k in j.s.t}>
-                      <if {k}>
-                      </if>
-                    </for>
-                  </for>
-                  <for {p in i}>
-                    <for {k in p.s.t}>
-                      <for {item in k}>
+                  <>
+                    <for {j in i}>
+                      <for {k in j.s.t}>
+                        <if {k}>
+                        </if>
                       </for>
                     </for>
-                  </for>
+                    <for {p in i}>
+                      <for {k in p.s.t}>
+                        <for {item in k}>
+                        </for>
+                      </for>
+                    </for>
+                  </>
                 }
             "#]],
         );
@@ -1492,6 +1500,124 @@ mod tests {
     }
 
     #[test]
+    fn rejects_an_empty_body() {
+        reject(
+            indoc! {"
+                component Main {
+                }
+            "},
+            expect![[r#"
+                error: Expected a single root: use <></> for an empty body
+                1 | component Main {
+                  |                ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_several_roots_in_a_component_body() {
+        reject(
+            indoc! {"
+                component Main {
+                    <p>one</p>
+                    <p>two</p>
+                }
+            "},
+            expect![[r#"
+                error: Expected a single root: wrap the contents in <>...</>
+                2 |     <p>one</p>
+                3 |     <p>two</p>
+                  |     ^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_several_roots_in_a_view_body() {
+        reject(
+            indoc! {"
+                view Main {
+                    <p>one</p>
+                    <p>two</p>
+                }
+            "},
+            expect![[r#"
+                error: Expected a single root: wrap the contents in <>...</>
+                2 |     <p>one</p>
+                3 |     <p>two</p>
+                  |     ^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_several_roots_in_a_page_head_and_body() {
+        reject(
+            indoc! {"
+                page Main {
+                    head {
+                        <title>one</title>
+                        <meta charset=\"utf-8\"/>
+                    }
+                    body {
+                        <p>one</p>
+                        <p>two</p>
+                    }
+                }
+            "},
+            expect![[r#"
+                error: Expected a single root: wrap the contents in <>...</>
+                 3 |         <title>one</title>
+                 4 |         <meta charset="utf-8"/>
+                   |         ^^^^^^^^^^^^^^^^^^^^^^^
+
+                error: Expected a single root: wrap the contents in <>...</>
+                 7 |         <p>one</p>
+                 8 |         <p>two</p>
+                   |         ^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_text_beside_an_expression_as_several_roots() {
+        reject(
+            indoc! {"
+                component Greeting(name: String) {
+                    Hello, {name}!
+                }
+            "},
+            expect![[r#"
+                error: Expected a single root: wrap the contents in <>...</>
+                1 | component Greeting(name: String) {
+                2 |     Hello, {name}!
+                  |            ^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_text_beside_an_expression_inside_a_fragment() {
+        accept(
+            indoc! {"
+                component Greeting(name: String) {
+                    <>Hello, {name}!</>
+                }
+            "},
+            expect![[r#"
+                component Greeting(name: String) {
+                  <>
+                    Hello,
+                    {" "}
+                    {name}
+                    !
+                  </>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
     fn rejects_when_a_fragment_is_not_closed() {
         reject(
             indoc! {"
@@ -1603,26 +1729,28 @@ mod tests {
         reject(
             indoc! {"
                 component Main {
-                    <hr></hr>
-                    <br></br>
-                    <input></input>
+                    <>
+                        <hr></hr>
+                        <br></br>
+                        <input></input>
+                    </>
                 }
             "},
             expect![[r#"
                 error: <hr> should not be closed using a closing tag
-                1 | component Main {
-                2 |     <hr></hr>
-                  |         ^^^^^
+                2 |     <>
+                3 |         <hr></hr>
+                  |             ^^^^^
 
                 error: <br> should not be closed using a closing tag
-                2 |     <hr></hr>
-                3 |     <br></br>
-                  |         ^^^^^
+                3 |         <hr></hr>
+                4 |         <br></br>
+                  |             ^^^^^
 
                 error: <input> should not be closed using a closing tag
-                3 |     <br></br>
-                4 |     <input></input>
-                  |            ^^^^^^^^
+                4 |         <br></br>
+                5 |         <input></input>
+                  |                ^^^^^^^^
             "#]],
         );
     }
@@ -1633,23 +1761,30 @@ mod tests {
             indoc! {r#"
                 import bar::Bar
                 component Main {
-                    <hr/>
-                    <br/>
-                    <input/>
+                    <>
+                        <hr/>
+                        <br/>
+                        <input/>
+                    </>
                 }
                 component Foo {
+                    <></>
                 }
             "#},
             expect![[r#"
                 import bar::Bar
 
                 component Main {
-                  <hr>
-                  <br>
-                  <input>
+                  <>
+                    <hr>
+                    <br>
+                    <input>
+                  </>
                 }
 
                 component Foo {
+                  <>
+                  </>
                 }
             "#]],
         );
@@ -1696,14 +1831,14 @@ mod tests {
         reject(
             "component Main {<!--",
             expect![[r#"
-            error: Unmatched '{'
-            1 | component Main {<!--
-              |                ^
+                error: Unmatched '{'
+                1 | component Main {<!--
+                  |                ^
 
-            error: Unterminated comment
-            1 | component Main {<!--
-              |                 ^^^^
-        "#]],
+                error: Unterminated comment
+                1 | component Main {<!--
+                  |                 ^^^^
+            "#]],
         );
     }
 
@@ -1970,14 +2105,18 @@ mod tests {
         accept(
             indoc! {"
                 component Main(p: String) {
-                    <Foo/>
-                    <Foo/>
+                    <>
+                        <Foo/>
+                        <Foo/>
+                    </>
                 }
             "},
             expect![[r#"
                 component Main(p: String) {
-                  <Foo/>
-                  <Foo/>
+                  <>
+                    <Foo/>
+                    <Foo/>
+                  </>
                 }
             "#]],
         );
@@ -1993,8 +2132,10 @@ mod tests {
                   user: String,
                 }
                 component Main(data: Data) {
-                    <Foo a={data}/>
-                    <Bar b={data.user}/>
+                    <>
+                        <Foo a={data}/>
+                        <Bar b={data.user}/>
+                    </>
                 }
             "#},
             expect![[r#"
@@ -2006,8 +2147,10 @@ mod tests {
                 }
 
                 component Main(data: Data) {
-                  <Foo a={data}/>
-                  <Bar b={data.user}/>
+                  <>
+                    <Foo a={data}/>
+                    <Bar b={data.user}/>
+                  </>
                 }
             "#]],
         );
@@ -2366,8 +2509,10 @@ mod tests {
                 }
 
                 component Main(data: Data) {
-                    <h1>Hello World</h1>
-                    <p>{data.message}</p>
+                    <>
+                        <h1>Hello World</h1>
+                        <p>{data.message}</p>
+                    </>
                 }
             "},
             expect![[r#"
@@ -2376,12 +2521,14 @@ mod tests {
                 }
 
                 component Main(data: Data) {
-                  <h1>
-                    Hello World
-                  </h1>
-                  <p>
-                    {data.message}
-                  </p>
+                  <>
+                    <h1>
+                      Hello World
+                    </h1>
+                    <p>
+                      {data.message}
+                    </p>
+                  </>
                 }
             "#]],
         );
@@ -3521,22 +3668,26 @@ mod tests {
         accept(
             indoc! {r#"
                 component Main {
-                    <let {a: String = "Hello"}>
-                        {a}
-                    </let>
-                    <let {b: String = "World"}>
-                        {b}
-                    </let>
+                    <>
+                        <let {a: String = "Hello"}>
+                            {a}
+                        </let>
+                        <let {b: String = "World"}>
+                            {b}
+                        </let>
+                    </>
                 }
             "#},
             expect![[r#"
                 component Main {
-                  <let {a: String = "Hello"}>
-                    {a}
-                  </let>
-                  <let {b: String = "World"}>
-                    {b}
-                  </let>
+                  <>
+                    <let {a: String = "Hello"}>
+                      {a}
+                    </let>
+                    <let {b: String = "World"}>
+                      {b}
+                    </let>
+                  </>
                 }
             "#]],
         );
@@ -3547,24 +3698,28 @@ mod tests {
         accept(
             indoc! {r#"
                 component Main {
-                    <div>First</div>
-                    <let {name: String = "World"}>
-                        <div>Hello {name}</div>
-                    </let>
+                    <>
+                        <div>First</div>
+                        <let {name: String = "World"}>
+                            <div>Hello {name}</div>
+                        </let>
+                    </>
                 }
             "#},
             expect![[r#"
                 component Main {
-                  <div>
-                    First
-                  </div>
-                  <let {name: String = "World"}>
+                  <>
                     <div>
-                      Hello
-                      {" "}
-                      {name}
+                      First
                     </div>
-                  </let>
+                    <let {name: String = "World"}>
+                      <div>
+                        Hello
+                        {" "}
+                        {name}
+                      </div>
+                    </let>
+                  </>
                 }
             "#]],
         );
@@ -3575,24 +3730,28 @@ mod tests {
         accept(
             indoc! {r#"
                 component Main {
-                    <let {name: String = "World"}>
-                        <div>Hello {name}</div>
-                    </let>
-                    <div>Last</div>
+                    <>
+                        <let {name: String = "World"}>
+                            <div>Hello {name}</div>
+                        </let>
+                        <div>Last</div>
+                    </>
                 }
             "#},
             expect![[r#"
                 component Main {
-                  <let {name: String = "World"}>
+                  <>
+                    <let {name: String = "World"}>
+                      <div>
+                        Hello
+                        {" "}
+                        {name}
+                      </div>
+                    </let>
                     <div>
-                      Hello
-                      {" "}
-                      {name}
+                      Last
                     </div>
-                  </let>
-                  <div>
-                    Last
-                  </div>
+                  </>
                 }
             "#]],
         );
@@ -3964,15 +4123,16 @@ mod tests {
     }
 
     #[test]
-    fn accepts_view_with_empty_body() {
-        accept(
+    fn rejects_a_view_with_an_empty_body() {
+        reject(
             indoc! {"
                 view Index() {
                 }
             "},
             expect![[r#"
-                view Index {
-                }
+                error: Expected a single root: use <></> for an empty body
+                1 | view Index() {
+                  |              ^
             "#]],
         );
     }
@@ -4242,18 +4402,22 @@ mod tests {
         accept(
             indoc! {r#"
                 component Test {
-                    {"hello\nworld"}
-                    {"tab\there"}
-                    {"back\\slash"}
-                    {"quote\"here"}
+                    <>
+                        {"hello\nworld"}
+                        {"tab\there"}
+                        {"back\\slash"}
+                        {"quote\"here"}
+                    </>
                 }
             "#},
             expect![[r#"
                 component Test {
-                  {"hello\nworld"}
-                  {"tab\there"}
-                  {"back\\slash"}
-                  {"quote\"here"}
+                  <>
+                    {"hello\nworld"}
+                    {"tab\there"}
+                    {"back\\slash"}
+                    {"quote\"here"}
+                  </>
                 }
             "#]],
         );

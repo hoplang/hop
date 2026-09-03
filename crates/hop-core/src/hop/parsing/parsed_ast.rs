@@ -48,8 +48,8 @@ pub struct ParsedPageDeclaration {
     pub name: TypeName,
     pub name_range: DocumentRange,
     pub params: Vec<ParsedParameter>,
-    pub head: Vec<ParsedNode>,
-    pub body: Vec<ParsedNode>,
+    pub head: Option<ParsedNode>,
+    pub body: ParsedNode,
     pub range: DocumentRange,
     pub pub_range: Option<DocumentRange>,
     /// True when this declaration was written using the `view` keyword.
@@ -76,7 +76,7 @@ pub struct ParsedComponentDeclaration {
     pub closing_tag_name: Option<DocumentRange>,
     pub params: Option<(Vec<ParsedParameter>, DocumentRange)>,
     pub rest_param: Option<(VarName, DocumentRange)>,
-    pub children: Vec<ParsedNode>,
+    pub children: ParsedNode,
     pub range: DocumentRange,
     pub pub_range: Option<DocumentRange>,
 }
@@ -476,17 +476,12 @@ impl ParsedComponentDeclaration {
             .append(params_doc)
             .append(BoxDoc::space())
             .append(BoxDoc::text("{"))
-            .append(if self.children.is_empty() {
-                BoxDoc::nil()
-            } else {
+            .append(
                 BoxDoc::line()
-                    .append(BoxDoc::intersperse(
-                        self.children.iter().map(|c| c.to_doc()),
-                        BoxDoc::line(),
-                    ))
+                    .append(self.children.to_doc())
                     .nest(2)
-                    .append(BoxDoc::line())
-            })
+                    .append(BoxDoc::line()),
+            )
             .append(BoxDoc::text("}"))
     }
 }
@@ -518,21 +513,16 @@ impl ParsedFunctionDeclaration {
 }
 
 impl ParsedPageDeclaration {
-    fn to_doc_block<'a>(name: &'a str, nodes: &'a [ParsedNode]) -> BoxDoc<'a> {
+    fn to_doc_block<'a>(name: &'a str, node: &'a ParsedNode) -> BoxDoc<'a> {
         BoxDoc::text(name)
             .append(BoxDoc::space())
             .append(BoxDoc::text("{"))
-            .append(if nodes.is_empty() {
-                BoxDoc::nil()
-            } else {
+            .append(
                 BoxDoc::line()
-                    .append(BoxDoc::intersperse(
-                        nodes.iter().map(|c| c.to_doc()),
-                        BoxDoc::line(),
-                    ))
+                    .append(node.to_doc())
                     .nest(2)
-                    .append(BoxDoc::line())
-            })
+                    .append(BoxDoc::line()),
+            )
             .append(BoxDoc::text("}"))
     }
 
@@ -558,22 +548,17 @@ impl ParsedPageDeclaration {
         if self.is_view {
             header
                 .append(BoxDoc::text("{"))
-                .append(if self.body.is_empty() {
-                    BoxDoc::nil()
-                } else {
+                .append(
                     BoxDoc::line()
-                        .append(BoxDoc::intersperse(
-                            self.body.iter().map(|c| c.to_doc()),
-                            BoxDoc::line(),
-                        ))
+                        .append(self.body.to_doc())
                         .nest(2)
-                        .append(BoxDoc::line())
-                })
+                        .append(BoxDoc::line()),
+                )
                 .append(BoxDoc::text("}"))
         } else {
             let mut blocks = Vec::new();
-            if !self.head.is_empty() {
-                blocks.push(Self::to_doc_block("head", &self.head));
+            if let Some(head) = &self.head {
+                blocks.push(Self::to_doc_block("head", head));
             }
             blocks.push(Self::to_doc_block("body", &self.body));
             header

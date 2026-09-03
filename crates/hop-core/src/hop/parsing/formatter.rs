@@ -357,7 +357,13 @@ fn format_component_declaration<'a>(
         .append(arena.text(component.component_name.as_str()))
         .append(params_doc)
         .append(arena.text(" {"))
-        .append(format_children(arena, &component.children, comments))
+        .append(
+            arena
+                .line()
+                .append(format_node(arena, &component.children, comments))
+                .append(arena.line())
+                .nest(2),
+        )
         .append(arena.text("}"))
 }
 
@@ -415,19 +421,35 @@ fn format_page_declaration<'a>(
     let keyword = if page.is_view { "view" } else { "page" };
 
     let body_doc = if page.is_view {
-        format_children(arena, &page.body, comments)
+        arena
+            .line()
+            .append(format_node(arena, &page.body, comments))
+            .append(arena.line())
+            .nest(2)
     } else {
         let mut inner = arena.nil();
-        if !page.head.is_empty() {
+        if let Some(head) = &page.head {
             inner = inner
                 .append(arena.text("head {"))
-                .append(format_children(arena, &page.head, comments))
+                .append(
+                    arena
+                        .line()
+                        .append(format_node(arena, head, comments))
+                        .append(arena.line())
+                        .nest(2),
+                )
                 .append(arena.text("}"))
                 .append(arena.hardline());
         }
         inner
             .append(arena.text("body {"))
-            .append(format_children(arena, &page.body, comments))
+            .append(
+                arena
+                    .line()
+                    .append(format_node(arena, &page.body, comments))
+                    .append(arena.line())
+                    .nest(2),
+            )
             .append(arena.text("}"))
     };
 
@@ -1497,7 +1519,7 @@ mod tests {
                     let value = u.choose(STRINGS)?;
                     format!("view Test {{<let {{x: String = {value:?}}}>{body}</let>}}")
                 } else {
-                    format!("view Test {{{body}}}")
+                    format!("view Test {{<>{body}</>}}")
                 }
             };
 
@@ -1735,7 +1757,7 @@ mod tests {
     fn component_declaration_with_many_parameters_to_doc() {
         check(
             indoc! {"
-                component Main(first_name: String, last_name: String, email: String, age: Int, active: Bool, role: String) {}
+                component Main(first_name: String, last_name: String, email: String, age: Int, active: Bool, role: String) {<></>}
             "},
             expect![[r#"
                 component Main(
@@ -1746,6 +1768,8 @@ mod tests {
                   active: Bool,
                   role: String,
                 ) {
+                  <>
+                  </>
                 }
             "#]],
         );
@@ -1954,7 +1978,7 @@ mod tests {
         check(
             indoc! {r#"
                 enum Foo { Bar{} }
-                component Main {}
+                component Main {<></>}
             "#},
             expect![[r#"
                 enum Foo {
@@ -1962,6 +1986,8 @@ mod tests {
                 }
 
                 component Main {
+                  <>
+                  </>
                 }
             "#]],
         );
@@ -2200,14 +2226,18 @@ mod tests {
         check(
             indoc! {"
                 component Main {
-                  hello
-                  world
+                  <>
+                    hello
+                    world
+                  </>
                 }
             "},
             expect![[r#"
                 component Main {
-                  hello
-                  world
+                  <>
+                    hello
+                    world
+                  </>
                 }
             "#]],
         );
@@ -2284,18 +2314,20 @@ mod tests {
         check(
             indoc! {r#"
                 component Main {
-                    <i>i</i> <b>b</b>
+                    <><i>i</i> <b>b</b></>
                 }
             "#},
             expect![[r#"
                 component Main {
-                  <i>
-                    i
-                  </i>
-                  {" "}
-                  <b>
-                    b
-                  </b>
+                  <>
+                    <i>
+                      i
+                    </i>
+                    {" "}
+                    <b>
+                      b
+                    </b>
+                  </>
                 }
             "#]],
         );
@@ -2306,16 +2338,18 @@ mod tests {
         check(
             indoc! {"
                 component Main {
-                  hello <b>world</b>
+                  <>hello <b>world</b></>
                 }
             "},
             expect![[r#"
                 component Main {
-                  hello
-                  {" "}
-                  <b>
-                    world
-                  </b>
+                  <>
+                    hello
+                    {" "}
+                    <b>
+                      world
+                    </b>
+                  </>
                 }
             "#]],
         );
@@ -2326,16 +2360,18 @@ mod tests {
         check(
             indoc! {"
                 component Main {
-                  a  <b>x</b>
+                  <>a  <b>x</b></>
                 }
             "},
             expect![[r#"
                 component Main {
-                  a
-                  {"  "}
-                  <b>
-                    x
-                  </b>
+                  <>
+                    a
+                    {"  "}
+                    <b>
+                      x
+                    </b>
+                  </>
                 }
             "#]],
         );
@@ -2346,18 +2382,20 @@ mod tests {
         check(
             indoc! {r#"
                 component Main {
-                  <b>x</b>  a {"y"}
+                  <><b>x</b>  a {"y"}</>
                 }
             "#},
             expect![[r#"
                 component Main {
-                  <b>
-                    x
-                  </b>
-                  {"  "}
-                  a
-                  {" "}
-                  {"y"}
+                  <>
+                    <b>
+                      x
+                    </b>
+                    {"  "}
+                    a
+                    {" "}
+                    {"y"}
+                  </>
                 }
             "#]],
         );
@@ -2508,15 +2546,17 @@ mod tests {
         check(
             indoc! {r#"
                 component Greeting(name: String = "World") {
-                  Hello, {name}!
+                  <>Hello, {name}!</>
                 }
             "#},
             expect![[r#"
                 component Greeting(name: String = "World") {
-                  Hello,
-                  {" "}
-                  {name}
-                  !
+                  <>
+                    Hello,
+                    {" "}
+                    {name}
+                    !
+                  </>
                 }
             "#]],
         );
@@ -2542,11 +2582,12 @@ mod tests {
     fn component_with_default_bool_parameter_to_doc() {
         check(
             indoc! {"
-                component Toggle(enabled: Bool = true) {
-                }
+                component Toggle(enabled: Bool = true) {<></>}
             "},
             expect![[r#"
                 component Toggle(enabled: Bool = true) {
+                  <>
+                  </>
                 }
             "#]],
         );
@@ -2576,11 +2617,12 @@ mod tests {
     fn component_with_default_array_parameter_to_doc() {
         check(
             indoc! {r#"
-                component ItemList(items: Array[String] = ["one", "two"]) {
-                }
+                component ItemList(items: Array[String] = ["one", "two"]) {<></>}
             "#},
             expect![[r#"
                 component ItemList(items: Array[String] = ["one", "two"]) {
+                  <>
+                  </>
                 }
             "#]],
         );
@@ -2590,11 +2632,12 @@ mod tests {
     fn component_with_default_empty_array_parameter_to_doc() {
         check(
             indoc! {"
-                component ItemList(items: Array[String] = []) {
-                }
+                component ItemList(items: Array[String] = []) {<></>}
             "},
             expect![[r#"
                 component ItemList(items: Array[String] = []) {
+                  <>
+                  </>
                 }
             "#]],
         );
@@ -2605,8 +2648,7 @@ mod tests {
         check(
             indoc! {r#"
                 record Config { debug: Bool, timeout: Int }
-                component Settings(config: Config = Config {debug: false, timeout: 30}) {
-                }
+                component Settings(config: Config = Config {debug: false, timeout: 30}) {<></>}
             "#},
             expect![[r#"
                 record Config {
@@ -2617,6 +2659,8 @@ mod tests {
                 component Settings(
                   config: Config = Config {debug: false, timeout: 30},
                 ) {
+                  <>
+                  </>
                 }
             "#]],
         );
@@ -2627,8 +2671,7 @@ mod tests {
         check(
             indoc! {"
                 enum Status { Active, Inactive, Pending }
-                component Badge(status: Status = Status::Active) {
-                }
+                component Badge(status: Status = Status::Active) {<></>}
             "},
             expect![[r#"
                 enum Status {
@@ -2638,6 +2681,8 @@ mod tests {
                 }
 
                 component Badge(status: Status = Status::Active) {
+                  <>
+                  </>
                 }
             "#]],
         );
@@ -2969,8 +3014,7 @@ mod tests {
     fn some_literal_inserts_soft_lines_when_long() {
         check(
             indoc! {r#"
-                component Main(x: Option[String] = Some("this is a very long string that causes a line break because Some uses soft lines")) {
-                }
+                component Main(x: Option[String] = Some("this is a very long string that causes a line break because Some uses soft lines")) {<></>}
             "#},
             expect![[r#"
                 component Main(
@@ -2978,6 +3022,8 @@ mod tests {
                     "this is a very long string that causes a line break because Some uses soft lines"
                   ),
                 ) {
+                  <>
+                  </>
                 }
             "#]],
         );
@@ -3487,22 +3533,26 @@ mod tests {
         check(
             indoc! {r#"
                 component Main {
-                  <let {a: String = "first"}>
-                    {a}
-                  </let>
-                  <let {b: String = "second"}>
-                    {b}
-                  </let>
+                  <>
+                    <let {a: String = "first"}>
+                      {a}
+                    </let>
+                    <let {b: String = "second"}>
+                      {b}
+                    </let>
+                  </>
                 }
             "#},
             expect![[r#"
                 component Main {
-                  <let {a: String = "first"}>
-                    {a}
-                  </let>
-                  <let {b: String = "second"}>
-                    {b}
-                  </let>
+                  <>
+                    <let {a: String = "first"}>
+                      {a}
+                    </let>
+                    <let {b: String = "second"}>
+                      {b}
+                    </let>
+                  </>
                 }
             "#]],
         );
@@ -3565,13 +3615,15 @@ mod tests {
             indoc! {"
                 // External component
                 import components::Button
-                component Main {}
+                component Main {<></>}
             "},
             expect![[r#"
                 // External component
                 import components::Button
 
                 component Main {
+                  <>
+                  </>
                 }
             "#]],
         );
@@ -3662,7 +3714,7 @@ mod tests {
                 enum Status { Active, Inactive }
 
                 // Main component
-                component Main {}
+                component Main {<></>}
             "},
             expect![[r#"
                 // User record
@@ -3678,6 +3730,8 @@ mod tests {
 
                 // Main component
                 component Main {
+                  <>
+                  </>
                 }
             "#]],
         );
@@ -3744,7 +3798,7 @@ mod tests {
                 // d
                 }
                 // e
-                component Main {}
+                component Main {<></>}
             "},
             expect![[r#"
                 // a
@@ -3758,6 +3812,8 @@ mod tests {
 
                 // e
                 component Main {
+                  <>
+                  </>
                 }
             "#]],
         );
@@ -4495,14 +4551,18 @@ mod tests {
         check(
             indoc! {"
                 view Test {
-                  hello
-                  world
+                  <>
+                    hello
+                    world
+                  </>
                 }
             "},
             expect![[r#"
                 view Test {
-                  hello
-                  world
+                  <>
+                    hello
+                    world
+                  </>
                 }
             "#]],
         );
@@ -4513,16 +4573,20 @@ mod tests {
         check(
             indoc! {"
                 view Test {
-                  <!-- This is a comment -->
-                  <div>hello</div>
+                  <>
+                    <!-- This is a comment -->
+                    <div>hello</div>
+                  </>
                 }
             "},
             expect![[r#"
                 view Test {
-                  <!-- This is a comment -->
-                  <div>
-                    hello
-                  </div>
+                  <>
+                    <!-- This is a comment -->
+                    <div>
+                      hello
+                    </div>
+                  </>
                 }
             "#]],
         );
@@ -4533,20 +4597,24 @@ mod tests {
         check(
             indoc! {"
                 view Test {
-                  <div>hello</div>
-                  <!-- separator -->
-                  <div>world</div>
+                  <>
+                    <div>hello</div>
+                    <!-- separator -->
+                    <div>world</div>
+                  </>
                 }
             "},
             expect![[r#"
                 view Test {
-                  <div>
-                    hello
-                  </div>
-                  <!-- separator -->
-                  <div>
-                    world
-                  </div>
+                  <>
+                    <div>
+                      hello
+                    </div>
+                    <!-- separator -->
+                    <div>
+                      world
+                    </div>
+                  </>
                 }
             "#]],
         );

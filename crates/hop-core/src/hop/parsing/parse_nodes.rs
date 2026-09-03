@@ -117,8 +117,8 @@ enum TagHeader {
 /// when nothing is open.
 #[derive(Default)]
 struct MarkupBuilder {
-    /// Items that nothing encloses.
-    items: Vec<MarkupItem>,
+    /// A finished item.
+    item: Option<MarkupItem>,
     /// Elements whose opening tag has been read but whose closing tag has
     /// not, outermost first.
     open: Vec<OpenElement>,
@@ -129,7 +129,10 @@ impl MarkupBuilder {
     fn append(&mut self, item: MarkupItem) {
         match self.open.last_mut() {
             Some(element) => element.children.push(item),
-            None => self.items.push(item),
+            None => {
+                debug_assert!(self.item.is_none());
+                self.item = Some(item);
+            }
         }
     }
 
@@ -187,29 +190,30 @@ impl MarkupBuilder {
     }
 
     /// Take the markup, closing anything left open.
-    fn finish(mut self, errors: &mut Vec<ParseError>) -> Vec<MarkupItem> {
+    fn finish(mut self, errors: &mut Vec<ParseError>) -> Option<MarkupItem> {
         while !self.open.is_empty() {
             self.close_innermost(errors);
         }
-        self.items
+        self.item
     }
 }
 
-/// Parse markup until the input runs out.
+/// Parse one node, from a token that has already been lexed.
 ///
-/// Whitespace is normalized before the nodes are handed back, so that every
-/// caller gets the same thing and none of them has to remember to ask.
+/// Returns `None` when the token neither built a node nor opened an element.
 ///
 /// We do our best here to build as much markup as possible even when we
 /// encounter errors.
-pub fn parse_nodes(
+fn parse_node(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut Vec<ParseError>,
-) -> Vec<ParsedNode> {
+    first: Token,
+) -> Option<ParsedNode> {
     let mut builder = MarkupBuilder::default();
+    let mut token = first;
 
-    while let Some(token) = tokenizer::next(iter, errors) {
+    loop {
         match token {
             Token::Text { range } => builder.append_node(ParsedNode::Text { range }),
             Token::Newline { range } => builder.append_node(ParsedNode::Newline { range }),
@@ -292,11 +296,56 @@ pub fn parse_nodes(
                 }
             }
         }
-    }
 
-    let mut nodes = expect_nodes(builder.finish(errors), errors);
+        if let Some(item) = builder.item.take() {
+            return expect_node(item, errors);
+        }
+        if builder.open.is_empty() {
+            return None;
+        }
+        match tokenizer::next(iter, errors) {
+            Some(next) => token = next,
+            None => {
+                return builder
+                    .finish(errors)
+                    .and_then(|item| expect_node(item, errors));
+            }
+        }
+    }
+}
+
+/// Parse markup for a body.
+/// A body that has no root, or more than one, is an error.
+pub fn parse_body(
+    iter: &mut Peekable<DocumentCursor>,
+    comments: &mut VecDeque<DocumentRange>,
+    errors: &mut Vec<ParseError>,
+    left_brace: &DocumentRange,
+) -> ParsedNode {
+    let errors_before = errors.len();
+    let mut nodes = Vec::new();
+    while let Some(token) = tokenizer::next(iter, errors) {
+        nodes.extend(parse_node(iter, comments, errors, token));
+    }
     whitespace::normalize(&mut nodes);
-    nodes
+    if nodes.len() == 1 {
+        return nodes.pop().unwrap();
+    }
+    let (kind, error_range) = match nodes.get(1) {
+        Some(second) => (ParseErrorKind::MultipleRoots {}, second.range().clone()),
+        None => (ParseErrorKind::EmptyBody {}, left_brace.clone()),
+    };
+    if !nodes.is_empty() || errors.len() == errors_before {
+        errors.push(ParseError::new(kind, error_range));
+    }
+    let range = match (nodes.first(), nodes.last()) {
+        (Some(first), Some(last)) => first.range().clone().to(last.range().clone()),
+        _ => left_brace.clone(),
+    };
+    ParsedNode::Fragment {
+        children: nodes,
+        range,
+    }
 }
 
 /// Where an opening tag left the parse.
@@ -715,22 +764,27 @@ fn close_element(
 /// A `<case>` here is not inside a `<match>`, which is the only place it
 /// means anything.
 fn expect_nodes(items: Vec<MarkupItem>, errors: &mut Vec<ParseError>) -> Vec<ParsedNode> {
-    let mut nodes = Vec::new();
-    for item in items {
-        match item {
-            MarkupItem::Node(node) => nodes.push(node),
-            MarkupItem::Case {
-                tag_name_range: tag_name,
-                ..
-            } => {
-                errors.push(ParseError::new(
-                    ParseErrorKind::CaseOutsideMatch {},
-                    tag_name,
-                ));
-            }
+    items
+        .into_iter()
+        .filter_map(|item| expect_node(item, errors))
+        .collect()
+}
+
+/// Take the node out of a markup item.
+fn expect_node(item: MarkupItem, errors: &mut Vec<ParseError>) -> Option<ParsedNode> {
+    match item {
+        MarkupItem::Node(node) => Some(node),
+        MarkupItem::Case {
+            tag_name_range: tag_name,
+            ..
+        } => {
+            errors.push(ParseError::new(
+                ParseErrorKind::CaseOutsideMatch {},
+                tag_name,
+            ));
+            None
         }
     }
-    nodes
 }
 
 /// Take the cases out of the body of a `<match>`.

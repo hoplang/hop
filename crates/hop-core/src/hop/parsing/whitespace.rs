@@ -320,7 +320,7 @@ mod tests {
         check(
             indoc! {"
                 view Test {
-                  this looks <b>great</b>
+                  <>this looks <b>great</b></>
                 }
             "},
             "this looks <b>great</b>",
@@ -346,7 +346,7 @@ mod tests {
         check(
             indoc! {"
                 view Test {
-                  <b>b</b> <i>i</i>
+                  <><b>b</b> <i>i</i></>
                 }
             "},
             "<b>b</b> <i>i</i>",
@@ -358,8 +358,10 @@ mod tests {
         check(
             indoc! {"
                 view Test {
-                  <b>b</b>
-                  <i>i</i>
+                  <>
+                    <b>b</b>
+                    <i>i</i>
+                  </>
                 }
             "},
             "<b>b</b><i>i</i>",
@@ -371,7 +373,7 @@ mod tests {
         check(
             indoc! {r#"
                 view Test {
-                  {"a"} {"b"}
+                  <>{"a"} {"b"}</>
                 }
             "#},
             "a b",
@@ -383,8 +385,10 @@ mod tests {
         check(
             indoc! {r#"
                 view Test {
-                  {"a"}
-                  {"b"}
+                  <>
+                    {"a"}
+                    {"b"}
+                  </>
                 }
             "#},
             "ab",
@@ -396,7 +400,7 @@ mod tests {
         check(
             indoc! {r#"
                 view Test {
-                  <b>b</b> {"i"}
+                  <><b>b</b> {"i"}</>
                 }
             "#},
             "<b>b</b> i",
@@ -408,7 +412,7 @@ mod tests {
         check(
             indoc! {"
                 view Test {
-                  a  <b>x</b>
+                  <>a  <b>x</b></>
                 }
             "},
             "a  <b>x</b>",
@@ -420,7 +424,7 @@ mod tests {
         check(
             indoc! {r#"
                 view Test {
-                  <b>x</b>  a {"y"}
+                  <><b>x</b>  a {"y"}</>
                 }
             "#},
             "<b>x</b>  a y",
@@ -473,7 +477,7 @@ mod tests {
         check(
             indoc! {"
                 view Test {
-                  hello <>world</>
+                  <>hello <>world</></>
                 }
             "},
             "hello world",

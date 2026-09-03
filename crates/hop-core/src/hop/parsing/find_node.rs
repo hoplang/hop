@@ -24,18 +24,13 @@ use super::parsed_node::ParsedNode;
 pub fn find_node_at_position(ast: &ParsedAst, position: DocumentPosition) -> Option<&ParsedNode> {
     for n in ast.get_component_declarations() {
         if n.range.contains_position(position) {
-            for child in &n.children {
-                if let Some(node) = find_node_at_position_in_node(child, position) {
-                    return Some(node);
-                }
-            }
-            return None;
+            return find_node_at_position_in_node(&n.children, position);
         }
     }
 
     for n in ast.get_page_declarations() {
         if n.range.contains_position(position) {
-            for child in n.head.iter().chain(n.body.iter()) {
+            for child in n.head.iter().chain([&n.body]) {
                 if let Some(node) = find_node_at_position_in_node(child, position) {
                     return Some(node);
                 }
@@ -471,14 +466,14 @@ mod tests {
         check_find_node_at_position(
             indoc! {"
                 component Main {
-                    <div>First</div> <div>Second</div>
-                                     ^
+                    <><div>First</div> <div>Second</div></>
+                                       ^
                 }
             "},
             expect![[r#"
                 range
-                2 |     <div>First</div> <div>Second</div>
-                  |                      ^^^^^^^^^^^^^^^^^
+                2 |     <><div>First</div> <div>Second</div></>
+                  |                        ^^^^^^^^^^^^^^^^^
             "#]],
         );
     }

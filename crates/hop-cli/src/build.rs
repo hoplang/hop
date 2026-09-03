@@ -551,7 +551,9 @@ mod tests {
                     head {
                         <link rel="icon" href={asset!("/logo.svg")} />
                     }
-                    body {}
+                    body {
+                        <></>
+                    }
                 }
                 -- logo.svg --
                 <svg>logo</svg>
@@ -592,7 +594,9 @@ mod tests {
                     head {
                         <link rel="icon" href={asset!("/logo.svg")} />
                     }
-                    body {}
+                    body {
+                        <></>
+                    }
                 }
                 -- style.css --
             "#]],
@@ -802,8 +806,10 @@ mod tests {
                 output_dir = "dist/public"
                 -- main.hop --
                 view Home() {
-                    <img src={asset!("/images/a.svg")} />
-                    <img src={asset!("/images/b.svg")} />
+                    <>
+                        <img src={asset!("/images/a.svg")} />
+                        <img src={asset!("/images/b.svg")} />
+                    </>
                 }
                 -- images/a.svg --
                 <svg>same</svg>
@@ -846,8 +852,10 @@ mod tests {
                 <svg>same</svg>
                 -- main.hop --
                 view Home() {
-                    <img src={asset!("/images/a.svg")} />
-                    <img src={asset!("/images/b.svg")} />
+                    <>
+                        <img src={asset!("/images/a.svg")} />
+                        <img src={asset!("/images/b.svg")} />
+                    </>
                 }
                 -- style.css --
             "#]],

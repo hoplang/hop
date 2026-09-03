@@ -270,7 +270,7 @@ fn typecheck_module(
     let mut call_graph = DependencyGraph::new();
     for (name, c) in &component_by_name {
         let mut deps = BTreeSet::new();
-        let mut stack: Vec<&ParsedNode> = c.children.iter().collect();
+        let mut stack: Vec<&ParsedNode> = vec![&c.children];
         while let Some(node) = stack.pop() {
             if let ParsedNode::ComponentInvocation { component_name, .. } = node {
                 if component_by_name.contains_key(component_name) {
@@ -309,7 +309,7 @@ fn typecheck_module(
     let mut rest_targets: HashMap<TypeName, Option<RestSpreadTarget>> = HashMap::new();
     for component in parsed_ast.get_component_declarations() {
         let mut spreads = Vec::new();
-        collect_spreads(&component.children, &mut spreads);
+        collect_spreads(std::slice::from_ref(&component.children), &mut spreads);
         rest_targets.insert(
             component.component_name.clone(),
             pair_rest_spread(
@@ -1016,22 +1016,19 @@ fn check_component_body(
 
     let declared_names: Vec<VarName> = declared_params.iter().map(|p| p.name.clone()).collect();
 
-    let typed_children = children
-        .iter()
-        .filter_map(|child| {
-            typecheck_node(
-                child,
-                &declared_names,
-                registry,
-                errors,
-                var_env,
-                type_env,
-                annotations,
-                definition_links,
-                asset_references,
-            )
-        })
-        .collect::<Vec<_>>();
+    let typed_children = typecheck_node(
+        children,
+        &declared_names,
+        registry,
+        errors,
+        var_env,
+        type_env,
+        annotations,
+        definition_links,
+        asset_references,
+    )
+    .into_iter()
+    .collect::<Vec<_>>();
 
     for (param, _) in resolved_params.iter().rev() {
         let (name, _, accessed) = var_env.pop();
@@ -1122,8 +1119,8 @@ fn check_page_declaration(
     // Pages and views cannot declare a rest parameter, so any spread in the
     // head or body fails to name one.
     let mut spreads = Vec::new();
-    collect_spreads(head, &mut spreads);
-    collect_spreads(body, &mut spreads);
+    collect_spreads(head.as_slice(), &mut spreads);
+    collect_spreads(std::slice::from_ref(body), &mut spreads);
     pair_rest_spread(name, None, spreads, errors);
 
     let mut pushed_params = Vec::new();
@@ -1195,7 +1192,7 @@ fn check_page_declaration(
     };
 
     let typed_head = typecheck_list(
-        head,
+        head.as_slice(),
         errors,
         var_env,
         type_env,
@@ -1204,7 +1201,7 @@ fn check_page_declaration(
         asset_references,
     );
     let typed_body = typecheck_list(
-        body,
+        std::slice::from_ref(body),
         errors,
         var_env,
         type_env,
@@ -3086,13 +3083,12 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                component Main {
-                }
+                component Main {<></>}
             "#},
             expect![[r#"
                 -- main.hop --
                 fn Main() -> Fragment {
-                  concat()
+                  concat(concat())
                 }
             "#]],
         );
@@ -3152,8 +3148,7 @@ mod tests {
                 -- main.hop --
                 import other::Foo
 
-                component Main {
-                }
+                component Main {<></>}
             "#},
             expect![[r#"
                 error: Module other was not found
@@ -3169,13 +3164,11 @@ mod tests {
         reject(
             indoc! {r#"
                 -- other.hop --
-                component Bar {
-                }
+                component Bar {<></>}
                 -- main.hop --
                 import other::Foo
 
-                component Main {
-                }
+                component Main {<></>}
             "#},
             expect![[r#"
                 error: Module other does not declare a type Foo
@@ -3194,8 +3187,7 @@ mod tests {
                 -- main.hop --
                 import other::Foo
 
-                component Main {
-                }
+                component Main {<></>}
             "#},
             expect![[r#"
                 error: Module other does not declare a type Foo
@@ -3211,8 +3203,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- other.hop --
-                component Foo {
-                }
+                component Foo {<></>}
                 -- main.hop --
                 import other::Foo
 
@@ -3416,14 +3407,12 @@ mod tests {
         reject(
             indoc! {r#"
                 -- other.hop --
-                pub component Foo {
-                }
+                pub component Foo {<></>}
 
                 -- main.hop --
                 import other::Foo
 
-                component Main {
-                }
+                component Main {<></>}
             "#},
             expect![[r#"
                 warning: Unused import 'Foo'
@@ -3439,22 +3428,20 @@ mod tests {
         accept(
             indoc! {r#"
                 -- other.hop --
-                component Foo {
-                }
+                component Foo {<></>}
 
                 -- main.hop --
-                component Foo {
-                }
+                component Foo {<></>}
             "#},
             expect![[r#"
                 -- other.hop --
                 fn Foo() -> Fragment {
-                  concat()
+                  concat(concat())
                 }
 
                 -- main.hop --
                 fn Foo() -> Fragment {
-                  concat()
+                  concat(concat())
                 }
             "#]],
         );
@@ -3574,20 +3561,22 @@ mod tests {
                 }
 
                 component Main(params: Array[Item]) {
-                	<for {item in params}>
-                	  <if {item.active}>
-                	  </if>
-                	</for>
-                	<if {item.active}>
-                	</if>
+                  <>
+                  	<for {item in params}>
+                  	  <if {item.active}>
+                  	  </if>
+                  	</for>
+                  	<if {item.active}>
+                  	</if>
+                  </>
                 }
             "#},
             expect![[r#"
                 error: Undefined variable: item
-                  --> main.hop (line 10, col 7)
-                 9 |     </for>
-                10 |     <if {item.active}>
-                   |          ^^^^
+                  --> main.hop (line 11, col 9)
+                10 |       </for>
+                11 |       <if {item.active}>
+                   |            ^^^^
             "#]],
         );
     }
@@ -3614,38 +3603,42 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 component Main(items: Array[String]) {
-                  <for {item in items}>
-                      <div>{item}</div>
-                  </for>
-                  <for {item in items}>
-                  </for>
+                  <>
+                    <for {item in items}>
+                        <div>{item}</div>
+                    </for>
+                    <for {item in items}>
+                    </for>
+                  </>
                 }
             "#},
             expect![[r#"
                 warning: Unused variable item
-                  --> main.hop (line 5, col 9)
-                4 |   </for>
-                5 |   <for {item in items}>
-                  |         ^^^^
+                  --> main.hop (line 6, col 11)
+                5 |     </for>
+                6 |     <for {item in items}>
+                  |           ^^^^
             "#]],
         );
         reject(
             indoc! {r#"
                 -- main.hop --
                 component Main(items: Array[String]) {
-                  <for {item in items}>
-                  </for>
-                  <for {item in items}>
-                      <div>{item}</div>
-                  </for>
+                  <>
+                    <for {item in items}>
+                    </for>
+                    <for {item in items}>
+                        <div>{item}</div>
+                    </for>
+                  </>
                 }
             "#},
             expect![[r#"
                 warning: Unused variable item
-                  --> main.hop (line 2, col 9)
-                1 | component Main(items: Array[String]) {
-                2 |   <for {item in items}>
-                  |         ^^^^
+                  --> main.hop (line 3, col 11)
+                2 |   <>
+                3 |     <for {item in items}>
+                  |           ^^^^
             "#]],
         );
     }
@@ -3818,24 +3811,26 @@ mod tests {
                   k: Bool
                 }
                 component Main(params: Array[Item]) {
-                	<for {item in params}>
-                		<if {item.k}>
-                          ok!
-                		</if>
-                	</for>
-                	<for {item in params}>
-                		<for {inner in item.k}>
-                			<div>{inner}</div>
-                		</for>
-                	</for>
+                  <>
+                  	<for {item in params}>
+                  		<if {item.k}>
+                            ok!
+                  		</if>
+                  	</for>
+                  	<for {item in params}>
+                  		<for {inner in item.k}>
+                  			<div>{inner}</div>
+                  		</for>
+                  	</for>
+                  </>
                 }
             "#},
             expect![[r#"
                 error: Mismatched type: expected `Array[...]` got `Bool`
-                  --> main.hop (line 11, col 18)
-                10 |     <for {item in params}>
-                11 |         <for {inner in item.k}>
-                   |                        ^^^^^^
+                  --> main.hop (line 12, col 20)
+                11 |       <for {item in params}>
+                12 |           <for {inner in item.k}>
+                   |                          ^^^^^^
             "#]],
         );
     }
@@ -4031,14 +4026,16 @@ mod tests {
                 }
 
                 component Main(params: Array[Item]) {
-                	<for {j in params}>
-                		<if {j.a}>
-                		</if>
-                	</for>
-                	<for {j in params}>
-                		<if {j.b}>
-                		</if>
-                	</for>
+                  <>
+                  	<for {j in params}>
+                  		<if {j.a}>
+                  		</if>
+                  	</for>
+                  	<for {j in params}>
+                  		<if {j.b}>
+                  		</if>
+                  	</for>
+                  </>
                 }
             "#},
             expect![[r#"
@@ -4050,12 +4047,14 @@ mod tests {
 
                 fn Main(params: Array[main::Item]) -> Fragment {
                   concat(
-                    for j in params {
-                      concat(match j.a {true => concat(), false => concat()})
-                    },
-                    for j in params {
-                      concat(match j.b {true => concat(), false => concat()})
-                    },
+                    concat(
+                      for j in params {
+                        concat(match j.a {true => concat(), false => concat()})
+                      },
+                      for j in params {
+                        concat(match j.b {true => concat(), false => concat()})
+                      },
+                    ),
                   )
                 }
             "#]],
@@ -4231,16 +4230,18 @@ mod tests {
                 import foo::User
 
                 component Main(user: User) {
-                    <FooComp user={user}/>
-                    <BarComp user={user}/>
+                  <>
+                      <FooComp user={user}/>
+                      <BarComp user={user}/>
+                  </>
                 }
             "#},
             expect![[r#"
                 error: Mismatched type: expected `bar::User` got `foo::User`
-                  --> main.hop (line 7, col 20)
-                6 |     <FooComp user={user}/>
-                7 |     <BarComp user={user}/>
-                  |                    ^^^^
+                  --> main.hop (line 8, col 22)
+                 7 |       <FooComp user={user}/>
+                 8 |       <BarComp user={user}/>
+                   |                      ^^^^
             "#]],
         );
     }
@@ -4275,16 +4276,18 @@ mod tests {
                 import foo::User
 
                 component Main(user: User) {
-                    <FooComp user={user}/>
-                    <BarComp user={user}/>
+                  <>
+                      <FooComp user={user}/>
+                      <BarComp user={user}/>
+                  </>
                 }
             "#},
             expect![[r#"
                 error: Mismatched type: expected `bar::User` got `foo::User`
-                  --> main.hop (line 7, col 20)
-                6 |     <FooComp user={user}/>
-                7 |     <BarComp user={user}/>
-                  |                    ^^^^
+                  --> main.hop (line 8, col 22)
+                 7 |       <FooComp user={user}/>
+                 8 |       <BarComp user={user}/>
+                   |                      ^^^^
             "#]],
         );
     }
@@ -4355,20 +4358,22 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 component Main(params: Array[String]) {
-                	<for {x in params}>
-                		{x}
-                	</for>
-                	<for {y in params.foo}>
-                		{y}
-                	</for>
+                  <>
+                  	<for {x in params}>
+                  		{x}
+                  	</for>
+                  	<for {y in params.foo}>
+                  		{y}
+                  	</for>
+                  </>
                 }
             "#},
             expect![[r#"
                 error: Array[String] can not be used as a record
-                  --> main.hop (line 5, col 13)
-                4 |     </for>
-                5 |     <for {y in params.foo}>
-                  |                ^^^^^^
+                  --> main.hop (line 6, col 15)
+                 5 |       </for>
+                 6 |       <for {y in params.foo}>
+                   |                  ^^^^^^
             "#]],
         );
     }
@@ -4526,7 +4531,9 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 component Main(a: String, b: String) {
-                  {a} {b}
+                  <>
+                    {a} {b}
+                  </>
                 }
                 component Foo {
                     <Main a={1 == ""} b={1 == ""}/>
@@ -4534,15 +4541,15 @@ mod tests {
             "#},
             expect![[r#"
                 error: Cannot compare Int to String
-                  --> main.hop (line 5, col 14)
-                4 | component Foo {
-                5 |     <Main a={1 == ""} b={1 == ""}/>
+                  --> main.hop (line 7, col 14)
+                6 | component Foo {
+                7 |     <Main a={1 == ""} b={1 == ""}/>
                   |              ^^^^^^^
 
                 error: Cannot compare Int to String
-                  --> main.hop (line 5, col 26)
-                4 | component Foo {
-                5 |     <Main a={1 == ""} b={1 == ""}/>
+                  --> main.hop (line 7, col 26)
+                6 | component Foo {
+                7 |     <Main a={1 == ""} b={1 == ""}/>
                   |                          ^^^^^^^
             "#]],
         );
@@ -4665,7 +4672,7 @@ mod tests {
                   friend: User,
                 }
 
-                component Main {}
+                component Main {<></>}
             "#},
             expect![[r#"
                 -- main.hop --
@@ -4675,7 +4682,7 @@ mod tests {
                 }
 
                 fn Main() -> Fragment {
-                  concat()
+                  concat(concat())
                 }
             "#]],
         );
@@ -4693,7 +4700,7 @@ mod tests {
                   city: String,
                 }
 
-                component Main {}
+                component Main {<></>}
             "#},
             expect![[r#"
                 -- main.hop --
@@ -4706,7 +4713,7 @@ mod tests {
                 }
 
                 fn Main() -> Fragment {
-                  concat()
+                  concat(concat())
                 }
             "#]],
         );
@@ -4779,15 +4786,17 @@ mod tests {
                 record App {ui: UI, api: API, database: Database}
                 record Params {app: App}
                 component Main(params: Params) {
-                	<if {params.app.ui.theme.dark}>
-                      ok!
-                	</if>
-                	<if {params.app.api.endpoints.users.enabled}>
-                      ok!
-                	</if>
-                	<if {params.app.database.connection.ssl}>
-                      ok!
-                	</if>
+                  <>
+                  	<if {params.app.ui.theme.dark}>
+                        ok!
+                  	</if>
+                  	<if {params.app.api.endpoints.users.enabled}>
+                        ok!
+                  	</if>
+                  	<if {params.app.database.connection.ssl}>
+                        ok!
+                  	</if>
+                  </>
                 }
             "#},
             expect![[r#"
@@ -4832,18 +4841,20 @@ mod tests {
 
                 fn Main(params: main::Params) -> Fragment {
                   concat(
-                    match params.app.ui.theme.dark {
-                      true => concat(raw("ok!")),
-                      false => concat(),
-                    },
-                    match params.app.api.endpoints.users.enabled {
-                      true => concat(raw("ok!")),
-                      false => concat(),
-                    },
-                    match params.app.database.connection.ssl {
-                      true => concat(raw("ok!")),
-                      false => concat(),
-                    },
+                    concat(
+                      match params.app.ui.theme.dark {
+                        true => concat(raw("ok!")),
+                        false => concat(),
+                      },
+                      match params.app.api.endpoints.users.enabled {
+                        true => concat(raw("ok!")),
+                        false => concat(),
+                      },
+                      match params.app.database.connection.ssl {
+                        true => concat(raw("ok!")),
+                        false => concat(),
+                      },
+                    ),
                   )
                 }
             "#]],
@@ -4876,15 +4887,15 @@ mod tests {
             indoc! {r#"
                 -- foo.hop --
                 pub record User {name: String}
-                component Foo {}
+                component Foo {<></>}
 
                 -- bar.hop --
                 import foo::User
-                component Bar {}
+                component Bar {<></>}
 
                 -- baz.hop --
                 import bar::User
-                component Baz {}
+                component Baz {<></>}
             "#},
             expect![[r#"
                 error: Module bar does not declare a type User
@@ -4909,7 +4920,7 @@ mod tests {
                   city: String,
                 }
 
-                component Foo {}
+                component Foo {<></>}
                 -- bar.hop --
                 import foo::Address
 
@@ -4936,7 +4947,7 @@ mod tests {
                 }
 
                 fn Foo() -> Fragment {
-                  concat()
+                  concat(concat())
                 }
 
                 -- bar.hop --
@@ -5072,9 +5083,9 @@ mod tests {
         reject(
             indoc! {r#"
                 -- hop/button.hop --
-                pub component Button {}
+                pub component Button {<></>}
                 -- hop/input.hop --
-                pub component Input {}
+                pub component Input {<></>}
                 -- main.hop --
                 import hop::button::Button
                 import hop::input::Input
@@ -5521,7 +5532,9 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 component Greeting(name: String = "World") {
-                  Hello, {name}!
+                  <>
+                    Hello, {name}!
+                  </>
                 }
                 component Main {
                   <Greeting />
@@ -5530,7 +5543,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Greeting(name: String) -> Fragment {
-                  concat(raw("Hello, "), {name}, raw("!"))
+                  concat(concat(raw("Hello, "), {name}, raw("!")))
                 }
 
                 fn Main() -> Fragment {
@@ -5546,7 +5559,9 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 component Greeting(name: String = "World") {
-                  Hello, {name}!
+                  <>
+                    Hello, {name}!
+                  </>
                 }
                 component Main {
                   <Greeting name="Claude" />
@@ -5555,7 +5570,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Greeting(name: String) -> Fragment {
-                  concat(raw("Hello, "), {name}, raw("!"))
+                  concat(concat(raw("Hello, "), {name}, raw("!")))
                 }
 
                 fn Main() -> Fragment {
@@ -5571,7 +5586,9 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 component UserCard(name: String, role: String = "user") {
-                  {name} ({role})
+                  <>
+                    {name} ({role})
+                  </>
                 }
                 component Main {
                   <UserCard name="Alice" />
@@ -5584,7 +5601,7 @@ mod tests {
                 }
 
                 fn UserCard(name: String, role: String) -> Fragment {
-                  concat({name}, raw(" ("), {role}, raw(")"))
+                  concat(concat({name}, raw(" ("), {role}, raw(")")))
                 }
             "#]],
         );
@@ -5596,7 +5613,9 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 component UserCard(name: String, role: String = "user") {
-                  {name} ({role})
+                  <>
+                    {name} ({role})
+                  </>
                 }
                 component Main {
                   <UserCard role="admin" />
@@ -5604,9 +5623,9 @@ mod tests {
             "#},
             expect![[r#"
                 error: Component requires arguments: name
-                  --> main.hop (line 5, col 4)
-                4 | component Main {
-                5 |   <UserCard role="admin" />
+                  --> main.hop (line 7, col 4)
+                6 | component Main {
+                7 |   <UserCard role="admin" />
                   |    ^^^^^^^^
             "#]],
         );
@@ -5618,7 +5637,9 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 component Greeting(name: String = 42) {
-                  Hello, {name}!
+                  <>
+                    Hello, {name}!
+                  </>
                 }
                 component Main {
                   <Greeting />
@@ -5631,9 +5652,9 @@ mod tests {
                   |                                   ^^
 
                 error: Component requires arguments: name
-                  --> main.hop (line 5, col 4)
-                4 | component Main {
-                5 |   <Greeting />
+                  --> main.hop (line 7, col 4)
+                6 | component Main {
+                7 |   <Greeting />
                   |    ^^^^^^^^
             "#]],
         );
@@ -5644,8 +5665,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Config(debug: Bool = false, timeout: Int = 30) {
-                }
+                component Config(debug: Bool = false, timeout: Int = 30) {<></>}
                 component Main {
                   <Config />
                 }
@@ -5653,12 +5673,12 @@ mod tests {
             expect![[r#"
                 warning: Unused variable debug
                   --> main.hop (line 1, col 18)
-                1 | component Config(debug: Bool = false, timeout: Int = 30) {
+                1 | component Config(debug: Bool = false, timeout: Int = 30) {<></>}
                   |                  ^^^^^
 
                 warning: Unused variable timeout
                   --> main.hop (line 1, col 39)
-                1 | component Config(debug: Bool = false, timeout: Int = 30) {
+                1 | component Config(debug: Bool = false, timeout: Int = 30) {<></>}
                   |                                       ^^^^^^^
             "#]],
         );
@@ -6786,22 +6806,24 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 component Main {
-                  <button onClick="alert(1)">Click</button>
-                  <button ONCLICK="alert(1)">Click</button>
+                  <>
+                    <button onClick="alert(1)">Click</button>
+                    <button ONCLICK="alert(1)">Click</button>
+                  </>
                 }
             "#},
             expect![[r#"
                 error: `<button>` does not accept attribute `onClick`
-                  --> main.hop (line 2, col 11)
-                1 | component Main {
-                2 |   <button onClick="alert(1)">Click</button>
-                  |           ^^^^^^^
+                  --> main.hop (line 3, col 13)
+                2 |   <>
+                3 |     <button onClick="alert(1)">Click</button>
+                  |             ^^^^^^^
 
                 error: `<button>` does not accept attribute `ONCLICK`
-                  --> main.hop (line 3, col 11)
-                2 |   <button onClick="alert(1)">Click</button>
-                3 |   <button ONCLICK="alert(1)">Click</button>
-                  |           ^^^^^^^
+                  --> main.hop (line 4, col 13)
+                3 |     <button onClick="alert(1)">Click</button>
+                4 |     <button ONCLICK="alert(1)">Click</button>
+                  |             ^^^^^^^
             "#]],
         );
     }
@@ -7463,23 +7485,27 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 component Main {
-                  <let {name: String = "First"}>
-                    <div>{name}</div>
-                  </let>
-                  <let {name: String = "Second"}>
-                    <div>{name}</div>
-                  </let>
+                  <>
+                    <let {name: String = "First"}>
+                      <div>{name}</div>
+                    </let>
+                    <let {name: String = "Second"}>
+                      <div>{name}</div>
+                    </let>
+                  </>
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 fn Main() -> Fragment {
                   concat(
-                    let name = "First" in concat(
-                      html(tag: "div", attrs: [], children: concat({name})),
-                    ),
-                    let name = "Second" in concat(
-                      html(tag: "div", attrs: [], children: concat({name})),
+                    concat(
+                      let name = "First" in concat(
+                        html(tag: "div", attrs: [], children: concat({name})),
+                      ),
+                      let name = "Second" in concat(
+                        html(tag: "div", attrs: [], children: concat({name})),
+                      ),
                     ),
                   )
                 }
@@ -7722,7 +7748,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 page Main() {
-                  head {}
+                  head {<></>}
                   body {
                     <head></head>
                   }
@@ -7895,8 +7921,7 @@ mod tests {
                   children: Array[TreeNode],
                 }
 
-                component Main {
-                }
+                component Main {<></>}
             "#},
             expect![[r#"
                 -- main.hop --
@@ -7906,7 +7931,7 @@ mod tests {
                 }
 
                 fn Main() -> Fragment {
-                  concat()
+                  concat(concat())
                 }
             "#]],
         );
@@ -7922,8 +7947,7 @@ mod tests {
                   Neg{inner: Expr},
                 }
 
-                component Main {
-                }
+                component Main {<></>}
             "#},
             expect![[r#"
                 -- main.hop --
@@ -7933,7 +7957,7 @@ mod tests {
                 }
 
                 fn Main() -> Fragment {
-                  concat()
+                  concat(concat())
                 }
             "#]],
         );
@@ -7948,7 +7972,7 @@ mod tests {
                   #[examples(min = 1, max = 100)]
                   price: Int,
                 }
-                component Main {}
+                component Main {<></>}
             "#},
             expect![[r#"
                 -- main.hop --
@@ -7957,7 +7981,7 @@ mod tests {
                 }
 
                 fn Main() -> Fragment {
-                  concat()
+                  concat(concat())
                 }
             "#]],
         );
@@ -7972,7 +7996,7 @@ mod tests {
                   #[examples(min = 1, max = 100)]
                   name: String,
                 }
-                component Main {}
+                component Main {<></>}
             "#},
             expect![[r#"
                 error: #[examples(min = ..., max = ...)] is only valid on Int fields, found String
@@ -7993,7 +8017,7 @@ mod tests {
                   #[examples(min = 100, max = 1)]
                   price: Int,
                 }
-                component Main {}
+                component Main {<></>}
             "#},
             expect![[r#"
                 error: #[examples(min = 100)] must be less than or equal to max = 1
@@ -8014,7 +8038,7 @@ mod tests {
                   #[examples(min_len = 2, max_len = 5)]
                   tags: Array[String],
                 }
-                component Main {}
+                component Main {<></>}
             "#},
             expect![[r#"
                 -- main.hop --
@@ -8023,7 +8047,7 @@ mod tests {
                 }
 
                 fn Main() -> Fragment {
-                  concat()
+                  concat(concat())
                 }
             "#]],
         );
@@ -8038,7 +8062,7 @@ mod tests {
                   #[examples(min_len = 1, max_len = 5)]
                   name: String,
                 }
-                component Main {}
+                component Main {<></>}
             "#},
             expect![[r#"
                 error: #[examples(min_len = ..., max_len = ...)] is only valid on Array fields, found String
@@ -8059,7 +8083,7 @@ mod tests {
                   #[examples(min_len = -1, max_len = 5)]
                   tags: Array[String],
                 }
-                component Main {}
+                component Main {<></>}
             "#},
             expect![[r#"
                 error: #[examples(min_len = ..., max_len = ...)] must be non-negative, found -1
@@ -8080,7 +8104,7 @@ mod tests {
                   #[examples(min_len = 5, max_len = 2)]
                   tags: Array[String],
                 }
-                component Main {}
+                component Main {<></>}
             "#},
             expect![[r#"
                 error: #[examples(min_len = 5)] must be less than or equal to max_len = 2
@@ -8218,7 +8242,7 @@ mod tests {
                   head {
                     <meta ...rest/>
                   }
-                  body {}
+                  body {<></>}
                 }
             "#},
             expect![[r#"
@@ -9643,8 +9667,10 @@ mod tests {
                     <Second ...rest/>
                 }
                 component Second(...rest) {
-                    <Leaf ...rest/>
-                    <First/>
+                  <>
+                      <Leaf ...rest/>
+                      <First/>
+                  </>
                 }
                 view Main {
                     <First/>
@@ -9667,7 +9693,7 @@ mod tests {
                 }
 
                 fn Second(title: String, rest: Attrs) -> Fragment {
-                  concat(Leaf(title: title), First(title: "d", rest: []))
+                  concat(concat(Leaf(title: title), First(title: "d", rest: [])))
                 }
             "#]],
         );
@@ -9763,8 +9789,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- other.hop --
-                pub component Foo {
-                }
+                pub component Foo {<></>}
                 -- main.hop --
                 import other::Foo
                 import other::Foo
@@ -9794,17 +9819,15 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                component Foo {
-                }
+                component Foo {<></>}
 
-                component Foo {
-                }
+                component Foo {<></>}
             "#},
             expect![[r#"
                 error: Foo is already defined
-                  --> main.hop (line 4, col 11)
-                3 | 
-                4 | component Foo {
+                  --> main.hop (line 3, col 11)
+                2 | 
+                3 | component Foo {<></>}
                   |           ^^^
             "#]],
         );
@@ -9815,13 +9838,12 @@ mod tests {
         reject(
             indoc! {r#"
                 -- other.hop --
-                pub component Foo {
+                pub component Foo {<></>
                 }
                 -- main.hop --
                 import other::Foo
 
-                component Foo {
-                }
+                component Foo {<></>}
 
                 component Bar {
                 	<Foo/>
@@ -9831,7 +9853,7 @@ mod tests {
                 error: Foo is already defined
                   --> main.hop (line 3, col 11)
                 2 | 
-                3 | component Foo {
+                3 | component Foo {<></>}
                   |           ^^^
             "#]],
         );
@@ -9846,14 +9868,13 @@ mod tests {
                   name: String,
                 }
 
-                component User {
-                }
+                component User {<></>}
             "#},
             expect![[r#"
                 error: User is already defined
                   --> main.hop (line 5, col 11)
                 4 | 
-                5 | component User {
+                5 | component User {<></>}
                   |           ^^^^
             "#]],
         );
@@ -9938,14 +9959,13 @@ mod tests {
                 -- main.hop --
                 enum Color {Red, Green, Blue}
 
-                component Color {
-                }
+                component Color {<></>}
             "#},
             expect![[r#"
                 error: Color is already defined
                   --> main.hop (line 3, col 11)
                 2 | 
-                3 | component Color {
+                3 | component Color {<></>}
                   |           ^^^^^
             "#]],
         );
@@ -10104,14 +10124,13 @@ mod tests {
                     <div>Hello</div>
                 }
 
-                component Index {
-                }
+                component Index {<></>}
             "#},
             expect![[r#"
                 error: Index is already defined
                   --> main.hop (line 5, col 11)
                 4 | 
-                5 | component Index {
+                5 | component Index {<></>}
                   |           ^^^^^
             "#]],
         );
