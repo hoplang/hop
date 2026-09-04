@@ -251,7 +251,7 @@ fn parse_record_declaration(
         &token::Token::LeftBrace,
         &left_brace,
         |iter, comments, errors, range| {
-            let examples = parse_pattern_annotation(iter, comments, errors);
+            let examples = parse_examples_annotation(iter, comments, errors);
             let (field_name, field_name_range) =
                 expr_tokenizer::expect_field_name(iter, comments, errors, range)?;
             expr_tokenizer::expect_token(iter, comments, errors, range, &token::Token::Colon)?;
@@ -367,7 +367,7 @@ fn parse_enum_variant_fields(
         return Some(fields);
     }
     loop {
-        let examples = parse_pattern_annotation(iter, comments, errors);
+        let examples = parse_examples_annotation(iter, comments, errors);
         let (field_name, field_name_range) =
             expr_tokenizer::expect_field_name(iter, comments, errors, range)?;
         expr_tokenizer::expect_token(iter, comments, errors, range, &token::Token::Colon)?;
@@ -464,7 +464,7 @@ fn parse_component_declaration(
                     });
                 }
                 // A regular parameter.
-                let pattern = parse_pattern_annotation(iter, comments, errors);
+                let examples = parse_examples_annotation(iter, comments, errors);
                 let (var_name, var_name_range) =
                     expr_tokenizer::expect_variable_name(iter, comments, errors, range)?;
                 expr_tokenizer::expect_token(iter, comments, errors, range, &token::Token::Colon)?;
@@ -492,7 +492,7 @@ fn parse_component_declaration(
                     var_name_range,
                     var_type,
                     default_value,
-                    examples: pattern,
+                    examples,
                 })))
             },
         )?;
@@ -625,7 +625,7 @@ fn parse_page_or_view_header(
             &token::Token::LeftParen,
             &left_paren,
             |iter, comments, errors, range| {
-                let pattern = parse_pattern_annotation(iter, comments, errors);
+                let examples = parse_examples_annotation(iter, comments, errors);
                 let (var_name, var_name_range) =
                     expr_tokenizer::expect_variable_name(iter, comments, errors, range)?;
                 expr_tokenizer::expect_token(iter, comments, errors, range, &token::Token::Colon)?;
@@ -644,7 +644,7 @@ fn parse_page_or_view_header(
                     var_name_range,
                     var_type,
                     default_value: None,
-                    examples: pattern,
+                    examples,
                 })
             },
         )?;
@@ -874,7 +874,7 @@ fn parse_function_declaration(
 }
 
 /// Parse a `#[examples(...)]` annotation using the expr tokenizer.
-fn parse_pattern_annotation(
+fn parse_examples_annotation(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut Vec<ParseError>,
