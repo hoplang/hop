@@ -601,7 +601,8 @@ fn register_component_signature<'a>(
             let typed_default_value = {
                 if let Some(default_expr) = &param.default_value {
                     // Use a fresh variable scope, default values
-                    // are not allowed to reference eachother.
+                    // are constant and can't reference anything from
+                    // the environment.
                     let mut fresh_var_env = VariableScope::new();
                     if let Some(typed_default) = typecheck_expr(
                         default_expr,
@@ -2716,48 +2717,6 @@ mod tests {
                   --> main.hop (line 1, col 19)
                 1 | view Main(x: Int, x: String) {
                   |                   ^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_default_value_referencing_earlier_parameter() {
-        reject(
-            indoc! {r#"
-                -- main.hop --
-                component A(a: String, b: String = a) {
-                    <span>{a}{b}</span>
-                }
-                view Main {
-                    <A a="a" b="b"/>
-                }
-            "#},
-            expect![[r#"
-                error: Undefined variable: a
-                  --> main.hop (line 1, col 36)
-                1 | component A(a: String, b: String = a) {
-                  |                                    ^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_default_value_referencing_later_parameter() {
-        reject(
-            indoc! {r#"
-                -- main.hop --
-                component A(a: String = b, b: String) {
-                    <span>{a}{b}</span>
-                }
-                view Main {
-                    <A a="a" b="b"/>
-                }
-            "#},
-            expect![[r#"
-                error: Undefined variable: b
-                  --> main.hop (line 1, col 25)
-                1 | component A(a: String = b, b: String) {
-                  |                         ^
             "#]],
         );
     }

@@ -470,7 +470,17 @@ fn parse_component_declaration(
                     if expr::tokenizer::advance_if(iter, comments, errors, expr::Token::Assign)
                         .is_some()
                     {
-                        expr::parse_expr::parse_primary(iter, comments, errors, range)
+                        match expr::parse_expr::parse_primary(iter, comments, errors, range) {
+                            Some(default) if default.is_constant() => Some(default),
+                            Some(default) => {
+                                errors.push(ParseError::new(
+                                    ParseErrorKind::DefaultValueMustBeConstant {},
+                                    default.range().clone(),
+                                ));
+                                None
+                            }
+                            None => None,
+                        }
                     } else {
                         None
                     };
@@ -3053,6 +3063,190 @@ mod tests {
                   <div>
                   </div>
                 }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_parameter_with_default_int_array() {
+        accept(
+            indoc! {"
+                component Main(offsets: Array[Int] = [1, 2]) {
+                    <div></div>
+                }
+            "},
+            expect![[r#"
+                component Main(offsets: Array[Int] = [1, 2]) {
+                  <div>
+                  </div>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_parameter_with_default_fragment_empty() {
+        accept(
+            indoc! {"
+                component Main(children: Fragment = Fragment::empty()) {
+                    <div></div>
+                }
+            "},
+            expect![[r#"
+                component Main(children: Fragment = Fragment::empty()) {
+                  <div>
+                  </div>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_parameter_with_default_function_call() {
+        reject(
+            indoc! {"
+                fn greeting() -> String {
+                    \"hi\"
+                }
+                component Main(msg: String = greeting()) {
+                    <div></div>
+                }
+            "},
+            expect![[r#"
+                error: Default values must be constant
+                3 | }
+                4 | component Main(msg: String = greeting()) {
+                  |                              ^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_parameter_with_default_variable() {
+        reject(
+            indoc! {"
+                component Main(msg: String = other) {
+                    <div></div>
+                }
+            "},
+            expect![[r#"
+                error: Default values must be constant
+                1 | component Main(msg: String = other) {
+                  |                              ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_parameter_with_default_referencing_another_parameter() {
+        reject(
+            indoc! {"
+                component Main(a: String, b: String = a) {
+                    <div></div>
+                }
+            "},
+            expect![[r#"
+                error: Default values must be constant
+                1 | component Main(a: String, b: String = a) {
+                  |                                       ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_parameter_with_default_method_call() {
+        reject(
+            indoc! {r#"
+                component Main(msg: String = "hi".to_uppercase()) {
+                    <div></div>
+                }
+            "#},
+            expect![[r#"
+                error: Default values must be constant
+                1 | component Main(msg: String = "hi".to_uppercase()) {
+                  |                              ^^^^^^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_parameter_with_default_binary_operation() {
+        reject(
+            indoc! {"
+                component Main(count: Int = (1 + 2)) {
+                    <div></div>
+                }
+            "},
+            expect![[r#"
+                error: Default values must be constant
+                1 | component Main(count: Int = (1 + 2)) {
+                  |                              ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_parameter_with_default_macro_invocation() {
+        reject(
+            indoc! {r#"
+                component Main(src: String = asset!("/logo.png")) {
+                    <div></div>
+                }
+            "#},
+            expect![[r#"
+                error: Default values must be constant
+                1 | component Main(src: String = asset!("/logo.png")) {
+                  |                              ^^^^^^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_parameter_with_default_match_expression() {
+        reject(
+            indoc! {r#"
+                component Main(msg: String = match true { true => "y", false => "n" }) {
+                    <div></div>
+                }
+            "#},
+            expect![[r#"
+                error: Default values must be constant
+                1 | component Main(msg: String = match true { true => "y", false => "n" }) {
+                  |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_parameter_with_default_record_spread() {
+        reject(
+            indoc! {r#"
+                record Config { name: String }
+                component Main(config: Config = Config{...base, name: "x"}) {
+                    <div></div>
+                }
+            "#},
+            expect![[r#"
+                error: Default values must be constant
+                1 | record Config { name: String }
+                2 | component Main(config: Config = Config{...base, name: "x"}) {
+                  |                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_parameter_with_default_non_literal_nested_in_literal() {
+        reject(
+            indoc! {r#"
+                component Main(names: Array[String] = ["a", other]) {
+                    <div></div>
+                }
+            "#},
+            expect![[r#"
+                error: Default values must be constant
+                1 | component Main(names: Array[String] = ["a", other]) {
+                  |                                       ^^^^^^^^^^^^
             "#]],
         );
     }

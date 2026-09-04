@@ -299,6 +299,39 @@ impl ParsedBinaryOp {
 }
 
 impl ParsedExpr {
+    /// Whether this expression is a constant, i.e. a value written out in full
+    /// with nothing left to evaluate.
+    pub fn is_constant(&self) -> bool {
+        match self {
+            ParsedExpr::StringLiteral { .. }
+            | ParsedExpr::BooleanLiteral { .. }
+            | ParsedExpr::IntLiteral { .. }
+            | ParsedExpr::FloatLiteral { .. }
+            | ParsedExpr::FragmentEmpty { .. } => true,
+            ParsedExpr::ArrayLiteral { elements, .. } => {
+                elements.iter().all(|element| element.is_constant())
+            }
+            ParsedExpr::RecordLiteral { fields, spread, .. } => {
+                spread.is_none() && fields.iter().all(|(_, value)| value.is_constant())
+            }
+            ParsedExpr::EnumLiteral { fields, .. } => {
+                fields.iter().all(|(_, _, value)| value.is_constant())
+            }
+            ParsedExpr::OptionLiteral { value, .. } => {
+                value.as_ref().is_none_or(|value| value.is_constant())
+            }
+            ParsedExpr::Var { .. }
+            | ParsedExpr::FieldAccess { .. }
+            | ParsedExpr::MethodCall { .. }
+            | ParsedExpr::BinaryOp { .. }
+            | ParsedExpr::BooleanNegation { .. }
+            | ParsedExpr::NumericNegation { .. }
+            | ParsedExpr::Match { .. }
+            | ParsedExpr::MacroInvocation { .. }
+            | ParsedExpr::FunctionCall { .. } => false,
+        }
+    }
+
     pub fn range(&self) -> &DocumentRange {
         match self {
             ParsedExpr::Var { range, .. }

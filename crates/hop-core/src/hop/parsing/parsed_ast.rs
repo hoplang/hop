@@ -125,6 +125,9 @@ pub struct ParsedParameter {
     pub var_name: VarName,
     pub var_name_range: DocumentRange,
     pub var_type: ParsedType,
+    // The default value for this parameter. The parser guarantees that this
+    // expression is a constant and that it does not reference variables or
+    // invoke functions.
     pub default_value: Option<ParsedExpr>,
     pub examples: Option<ExamplesAnnotation>,
 }
