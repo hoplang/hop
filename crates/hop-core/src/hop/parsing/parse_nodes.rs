@@ -95,7 +95,7 @@ enum TagHeader {
         cond: Option<ParsedExpr>,
     },
     For {
-        expr: Option<ParsedLoopHeader>,
+        expr: Option<LoopHeader>,
     },
     Let {
         bindings: Option<Vec<ParsedLetBinding>>,
@@ -818,7 +818,7 @@ fn expect_cases(items: Vec<MarkupItem>, errors: &mut Vec<ParseError>) -> Vec<Par
     cases
 }
 
-struct ParsedLoopHeader {
+struct LoopHeader {
     var_name: Option<VarName>,
     var_name_range: Option<DocumentRange>,
     loop_source: Box<ParsedLoopSource>,
@@ -829,7 +829,7 @@ fn parse_loop_header(
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut Vec<ParseError>,
     range: &DocumentRange,
-) -> Option<ParsedLoopHeader> {
+) -> Option<LoopHeader> {
     let (var_name, var_name_range) = if let Some(underscore_range) =
         expr_tokenizer::advance_if(iter, comments, errors, token::Token::Underscore)
     {
@@ -851,7 +851,7 @@ fn parse_loop_header(
         } else {
             ParsedLoopSource::Array(start_expr)
         };
-    Some(ParsedLoopHeader {
+    Some(LoopHeader {
         var_name,
         var_name_range,
         loop_source: Box::new(source),
