@@ -92,6 +92,8 @@ pub fn typecheck_expr(
     errors: &mut Vec<TypeError>,
 ) -> Option<TypedExpr> {
     match parsed_expr {
+        ParsedExpr::Markup { .. } => unreachable!("markup is not parsed in expression position"),
+
         ParsedExpr::Var {
             value: var_name, ..
         } => {

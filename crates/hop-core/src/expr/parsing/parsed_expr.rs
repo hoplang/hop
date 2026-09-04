@@ -1,6 +1,7 @@
 use std::fmt::{self, Display};
 
 use crate::document::{CheapString, DocumentRange};
+use crate::hop::parsing::parsed_node::ParsedNode;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
@@ -119,6 +120,9 @@ pub enum ParsedExpr {
 
     /// An empty Fragment literal, e.g. `Fragment::empty()`
     FragmentEmpty { range: DocumentRange },
+
+    /// Markup, e.g. `<div>{name}</div>`.
+    Markup { node: Box<ParsedNode> },
 
     /// A function call expression, e.g. `foo(1, 2)`
     FunctionCall {
@@ -299,6 +303,14 @@ impl ParsedBinaryOp {
 }
 
 impl ParsedExpr {
+    /// The markup this expression is, if it is markup.
+    pub fn as_markup(&self) -> Option<&ParsedNode> {
+        match self {
+            ParsedExpr::Markup { node } => Some(node),
+            _ => None,
+        }
+    }
+
     /// Whether this expression is a constant, i.e. a value written out in full
     /// with nothing left to evaluate.
     pub fn is_constant(&self) -> bool {
@@ -328,6 +340,7 @@ impl ParsedExpr {
             | ParsedExpr::NumericNegation { .. }
             | ParsedExpr::Match { .. }
             | ParsedExpr::MacroInvocation { .. }
+            | ParsedExpr::Markup { .. }
             | ParsedExpr::FunctionCall { .. } => false,
         }
     }
@@ -352,6 +365,7 @@ impl ParsedExpr {
             | ParsedExpr::MacroInvocation { range, .. }
             | ParsedExpr::FragmentEmpty { range, .. }
             | ParsedExpr::FunctionCall { range, .. } => range,
+            ParsedExpr::Markup { node } => node.range(),
         }
     }
 
@@ -558,6 +572,7 @@ impl ParsedExpr {
                 }
             }
             ParsedExpr::FragmentEmpty { .. } => BoxDoc::text("Fragment::empty()"),
+            ParsedExpr::Markup { node } => node.to_doc(),
             ParsedExpr::FunctionCall { name, args, .. } => {
                 if args.is_empty() {
                     BoxDoc::text(name.as_str()).append(BoxDoc::text("()"))

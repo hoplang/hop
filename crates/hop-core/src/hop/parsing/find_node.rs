@@ -2,6 +2,7 @@ use crate::document_position::DocumentPosition;
 
 use super::parsed_ast::ParsedAst;
 use super::parsed_node::ParsedNode;
+use crate::expr::ParsedExpr;
 
 /// Finds the deepest AST node that contains the given position.
 ///
@@ -24,14 +25,14 @@ use super::parsed_node::ParsedNode;
 pub fn find_node_at_position(ast: &ParsedAst, position: DocumentPosition) -> Option<&ParsedNode> {
     for n in ast.get_component_declarations() {
         if n.range.contains_position(position) {
-            return find_node_at_position_in_node(&n.children, position);
+            return find_node_at_position_in_expr(&n.body, position);
         }
     }
 
     for n in ast.get_page_declarations() {
         if n.range.contains_position(position) {
             for child in n.head.iter().chain([&n.body]) {
-                if let Some(node) = find_node_at_position_in_node(child, position) {
+                if let Some(node) = find_node_at_position_in_expr(child, position) {
                     return Some(node);
                 }
             }
@@ -46,6 +47,13 @@ pub fn find_node_at_position(ast: &ParsedAst, position: DocumentPosition) -> Opt
     }
 
     None
+}
+
+fn find_node_at_position_in_expr(
+    expr: &ParsedExpr,
+    position: DocumentPosition,
+) -> Option<&ParsedNode> {
+    find_node_at_position_in_node(expr.as_markup()?, position)
 }
 
 fn find_node_at_position_in_node(

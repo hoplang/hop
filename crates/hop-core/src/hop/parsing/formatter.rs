@@ -360,7 +360,7 @@ fn format_component_declaration<'a>(
         .append(
             arena
                 .line()
-                .append(format_node(arena, &component.children, comments))
+                .append(format_expr(arena, &component.body, comments))
                 .append(arena.line())
                 .nest(2),
         )
@@ -423,7 +423,7 @@ fn format_page_declaration<'a>(
     let body_doc = if page.is_view {
         arena
             .line()
-            .append(format_node(arena, &page.body, comments))
+            .append(format_expr(arena, &page.body, comments))
             .append(arena.line())
             .nest(2)
     } else {
@@ -434,7 +434,7 @@ fn format_page_declaration<'a>(
                 .append(
                     arena
                         .line()
-                        .append(format_node(arena, head, comments))
+                        .append(format_expr(arena, head, comments))
                         .append(arena.line())
                         .nest(2),
                 )
@@ -446,7 +446,7 @@ fn format_page_declaration<'a>(
             .append(
                 arena
                     .line()
-                    .append(format_node(arena, &page.body, comments))
+                    .append(format_expr(arena, &page.body, comments))
                     .append(arena.line())
                     .nest(2),
             )
@@ -1020,6 +1020,7 @@ fn format_expr<'a>(
 ) -> DocBuilder<'a, Arena<'a>> {
     match expr {
         ParsedExpr::Var { value, .. } => arena.text(value.as_str()),
+        ParsedExpr::Markup { node } => format_node(arena, node, comments),
         expr @ ParsedExpr::FieldAccess {
             record: object,
             field,

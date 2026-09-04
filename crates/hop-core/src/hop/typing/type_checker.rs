@@ -2,6 +2,7 @@ use super::type_annotation::TypeAnnotation;
 use crate::asset_reference::AssetReference;
 use crate::dependency_graph::DependencyGraph;
 use crate::document::{CheapString, DocumentRange};
+use crate::expr::ParsedExpr;
 use crate::expr::patterns::compiler::compile_match;
 use crate::expr::typing::r#type::EnumVariant;
 use crate::expr::typing::type_checker::{decision_to_typed_expr, resolve_type, typecheck_expr};
@@ -270,7 +271,7 @@ fn typecheck_module(
     let mut call_graph = DependencyGraph::new();
     for (name, c) in &component_by_name {
         let mut deps = BTreeSet::new();
-        let mut stack: Vec<&ParsedNode> = vec![&c.children];
+        let mut stack: Vec<&ParsedNode> = c.body.as_markup().into_iter().collect();
         while let Some(node) = stack.pop() {
             if let ParsedNode::ComponentInvocation { component_name, .. } = node {
                 if component_by_name.contains_key(component_name) {
@@ -309,7 +310,9 @@ fn typecheck_module(
     let mut rest_targets: HashMap<TypeName, Option<RestSpreadTarget>> = HashMap::new();
     for component in parsed_ast.get_component_declarations() {
         let mut spreads = Vec::new();
-        collect_spreads(std::slice::from_ref(&component.children), &mut spreads);
+        if let Some(node) = component.body.as_markup() {
+            collect_spreads(std::slice::from_ref(node), &mut spreads);
+        }
         rest_targets.insert(
             component.component_name.clone(),
             pair_rest_spread(
@@ -999,7 +1002,7 @@ fn check_component_body(
     } = pending;
 
     let ParsedComponentDeclaration {
-        children,
+        body,
         component_name,
         tag_name,
         closing_tag_name,
@@ -1017,19 +1020,23 @@ fn check_component_body(
 
     let declared_names: Vec<VarName> = declared_params.iter().map(|p| p.name.clone()).collect();
 
-    let typed_children = typecheck_node(
-        children,
-        &declared_names,
-        registry,
-        errors,
-        var_env,
-        type_env,
-        annotations,
-        definition_links,
-        asset_references,
-    )
-    .into_iter()
-    .collect::<Vec<_>>();
+    let typed_children = body
+        .as_markup()
+        .and_then(|node| {
+            typecheck_node(
+                node,
+                &declared_names,
+                registry,
+                errors,
+                var_env,
+                type_env,
+                annotations,
+                definition_links,
+                asset_references,
+            )
+        })
+        .into_iter()
+        .collect::<Vec<_>>();
 
     for (param, _) in resolved_params.iter().rev() {
         let (name, _, accessed) = var_env.pop();
@@ -1120,8 +1127,9 @@ fn check_page_declaration(
     // Pages and views cannot declare a rest parameter, so any spread in the
     // head or body fails to name one.
     let mut spreads = Vec::new();
-    collect_spreads(head.as_slice(), &mut spreads);
-    collect_spreads(std::slice::from_ref(body), &mut spreads);
+    for node in head.iter().chain([body]).filter_map(ParsedExpr::as_markup) {
+        collect_spreads(std::slice::from_ref(node), &mut spreads);
+    }
     pair_rest_spread(name, None, spreads, errors);
 
     let mut pushed_params = Vec::new();
@@ -1167,7 +1175,7 @@ fn check_page_declaration(
         });
     }
 
-    let typecheck_list = |nodes: &[ParsedNode],
+    let typecheck_list = |nodes: &[&ParsedNode],
                           errors: &mut Vec<TypeError>,
                           var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
                           type_env: &mut TypeEnv,
@@ -1192,8 +1200,14 @@ fn check_page_declaration(
             .collect::<Vec<_>>()
     };
 
+    let head_nodes: Vec<&ParsedNode> = head.iter().filter_map(ParsedExpr::as_markup).collect();
+    let body_nodes: Vec<&ParsedNode> = [body]
+        .into_iter()
+        .filter_map(ParsedExpr::as_markup)
+        .collect();
+
     let typed_head = typecheck_list(
-        head.as_slice(),
+        &head_nodes,
         errors,
         var_env,
         type_env,
@@ -1202,7 +1216,7 @@ fn check_page_declaration(
         asset_references,
     );
     let typed_body = typecheck_list(
-        std::slice::from_ref(body),
+        &body_nodes,
         errors,
         var_env,
         type_env,

@@ -546,8 +546,7 @@ fn parse_component_declaration(
         &expr::Token::LeftBrace,
     )?;
 
-    // Parse the body - this contains HTML/component nodes
-    let children = parse_body(iter, comments, errors, &body_start);
+    let body = parse_body(iter, comments, errors, &body_start);
 
     let body_end = expr::tokenizer::expect_opposite(
         iter,
@@ -577,7 +576,7 @@ fn parse_component_declaration(
         params,
         rest_param,
         range,
-        children,
+        body,
         pub_range,
     })
 }

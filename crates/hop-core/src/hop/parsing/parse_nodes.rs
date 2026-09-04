@@ -321,7 +321,7 @@ pub fn parse_body(
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut Vec<ParseError>,
     left_brace: &DocumentRange,
-) -> ParsedNode {
+) -> ParsedExpr {
     let errors_before = errors.len();
     let mut nodes = Vec::new();
     while let Some(token) = tokenizer::next(iter, errors) {
@@ -329,7 +329,10 @@ pub fn parse_body(
     }
     whitespace::normalize(&mut nodes);
     if nodes.len() == 1 {
-        return nodes.pop().unwrap();
+        let body = nodes.pop().unwrap();
+        return ParsedExpr::Markup {
+            node: Box::new(body),
+        };
     }
     let (kind, error_range) = match nodes.get(1) {
         Some(second) => (ParseErrorKind::MultipleRoots {}, second.range().clone()),
@@ -342,9 +345,12 @@ pub fn parse_body(
         (Some(first), Some(last)) => first.range().clone().to(last.range().clone()),
         _ => left_brace.clone(),
     };
-    ParsedNode::Fragment {
-        children: nodes,
-        range,
+
+    ParsedExpr::Markup {
+        node: Box::new(ParsedNode::Fragment {
+            children: nodes,
+            range,
+        }),
     }
 }
 

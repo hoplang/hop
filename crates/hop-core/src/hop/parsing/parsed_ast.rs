@@ -1,4 +1,3 @@
-use super::parsed_node::ParsedNode;
 use crate::document::DocumentRange;
 use crate::document_id::DocumentId;
 use crate::expr::ExamplesAnnotation;
@@ -48,8 +47,8 @@ pub struct ParsedPageDeclaration {
     pub name: TypeName,
     pub name_range: DocumentRange,
     pub params: Vec<ParsedParameter>,
-    pub head: Option<ParsedNode>,
-    pub body: ParsedNode,
+    pub head: Option<ParsedExpr>,
+    pub body: ParsedExpr,
     pub range: DocumentRange,
     pub pub_range: Option<DocumentRange>,
     /// True when this declaration was written using the `view` keyword.
@@ -76,7 +75,7 @@ pub struct ParsedComponentDeclaration {
     pub closing_tag_name: Option<DocumentRange>,
     pub params: Option<(Vec<ParsedParameter>, DocumentRange)>,
     pub rest_param: Option<(VarName, DocumentRange)>,
-    pub children: ParsedNode,
+    pub body: ParsedExpr,
     pub range: DocumentRange,
     pub pub_range: Option<DocumentRange>,
 }
@@ -481,7 +480,7 @@ impl ParsedComponentDeclaration {
             .append(BoxDoc::text("{"))
             .append(
                 BoxDoc::line()
-                    .append(self.children.to_doc())
+                    .append(self.body.to_doc())
                     .nest(2)
                     .append(BoxDoc::line()),
             )
@@ -516,13 +515,13 @@ impl ParsedFunctionDeclaration {
 }
 
 impl ParsedPageDeclaration {
-    fn to_doc_block<'a>(name: &'a str, node: &'a ParsedNode) -> BoxDoc<'a> {
+    fn to_doc_block<'a>(name: &'a str, body: &'a ParsedExpr) -> BoxDoc<'a> {
         BoxDoc::text(name)
             .append(BoxDoc::space())
             .append(BoxDoc::text("{"))
             .append(
                 BoxDoc::line()
-                    .append(node.to_doc())
+                    .append(body.to_doc())
                     .nest(2)
                     .append(BoxDoc::line()),
             )
