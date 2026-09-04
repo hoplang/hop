@@ -1,4 +1,5 @@
 pub mod resolve_type;
+pub mod rest_spread;
 pub mod r#type;
 pub mod type_env;
 pub mod type_export;
