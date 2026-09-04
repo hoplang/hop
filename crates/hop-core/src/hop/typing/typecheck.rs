@@ -1,20 +1,22 @@
+use super::{
+    ExamplesAnnotation, FunctionSignature, ParamEntry, Tail, Type, TypeBinding, TypedExpr,
+};
 use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
 use crate::dependency_graph::DependencyGraph;
 use crate::document::{CheapString, DocumentRange};
-use crate::expr::ParsedExpr;
-use crate::expr::patterns::compiler::compile_match;
-use crate::expr::typing::r#type::EnumVariant;
-use crate::expr::typing::type_checker::{decision_to_typed_expr, resolve_type, typecheck_expr};
-use crate::expr::typing::type_env::TypeEnv;
-use crate::expr::typing::type_export::TypeExport;
-use crate::expr::typing::type_registry::{TypeDef, TypeRegistry};
-use crate::expr::{self, FunctionSignature, ParamEntry, Tail, Type, TypeBinding, TypedExpr};
+use crate::hop::parsing::ParsedExpr;
 use crate::hop::parsing::parsed_ast::ParsedDeclaration;
 use crate::hop::parsing::parsed_ast::{
     ParsedAttribute, ParsedComponentDeclaration, ParsedEnumDeclaration, ParsedFunctionDeclaration,
     ParsedImportDeclaration, ParsedPageDeclaration, ParsedParameter, ParsedRecordDeclaration,
 };
+use crate::hop::patterns::compiler::compile_match;
+use crate::hop::typing::r#type::EnumVariant;
+use crate::hop::typing::type_env::TypeEnv;
+use crate::hop::typing::type_export::TypeExport;
+use crate::hop::typing::type_registry::{TypeDef, TypeRegistry};
+use crate::hop::typing::typecheck_expr::{decision_to_typed_expr, resolve_type, typecheck_expr};
 use crate::hover_annotation::HoverAnnotation;
 use crate::html::HtmlElement;
 use crate::symbols::function_name::FunctionName;
@@ -26,15 +28,15 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
 use crate::document_id::DocumentId;
-use crate::expr::patterns::Match;
-use crate::expr::patterns::typed::typecheck_pattern;
-use crate::expr::{TypedAttribute, TypedAttributeValue, TypedLoopSource};
 use crate::hop::parsing::parsed_ast::{ParsedAst, ParsedAttributeValue};
 use crate::hop::parsing::parsed_node::{ParsedLetBinding, ParsedLoopSource, ParsedNode};
+use crate::hop::patterns::Match;
+use crate::hop::patterns::typed::typecheck_pattern;
 use crate::hop::typing::typed_ast::{
     TypedAst, TypedEnumDeclaration, TypedFunctionDeclaration, TypedPageDeclaration, TypedParameter,
     TypedRecordDeclaration,
 };
+use crate::hop::typing::{TypedAttribute, TypedAttributeValue, TypedLoopSource};
 
 pub fn typecheck(
     modules: &[&ParsedAst],
@@ -2294,12 +2296,12 @@ fn typecheck_arguments(
                     .as_ref()
                     .map(|r| r.to_cheap_string())
                     .unwrap_or_else(|| CheapString::new(String::new()));
-                expr::ParsedExpr::StringLiteral {
+                ParsedExpr::StringLiteral {
                     value,
                     range: quoted_range.clone(),
                 }
             }
-            None => expr::ParsedExpr::BooleanLiteral {
+            None => ParsedExpr::BooleanLiteral {
                 value: true,
                 range: arg_name_range.clone(),
             },
@@ -2480,7 +2482,7 @@ fn typecheck_html_attribute(
 }
 
 fn validate_examples_annotation(
-    examples: &Option<expr::ExamplesAnnotation>,
+    examples: &Option<ExamplesAnnotation>,
     resolved_type: &Arc<Type>,
     range: &DocumentRange,
     errors: &mut Vec<TypeError>,
@@ -2554,7 +2556,7 @@ mod tests {
     use super::*;
     use crate::document_annotator::DocumentAnnotator;
     use crate::document_id::DocumentId;
-    use crate::hop::parsing::parser::parse;
+    use crate::hop::parsing::parse::parse;
     use crate::{document::Document, program::Severity};
     use expect_test::{Expect, expect};
     use indoc::indoc;

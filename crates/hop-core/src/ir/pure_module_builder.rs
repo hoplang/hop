@@ -1,9 +1,9 @@
 use crate::document::CheapString;
-use crate::expr::Type;
-use crate::expr::patterns::{EnumMatchArm, EnumPattern, Match};
-use crate::expr::typing::r#type::{ComparableType, EnumVariant, EquatableType, NumericType};
-use crate::expr::typing::type_registry::{ResolvedType, TypeRegistry};
-use crate::expr::typing::type_registry_builder::{TestTypes, TypeRegistryBuilder};
+use crate::hop::patterns::{EnumMatchArm, EnumPattern, Match};
+use crate::hop::typing::Type;
+use crate::hop::typing::r#type::{ComparableType, EnumVariant, EquatableType, NumericType};
+use crate::hop::typing::type_registry::{ResolvedType, TypeRegistry};
+use crate::hop::typing::type_registry_builder::{TestTypes, TypeRegistryBuilder};
 use crate::ir::expr_id::{ExprId, ExprIdCounter};
 use crate::ir::ir_var::IrVar;
 use crate::ir::pure_module::{

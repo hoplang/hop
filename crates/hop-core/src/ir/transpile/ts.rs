@@ -1,9 +1,9 @@
 use pretty::{Arena, DocAllocator};
 
 use super::{Doc, Transpiler};
-use crate::expr::patterns::{EnumPattern, Match};
-use crate::expr::typing::r#type::Type;
-use crate::expr::typing::type_registry::TypeRegistry;
+use crate::hop::patterns::{EnumPattern, Match};
+use crate::hop::typing::r#type::Type;
+use crate::hop::typing::type_registry::TypeRegistry;
 use crate::ir::ir_var::IrVar;
 use crate::ir::var_id::{VarId, VarIdCounter};
 use crate::ir::writer_module::{

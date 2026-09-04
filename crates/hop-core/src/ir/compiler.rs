@@ -4,14 +4,14 @@ use std::sync::Arc;
 use crate::asset_rewriter::AssetRewriter;
 use crate::document::CheapString;
 use crate::document_id::DocumentId;
-use crate::expr::Type;
-use crate::expr::TypedExpr;
-use crate::expr::patterns::{EnumMatchArm, Match};
-use crate::expr::{TypedAttribute, TypedAttributeValue, TypedLoopSource};
 use crate::hop::assembly::AssembledPageDeclaration;
+use crate::hop::patterns::{EnumMatchArm, Match};
+use crate::hop::typing::Type;
+use crate::hop::typing::TypedExpr;
 use crate::hop::typing::typed_ast::{
     TypedEnumDeclaration, TypedFunctionDeclaration, TypedRecordDeclaration,
 };
+use crate::hop::typing::{TypedAttribute, TypedAttributeValue, TypedLoopSource};
 use crate::ir::expr_id::ExprId;
 use crate::ir::expr_id::ExprIdCounter;
 use crate::ir::ir_var::IrVar;

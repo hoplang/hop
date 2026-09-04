@@ -1,5 +1,5 @@
-use crate::expr::patterns::{EnumMatchArm, Match};
-use crate::expr::typing::r#type::Type;
+use crate::hop::patterns::{EnumMatchArm, Match};
+use crate::hop::typing::r#type::Type;
 use crate::ir::ir_var::IrVar;
 
 use super::pure_module::{

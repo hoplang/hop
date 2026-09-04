@@ -4,13 +4,13 @@ use crate::ir::var_id::VarId;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use crate::{
-    expr::typing::r#type::{ComparableType, EquatableType, NumericType},
+    hop::typing::r#type::{ComparableType, EquatableType, NumericType},
     html::write_escaped_html,
 };
 use std::collections::HashMap;
 use thiserror::Error;
 
-use crate::expr::patterns::{EnumPattern, Match};
+use crate::hop::patterns::{EnumPattern, Match};
 use crate::ir::pure_module::{PureForSource, PureFunctionDeclaration, PureModule};
 
 pub fn evaluate_page(

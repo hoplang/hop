@@ -1,8 +1,8 @@
 use super::parsed_ast::ParsedAttribute;
 use crate::document::DocumentRange;
-use crate::expr::ParsedExpr;
-use crate::expr::parsing::ParsedType;
-use crate::expr::parsing::parsed_expr::ParsedMatchPattern;
+use crate::hop::parsing::ParsedExpr;
+use crate::hop::parsing::ParsedType;
+use crate::hop::parsing::parsed_expr::ParsedMatchPattern;
 use crate::html::HtmlElement;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;

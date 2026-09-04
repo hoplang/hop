@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::document::CheapString;
-use crate::expr::patterns::{EnumPattern, Match};
+use crate::hop::patterns::{EnumPattern, Match};
 use crate::ir::expr_id::ExprIdCounter;
 use crate::ir::pure_module::PureExpr;
 use crate::ir::var_id::VarId;

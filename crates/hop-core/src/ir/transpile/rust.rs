@@ -4,9 +4,9 @@ use pretty::{Arena, DocAllocator};
 
 use super::{Doc, Transpiler};
 use crate::dependency_graph::DependencyGraph;
-use crate::expr::patterns::{EnumPattern, Match};
-use crate::expr::typing::r#type::{EnumVariant, Type};
-use crate::expr::typing::type_registry::{ResolvedType, TypeRegistry};
+use crate::hop::patterns::{EnumPattern, Match};
+use crate::hop::typing::r#type::{EnumVariant, Type};
+use crate::hop::typing::type_registry::{ResolvedType, TypeRegistry};
 use crate::ir::ir_var::IrVar;
 use crate::ir::writer_module::{
     WriterArgument, WriterExpr, WriterForSource, WriterFunctionBody, WriterFunctionDeclaration,

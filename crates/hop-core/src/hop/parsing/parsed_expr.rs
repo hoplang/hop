@@ -1,7 +1,7 @@
 use std::fmt::{self, Display};
 
+use super::parsed_node::ParsedNode;
 use crate::document::{CheapString, DocumentRange};
-use crate::hop::parsing::parsed_node::ParsedNode;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;

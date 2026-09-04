@@ -1,5 +1,5 @@
-use crate::expr::Type;
-use crate::expr::typing::type_registry::TypeRegistry;
+use crate::hop::typing::Type;
+use crate::hop::typing::type_registry::TypeRegistry;
 use crate::ir::pure_module::{PureExpr, PureModule};
 use crate::ir::pure_module_builder::{PureBuilder, PureModuleBuilder};
 use arbitrary::Unstructured;

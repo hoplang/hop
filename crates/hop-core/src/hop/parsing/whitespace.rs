@@ -104,7 +104,7 @@ fn drop_newlines(nodes: &mut Vec<ParsedNode>) {
 mod tests {
     use crate::document::Document;
     use crate::document_id::DocumentId;
-    use crate::hop::parsing::{format, parser};
+    use crate::hop::parsing::{format, parse};
     use crate::ir::runtime::evaluator;
     use crate::orchestrator::{OrchestrateOptions, orchestrate_pure};
     use crate::program::Program;
@@ -127,7 +127,7 @@ mod tests {
     fn reformat(source: &str) -> String {
         let document_id = DocumentId::new("test.hop").unwrap();
         let mut errors = Vec::new();
-        let ast = parser::parse(
+        let ast = parse::parse(
             document_id.clone(),
             Document::new(document_id, source.to_string()),
             &mut errors,

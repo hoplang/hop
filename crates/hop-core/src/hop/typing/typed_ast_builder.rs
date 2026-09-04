@@ -2,11 +2,11 @@ use std::cell::RefCell;
 use std::sync::Arc;
 
 use crate::document::CheapString;
-use crate::expr::Type;
-use crate::expr::TypedExpr;
-use crate::expr::{TypedAttribute, TypedAttributeValue, TypedLoopSource};
 use crate::hop::assembly::AssembledPageDeclaration;
+use crate::hop::typing::Type;
+use crate::hop::typing::TypedExpr;
 use crate::hop::typing::typed_ast::TypedParameter;
+use crate::hop::typing::{TypedAttribute, TypedAttributeValue, TypedLoopSource};
 use crate::html::HtmlElement;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
@@ -226,7 +226,7 @@ impl TypedAstBuilder {
         FTrue: FnOnce(&mut Self),
         FFalse: FnOnce(&mut Self),
     {
-        use crate::expr::patterns::Match;
+        use crate::hop::patterns::Match;
 
         let mut true_builder = self.new_scoped();
         true_children_fn(&mut true_builder);

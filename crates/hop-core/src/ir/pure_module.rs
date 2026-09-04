@@ -2,8 +2,8 @@ use std::fmt;
 use std::sync::Arc;
 
 use crate::document::CheapString;
-use crate::expr::patterns::{EnumMatchArm, EnumPattern, Match};
-use crate::expr::typing::r#type::{ComparableType, EquatableType, NumericType, Type};
+use crate::hop::patterns::{EnumMatchArm, EnumPattern, Match};
+use crate::hop::typing::r#type::{ComparableType, EquatableType, NumericType, Type};
 use crate::ir::expr_id::{ExprId, ExprIdCounter};
 use crate::ir::ir_var::IrVar;
 use crate::ir::var_id::VarIdCounter;

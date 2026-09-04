@@ -1,8 +1,8 @@
 use super::value::Value;
 use crate::document_id::DocumentId;
-use crate::expr::Type;
-use crate::expr::typing::r#type::{EnumVariant, ExamplesAnnotation};
-use crate::expr::typing::type_registry::{ResolvedType, TypeRegistry};
+use crate::hop::typing::Type;
+use crate::hop::typing::r#type::{EnumVariant, ExamplesAnnotation};
+use crate::hop::typing::type_registry::{ResolvedType, TypeRegistry};
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use rand::{Rng, RngExt};
@@ -217,7 +217,7 @@ fn generate(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::expr::typing::type_registry_builder::TypeRegistryBuilder;
+    use crate::hop::typing::type_registry_builder::TypeRegistryBuilder;
     use rand::SeedableRng;
     use rand::rngs::StdRng;
     use std::sync::Arc;

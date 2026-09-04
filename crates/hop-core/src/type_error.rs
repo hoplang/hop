@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use crate::annotation::Annotation;
 use crate::document::DocumentRange;
-use crate::expr::patterns::typed::TypedMatchPattern;
-use crate::expr::typing::r#type::Type;
+use crate::hop::patterns::typed::TypedMatchPattern;
+use crate::hop::typing::r#type::Type;
 use crate::program::Severity;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::module_name::ModuleName;

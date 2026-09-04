@@ -1,7 +1,7 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 
 use crate::dependency_graph::DependencyGraph;
-use crate::expr::patterns::Match;
+use crate::hop::patterns::Match;
 use crate::ir::expr_id::ExprIdCounter;
 use crate::ir::ir_var::IrVar;
 use crate::ir::pure_module::{
@@ -353,7 +353,7 @@ mod tests {
     use rand::{SeedableRng, rngs::StdRng};
     use std::sync::Arc;
 
-    use crate::expr::typing::r#type::Type;
+    use crate::hop::typing::r#type::Type;
 
     fn assert_every_read_is_bound(module: &PureModule) {
         fn check(expr: &PureExpr, bound: &mut HashSet<VarId>, module: &PureModule) {

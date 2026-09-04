@@ -1,9 +1,10 @@
 use std::{collections::VecDeque, iter::Peekable};
 
-use super::tokenizer::{expect_opposite, expect_token, next_collecting_comments as next};
+use super::expr_tokenizer::{expect_opposite, expect_token, next_collecting_comments as next};
 
+use super::parsed_type::ParsedType;
+use super::token::Token;
 use crate::document::{DocumentCursor, DocumentRange};
-use crate::expr::{Token, parsing::ParsedType};
 use crate::parse_error::{ParseError, ParseErrorKind};
 use crate::symbols::type_name::TypeName;
 

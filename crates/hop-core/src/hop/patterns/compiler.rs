@@ -14,11 +14,11 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use crate::document::DocumentRange;
-use crate::expr::parsing::parsed_expr::Constructor;
-use crate::expr::patterns::typed::TypedMatchPattern;
+use crate::hop::parsing::parsed_expr::Constructor;
+use crate::hop::patterns::typed::TypedMatchPattern;
 
-use crate::expr::typing::r#type::Type;
-use crate::expr::typing::type_registry::{ResolvedType, TypeRegistry};
+use crate::hop::typing::r#type::Type;
+use crate::hop::typing::type_registry::{ResolvedType, TypeRegistry};
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
@@ -749,10 +749,10 @@ mod tests {
     use super::*;
     use crate::document::DocumentCursor;
     use crate::document_annotator::DocumentAnnotator;
-    use crate::expr::parse_expr;
-    use crate::expr::parsing::parsed_expr::ParsedExpr;
-    use crate::expr::patterns::typed::typecheck_pattern;
-    use crate::expr::typing::type_registry_builder::TypeRegistryBuilder;
+    use crate::hop::parsing::parse_expr;
+    use crate::hop::parsing::parsed_expr::ParsedExpr;
+    use crate::hop::patterns::typed::typecheck_pattern;
+    use crate::hop::typing::type_registry_builder::TypeRegistryBuilder;
     use expect_test::{Expect, expect};
     use indoc::indoc;
     use std::collections::VecDeque;

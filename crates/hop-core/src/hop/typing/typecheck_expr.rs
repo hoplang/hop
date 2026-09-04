@@ -8,15 +8,15 @@ use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
 use crate::document::{CheapString, DocumentRange};
 use crate::document_id::DocumentId;
-use crate::expr::TypedExpr;
-use crate::expr::parsing::ParsedType;
-use crate::expr::parsing::parsed_expr::{
+use crate::hop::parsing::ParsedType;
+use crate::hop::parsing::parsed_expr::{
     Constructor, ParsedBinaryOp, ParsedExpr, ParsedMatchArm, ParsedMatchPattern,
 };
-use crate::expr::patterns::compiler::{Decision, compile_match};
-use crate::expr::patterns::typed::{TypedMatchPattern, typecheck_pattern};
-use crate::expr::patterns::{EnumMatchArm, EnumPattern, Match};
-use crate::expr::typing::type_env::TypeEnv;
+use crate::hop::patterns::compiler::{Decision, compile_match};
+use crate::hop::patterns::typed::{TypedMatchPattern, typecheck_pattern};
+use crate::hop::patterns::{EnumMatchArm, EnumPattern, Match};
+use crate::hop::typing::TypedExpr;
+use crate::hop::typing::type_env::TypeEnv;
 use crate::hover_annotation::HoverAnnotation;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::var_name::VarName;
@@ -2190,8 +2190,8 @@ mod tests {
     use super::*;
     use crate::document::DocumentCursor;
     use crate::document_annotator::DocumentAnnotator;
-    use crate::expr::parse_expr;
-    use crate::expr::typing::type_registry_builder::TypeRegistryBuilder;
+    use crate::hop::parsing::parse_expr;
+    use crate::hop::typing::type_registry_builder::TypeRegistryBuilder;
     use expect_test::{Expect, expect};
     use indoc::indoc;
     use std::collections::VecDeque;

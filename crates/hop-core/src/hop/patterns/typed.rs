@@ -3,9 +3,9 @@ use std::sync::Arc;
 use pretty::BoxDoc;
 
 use crate::document::DocumentRange;
-use crate::expr::parsing::parsed_expr::{Constructor, ParsedMatchPattern};
-use crate::expr::typing::r#type::Type;
-use crate::expr::typing::type_registry::{ResolvedType, TypeRegistry};
+use crate::hop::parsing::parsed_expr::{Constructor, ParsedMatchPattern};
+use crate::hop::typing::r#type::Type;
+use crate::hop::typing::type_registry::{ResolvedType, TypeRegistry};
 use crate::symbols::field_name::FieldName;
 use crate::symbols::var_name::VarName;
 use crate::type_error::{TypeError, TypeErrorKind};
@@ -382,9 +382,9 @@ mod tests {
     use super::*;
     use crate::document::DocumentCursor;
     use crate::document_annotator::DocumentAnnotator;
-    use crate::expr::parse_expr;
-    use crate::expr::parsing::parsed_expr::ParsedExpr;
-    use crate::expr::typing::type_registry_builder::TypeRegistryBuilder;
+    use crate::hop::parsing::parse_expr;
+    use crate::hop::parsing::parsed_expr::ParsedExpr;
+    use crate::hop::typing::type_registry_builder::TypeRegistryBuilder;
     use expect_test::{Expect, expect};
     use indoc::indoc;
     use std::collections::VecDeque;

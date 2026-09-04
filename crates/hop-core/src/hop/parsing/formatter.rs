@@ -6,8 +6,8 @@ use super::parsed_ast::{
 };
 use super::parsed_node::{ParsedLetBinding, ParsedMatchCase, ParsedNode};
 use crate::document::DocumentRange;
-use crate::expr::parsing::ParsedType;
-use crate::expr::parsing::parsed_expr::{
+use crate::hop::parsing::ParsedType;
+use crate::hop::parsing::parsed_expr::{
     Constructor, ParsedExpr, ParsedMatchArm, ParsedMatchPattern,
 };
 use crate::hop::parsing::parsed_node::ParsedLoopSource;
@@ -1410,12 +1410,12 @@ mod tests {
 
     use crate::document::Document;
     use crate::document_id::DocumentId;
-    use crate::hop::parsing::parser;
+    use crate::hop::parsing::parse;
 
     fn check(source: &str, expected: Expect) {
         let mut errors = Vec::new();
         let document_id = DocumentId::new("test.hop").unwrap();
-        let ast = parser::parse(
+        let ast = parse::parse(
             document_id.clone(),
             Document::new(document_id, source.to_string()),
             &mut errors,
@@ -1428,7 +1428,7 @@ mod tests {
 
         // Check idempotency: formatting the output should give the same result
         let document_id = DocumentId::new("test.hop").unwrap();
-        let formatted_twice = super::format(&parser::parse(
+        let formatted_twice = super::format(&parse::parse(
             document_id.clone(),
             Document::new(document_id, formatted.clone()),
             &mut errors,
@@ -1471,7 +1471,7 @@ mod tests {
         fn format_source(source: &str) -> String {
             let document_id = DocumentId::new("test.hop").unwrap();
             let mut errors = Vec::new();
-            let ast = parser::parse(
+            let ast = parse::parse(
                 document_id.clone(),
                 Document::new(document_id, source.to_string()),
                 &mut errors,

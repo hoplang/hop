@@ -5,9 +5,9 @@ use pretty::{Arena, DocBuilder};
 pub use rust::RustTranspiler;
 pub use ts::TsTranspiler;
 
-use crate::expr::patterns::Match;
-use crate::expr::typing::r#type::{ComparableType, EquatableType, NumericType, Type};
-use crate::expr::typing::type_registry::{ResolvedType, TypeRegistry};
+use crate::hop::patterns::Match;
+use crate::hop::typing::r#type::{ComparableType, EquatableType, NumericType, Type};
+use crate::hop::typing::type_registry::{ResolvedType, TypeRegistry};
 use crate::ir::ir_var::IrVar;
 use crate::ir::writer_module::{
     WriterArgument, WriterExpr, WriterForSource, WriterFunctionDeclaration, WriterModule,
