@@ -108,7 +108,7 @@ enum TagHeader {
     },
     Component {
         name: Option<TypeName>,
-        args: Vec<ParsedAttribute>,
+        attributes: Vec<ParsedAttribute>,
     },
     Html {
         element: Option<HtmlElement>,
@@ -384,7 +384,7 @@ fn parse_opening_tag(
         "case" => TagHeader::Case { pattern: None },
         name if name.chars().next().is_some_and(|c| c.is_ascii_uppercase()) => {
             TagHeader::Component {
-                args: Vec::new(),
+                attributes: Vec::new(),
                 name: {
                     match TypeName::new(name) {
                         Ok(name) => Some(name),
@@ -609,10 +609,7 @@ fn push_attribute(
     attribute: ParsedAttribute,
     errors: &mut Vec<ParseError>,
 ) {
-    let (TagHeader::Component {
-        args: attributes, ..
-    }
-    | TagHeader::Html { attributes, .. }) = header
+    let (TagHeader::Component { attributes, .. } | TagHeader::Html { attributes, .. }) = header
     else {
         let (attr_name, range) = match &attribute {
             ParsedAttribute::Named { name, .. } => (name.to_cheap_string(), name.clone()),
@@ -731,7 +728,7 @@ fn close_element(
             })
         }
 
-        TagHeader::Component { name, args } => {
+        TagHeader::Component { name, attributes } => {
             let children = expect_nodes(children, errors);
             let children = closing_tag_name.is_some().then_some(children);
             name.map(|component_name| {
@@ -739,7 +736,7 @@ fn close_element(
                     component_name,
                     component_name_opening_range: tag_name_range,
                     component_name_closing_range: closing_tag_name,
-                    args,
+                    attributes,
                     range,
                     children,
                 })

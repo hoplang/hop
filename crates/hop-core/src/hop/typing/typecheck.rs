@@ -1504,7 +1504,7 @@ fn typecheck_node(
             component_name,
             component_name_opening_range,
             component_name_closing_range,
-            args,
+            attributes,
             children,
             range: _,
         } => {
@@ -1561,7 +1561,7 @@ fn typecheck_node(
             }
 
             let (resolved_args, extra_attributes, rest_spread) = typecheck_arguments(
-                args,
+                attributes,
                 &callee_params,
                 &callee_tail,
                 children.is_some().then_some(typed_children),
@@ -1893,7 +1893,7 @@ fn attrs_expr(attributes: Vec<TypedAttribute>, spread: Option<VarName>) -> Typed
 }
 
 fn typecheck_arguments(
-    args: &[ParsedAttribute],
+    attributes: &[ParsedAttribute],
     callee_params: &[ParamEntry],
     callee_tail: &Tail,
     children: Option<Vec<TypedExpr>>,
@@ -1916,7 +1916,7 @@ fn typecheck_arguments(
     let children_param = callee_params
         .iter()
         .find(|p| p.name.as_str() == "children" && *p.typ == Type::Fragment);
-    let has_explicit_children_arg = args.iter().any(|a| match a {
+    let has_explicit_children_arg = attributes.iter().any(|a| match a {
         ParsedAttribute::Named { name, .. } => name.as_str() == "children",
         ParsedAttribute::Spread { .. } => false,
     });
@@ -1932,11 +1932,11 @@ fn typecheck_arguments(
         ));
     }
 
-    let rest_spread = args.iter().find_map(|a| match a {
+    let rest_spread = attributes.iter().find_map(|a| match a {
         ParsedAttribute::Spread { name, .. } => Some(name.clone()),
         ParsedAttribute::Named { .. } => None,
     });
-    let mut supplied_args: Vec<VarName> = args
+    let mut supplied_args: Vec<VarName> = attributes
         .iter()
         .filter_map(|a| match a {
             ParsedAttribute::Named { name, .. } => VarName::new(name.as_str()).ok(),
@@ -1954,7 +1954,7 @@ fn typecheck_arguments(
 
     let mut typed_args: Vec<(VarName, TypedExpr)> = Vec::new();
     let mut extra_attributes: Vec<TypedAttribute> = Vec::new();
-    for arg in args {
+    for arg in attributes {
         let (arg_name_range, arg_value) = match arg {
             ParsedAttribute::Named { name, value } => (name, value),
             ParsedAttribute::Spread { .. } => continue,
@@ -2069,7 +2069,7 @@ fn typecheck_arguments(
             if p.default.is_some() {
                 return false;
             }
-            let supplied = args.iter().any(|a| match a {
+            let supplied = attributes.iter().any(|a| match a {
                 ParsedAttribute::Named { name: n, .. } => n.as_str() == p.name.as_str(),
                 ParsedAttribute::Spread { .. } => false,
             });

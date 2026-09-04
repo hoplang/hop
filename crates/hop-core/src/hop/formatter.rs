@@ -639,32 +639,32 @@ fn format_node<'a>(
             .append(arena.text("}")),
         ParsedNode::ComponentInvocation {
             component_name,
-            args,
+            attributes,
             children,
             ..
         } => {
             let component_name_str = component_name.as_str();
-            let opening_tag_doc = if args.is_empty() {
+            let opening_tag_doc = if attributes.is_empty() {
                 arena.text("<").append(arena.text(component_name_str))
-            } else if args.len() == 1 {
+            } else if attributes.len() == 1 {
                 // Single attribute: keep on same line as tag
                 arena
                     .text("<")
                     .append(arena.text(component_name_str))
                     .append(arena.text(" "))
-                    .append(format_attribute(arena, &args[0], comments))
+                    .append(format_attribute(arena, &attributes[0], comments))
             } else {
-                let mut args_doc = arena.nil();
-                for (i, arg) in args.iter().enumerate() {
+                let mut attrs_doc = arena.nil();
+                for (i, attr) in attributes.iter().enumerate() {
                     if i > 0 {
-                        args_doc = args_doc.append(arena.line());
+                        attrs_doc = attrs_doc.append(arena.line());
                     }
-                    args_doc = args_doc.append(format_attribute(arena, arg, comments));
+                    attrs_doc = attrs_doc.append(format_attribute(arena, attr, comments));
                 }
                 arena
                     .text("<")
                     .append(arena.text(component_name_str))
-                    .append(arena.line().append(args_doc).nest(2))
+                    .append(arena.line().append(attrs_doc).nest(2))
                     .append(arena.line_())
                     .group()
             };

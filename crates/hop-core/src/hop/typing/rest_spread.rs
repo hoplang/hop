@@ -93,17 +93,17 @@ pub fn collect_spreads(nodes: &[ParsedNode], out: &mut Vec<SpreadOccurrence>) {
             }
             ParsedNode::ComponentInvocation {
                 component_name,
-                args,
+                attributes,
                 children,
                 ..
             } => {
-                for attr in args {
+                for attr in attributes {
                     if let ParsedAttribute::Spread { name, range } = attr {
                         out.push(SpreadOccurrence {
                             spread_name: name.clone(),
                             target: RestSpreadTarget::Component {
                                 callee: component_name.clone(),
-                                supplied_attrs: named_attrs(args),
+                                supplied_attrs: named_attrs(attributes),
                                 has_children: children.is_some(),
                                 spread_range: range.clone(),
                             },

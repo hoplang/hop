@@ -32,7 +32,7 @@ pub enum ParsedNode {
         component_name: TypeName,
         component_name_opening_range: DocumentRange,
         component_name_closing_range: Option<DocumentRange>,
-        args: Vec<ParsedAttribute>,
+        attributes: Vec<ParsedAttribute>,
         children: Option<Vec<ParsedNode>>,
         range: DocumentRange,
     },
@@ -313,14 +313,14 @@ impl ParsedNode {
                 .append(BoxDoc::text("}")),
             ParsedNode::ComponentInvocation {
                 component_name,
-                args,
+                attributes,
                 children,
                 ..
             } => {
                 let component_name_str = component_name.as_str();
 
                 // Build opening tag with attributes (same format as HTML)
-                let opening_tag_doc = if args.is_empty() {
+                let opening_tag_doc = if attributes.is_empty() {
                     BoxDoc::text("<").append(BoxDoc::text(component_name_str))
                 } else {
                     BoxDoc::text("<")
@@ -328,7 +328,7 @@ impl ParsedNode {
                         .append(
                             BoxDoc::line()
                                 .append(BoxDoc::intersperse(
-                                    args.iter().map(|a| a.to_doc()),
+                                    attributes.iter().map(|a| a.to_doc()),
                                     BoxDoc::line(),
                                 ))
                                 .nest(2),
