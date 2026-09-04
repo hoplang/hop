@@ -275,10 +275,6 @@ impl Display for ParsedAst {
 }
 
 impl ParsedImportDeclaration {
-    pub fn imported_module(&self) -> &ModuleName {
-        &self.module_name
-    }
-
     pub fn to_doc(&self) -> BoxDoc<'_> {
         BoxDoc::text("import")
             .append(BoxDoc::space())

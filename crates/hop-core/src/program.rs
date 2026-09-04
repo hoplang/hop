@@ -116,7 +116,7 @@ impl Program {
         // Get all modules that this module depends on
         let module_dependencies = parsed_ast
             .get_import_declarations()
-            .map(|import_node| import_node.imported_module().to_document_id())
+            .map(|import_node| import_node.module_name.to_document_id())
             .collect::<BTreeSet<DocumentId>>();
 
         // Store the AST

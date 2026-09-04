@@ -83,10 +83,9 @@ pub fn typecheck(
         if modules.len() > 1 {
             module_errors.clear();
             for import_node in module.get_import_declarations() {
-                let imported_module = import_node.imported_module();
                 module_errors.push(TypeError::import_cycle(
                     &module.document_id.to_string(),
-                    &imported_module.to_string(),
+                    &import_node.module_name.to_string(),
                     &modules
                         .iter()
                         .map(|m| m.document_id.to_string())
