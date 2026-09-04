@@ -484,4 +484,65 @@ mod tests {
             "hello world",
         );
     }
+
+    #[test]
+    fn drops_spaces_written_inside_an_interpolation() {
+        check(
+            indoc! {r#"
+                view Test {
+                  <div>a{ "b" }c</div>
+                }
+            "#},
+            "<div>abc</div>",
+        );
+    }
+
+    #[test]
+    fn drops_line_breaks_written_inside_an_interpolation() {
+        check(
+            indoc! {r#"
+                view Test {
+                  <div>a{
+                    "b"
+                  }c</div>
+                }
+            "#},
+            "<div>abc</div>",
+        );
+    }
+
+    #[test]
+    fn drops_a_newline_beside_a_fragment_valued_expression() {
+        check(
+            indoc! {"
+                component Wrap(children: Fragment) {
+                  <div>
+                    hello
+                    {children}
+                  </div>
+                }
+
+                view Test {
+                  <Wrap><b>w</b></Wrap>
+                }
+            "},
+            "<div>hello<b>w</b></div>",
+        );
+    }
+
+    #[test]
+    fn keeps_a_space_beside_a_fragment_valued_expression_on_the_same_line() {
+        check(
+            indoc! {"
+                component Wrap(children: Fragment) {
+                  <div>hello {children}</div>
+                }
+
+                view Test {
+                  <Wrap><b>w</b></Wrap>
+                }
+            "},
+            "<div>hello <b>w</b></div>",
+        );
+    }
 }
