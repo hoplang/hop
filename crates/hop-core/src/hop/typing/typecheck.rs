@@ -127,7 +127,13 @@ fn typecheck_module(
     for decl in parsed_ast.get_declarations() {
         match decl {
             ParsedDeclaration::Import(import) => {
-                check_import_declaration(import, exports, &mut type_env, errors, definition_links);
+                typecheck_import_declaration(
+                    import,
+                    exports,
+                    &mut type_env,
+                    errors,
+                    definition_links,
+                );
             }
             ParsedDeclaration::Record(ParsedRecordDeclaration {
                 name,
@@ -221,7 +227,7 @@ fn typecheck_module(
 
     // Resolve type definitions
     for record in parsed_ast.get_record_declarations() {
-        typed_records.push(check_record_declaration(
+        typed_records.push(typecheck_record_declaration(
             record,
             &parsed_ast.document_id,
             &mut type_env,
@@ -231,7 +237,7 @@ fn typecheck_module(
         ));
     }
     for enum_decl in parsed_ast.get_enum_declarations() {
-        typed_enums.push(check_enum_declaration(
+        typed_enums.push(typecheck_enum_declaration(
             enum_decl,
             &parsed_ast.document_id,
             &mut type_env,
@@ -253,7 +259,7 @@ fn typecheck_module(
     }
     let mut typed_functions = Vec::new();
     for pending in pending_functions {
-        typed_functions.extend(check_function_body(
+        typed_functions.extend(typecheck_function_body(
             pending,
             registry,
             errors,
@@ -333,7 +339,7 @@ fn typecheck_module(
 
     let mut typed_component_declarations = Vec::new();
     for p in pending_components {
-        typed_component_declarations.push(check_component_body(
+        typed_component_declarations.push(typecheck_component_body(
             p,
             &forwarded_params,
             registry,
@@ -350,7 +356,7 @@ fn typecheck_module(
     typed_component_declarations.sort_by(|a, b| a.name.as_str().cmp(b.name.as_str()));
 
     for page in parsed_ast.get_page_declarations() {
-        typed_pages.push(check_page_declaration(
+        typed_pages.push(typecheck_page_declaration(
             page,
             registry,
             errors,
@@ -384,7 +390,7 @@ fn typecheck_module(
     )
 }
 
-fn check_import_declaration(
+fn typecheck_import_declaration(
     import: &ParsedImportDeclaration,
     exports: &HashMap<DocumentId, HashMap<TypeName, TypeExport>>,
     type_env: &mut TypeEnv,
@@ -461,7 +467,7 @@ fn check_import_declaration(
     }
 }
 
-fn check_record_declaration(
+fn typecheck_record_declaration(
     record: &ParsedRecordDeclaration,
     document_id: &DocumentId,
     type_env: &mut TypeEnv,
@@ -507,7 +513,7 @@ fn check_record_declaration(
     }
 }
 
-fn check_enum_declaration(
+fn typecheck_enum_declaration(
     enum_decl: &ParsedEnumDeclaration,
     document_id: &DocumentId,
     type_env: &mut TypeEnv,
@@ -984,7 +990,7 @@ fn rest_target_signature(
     }
 }
 
-fn check_component_body(
+fn typecheck_component_body(
     pending: PendingComponent<'_>,
     forwarded_params: &HashMap<TypeName, Vec<ParamEntry>>,
     registry: &TypeRegistry,
@@ -1108,7 +1114,7 @@ fn check_component_body(
     }
 }
 
-fn check_page_declaration(
+fn typecheck_page_declaration(
     page: &ParsedPageDeclaration,
     registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
@@ -1322,7 +1328,7 @@ fn register_function_signature<'a>(
     })
 }
 
-fn check_function_body(
+fn typecheck_function_body(
     pending: PendingFunction<'_>,
     registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
