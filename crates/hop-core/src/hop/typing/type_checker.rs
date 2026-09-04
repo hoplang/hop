@@ -3327,7 +3327,7 @@ mod tests {
 
                 -- main.hop --
                 fn Main(foo: other::Foo) -> Fragment {
-                  concat(html(tag: "div", attrs: [], children: concat({foo.name})))
+                  concat(html(tag: "div", attrs: [], children: concat(escape(foo.name))))
                 }
             "#]],
         );
@@ -3366,7 +3366,7 @@ mod tests {
                       tag: "div",
                       attrs: [],
                       children: concat(
-                        {match color {Color::Red => "red", Color::Green => "green"}},
+                        escape(match color {Color::Red => "red", Color::Green => "green"}),
                       ),
                     ),
                   )
@@ -3674,7 +3674,7 @@ mod tests {
                 fn Main(a: Bool, b: String) -> Fragment {
                   concat(
                     match a {
-                      true => concat(html(tag: "div", attrs: [], children: concat({b}))),
+                      true => concat(html(tag: "div", attrs: [], children: concat(escape(b)))),
                       false => concat(),
                     },
                   )
@@ -3820,7 +3820,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main(params: String) -> Fragment {
-                  concat(html(tag: "div", attrs: [], children: concat({params})))
+                  concat(html(tag: "div", attrs: [], children: concat(escape(params))))
                 }
             "#]],
         );
@@ -3943,7 +3943,7 @@ mod tests {
                 fn ListComp(items: Array[String]) -> Fragment {
                   concat(
                     for item in items {
-                      concat(html(tag: "div", attrs: [], children: concat({item})))
+                      concat(html(tag: "div", attrs: [], children: concat(escape(item))))
                     },
                   )
                 }
@@ -4143,7 +4143,7 @@ mod tests {
                   concat(
                     match config.enabled {
                       true => concat(
-                        html(tag: "div", attrs: [], children: concat({config.title})),
+                        html(tag: "div", attrs: [], children: concat(escape(config.title))),
                       ),
                       false => concat(),
                     },
@@ -4568,7 +4568,7 @@ mod tests {
                 fn ListItems(items: Array[String]) -> Fragment {
                   concat(
                     for item in items {
-                      concat(html(tag: "li", attrs: [], children: concat({item})))
+                      concat(html(tag: "li", attrs: [], children: concat(escape(item))))
                     },
                   )
                 }
@@ -4709,7 +4709,7 @@ mod tests {
                 }
 
                 fn Main(user: main::User) -> Fragment {
-                  concat(html(tag: "div", attrs: [], children: concat({user.name})))
+                  concat(html(tag: "div", attrs: [], children: concat(escape(user.name))))
                 }
             "#]],
         );
@@ -4738,7 +4738,9 @@ mod tests {
                 }
 
                 fn Main(user: main::User) -> Fragment {
-                  concat(html(tag: "div", attrs: [], children: concat({user.address.city})))
+                  concat(
+                    html(tag: "div", attrs: [], children: concat(escape(user.address.city))),
+                  )
                 }
             "#]],
         );
@@ -4930,7 +4932,9 @@ mod tests {
                 }
 
                 fn Bar(user: bar::User) -> Fragment {
-                  concat(html(tag: "div", attrs: [], children: concat({user.address.city})))
+                  concat(
+                    html(tag: "div", attrs: [], children: concat(escape(user.address.city))),
+                  )
                 }
 
                 -- baz.hop --
@@ -4982,11 +4986,11 @@ mod tests {
                       tag: "div",
                       attrs: [],
                       children: concat(
-                        {match color {
+                        escape(match color {
                           Color::Red => "red",
                           Color::Green => "green",
                           Color::Blue => "blue",
-                        }},
+                        }),
                       ),
                     ),
                   )
@@ -5143,11 +5147,11 @@ mod tests {
                       tag: "div",
                       attrs: [],
                       children: concat(
-                        {match color {
+                        escape(match color {
                           Color::Red => "red",
                           Color::Green => "green",
                           Color::Blue => "blue",
-                        }},
+                        }),
                       ),
                     ),
                   )
@@ -5333,10 +5337,10 @@ mod tests {
                       tag: "div",
                       attrs: [],
                       children: concat(
-                        {match user.status {
+                        escape(match user.status {
                           Status::Active => "active",
                           Status::Inactive => "inactive",
-                        }},
+                        }),
                       ),
                     ),
                   )
@@ -5373,7 +5377,7 @@ mod tests {
                 }
 
                 fn Main(o: main::Outer) -> Fragment {
-                  concat(html(tag: "div", attrs: [], children: concat({o.inner.value})))
+                  concat(html(tag: "div", attrs: [], children: concat(escape(o.inner.value))))
                 }
             "#]],
         );
@@ -5411,7 +5415,7 @@ mod tests {
                 }
 
                 fn Main(root: main::Folder) -> Fragment {
-                  concat(html(tag: "div", attrs: [], children: concat({root.name})))
+                  concat(html(tag: "div", attrs: [], children: concat(escape(root.name))))
                 }
             "#]],
         );
@@ -5454,7 +5458,7 @@ mod tests {
                 fn Main(t: main::Tree) -> Fragment {
                   concat(
                     match t.root {
-                      Node::Leaf => let label = v__1 in concat({label}),
+                      Node::Leaf => let label = v__1 in concat(escape(label)),
                       Node::Branch => let children = v__2 in concat(
                         for _ in children {
                           concat(raw("..."))
@@ -5516,7 +5520,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Greeting(name: String) -> Fragment {
-                  concat(concat(raw("Hello, "), {name}, raw("!")))
+                  concat(concat(raw("Hello, "), escape(name), raw("!")))
                 }
 
                 fn Main() -> Fragment {
@@ -5543,7 +5547,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Greeting(name: String) -> Fragment {
-                  concat(concat(raw("Hello, "), {name}, raw("!")))
+                  concat(concat(raw("Hello, "), escape(name), raw("!")))
                 }
 
                 fn Main() -> Fragment {
@@ -5574,7 +5578,7 @@ mod tests {
                 }
 
                 fn UserCard(name: String, role: String) -> Fragment {
-                  concat(concat({name}, raw(" ("), {role}, raw(")")))
+                  concat(concat(escape(name), raw(" ("), escape(role), raw(")")))
                 }
             "#]],
         );
@@ -5674,7 +5678,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn ItemList(items: Array[String]) -> Fragment {
-                  concat(for item in items { concat({item}) })
+                  concat(for item in items { concat(escape(item)) })
                 }
 
                 fn Main() -> Fragment {
@@ -5709,7 +5713,7 @@ mod tests {
                 }
 
                 fn Settings(config: main::Config) -> Fragment {
-                  concat({config.name})
+                  concat(escape(config.name))
                 }
             "#]],
         );
@@ -5741,11 +5745,11 @@ mod tests {
 
                 fn Badge(status: main::Status) -> Fragment {
                   concat(
-                    {match status {
+                    escape(match status {
                       Status::Active => "active",
                       Status::Inactive => "not active",
                       Status::Pending => "not active",
-                    }},
+                    }),
                   )
                 }
 
@@ -5899,7 +5903,7 @@ mod tests {
                 fn Main(x: Option[String]) -> Fragment {
                   concat(
                     match x {
-                      Some(v__1) => let y = v__1 in concat(raw("found "), {y}),
+                      Some(v__1) => let y = v__1 in concat(raw("found "), escape(y)),
                       None => concat(raw("nothing")),
                     },
                   )
@@ -5970,7 +5974,7 @@ mod tests {
                 fn Main() -> Fragment {
                   concat(
                     match Status::Active {name: "test"} {
-                      Status::Active => let n = v__1 in concat({n}),
+                      Status::Active => let n = v__1 in concat(escape(n)),
                       Status::Inactive => concat(raw("none")),
                     },
                   )
@@ -6339,7 +6343,7 @@ mod tests {
                     match x {
                       Some(v__1) => let inner = v__1 in concat(
                         match inner {
-                          Some(v__3) => let s = v__3 in concat({s}),
+                          Some(v__3) => let s = v__3 in concat(escape(s)),
                           None => concat(raw("inner none")),
                         },
                       ),
@@ -6372,7 +6376,7 @@ mod tests {
                     for item in items {
                       concat(
                         match item {
-                          Some(v__1) => let s = v__1 in concat({s}),
+                          Some(v__1) => let s = v__1 in concat(escape(s)),
                           None => concat(raw("-")),
                         },
                       )
@@ -6435,7 +6439,7 @@ mod tests {
                 fn Main(r1: Option[String], r2: Option[Bool]) -> Fragment {
                   concat(
                     match r1 {
-                      Some(v__1) => let bound = v__1 in concat({bound}),
+                      Some(v__1) => let bound = v__1 in concat(escape(bound)),
                       None => concat(
                         match r2 {
                           Some(v__3) => let bound = v__3 in concat(
@@ -6473,7 +6477,7 @@ mod tests {
                 fn Main(user: main::User) -> Fragment {
                   concat(
                     match user.name {
-                      Some(v__1) => let n = v__1 in concat({n}),
+                      Some(v__1) => let n = v__1 in concat(escape(n)),
                       None => concat(raw("anonymous")),
                     },
                   )
@@ -6524,7 +6528,7 @@ mod tests {
                     match show {
                       true => concat(
                         match x {
-                          Some(v__1) => let v = v__1 in concat({v}),
+                          Some(v__1) => let v = v__1 in concat(escape(v)),
                           None => concat(raw("none")),
                         },
                       ),
@@ -6560,7 +6564,7 @@ mod tests {
                       children: concat(
                         match x {
                           Some(v__1) => let v = v__1 in concat(
-                            html(tag: "span", attrs: [], children: concat({v})),
+                            html(tag: "span", attrs: [], children: concat(escape(v))),
                           ),
                           None => concat(
                             html(tag: "span", attrs: [], children: concat(raw("none"))),
@@ -7013,7 +7017,11 @@ mod tests {
                 fn Main() -> Fragment {
                   concat(
                     let name = "World" in concat(
-                      html(tag: "div", attrs: [], children: concat(raw("Hello "), {name})),
+                      html(
+                        tag: "div",
+                        attrs: [],
+                        children: concat(raw("Hello "), escape(name)),
+                      ),
                     ),
                   )
                 }
@@ -7037,7 +7045,7 @@ mod tests {
                 fn Main() -> Fragment {
                   concat(
                     let name = "World" in concat(
-                      html(tag: "div", attrs: [], children: concat({name})),
+                      html(tag: "div", attrs: [], children: concat(escape(name))),
                     ),
                   )
                 }
@@ -7061,7 +7069,7 @@ mod tests {
                 fn Main() -> Fragment {
                   concat(
                     let count = 42 in concat(
-                      html(tag: "div", attrs: [], children: concat({count.to_string()})),
+                      html(tag: "div", attrs: [], children: concat(escape(count.to_string()))),
                     ),
                   )
                 }
@@ -7088,7 +7096,7 @@ mod tests {
                       html(
                         tag: "div",
                         attrs: [],
-                        children: concat({price.to_int().to_string()}),
+                        children: concat(escape(price.to_int().to_string())),
                       ),
                     ),
                   )
@@ -7113,7 +7121,11 @@ mod tests {
                 fn Main() -> Fragment {
                   concat(
                     let items = [1, 2, 3] in concat(
-                      html(tag: "div", attrs: [], children: concat({items.len().to_string()})),
+                      html(
+                        tag: "div",
+                        attrs: [],
+                        children: concat(escape(items.len().to_string())),
+                      ),
                     ),
                   )
                 }
@@ -7143,7 +7155,7 @@ mod tests {
                 fn Main() -> Fragment {
                   concat(
                     let user = User {name: "Alice", age: 30} in concat(
-                      html(tag: "div", attrs: [], children: concat({user.name})),
+                      html(tag: "div", attrs: [], children: concat(escape(user.name))),
                     ),
                   )
                 }
@@ -7173,7 +7185,7 @@ mod tests {
                 fn Main(user: main::User) -> Fragment {
                   concat(
                     let updated = User {name: "Jane", age: user.age} in concat(
-                      html(tag: "div", attrs: [], children: concat({updated.name})),
+                      html(tag: "div", attrs: [], children: concat(escape(updated.name))),
                     ),
                   )
                 }
@@ -7210,7 +7222,9 @@ mod tests {
                     let next = let v__0 = app.state in State {
                       query: v__0.query,
                       num: 1,
-                    } in concat(html(tag: "div", attrs: [], children: concat({next.query}))),
+                    } in concat(
+                      html(tag: "div", attrs: [], children: concat(escape(next.query))),
+                    ),
                   )
                 }
             "#]],
@@ -7239,7 +7253,7 @@ mod tests {
                 fn Main(user: main::User) -> Fragment {
                   concat(
                     let updated = User {name: "Jane", age: 30} in concat(
-                      html(tag: "div", attrs: [], children: concat({updated.name})),
+                      html(tag: "div", attrs: [], children: concat(escape(updated.name))),
                     ),
                   )
                 }
@@ -7292,7 +7306,11 @@ mod tests {
                 fn Main() -> Fragment {
                   concat(
                     let first = "Hello" in let second = "World" in concat(
-                      html(tag: "div", attrs: [], children: concat({first}, {second})),
+                      html(
+                        tag: "div",
+                        attrs: [],
+                        children: concat(escape(first), escape(second)),
+                      ),
                     ),
                   )
                 }
@@ -7316,7 +7334,7 @@ mod tests {
                 fn Main() -> Fragment {
                   concat(
                     let greeting = "Hello" in let shout = greeting in concat(
-                      html(tag: "div", attrs: [], children: concat({shout})),
+                      html(tag: "div", attrs: [], children: concat(escape(shout))),
                     ),
                   )
                 }
@@ -7474,10 +7492,10 @@ mod tests {
                   concat(
                     concat(
                       let name = "First" in concat(
-                        html(tag: "div", attrs: [], children: concat({name})),
+                        html(tag: "div", attrs: [], children: concat(escape(name))),
                       ),
                       let name = "Second" in concat(
-                        html(tag: "div", attrs: [], children: concat({name})),
+                        html(tag: "div", attrs: [], children: concat(escape(name))),
                       ),
                     ),
                   )
@@ -7526,7 +7544,7 @@ mod tests {
                       html(
                         tag: "div",
                         attrs: [],
-                        children: concat({first}, raw(" "), {second}),
+                        children: concat(escape(first), raw(" "), escape(second)),
                       ),
                     ),
                   )
@@ -7593,7 +7611,7 @@ mod tests {
                 fn Main() -> Fragment {
                   concat(
                     let greeting = "Hello" in let message = greeting in concat(
-                      html(tag: "div", attrs: [], children: concat({message})),
+                      html(tag: "div", attrs: [], children: concat(escape(message))),
                     ),
                   )
                 }
@@ -7754,7 +7772,7 @@ mod tests {
                       html(
                         tag: "div",
                         attrs: [],
-                        children: concat(raw("Hello, "), {name}, raw("!")),
+                        children: concat(raw("Hello, "), escape(name), raw("!")),
                       ),
                     )
                   }
@@ -7782,9 +7800,9 @@ mod tests {
                         attrs: [],
                         children: concat(
                           raw("Hello, "),
-                          {name},
+                          escape(name),
                           raw("! You are "),
-                          {age.to_string()},
+                          escape(age.to_string()),
                           raw(" years old."),
                         ),
                       ),
@@ -7821,7 +7839,7 @@ mod tests {
                     html(
                       tag: "div",
                       attrs: [],
-                      children: concat(raw("Hello, "), {name}, raw("!")),
+                      children: concat(raw("Hello, "), escape(name), raw("!")),
                     ),
                   )
                 }
@@ -8419,7 +8437,7 @@ mod tests {
                 }
 
                 fn Card(title: String) -> Fragment {
-                  concat(html(tag: "div", attrs: [], children: concat({title})))
+                  concat(html(tag: "div", attrs: [], children: concat(escape(title))))
                 }
 
                 fn Wrapper(title: String, rest: Attrs) -> Fragment {
@@ -8453,7 +8471,7 @@ mod tests {
                 }
 
                 fn Card(title: String) -> Fragment {
-                  concat(html(tag: "div", attrs: [], children: concat({title})))
+                  concat(html(tag: "div", attrs: [], children: concat(escape(title))))
                 }
 
                 fn Wrapper(rest: Attrs) -> Fragment {
@@ -8603,7 +8621,7 @@ mod tests {
                 }
 
                 fn Card(user: main::User) -> Fragment {
-                  concat(html(tag: "div", attrs: [], children: concat({user.name})))
+                  concat(html(tag: "div", attrs: [], children: concat(escape(user.name))))
                 }
 
                 fn Page(user: main::User) -> Fragment {
@@ -8648,7 +8666,11 @@ mod tests {
 
                 fn Bar(name: String, title: String, rest: Attrs) -> Fragment {
                   concat(
-                    html(tag: "div", attrs: [], children: concat({name}, Card(title: title))),
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: concat(escape(name), Card(title: title)),
+                    ),
                   )
                 }
 
@@ -8657,7 +8679,7 @@ mod tests {
                 }
 
                 fn Card(title: String) -> Fragment {
-                  concat(html(tag: "div", attrs: [], children: concat({title})))
+                  concat(html(tag: "div", attrs: [], children: concat(escape(title))))
                 }
             "#]],
         );
@@ -9188,7 +9210,9 @@ mod tests {
                 }
 
                 fn A(label: String, rest: Attrs) -> Fragment {
-                  concat(html(tag: "span", attrs: concat([], rest), children: concat({label})))
+                  concat(
+                    html(tag: "span", attrs: concat([], rest), children: concat(escape(label))),
+                  )
                 }
 
                 fn B(label: String, rest: Attrs) -> Fragment {
@@ -9225,7 +9249,9 @@ mod tests {
                 }
 
                 fn Leaf(label: String, rest: Attrs) -> Fragment {
-                  concat(html(tag: "span", attrs: concat([], rest), children: concat({label})))
+                  concat(
+                    html(tag: "span", attrs: concat([], rest), children: concat(escape(label))),
+                  )
                 }
 
                 fn Mid(label: String, rest: Attrs) -> Fragment {
@@ -9662,7 +9688,7 @@ mod tests {
                 }
 
                 fn Leaf(title: String) -> Fragment {
-                  concat(html(tag: "div", attrs: [], children: concat({title})))
+                  concat(html(tag: "div", attrs: [], children: concat(escape(title))))
                 }
 
                 fn Second(title: String, rest: Attrs) -> Fragment {
@@ -10179,7 +10205,11 @@ mod tests {
                     html(
                       tag: "div",
                       attrs: [],
-                      children: concat(for x in 0..=add_ten(x: 10) { concat({x.to_string()}) }),
+                      children: concat(
+                        for x in 0..=add_ten(x: 10) {
+                          concat(escape(x.to_string()))
+                        },
+                      ),
                     ),
                   )
                 }
@@ -10208,7 +10238,9 @@ mod tests {
                 -- main.hop --
                 page Main() {
                   body {
-                    concat(html(tag: "div", attrs: [], children: concat({shout(name: "hi")})))
+                    concat(
+                      html(tag: "div", attrs: [], children: concat(escape(shout(name: "hi")))),
+                    )
                   }
                 }
 

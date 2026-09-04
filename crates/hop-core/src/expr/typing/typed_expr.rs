@@ -767,9 +767,9 @@ impl TypedExpr {
             TypedExpr::FragmentRaw { value } => BoxDoc::text("raw(")
                 .append(BoxDoc::text(format!("{:?}", value.as_str())))
                 .append(")"),
-            TypedExpr::FragmentEscape { expr } => BoxDoc::text("{")
-                .append(expr.to_doc())
-                .append(BoxDoc::text("}")),
+            TypedExpr::FragmentEscape { expr } => {
+                BoxDoc::text("escape(").append(expr.to_doc()).append(")")
+            }
             TypedExpr::For {
                 var_name,
                 source,

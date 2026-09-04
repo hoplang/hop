@@ -302,7 +302,7 @@ mod tests {
             }),
             expect![[r#"
                 page Greeting(name: String) {
-                  concat(raw("Hello, "), {name})
+                  concat(raw("Hello, "), escape(name))
                 }
             "#]],
         );
@@ -336,7 +336,7 @@ mod tests {
                             html(
                               tag: "li",
                               attrs: [],
-                              children: concat({item}),
+                              children: concat(escape(item)),
                             ),
                           )
                         },

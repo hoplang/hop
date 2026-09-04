@@ -764,7 +764,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 page MainComp(name: String) {
-                  concat(raw("Hello "), {name})
+                  concat(raw("Hello "), escape(name))
                 }
 
                 -- after --
@@ -890,7 +890,7 @@ mod tests {
                             html(
                               tag: "li",
                               attrs: [],
-                              children: concat({item}),
+                              children: concat(escape(item)),
                             ),
                           )
                         },
@@ -1037,9 +1037,9 @@ mod tests {
                       attrs: [],
                       children: concat(
                         raw("Hello "),
-                        {name},
+                        escape(name),
                         raw(", count: "),
-                        {count},
+                        escape(count),
                       ),
                     ),
                   )
