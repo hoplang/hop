@@ -1,4 +1,3 @@
-use super::expr_tokenizer;
 use super::parse_expr;
 use super::parse_nodes::parse_body;
 use super::parsed_ast::{
@@ -7,6 +6,7 @@ use super::parsed_ast::{
     ParsedPageDeclaration, ParsedRecordDeclaration, ParsedRecordDeclarationField,
 };
 use super::token;
+use super::tokenize_expr;
 use crate::document::{Document, DocumentCursor, DocumentRange};
 use crate::document_id::DocumentId;
 use crate::examples_annotation::ExamplesAnnotation;
@@ -35,10 +35,10 @@ pub fn parse(
 
     loop {
         let pub_range =
-            expr_tokenizer::advance_if(&mut iter, &mut comments, errors, token::Token::Pub);
+            tokenize_expr::advance_if(&mut iter, &mut comments, errors, token::LangToken::Pub);
 
-        match expr_tokenizer::peek_past_comments(&iter) {
-            Some((token::Token::Import, _)) => {
+        match tokenize_expr::peek_past_comments(&iter) {
+            Some((token::LangToken::Import, _)) => {
                 if let Some(pub_r) = pub_range {
                     errors.push(ParseError::new(
                         ParseErrorKind::UnexpectedPubKeyword {},
@@ -51,7 +51,7 @@ pub fn parse(
                     declarations.push(ParsedDeclaration::Import(import));
                 }
             }
-            Some((token::Token::Record, _)) => {
+            Some((token::LangToken::Record, _)) => {
                 if let Some(record) = parse_record_declaration(
                     &mut iter,
                     &mut comments,
@@ -62,7 +62,7 @@ pub fn parse(
                     declarations.push(ParsedDeclaration::Record(record));
                 }
             }
-            Some((token::Token::Enum, _)) => {
+            Some((token::LangToken::Enum, _)) => {
                 if let Some(enum_decl) = parse_enum_declaration(
                     &mut iter,
                     &mut comments,
@@ -73,28 +73,28 @@ pub fn parse(
                     declarations.push(ParsedDeclaration::Enum(enum_decl));
                 }
             }
-            Some((token::Token::Component, _)) => {
+            Some((token::LangToken::Component, _)) => {
                 if let Some(component) =
                     parse_component_declaration(&mut iter, &mut comments, errors, pub_range)
                 {
                     declarations.push(ParsedDeclaration::Component(component));
                 }
             }
-            Some((token::Token::View, _)) => {
+            Some((token::LangToken::View, _)) => {
                 if let Some(view) =
                     parse_view_declaration(&mut iter, &mut comments, errors, pub_range)
                 {
                     declarations.push(ParsedDeclaration::Page(view));
                 }
             }
-            Some((token::Token::Page, _)) => {
+            Some((token::LangToken::Page, _)) => {
                 if let Some(page) =
                     parse_page_declaration(&mut iter, &mut comments, errors, pub_range)
                 {
                     declarations.push(ParsedDeclaration::Page(page));
                 }
             }
-            Some((token::Token::Fn, _)) => {
+            Some((token::LangToken::Fn, _)) => {
                 if let Some(pub_r) = pub_range {
                     errors.push(ParseError::new(
                         ParseErrorKind::UnexpectedPubKeyword {},
@@ -143,11 +143,11 @@ fn parse_import_declaration(
     range: &DocumentRange,
 ) -> Option<ParsedImportDeclaration> {
     let import_range =
-        expr_tokenizer::expect_token(iter, comments, errors, range, &token::Token::Import)?;
+        tokenize_expr::expect_token(iter, comments, errors, range, &token::LangToken::Import)?;
     let mut path_segments: Vec<DocumentRange> = Vec::new();
-    let first_segment = match expr_tokenizer::next_collecting_comments(iter, comments, errors) {
-        Some((token::Token::Identifier(_), seg_range))
-        | Some((token::Token::TypeName(_), seg_range)) => seg_range,
+    let first_segment = match tokenize_expr::next_collecting_comments(iter, comments, errors) {
+        Some((token::LangToken::Identifier(_), seg_range))
+        | Some((token::LangToken::TypeName(_), seg_range)) => seg_range,
         Some((_, seg_range)) => {
             errors.push(ParseError::new(
                 ParseErrorKind::ExpectedModulePath {},
@@ -164,10 +164,11 @@ fn parse_import_declaration(
         }
     };
     path_segments.push(first_segment);
-    while expr_tokenizer::advance_if(iter, comments, errors, token::Token::ColonColon).is_some() {
-        let segment = match expr_tokenizer::next_collecting_comments(iter, comments, errors) {
-            Some((token::Token::Identifier(_), seg_range))
-            | Some((token::Token::TypeName(_), seg_range)) => seg_range,
+    while tokenize_expr::advance_if(iter, comments, errors, token::LangToken::ColonColon).is_some()
+    {
+        let segment = match tokenize_expr::next_collecting_comments(iter, comments, errors) {
+            Some((token::LangToken::Identifier(_), seg_range))
+            | Some((token::LangToken::TypeName(_), seg_range)) => seg_range,
             Some((_, seg_range)) => {
                 errors.push(ParseError::new(
                     ParseErrorKind::ExpectedIdentifierAfterColonColon {},
@@ -237,24 +238,24 @@ fn parse_record_declaration(
     pub_range: Option<DocumentRange>,
 ) -> Option<ParsedRecordDeclaration> {
     let keyword_range =
-        expr_tokenizer::expect_token(iter, comments, errors, range, &token::Token::Record)?;
+        tokenize_expr::expect_token(iter, comments, errors, range, &token::LangToken::Record)?;
     let start_range = pub_range.clone().unwrap_or_else(|| keyword_range.clone());
-    let (name, name_range) = expr_tokenizer::expect_type_name(iter, comments, errors, range)?;
+    let (name, name_range) = tokenize_expr::expect_type_name(iter, comments, errors, range)?;
     let left_brace =
-        expr_tokenizer::expect_token(iter, comments, errors, range, &token::Token::LeftBrace)?;
+        tokenize_expr::expect_token(iter, comments, errors, range, &token::LangToken::LeftBrace)?;
     let mut seen_names = HashSet::new();
-    let (fields, right_brace) = expr_tokenizer::parse_delimited_list(
+    let (fields, right_brace) = tokenize_expr::parse_delimited_list(
         iter,
         comments,
         errors,
         range,
-        &token::Token::LeftBrace,
+        &token::LangToken::LeftBrace,
         &left_brace,
         |iter, comments, errors, range| {
             let examples = parse_examples_annotation(iter, comments, errors);
             let (field_name, field_name_range) =
-                expr_tokenizer::expect_field_name(iter, comments, errors, range)?;
-            expr_tokenizer::expect_token(iter, comments, errors, range, &token::Token::Colon)?;
+                tokenize_expr::expect_field_name(iter, comments, errors, range)?;
+            tokenize_expr::expect_token(iter, comments, errors, range, &token::LangToken::Colon)?;
             let field_type = parse_type(iter, comments, errors, range)?;
             if !seen_names.insert(field_name_range.to_cheap_string()) {
                 errors.push(ParseError::new(
@@ -291,22 +292,22 @@ fn parse_enum_declaration(
     pub_range: Option<DocumentRange>,
 ) -> Option<ParsedEnumDeclaration> {
     let keyword_range =
-        expr_tokenizer::expect_token(iter, comments, errors, range, &token::Token::Enum)?;
+        tokenize_expr::expect_token(iter, comments, errors, range, &token::LangToken::Enum)?;
     let start_range = pub_range.clone().unwrap_or_else(|| keyword_range.clone());
-    let (name, name_range) = expr_tokenizer::expect_type_name(iter, comments, errors, range)?;
+    let (name, name_range) = tokenize_expr::expect_type_name(iter, comments, errors, range)?;
     let left_brace =
-        expr_tokenizer::expect_token(iter, comments, errors, range, &token::Token::LeftBrace)?;
+        tokenize_expr::expect_token(iter, comments, errors, range, &token::LangToken::LeftBrace)?;
     let mut seen_names = HashSet::new();
-    let (variants, right_brace) = expr_tokenizer::parse_delimited_list(
+    let (variants, right_brace) = tokenize_expr::parse_delimited_list(
         iter,
         comments,
         errors,
         range,
-        &token::Token::LeftBrace,
+        &token::LangToken::LeftBrace,
         &left_brace,
         |iter, comments, errors, range| {
             let (variant_name, variant_range) =
-                expr_tokenizer::expect_type_name(iter, comments, errors, range)?;
+                tokenize_expr::expect_type_name(iter, comments, errors, range)?;
             if !seen_names.insert(variant_range.to_cheap_string()) {
                 errors.push(ParseError::new(
                     ParseErrorKind::DuplicateVariant {
@@ -317,7 +318,7 @@ fn parse_enum_declaration(
                 return None;
             }
             let fields =
-                if expr_tokenizer::advance_if(iter, comments, errors, token::Token::LeftBrace)
+                if tokenize_expr::advance_if(iter, comments, errors, token::LangToken::LeftBrace)
                     .is_some()
                 {
                     parse_enum_variant_fields(
@@ -325,7 +326,7 @@ fn parse_enum_declaration(
                         comments,
                         errors,
                         range,
-                        &token::Token::RightBrace,
+                        &token::LangToken::RightBrace,
                     )?
                 } else {
                     Vec::new()
@@ -352,7 +353,7 @@ fn parse_enum_variant_fields(
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut Vec<ParseError>,
     range: &DocumentRange,
-    closing: &token::Token,
+    closing: &token::LangToken,
 ) -> Option<
     Vec<(
         FieldName,
@@ -363,14 +364,14 @@ fn parse_enum_variant_fields(
 > {
     let mut fields = Vec::new();
     let mut seen_names = HashSet::new();
-    if expr_tokenizer::advance_if(iter, comments, errors, closing.clone()).is_some() {
+    if tokenize_expr::advance_if(iter, comments, errors, closing.clone()).is_some() {
         return Some(fields);
     }
     loop {
         let examples = parse_examples_annotation(iter, comments, errors);
         let (field_name, field_name_range) =
-            expr_tokenizer::expect_field_name(iter, comments, errors, range)?;
-        expr_tokenizer::expect_token(iter, comments, errors, range, &token::Token::Colon)?;
+            tokenize_expr::expect_field_name(iter, comments, errors, range)?;
+        tokenize_expr::expect_token(iter, comments, errors, range, &token::LangToken::Colon)?;
         let field_type = parse_type(iter, comments, errors, range)?;
         if !seen_names.insert(field_name_range.to_cheap_string()) {
             errors.push(ParseError::new(
@@ -382,12 +383,12 @@ fn parse_enum_variant_fields(
             return None;
         }
         fields.push((field_name, field_name_range, field_type, examples));
-        if expr_tokenizer::advance_if(iter, comments, errors, token::Token::Comma).is_some() {
-            if expr_tokenizer::advance_if(iter, comments, errors, closing.clone()).is_some() {
+        if tokenize_expr::advance_if(iter, comments, errors, token::LangToken::Comma).is_some() {
+            if tokenize_expr::advance_if(iter, comments, errors, closing.clone()).is_some() {
                 break;
             }
         } else {
-            expr_tokenizer::expect_token(iter, comments, errors, range, closing)?;
+            tokenize_expr::expect_token(iter, comments, errors, range, closing)?;
             break;
         }
     }
@@ -406,16 +407,16 @@ fn parse_component_declaration(
     pub_range: Option<DocumentRange>,
 ) -> Option<ParsedComponentDeclaration> {
     // Consume the 'component' keyword
-    let Some((token::Token::Component, keyword_range)) =
-        expr_tokenizer::next_collecting_comments(iter, comments, errors)
+    let Some((token::LangToken::Component, keyword_range)) =
+        tokenize_expr::next_collecting_comments(iter, comments, errors)
     else {
         return None;
     };
 
     // Parse the component name (must be PascalCase)
     let (name_str, name_range) =
-        match expr_tokenizer::next_collecting_comments(iter, comments, errors) {
-            Some((token::Token::TypeName(name_str), range)) => (name_str, range),
+        match tokenize_expr::next_collecting_comments(iter, comments, errors) {
+            Some((token::LangToken::TypeName(name_str), range)) => (name_str, range),
             Some((actual, range)) => {
                 errors.push(ParseError::new(
                     ParseErrorKind::ExpectedTypeNameButGot { actual },
@@ -442,22 +443,22 @@ fn parse_component_declaration(
     }
 
     let parsed_params = if let Some(left_paren) =
-        expr_tokenizer::advance_if(iter, comments, errors, token::Token::LeftParen)
+        tokenize_expr::advance_if(iter, comments, errors, token::LangToken::LeftParen)
     {
-        let (items, right_paren) = expr_tokenizer::parse_delimited_list(
+        let (items, right_paren) = tokenize_expr::parse_delimited_list(
             iter,
             comments,
             errors,
             &left_paren,
-            &token::Token::LeftParen,
+            &token::LangToken::LeftParen,
             &left_paren,
             |iter, comments, errors, range| {
                 // A `...name` rest parameter.
                 if let Some(dots_range) =
-                    expr_tokenizer::advance_if(iter, comments, errors, token::Token::DotDotDot)
+                    tokenize_expr::advance_if(iter, comments, errors, token::LangToken::DotDotDot)
                 {
                     let (var_name, var_name_range) =
-                        expr_tokenizer::expect_variable_name(iter, comments, errors, range)?;
+                        tokenize_expr::expect_variable_name(iter, comments, errors, range)?;
                     return Some(ParamItem::Rest {
                         range: dots_range.to(var_name_range),
                         var_name,
@@ -466,11 +467,17 @@ fn parse_component_declaration(
                 // A regular parameter.
                 let examples = parse_examples_annotation(iter, comments, errors);
                 let (var_name, var_name_range) =
-                    expr_tokenizer::expect_variable_name(iter, comments, errors, range)?;
-                expr_tokenizer::expect_token(iter, comments, errors, range, &token::Token::Colon)?;
+                    tokenize_expr::expect_variable_name(iter, comments, errors, range)?;
+                tokenize_expr::expect_token(
+                    iter,
+                    comments,
+                    errors,
+                    range,
+                    &token::LangToken::Colon,
+                )?;
                 let var_type = parse_type(iter, comments, errors, range)?;
                 let default_value =
-                    if expr_tokenizer::advance_if(iter, comments, errors, token::Token::Assign)
+                    if tokenize_expr::advance_if(iter, comments, errors, token::LangToken::Assign)
                         .is_some()
                     {
                         match parse_expr::parse_primary(iter, comments, errors, range) {
@@ -541,21 +548,21 @@ fn parse_component_declaration(
         params = Some((regular, params_range));
     }
 
-    let body_start = expr_tokenizer::expect_token(
+    let body_start = tokenize_expr::expect_token(
         iter,
         comments,
         errors,
         &name_range,
-        &token::Token::LeftBrace,
+        &token::LangToken::LeftBrace,
     )?;
 
     let body = parse_body(iter, comments, errors, &body_start);
 
-    let body_end = expr_tokenizer::expect_opposite(
+    let body_end = tokenize_expr::expect_opposite(
         iter,
         comments,
         errors,
-        &token::Token::LeftBrace,
+        &token::LangToken::LeftBrace,
         &body_start,
     )?;
     let start_range = pub_range.clone().unwrap_or_else(|| keyword_range.clone());
@@ -596,8 +603,8 @@ fn parse_page_or_view_header(
     DocumentRange,
 )> {
     let (name_str, name_range) =
-        match expr_tokenizer::next_collecting_comments(iter, comments, errors) {
-            Some((token::Token::TypeName(name_str), range)) => (name_str, range),
+        match tokenize_expr::next_collecting_comments(iter, comments, errors) {
+            Some((token::LangToken::TypeName(name_str), range)) => (name_str, range),
             Some((actual, range)) => {
                 errors.push(ParseError::new(
                     ParseErrorKind::ExpectedTypeNameButGot { actual },
@@ -615,23 +622,29 @@ fn parse_page_or_view_header(
         };
 
     let (params, params_range) = if let Some(left_paren) =
-        expr_tokenizer::advance_if(iter, comments, errors, token::Token::LeftParen)
+        tokenize_expr::advance_if(iter, comments, errors, token::LangToken::LeftParen)
     {
-        let (params, right_paren) = expr_tokenizer::parse_delimited_list(
+        let (params, right_paren) = tokenize_expr::parse_delimited_list(
             iter,
             comments,
             errors,
             &left_paren,
-            &token::Token::LeftParen,
+            &token::LangToken::LeftParen,
             &left_paren,
             |iter, comments, errors, range| {
                 let examples = parse_examples_annotation(iter, comments, errors);
                 let (var_name, var_name_range) =
-                    expr_tokenizer::expect_variable_name(iter, comments, errors, range)?;
-                expr_tokenizer::expect_token(iter, comments, errors, range, &token::Token::Colon)?;
+                    tokenize_expr::expect_variable_name(iter, comments, errors, range)?;
+                tokenize_expr::expect_token(
+                    iter,
+                    comments,
+                    errors,
+                    range,
+                    &token::LangToken::Colon,
+                )?;
                 let var_type = parse_type(iter, comments, errors, range)?;
                 if let Some(assign_range) =
-                    expr_tokenizer::advance_if(iter, comments, errors, token::Token::Assign)
+                    tokenize_expr::advance_if(iter, comments, errors, token::LangToken::Assign)
                 {
                     errors.push(ParseError::new(
                         ParseErrorKind::DefaultValueNotAllowedOnView {},
@@ -653,12 +666,12 @@ fn parse_page_or_view_header(
         (Vec::new(), name_range.clone())
     };
 
-    let body_start = expr_tokenizer::expect_token(
+    let body_start = tokenize_expr::expect_token(
         iter,
         comments,
         errors,
         &params_range,
-        &token::Token::LeftBrace,
+        &token::LangToken::LeftBrace,
     )?;
 
     let name = match TypeName::new(&name_str) {
@@ -681,8 +694,8 @@ fn parse_view_declaration(
     errors: &mut Vec<ParseError>,
     pub_range: Option<DocumentRange>,
 ) -> Option<ParsedPageDeclaration> {
-    let Some((token::Token::View, keyword_range)) =
-        expr_tokenizer::next_collecting_comments(iter, comments, errors)
+    let Some((token::LangToken::View, keyword_range)) =
+        tokenize_expr::next_collecting_comments(iter, comments, errors)
     else {
         return None;
     };
@@ -692,11 +705,11 @@ fn parse_view_declaration(
 
     let body = parse_body(iter, comments, errors, &body_start);
 
-    let body_end = expr_tokenizer::expect_opposite(
+    let body_end = tokenize_expr::expect_opposite(
         iter,
         comments,
         errors,
-        &token::Token::LeftBrace,
+        &token::LangToken::LeftBrace,
         &body_start,
     )?;
     let start_range = pub_range.clone().unwrap_or_else(|| keyword_range.clone());
@@ -719,8 +732,8 @@ fn parse_page_declaration(
     errors: &mut Vec<ParseError>,
     pub_range: Option<DocumentRange>,
 ) -> Option<ParsedPageDeclaration> {
-    let Some((token::Token::Page, keyword_range)) =
-        expr_tokenizer::next_collecting_comments(iter, comments, errors)
+    let Some((token::LangToken::Page, keyword_range)) =
+        tokenize_expr::next_collecting_comments(iter, comments, errors)
     else {
         return None;
     };
@@ -728,26 +741,26 @@ fn parse_page_declaration(
     let (name, name_range, params, outer_body_start) =
         parse_page_or_view_header(iter, comments, errors, &keyword_range)?;
 
-    let head = if let Some((token::Token::Identifier(word), _)) = expr_tokenizer::next_if(
+    let head = if let Some((token::LangToken::Identifier(word), _)) = tokenize_expr::next_if(
         iter,
         comments,
         errors,
-        |(token, _)| matches!(token, token::Token::Identifier(word) if word.as_str() == "head"),
+        |(token, _)| matches!(token, token::LangToken::Identifier(word) if word.as_str() == "head"),
     ) {
         debug_assert_eq!(word.as_str(), "head");
-        let head_start = expr_tokenizer::expect_token(
+        let head_start = tokenize_expr::expect_token(
             iter,
             comments,
             errors,
             &name_range,
-            &token::Token::LeftBrace,
+            &token::LangToken::LeftBrace,
         )?;
         let head = parse_body(iter, comments, errors, &head_start);
-        expr_tokenizer::expect_opposite(
+        tokenize_expr::expect_opposite(
             iter,
             comments,
             errors,
-            &token::Token::LeftBrace,
+            &token::LangToken::LeftBrace,
             &head_start,
         )?;
         Some(head)
@@ -755,13 +768,13 @@ fn parse_page_declaration(
         None
     };
 
-    let Some((token::Token::Identifier(word), body_keyword_range)) = expr_tokenizer::next_if(
+    let Some((token::LangToken::Identifier(word), body_keyword_range)) = tokenize_expr::next_if(
         iter,
         comments,
         errors,
-        |(token, _)| matches!(token, token::Token::Identifier(word) if word.as_str() == "body"),
+        |(token, _)| matches!(token, token::LangToken::Identifier(word) if word.as_str() == "body"),
     ) else {
-        let range = match expr_tokenizer::peek_past_comments(iter) {
+        let range = match tokenize_expr::peek_past_comments(iter) {
             Some((_, range)) => range,
             None => name_range.clone(),
         };
@@ -772,27 +785,27 @@ fn parse_page_declaration(
         return None;
     };
     debug_assert_eq!(word.as_str(), "body");
-    let body_start = expr_tokenizer::expect_token(
+    let body_start = tokenize_expr::expect_token(
         iter,
         comments,
         errors,
         &body_keyword_range,
-        &token::Token::LeftBrace,
+        &token::LangToken::LeftBrace,
     )?;
     let body = parse_body(iter, comments, errors, &body_start);
-    expr_tokenizer::expect_opposite(
+    tokenize_expr::expect_opposite(
         iter,
         comments,
         errors,
-        &token::Token::LeftBrace,
+        &token::LangToken::LeftBrace,
         &body_start,
     )?;
 
-    let outer_body_end = expr_tokenizer::expect_opposite(
+    let outer_body_end = tokenize_expr::expect_opposite(
         iter,
         comments,
         errors,
-        &token::Token::LeftBrace,
+        &token::LangToken::LeftBrace,
         &outer_body_start,
     )?;
     let start_range = pub_range.clone().unwrap_or_else(|| keyword_range.clone());
@@ -816,24 +829,24 @@ fn parse_function_declaration(
     range: &DocumentRange,
 ) -> Option<ParsedFunctionDeclaration> {
     let keyword_range =
-        expr_tokenizer::expect_token(iter, comments, errors, range, &token::Token::Fn)?;
-    let (name, name_range) = expr_tokenizer::expect_variable_name(iter, comments, errors, range)?;
+        tokenize_expr::expect_token(iter, comments, errors, range, &token::LangToken::Fn)?;
+    let (name, name_range) = tokenize_expr::expect_variable_name(iter, comments, errors, range)?;
     let left_paren =
-        expr_tokenizer::expect_token(iter, comments, errors, range, &token::Token::LeftParen)?;
-    let (params, _) = expr_tokenizer::parse_delimited_list(
+        tokenize_expr::expect_token(iter, comments, errors, range, &token::LangToken::LeftParen)?;
+    let (params, _) = tokenize_expr::parse_delimited_list(
         iter,
         comments,
         errors,
         &left_paren,
-        &token::Token::LeftParen,
+        &token::LangToken::LeftParen,
         &left_paren,
         |iter, comments, errors, range| {
             let (var_name, var_name_range) =
-                expr_tokenizer::expect_variable_name(iter, comments, errors, range)?;
-            expr_tokenizer::expect_token(iter, comments, errors, range, &token::Token::Colon)?;
+                tokenize_expr::expect_variable_name(iter, comments, errors, range)?;
+            tokenize_expr::expect_token(iter, comments, errors, range, &token::LangToken::Colon)?;
             let var_type = parse_type(iter, comments, errors, range)?;
             if let Some(assign_range) =
-                expr_tokenizer::advance_if(iter, comments, errors, token::Token::Assign)
+                tokenize_expr::advance_if(iter, comments, errors, token::LangToken::Assign)
             {
                 errors.push(ParseError::new(
                     ParseErrorKind::DefaultValueNotAllowedOnFunction {},
@@ -850,16 +863,16 @@ fn parse_function_declaration(
             })
         },
     )?;
-    expr_tokenizer::expect_token(iter, comments, errors, range, &token::Token::Arrow)?;
+    tokenize_expr::expect_token(iter, comments, errors, range, &token::LangToken::Arrow)?;
     let return_type = parse_type(iter, comments, errors, range)?;
     let body_start =
-        expr_tokenizer::expect_token(iter, comments, errors, range, &token::Token::LeftBrace)?;
+        tokenize_expr::expect_token(iter, comments, errors, range, &token::LangToken::LeftBrace)?;
     let body = parse_expr::parse_expr(iter, comments, errors, range)?;
-    let body_end = expr_tokenizer::expect_opposite(
+    let body_end = tokenize_expr::expect_opposite(
         iter,
         comments,
         errors,
-        &token::Token::LeftBrace,
+        &token::LangToken::LeftBrace,
         &body_start,
     )?;
     let full_range = keyword_range.to(body_end);
@@ -879,53 +892,53 @@ fn parse_examples_annotation(
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut Vec<ParseError>,
 ) -> Option<ExamplesAnnotation> {
-    if let Some((token::Token::HashBracket, _)) = expr_tokenizer::peek_past_comments(iter) {
-        expr_tokenizer::next_collecting_comments(iter, comments, errors);
-        match expr_tokenizer::next_collecting_comments(iter, comments, errors) {
-            Some((token::Token::Identifier(name), _)) if &*name == "examples" => {}
+    if let Some((token::LangToken::HashBracket, _)) = tokenize_expr::peek_past_comments(iter) {
+        tokenize_expr::next_collecting_comments(iter, comments, errors);
+        match tokenize_expr::next_collecting_comments(iter, comments, errors) {
+            Some((token::LangToken::Identifier(name), _)) if &*name == "examples" => {}
             _ => return None,
         }
-        if expr_tokenizer::next_collecting_comments(iter, comments, errors).map(|(t, _)| t)
-            != Some(token::Token::LeftParen)
+        if tokenize_expr::next_collecting_comments(iter, comments, errors).map(|(t, _)| t)
+            != Some(token::LangToken::LeftParen)
         {
             return None;
         }
         let mut annotation = ExamplesAnnotation::default();
         loop {
-            let key = match expr_tokenizer::next_collecting_comments(iter, comments, errors) {
-                Some((token::Token::Identifier(name), _)) => name.to_string(),
+            let key = match tokenize_expr::next_collecting_comments(iter, comments, errors) {
+                Some((token::LangToken::Identifier(name), _)) => name.to_string(),
                 _ => return None,
             };
-            if expr_tokenizer::next_collecting_comments(iter, comments, errors).map(|(t, _)| t)
-                != Some(token::Token::Assign)
+            if tokenize_expr::next_collecting_comments(iter, comments, errors).map(|(t, _)| t)
+                != Some(token::LangToken::Assign)
             {
                 return None;
             }
             match key.as_str() {
                 "pattern" => {
                     let pattern =
-                        match expr_tokenizer::next_collecting_comments(iter, comments, errors) {
-                            Some((token::Token::StringLiteral(s), _)) => s.to_string(),
+                        match tokenize_expr::next_collecting_comments(iter, comments, errors) {
+                            Some((token::LangToken::StringLiteral(s), _)) => s.to_string(),
                             _ => return None,
                         };
                     annotation.pattern = Some(pattern);
                 }
                 "min" | "max" | "min_len" | "max_len" => {
-                    let (negative, token) = match expr_tokenizer::peek_past_comments(iter) {
-                        Some((token::Token::Minus, _)) => {
-                            expr_tokenizer::next_collecting_comments(iter, comments, errors);
+                    let (negative, token) = match tokenize_expr::peek_past_comments(iter) {
+                        Some((token::LangToken::Minus, _)) => {
+                            tokenize_expr::next_collecting_comments(iter, comments, errors);
                             (
                                 true,
-                                expr_tokenizer::next_collecting_comments(iter, comments, errors),
+                                tokenize_expr::next_collecting_comments(iter, comments, errors),
                             )
                         }
                         _ => (
                             false,
-                            expr_tokenizer::next_collecting_comments(iter, comments, errors),
+                            tokenize_expr::next_collecting_comments(iter, comments, errors),
                         ),
                     };
                     let n = match token {
-                        Some((token::Token::IntLiteral(n), _)) => {
+                        Some((token::LangToken::IntLiteral(n), _)) => {
                             if negative {
                                 -n
                             } else {
@@ -944,20 +957,20 @@ fn parse_examples_annotation(
                 }
                 _ => return None,
             }
-            match expr_tokenizer::peek_past_comments(iter) {
-                Some((token::Token::Comma, _)) => {
-                    expr_tokenizer::next_collecting_comments(iter, comments, errors);
+            match tokenize_expr::peek_past_comments(iter) {
+                Some((token::LangToken::Comma, _)) => {
+                    tokenize_expr::next_collecting_comments(iter, comments, errors);
                 }
                 _ => break,
             }
         }
-        if expr_tokenizer::next_collecting_comments(iter, comments, errors).map(|(t, _)| t)
-            != Some(token::Token::RightParen)
+        if tokenize_expr::next_collecting_comments(iter, comments, errors).map(|(t, _)| t)
+            != Some(token::LangToken::RightParen)
         {
             return None;
         }
-        if expr_tokenizer::next_collecting_comments(iter, comments, errors).map(|(t, _)| t)
-            != Some(token::Token::RightBracket)
+        if tokenize_expr::next_collecting_comments(iter, comments, errors).map(|(t, _)| t)
+            != Some(token::LangToken::RightBracket)
         {
             return None;
         }

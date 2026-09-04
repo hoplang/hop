@@ -8,13 +8,13 @@ use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 
-use super::token::Token;
+use super::token::LangToken;
 use crate::parse_error::{ParseError, ParseErrorKind};
 
 pub fn next(
     iter: &mut Peekable<DocumentCursor>,
     errors: &mut Vec<ParseError>,
-) -> Option<(Token, DocumentRange)> {
+) -> Option<(LangToken, DocumentRange)> {
     // Skip whitespace
     while iter.peek().is_some_and(|s| s.ch().is_whitespace()) {
         iter.next();
@@ -31,28 +31,28 @@ pub fn next(
             if second_is_dot && third == Some('.') {
                 iter.next(); // second dot
                 let third = iter.next().unwrap(); // third dot
-                (Token::DotDotDot, start.to(third))
+                (LangToken::DotDotDot, start.to(third))
             } else if second_is_dot && third == Some('=') {
                 iter.next(); // second dot
                 let eq = iter.next().unwrap(); // '='
-                (Token::DotDotEq, start.to(eq))
+                (LangToken::DotDotEq, start.to(eq))
             } else {
-                (Token::Dot, start)
+                (LangToken::Dot, start)
             }
         }
-        '(' => (Token::LeftParen, start),
-        ')' => (Token::RightParen, start),
-        '[' => (Token::LeftBracket, start),
-        ']' => (Token::RightBracket, start),
-        '{' => (Token::LeftBrace, start),
-        '}' => (Token::RightBrace, start),
+        '(' => (LangToken::LeftParen, start),
+        ')' => (LangToken::RightParen, start),
+        '[' => (LangToken::LeftBracket, start),
+        ']' => (LangToken::RightBracket, start),
+        '{' => (LangToken::LeftBrace, start),
+        '}' => (LangToken::RightBrace, start),
         ':' => match iter.next_if(|s| s.ch() == ':') {
-            Some(end) => (Token::ColonColon, start.to(end)),
-            None => (Token::Colon, start),
+            Some(end) => (LangToken::ColonColon, start.to(end)),
+            None => (LangToken::Colon, start),
         },
-        ',' => (Token::Comma, start),
+        ',' => (LangToken::Comma, start),
         '#' => match iter.next_if(|s| s.ch() == '[') {
-            Some(end) => (Token::HashBracket, start.to(end)),
+            Some(end) => (LangToken::HashBracket, start.to(end)),
             None => {
                 errors.push(ParseError::new(
                     ParseErrorKind::UnexpectedCharacter { ch: '#' },
@@ -61,14 +61,14 @@ pub fn next(
                 return next(iter, errors);
             }
         },
-        '+' => (Token::Plus, start),
+        '+' => (LangToken::Plus, start),
         '-' => match iter.next_if(|s| s.ch() == '>') {
-            Some(end) => (Token::Arrow, start.to(end)),
-            None => (Token::Minus, start),
+            Some(end) => (LangToken::Arrow, start.to(end)),
+            None => (LangToken::Minus, start),
         },
-        '*' => (Token::Asterisk, start),
+        '*' => (LangToken::Asterisk, start),
         '&' => match iter.next_if(|s| s.ch() == '&') {
-            Some(end) => (Token::LogicalAnd, start.to(end)),
+            Some(end) => (LangToken::LogicalAnd, start.to(end)),
             None => {
                 errors.push(ParseError::new(
                     ParseErrorKind::UnexpectedCharacter { ch: '&' },
@@ -78,7 +78,7 @@ pub fn next(
             }
         },
         '|' => match iter.next_if(|s| s.ch() == '|') {
-            Some(end) => (Token::LogicalOr, start.to(end)),
+            Some(end) => (LangToken::LogicalOr, start.to(end)),
             None => {
                 errors.push(ParseError::new(
                     ParseErrorKind::UnexpectedCharacter { ch: '|' },
@@ -93,7 +93,7 @@ pub fn next(
                     .to(second_slash)
                     .extend(iter.peeking_take_while(|s| s.ch() != '\n'));
                 let text = comment.to_cheap_string();
-                (Token::Comment(text), comment)
+                (LangToken::Comment(text), comment)
             }
             None => {
                 errors.push(ParseError::new(
@@ -104,27 +104,27 @@ pub fn next(
             }
         },
         '!' => match iter.next_if(|s| s.ch() == '=') {
-            Some(end) => (Token::NotEq, start.to(end)),
-            None => (Token::Not, start),
+            Some(end) => (LangToken::NotEq, start.to(end)),
+            None => (LangToken::Not, start),
         },
         '<' => match iter.next_if(|s| s.ch() == '=') {
-            Some(end) => (Token::LessThanOrEqual, start.to(end)),
-            None => (Token::LessThan, start),
+            Some(end) => (LangToken::LessThanOrEqual, start.to(end)),
+            None => (LangToken::LessThan, start),
         },
         '>' => match iter.next_if(|s| s.ch() == '=') {
-            Some(end) => (Token::GreaterThanOrEqual, start.to(end)),
-            None => (Token::GreaterThan, start),
+            Some(end) => (LangToken::GreaterThanOrEqual, start.to(end)),
+            None => (LangToken::GreaterThan, start),
         },
         '=' => match iter.peek().map(|s| s.ch()) {
             Some('=') => {
                 let end = iter.next().unwrap();
-                (Token::Eq, start.to(end))
+                (LangToken::Eq, start.to(end))
             }
             Some('>') => {
                 let end = iter.next().unwrap();
-                (Token::FatArrow, start.to(end))
+                (LangToken::FatArrow, start.to(end))
             }
-            _ => (Token::Assign, start),
+            _ => (LangToken::Assign, start),
         },
         '"' => {
             // Parse string with escape sequence validation
@@ -145,7 +145,7 @@ pub fn next(
                         let value = content
                             .map(|c| c.to_cheap_string())
                             .unwrap_or_else(|| CheapString::new(String::new()));
-                        break (Token::StringLiteral(value), start.to(end));
+                        break (LangToken::StringLiteral(value), start.to(end));
                     }
                     Some('\\') => {
                         // Escape sequence - consume backslash
@@ -211,37 +211,37 @@ pub fn next(
                 ));
             let t = match identifier.as_str() {
                 // Wildcard
-                "_" => Token::Underscore,
+                "_" => LangToken::Underscore,
                 // Keywords
-                "component" => Token::Component,
-                "entrypoint" | "view" => Token::View,
-                "enum" => Token::Enum,
-                "false" => Token::False,
-                "fn" => Token::Fn,
-                "import" => Token::Import,
-                "in" => Token::In,
-                "match" => Token::Match,
-                "page" => Token::Page,
-                "pub" => Token::Pub,
-                "record" => Token::Record,
-                "true" => Token::True,
+                "component" => LangToken::Component,
+                "entrypoint" | "view" => LangToken::View,
+                "enum" => LangToken::Enum,
+                "false" => LangToken::False,
+                "fn" => LangToken::Fn,
+                "import" => LangToken::Import,
+                "in" => LangToken::In,
+                "match" => LangToken::Match,
+                "page" => LangToken::Page,
+                "pub" => LangToken::Pub,
+                "record" => LangToken::Record,
+                "true" => LangToken::True,
                 // Constructors
-                "None" => Token::None,
-                "Some" => Token::Some,
+                "None" => LangToken::None,
+                "Some" => LangToken::Some,
                 // Types
-                "Array" => Token::TypeArray,
-                "Bool" => Token::TypeBoolean,
-                "Float" => Token::TypeFloat,
-                "Fragment" => Token::TypeFragment,
-                "Int" => Token::TypeInt,
-                "Option" => Token::TypeOption,
-                "String" => Token::TypeString,
+                "Array" => LangToken::TypeArray,
+                "Bool" => LangToken::TypeBoolean,
+                "Float" => LangToken::TypeFloat,
+                "Fragment" => LangToken::TypeFragment,
+                "Int" => LangToken::TypeInt,
+                "Option" => LangToken::TypeOption,
+                "String" => LangToken::TypeString,
                 _ => {
                     let first_char = identifier.as_str().chars().next().unwrap();
                     if first_char.is_ascii_uppercase() {
-                        Token::TypeName(identifier.to_cheap_string())
+                        LangToken::TypeName(identifier.to_cheap_string())
                     } else {
-                        Token::Identifier(identifier.to_cheap_string())
+                        LangToken::Identifier(identifier.to_cheap_string())
                     }
                 }
             };
@@ -279,7 +279,7 @@ pub fn next(
                 return next(iter, errors);
             } else if has_decimal {
                 match number_string.as_str().parse::<f64>() {
-                    Ok(f) => (Token::FloatLiteral(f), number_string),
+                    Ok(f) => (LangToken::FloatLiteral(f), number_string),
                     Err(_) => {
                         errors.push(ParseError::new(
                             ParseErrorKind::InvalidNumberFormat {},
@@ -290,7 +290,7 @@ pub fn next(
                 }
             } else {
                 match number_string.as_str().parse::<i32>() {
-                    Ok(i) => (Token::IntLiteral(i), number_string),
+                    Ok(i) => (LangToken::IntLiteral(i), number_string),
                     Err(_) => {
                         errors.push(ParseError::new(
                             ParseErrorKind::IntLiteralOutOfRange {},
@@ -318,10 +318,10 @@ pub fn next_collecting_comments(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut Vec<ParseError>,
-) -> Option<(Token, DocumentRange)> {
+) -> Option<(LangToken, DocumentRange)> {
     loop {
         match next(iter, errors) {
-            Some((Token::Comment(_), range)) => {
+            Some((LangToken::Comment(_), range)) => {
                 comments.push_back(range);
                 continue;
             }
@@ -332,7 +332,7 @@ pub fn next_collecting_comments(
 
 /// Peeks at the next non-comment token without consuming it.
 /// Uses a temporary error collector that is discarded.
-pub fn peek_past_comments(iter: &Peekable<DocumentCursor>) -> Option<(Token, DocumentRange)> {
+pub fn peek_past_comments(iter: &Peekable<DocumentCursor>) -> Option<(LangToken, DocumentRange)> {
     let mut cloned = iter.clone();
     let mut discarded_comments = VecDeque::new();
     let mut discarded_errors = Vec::new();
@@ -343,7 +343,7 @@ pub fn advance_if(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut Vec<ParseError>,
-    token: Token,
+    token: LangToken,
 ) -> Option<DocumentRange> {
     match peek_past_comments(iter) {
         Some((t, _)) if t == token => {
@@ -359,9 +359,9 @@ pub fn next_if<F>(
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut Vec<ParseError>,
     predicate: F,
-) -> Option<(Token, DocumentRange)>
+) -> Option<(LangToken, DocumentRange)>
 where
-    F: FnOnce(&(Token, DocumentRange)) -> bool,
+    F: FnOnce(&(LangToken, DocumentRange)) -> bool,
 {
     match peek_past_comments(iter) {
         Some(ref result) if predicate(result) => next_collecting_comments(iter, comments, errors),
@@ -374,7 +374,7 @@ pub fn expect_token(
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut Vec<ParseError>,
     range: &DocumentRange,
-    expected: &Token,
+    expected: &LangToken,
 ) -> Option<DocumentRange> {
     match next_collecting_comments(iter, comments, errors) {
         Some((token, token_range)) if token == *expected => Some(token_range),
@@ -404,7 +404,7 @@ pub fn expect_opposite(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut Vec<ParseError>,
-    token: &Token,
+    token: &LangToken,
     token_range: &DocumentRange,
 ) -> Option<DocumentRange> {
     let expected = token.opposite_token();
@@ -436,7 +436,7 @@ pub fn expect_variable_name(
     range: &DocumentRange,
 ) -> Option<(VarName, DocumentRange)> {
     match next_collecting_comments(iter, comments, errors) {
-        Some((Token::Identifier(name), name_range)) => {
+        Some((LangToken::Identifier(name), name_range)) => {
             match VarName::from_cheap_string(name.clone()) {
                 Ok(var_name) => Some((var_name, name_range)),
                 Err(error) => {
@@ -472,7 +472,7 @@ pub fn expect_field_name(
     range: &DocumentRange,
 ) -> Option<(FieldName, DocumentRange)> {
     match next_collecting_comments(iter, comments, errors) {
-        Some((Token::Identifier(name), name_range)) => {
+        Some((LangToken::Identifier(name), name_range)) => {
             match FieldName::from_cheap_string(name.clone()) {
                 Ok(prop_name) => Some((prop_name, name_range)),
                 Err(error) => {
@@ -508,7 +508,7 @@ pub fn expect_type_name(
     range: &DocumentRange,
 ) -> Option<(TypeName, DocumentRange)> {
     match next_collecting_comments(iter, comments, errors) {
-        Some((Token::TypeName(name), name_range)) => match TypeName::from_cheap_string(name) {
+        Some((LangToken::TypeName(name), name_range)) => match TypeName::from_cheap_string(name) {
             Ok(type_name) => Some((type_name, name_range)),
             Err(error) => {
                 errors.push(ParseError::new(
@@ -541,7 +541,7 @@ pub fn parse_comma_separated<T, F>(
     errors: &mut Vec<ParseError>,
     range: &DocumentRange,
     mut parse: F,
-    end_token: Option<&Token>,
+    end_token: Option<&LangToken>,
 ) -> Option<Vec<T>>
 where
     F: FnMut(
@@ -553,7 +553,7 @@ where
 {
     let mut items = Vec::new();
     items.push(parse(iter, comments, errors, range)?);
-    while advance_if(iter, comments, errors, Token::Comma).is_some() {
+    while advance_if(iter, comments, errors, LangToken::Comma).is_some() {
         let next_token = peek_past_comments(iter).map(|(t, _)| t);
         if next_token.as_ref() == end_token || (end_token.is_some() && next_token.is_none()) {
             break;
@@ -569,7 +569,7 @@ pub fn parse_delimited_list<T, F>(
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut Vec<ParseError>,
     range: &DocumentRange,
-    opening_token: &Token,
+    opening_token: &LangToken,
     opening_range: &DocumentRange,
     parse: F,
 ) -> Option<(Vec<T>, DocumentRange)>

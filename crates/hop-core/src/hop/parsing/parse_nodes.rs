@@ -1,7 +1,6 @@
 use std::collections::VecDeque;
 use std::iter::Peekable;
 
-use super::expr_tokenizer;
 use super::parse_expr;
 use super::parsed_expr::ParsedExpr;
 use super::parsed_node::{
@@ -9,12 +8,15 @@ use super::parsed_node::{
     ParsedNode,
 };
 use super::token;
-use super::tokenizer;
-use super::tokenizer::{RawTextToken, TagToken, Token};
+use super::tokenize_expr;
+use super::tokenize_markup;
 use super::whitespace;
 use crate::document::{DocumentCursor, DocumentRange};
 use crate::hop::parsing::parse_type::parse_type;
 use crate::hop::parsing::parsed_expr::ParsedMatchPattern;
+use crate::hop::parsing::token::MarkupToken;
+use crate::hop::parsing::token::RawTextToken;
+use crate::hop::parsing::token::TagToken;
 use crate::html::{HtmlElement, is_raw_content_tag, is_void_element_tag};
 use crate::parse_error::{ParseError, ParseErrorKind};
 use crate::symbols::type_name::TypeName;
@@ -213,25 +215,25 @@ fn parse_node(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut Vec<ParseError>,
-    first: Token,
+    first: MarkupToken,
 ) -> Option<ParsedNode> {
     let mut builder = MarkupBuilder::default();
     let mut token = first;
 
     loop {
         match token {
-            Token::Text { range } => builder.append_node(ParsedNode::Text { range }),
-            Token::Newline { range } => builder.append_node(ParsedNode::Newline { range }),
-            Token::Comment { range } => builder.append_node(ParsedNode::Comment { range }),
+            MarkupToken::Text { range } => builder.append_node(ParsedNode::Text { range }),
+            MarkupToken::Newline { range } => builder.append_node(ParsedNode::Newline { range }),
+            MarkupToken::Comment { range } => builder.append_node(ParsedNode::Comment { range }),
 
-            Token::ExpressionStart { left_brace } => {
+            MarkupToken::ExpressionStart { left_brace } => {
                 if let Some(expression) =
                     parse_expr::parse_expr(iter, comments, errors, &left_brace)
-                    && let Some(right_brace) = expr_tokenizer::expect_opposite(
+                    && let Some(right_brace) = tokenize_expr::expect_opposite(
                         iter,
                         comments,
                         errors,
-                        &token::Token::LeftBrace,
+                        &token::LangToken::LeftBrace,
                         &left_brace,
                     )
                 {
@@ -242,7 +244,7 @@ fn parse_node(
                 }
             }
 
-            Token::OpeningTagStart { tag_name, range } => {
+            MarkupToken::OpeningTagStart { tag_name, range } => {
                 let (element, end) = parse_opening_tag(tag_name, range, iter, comments, errors);
                 match end {
                     TagEnd::Open => builder.enter(element),
@@ -250,7 +252,7 @@ fn parse_node(
                 }
             }
 
-            Token::ClosingTag { tag_name, range } => {
+            MarkupToken::ClosingTag { tag_name, range } => {
                 if is_void_element_tag(tag_name.as_str()) {
                     errors.push(ParseError::new(
                         ParseErrorKind::ClosedVoidTag {
@@ -276,7 +278,7 @@ fn parse_node(
                 }
             }
 
-            Token::FragmentStart { range } => builder.enter(OpenElement {
+            MarkupToken::FragmentStart { range } => builder.enter(OpenElement {
                 tag_name_range: range.clone(),
                 opening_range: range,
                 expression_range: None,
@@ -284,7 +286,7 @@ fn parse_node(
                 children: Vec::new(),
             }),
 
-            Token::FragmentEnd { range } => {
+            MarkupToken::FragmentEnd { range } => {
                 if builder.is_open(None) {
                     builder.close(
                         ClosingTag {
@@ -308,7 +310,7 @@ fn parse_node(
         if builder.open.is_empty() {
             return None;
         }
-        match tokenizer::next(iter, errors) {
+        match tokenize_markup::next(iter, errors) {
             Some(next) => token = next,
             None => {
                 return builder
@@ -329,7 +331,7 @@ pub fn parse_body(
 ) -> ParsedExpr {
     let errors_before = errors.len();
     let mut nodes = Vec::new();
-    while let Some(token) = tokenizer::next(iter, errors) {
+    while let Some(token) = tokenize_markup::next(iter, errors) {
         nodes.extend(parse_node(iter, comments, errors, token));
     }
     whitespace::normalize(&mut nodes);
@@ -420,7 +422,7 @@ fn parse_opening_tag(
     let mut expression_range: Option<DocumentRange> = None;
 
     loop {
-        let Some(part) = tokenizer::next_tag_token(iter, errors) else {
+        let Some(part) = tokenize_markup::next_tag_token(iter, errors) else {
             errors.push(ParseError::new(
                 ParseErrorKind::UnterminatedOpeningTag {},
                 tag_name_range.clone(),
@@ -441,7 +443,7 @@ fn parse_opening_tag(
 
             TagToken::Attribute { name, value } => {
                 let value = value.map(|value| ParsedAttributeValue::String {
-                    content: value.content,
+                    content: value.content_range,
                     quoted_range: value.quoted_range,
                 });
                 push_attribute(
@@ -454,11 +456,11 @@ fn parse_opening_tag(
 
             TagToken::AttributeExpressionStart { name, left_brace } => {
                 if let Some(value) = parse_expr::parse_expr(iter, comments, errors, &left_brace)
-                    && expr_tokenizer::expect_opposite(
+                    && tokenize_expr::expect_opposite(
                         iter,
                         comments,
                         errors,
-                        &token::Token::LeftBrace,
+                        &token::LangToken::LeftBrace,
                         &left_brace,
                     )
                     .is_some()
@@ -525,11 +527,11 @@ fn parse_opening_tag(
                 };
                 expression_range = Some(left_brace.clone());
                 if parse_succeeded {
-                    let right_brace = expr_tokenizer::expect_opposite(
+                    let right_brace = tokenize_expr::expect_opposite(
                         iter,
                         comments,
                         errors,
-                        &token::Token::LeftBrace,
+                        &token::LangToken::LeftBrace,
                         &left_brace,
                     );
                     if let Some(right_brace) = right_brace {
@@ -569,7 +571,7 @@ fn parse_opening_tag(
     let raw_text = !self_closing && is_raw_content_tag(tag_name_range.as_str());
     let mut children = Vec::new();
     if raw_text {
-        match tokenizer::next_raw_text_token(iter, &tag_name_range) {
+        match tokenize_markup::next_raw_text_token(iter, &tag_name_range) {
             Some(RawTextToken {
                 content,
                 closing_tag_end,
@@ -828,26 +830,27 @@ fn parse_loop_header(
     range: &DocumentRange,
 ) -> Option<LoopHeader> {
     let (var_name, var_name_range) = if let Some(underscore_range) =
-        expr_tokenizer::advance_if(iter, comments, errors, token::Token::Underscore)
+        tokenize_expr::advance_if(iter, comments, errors, token::LangToken::Underscore)
     {
         (None, Some(underscore_range))
     } else {
         let (name, name_range) =
-            expr_tokenizer::expect_variable_name(iter, comments, errors, range)?;
+            tokenize_expr::expect_variable_name(iter, comments, errors, range)?;
         (Some(name), Some(name_range))
     };
-    expr_tokenizer::expect_token(iter, comments, errors, range, &token::Token::In)?;
+    tokenize_expr::expect_token(iter, comments, errors, range, &token::LangToken::In)?;
     let start_expr = parse_expr::parse_expr(iter, comments, errors, range)?;
-    let source =
-        if expr_tokenizer::advance_if(iter, comments, errors, token::Token::DotDotEq).is_some() {
-            let end_expr = parse_expr::parse_expr(iter, comments, errors, range)?;
-            ParsedLoopSource::RangeInclusive {
-                start: start_expr,
-                end: end_expr,
-            }
-        } else {
-            ParsedLoopSource::Array(start_expr)
-        };
+    let source = if tokenize_expr::advance_if(iter, comments, errors, token::LangToken::DotDotEq)
+        .is_some()
+    {
+        let end_expr = parse_expr::parse_expr(iter, comments, errors, range)?;
+        ParsedLoopSource::RangeInclusive {
+            start: start_expr,
+            end: end_expr,
+        }
+    } else {
+        ParsedLoopSource::Array(start_expr)
+    };
     Some(LoopHeader {
         var_name,
         var_name_range,
@@ -861,23 +864,29 @@ fn parse_let_bindings(
     errors: &mut Vec<ParseError>,
     range: &DocumentRange,
 ) -> Option<Vec<ParsedLetBinding>> {
-    let bindings = expr_tokenizer::parse_comma_separated(
+    let bindings = tokenize_expr::parse_comma_separated(
         iter,
         comments,
         errors,
         range,
         |iter, comments, errors, range| {
             let (var_name, var_name_range) =
-                expr_tokenizer::expect_variable_name(iter, comments, errors, range)?;
-            let var_type = if let Some((token::Token::Colon, _)) =
-                expr_tokenizer::peek_past_comments(iter)
+                tokenize_expr::expect_variable_name(iter, comments, errors, range)?;
+            let var_type = if let Some((token::LangToken::Colon, _)) =
+                tokenize_expr::peek_past_comments(iter)
             {
-                expr_tokenizer::expect_token(iter, comments, errors, range, &token::Token::Colon)?;
+                tokenize_expr::expect_token(
+                    iter,
+                    comments,
+                    errors,
+                    range,
+                    &token::LangToken::Colon,
+                )?;
                 Some(parse_type(iter, comments, errors, range)?)
             } else {
                 None
             };
-            expr_tokenizer::expect_token(iter, comments, errors, range, &token::Token::Assign)?;
+            tokenize_expr::expect_token(iter, comments, errors, range, &token::LangToken::Assign)?;
             let value_expr = parse_expr::parse_expr(iter, comments, errors, range)?;
             Some(ParsedLetBinding {
                 var_name,
@@ -886,7 +895,7 @@ fn parse_let_bindings(
                 value_expr,
             })
         },
-        Some(&token::Token::RightBrace),
+        Some(&token::LangToken::RightBrace),
     )?;
     Some(bindings)
 }

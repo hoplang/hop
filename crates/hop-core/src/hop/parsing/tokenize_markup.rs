@@ -1,148 +1,20 @@
 use std::iter::Peekable;
 
+use crate::hop::parsing::token::{AttributeString, MarkupToken, RawTextToken, TagToken};
 use crate::itertools::PeekingExt as _;
 
 use crate::document::{DocumentCursor, DocumentRange};
 use crate::parse_error::{ParseError, ParseErrorKind};
-
-#[derive(Debug)]
-pub enum Token {
-    /// Am HTML comment. E.g.
-    /// ```text
-    /// <!-- hello -->
-    /// ^^^^^^^^^^^^^^
-    /// ```
-    Comment { range: DocumentRange },
-    /// The start of a tag. E.g.
-    /// ```text
-    /// <div class="foo">
-    /// ^^^^
-    /// ```
-    OpeningTagStart {
-        tag_name: DocumentRange,
-        range: DocumentRange,
-    },
-    /// A closing tag, read whole. E.g.
-    /// ```text
-    /// </div>
-    /// ^^^^^^
-    /// ```
-    ClosingTag {
-        tag_name: DocumentRange,
-        range: DocumentRange,
-    },
-    /// The opening tag of a fragment. E.g.
-    /// ```text
-    /// <>hello</>
-    /// ^^
-    /// ```
-    FragmentStart { range: DocumentRange },
-    /// The closing tag of a fragment. E.g.
-    /// ```text
-    /// <>hello</>
-    ///        ^^^
-    /// ```
-    FragmentEnd { range: DocumentRange },
-    /// Static text. E.g.
-    /// ```text
-    /// <div>hello world</div>
-    ///      ^^^^^^^^^^^
-    /// ```
-    Text { range: DocumentRange },
-    /// A newline in text position, kept out of the surrounding Text.
-    Newline { range: DocumentRange },
-    /// The `{` that opens an expression in text position. E.g.
-    /// ```text
-    /// <div>{x.to_string()}</div>
-    ///      ^
-    /// ```
-    ExpressionStart { left_brace: DocumentRange },
-}
-
-/// A token that follows an OpeningTagStart token.
-pub enum TagToken {
-    /// An attribute. E.g.
-    /// ```text
-    /// <div foo="bar">
-    ///      ^^^^^^^^^
-    /// ```
-    /// The `value` field is `None` for value-less attributes.
-    Attribute {
-        name: DocumentRange,
-        value: Option<AttributeString>,
-    },
-    /// The start of an expression-valued attribute. E.g.
-    /// ```text
-    /// <div foo={...}>
-    ///      ^^^^^
-    /// ```
-    AttributeExpressionStart {
-        name: DocumentRange,
-        left_brace: DocumentRange,
-    },
-    /// A spread on a tag, e.g.
-    /// ```text
-    /// <div ...foo>
-    ///      ^^^^^^
-    /// ```
-    Spread {
-        name: DocumentRange,
-        range: DocumentRange,
-    },
-    /// A `{` inside a tag, starting a tag header. E.g.
-    /// ```text
-    /// <if {true}>
-    ///     ^
-    /// ```
-    ExpressionStart { left_brace: DocumentRange },
-    /// The `>` that ends the tag. E.g.
-    /// ```text
-    /// <div>
-    ///     ^
-    /// ```
-    End { range: DocumentRange },
-    /// The `/>` that ends the tag. E.g.
-    /// ```text
-    /// <div/>
-    ///     ^^
-    /// ```
-    SelfClosingEnd { range: DocumentRange },
-}
-
-/// A raw text element's body: everything up to and including its closing tag. E.g.
-/// ```text
-/// <script>let x = 20;</script>
-///         ^^^^^^^^^^^^^^^^^^^^
-/// ```
-pub struct RawTextToken {
-    /// The text between the tags. None when the element was empty.
-    /// E.g.
-    /// ```text
-    /// <script>let x = 20;</script>
-    ///         ^^^^^^^^^^^
-    /// ```
-    pub content: Option<DocumentRange>,
-    /// The `>` that closed the element. E.g.
-    /// ```text
-    /// <script>let x = 20;</script>
-    ///                            ^
-    /// ```
-    pub closing_tag_end: DocumentRange,
-}
-
-/// A quoted attribute value.
-/// The `content` field is `None` for `a=""`.
-pub struct AttributeString {
-    pub content: Option<DocumentRange>,
-    pub quoted_range: DocumentRange,
-}
 
 /// Lex the next token from the input.
 ///
 /// Returns `Some(token)` if a token was lexed, `None` at end of input or
 /// when the input reaches a '}', which closes the enclosing block.
 /// Errors are collected in the `errors` collector.
-pub fn next(iter: &mut Peekable<DocumentCursor>, errors: &mut Vec<ParseError>) -> Option<Token> {
+pub fn next(
+    iter: &mut Peekable<DocumentCursor>,
+    errors: &mut Vec<ParseError>,
+) -> Option<MarkupToken> {
     loop {
         match iter.peek().map(|s| s.ch()) {
             Some('<') => {
@@ -154,11 +26,11 @@ pub fn next(iter: &mut Peekable<DocumentCursor>, errors: &mut Vec<ParseError>) -
             }
             Some('{') => {
                 let left_brace = iter.next().unwrap();
-                return Some(Token::ExpressionStart { left_brace });
+                return Some(MarkupToken::ExpressionStart { left_brace });
             }
             Some('\n') => {
                 let newline = iter.next().unwrap();
-                return Some(Token::Newline { range: newline });
+                return Some(MarkupToken::Newline { range: newline });
             }
             Some('}') => return None,
             Some(_) => return Some(lex_text(iter)),
@@ -316,7 +188,10 @@ fn skip_whitespace(iter: &mut Peekable<DocumentCursor>) {
     }
 }
 
-fn lex_tag(iter: &mut Peekable<DocumentCursor>, errors: &mut Vec<ParseError>) -> Option<Token> {
+fn lex_tag(
+    iter: &mut Peekable<DocumentCursor>,
+    errors: &mut Vec<ParseError>,
+) -> Option<MarkupToken> {
     let Some(left_angle) = iter.next() else {
         panic!(
             "Expected '<' in lex_tag but got {:?}",
@@ -329,7 +204,7 @@ fn lex_tag(iter: &mut Peekable<DocumentCursor>, errors: &mut Vec<ParseError>) ->
         Some('>') => {
             // consume: >
             let right_angle = iter.next().unwrap();
-            Some(Token::FragmentStart {
+            Some(MarkupToken::FragmentStart {
                 range: left_angle.to(right_angle),
             })
         }
@@ -356,7 +231,7 @@ fn lex_markup_declaration(
     iter: &mut Peekable<DocumentCursor>,
     errors: &mut Vec<ParseError>,
     left_angle: DocumentRange,
-) -> Option<Token> {
+) -> Option<MarkupToken> {
     let Some(bang) = iter.next_if(|s| s.ch() == '!') else {
         panic!(
             "Expected '!' in lex_markup_declaration but got {:?}",
@@ -388,7 +263,7 @@ fn lex_comment(
     iter: &mut Peekable<DocumentCursor>,
     errors: &mut Vec<ParseError>,
     left_angle_to_bang: DocumentRange,
-) -> Option<Token> {
+) -> Option<MarkupToken> {
     let Some(first_dash) = iter.next_if(|s| s.ch() == '-') else {
         panic!(
             "Expected '-' in lex_comment but got {:?}",
@@ -411,7 +286,7 @@ fn lex_comment(
             }
             Some(s) if s.ch() == '>' => {
                 if count >= 2 {
-                    return Some(Token::Comment {
+                    return Some(MarkupToken::Comment {
                         range: left_angle_to_bang.to(s),
                     });
                 } else {
@@ -446,7 +321,7 @@ fn lex_doctype(
     iter: &mut Peekable<DocumentCursor>,
     errors: &mut Vec<ParseError>,
     left_angle_to_bang: DocumentRange,
-) -> Option<Token> {
+) -> Option<MarkupToken> {
     let doctype = iter
         .clone()
         .map(|s| s.ch())
@@ -483,11 +358,14 @@ fn lex_doctype(
 ///  ^^^
 /// ```
 /// Expects that the iterator points to the initial alphabetic char.
-fn lex_opening_tag_start(iter: &mut Peekable<DocumentCursor>, left_angle: DocumentRange) -> Token {
+fn lex_opening_tag_start(
+    iter: &mut Peekable<DocumentCursor>,
+    left_angle: DocumentRange,
+) -> MarkupToken {
     let initial = iter.next_if(|s| s.ch().is_ascii_alphabetic()).unwrap();
     let tag_name = initial
         .extend(iter.peeking_take_while(|s| s.ch() == '-' || s.ch().is_ascii_alphanumeric()));
-    Token::OpeningTagStart {
+    MarkupToken::OpeningTagStart {
         range: left_angle.to(tag_name.clone()),
         tag_name,
     }
@@ -505,7 +383,7 @@ fn lex_closing_tag(
     iter: &mut Peekable<DocumentCursor>,
     errors: &mut Vec<ParseError>,
     left_angle: DocumentRange,
-) -> Option<Token> {
+) -> Option<MarkupToken> {
     let Some(slash) = iter.next_if(|s| s.ch() == '/') else {
         panic!(
             "Expected '/' in lex_closing_tag but got {:?}",
@@ -516,7 +394,7 @@ fn lex_closing_tag(
     skip_whitespace(iter);
     // consume: '>'
     if let Some(right_angle) = iter.next_if(|s| s.ch() == '>') {
-        return Some(Token::FragmentEnd {
+        return Some(MarkupToken::FragmentEnd {
             range: left_angle.to(right_angle),
         });
     }
@@ -541,7 +419,7 @@ fn lex_closing_tag(
         ));
         return None;
     };
-    Some(Token::ClosingTag {
+    Some(MarkupToken::ClosingTag {
         tag_name,
         range: left_angle.to(right_angle),
     })
@@ -556,11 +434,11 @@ fn lex_closing_tag(
 /// ```
 /// Expects that the iterator points to the initial char.
 /// Stops at '<', '{', or '\n' (newlines are emitted as separate tokens).
-fn lex_text(iter: &mut Peekable<DocumentCursor>) -> Token {
+fn lex_text(iter: &mut Peekable<DocumentCursor>) -> MarkupToken {
     let Some(initial) = iter.next() else {
         panic!("Expected an initial char in lex_text but got None");
     };
-    Token::Text {
+    MarkupToken::Text {
         range: initial.extend(iter.peeking_take_while(|s| {
             s.ch() != '<' && s.ch() != '{' && s.ch() != '\n' && s.ch() != '}'
         })),
@@ -632,7 +510,7 @@ fn lex_attribute(
     Some(TagToken::Attribute {
         name,
         value: Some(AttributeString {
-            content,
+            content_range: content,
             quoted_range: open_quote.to(close_quote),
         }),
     })

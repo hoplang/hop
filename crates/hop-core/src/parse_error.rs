@@ -1,6 +1,6 @@
 use crate::annotation::Annotation;
 use crate::document::{CheapString, DocumentRange};
-use crate::hop::parsing::token::Token;
+use crate::hop::parsing::token::LangToken;
 use crate::symbols::field_name::InvalidFieldNameError;
 use crate::symbols::module_name::InvalidModuleNameError;
 use crate::symbols::type_name::InvalidTypeNameError;
@@ -139,7 +139,7 @@ pub(crate) enum ParseErrorKind {
     InvalidEscapeSequenceAtEndOfString,
 
     #[error("Unmatched '{token}'")]
-    UnmatchedToken { token: Token },
+    UnmatchedToken { token: LangToken },
 
     #[error("Invalid variable name '{name}': {error}")]
     InvalidVariableName {
@@ -154,22 +154,25 @@ pub(crate) enum ParseErrorKind {
     },
 
     #[error("Expected token '{expected}' but got '{actual}'")]
-    ExpectedTokenButGot { expected: Token, actual: Token },
+    ExpectedTokenButGot {
+        expected: LangToken,
+        actual: LangToken,
+    },
 
     #[error("Expected token '{expected}' but got end of file")]
-    ExpectedTokenButGotEof { expected: Token },
+    ExpectedTokenButGotEof { expected: LangToken },
 
     #[error("Unexpected token '{token}'")]
-    UnexpectedToken { token: Token },
+    UnexpectedToken { token: LangToken },
 
     #[error("Unexpected character: '{ch}'")]
     UnexpectedCharacter { ch: char },
 
     #[error("Expected variable name but got '{actual}'")]
-    ExpectedVariableNameButGot { actual: Token },
+    ExpectedVariableNameButGot { actual: LangToken },
 
     #[error("Expected field name but got '{actual}'")]
-    ExpectedFieldNameButGot { actual: Token },
+    ExpectedFieldNameButGot { actual: LangToken },
 
     #[error("Duplicate field '{name}'")]
     DuplicateField { name: CheapString },
@@ -178,7 +181,7 @@ pub(crate) enum ParseErrorKind {
     DuplicateVariant { name: CheapString },
 
     #[error("Expected type name but got '{actual}'")]
-    ExpectedTypeNameButGot { actual: Token },
+    ExpectedTypeNameButGot { actual: LangToken },
 
     #[error("Expected type name but got end of file")]
     ExpectedTypeNameButGotEof,

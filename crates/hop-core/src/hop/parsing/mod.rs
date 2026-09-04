@@ -1,4 +1,3 @@
-pub mod expr_tokenizer;
 pub mod find_node;
 pub mod parse;
 pub mod parse_expr;
@@ -9,7 +8,8 @@ pub mod parsed_expr;
 pub mod parsed_node;
 pub mod parsed_type;
 pub mod token;
-pub mod tokenizer;
+pub mod tokenize_expr;
+pub mod tokenize_markup;
 mod whitespace;
 
 pub use parsed_expr::ParsedExpr;
