@@ -11,11 +11,12 @@ use crate::hop::parsing::parsed_ast::{
     ParsedImportDeclaration, ParsedPageDeclaration, ParsedParameter, ParsedRecordDeclaration,
 };
 use crate::hop::patterns::compiler::compile_match;
+use crate::hop::typing::resolve_type::resolve_type;
 use crate::hop::typing::r#type::EnumVariant;
 use crate::hop::typing::type_env::TypeEnv;
 use crate::hop::typing::type_export::TypeExport;
 use crate::hop::typing::type_registry::{TypeDef, TypeRegistry};
-use crate::hop::typing::typecheck_expr::{decision_to_typed_expr, resolve_type, typecheck_expr};
+use crate::hop::typing::typecheck_expr::{decision_to_typed_expr, typecheck_expr};
 use crate::hover_annotation::HoverAnnotation;
 use crate::html::HtmlElement;
 use crate::symbols::function_name::FunctionName;
