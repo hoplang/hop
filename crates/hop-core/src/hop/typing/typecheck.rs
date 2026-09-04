@@ -623,6 +623,7 @@ fn register_component_signature<'a>(
                     if let Some(typed_default) = typecheck_expr(
                         default_expr,
                         Some(&param_type),
+                        &[],
                         &mut fresh_var_env,
                         type_env,
                         registry,
@@ -734,23 +735,18 @@ fn typecheck_component_body(
 
     let declared_names: Vec<VarName> = declared_params.iter().map(|p| p.name.clone()).collect();
 
-    let typed_children = body
-        .as_markup()
-        .and_then(|node| {
-            typecheck_node(
-                node,
-                &declared_names,
-                registry,
-                errors,
-                var_env,
-                type_env,
-                annotations,
-                definition_links,
-                asset_references,
-            )
-        })
-        .into_iter()
-        .collect::<Vec<_>>();
+    let typed_body = typecheck_expr(
+        body,
+        None,
+        &declared_names,
+        var_env,
+        type_env,
+        registry,
+        annotations,
+        definition_links,
+        asset_references,
+        errors,
+    );
 
     for (param, _) in resolved_params.iter().rev() {
         let (name, _, accessed) = var_env.pop();
@@ -814,9 +810,7 @@ fn typecheck_component_body(
         name: component_name.clone().into(),
         params: typed_params,
         return_type: Arc::new(Type::Fragment),
-        body: TypedExpr::FragmentConcat {
-            nodes: typed_children,
-        },
+        body: typed_body.unwrap_or_else(|| TypedExpr::FragmentConcat { nodes: Vec::new() }),
     }
 }
 
@@ -889,54 +883,31 @@ fn typecheck_page_declaration(
         });
     }
 
-    let typecheck_list = |nodes: &[&ParsedNode],
-                          errors: &mut Vec<TypeError>,
-                          var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
-                          type_env: &mut TypeEnv,
-                          annotations: &mut Vec<HoverAnnotation>,
-                          definition_links: &mut Vec<DefinitionLink>,
-                          asset_references: &mut Vec<AssetReference>| {
-        nodes
-            .iter()
-            .filter_map(|child| {
-                typecheck_node(
-                    child,
-                    &[],
-                    registry,
-                    errors,
-                    var_env,
-                    type_env,
-                    annotations,
-                    definition_links,
-                    asset_references,
-                )
-            })
-            .collect::<Vec<_>>()
-    };
-
-    let head_nodes: Vec<&ParsedNode> = head.iter().filter_map(ParsedExpr::as_markup).collect();
-    let body_nodes: Vec<&ParsedNode> = [body]
-        .into_iter()
-        .filter_map(ParsedExpr::as_markup)
-        .collect();
-
-    let typed_head = typecheck_list(
-        &head_nodes,
-        errors,
+    let typed_head = head.as_ref().and_then(|head| {
+        typecheck_expr(
+            head,
+            None,
+            &[],
+            var_env,
+            type_env,
+            registry,
+            annotations,
+            definition_links,
+            asset_references,
+            errors,
+        )
+    });
+    let typed_body = typecheck_expr(
+        body,
+        None,
+        &[],
         var_env,
         type_env,
+        registry,
         annotations,
         definition_links,
         asset_references,
-    );
-    let typed_body = typecheck_list(
-        &body_nodes,
         errors,
-        var_env,
-        type_env,
-        annotations,
-        definition_links,
-        asset_references,
     );
 
     for param in pushed_params.iter().rev() {
@@ -952,8 +923,8 @@ fn typecheck_page_declaration(
     TypedPageDeclaration {
         name: name.clone(),
         params: typed_params,
-        head: TypedExpr::FragmentConcat { nodes: typed_head },
-        body: TypedExpr::FragmentConcat { nodes: typed_body },
+        head: typed_head.unwrap_or_else(|| TypedExpr::FragmentConcat { nodes: Vec::new() }),
+        body: typed_body.unwrap_or_else(|| TypedExpr::FragmentConcat { nodes: Vec::new() }),
     }
 }
 
@@ -1061,6 +1032,7 @@ fn typecheck_function_body(
     let typed_body = typecheck_expr(
         &function.body,
         Some(&return_type),
+        &[],
         &mut var_env,
         type_env,
         registry,
@@ -1100,7 +1072,7 @@ fn typecheck_function_body(
     })
 }
 
-fn typecheck_node(
+pub fn typecheck_node(
     node: &ParsedNode,
     caller_params: &[VarName],
     registry: &TypeRegistry,
@@ -1160,6 +1132,7 @@ fn typecheck_node(
             let typed_condition = typecheck_expr(
                 condition,
                 None,
+                caller_params,
                 var_env,
                 type_env,
                 registry,
@@ -1204,6 +1177,7 @@ fn typecheck_node(
                     let typed_array = typecheck_expr(
                         array_expr,
                         None,
+                        caller_params,
                         var_env,
                         type_env,
                         registry,
@@ -1229,6 +1203,7 @@ fn typecheck_node(
                     let typed_start = typecheck_expr(
                         start,
                         None,
+                        caller_params,
                         var_env,
                         type_env,
                         registry,
@@ -1240,6 +1215,7 @@ fn typecheck_node(
                     let typed_end = typecheck_expr(
                         end,
                         None,
+                        caller_params,
                         var_env,
                         type_env,
                         registry,
@@ -1398,6 +1374,7 @@ fn typecheck_node(
                 let Some(typed_value) = typecheck_expr(
                     &binding.value_expr,
                     declared_type.as_ref(),
+                    caller_params,
                     var_env,
                     type_env,
                     registry,
@@ -1628,6 +1605,7 @@ fn typecheck_node(
             let typed_attributes = typecheck_attributes(
                 attributes,
                 element,
+                caller_params,
                 registry,
                 errors,
                 var_env,
@@ -1676,6 +1654,7 @@ fn typecheck_node(
             if let Some(typed_expr) = typecheck_expr(
                 expression,
                 None,
+                caller_params,
                 var_env,
                 type_env,
                 registry,
@@ -1707,6 +1686,7 @@ fn typecheck_node(
             let typed_subject = typecheck_expr(
                 subject,
                 None,
+                caller_params,
                 var_env,
                 type_env,
                 registry,
@@ -1834,6 +1814,7 @@ fn typecheck_node(
 
 fn typecheck_attribute_value(
     value: &Option<ParsedAttributeValue>,
+    caller_params: &[VarName],
     registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
     var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
@@ -1847,6 +1828,7 @@ fn typecheck_attribute_value(
             let typed_expr = typecheck_expr(
                 expr,
                 None,
+                caller_params,
                 var_env,
                 type_env,
                 registry,
@@ -1973,6 +1955,7 @@ fn typecheck_arguments(
             if accepted {
                 let value = typecheck_attribute_value(
                     arg_value,
+                    caller_params,
                     registry,
                     errors,
                     var_env,
@@ -2022,6 +2005,7 @@ fn typecheck_arguments(
         let Some(typed_expr) = typecheck_expr(
             &arg_expr,
             Some(param_type),
+            caller_params,
             var_env,
             type_env,
             registry,
@@ -2119,6 +2103,7 @@ fn typecheck_arguments(
 fn typecheck_attributes(
     attributes: &[ParsedAttribute],
     element: &HtmlElement,
+    caller_params: &[VarName],
     registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
     var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
@@ -2137,6 +2122,7 @@ fn typecheck_attributes(
             element,
             attr_name,
             attr_value,
+            caller_params,
             registry,
             errors,
             var_env,
@@ -2157,6 +2143,7 @@ fn typecheck_html_attribute(
     element: &HtmlElement,
     name: &DocumentRange,
     value: &Option<ParsedAttributeValue>,
+    caller_params: &[VarName],
     registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
     var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
@@ -2178,6 +2165,7 @@ fn typecheck_html_attribute(
 
     let typed_value = typecheck_attribute_value(
         value,
+        caller_params,
         registry,
         errors,
         var_env,
@@ -2517,7 +2505,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Card(children: Fragment) -> Fragment {
-                  concat(html(tag: "div", attrs: [], children: concat(children)))
+                  html(tag: "div", attrs: [], children: concat(children))
                 }
             "#]],
         );
@@ -2537,15 +2525,13 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Card() -> Fragment {
-                  concat(
-                    html(
-                      tag: "div",
-                      attrs: [],
-                      children: concat(
-                        concat(
-                          html(tag: "b", attrs: [], children: concat(raw("x"))),
-                          html(tag: "i", attrs: [], children: concat(raw("y"))),
-                        ),
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: concat(
+                      concat(
+                        html(tag: "b", attrs: [], children: concat(raw("x"))),
+                        html(tag: "i", attrs: [], children: concat(raw("y"))),
                       ),
                     ),
                   )
@@ -2570,11 +2556,11 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Card(children: Fragment) -> Fragment {
-                  concat(html(tag: "div", attrs: [], children: concat(children)))
+                  html(tag: "div", attrs: [], children: concat(children))
                 }
 
                 fn Main() -> Fragment {
-                  concat(Card(children: concat()))
+                  Card(children: concat())
                 }
             "#]],
         );
@@ -2619,11 +2605,11 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Card(children: Fragment) -> Fragment {
-                  concat(html(tag: "div", attrs: [], children: concat(children)))
+                  html(tag: "div", attrs: [], children: concat(children))
                 }
 
                 fn Main() -> Fragment {
-                  concat(Card(children: concat()))
+                  Card(children: concat())
                 }
             "#]],
         );
@@ -2645,11 +2631,11 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Card(children: Fragment) -> Fragment {
-                  concat(html(tag: "div", attrs: [], children: concat(children)))
+                  html(tag: "div", attrs: [], children: concat(children))
                 }
 
                 fn Main(children: Fragment) -> Fragment {
-                  concat(Card(children: children))
+                  Card(children: children)
                 }
             "#]],
         );
@@ -2690,12 +2676,10 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Tree(children: Fragment) -> Fragment {
-                  concat(
-                    html(
-                      tag: "div",
-                      attrs: [],
-                      children: concat(Tree(children: concat(children))),
-                    ),
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: concat(Tree(children: concat(children))),
                   )
                 }
             "#]],
@@ -2775,7 +2759,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main() -> Fragment {
-                  concat(concat())
+                  concat()
                 }
             "#]],
         );
@@ -2816,13 +2800,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main() -> Fragment {
-                  concat(
-                    html(
-                      tag: "h1",
-                      attrs: [],
-                      children: concat(raw("Hello, "), Main(), raw("!")),
-                    ),
-                  )
+                  html(tag: "h1", attrs: [], children: concat(raw("Hello, "), Main(), raw("!")))
                 }
             "#]],
         );
@@ -3007,12 +2985,12 @@ mod tests {
             expect![[r#"
                 -- other.hop --
                 fn Foo() -> Fragment {
-                  concat(html(tag: "span", attrs: [], children: concat(raw("hi"))))
+                  html(tag: "span", attrs: [], children: concat(raw("hi")))
                 }
 
                 -- main.hop --
                 fn Main() -> Fragment {
-                  concat(Foo())
+                  Foo()
                 }
             "#]],
         );
@@ -3041,7 +3019,7 @@ mod tests {
 
                 -- main.hop --
                 fn Main(foo: other::Foo) -> Fragment {
-                  concat(html(tag: "div", attrs: [], children: concat(escape(foo.name))))
+                  html(tag: "div", attrs: [], children: concat(escape(foo.name)))
                 }
             "#]],
         );
@@ -3075,13 +3053,11 @@ mod tests {
 
                 -- main.hop --
                 fn Main(color: other::Color) -> Fragment {
-                  concat(
-                    html(
-                      tag: "div",
-                      attrs: [],
-                      children: concat(
-                        escape(match color {Color::Red => "red", Color::Green => "green"}),
-                      ),
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: concat(
+                      escape(match color {Color::Red => "red", Color::Green => "green"}),
                     ),
                   )
                 }
@@ -3123,12 +3099,12 @@ mod tests {
             expect![[r#"
                 -- other.hop --
                 fn Foo() -> Fragment {
-                  concat(concat())
+                  concat()
                 }
 
                 -- main.hop --
                 fn Foo() -> Fragment {
-                  concat(concat())
+                  concat()
                 }
             "#]],
         );
@@ -3382,16 +3358,14 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Foo() -> Fragment {
-                  concat(Main(a: true, b: "foo"))
+                  Main(a: true, b: "foo")
                 }
 
                 fn Main(a: Bool, b: String) -> Fragment {
-                  concat(
-                    match a {
-                      true => concat(html(tag: "div", attrs: [], children: concat(escape(b)))),
-                      false => concat(),
-                    },
-                  )
+                  match a {
+                    true => concat(html(tag: "div", attrs: [], children: concat(escape(b)))),
+                    false => concat(),
+                  }
                 }
             "#]],
         );
@@ -3534,7 +3508,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main(params: String) -> Fragment {
-                  concat(html(tag: "div", attrs: [], children: concat(escape(params))))
+                  html(tag: "div", attrs: [], children: concat(escape(params)))
                 }
             "#]],
         );
@@ -3554,14 +3528,12 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn ToggleComp(enabled: Bool) -> Fragment {
-                  concat(
-                    match enabled {
-                      true => concat(
-                        html(tag: "div", attrs: [], children: concat(raw("Enabled"))),
-                      ),
-                      false => concat(),
-                    },
-                  )
+                  match enabled {
+                    true => concat(
+                      html(tag: "div", attrs: [], children: concat(raw("Enabled"))),
+                    ),
+                    false => concat(),
+                  }
                 }
             "#]],
         );
@@ -3581,14 +3553,10 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn CounterComp(count: Float) -> Fragment {
-                  concat(
-                    match (count == 0) {
-                      true => concat(
-                        html(tag: "div", attrs: [], children: concat(raw("Zero"))),
-                      ),
-                      false => concat(),
-                    },
-                  )
+                  match (count == 0) {
+                    true => concat(html(tag: "div", attrs: [], children: concat(raw("Zero")))),
+                    false => concat(),
+                  }
                 }
             "#]],
         );
@@ -3628,14 +3596,12 @@ mod tests {
                 }
 
                 fn Main(params: main::Params) -> Fragment {
-                  concat(
-                    for item in params.items {
-                      concat(
-                        match item.active {true => concat(), false => concat()},
-                        match item.name {true => concat(), false => concat()},
-                      )
-                    },
-                  )
+                  for item in params.items {
+                    concat(
+                      match item.active {true => concat(), false => concat()},
+                      match item.name {true => concat(), false => concat()},
+                    )
+                  }
                 }
             "#]],
         );
@@ -3655,11 +3621,9 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn ListComp(items: Array[String]) -> Fragment {
-                  concat(
-                    for item in items {
-                      concat(html(tag: "div", attrs: [], children: concat(escape(item))))
-                    },
-                  )
+                  for item in items {
+                    concat(html(tag: "div", attrs: [], children: concat(escape(item))))
+                  }
                 }
             "#]],
         );
@@ -3689,14 +3653,12 @@ mod tests {
                 }
 
                 fn Main(params: main::Params) -> Fragment {
-                  concat(
-                    match (params.x == params.y) {
-                      true => concat(
-                        html(tag: "div", attrs: [], children: concat(raw("Values are equal"))),
-                      ),
-                      false => concat(),
-                    },
-                  )
+                  match (params.x == params.y) {
+                    true => concat(
+                      html(tag: "div", attrs: [], children: concat(raw("Values are equal"))),
+                    ),
+                    false => concat(),
+                  }
                 }
             "#]],
         );
@@ -3734,14 +3696,12 @@ mod tests {
 
                 fn Main(params: Array[main::Item]) -> Fragment {
                   concat(
-                    concat(
-                      for j in params {
-                        concat(match j.a {true => concat(), false => concat()})
-                      },
-                      for j in params {
-                        concat(match j.b {true => concat(), false => concat()})
-                      },
-                    ),
+                    for j in params {
+                      concat(match j.a {true => concat(), false => concat()})
+                    },
+                    for j in params {
+                      concat(match j.b {true => concat(), false => concat()})
+                    },
                   )
                 }
             "#]],
@@ -3763,7 +3723,9 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main(i: Array[Bool]) -> Fragment {
-                  concat(for j in i { concat(match j {true => concat(), false => concat()}) })
+                  for j in i {
+                    concat(match j {true => concat(), false => concat()})
+                  }
                 }
             "#]],
         );
@@ -3787,15 +3749,13 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main(i: Array[Array[Bool]]) -> Fragment {
-                  concat(
-                    for j in i {
-                      concat(
-                        for k in j {
-                          concat(match k {true => concat(raw("ok!")), false => concat()})
-                        },
-                      )
-                    },
-                  )
+                  for j in i {
+                    concat(
+                      for k in j {
+                        concat(match k {true => concat(raw("ok!")), false => concat()})
+                      },
+                    )
+                  }
                 }
             "#]],
         );
@@ -3854,14 +3814,12 @@ mod tests {
                 }
 
                 fn WidgetComp(config: a::bar::Config) -> Fragment {
-                  concat(
-                    match config.enabled {
-                      true => concat(
-                        html(tag: "div", attrs: [], children: concat(escape(config.title))),
-                      ),
-                      false => concat(),
-                    },
-                  )
+                  match config.enabled {
+                    true => concat(
+                      html(tag: "div", attrs: [], children: concat(escape(config.title))),
+                    ),
+                    false => concat(),
+                  }
                 }
 
                 -- foo.hop --
@@ -3870,7 +3828,9 @@ mod tests {
                 }
 
                 fn PanelComp(data: foo::Data) -> Fragment {
-                  concat(for item in data.items { concat(WidgetComp(config: item)) })
+                  for item in data.items {
+                    concat(WidgetComp(config: item))
+                  }
                 }
 
                 -- main.hop --
@@ -3883,7 +3843,7 @@ mod tests {
                 }
 
                 fn Main(settings: main::Settings) -> Fragment {
-                  concat(PanelComp(data: settings.dashboard))
+                  PanelComp(data: settings.dashboard)
                 }
             "#]],
         );
@@ -3997,12 +3957,10 @@ mod tests {
                 }
 
                 fn Main(user: main::User) -> Fragment {
-                  concat(
-                    html(
-                      tag: "a",
-                      attrs: [href: escape(user.url), class: escape(user.theme)],
-                      children: concat(raw("Link")),
-                    ),
+                  html(
+                    tag: "a",
+                    attrs: [href: escape(user.url), class: escape(user.theme)],
+                    children: concat(raw("Link")),
                   )
                 }
             "#]],
@@ -4029,11 +3987,11 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Bar() -> Fragment {
-                  concat(Main(children: concat(raw("Here's the content for the children"))))
+                  Main(children: concat(raw("Here's the content for the children")))
                 }
 
                 fn Main(children: Fragment) -> Fragment {
-                  concat(html(tag: "strong", attrs: [], children: concat(children)))
+                  html(tag: "strong", attrs: [], children: concat(children))
                 }
             "#]],
         );
@@ -4084,14 +4042,12 @@ mod tests {
                 }
 
                 fn Main(user: main::User) -> Fragment {
-                  concat(
-                    match user.is_active {
-                      true => concat(
-                        html(tag: "div", attrs: [], children: concat(raw("User is active"))),
-                      ),
-                      false => concat(),
-                    },
-                  )
+                  match user.is_active {
+                    true => concat(
+                      html(tag: "div", attrs: [], children: concat(raw("User is active"))),
+                    ),
+                    false => concat(),
+                  }
                 }
             "#]],
         );
@@ -4280,15 +4236,13 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn ListItems(items: Array[String]) -> Fragment {
-                  concat(
-                    for item in items {
-                      concat(html(tag: "li", attrs: [], children: concat(escape(item))))
-                    },
-                  )
+                  for item in items {
+                    concat(html(tag: "li", attrs: [], children: concat(escape(item))))
+                  }
                 }
 
                 fn Main() -> Fragment {
-                  concat(ListItems(items: []))
+                  ListItems(items: [])
                 }
             "#]],
         );
@@ -4369,7 +4323,7 @@ mod tests {
                 }
 
                 fn Main() -> Fragment {
-                  concat(concat())
+                  concat()
                 }
             "#]],
         );
@@ -4400,7 +4354,7 @@ mod tests {
                 }
 
                 fn Main() -> Fragment {
-                  concat(concat())
+                  concat()
                 }
             "#]],
         );
@@ -4423,7 +4377,7 @@ mod tests {
                 }
 
                 fn Main(user: main::User) -> Fragment {
-                  concat(html(tag: "div", attrs: [], children: concat(escape(user.name))))
+                  html(tag: "div", attrs: [], children: concat(escape(user.name)))
                 }
             "#]],
         );
@@ -4452,9 +4406,7 @@ mod tests {
                 }
 
                 fn Main(user: main::User) -> Fragment {
-                  concat(
-                    html(tag: "div", attrs: [], children: concat(escape(user.address.city))),
-                  )
+                  html(tag: "div", attrs: [], children: concat(escape(user.address.city)))
                 }
             "#]],
         );
@@ -4530,20 +4482,18 @@ mod tests {
 
                 fn Main(params: main::Params) -> Fragment {
                   concat(
-                    concat(
-                      match params.app.ui.theme.dark {
-                        true => concat(raw("ok!")),
-                        false => concat(),
-                      },
-                      match params.app.api.endpoints.users.enabled {
-                        true => concat(raw("ok!")),
-                        false => concat(),
-                      },
-                      match params.app.database.connection.ssl {
-                        true => concat(raw("ok!")),
-                        false => concat(),
-                      },
-                    ),
+                    match params.app.ui.theme.dark {
+                      true => concat(raw("ok!")),
+                      false => concat(),
+                    },
+                    match params.app.api.endpoints.users.enabled {
+                      true => concat(raw("ok!")),
+                      false => concat(),
+                    },
+                    match params.app.database.connection.ssl {
+                      true => concat(raw("ok!")),
+                      false => concat(),
+                    },
                   )
                 }
             "#]],
@@ -4636,7 +4586,7 @@ mod tests {
                 }
 
                 fn Foo() -> Fragment {
-                  concat(concat())
+                  concat()
                 }
 
                 -- bar.hop --
@@ -4646,14 +4596,12 @@ mod tests {
                 }
 
                 fn Bar(user: bar::User) -> Fragment {
-                  concat(
-                    html(tag: "div", attrs: [], children: concat(escape(user.address.city))),
-                  )
+                  html(tag: "div", attrs: [], children: concat(escape(user.address.city)))
                 }
 
                 -- baz.hop --
                 fn Baz() -> Fragment {
-                  concat(Bar(user: User {name: "Alice", address: Address {city: "NYC"}}))
+                  Bar(user: User {name: "Alice", address: Address {city: "NYC"}})
                 }
             "#]],
         );
@@ -4695,24 +4643,22 @@ mod tests {
                 }
 
                 fn ColorDisplay(color: colors::Color) -> Fragment {
-                  concat(
-                    html(
-                      tag: "div",
-                      attrs: [],
-                      children: concat(
-                        escape(match color {
-                          Color::Red => "red",
-                          Color::Green => "green",
-                          Color::Blue => "blue",
-                        }),
-                      ),
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: concat(
+                      escape(match color {
+                        Color::Red => "red",
+                        Color::Green => "green",
+                        Color::Blue => "blue",
+                      }),
                     ),
                   )
                 }
 
                 -- main.hop --
                 fn Main() -> Fragment {
-                  concat(ColorDisplay(color: Color::Red))
+                  ColorDisplay(color: Color::Red)
                 }
             "#]],
         );
@@ -4856,17 +4802,15 @@ mod tests {
                 }
 
                 fn Main(color: main::Color) -> Fragment {
-                  concat(
-                    html(
-                      tag: "div",
-                      attrs: [],
-                      children: concat(
-                        escape(match color {
-                          Color::Red => "red",
-                          Color::Green => "green",
-                          Color::Blue => "blue",
-                        }),
-                      ),
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: concat(
+                      escape(match color {
+                        Color::Red => "red",
+                        Color::Green => "green",
+                        Color::Blue => "blue",
+                      }),
                     ),
                   )
                 }
@@ -5046,16 +4990,14 @@ mod tests {
                 }
 
                 fn Main(user: main::User) -> Fragment {
-                  concat(
-                    html(
-                      tag: "div",
-                      attrs: [],
-                      children: concat(
-                        escape(match user.status {
-                          Status::Active => "active",
-                          Status::Inactive => "inactive",
-                        }),
-                      ),
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: concat(
+                      escape(match user.status {
+                        Status::Active => "active",
+                        Status::Inactive => "inactive",
+                      }),
                     ),
                   )
                 }
@@ -5091,7 +5033,7 @@ mod tests {
                 }
 
                 fn Main(o: main::Outer) -> Fragment {
-                  concat(html(tag: "div", attrs: [], children: concat(escape(o.inner.value))))
+                  html(tag: "div", attrs: [], children: concat(escape(o.inner.value)))
                 }
             "#]],
         );
@@ -5129,7 +5071,7 @@ mod tests {
                 }
 
                 fn Main(root: main::Folder) -> Fragment {
-                  concat(html(tag: "div", attrs: [], children: concat(escape(root.name))))
+                  html(tag: "div", attrs: [], children: concat(escape(root.name)))
                 }
             "#]],
         );
@@ -5170,16 +5112,14 @@ mod tests {
                 }
 
                 fn Main(t: main::Tree) -> Fragment {
-                  concat(
-                    match t.root {
-                      Node::Leaf => let label = v__1 in concat(escape(label)),
-                      Node::Branch => let children = v__2 in concat(
-                        for _ in children {
-                          concat(raw("..."))
-                        },
-                      ),
-                    },
-                  )
+                  match t.root {
+                    Node::Leaf => let label = v__1 in concat(escape(label)),
+                    Node::Branch => let children = v__2 in concat(
+                      for _ in children {
+                        concat(raw("..."))
+                      },
+                    ),
+                  }
                 }
             "#]],
         );
@@ -5234,11 +5174,11 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Greeting(name: String) -> Fragment {
-                  concat(concat(raw("Hello, "), escape(name), raw("!")))
+                  concat(raw("Hello, "), escape(name), raw("!"))
                 }
 
                 fn Main() -> Fragment {
-                  concat(Greeting(name: "World"))
+                  Greeting(name: "World")
                 }
             "#]],
         );
@@ -5261,11 +5201,11 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Greeting(name: String) -> Fragment {
-                  concat(concat(raw("Hello, "), escape(name), raw("!")))
+                  concat(raw("Hello, "), escape(name), raw("!"))
                 }
 
                 fn Main() -> Fragment {
-                  concat(Greeting(name: "Claude"))
+                  Greeting(name: "Claude")
                 }
             "#]],
         );
@@ -5288,11 +5228,11 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main() -> Fragment {
-                  concat(UserCard(name: "Alice", role: "user"))
+                  UserCard(name: "Alice", role: "user")
                 }
 
                 fn UserCard(name: String, role: String) -> Fragment {
-                  concat(concat(escape(name), raw(" ("), escape(role), raw(")")))
+                  concat(escape(name), raw(" ("), escape(role), raw(")"))
                 }
             "#]],
         );
@@ -5392,11 +5332,13 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn ItemList(items: Array[String]) -> Fragment {
-                  concat(for item in items { concat(escape(item)) })
+                  for item in items {
+                    concat(escape(item))
+                  }
                 }
 
                 fn Main() -> Fragment {
-                  concat(ItemList(items: []))
+                  ItemList(items: [])
                 }
             "#]],
         );
@@ -5423,11 +5365,11 @@ mod tests {
                 }
 
                 fn Main() -> Fragment {
-                  concat(Settings(config: Config {name: "default", enabled: true}))
+                  Settings(config: Config {name: "default", enabled: true})
                 }
 
                 fn Settings(config: main::Config) -> Fragment {
-                  concat(escape(config.name))
+                  escape(config.name)
                 }
             "#]],
         );
@@ -5458,17 +5400,15 @@ mod tests {
                 }
 
                 fn Badge(status: main::Status) -> Fragment {
-                  concat(
-                    escape(match status {
-                      Status::Active => "active",
-                      Status::Inactive => "not active",
-                      Status::Pending => "not active",
-                    }),
-                  )
+                  escape(match status {
+                    Status::Active => "active",
+                    Status::Inactive => "not active",
+                    Status::Pending => "not active",
+                  })
                 }
 
                 fn Main() -> Fragment {
-                  concat(Badge(status: Status::Active {since: 2000}))
+                  Badge(status: Status::Active {since: 2000})
                 }
             "#]],
         );
@@ -5489,11 +5429,11 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Greeting(name: Option[String]) -> Fragment {
-                  concat(match name.is_none() {true => concat(), false => concat()})
+                  match name.is_none() {true => concat(), false => concat()}
                 }
 
                 fn Main() -> Fragment {
-                  concat(Greeting(name: Some("World")))
+                  Greeting(name: Some("World"))
                 }
             "#]],
         );
@@ -5514,11 +5454,11 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Greeting(name: Option[String]) -> Fragment {
-                  concat(match name.is_none() {true => concat(), false => concat()})
+                  match name.is_none() {true => concat(), false => concat()}
                 }
 
                 fn Main() -> Fragment {
-                  concat(Greeting(name: None))
+                  Greeting(name: None)
                 }
             "#]],
         );
@@ -5539,11 +5479,11 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Greeting(name: Option[String]) -> Fragment {
-                  concat(match name.is_none() {true => concat(), false => concat()})
+                  match name.is_none() {true => concat(), false => concat()}
                 }
 
                 fn Main() -> Fragment {
-                  concat(Greeting(name: None))
+                  Greeting(name: None)
                 }
             "#]],
         );
@@ -5564,11 +5504,11 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Greeting(name: Option[String]) -> Fragment {
-                  concat(match name.is_none() {true => concat(), false => concat()})
+                  match name.is_none() {true => concat(), false => concat()}
                 }
 
                 fn Main() -> Fragment {
-                  concat(Greeting(name: Some("World")))
+                  Greeting(name: Some("World"))
                 }
             "#]],
         );
@@ -5615,12 +5555,10 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main(x: Option[String]) -> Fragment {
-                  concat(
-                    match x {
-                      Some(v__1) => let y = v__1 in concat(raw("found "), escape(y)),
-                      None => concat(raw("nothing")),
-                    },
-                  )
+                  match x {
+                    Some(v__1) => let y = v__1 in concat(raw("found "), escape(y)),
+                    None => concat(raw("nothing")),
+                  }
                 }
             "#]],
         );
@@ -5649,13 +5587,11 @@ mod tests {
                 }
 
                 fn Main(c: main::Color) -> Fragment {
-                  concat(
-                    match c {
-                      Color::Red => concat(raw("red")),
-                      Color::Green => concat(raw("green")),
-                      Color::Blue => concat(raw("blue")),
-                    },
-                  )
+                  match c {
+                    Color::Red => concat(raw("red")),
+                    Color::Green => concat(raw("green")),
+                    Color::Blue => concat(raw("blue")),
+                  }
                 }
             "#]],
         );
@@ -5686,12 +5622,10 @@ mod tests {
                 }
 
                 fn Main() -> Fragment {
-                  concat(
-                    match Status::Active {name: "test"} {
-                      Status::Active => let n = v__1 in concat(escape(n)),
-                      Status::Inactive => concat(raw("none")),
-                    },
-                  )
+                  match Status::Active {name: "test"} {
+                    Status::Active => let n = v__1 in concat(escape(n)),
+                    Status::Inactive => concat(raw("none")),
+                  }
                 }
             "#]],
         );
@@ -5712,7 +5646,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main(flag: Bool) -> Fragment {
-                  concat(match flag {true => concat(raw("yes")), false => concat(raw("no"))})
+                  match flag {true => concat(raw("yes")), false => concat(raw("no"))}
                 }
             "#]],
         );
@@ -5758,14 +5692,12 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main(x: Option[String]) -> Fragment {
-                  concat(
-                    match x {
-                      Some(v__1) => let name = v__1 in concat(
-                        html(tag: "div", attrs: [class: escape(name)], children: concat()),
-                      ),
-                      None => concat(raw("nothing")),
-                    },
-                  )
+                  match x {
+                    Some(v__1) => let name = v__1 in concat(
+                      html(tag: "div", attrs: [class: escape(name)], children: concat()),
+                    ),
+                    None => concat(raw("nothing")),
+                  }
                 }
             "#]],
         );
@@ -6053,17 +5985,15 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main(x: Option[Option[String]]) -> Fragment {
-                  concat(
-                    match x {
-                      Some(v__1) => let inner = v__1 in concat(
-                        match inner {
-                          Some(v__3) => let s = v__3 in concat(escape(s)),
-                          None => concat(raw("inner none")),
-                        },
-                      ),
-                      None => concat(raw("outer none")),
-                    },
-                  )
+                  match x {
+                    Some(v__1) => let inner = v__1 in concat(
+                      match inner {
+                        Some(v__3) => let s = v__3 in concat(escape(s)),
+                        None => concat(raw("inner none")),
+                      },
+                    ),
+                    None => concat(raw("outer none")),
+                  }
                 }
             "#]],
         );
@@ -6086,16 +6016,14 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main(items: Array[Option[String]]) -> Fragment {
-                  concat(
-                    for item in items {
-                      concat(
-                        match item {
-                          Some(v__1) => let s = v__1 in concat(escape(s)),
-                          None => concat(raw("-")),
-                        },
-                      )
-                    },
-                  )
+                  for item in items {
+                    concat(
+                      match item {
+                        Some(v__1) => let s = v__1 in concat(escape(s)),
+                        None => concat(raw("-")),
+                      },
+                    )
+                  }
                 }
             "#]],
         );
@@ -6120,12 +6048,10 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main(x: Option[String]) -> Fragment {
-                  concat(
-                    match x {
-                      Some(_) => concat(raw("found something")),
-                      None => concat(raw("nothing")),
-                    },
-                  )
+                  match x {
+                    Some(_) => concat(raw("found something")),
+                    None => concat(raw("nothing")),
+                  }
                 }
             "#]],
         );
@@ -6151,19 +6077,17 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main(r1: Option[String], r2: Option[Bool]) -> Fragment {
-                  concat(
-                    match r1 {
-                      Some(v__1) => let bound = v__1 in concat(escape(bound)),
-                      None => concat(
-                        match r2 {
-                          Some(v__3) => let bound = v__3 in concat(
-                            match bound {true => concat(raw("yes")), false => concat()},
-                          ),
-                          None => concat(raw("both none")),
-                        },
-                      ),
-                    },
-                  )
+                  match r1 {
+                    Some(v__1) => let bound = v__1 in concat(escape(bound)),
+                    None => concat(
+                      match r2 {
+                        Some(v__3) => let bound = v__3 in concat(
+                          match bound {true => concat(raw("yes")), false => concat()},
+                        ),
+                        None => concat(raw("both none")),
+                      },
+                    ),
+                  }
                 }
             "#]],
         );
@@ -6189,12 +6113,10 @@ mod tests {
                 }
 
                 fn Main(user: main::User) -> Fragment {
-                  concat(
-                    match user.name {
-                      Some(v__1) => let n = v__1 in concat(escape(n)),
-                      None => concat(raw("anonymous")),
-                    },
-                  )
+                  match user.name {
+                    Some(v__1) => let n = v__1 in concat(escape(n)),
+                    None => concat(raw("anonymous")),
+                  }
                 }
             "#]],
         );
@@ -6238,17 +6160,15 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main(show: Bool, x: Option[String]) -> Fragment {
-                  concat(
-                    match show {
-                      true => concat(
-                        match x {
-                          Some(v__1) => let v = v__1 in concat(escape(v)),
-                          None => concat(raw("none")),
-                        },
-                      ),
-                      false => concat(),
-                    },
-                  )
+                  match show {
+                    true => concat(
+                      match x {
+                        Some(v__1) => let v = v__1 in concat(escape(v)),
+                        None => concat(raw("none")),
+                      },
+                    ),
+                    false => concat(),
+                  }
                 }
             "#]],
         );
@@ -6271,20 +6191,18 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main(x: Option[String]) -> Fragment {
-                  concat(
-                    html(
-                      tag: "div",
-                      attrs: [],
-                      children: concat(
-                        match x {
-                          Some(v__1) => let v = v__1 in concat(
-                            html(tag: "span", attrs: [], children: concat(escape(v))),
-                          ),
-                          None => concat(
-                            html(tag: "span", attrs: [], children: concat(raw("none"))),
-                          ),
-                        },
-                      ),
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: concat(
+                      match x {
+                        Some(v__1) => let v = v__1 in concat(
+                          html(tag: "span", attrs: [], children: concat(escape(v))),
+                        ),
+                        None => concat(
+                          html(tag: "span", attrs: [], children: concat(raw("none"))),
+                        ),
+                      },
                     ),
                   )
                 }
@@ -6550,7 +6468,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main() -> Fragment {
-                  concat(html(tag: "my-widget", attrs: [foo: raw("x")], children: concat()))
+                  html(tag: "my-widget", attrs: [foo: raw("x")], children: concat())
                 }
             "#]],
         );
@@ -6587,7 +6505,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main() -> Fragment {
-                  concat(html(tag: "a", attrs: [href: raw("/")], children: concat(raw("link"))))
+                  html(tag: "a", attrs: [href: raw("/")], children: concat(raw("link")))
                 }
             "#]],
         );
@@ -6632,13 +6550,11 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Btn(children: Fragment, rest: Attrs) -> Fragment {
-                  concat(
-                    html(tag: "button", attrs: concat([], rest), children: concat(children)),
-                  )
+                  html(tag: "button", attrs: concat([], rest), children: concat(children))
                 }
 
                 fn Main() -> Fragment {
-                  concat(Btn(children: concat(raw("click")), rest: [disabled]))
+                  Btn(children: concat(raw("click")), rest: [disabled])
                 }
             "#]],
         );
@@ -6656,12 +6572,10 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main() -> Fragment {
-                  concat(
-                    html(
-                      tag: "div",
-                      attrs: [data-x: raw("1"), aria-label: raw("hello")],
-                      children: concat(),
-                    ),
+                  html(
+                    tag: "div",
+                    attrs: [data-x: raw("1"), aria-label: raw("hello")],
+                    children: concat(),
                   )
                 }
             "#]],
@@ -6680,13 +6594,11 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main() -> Fragment {
-                  concat(
-                    html(
-                      tag: "svg",
-                      attrs: [viewBox: raw("0 0 10 10")],
-                      children: concat(
-                        html(tag: "path", attrs: [d: raw("M0 0 L10 10")], children: concat()),
-                      ),
+                  html(
+                    tag: "svg",
+                    attrs: [viewBox: raw("0 0 10 10")],
+                    children: concat(
+                      html(tag: "path", attrs: [d: raw("M0 0 L10 10")], children: concat()),
                     ),
                   )
                 }
@@ -6729,14 +6641,8 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main() -> Fragment {
-                  concat(
-                    let name = "World" in concat(
-                      html(
-                        tag: "div",
-                        attrs: [],
-                        children: concat(raw("Hello "), escape(name)),
-                      ),
-                    ),
+                  let name = "World" in concat(
+                    html(tag: "div", attrs: [], children: concat(raw("Hello "), escape(name))),
                   )
                 }
             "#]],
@@ -6757,10 +6663,8 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main() -> Fragment {
-                  concat(
-                    let name = "World" in concat(
-                      html(tag: "div", attrs: [], children: concat(escape(name))),
-                    ),
+                  let name = "World" in concat(
+                    html(tag: "div", attrs: [], children: concat(escape(name))),
                   )
                 }
             "#]],
@@ -6781,10 +6685,8 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main() -> Fragment {
-                  concat(
-                    let count = 42 in concat(
-                      html(tag: "div", attrs: [], children: concat(escape(count.to_string()))),
-                    ),
+                  let count = 42 in concat(
+                    html(tag: "div", attrs: [], children: concat(escape(count.to_string()))),
                   )
                 }
             "#]],
@@ -6805,13 +6707,11 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main() -> Fragment {
-                  concat(
-                    let price = 2.5 in concat(
-                      html(
-                        tag: "div",
-                        attrs: [],
-                        children: concat(escape(price.to_int().to_string())),
-                      ),
+                  let price = 2.5 in concat(
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: concat(escape(price.to_int().to_string())),
                     ),
                   )
                 }
@@ -6833,13 +6733,11 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main() -> Fragment {
-                  concat(
-                    let items = [1, 2, 3] in concat(
-                      html(
-                        tag: "div",
-                        attrs: [],
-                        children: concat(escape(items.len().to_string())),
-                      ),
+                  let items = [1, 2, 3] in concat(
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: concat(escape(items.len().to_string())),
                     ),
                   )
                 }
@@ -6867,10 +6765,8 @@ mod tests {
                 }
 
                 fn Main() -> Fragment {
-                  concat(
-                    let user = User {name: "Alice", age: 30} in concat(
-                      html(tag: "div", attrs: [], children: concat(escape(user.name))),
-                    ),
+                  let user = User {name: "Alice", age: 30} in concat(
+                    html(tag: "div", attrs: [], children: concat(escape(user.name))),
                   )
                 }
             "#]],
@@ -6897,10 +6793,8 @@ mod tests {
                 }
 
                 fn Main(user: main::User) -> Fragment {
-                  concat(
-                    let updated = User {name: "Jane", age: user.age} in concat(
-                      html(tag: "div", attrs: [], children: concat(escape(updated.name))),
-                    ),
+                  let updated = User {name: "Jane", age: user.age} in concat(
+                    html(tag: "div", attrs: [], children: concat(escape(updated.name))),
                   )
                 }
             "#]],
@@ -6932,14 +6826,10 @@ mod tests {
                 }
 
                 fn Main(app: main::App) -> Fragment {
-                  concat(
-                    let next = let v__0 = app.state in State {
-                      query: v__0.query,
-                      num: 1,
-                    } in concat(
-                      html(tag: "div", attrs: [], children: concat(escape(next.query))),
-                    ),
-                  )
+                  let next = let v__0 = app.state in State {
+                    query: v__0.query,
+                    num: 1,
+                  } in concat(html(tag: "div", attrs: [], children: concat(escape(next.query))))
                 }
             "#]],
         );
@@ -6965,10 +6855,8 @@ mod tests {
                 }
 
                 fn Main(user: main::User) -> Fragment {
-                  concat(
-                    let updated = User {name: "Jane", age: 30} in concat(
-                      html(tag: "div", attrs: [], children: concat(escape(updated.name))),
-                    ),
+                  let updated = User {name: "Jane", age: 30} in concat(
+                    html(tag: "div", attrs: [], children: concat(escape(updated.name))),
                   )
                 }
             "#]],
@@ -7018,13 +6906,11 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main() -> Fragment {
-                  concat(
-                    let first = "Hello" in let second = "World" in concat(
-                      html(
-                        tag: "div",
-                        attrs: [],
-                        children: concat(escape(first), escape(second)),
-                      ),
+                  let first = "Hello" in let second = "World" in concat(
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: concat(escape(first), escape(second)),
                     ),
                   )
                 }
@@ -7046,10 +6932,8 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main() -> Fragment {
-                  concat(
-                    let greeting = "Hello" in let shout = greeting in concat(
-                      html(tag: "div", attrs: [], children: concat(escape(shout))),
-                    ),
+                  let greeting = "Hello" in let shout = greeting in concat(
+                    html(tag: "div", attrs: [], children: concat(escape(shout))),
                   )
                 }
             "#]],
@@ -7204,13 +7088,11 @@ mod tests {
                 -- main.hop --
                 fn Main() -> Fragment {
                   concat(
-                    concat(
-                      let name = "First" in concat(
-                        html(tag: "div", attrs: [], children: concat(escape(name))),
-                      ),
-                      let name = "Second" in concat(
-                        html(tag: "div", attrs: [], children: concat(escape(name))),
-                      ),
+                    let name = "First" in concat(
+                      html(tag: "div", attrs: [], children: concat(escape(name))),
+                    ),
+                    let name = "Second" in concat(
+                      html(tag: "div", attrs: [], children: concat(escape(name))),
                     ),
                   )
                 }
@@ -7253,13 +7135,11 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main() -> Fragment {
-                  concat(
-                    let first = "Hello" in let second = "World" in concat(
-                      html(
-                        tag: "div",
-                        attrs: [],
-                        children: concat(escape(first), raw(" "), escape(second)),
-                      ),
+                  let first = "Hello" in let second = "World" in concat(
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: concat(escape(first), raw(" "), escape(second)),
                     ),
                   )
                 }
@@ -7323,10 +7203,8 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main() -> Fragment {
-                  concat(
-                    let greeting = "Hello" in let message = greeting in concat(
-                      html(tag: "div", attrs: [], children: concat(escape(message))),
-                    ),
+                  let greeting = "Hello" in let message = greeting in concat(
+                    html(tag: "div", attrs: [], children: concat(escape(message))),
                   )
                 }
             "#]],
@@ -7349,15 +7227,13 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main() -> Fragment {
-                  concat(
-                    let x = 0 in let y = (x + 1) in let z = (y + 2) in concat(
-                      match (z == 3) {
-                        true => concat(
-                          html(tag: "div", attrs: [], children: concat(raw("correct"))),
-                        ),
-                        false => concat(),
-                      },
-                    ),
+                  let x = 0 in let y = (x + 1) in let z = (y + 2) in concat(
+                    match (z == 3) {
+                      true => concat(
+                        html(tag: "div", attrs: [], children: concat(raw("correct"))),
+                      ),
+                      false => concat(),
+                    },
                   )
                 }
             "#]],
@@ -7406,7 +7282,7 @@ mod tests {
                 -- main.hop --
                 page Main() {
                   body {
-                    concat(html(tag: "div", attrs: [], children: concat(raw("Hello"))))
+                    html(tag: "div", attrs: [], children: concat(raw("Hello")))
                   }
                 }
             "#]],
@@ -7482,12 +7358,10 @@ mod tests {
                 -- main.hop --
                 page Main(name: String) {
                   body {
-                    concat(
-                      html(
-                        tag: "div",
-                        attrs: [],
-                        children: concat(raw("Hello, "), escape(name), raw("!")),
-                      ),
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: concat(raw("Hello, "), escape(name), raw("!")),
                     )
                   }
                 }
@@ -7508,17 +7382,15 @@ mod tests {
                 -- main.hop --
                 page Main(name: String, age: Int) {
                   body {
-                    concat(
-                      html(
-                        tag: "div",
-                        attrs: [],
-                        children: concat(
-                          raw("Hello, "),
-                          escape(name),
-                          raw("! You are "),
-                          escape(age.to_string()),
-                          raw(" years old."),
-                        ),
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: concat(
+                        raw("Hello, "),
+                        escape(name),
+                        raw("! You are "),
+                        escape(age.to_string()),
+                        raw(" years old."),
                       ),
                     )
                   }
@@ -7544,17 +7416,15 @@ mod tests {
                 -- main.hop --
                 page Main(name: String) {
                   body {
-                    concat(Greeting(name: name))
+                    Greeting(name: name)
                   }
                 }
 
                 fn Greeting(name: String) -> Fragment {
-                  concat(
-                    html(
-                      tag: "div",
-                      attrs: [],
-                      children: concat(raw("Hello, "), escape(name), raw("!")),
-                    ),
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: concat(raw("Hello, "), escape(name), raw("!")),
                   )
                 }
             "#]],
@@ -7636,7 +7506,7 @@ mod tests {
                 }
 
                 fn Main() -> Fragment {
-                  concat(concat())
+                  concat()
                 }
             "#]],
         );
@@ -7662,7 +7532,7 @@ mod tests {
                 }
 
                 fn Main() -> Fragment {
-                  concat(concat())
+                  concat()
                 }
             "#]],
         );
@@ -7686,7 +7556,7 @@ mod tests {
                 }
 
                 fn Main() -> Fragment {
-                  concat(concat())
+                  concat()
                 }
             "#]],
         );
@@ -7752,7 +7622,7 @@ mod tests {
                 }
 
                 fn Main() -> Fragment {
-                  concat(concat())
+                  concat()
                 }
             "#]],
         );
@@ -7833,9 +7703,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Foo(rest: Attrs) -> Fragment {
-                  concat(
-                    html(tag: "div", attrs: concat([], rest), children: concat(Foo(rest: []))),
-                  )
+                  html(tag: "div", attrs: concat([], rest), children: concat(Foo(rest: [])))
                 }
             "#]],
         );
@@ -8000,23 +7868,19 @@ mod tests {
                 -- main.hop --
                 page Main() {
                   body {
-                    concat(
-                      Button(
-                        class: "p-2",
-                        children: concat(raw("Hi")),
-                        rest: [data-foo: raw("bar")],
-                      ),
+                    Button(
+                      class: "p-2",
+                      children: concat(raw("Hi")),
+                      rest: [data-foo: raw("bar")],
                     )
                   }
                 }
 
                 fn Button(class: String, children: Fragment, rest: Attrs) -> Fragment {
-                  concat(
-                    html(
-                      tag: "button",
-                      attrs: concat([class: escape(class)], rest),
-                      children: concat(children),
-                    ),
+                  html(
+                    tag: "button",
+                    attrs: concat([class: escape(class)], rest),
+                    children: concat(children),
                   )
                 }
             "#]],
@@ -8039,17 +7903,15 @@ mod tests {
                 -- main.hop --
                 page Main() {
                   body {
-                    concat(Button(children: concat(raw("Hi")), rest: [data-x: raw("y")]))
+                    Button(children: concat(raw("Hi")), rest: [data-x: raw("y")])
                   }
                 }
 
                 fn Button(children: Fragment, rest: Attrs) -> Fragment {
-                  concat(
-                    html(
-                      tag: "button",
-                      attrs: concat([class: raw("builtin")], rest),
-                      children: concat(children),
-                    ),
+                  html(
+                    tag: "button",
+                    attrs: concat([class: raw("builtin")], rest),
+                    children: concat(children),
                   )
                 }
             "#]],
@@ -8116,12 +7978,12 @@ mod tests {
                 -- main.hop --
                 page Main() {
                   body {
-                    concat(Svg(rest: [viewBox: raw("0 0 100 100")]))
+                    Svg(rest: [viewBox: raw("0 0 100 100")])
                   }
                 }
 
                 fn Svg(rest: Attrs) -> Fragment {
-                  concat(html(tag: "svg", attrs: concat([], rest), children: concat()))
+                  html(tag: "svg", attrs: concat([], rest), children: concat())
                 }
             "#]],
         );
@@ -8146,16 +8008,16 @@ mod tests {
                 -- main.hop --
                 page Main() {
                   body {
-                    concat(Wrapper(title: "hi", rest: []))
+                    Wrapper(title: "hi", rest: [])
                   }
                 }
 
                 fn Card(title: String) -> Fragment {
-                  concat(html(tag: "div", attrs: [], children: concat(escape(title))))
+                  html(tag: "div", attrs: [], children: concat(escape(title)))
                 }
 
                 fn Wrapper(title: String, rest: Attrs) -> Fragment {
-                  concat(Card(title: title))
+                  Card(title: title)
                 }
             "#]],
         );
@@ -8180,16 +8042,16 @@ mod tests {
                 -- main.hop --
                 page Main() {
                   body {
-                    concat(Wrapper(rest: []))
+                    Wrapper(rest: [])
                   }
                 }
 
                 fn Card(title: String) -> Fragment {
-                  concat(html(tag: "div", attrs: [], children: concat(escape(title))))
+                  html(tag: "div", attrs: [], children: concat(escape(title)))
                 }
 
                 fn Wrapper(rest: Attrs) -> Fragment {
-                  concat(Card(title: "explicit"))
+                  Card(title: "explicit")
                 }
             "#]],
         );
@@ -8295,16 +8157,16 @@ mod tests {
                 -- main.hop --
                 page Main() {
                   body {
-                    concat(Wrapper(x: 1, rest: []))
+                    Wrapper(x: 1, rest: [])
                   }
                 }
 
                 fn Tree(x: Int) -> Fragment {
-                  concat(html(tag: "div", attrs: [], children: concat(Tree(x: x))))
+                  html(tag: "div", attrs: [], children: concat(Tree(x: x)))
                 }
 
                 fn Wrapper(x: Int, rest: Attrs) -> Fragment {
-                  concat(Tree(x: x))
+                  Tree(x: x)
                 }
             "#]],
         );
@@ -8335,15 +8197,15 @@ mod tests {
                 }
 
                 fn Card(user: main::User) -> Fragment {
-                  concat(html(tag: "div", attrs: [], children: concat(escape(user.name))))
+                  html(tag: "div", attrs: [], children: concat(escape(user.name)))
                 }
 
                 fn Page(user: main::User) -> Fragment {
-                  concat(Wrapper(user: user, rest: []))
+                  Wrapper(user: user, rest: [])
                 }
 
                 fn Wrapper(user: main::User, rest: Attrs) -> Fragment {
-                  concat(Card(user: user))
+                  Card(user: user)
                 }
             "#]],
         );
@@ -8374,26 +8236,24 @@ mod tests {
                 -- main.hop --
                 page Main() {
                   body {
-                    concat(Baz(name: "n", title: "t", rest: []))
+                    Baz(name: "n", title: "t", rest: [])
                   }
                 }
 
                 fn Bar(name: String, title: String, rest: Attrs) -> Fragment {
-                  concat(
-                    html(
-                      tag: "div",
-                      attrs: [],
-                      children: concat(escape(name), Card(title: title)),
-                    ),
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: concat(escape(name), Card(title: title)),
                   )
                 }
 
                 fn Baz(name: String, title: String, rest: Attrs) -> Fragment {
-                  concat(Bar(name: name, title: title, rest: concat([], rest)))
+                  Bar(name: name, title: title, rest: concat([], rest))
                 }
 
                 fn Card(title: String) -> Fragment {
-                  concat(html(tag: "div", attrs: [], children: concat(escape(title))))
+                  html(tag: "div", attrs: [], children: concat(escape(title)))
                 }
             "#]],
         );
@@ -8476,23 +8336,21 @@ mod tests {
                 -- main.hop --
                 page Main() {
                   body {
-                    concat(Wrapper(count: 3, rest: []))
+                    Wrapper(count: 3, rest: [])
                   }
                 }
 
                 fn Card(count: Int) -> Fragment {
-                  concat(
-                    match (count > 0) {
-                      true => concat(
-                        html(tag: "div", attrs: [], children: concat(raw("positive"))),
-                      ),
-                      false => concat(),
-                    },
-                  )
+                  match (count > 0) {
+                    true => concat(
+                      html(tag: "div", attrs: [], children: concat(raw("positive"))),
+                    ),
+                    false => concat(),
+                  }
                 }
 
                 fn Wrapper(count: Int, rest: Attrs) -> Fragment {
-                  concat(Card(count: count))
+                  Card(count: count)
                 }
             "#]],
         );
@@ -8521,24 +8379,22 @@ mod tests {
                 -- main.hop --
                 page Main() {
                   body {
-                    concat(B(count: 3, rest: [data-foo: raw("bar")]))
+                    B(count: 3, rest: [data-foo: raw("bar")])
                   }
                 }
 
                 fn A(count: Int, rest: Attrs) -> Fragment {
-                  concat(
-                    html(
-                      tag: "div",
-                      attrs: concat([], rest),
-                      children: concat(
-                        match (count > 0) {true => concat(raw("positive")), false => concat()},
-                      ),
+                  html(
+                    tag: "div",
+                    attrs: concat([], rest),
+                    children: concat(
+                      match (count > 0) {true => concat(raw("positive")), false => concat()},
                     ),
                   )
                 }
 
                 fn B(count: Int, rest: Attrs) -> Fragment {
-                  concat(A(count: count, rest: concat([], rest)))
+                  A(count: count, rest: concat([], rest))
                 }
             "#]],
         );
@@ -8644,20 +8500,20 @@ mod tests {
                 -- main.hop --
                 page Main() {
                   body {
-                    concat(Baz(children: concat(raw("deep")), rest: []))
+                    Baz(children: concat(raw("deep")), rest: [])
                   }
                 }
 
                 fn Bar(children: Fragment, rest: Attrs) -> Fragment {
-                  concat(Foo(children: children))
+                  Foo(children: children)
                 }
 
                 fn Baz(children: Fragment, rest: Attrs) -> Fragment {
-                  concat(Bar(children: children, rest: concat([], rest)))
+                  Bar(children: children, rest: concat([], rest))
                 }
 
                 fn Foo(children: Fragment) -> Fragment {
-                  concat(html(tag: "div", attrs: [], children: concat(children)))
+                  html(tag: "div", attrs: [], children: concat(children))
                 }
             "#]],
         );
@@ -8709,27 +8565,23 @@ mod tests {
                 -- main.hop --
                 page Main() {
                   body {
-                    concat(Outer(class: "x", rest: []))
+                    Outer(class: "x", rest: [])
                   }
                 }
 
                 fn Inner(class: String, rest: Attrs) -> Fragment {
-                  concat(
-                    html(
-                      tag: "span",
-                      attrs: concat([class: escape(class)], rest),
-                      children: concat(),
-                    ),
+                  html(
+                    tag: "span",
+                    attrs: concat([class: escape(class)], rest),
+                    children: concat(),
                   )
                 }
 
                 fn Outer(class: String, rest: Attrs) -> Fragment {
-                  concat(
-                    html(
-                      tag: "div",
-                      attrs: [class: escape(class)],
-                      children: concat(Inner(class: "x", rest: concat([], rest))),
-                    ),
+                  html(
+                    tag: "div",
+                    attrs: [class: escape(class)],
+                    children: concat(Inner(class: "x", rest: concat([], rest))),
                   )
                 }
             "#]],
@@ -8759,21 +8611,19 @@ mod tests {
                 -- main.hop --
                 page Main() {
                   body {
-                    concat(Button(children: concat(raw("click")), class: "primary", rest: []))
+                    Button(children: concat(raw("click")), class: "primary", rest: [])
                   }
                 }
 
                 fn Button(children: Fragment, class: String, rest: Attrs) -> Fragment {
-                  concat(Foo(children: concat(children), class: class, rest: concat([], rest)))
+                  Foo(children: concat(children), class: class, rest: concat([], rest))
                 }
 
                 fn Foo(children: Fragment, class: String, rest: Attrs) -> Fragment {
-                  concat(
-                    html(
-                      tag: "div",
-                      attrs: concat([class: escape(class)], rest),
-                      children: concat(children),
-                    ),
+                  html(
+                    tag: "div",
+                    attrs: concat([class: escape(class)], rest),
+                    children: concat(children),
                   )
                 }
             "#]],
@@ -8799,22 +8649,20 @@ mod tests {
                 -- main.hop --
                 page Main() {
                   body {
-                    concat(Wrapper(class: "y", rest: []))
+                    Wrapper(class: "y", rest: [])
                   }
                 }
 
                 fn Inner(class: String, rest: Attrs) -> Fragment {
-                  concat(
-                    html(
-                      tag: "span",
-                      attrs: concat([class: escape(class)], rest),
-                      children: concat(),
-                    ),
+                  html(
+                    tag: "span",
+                    attrs: concat([class: escape(class)], rest),
+                    children: concat(),
                   )
                 }
 
                 fn Wrapper(class: String, rest: Attrs) -> Fragment {
-                  concat(Inner(class: class, rest: concat([], rest)))
+                  Inner(class: class, rest: concat([], rest))
                 }
             "#]],
         );
@@ -8839,22 +8687,20 @@ mod tests {
                 -- main.hop --
                 page Main() {
                   body {
-                    concat(B(class: "main", rest: []))
+                    B(class: "main", rest: [])
                   }
                 }
 
                 fn A(class: String, rest: Attrs) -> Fragment {
-                  concat(
-                    html(
-                      tag: "div",
-                      attrs: concat([class: escape(class)], rest),
-                      children: concat(),
-                    ),
+                  html(
+                    tag: "div",
+                    attrs: concat([class: escape(class)], rest),
+                    children: concat(),
                   )
                 }
 
                 fn B(class: String, rest: Attrs) -> Fragment {
-                  concat(A(class: class, rest: concat([], rest)))
+                  A(class: class, rest: concat([], rest))
                 }
             "#]],
         );
@@ -8879,22 +8725,20 @@ mod tests {
                 -- main.hop --
                 page Main() {
                   body {
-                    concat(B(class: "b", rest: []))
+                    B(class: "b", rest: [])
                   }
                 }
 
                 fn A(class: String, rest: Attrs) -> Fragment {
-                  concat(
-                    html(
-                      tag: "div",
-                      attrs: concat([class: escape(class)], rest),
-                      children: concat(),
-                    ),
+                  html(
+                    tag: "div",
+                    attrs: concat([class: escape(class)], rest),
+                    children: concat(),
                   )
                 }
 
                 fn B(class: String, rest: Attrs) -> Fragment {
-                  concat(A(class: class, rest: concat([], rest)))
+                  A(class: class, rest: concat([], rest))
                 }
             "#]],
         );
@@ -8919,18 +8763,16 @@ mod tests {
                 -- main.hop --
                 page Main() {
                   body {
-                    concat(B(label: "x", rest: []))
+                    B(label: "x", rest: [])
                   }
                 }
 
                 fn A(label: String, rest: Attrs) -> Fragment {
-                  concat(
-                    html(tag: "span", attrs: concat([], rest), children: concat(escape(label))),
-                  )
+                  html(tag: "span", attrs: concat([], rest), children: concat(escape(label)))
                 }
 
                 fn B(label: String, rest: Attrs) -> Fragment {
-                  concat(A(label: label, rest: concat([], rest)))
+                  A(label: label, rest: concat([], rest))
                 }
             "#]],
         );
@@ -8958,22 +8800,20 @@ mod tests {
                 -- main.hop --
                 page Main() {
                   body {
-                    concat(Top(label: "x", rest: []))
+                    Top(label: "x", rest: [])
                   }
                 }
 
                 fn Leaf(label: String, rest: Attrs) -> Fragment {
-                  concat(
-                    html(tag: "span", attrs: concat([], rest), children: concat(escape(label))),
-                  )
+                  html(tag: "span", attrs: concat([], rest), children: concat(escape(label)))
                 }
 
                 fn Mid(label: String, rest: Attrs) -> Fragment {
-                  concat(Leaf(label: label, rest: concat([], rest)))
+                  Leaf(label: label, rest: concat([], rest))
                 }
 
                 fn Top(label: String, rest: Attrs) -> Fragment {
-                  concat(Mid(label: label, rest: concat([], rest)))
+                  Mid(label: label, rest: concat([], rest))
                 }
             "#]],
         );
@@ -9048,16 +8888,16 @@ mod tests {
                 -- main.hop --
                 page Main() {
                   body {
-                    concat(Wrapper(rest: [lang: raw("en")]))
+                    Wrapper(rest: [lang: raw("en")])
                   }
                 }
 
                 fn Inner(rest: Attrs) -> Fragment {
-                  concat(html(tag: "span", attrs: concat([], rest), children: concat()))
+                  html(tag: "span", attrs: concat([], rest), children: concat())
                 }
 
                 fn Wrapper(rest: Attrs) -> Fragment {
-                  concat(Inner(rest: concat([title: raw("a")], rest)))
+                  Inner(rest: concat([title: raw("a")], rest))
                 }
             "#]],
         );
@@ -9139,27 +8979,25 @@ mod tests {
                 -- main.hop --
                 page Main() {
                   body {
-                    concat(B(tabindex: 2, rest: [data-x: raw("y")]))
+                    B(tabindex: 2, rest: [data-x: raw("y")])
                   }
                 }
 
                 fn A(tabindex: Int, rest: Attrs) -> Fragment {
-                  concat(
-                    html(
-                      tag: "div",
-                      attrs: concat([], rest),
-                      children: concat(
-                        match (tabindex > 0) {
-                          true => concat(raw("focusable")),
-                          false => concat(),
-                        },
-                      ),
+                  html(
+                    tag: "div",
+                    attrs: concat([], rest),
+                    children: concat(
+                      match (tabindex > 0) {
+                        true => concat(raw("focusable")),
+                        false => concat(),
+                      },
                     ),
                   )
                 }
 
                 fn B(tabindex: Int, rest: Attrs) -> Fragment {
-                  concat(A(tabindex: tabindex, rest: concat([], rest)))
+                  A(tabindex: tabindex, rest: concat([], rest))
                 }
             "#]],
         );
@@ -9185,11 +9023,11 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Ping(n: Int) -> Fragment {
-                  concat(match (n > 0) {true => concat(Pong(n: (n - 1))), false => concat()})
+                  match (n > 0) {true => concat(Pong(n: (n - 1))), false => concat()}
                 }
 
                 fn Pong(n: Int) -> Fragment {
-                  concat(match (n > 0) {true => concat(Ping(n: (n - 1))), false => concat()})
+                  match (n > 0) {true => concat(Ping(n: (n - 1))), false => concat()}
                 }
             "#]],
         );
@@ -9215,15 +9053,15 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn A(n: Int) -> Fragment {
-                  concat(match (n > 0) {true => concat(B(n: (n - 1))), false => concat()})
+                  match (n > 0) {true => concat(B(n: (n - 1))), false => concat()}
                 }
 
                 fn B(n: Int) -> Fragment {
-                  concat(match (n > 0) {true => concat(C(n: (n - 1))), false => concat()})
+                  match (n > 0) {true => concat(C(n: (n - 1))), false => concat()}
                 }
 
                 fn C(n: Int) -> Fragment {
-                  concat(match (n > 0) {true => concat(A(n: (n - 1))), false => concat()})
+                  match (n > 0) {true => concat(A(n: (n - 1))), false => concat()}
                 }
             "#]],
         );
@@ -9245,11 +9083,11 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Later() -> Fragment {
-                  concat(html(tag: "div", attrs: [], children: concat()))
+                  html(tag: "div", attrs: [], children: concat())
                 }
 
                 fn Main() -> Fragment {
-                  concat(Later())
+                  Later()
                 }
             "#]],
         );
@@ -9272,12 +9110,12 @@ mod tests {
                 -- main.hop --
                 page Main() {
                   body {
-                    concat(Later())
+                    Later()
                   }
                 }
 
                 fn Later() -> Fragment {
-                  concat(html(tag: "div", attrs: [], children: concat()))
+                  html(tag: "div", attrs: [], children: concat())
                 }
             "#]],
         );
@@ -9302,16 +9140,14 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Render(item: Option[Int]) -> Fragment {
-                  concat(
-                    match item {
-                      Some(v__1) => let n = v__1 in concat(Wrap(n: n)),
-                      None => concat(raw("done")),
-                    },
-                  )
+                  match item {
+                    Some(v__1) => let n = v__1 in concat(Wrap(n: n)),
+                    None => concat(raw("done")),
+                  }
                 }
 
                 fn Wrap(n: Int) -> Fragment {
-                  concat(Render(item: Some(n)))
+                  Render(item: Some(n))
                 }
             "#]],
         );
@@ -9353,12 +9189,10 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Foo(rest: Attrs) -> Fragment {
-                  concat(
-                    html(
-                      tag: "div",
-                      attrs: concat([], rest),
-                      children: concat(Foo(rest: [id: raw("x")])),
-                    ),
+                  html(
+                    tag: "div",
+                    attrs: concat([], rest),
+                    children: concat(Foo(rest: [id: raw("x")])),
                   )
                 }
             "#]],
@@ -9393,20 +9227,20 @@ mod tests {
                 -- main.hop --
                 page Main() {
                   body {
-                    concat(First(title: "d", rest: []))
+                    First(title: "d", rest: [])
                   }
                 }
 
                 fn First(title: String, rest: Attrs) -> Fragment {
-                  concat(Second(title: title, rest: concat([], rest)))
+                  Second(title: title, rest: concat([], rest))
                 }
 
                 fn Leaf(title: String) -> Fragment {
-                  concat(html(tag: "div", attrs: [], children: concat(escape(title))))
+                  html(tag: "div", attrs: [], children: concat(escape(title)))
                 }
 
                 fn Second(title: String, rest: Attrs) -> Fragment {
-                  concat(concat(Leaf(title: title), First(title: "d", rest: [])))
+                  concat(Leaf(title: title), First(title: "d", rest: []))
                 }
             "#]],
         );
@@ -9430,11 +9264,11 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn First(n: Int, rest: Attrs) -> Fragment {
-                  concat(Second(n: n))
+                  Second(n: n)
                 }
 
                 fn Second(n: Int) -> Fragment {
-                  concat(First(n: n, rest: []))
+                  First(n: n, rest: [])
                 }
             "#]],
         );
@@ -9460,15 +9294,15 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn First(n: Int) -> Fragment {
-                  concat(Second(n: n))
+                  Second(n: n)
                 }
 
                 fn Outer(n: Int, rest: Attrs) -> Fragment {
-                  concat(First(n: n))
+                  First(n: n)
                 }
 
                 fn Second(n: Int) -> Fragment {
-                  concat(First(n: n))
+                  First(n: n)
                 }
             "#]],
         );
@@ -9915,15 +9749,13 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Foo() -> Fragment {
-                  concat(
-                    html(
-                      tag: "div",
-                      attrs: [],
-                      children: concat(
-                        for x in 0..=add_ten(x: 10) {
-                          concat(escape(x.to_string()))
-                        },
-                      ),
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: concat(
+                      for x in 0..=add_ten(x: 10) {
+                        concat(escape(x.to_string()))
+                      },
                     ),
                   )
                 }
@@ -9952,9 +9784,7 @@ mod tests {
                 -- main.hop --
                 page Main() {
                   body {
-                    concat(
-                      html(tag: "div", attrs: [], children: concat(escape(shout(name: "hi")))),
-                    )
+                    html(tag: "div", attrs: [], children: concat(escape(shout(name: "hi"))))
                   }
                 }
 
