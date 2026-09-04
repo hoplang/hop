@@ -7,7 +7,7 @@ use crate::examples_annotation::ExamplesAnnotation;
 use crate::hop::parsing::ParsedExpr;
 use crate::hop::parsing::parsed_ast::ParsedDeclaration;
 use crate::hop::parsing::parsed_ast::{
-    ParsedAttribute, ParsedComponentDeclaration, ParsedEnumDeclaration, ParsedFunctionDeclaration,
+    ParsedComponentDeclaration, ParsedEnumDeclaration, ParsedFunctionDeclaration,
     ParsedImportDeclaration, ParsedPageDeclaration, ParsedParameter, ParsedRecordDeclaration,
 };
 use crate::hop::patterns::compiler::compile_match;
@@ -31,8 +31,10 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
 use crate::document_id::DocumentId;
-use crate::hop::parsing::parsed_ast::{ParsedAst, ParsedAttributeValue};
-use crate::hop::parsing::parsed_node::{ParsedLetBinding, ParsedLoopSource, ParsedNode};
+use crate::hop::parsing::parsed_ast::ParsedAst;
+use crate::hop::parsing::parsed_node::{
+    ParsedAttribute, ParsedAttributeValue, ParsedLetBinding, ParsedLoopSource, ParsedNode,
+};
 use crate::hop::patterns::Match;
 use crate::hop::patterns::typed::typecheck_pattern;
 use crate::hop::typing::typed_ast::{

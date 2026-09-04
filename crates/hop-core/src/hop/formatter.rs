@@ -1,16 +1,17 @@
 use crate::document::DocumentRange;
 use crate::hop::parsing::ParsedType;
 use crate::hop::parsing::parsed_ast::{
-    ParsedAst, ParsedAttribute, ParsedAttributeValue, ParsedComponentDeclaration,
-    ParsedDeclaration, ParsedEnumDeclaration, ParsedEnumDeclarationVariant,
-    ParsedFunctionDeclaration, ParsedImportDeclaration, ParsedPageDeclaration, ParsedParameter,
-    ParsedRecordDeclaration, ParsedRecordDeclarationField,
+    ParsedAst, ParsedComponentDeclaration, ParsedDeclaration, ParsedEnumDeclaration,
+    ParsedEnumDeclarationVariant, ParsedFunctionDeclaration, ParsedImportDeclaration,
+    ParsedPageDeclaration, ParsedParameter, ParsedRecordDeclaration, ParsedRecordDeclarationField,
 };
 use crate::hop::parsing::parsed_expr::{
     Constructor, ParsedExpr, ParsedMatchArm, ParsedMatchPattern,
 };
-use crate::hop::parsing::parsed_node::ParsedLoopSource;
-use crate::hop::parsing::parsed_node::{ParsedLetBinding, ParsedMatchCase, ParsedNode};
+use crate::hop::parsing::parsed_node::{
+    ParsedAttribute, ParsedAttributeValue, ParsedLetBinding, ParsedLoopSource, ParsedMatchCase,
+    ParsedNode,
+};
 use crate::html::HtmlElement;
 use pretty::{Arena, DocAllocator, DocBuilder};
 use std::collections::VecDeque;

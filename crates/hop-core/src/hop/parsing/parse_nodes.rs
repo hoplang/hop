@@ -3,9 +3,11 @@ use std::iter::Peekable;
 
 use super::expr_tokenizer;
 use super::parse_expr;
-use super::parsed_ast::{ParsedAttribute, ParsedAttributeValue};
 use super::parsed_expr::ParsedExpr;
-use super::parsed_node::{ParsedLetBinding, ParsedLoopSource, ParsedMatchCase, ParsedNode};
+use super::parsed_node::{
+    ParsedAttribute, ParsedAttributeValue, ParsedLetBinding, ParsedLoopSource, ParsedMatchCase,
+    ParsedNode,
+};
 use super::token;
 use super::tokenizer;
 use super::tokenizer::{RawTextToken, TagToken, Token};

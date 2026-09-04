@@ -131,37 +131,6 @@ pub struct ParsedParameter {
     pub examples: Option<ExamplesAnnotation>,
 }
 
-/// A ParsedAttribute is a single entry in a node's attribute list.
-///
-/// It is either:
-/// * empty - <foo a>
-/// * an expression - <foo a={bar}>
-/// * a string value - <foo a="b">
-/// * or a spread - <foo ...rest>
-#[derive(Debug, Clone)]
-pub enum ParsedAttribute {
-    Named {
-        name: DocumentRange,
-        value: Option<ParsedAttributeValue>,
-    },
-    Spread {
-        name: VarName,
-        range: DocumentRange,
-    },
-}
-
-#[derive(Debug, Clone)]
-pub enum ParsedAttributeValue {
-    Expression(ParsedExpr),
-    /// A quoted string value.
-    String {
-        /// The inner content range, excluding quotes. None for empty strings like `attr=""`.
-        content: Option<DocumentRange>,
-        /// Range of the whole value including the surrounding quotes, e.g. `"bar"`.
-        quoted_range: DocumentRange,
-    },
-}
-
 impl Display for ParsedParameter {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.to_doc().pretty(60))
@@ -182,39 +151,6 @@ impl ParsedParameter {
         match &self.default_value {
             Some(default) => base.append(BoxDoc::text(" = ")).append(default.to_doc()),
             None => base,
-        }
-    }
-}
-
-impl ParsedAttributeValue {
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        match self {
-            ParsedAttributeValue::Expression(expr) => BoxDoc::text("{")
-                .append(BoxDoc::line_().append(expr.to_doc()).nest(2))
-                .append(BoxDoc::line_())
-                .append(BoxDoc::text("}"))
-                .group(),
-            ParsedAttributeValue::String { content, .. } => {
-                let content = content.as_ref().map(|r| r.as_str()).unwrap_or("");
-                BoxDoc::text(format!("\"{}\"", content))
-            }
-        }
-    }
-}
-
-impl ParsedAttribute {
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        match self {
-            ParsedAttribute::Named { name, value } => {
-                let name_doc = BoxDoc::text(name.as_str());
-                match value {
-                    Some(value) => name_doc.append(BoxDoc::text("=")).append(value.to_doc()),
-                    None => name_doc,
-                }
-            }
-            ParsedAttribute::Spread { name, .. } => {
-                BoxDoc::text("...").append(BoxDoc::text(name.as_str()))
-            }
         }
     }
 }
