@@ -1,5 +1,5 @@
-use super::type_annotation::TypeAnnotation;
 use crate::asset_reference::AssetReference;
+use crate::definition_link::DefinitionLink;
 use crate::dependency_graph::DependencyGraph;
 use crate::document::{CheapString, DocumentRange};
 use crate::expr::ParsedExpr;
@@ -15,7 +15,7 @@ use crate::hop::parsing::parsed_ast::{
     ParsedAttribute, ParsedComponentDeclaration, ParsedEnumDeclaration, ParsedFunctionDeclaration,
     ParsedImportDeclaration, ParsedPageDeclaration, ParsedParameter, ParsedRecordDeclaration,
 };
-use crate::hop::typing::definition_link::DefinitionLink;
+use crate::hover_annotation::HoverAnnotation;
 use crate::html::HtmlElement;
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::type_name::TypeName;
@@ -42,7 +42,7 @@ pub fn typecheck(
     registry: &mut TypeRegistry,
     typed_asts: &mut HashMap<DocumentId, TypedAst>,
     errors: &mut HashMap<DocumentId, Vec<TypeError>>,
-    annotations: &mut HashMap<DocumentId, Vec<TypeAnnotation>>,
+    annotations: &mut HashMap<DocumentId, Vec<HoverAnnotation>>,
     definition_links: &mut HashMap<DocumentId, Vec<DefinitionLink>>,
     asset_references: &mut HashMap<DocumentId, Vec<AssetReference>>,
 ) {
@@ -96,7 +96,7 @@ fn typecheck_module(
     exports: &mut HashMap<DocumentId, HashMap<TypeName, TypeExport>>,
     registry: &mut TypeRegistry,
     errors: &mut Vec<TypeError>,
-    annotations: &mut Vec<TypeAnnotation>,
+    annotations: &mut Vec<HoverAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
     asset_references: &mut Vec<AssetReference>,
 ) -> TypedAst {
@@ -569,7 +569,7 @@ fn register_component_signature<'a>(
     type_env: &mut TypeEnv,
     registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
-    annotations: &mut Vec<TypeAnnotation>,
+    annotations: &mut Vec<HoverAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
     asset_references: &mut Vec<AssetReference>,
 ) -> PendingComponent<'a> {
@@ -640,7 +640,7 @@ fn register_component_signature<'a>(
                 }
             };
 
-            annotations.push(TypeAnnotation::TypeForVarName {
+            annotations.push(HoverAnnotation::TypeForVarName {
                 range: param.var_name_range.clone(),
                 typ: param_type.clone(),
                 var_name: param.var_name.clone(),
@@ -990,7 +990,7 @@ fn check_component_body(
     var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
     type_env: &mut TypeEnv,
     module_exports: &mut HashMap<TypeName, TypeExport>,
-    annotations: &mut Vec<TypeAnnotation>,
+    annotations: &mut Vec<HoverAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
     asset_references: &mut Vec<AssetReference>,
 ) -> TypedFunctionDeclaration {
@@ -1112,7 +1112,7 @@ fn check_page_declaration(
     errors: &mut Vec<TypeError>,
     var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
     type_env: &mut TypeEnv,
-    annotations: &mut Vec<TypeAnnotation>,
+    annotations: &mut Vec<HoverAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
     asset_references: &mut Vec<AssetReference>,
 ) -> TypedPageDeclaration {
@@ -1152,7 +1152,7 @@ fn check_page_declaration(
             continue;
         };
 
-        annotations.push(TypeAnnotation::TypeForVarName {
+        annotations.push(HoverAnnotation::TypeForVarName {
             range: param.var_name_range.clone(),
             typ: param_type.clone(),
             var_name: param.var_name.clone(),
@@ -1179,7 +1179,7 @@ fn check_page_declaration(
                           errors: &mut Vec<TypeError>,
                           var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
                           type_env: &mut TypeEnv,
-                          annotations: &mut Vec<TypeAnnotation>,
+                          annotations: &mut Vec<HoverAnnotation>,
                           definition_links: &mut Vec<DefinitionLink>,
                           asset_references: &mut Vec<AssetReference>| {
         nodes
@@ -1254,7 +1254,7 @@ fn register_function_signature<'a>(
     function: &'a ParsedFunctionDeclaration,
     type_env: &mut TypeEnv,
     errors: &mut Vec<TypeError>,
-    annotations: &mut Vec<TypeAnnotation>,
+    annotations: &mut Vec<HoverAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
 ) -> Option<PendingFunction<'a>> {
     let mut resolved_params = Vec::new();
@@ -1278,7 +1278,7 @@ fn register_function_signature<'a>(
             continue;
         };
 
-        annotations.push(TypeAnnotation::TypeForVarName {
+        annotations.push(HoverAnnotation::TypeForVarName {
             range: param.var_name_range.clone(),
             typ: param_type.clone(),
             var_name: param.var_name.clone(),
@@ -1325,7 +1325,7 @@ fn check_function_body(
     registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
     type_env: &mut TypeEnv,
-    annotations: &mut Vec<TypeAnnotation>,
+    annotations: &mut Vec<HoverAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
     asset_references: &mut Vec<AssetReference>,
 ) -> Option<TypedFunctionDeclaration> {
@@ -1393,7 +1393,7 @@ fn typecheck_node(
     errors: &mut Vec<TypeError>,
     var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
     type_env: &mut TypeEnv,
-    annotations: &mut Vec<TypeAnnotation>,
+    annotations: &mut Vec<HoverAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
     asset_references: &mut Vec<AssetReference>,
 ) -> Option<TypedExpr> {
@@ -1569,7 +1569,7 @@ fn typecheck_node(
                     (element_type.clone(), var_name_range.clone()),
                 ) {
                     Ok(_) => {
-                        annotations.push(TypeAnnotation::TypeForVarName {
+                        annotations.push(HoverAnnotation::TypeForVarName {
                             range: var_name_range.clone(),
                             typ: element_type,
                             var_name: var_name.clone(),
@@ -1660,7 +1660,7 @@ fn typecheck_node(
                         (declared.clone(), binding.var_name_range.clone()),
                     ) {
                         Ok(_) => {
-                            annotations.push(TypeAnnotation::TypeForVarName {
+                            annotations.push(HoverAnnotation::TypeForVarName {
                                 range: binding.var_name_range.clone(),
                                 typ: declared.clone(),
                                 var_name: binding.var_name.clone(),
@@ -1718,7 +1718,7 @@ fn typecheck_node(
                             (inferred.clone(), binding.var_name_range.clone()),
                         ) {
                             Ok(_) => {
-                                annotations.push(TypeAnnotation::TypeForVarName {
+                                annotations.push(HoverAnnotation::TypeForVarName {
                                     range: binding.var_name_range.clone(),
                                     typ: inferred.clone(),
                                     var_name: binding.var_name.clone(),
@@ -2040,7 +2040,7 @@ fn typecheck_node(
                     for (name, typ, bind_range) in &bindings {
                         match var_env.push(name.clone(), (typ.clone(), bind_range.clone())) {
                             Ok(_) => {
-                                annotations.push(TypeAnnotation::TypeForVarName {
+                                annotations.push(HoverAnnotation::TypeForVarName {
                                     range: bind_range.clone(),
                                     typ: typ.clone(),
                                     var_name: name.clone(),
@@ -2124,7 +2124,7 @@ fn typecheck_attribute_value(
     errors: &mut Vec<TypeError>,
     var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
     type_env: &mut TypeEnv,
-    annotations: &mut Vec<TypeAnnotation>,
+    annotations: &mut Vec<HoverAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
     asset_references: &mut Vec<AssetReference>,
 ) -> Option<TypedAttributeValue> {
@@ -2191,7 +2191,7 @@ fn typecheck_arguments(
     errors: &mut Vec<TypeError>,
     var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
     type_env: &mut TypeEnv,
-    annotations: &mut Vec<TypeAnnotation>,
+    annotations: &mut Vec<HoverAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
     asset_references: &mut Vec<AssetReference>,
 ) -> (
@@ -2409,7 +2409,7 @@ fn typecheck_attributes(
     errors: &mut Vec<TypeError>,
     var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
     type_env: &mut TypeEnv,
-    annotations: &mut Vec<TypeAnnotation>,
+    annotations: &mut Vec<HoverAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
     asset_references: &mut Vec<AssetReference>,
 ) -> Vec<TypedAttribute> {
@@ -2447,7 +2447,7 @@ fn typecheck_html_attribute(
     errors: &mut Vec<TypeError>,
     var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
     type_env: &mut TypeEnv,
-    annotations: &mut Vec<TypeAnnotation>,
+    annotations: &mut Vec<HoverAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
     asset_references: &mut Vec<AssetReference>,
 ) -> Option<TypedAttribute> {

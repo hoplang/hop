@@ -5,6 +5,7 @@ use super::r#type::{NumericType, Type};
 use super::type_env::TypeBinding;
 use super::type_registry::{ResolvedType, TypeRegistry};
 use crate::asset_reference::AssetReference;
+use crate::definition_link::DefinitionLink;
 use crate::document::{CheapString, DocumentRange};
 use crate::document_id::DocumentId;
 use crate::expr::TypedExpr;
@@ -16,8 +17,7 @@ use crate::expr::patterns::compiler::{Decision, compile_match};
 use crate::expr::patterns::typed::{TypedMatchPattern, typecheck_pattern};
 use crate::expr::patterns::{EnumMatchArm, EnumPattern, Match};
 use crate::expr::typing::type_env::TypeEnv;
-use crate::hop::typing::definition_link::DefinitionLink;
-use crate::hop::typing::type_annotation::TypeAnnotation;
+use crate::hover_annotation::HoverAnnotation;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::var_name::VarName;
 use crate::type_error::{TypeError, TypeErrorKind};
@@ -86,7 +86,7 @@ pub fn typecheck_expr(
     var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
     type_env: &mut TypeEnv,
     registry: &TypeRegistry,
-    annotations: &mut Vec<TypeAnnotation>,
+    annotations: &mut Vec<HoverAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
     asset_references: &mut Vec<AssetReference>,
     errors: &mut Vec<TypeError>,
@@ -98,7 +98,7 @@ pub fn typecheck_expr(
             value: var_name, ..
         } => {
             if let Some((var_type, def_range)) = var_env.lookup(var_name) {
-                annotations.push(TypeAnnotation::TypeForVarName {
+                annotations.push(HoverAnnotation::TypeForVarName {
                     range: parsed_expr.range().clone(),
                     typ: var_type.clone(),
                     var_name: var_name.clone(),
@@ -1103,7 +1103,7 @@ pub fn typecheck_expr(
             };
 
             // Add type annotation and definition link for the record name
-            annotations.push(TypeAnnotation::TypeForTypeName {
+            annotations.push(HoverAnnotation::TypeForTypeName {
                 range: record_name_range.clone(),
                 typ: record_type.clone(),
                 type_name: record_name.clone(),
@@ -1347,7 +1347,7 @@ pub fn typecheck_expr(
             };
 
             // Add type annotation and definition link for the constructor
-            annotations.push(TypeAnnotation::TypeForTypeName {
+            annotations.push(HoverAnnotation::TypeForTypeName {
                 range: constructor_range.clone(),
                 typ: enum_type.clone(),
                 type_name: enum_name.clone(),
@@ -1630,7 +1630,7 @@ pub fn typecheck_expr(
                     return None;
                 }
 
-                annotations.push(TypeAnnotation::Description {
+                annotations.push(HoverAnnotation::Description {
                     title: "join!(String, ...) -> String".to_string(),
                     description: "Joins strings with spaces.".to_string(),
                     range: subject_range.clone(),
@@ -1682,7 +1682,7 @@ pub fn typecheck_expr(
                     document_id,
                 });
 
-                annotations.push(TypeAnnotation::Description {
+                annotations.push(HoverAnnotation::Description {
                     title: "asset!(literal: String) -> String".to_string(),
                     description: "Resolves to a path served by the dev server in dev mode \
                          and prefixed by `assets.production_prefix` in production builds."
@@ -1715,7 +1715,7 @@ pub fn typecheck_expr(
 
             match (receiver_type.as_ref(), method.as_str()) {
                 (Type::Array(_), "len") => {
-                    annotations.push(TypeAnnotation::Description {
+                    annotations.push(HoverAnnotation::Description {
                         title: "Array::len() -> Int".to_string(),
                         description: "Returns the number of elements in the array.".to_string(),
                         range: method_range.clone(),
@@ -1725,7 +1725,7 @@ pub fn typecheck_expr(
                     })
                 }
                 (Type::Array(_), "is_empty") => {
-                    annotations.push(TypeAnnotation::Description {
+                    annotations.push(HoverAnnotation::Description {
                         title: "Array::is_empty() -> Bool".to_string(),
                         description: "Returns `true` if the array is empty.".to_string(),
                         range: method_range.clone(),
@@ -1744,7 +1744,7 @@ pub fn typecheck_expr(
                     value: Box::new(typed_receiver),
                 }),
                 (Type::String, "is_empty") => {
-                    annotations.push(TypeAnnotation::Description {
+                    annotations.push(HoverAnnotation::Description {
                         title: "String::is_empty() -> Bool".to_string(),
                         description: "Returns `true` if the string is empty.".to_string(),
                         range: method_range.clone(),
@@ -1754,7 +1754,7 @@ pub fn typecheck_expr(
                     })
                 }
                 (Type::Option(_), "is_some") => {
-                    annotations.push(TypeAnnotation::Description {
+                    annotations.push(HoverAnnotation::Description {
                         title: "Option::is_some() -> Bool".to_string(),
                         description: "Returns `true` if the option contains a value.".to_string(),
                         range: method_range.clone(),
@@ -1764,7 +1764,7 @@ pub fn typecheck_expr(
                     })
                 }
                 (Type::Option(_), "is_none") => {
-                    annotations.push(TypeAnnotation::Description {
+                    annotations.push(HoverAnnotation::Description {
                         title: "Option::is_none() -> Bool".to_string(),
                         description: "Returns `true` if the option is `None`.".to_string(),
                         range: method_range.clone(),
@@ -1910,7 +1910,7 @@ fn typecheck_arm_bodies(
     var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
     type_env: &mut TypeEnv,
     registry: &TypeRegistry,
-    annotations: &mut Vec<TypeAnnotation>,
+    annotations: &mut Vec<HoverAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
     asset_references: &mut Vec<AssetReference>,
     errors: &mut Vec<TypeError>,

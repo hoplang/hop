@@ -7,7 +7,7 @@ use std::fmt::{self, Display};
 use std::sync::Arc;
 
 #[derive(Debug, Clone)]
-pub enum TypeAnnotation {
+pub enum HoverAnnotation {
     TypeForTypeName {
         typ: Arc<Type>,
         type_name: TypeName,
@@ -25,17 +25,17 @@ pub enum TypeAnnotation {
     },
 }
 
-impl TypeAnnotation {
+impl HoverAnnotation {
     pub fn range(&self) -> &DocumentRange {
         match self {
-            TypeAnnotation::Description { range, .. } => range,
-            TypeAnnotation::TypeForVarName { range, .. } => range,
-            TypeAnnotation::TypeForTypeName { range, .. } => range,
+            HoverAnnotation::Description { range, .. } => range,
+            HoverAnnotation::TypeForVarName { range, .. } => range,
+            HoverAnnotation::TypeForTypeName { range, .. } => range,
         }
     }
 }
 
-impl Annotation for TypeAnnotation {
+impl Annotation for HoverAnnotation {
     fn message(&self) -> String {
         self.to_string()
     }
@@ -44,21 +44,21 @@ impl Annotation for TypeAnnotation {
     }
 }
 
-impl Display for TypeAnnotation {
+impl Display for HoverAnnotation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             // Render as:
             // | ```
             // | var_name : type
             // | ```
-            TypeAnnotation::TypeForVarName { var_name, typ, .. } => {
+            HoverAnnotation::TypeForVarName { var_name, typ, .. } => {
                 write!(f, "```\n{} : {}\n```", var_name, typ)
             }
             // Render as:
             // | ```
             // | type_name : type
             // | ```
-            TypeAnnotation::TypeForTypeName { type_name, typ, .. } => {
+            HoverAnnotation::TypeForTypeName { type_name, typ, .. } => {
                 write!(f, "```\n{} : {}\n```", type_name, typ)
             }
             // Render as:
@@ -67,7 +67,7 @@ impl Display for TypeAnnotation {
             // | ```
             // |
             // | description
-            TypeAnnotation::Description {
+            HoverAnnotation::Description {
                 title, description, ..
             } => write!(f, "```\n{}\n```\n\n{}", title, description),
         }

@@ -4,6 +4,7 @@ use crate::asset_rewriter::AssetRewriter;
 use crate::config::{ResolvedConfig, TargetLanguage};
 use crate::css;
 use crate::css_error::CssError;
+use crate::definition_link::DefinitionLink;
 use crate::dependency_graph::DependencyGraph;
 use crate::document::{Document, DocumentRange};
 use crate::document_id::DocumentId;
@@ -16,10 +17,9 @@ use crate::hop::parsing::format;
 use crate::hop::parsing::parsed_ast::ParsedAst;
 use crate::hop::parsing::parsed_node::ParsedNode;
 use crate::hop::parsing::parser::parse;
-use crate::hop::typing::definition_link::DefinitionLink;
-use crate::hop::typing::type_annotation::TypeAnnotation;
 use crate::hop::typing::type_checker::typecheck;
 use crate::hop::typing::typed_ast::TypedAst;
+use crate::hover_annotation::HoverAnnotation;
 use crate::ir;
 use crate::ir::Transpiler;
 use crate::ir::runtime::random::random_value;
@@ -87,7 +87,7 @@ pub struct Program {
     type_exports: HashMap<DocumentId, HashMap<TypeName, TypeExport>>,
     type_registry: TypeRegistry,
     type_errors: HashMap<DocumentId, Vec<TypeError>>,
-    type_annotations: HashMap<DocumentId, Vec<TypeAnnotation>>,
+    hover_annotations: HashMap<DocumentId, Vec<HoverAnnotation>>,
     definition_links: HashMap<DocumentId, Vec<DefinitionLink>>,
     asset_references: HashMap<DocumentId, Vec<AssetReference>>,
     typed_asts: HashMap<DocumentId, TypedAst>,
@@ -138,7 +138,7 @@ impl Program {
                 &mut self.type_registry,
                 &mut self.typed_asts,
                 &mut self.type_errors,
-                &mut self.type_annotations,
+                &mut self.hover_annotations,
                 &mut self.definition_links,
                 &mut self.asset_references,
             );
@@ -160,7 +160,7 @@ impl Program {
         self.type_exports.remove(document_id);
         self.type_registry.remove_module(document_id);
         self.type_errors.remove(document_id);
-        self.type_annotations.remove(document_id);
+        self.hover_annotations.remove(document_id);
         self.asset_references.remove(document_id);
         self.typed_asts.remove(document_id);
 
@@ -183,7 +183,7 @@ impl Program {
                     &mut self.type_registry,
                     &mut self.typed_asts,
                     &mut self.type_errors,
-                    &mut self.type_annotations,
+                    &mut self.hover_annotations,
                     &mut self.definition_links,
                     &mut self.asset_references,
                 );
@@ -276,7 +276,7 @@ impl Program {
         document_id: &DocumentId,
         position: DocumentPosition,
     ) -> Option<HoverInfo> {
-        self.type_annotations
+        self.hover_annotations
             .get(document_id)?
             .iter()
             .find(|a| a.range().contains_position(position))

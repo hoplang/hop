@@ -1,7 +1,9 @@
 mod css;
+mod definition_link;
 mod dependency_graph;
 mod expr;
 mod hop;
+mod hover_annotation;
 mod html;
 mod ir;
 mod itertools;
