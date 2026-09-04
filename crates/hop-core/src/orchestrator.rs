@@ -69,11 +69,11 @@ pub fn orchestrate_pure(
 
     let records: Vec<_> = document_ids
         .iter()
-        .flat_map(|id| typed_asts[id].get_records())
+        .flat_map(|id| typed_asts[id].get_record_declarations())
         .collect();
     let enums: Vec<_> = document_ids
         .iter()
-        .flat_map(|id| typed_asts[id].get_enums())
+        .flat_map(|id| typed_asts[id].get_enum_declarations())
         .collect();
 
     let pure_module = compile(

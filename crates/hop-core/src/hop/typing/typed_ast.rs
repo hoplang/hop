@@ -69,12 +69,12 @@ impl TypedAst {
     }
 
     /// Returns a reference to all record declarations in the AST.
-    pub fn get_records(&self) -> &[TypedRecordDeclaration] {
+    pub fn get_record_declarations(&self) -> &[TypedRecordDeclaration] {
         &self.record_declarations
     }
 
     /// Returns a reference to all enum declarations in the AST.
-    pub fn get_enums(&self) -> &[TypedEnumDeclaration] {
+    pub fn get_enum_declarations(&self) -> &[TypedEnumDeclaration] {
         &self.enum_declarations
     }
 
