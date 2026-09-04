@@ -261,18 +261,6 @@ fn typecheck_module(
             definition_links,
         ));
     }
-    let mut typed_functions = Vec::new();
-    for pending in pending_functions {
-        typed_functions.extend(typecheck_function_body(
-            pending,
-            registry,
-            errors,
-            &mut type_env,
-            annotations,
-            definition_links,
-            asset_references,
-        ));
-    }
 
     // Type check components in dependency order so that callee signatures
     // are final before their callers are checked.
@@ -340,6 +328,19 @@ fn typecheck_module(
     // the parameters its callee ends up forwarding, and those are not known
     // until the rest has been followed to wherever it lands.
     let forwarded_params = resolve_rest_targets(&rest_targets, &mut type_env, errors);
+
+    let mut typed_functions = Vec::new();
+    for pending in pending_functions {
+        typed_functions.extend(typecheck_function_body(
+            pending,
+            registry,
+            errors,
+            &mut type_env,
+            annotations,
+            definition_links,
+            asset_references,
+        ));
+    }
 
     let mut typed_component_declarations = Vec::new();
     for p in pending_components {
