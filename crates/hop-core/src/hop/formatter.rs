@@ -1,16 +1,16 @@
-use super::parsed_ast::{
+use crate::document::DocumentRange;
+use crate::hop::parsing::ParsedType;
+use crate::hop::parsing::parsed_ast::{
     ParsedAst, ParsedAttribute, ParsedAttributeValue, ParsedComponentDeclaration,
     ParsedDeclaration, ParsedEnumDeclaration, ParsedEnumDeclarationVariant,
     ParsedFunctionDeclaration, ParsedImportDeclaration, ParsedPageDeclaration, ParsedParameter,
     ParsedRecordDeclaration, ParsedRecordDeclarationField,
 };
-use super::parsed_node::{ParsedLetBinding, ParsedMatchCase, ParsedNode};
-use crate::document::DocumentRange;
-use crate::hop::parsing::ParsedType;
 use crate::hop::parsing::parsed_expr::{
     Constructor, ParsedExpr, ParsedMatchArm, ParsedMatchPattern,
 };
 use crate::hop::parsing::parsed_node::ParsedLoopSource;
+use crate::hop::parsing::parsed_node::{ParsedLetBinding, ParsedMatchCase, ParsedNode};
 use crate::html::HtmlElement;
 use pretty::{Arena, DocAllocator, DocBuilder};
 use std::collections::VecDeque;
@@ -1405,6 +1405,7 @@ fn format_constructor<'a>(
 
 #[cfg(test)]
 mod tests {
+    use super::format;
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
@@ -1423,12 +1424,12 @@ mod tests {
         if !errors.is_empty() {
             panic!("Parse errors: {:?}", errors);
         }
-        let formatted = super::format(&ast);
+        let formatted = format(&ast);
         expected.assert_eq(&formatted);
 
         // Check idempotency: formatting the output should give the same result
         let document_id = DocumentId::new("test.hop").unwrap();
-        let formatted_twice = super::format(&parse::parse(
+        let formatted_twice = format(&parse::parse(
             document_id.clone(),
             Document::new(document_id, formatted.clone()),
             &mut errors,
@@ -1480,7 +1481,7 @@ mod tests {
                 errors.is_empty(),
                 "parse errors: {errors:?}\n\nsource:\n{source}"
             );
-            super::format(&ast)
+            format(&ast)
         }
 
         fn render(source: &str) -> String {

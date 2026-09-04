@@ -1,7 +1,5 @@
 pub mod expr_tokenizer;
 pub mod find_node;
-mod formatter;
-pub use formatter::format;
 pub mod parse;
 pub mod parse_expr;
 mod parse_nodes;

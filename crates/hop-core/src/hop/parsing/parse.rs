@@ -971,7 +971,7 @@ fn parse_pattern_annotation(
 mod tests {
     use super::*;
     use crate::document_annotator::DocumentAnnotator;
-    use crate::hop::parsing::formatter;
+    use crate::hop::format;
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
@@ -991,7 +991,7 @@ mod tests {
                 .render();
             panic!("expected no parse errors, got:\n{rendered}");
         }
-        expected.assert_eq(&formatter::format(&module));
+        expected.assert_eq(&format(&module));
     }
 
     fn reject(input: &str, expected: Expect) {

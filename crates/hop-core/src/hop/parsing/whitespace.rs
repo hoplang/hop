@@ -104,7 +104,8 @@ fn drop_newlines(nodes: &mut Vec<ParsedNode>) {
 mod tests {
     use crate::document::Document;
     use crate::document_id::DocumentId;
-    use crate::hop::parsing::{format, parse};
+    use crate::hop::format;
+    use crate::hop::parsing::parse;
     use crate::ir::runtime::evaluator;
     use crate::orchestrator::{OrchestrateOptions, orchestrate_pure};
     use crate::program::Program;
