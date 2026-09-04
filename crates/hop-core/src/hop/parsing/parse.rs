@@ -9,10 +9,10 @@ use super::parsed_ast::{
 use super::token;
 use crate::document::{Document, DocumentCursor, DocumentRange};
 use crate::document_id::DocumentId;
+use crate::examples_annotation::ExamplesAnnotation;
 use crate::hop::parsing::ParsedType;
 use crate::hop::parsing::parse_type::parse_type;
 use crate::hop::parsing::parsed_ast::ParsedParameter;
-use crate::hop::typing::ExamplesAnnotation;
 use crate::parse_error::{ParseError, ParseErrorKind};
 use crate::symbols::field_name::FieldName;
 use crate::symbols::module_name::ModuleName;

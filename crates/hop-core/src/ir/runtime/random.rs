@@ -1,7 +1,8 @@
 use super::value::Value;
 use crate::document_id::DocumentId;
+use crate::examples_annotation::ExamplesAnnotation;
 use crate::hop::typing::Type;
-use crate::hop::typing::r#type::{EnumVariant, ExamplesAnnotation};
+use crate::hop::typing::r#type::EnumVariant;
 use crate::hop::typing::type_registry::{ResolvedType, TypeRegistry};
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;

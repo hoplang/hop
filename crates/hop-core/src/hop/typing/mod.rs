@@ -11,6 +11,6 @@ pub mod typed_ast;
 pub mod typed_ast_builder;
 pub mod typed_expr;
 
-pub use r#type::{ExamplesAnnotation, FunctionSignature, ParamEntry, Tail, Type};
+pub use r#type::{FunctionSignature, ParamEntry, Tail, Type};
 pub use type_env::TypeBinding;
 pub use typed_expr::{TypedAttribute, TypedAttributeValue, TypedExpr, TypedLoopSource};

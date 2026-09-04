@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use super::r#type::{EnumVariant, Type};
 use crate::document_id::DocumentId;
-use crate::hop::typing::ExamplesAnnotation;
+use crate::examples_annotation::ExamplesAnnotation;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 

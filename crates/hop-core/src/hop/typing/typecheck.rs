@@ -1,10 +1,9 @@
-use super::{
-    ExamplesAnnotation, FunctionSignature, ParamEntry, Tail, Type, TypeBinding, TypedExpr,
-};
+use super::{FunctionSignature, ParamEntry, Tail, Type, TypeBinding, TypedExpr};
 use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
 use crate::dependency_graph::DependencyGraph;
 use crate::document::{CheapString, DocumentRange};
+use crate::examples_annotation::ExamplesAnnotation;
 use crate::hop::parsing::ParsedExpr;
 use crate::hop::parsing::parsed_ast::ParsedDeclaration;
 use crate::hop::parsing::parsed_ast::{

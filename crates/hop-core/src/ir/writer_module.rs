@@ -2,10 +2,9 @@ use std::fmt;
 use std::sync::Arc;
 
 use crate::document::CheapString;
+use crate::examples_annotation::ExamplesAnnotation;
 use crate::hop::patterns::{EnumPattern, Match};
-use crate::hop::typing::r#type::{
-    ComparableType, EnumVariant, EquatableType, ExamplesAnnotation, NumericType, Type,
-};
+use crate::hop::typing::r#type::{ComparableType, EnumVariant, EquatableType, NumericType, Type};
 use crate::ir::ir_var::IrVar;
 use crate::ir::var_id::VarIdCounter;
 use crate::symbols::field_name::FieldName;

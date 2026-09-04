@@ -1,8 +1,8 @@
 use crate::document::DocumentRange;
 use crate::document_id::DocumentId;
+use crate::examples_annotation::ExamplesAnnotation;
 use crate::hop::parsing::ParsedExpr;
 use crate::hop::parsing::ParsedType;
-use crate::hop::typing::ExamplesAnnotation;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::module_name::ModuleName;
 use crate::symbols::type_name::TypeName;
