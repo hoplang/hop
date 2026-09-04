@@ -218,12 +218,12 @@ fn parse_import_declaration(
             return None;
         }
     };
-    let path = module_path_range.to(type_name_range.clone());
+    let path_range = module_path_range.to(type_name_range.clone());
     let full_import_range = import_range.to(type_name_range.clone());
     Some(ParsedImportDeclaration {
         type_name,
         type_name_range,
-        path,
+        path_range,
         import_range: full_import_range,
         module_name,
     })

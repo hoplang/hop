@@ -91,7 +91,7 @@ pub fn typecheck(
                         .iter()
                         .map(|m| m.document_id.to_string())
                         .collect::<Vec<_>>(),
-                    import_node.path.clone(),
+                    import_node.path_range.clone(),
                 ));
             }
         }
@@ -406,7 +406,7 @@ fn typecheck_import_declaration(
         module_name: imported_module,
         type_name_range: imported_name_range,
         type_name: imported_name,
-        path: import_path,
+        path_range: import_path_range,
         import_range,
     } = import;
 
@@ -415,7 +415,7 @@ fn typecheck_import_declaration(
             TypeErrorKind::ModuleNotFound {
                 module: imported_module.clone(),
             },
-            import_path.clone(),
+            import_path_range.clone(),
         ));
         return;
     };

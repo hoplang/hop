@@ -62,7 +62,7 @@ pub struct ParsedImportDeclaration {
     /// The range of the type name in the source (for error reporting)
     pub type_name_range: DocumentRange,
     /// The full path range for error reporting (covers module::TypeName)
-    pub path: DocumentRange,
+    pub path_range: DocumentRange,
     /// The full range of the import declaration, from `import` keyword to end of name.
     pub import_range: DocumentRange,
     pub module_name: ModuleName,
