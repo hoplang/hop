@@ -21,7 +21,6 @@ pub struct ParsedAst {
 }
 
 /// A parsed declaration.
-///
 #[derive(Debug, Clone)]
 pub enum ParsedDeclaration {
     Import(ParsedImportDeclaration),
