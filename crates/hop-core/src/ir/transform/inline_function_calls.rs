@@ -95,7 +95,7 @@ fn inline(
         PureExpr::FunctionCall {
             function_name,
             args,
-            kind,
+            typ,
             id,
         } => {
             let args: Vec<PureArgument> = args
@@ -112,7 +112,7 @@ fn inline(
                     return PureExpr::FunctionCall {
                         function_name,
                         args,
-                        kind,
+                        typ,
                         id,
                     };
                 }
@@ -123,7 +123,7 @@ fn inline(
                 Err(args) => PureExpr::FunctionCall {
                     function_name,
                     args,
-                    kind,
+                    typ,
                     id,
                 },
             }
@@ -178,7 +178,7 @@ fn instantiate(
             PureExpr::Let {
                 var,
                 value: Box::new(value),
-                kind: decl.return_type.clone(),
+                typ: decl.return_type.clone(),
                 body: Box::new(body),
                 id: expr_ids.next(),
             }
@@ -215,7 +215,7 @@ fn freshen(
             var,
             value,
             body,
-            kind,
+            typ,
             id: _,
         } => {
             // The value is outside the binding, so freshen it before the
@@ -227,14 +227,14 @@ fn freshen(
                 var: fresh,
                 value,
                 body: Box::new(freshen(*body, renames, expr_ids, var_ids)),
-                kind,
+                typ,
                 id: expr_ids.next(),
             }
         }
 
-        PureExpr::VariableReference { value, kind, id: _ } => PureExpr::VariableReference {
+        PureExpr::VariableReference { value, typ, id: _ } => PureExpr::VariableReference {
             value: renames.get(&value.id).copied().unwrap_or(value),
-            kind,
+            typ,
             id: expr_ids.next(),
         },
 
@@ -276,10 +276,10 @@ fn binders_mut(expr: &mut PureExpr) -> Vec<&mut IrVar> {
 fn replace_once(expr: PureExpr, var: VarId, value: PureExpr) -> PureExpr {
     fn go(expr: PureExpr, var: VarId, value: &mut Option<PureExpr>) -> PureExpr {
         match expr {
-            PureExpr::VariableReference { value: v, kind, id } if v.id == var => {
+            PureExpr::VariableReference { value: v, typ, id } if v.id == var => {
                 match value.take() {
                     Some(replacement) => replacement,
-                    None => PureExpr::VariableReference { value: v, kind, id },
+                    None => PureExpr::VariableReference { value: v, typ, id },
                 }
             }
             expr => expr.map_children(&mut |child| go(child, var, value)),
@@ -635,11 +635,11 @@ mod tests {
                         name,
                         expr: PureExpr::VariableReference {
                             value: param.var,
-                            kind: param.typ,
+                            typ: param.typ,
                             id: expr_ids.next(),
                         },
                     }],
-                    kind: Arc::new(Type::Fragment),
+                    typ: Arc::new(Type::Fragment),
                     id: expr_ids.next(),
                 },
             ],

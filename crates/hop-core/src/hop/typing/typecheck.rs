@@ -1481,7 +1481,7 @@ fn typecheck_node(
                     }),
                     false_body: Box::new(TypedExpr::FragmentConcat { nodes: Vec::new() }),
                 },
-                kind: Arc::new(Type::Fragment),
+                typ: Arc::new(Type::Fragment),
             })
         }
 
@@ -1634,7 +1634,7 @@ fn typecheck_node(
                 body: Box::new(TypedExpr::FragmentConcat {
                     nodes: typed_children,
                 }),
-                kind: Arc::new(Type::Fragment),
+                typ: Arc::new(Type::Fragment),
             })
         }
 
@@ -1783,12 +1783,12 @@ fn typecheck_node(
                 nodes: typed_children,
             };
             for (binding, typed_value) in typed_bindings.into_iter().rev() {
-                let kind = result.get_type();
+                let typ = result.get_type();
                 result = TypedExpr::Let {
                     var: binding.var_name.clone(),
                     value: Box::new(typed_value),
                     body: Box::new(result),
-                    kind,
+                    typ,
                 };
             }
 
@@ -1894,7 +1894,7 @@ fn typecheck_node(
             Some(TypedExpr::FunctionCall {
                 function_name: component_name.clone().into(),
                 args,
-                kind: Arc::new(Type::Fragment),
+                typ: Arc::new(Type::Fragment),
             })
         }
 
@@ -2179,7 +2179,7 @@ fn attrs_expr(attributes: Vec<TypedAttribute>, spread: Option<VarName>) -> Typed
                 literal,
                 TypedExpr::Var {
                     value: name,
-                    kind: Arc::new(Type::Attrs),
+                    typ: Arc::new(Type::Attrs),
                 },
             ],
         },
@@ -2394,7 +2394,7 @@ fn typecheck_arguments(
                     param.name.clone(),
                     TypedExpr::Var {
                         value: param.name.clone(),
-                        kind: param.typ.clone(),
+                        typ: param.typ.clone(),
                     },
                 ));
             }

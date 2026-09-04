@@ -330,7 +330,7 @@ impl PureBuilder {
     }
 
     pub fn var(&self, name: &str) -> PureExpr {
-        let (_, value, kind) = self
+        let (_, value, typ) = self
             .var_stack
             .iter()
             .rev()
@@ -349,7 +349,7 @@ impl PureBuilder {
 
         PureExpr::VariableReference {
             value,
-            kind,
+            typ,
             id: self.next_expr_id(),
         }
     }
@@ -535,7 +535,7 @@ impl PureBuilder {
 
         PureExpr::ArrayLiteral {
             elements,
-            kind: Arc::new(Type::Array(element_type)),
+            typ: Arc::new(Type::Array(element_type)),
             id: self.next_expr_id(),
         }
     }
@@ -622,7 +622,7 @@ impl PureBuilder {
                 .into_iter()
                 .map(|(k, v)| (FieldName::new(k).unwrap(), v))
                 .collect(),
-            kind: self.types.named(record_name),
+            typ: self.types.named(record_name),
             id: self.next_expr_id(),
         }
     }
@@ -694,7 +694,7 @@ impl PureBuilder {
                 .into_iter()
                 .map(|(k, v)| (FieldName::new(k).unwrap(), v))
                 .collect(),
-            kind: self.types.named(enum_name),
+            typ: self.types.named(enum_name),
             id: self.next_expr_id(),
         }
     }
@@ -703,7 +703,7 @@ impl PureBuilder {
         let inner_type = inner.get_type();
         PureExpr::OptionLiteral {
             value: Some(Box::new(inner)),
-            kind: Arc::new(Type::Option(inner_type)),
+            typ: Arc::new(Type::Option(inner_type)),
             id: self.next_expr_id(),
         }
     }
@@ -715,7 +715,7 @@ impl PureBuilder {
     pub fn none_typed(&self, inner_type: Arc<Type>) -> PureExpr {
         PureExpr::OptionLiteral {
             value: None,
-            kind: Arc::new(Type::Option(inner_type)),
+            typ: Arc::new(Type::Option(inner_type)),
             id: self.next_expr_id(),
         }
     }
@@ -740,7 +740,7 @@ impl PureBuilder {
         };
         arms_fn(&mut arms);
         assert_exhaustive(&arms.enum_name, &arms.variants, &arms.arms);
-        let kind = arms
+        let typ = arms
             .result_type
             .expect("enum_match_expr requires at least one arm");
 
@@ -749,7 +749,7 @@ impl PureBuilder {
                 subject: Box::new(subject),
                 arms: arms.arms,
             },
-            kind,
+            typ,
             id: self.next_expr_id(),
         }
     }
@@ -776,7 +776,7 @@ impl PureBuilder {
                 true_body: Box::new(true_body),
                 false_body: Box::new(false_body),
             },
-            kind: result_type,
+            typ: result_type,
             id: self.next_expr_id(),
         }
     }
@@ -808,7 +808,7 @@ impl PureBuilder {
                 some_arm_body: Box::new(some_body),
                 none_arm_body: Box::new(none_body),
             },
-            kind: result_type,
+            typ: result_type,
             id: self.next_expr_id(),
         }
     }
@@ -848,7 +848,7 @@ impl PureBuilder {
                 some_arm_body: Box::new(some_body),
                 none_arm_body: Box::new(none_body),
             },
-            kind: result_type,
+            typ: result_type,
             id: self.next_expr_id(),
         }
     }
@@ -876,7 +876,7 @@ impl PureBuilder {
         PureExpr::FieldAccess {
             record: Box::new(object),
             field: field_name,
-            kind: field_type,
+            typ: field_type,
             id: self.next_expr_id(),
         }
     }
@@ -890,13 +890,13 @@ impl PureBuilder {
         let var = self.bind();
         let body = body_fn(&self.scoped([(var_name.to_string(), var, value_type)]));
 
-        let kind = body.get_type();
+        let typ = body.get_type();
 
         PureExpr::Let {
             var,
             value: Box::new(value),
             body: Box::new(body),
-            kind,
+            typ,
             id: self.next_expr_id(),
         }
     }
@@ -1136,7 +1136,7 @@ impl PureBuilder {
         PureExpr::FunctionCall {
             function_name: FunctionName::new(name).unwrap(),
             args: pure_args,
-            kind: return_type,
+            typ: return_type,
             id: self.next_expr_id(),
         }
     }

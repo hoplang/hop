@@ -99,7 +99,7 @@ impl TypedAstBuilder {
 
         TypedExpr::Var {
             value: VarName::try_from(name.to_string()).unwrap(),
-            kind: typ,
+            typ,
         }
     }
 
@@ -147,7 +147,7 @@ impl TypedAstBuilder {
             var_name: Some(VarName::try_from(var.to_string()).unwrap()),
             source: Box::new(TypedLoopSource::Array(array)),
             body: Box::new(TypedExpr::FragmentConcat { nodes: children }),
-            kind: Arc::new(Type::Fragment),
+            typ: Arc::new(Type::Fragment),
         });
     }
 
@@ -243,7 +243,7 @@ impl TypedAstBuilder {
                     nodes: false_builder.children,
                 }),
             },
-            kind: Arc::new(Type::Fragment),
+            typ: Arc::new(Type::Fragment),
         });
     }
 }

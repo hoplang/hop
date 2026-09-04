@@ -176,7 +176,7 @@ pub enum WriterExpr {
         var: IrVar,
         value: Box<WriterExpr>,
         body: Box<WriterExpr>,
-        kind: Arc<Type>,
+        typ: Arc<Type>,
     },
 
     /// A Match expression over an Enum, Boolean, or Option.
@@ -184,15 +184,15 @@ pub enum WriterExpr {
     /// Matching is exhaustive, a value must match at least one branch.
     Match {
         match_: Match<WriterExpr, WriterExpr, IrVar>,
-        kind: Arc<Type>,
+        typ: Arc<Type>,
     },
 
     /// A VariableReference expression.
     ///
     /// Reads the value bound by its binder.
     ///
-    /// The kind field must match the binder's type.
-    VariableReference { value: IrVar, kind: Arc<Type> },
+    /// The `typ` field must match the binder's type.
+    VariableReference { value: IrVar, typ: Arc<Type> },
 
     /// A FieldAccess expression.
     ///
@@ -201,7 +201,7 @@ pub enum WriterExpr {
     FieldAccess {
         record: Box<WriterExpr>,
         field: FieldName,
-        kind: Arc<Type>,
+        typ: Arc<Type>,
     },
 
     /// A StringLiteral expression.
@@ -218,7 +218,7 @@ pub enum WriterExpr {
     FunctionCall {
         function_name: FunctionName,
         args: Vec<WriterArgument>,
-        kind: Arc<Type>,
+        typ: Arc<Type>,
     },
 
     /// A BooleanLiteral expression.
@@ -233,14 +233,14 @@ pub enum WriterExpr {
     /// An ArrayLiteral expression.
     ArrayLiteral {
         elements: Vec<WriterExpr>,
-        kind: Arc<Type>,
+        typ: Arc<Type>,
     },
 
     /// A RecordLiteral expression.
     RecordLiteral {
         record_name: TypeName,
         fields: Vec<(FieldName, WriterExpr)>,
-        kind: Arc<Type>,
+        typ: Arc<Type>,
     },
 
     /// An EnumLiteral expression.
@@ -249,13 +249,13 @@ pub enum WriterExpr {
         variant_name: TypeName,
         /// Field values for variants with fields (empty for unit variants)
         fields: Vec<(FieldName, WriterExpr)>,
-        kind: Arc<Type>,
+        typ: Arc<Type>,
     },
 
     /// An OptionLiteral expression.
     OptionLiteral {
         value: Option<Box<WriterExpr>>,
-        kind: Arc<Type>,
+        typ: Arc<Type>,
     },
 
     /// A StringConcat expression.
@@ -611,15 +611,15 @@ impl WriterExpr {
     /// Get the type of this expression as an Arc
     pub fn get_type(&self) -> Arc<Type> {
         match self {
-            WriterExpr::VariableReference { kind, .. }
-            | WriterExpr::FieldAccess { kind, .. }
-            | WriterExpr::ArrayLiteral { kind, .. }
-            | WriterExpr::RecordLiteral { kind, .. }
-            | WriterExpr::EnumLiteral { kind, .. }
-            | WriterExpr::OptionLiteral { kind, .. }
-            | WriterExpr::Match { kind, .. }
-            | WriterExpr::Let { kind, .. }
-            | WriterExpr::FunctionCall { kind, .. } => kind.clone(),
+            WriterExpr::VariableReference { typ, .. }
+            | WriterExpr::FieldAccess { typ, .. }
+            | WriterExpr::ArrayLiteral { typ, .. }
+            | WriterExpr::RecordLiteral { typ, .. }
+            | WriterExpr::EnumLiteral { typ, .. }
+            | WriterExpr::OptionLiteral { typ, .. }
+            | WriterExpr::Match { typ, .. }
+            | WriterExpr::Let { typ, .. }
+            | WriterExpr::FunctionCall { typ, .. } => typ.clone(),
 
             WriterExpr::FloatLiteral { .. } | WriterExpr::IntToFloat { .. } => {
                 Arc::new(Type::Float)
@@ -668,15 +668,15 @@ impl WriterExpr {
         static FRAGMENT_TYPE: Type = Type::Fragment;
 
         match self {
-            WriterExpr::VariableReference { kind, .. }
-            | WriterExpr::FieldAccess { kind, .. }
-            | WriterExpr::ArrayLiteral { kind, .. }
-            | WriterExpr::RecordLiteral { kind, .. }
-            | WriterExpr::EnumLiteral { kind, .. }
-            | WriterExpr::OptionLiteral { kind, .. }
-            | WriterExpr::Match { kind, .. }
-            | WriterExpr::Let { kind, .. }
-            | WriterExpr::FunctionCall { kind, .. } => kind,
+            WriterExpr::VariableReference { typ, .. }
+            | WriterExpr::FieldAccess { typ, .. }
+            | WriterExpr::ArrayLiteral { typ, .. }
+            | WriterExpr::RecordLiteral { typ, .. }
+            | WriterExpr::EnumLiteral { typ, .. }
+            | WriterExpr::OptionLiteral { typ, .. }
+            | WriterExpr::Match { typ, .. }
+            | WriterExpr::Let { typ, .. }
+            | WriterExpr::FunctionCall { typ, .. } => typ,
 
             WriterExpr::FloatLiteral { .. } | WriterExpr::IntToFloat { .. } => &FLOAT_TYPE,
             WriterExpr::IntLiteral { .. } => &INT_TYPE,
@@ -898,11 +898,11 @@ impl WriterExpr {
                         .append(BoxDoc::text("}"))
                 }
             }
-            WriterExpr::OptionLiteral { value, kind, .. } => {
+            WriterExpr::OptionLiteral { value, typ, .. } => {
                 // Extract inner type from Option[T] -> T
-                let inner_type = match kind.as_ref() {
+                let inner_type = match typ.as_ref() {
                     Type::Option(inner) => inner.to_doc(),
-                    _ => panic!("OptionLiteral must have Option type, got {:?}", kind),
+                    _ => panic!("OptionLiteral must have Option type, got {:?}", typ),
                 };
                 let type_prefix = BoxDoc::text("Option[")
                     .append(inner_type)

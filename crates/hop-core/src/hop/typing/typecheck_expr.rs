@@ -55,7 +55,7 @@ pub fn typecheck_expr(
                 });
                 Some(TypedExpr::Var {
                     value: var_name.clone(),
-                    kind: var_type.clone(),
+                    typ: var_type.clone(),
                 })
             } else {
                 errors.push(TypeError::new(
@@ -104,7 +104,7 @@ pub fn typecheck_expr(
                         fields.iter().find(|(f, _, _)| f.as_str() == field.as_str())
                     {
                         Some(TypedExpr::FieldAccess {
-                            kind: field_type.clone(),
+                            typ: field_type.clone(),
                             record: Box::new(typed_base),
                             field: field.clone(),
                         })
@@ -948,7 +948,7 @@ pub fn typecheck_expr(
                 };
                 Some(TypedExpr::ArrayLiteral {
                     elements: vec![],
-                    kind: Arc::new(Type::Array(elem_type)),
+                    typ: Arc::new(Type::Array(elem_type)),
                 })
             } else {
                 // Determine expected element type from context if available
@@ -1013,7 +1013,7 @@ pub fn typecheck_expr(
 
                 Some(TypedExpr::ArrayLiteral {
                     elements: typed_elements,
-                    kind: Arc::new(Type::Array(first_type?)),
+                    typ: Arc::new(Type::Array(first_type?)),
                 })
             }
         }
@@ -1197,7 +1197,7 @@ pub fn typecheck_expr(
                 return Some(TypedExpr::RecordLiteral {
                     record_name: record_name.clone(),
                     fields: typed_fields,
-                    kind: record_type,
+                    typ: record_type,
                 });
             };
 
@@ -1214,7 +1214,7 @@ pub fn typecheck_expr(
                 return Some(TypedExpr::RecordLiteral {
                     record_name: record_name.clone(),
                     fields: typed_fields,
-                    kind: record_type,
+                    typ: record_type,
                 });
             }
 
@@ -1236,10 +1236,10 @@ pub fn typecheck_expr(
                         .unwrap_or_else(|| TypedExpr::FieldAccess {
                             record: Box::new(TypedExpr::Var {
                                 value: subject_var.clone(),
-                                kind: record_type.clone(),
+                                typ: record_type.clone(),
                             }),
                             field: name.clone(),
-                            kind: typ.clone(),
+                            typ: typ.clone(),
                         });
                     (name.clone(), value)
                 })
@@ -1248,14 +1248,14 @@ pub fn typecheck_expr(
             let literal = TypedExpr::RecordLiteral {
                 record_name: record_name.clone(),
                 fields: all_fields,
-                kind: record_type.clone(),
+                typ: record_type.clone(),
             };
             Some(match subject_to_bind {
                 Some(subject) => TypedExpr::Let {
                     var: subject_var,
                     value: Box::new(subject),
                     body: Box::new(literal),
-                    kind: record_type,
+                    typ: record_type,
                 },
                 None => literal,
             })
@@ -1426,7 +1426,7 @@ pub fn typecheck_expr(
                 enum_name: enum_name.clone(),
                 variant_name: variant_name.clone(),
                 fields: typed_fields,
-                kind: enum_type,
+                typ: enum_type,
             })
         }
         ParsedExpr::OptionLiteral { value, range } => {
@@ -1454,7 +1454,7 @@ pub fn typecheck_expr(
                     let inner_type = typed_inner.get_type();
                     Some(TypedExpr::OptionLiteral {
                         value: Some(Box::new(typed_inner)),
-                        kind: Arc::new(Type::Option(inner_type)),
+                        typ: Arc::new(Type::Option(inner_type)),
                     })
                 }
                 None => {
@@ -1471,7 +1471,7 @@ pub fn typecheck_expr(
                     };
                     Some(TypedExpr::OptionLiteral {
                         value: None,
-                        kind: Arc::new(Type::Option(elem_type)),
+                        typ: Arc::new(Type::Option(elem_type)),
                     })
                 }
             }
@@ -1802,7 +1802,7 @@ pub fn typecheck_expr(
             Some(TypedExpr::FunctionCall {
                 function_name: name.clone().into(),
                 args: typed_args,
-                kind: signature.return_type.clone(),
+                typ: signature.return_type.clone(),
             })
         }
     }
@@ -1964,14 +1964,14 @@ pub fn decision_to_typed_expr(
             for binding in body.bindings.iter().rev() {
                 let value = Box::new(root_subject.take().unwrap_or_else(|| TypedExpr::Var {
                     value: binding.source_name.clone(),
-                    kind: binding.typ.clone(),
+                    typ: binding.typ.clone(),
                 }));
-                let kind = result.get_type();
+                let typ = result.get_type();
                 result = TypedExpr::Let {
                     var: binding.name.clone(),
                     value,
                     body: Box::new(result),
-                    kind,
+                    typ,
                 };
             }
             result
@@ -1984,7 +1984,7 @@ pub fn decision_to_typed_expr(
         } => {
             let subject = Box::new(root_subject.unwrap_or_else(|| TypedExpr::Var {
                 value: variable.name.clone(),
-                kind: variable.typ.clone(),
+                typ: variable.typ.clone(),
             }));
             TypedExpr::Match {
                 match_: Match::Bool {
@@ -2002,7 +2002,7 @@ pub fn decision_to_typed_expr(
                         None,
                     )),
                 },
-                kind: result_type,
+                typ: result_type,
             }
         }
 
@@ -2013,7 +2013,7 @@ pub fn decision_to_typed_expr(
         } => {
             let subject = Box::new(root_subject.unwrap_or_else(|| TypedExpr::Var {
                 value: variable.name.clone(),
-                kind: variable.typ.clone(),
+                typ: variable.typ.clone(),
             }));
             TypedExpr::Match {
                 match_: Match::Option {
@@ -2032,14 +2032,14 @@ pub fn decision_to_typed_expr(
                         None,
                     )),
                 },
-                kind: result_type,
+                typ: result_type,
             }
         }
 
         Decision::SwitchEnum { variable, cases } => {
             let subject = Box::new(root_subject.unwrap_or_else(|| TypedExpr::Var {
                 value: variable.name.clone(),
-                kind: variable.typ.clone(),
+                typ: variable.typ.clone(),
             }));
 
             let arms = cases
@@ -2074,7 +2074,7 @@ pub fn decision_to_typed_expr(
 
             TypedExpr::Match {
                 match_: Match::Enum { subject, arms },
-                kind: result_type,
+                typ: result_type,
             }
         }
 
@@ -2083,7 +2083,7 @@ pub fn decision_to_typed_expr(
             // is already a variable, otherwise the synthetic variable which is
             // bound to the subject expression below.
             let (record_name, record_typ, subject_to_bind) = match root_subject {
-                Some(TypedExpr::Var { value, kind }) => (value, kind, None),
+                Some(TypedExpr::Var { value, typ }) => (value, typ, None),
                 Some(subject) => (variable.name.clone(), variable.typ.clone(), Some(subject)),
                 None => (variable.name.clone(), variable.typ.clone(), None),
             };
@@ -2103,18 +2103,18 @@ pub fn decision_to_typed_expr(
                 let field_access = TypedExpr::FieldAccess {
                     record: Box::new(TypedExpr::Var {
                         value: record_name.clone(),
-                        kind: record_typ.clone(),
+                        typ: record_typ.clone(),
                     }),
                     field: binding.field_name.clone(),
-                    kind: binding.typ.clone(),
+                    typ: binding.typ.clone(),
                 };
 
-                let kind = body.get_type();
+                let typ = body.get_type();
                 body = TypedExpr::Let {
                     var: bound_name.clone(),
                     value: Box::new(field_access),
                     body: Box::new(body),
-                    kind,
+                    typ,
                 };
             }
 
@@ -2123,7 +2123,7 @@ pub fn decision_to_typed_expr(
                     var: record_name,
                     value: Box::new(subject),
                     body: Box::new(body),
-                    kind: result_type,
+                    typ: result_type,
                 },
                 None => body,
             }

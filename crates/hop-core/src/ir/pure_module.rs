@@ -75,7 +75,7 @@ pub enum PureExpr {
         var: IrVar,
         value: Box<PureExpr>,
         body: Box<PureExpr>,
-        kind: Arc<Type>,
+        typ: Arc<Type>,
         id: ExprId,
     },
 
@@ -84,7 +84,7 @@ pub enum PureExpr {
     /// Matching is exhaustive, a value must match at least one branch.
     Match {
         match_: Match<PureExpr, PureExpr, IrVar>,
-        kind: Arc<Type>,
+        typ: Arc<Type>,
         id: ExprId,
     },
 
@@ -92,10 +92,10 @@ pub enum PureExpr {
     ///
     /// Reads the value bound by its binder.
     ///
-    /// The kind field must match the binder's type.
+    /// The `typ` field must match the binder's type.
     VariableReference {
         value: IrVar,
-        kind: Arc<Type>,
+        typ: Arc<Type>,
         id: ExprId,
     },
 
@@ -106,7 +106,7 @@ pub enum PureExpr {
     FieldAccess {
         record: Box<PureExpr>,
         field: FieldName,
-        kind: Arc<Type>,
+        typ: Arc<Type>,
         id: ExprId,
     },
 
@@ -154,7 +154,7 @@ pub enum PureExpr {
     FunctionCall {
         function_name: FunctionName,
         args: Vec<PureArgument>,
-        kind: Arc<Type>,
+        typ: Arc<Type>,
         id: ExprId,
     },
 
@@ -170,7 +170,7 @@ pub enum PureExpr {
     /// An ArrayLiteral expression.
     ArrayLiteral {
         elements: Vec<PureExpr>,
-        kind: Arc<Type>,
+        typ: Arc<Type>,
         id: ExprId,
     },
 
@@ -178,7 +178,7 @@ pub enum PureExpr {
     RecordLiteral {
         record_name: TypeName,
         fields: Vec<(FieldName, PureExpr)>,
-        kind: Arc<Type>,
+        typ: Arc<Type>,
         id: ExprId,
     },
 
@@ -188,14 +188,14 @@ pub enum PureExpr {
         variant_name: TypeName,
         /// Field values for variants with fields (empty for unit variants)
         fields: Vec<(FieldName, PureExpr)>,
-        kind: Arc<Type>,
+        typ: Arc<Type>,
         id: ExprId,
     },
 
     /// An OptionLiteral expression.
     OptionLiteral {
         value: Option<Box<PureExpr>>,
-        kind: Arc<Type>,
+        typ: Arc<Type>,
         id: ExprId,
     },
 
@@ -362,15 +362,15 @@ impl PureExpr {
     #[cfg(test)]
     pub fn get_type(&self) -> Arc<Type> {
         match self {
-            PureExpr::VariableReference { kind, .. }
-            | PureExpr::FieldAccess { kind, .. }
-            | PureExpr::ArrayLiteral { kind, .. }
-            | PureExpr::RecordLiteral { kind, .. }
-            | PureExpr::EnumLiteral { kind, .. }
-            | PureExpr::OptionLiteral { kind, .. }
-            | PureExpr::Match { kind, .. }
-            | PureExpr::Let { kind, .. }
-            | PureExpr::FunctionCall { kind, .. } => kind.clone(),
+            PureExpr::VariableReference { typ, .. }
+            | PureExpr::FieldAccess { typ, .. }
+            | PureExpr::ArrayLiteral { typ, .. }
+            | PureExpr::RecordLiteral { typ, .. }
+            | PureExpr::EnumLiteral { typ, .. }
+            | PureExpr::OptionLiteral { typ, .. }
+            | PureExpr::Match { typ, .. }
+            | PureExpr::Let { typ, .. }
+            | PureExpr::FunctionCall { typ, .. } => typ.clone(),
 
             PureExpr::FloatLiteral { .. } | PureExpr::IntToFloat { .. } => Arc::new(Type::Float),
             PureExpr::IntLiteral { .. } => Arc::new(Type::Int),
@@ -421,15 +421,15 @@ impl PureExpr {
         static FRAGMENT_TYPE: Type = Type::Fragment;
 
         match self {
-            PureExpr::VariableReference { kind, .. }
-            | PureExpr::FieldAccess { kind, .. }
-            | PureExpr::ArrayLiteral { kind, .. }
-            | PureExpr::RecordLiteral { kind, .. }
-            | PureExpr::EnumLiteral { kind, .. }
-            | PureExpr::OptionLiteral { kind, .. }
-            | PureExpr::Match { kind, .. }
-            | PureExpr::Let { kind, .. }
-            | PureExpr::FunctionCall { kind, .. } => kind,
+            PureExpr::VariableReference { typ, .. }
+            | PureExpr::FieldAccess { typ, .. }
+            | PureExpr::ArrayLiteral { typ, .. }
+            | PureExpr::RecordLiteral { typ, .. }
+            | PureExpr::EnumLiteral { typ, .. }
+            | PureExpr::OptionLiteral { typ, .. }
+            | PureExpr::Match { typ, .. }
+            | PureExpr::Let { typ, .. }
+            | PureExpr::FunctionCall { typ, .. } => typ,
 
             PureExpr::FloatLiteral { .. } | PureExpr::IntToFloat { .. } => &FLOAT_TYPE,
             PureExpr::IntLiteral { .. } => &INT_TYPE,
@@ -649,17 +649,17 @@ impl PureExpr {
                 var,
                 value,
                 body,
-                kind,
+                typ,
                 id,
             } => PureExpr::Let {
                 var,
                 value: Box::new(f(*value)),
                 body: Box::new(f(*body)),
-                kind,
+                typ,
                 id,
             },
 
-            PureExpr::Match { match_, kind, id } => {
+            PureExpr::Match { match_, typ, id } => {
                 let match_ = match match_ {
                     Match::Bool {
                         subject,
@@ -693,7 +693,7 @@ impl PureExpr {
                             .collect(),
                     },
                 };
-                PureExpr::Match { match_, kind, id }
+                PureExpr::Match { match_, typ, id }
             }
 
             PureExpr::FragmentFor {
@@ -717,12 +717,12 @@ impl PureExpr {
             PureExpr::FieldAccess {
                 record,
                 field,
-                kind,
+                typ,
                 id,
             } => PureExpr::FieldAccess {
                 record: Box::new(f(*record)),
                 field,
-                kind,
+                typ,
                 id,
             },
 
@@ -739,7 +739,7 @@ impl PureExpr {
             PureExpr::FunctionCall {
                 function_name,
                 args,
-                kind,
+                typ,
                 id,
             } => PureExpr::FunctionCall {
                 function_name,
@@ -750,20 +750,20 @@ impl PureExpr {
                         expr: f(arg.expr),
                     })
                     .collect(),
-                kind,
+                typ,
                 id,
             },
 
-            PureExpr::ArrayLiteral { elements, kind, id } => PureExpr::ArrayLiteral {
+            PureExpr::ArrayLiteral { elements, typ, id } => PureExpr::ArrayLiteral {
                 elements: elements.into_iter().map(&mut *f).collect(),
-                kind,
+                typ,
                 id,
             },
 
             PureExpr::RecordLiteral {
                 record_name,
                 fields,
-                kind,
+                typ,
                 id,
             } => PureExpr::RecordLiteral {
                 record_name,
@@ -771,7 +771,7 @@ impl PureExpr {
                     .into_iter()
                     .map(|(name, value)| (name, f(value)))
                     .collect(),
-                kind,
+                typ,
                 id,
             },
 
@@ -779,7 +779,7 @@ impl PureExpr {
                 enum_name,
                 variant_name,
                 fields,
-                kind,
+                typ,
                 id,
             } => PureExpr::EnumLiteral {
                 enum_name,
@@ -788,13 +788,13 @@ impl PureExpr {
                     .into_iter()
                     .map(|(name, value)| (name, f(value)))
                     .collect(),
-                kind,
+                typ,
                 id,
             },
 
-            PureExpr::OptionLiteral { value, kind, id } => PureExpr::OptionLiteral {
+            PureExpr::OptionLiteral { value, typ, id } => PureExpr::OptionLiteral {
                 value: value.map(|v| Box::new(f(*v))),
-                kind,
+                typ,
                 id,
             },
 
@@ -1220,10 +1220,10 @@ impl PureExpr {
                         .append(BoxDoc::text("}"))
                 }
             }
-            PureExpr::OptionLiteral { value, kind, .. } => {
-                let inner_type = match kind.as_ref() {
+            PureExpr::OptionLiteral { value, typ, .. } => {
+                let inner_type = match typ.as_ref() {
                     Type::Option(inner) => inner.to_doc(),
-                    _ => panic!("OptionLiteral must have Option type, got {:?}", kind),
+                    _ => panic!("OptionLiteral must have Option type, got {:?}", typ),
                 };
                 let type_prefix = BoxDoc::text("Option[")
                     .append(inner_type)

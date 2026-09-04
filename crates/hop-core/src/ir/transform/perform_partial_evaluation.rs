@@ -34,7 +34,7 @@ fn eval(
             var,
             value,
             body,
-            kind,
+            typ,
             id,
         } => {
             let value = eval(*value, env, expr_ids);
@@ -54,17 +54,17 @@ fn eval(
                 var,
                 value: Box::new(value),
                 body: Box::new(body),
-                kind,
+                typ,
                 id,
             }
         }
 
-        PureExpr::VariableReference { value, kind, id } => match env.get(&value.id) {
+        PureExpr::VariableReference { value, typ, id } => match env.get(&value.id) {
             Some(constant) => instantiate(constant, expr_ids),
-            None => PureExpr::VariableReference { value, kind, id },
+            None => PureExpr::VariableReference { value, typ, id },
         },
 
-        PureExpr::Match { match_, kind, id } => match match_ {
+        PureExpr::Match { match_, typ, id } => match match_ {
             Match::Bool {
                 subject,
                 true_body,
@@ -82,7 +82,7 @@ fn eval(
                             true_body: Box::new(eval(*true_body, env, expr_ids)),
                             false_body: Box::new(eval(*false_body, env, expr_ids)),
                         },
-                        kind,
+                        typ,
                         id,
                     },
                 }
@@ -103,7 +103,7 @@ fn eval(
                                 var: binding,
                                 value: inner,
                                 body: some_arm_body,
-                                kind,
+                                typ,
                                 id: expr_ids.next(),
                             },
                             None => *some_arm_body,
@@ -120,7 +120,7 @@ fn eval(
                             some_arm_body: Box::new(eval(*some_arm_body, env, expr_ids)),
                             none_arm_body: Box::new(eval(*none_arm_body, env, expr_ids)),
                         },
-                        kind,
+                        typ,
                         id,
                     },
                 }
@@ -161,7 +161,7 @@ fn eval(
                                 var,
                                 value: Box::new(value),
                                 body: Box::new(selected),
-                                kind: kind.clone(),
+                                typ: typ.clone(),
                                 id: expr_ids.next(),
                             };
                         }
@@ -178,7 +178,7 @@ fn eval(
                                 })
                                 .collect(),
                         },
-                        kind,
+                        typ,
                         id,
                     },
                 }
@@ -312,7 +312,7 @@ fn try_fold(expr: PureExpr) -> PureExpr {
         PureExpr::FieldAccess {
             record,
             field,
-            kind,
+            typ,
             id,
         } => match *record {
             PureExpr::RecordLiteral {
@@ -327,7 +327,7 @@ fn try_fold(expr: PureExpr) -> PureExpr {
             record => PureExpr::FieldAccess {
                 record: Box::new(record),
                 field,
-                kind,
+                typ,
                 id,
             },
         },
@@ -604,7 +604,7 @@ fn instantiate(expr: &PureExpr, expr_ids: &mut ExprIdCounter) -> PureExpr {
             enum_name,
             variant_name,
             fields,
-            kind,
+            typ,
             ..
         } => PureExpr::EnumLiteral {
             enum_name: enum_name.clone(),
@@ -613,13 +613,13 @@ fn instantiate(expr: &PureExpr, expr_ids: &mut ExprIdCounter) -> PureExpr {
                 .iter()
                 .map(|(name, value)| (name.clone(), instantiate(value, expr_ids)))
                 .collect(),
-            kind: kind.clone(),
+            typ: typ.clone(),
             id: expr_ids.next(),
         },
         PureExpr::RecordLiteral {
             record_name,
             fields,
-            kind,
+            typ,
             ..
         } => PureExpr::RecordLiteral {
             record_name: record_name.clone(),
@@ -627,22 +627,22 @@ fn instantiate(expr: &PureExpr, expr_ids: &mut ExprIdCounter) -> PureExpr {
                 .iter()
                 .map(|(name, value)| (name.clone(), instantiate(value, expr_ids)))
                 .collect(),
-            kind: kind.clone(),
+            typ: typ.clone(),
             id: expr_ids.next(),
         },
-        PureExpr::ArrayLiteral { elements, kind, .. } => PureExpr::ArrayLiteral {
+        PureExpr::ArrayLiteral { elements, typ, .. } => PureExpr::ArrayLiteral {
             elements: elements
                 .iter()
                 .map(|element| instantiate(element, expr_ids))
                 .collect(),
-            kind: kind.clone(),
+            typ: typ.clone(),
             id: expr_ids.next(),
         },
-        PureExpr::OptionLiteral { value, kind, .. } => PureExpr::OptionLiteral {
+        PureExpr::OptionLiteral { value, typ, .. } => PureExpr::OptionLiteral {
             value: value
                 .as_ref()
                 .map(|inner| Box::new(instantiate(inner, expr_ids))),
-            kind: kind.clone(),
+            typ: typ.clone(),
             id: expr_ids.next(),
         },
 

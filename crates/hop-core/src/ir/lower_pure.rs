@@ -84,11 +84,11 @@ fn lower_output(expr: PureExpr, out: &mut Vec<WriterStatement>) {
         PureExpr::FunctionCall {
             function_name,
             args,
-            kind,
+            typ,
             ..
         } => {
             assert!(
-                matches!(*kind, Type::Fragment),
+                matches!(*typ, Type::Fragment),
                 "non-Fragment function call in output position: {}",
                 function_name
             );
@@ -123,9 +123,9 @@ fn lower_output(expr: PureExpr, out: &mut Vec<WriterStatement>) {
             out.push(WriterStatement::Match { match_ });
         }
 
-        PureExpr::VariableReference { ref kind, .. } | PureExpr::FieldAccess { ref kind, .. } => {
+        PureExpr::VariableReference { ref typ, .. } | PureExpr::FieldAccess { ref typ, .. } => {
             assert!(
-                matches!(**kind, Type::Fragment),
+                matches!(**typ, Type::Fragment),
                 "non-Fragment expression in output position: {:?}",
                 expr
             );
@@ -288,9 +288,9 @@ fn lower_value(expr: PureExpr) -> WriterExpr {
         PureExpr::FunctionCall {
             function_name,
             args,
-            kind,
+            typ,
             ..
-        } if matches!(*kind, Type::Fragment) => {
+        } if matches!(*typ, Type::Fragment) => {
             let args = args
                 .into_iter()
                 .map(|arg| WriterArgument {
@@ -309,7 +309,7 @@ fn lower_value(expr: PureExpr) -> WriterExpr {
         PureExpr::FunctionCall {
             function_name,
             args,
-            kind,
+            typ,
             ..
         } => WriterExpr::FunctionCall {
             function_name,
@@ -320,40 +320,37 @@ fn lower_value(expr: PureExpr) -> WriterExpr {
                     expr: lower_value(arg.expr),
                 })
                 .collect(),
-            kind,
+            typ,
         },
 
         PureExpr::Let {
             var,
             value,
             body,
-            kind,
+            typ,
             ..
         } => WriterExpr::Let {
             var,
             value: Box::new(lower_value(*value)),
             body: Box::new(lower_value(*body)),
-            kind,
+            typ,
         },
 
-        PureExpr::Match { match_, kind, .. } => WriterExpr::Match {
+        PureExpr::Match { match_, typ, .. } => WriterExpr::Match {
             match_: lower_match_value(match_),
-            kind,
+            typ,
         },
 
-        PureExpr::VariableReference { value, kind, .. } => {
-            WriterExpr::VariableReference { value, kind }
+        PureExpr::VariableReference { value, typ, .. } => {
+            WriterExpr::VariableReference { value, typ }
         }
 
         PureExpr::FieldAccess {
-            record,
-            field,
-            kind,
-            ..
+            record, field, typ, ..
         } => WriterExpr::FieldAccess {
             record: Box::new(lower_value(*record)),
             field,
-            kind,
+            typ,
         },
 
         PureExpr::StringLiteral { value, .. } => WriterExpr::StringLiteral { value },
@@ -364,15 +361,15 @@ fn lower_value(expr: PureExpr) -> WriterExpr {
 
         PureExpr::IntLiteral { value, .. } => WriterExpr::IntLiteral { value },
 
-        PureExpr::ArrayLiteral { elements, kind, .. } => WriterExpr::ArrayLiteral {
+        PureExpr::ArrayLiteral { elements, typ, .. } => WriterExpr::ArrayLiteral {
             elements: elements.into_iter().map(lower_value).collect(),
-            kind,
+            typ,
         },
 
         PureExpr::RecordLiteral {
             record_name,
             fields,
-            kind,
+            typ,
             ..
         } => WriterExpr::RecordLiteral {
             record_name,
@@ -380,14 +377,14 @@ fn lower_value(expr: PureExpr) -> WriterExpr {
                 .into_iter()
                 .map(|(name, value)| (name, lower_value(value)))
                 .collect(),
-            kind,
+            typ,
         },
 
         PureExpr::EnumLiteral {
             enum_name,
             variant_name,
             fields,
-            kind,
+            typ,
             ..
         } => WriterExpr::EnumLiteral {
             enum_name,
@@ -396,12 +393,12 @@ fn lower_value(expr: PureExpr) -> WriterExpr {
                 .into_iter()
                 .map(|(name, value)| (name, lower_value(value)))
                 .collect(),
-            kind,
+            typ,
         },
 
-        PureExpr::OptionLiteral { value, kind, .. } => WriterExpr::OptionLiteral {
+        PureExpr::OptionLiteral { value, typ, .. } => WriterExpr::OptionLiteral {
             value: value.map(|v| Box::new(lower_value(*v))),
-            kind,
+            typ,
         },
 
         PureExpr::StringConcat { parts, .. } => WriterExpr::StringConcat {

@@ -23,7 +23,7 @@ fn transform(expr: PureExpr, used: &mut HashSet<VarId>) -> PureExpr {
             var,
             value,
             body,
-            kind,
+            typ,
             id,
         } => {
             let mut body_used = HashSet::new();
@@ -33,7 +33,7 @@ fn transform(expr: PureExpr, used: &mut HashSet<VarId>) -> PureExpr {
                     var,
                     value: Box::new(transform(*value, used)),
                     body: Box::new(body),
-                    kind,
+                    typ,
                     id,
                 }
             } else {
@@ -46,7 +46,7 @@ fn transform(expr: PureExpr, used: &mut HashSet<VarId>) -> PureExpr {
             result
         }
 
-        PureExpr::Match { match_, kind, id } => {
+        PureExpr::Match { match_, typ, id } => {
             let match_ = match match_ {
                 Match::Bool {
                     subject,
@@ -97,7 +97,7 @@ fn transform(expr: PureExpr, used: &mut HashSet<VarId>) -> PureExpr {
                         .collect(),
                 },
             };
-            PureExpr::Match { match_, kind, id }
+            PureExpr::Match { match_, typ, id }
         }
 
         PureExpr::FragmentFor {
@@ -125,9 +125,9 @@ fn transform(expr: PureExpr, used: &mut HashSet<VarId>) -> PureExpr {
             }
         }
 
-        PureExpr::VariableReference { value, kind, id } => {
+        PureExpr::VariableReference { value, typ, id } => {
             used.insert(value.id);
-            PureExpr::VariableReference { value, kind, id }
+            PureExpr::VariableReference { value, typ, id }
         }
 
         // Everything else binds nothing and references nothing itself:

@@ -59,14 +59,14 @@ pub enum TypedExpr {
     /// A variable expression, e.g. foo
     Var {
         value: VarName,
-        kind: Arc<Type>,
+        typ: Arc<Type>,
     },
 
     /// A field access expression, e.g. foo.bar
     FieldAccess {
         record: Box<Self>,
         field: FieldName,
-        kind: Arc<Type>,
+        typ: Arc<Type>,
     },
 
     /// A string literal expression, e.g. "foo bar"
@@ -92,14 +92,14 @@ pub enum TypedExpr {
     /// An array literal expression, e.g. [1, 2, 3]
     ArrayLiteral {
         elements: Vec<Self>,
-        kind: Arc<Type>,
+        typ: Arc<Type>,
     },
 
     /// A record literal expression, e.g. User(name: "John", age: 30)
     RecordLiteral {
         record_name: TypeName,
         fields: Vec<(FieldName, Self)>,
-        kind: Arc<Type>,
+        typ: Arc<Type>,
     },
 
     /// An enum literal expression, e.g. Color::Red or Result::Ok(value: 42)
@@ -108,20 +108,20 @@ pub enum TypedExpr {
         variant_name: TypeName,
         /// Field values for variants with fields (empty for unit variants)
         fields: Vec<(FieldName, Self)>,
-        kind: Arc<Type>,
+        typ: Arc<Type>,
     },
 
     /// An option literal expression, e.g. Some(42) or None
     OptionLiteral {
         /// The inner value (Some) or None
         value: Option<Box<Self>>,
-        kind: Arc<Type>,
+        typ: Arc<Type>,
     },
 
     /// A match expression (enum, bool, or option)
     Match {
         match_: Match<Self, Self>,
-        kind: Arc<Type>,
+        typ: Arc<Type>,
     },
 
     /// String concatenation expression for joining a sequence of string
@@ -221,7 +221,7 @@ pub enum TypedExpr {
         var: VarName,
         value: Box<Self>,
         body: Box<Self>,
-        kind: Arc<Type>,
+        typ: Arc<Type>,
     },
 
     /// FoldMap over a monoid
@@ -229,7 +229,7 @@ pub enum TypedExpr {
         var_name: Option<VarName>,
         source: Box<TypedLoopSource>,
         body: Box<Self>,
-        kind: Arc<Type>,
+        typ: Arc<Type>,
     },
 
     /// Array length expression, e.g. items.len()
@@ -314,7 +314,7 @@ pub enum TypedExpr {
     FunctionCall {
         function_name: FunctionName,
         args: Vec<(VarName, Self)>,
-        kind: Arc<Type>,
+        typ: Arc<Type>,
     },
 }
 
@@ -361,16 +361,16 @@ fn bracketed_to_doc(items: Vec<BoxDoc<'_>>) -> BoxDoc<'_> {
 impl TypedExpr {
     pub fn get_type(&self) -> Arc<Type> {
         match self {
-            TypedExpr::Var { kind, .. }
-            | TypedExpr::FieldAccess { kind, .. }
-            | TypedExpr::ArrayLiteral { kind, .. }
-            | TypedExpr::RecordLiteral { kind, .. }
-            | TypedExpr::EnumLiteral { kind, .. }
-            | TypedExpr::OptionLiteral { kind, .. }
-            | TypedExpr::Match { kind, .. }
-            | TypedExpr::Let { kind, .. }
-            | TypedExpr::For { kind, .. }
-            | TypedExpr::FunctionCall { kind, .. } => kind.clone(),
+            TypedExpr::Var { typ, .. }
+            | TypedExpr::FieldAccess { typ, .. }
+            | TypedExpr::ArrayLiteral { typ, .. }
+            | TypedExpr::RecordLiteral { typ, .. }
+            | TypedExpr::EnumLiteral { typ, .. }
+            | TypedExpr::OptionLiteral { typ, .. }
+            | TypedExpr::Match { typ, .. }
+            | TypedExpr::Let { typ, .. }
+            | TypedExpr::For { typ, .. }
+            | TypedExpr::FunctionCall { typ, .. } => typ.clone(),
 
             TypedExpr::FloatLiteral { .. } | TypedExpr::IntToFloat { .. } => Arc::new(Type::Float),
             TypedExpr::IntLiteral { .. } => Arc::new(Type::Int),
@@ -426,16 +426,16 @@ impl TypedExpr {
         static ATTRS_TYPE: Type = Type::Attrs;
 
         match self {
-            TypedExpr::Var { kind, .. }
-            | TypedExpr::FieldAccess { kind, .. }
-            | TypedExpr::ArrayLiteral { kind, .. }
-            | TypedExpr::RecordLiteral { kind, .. }
-            | TypedExpr::EnumLiteral { kind, .. }
-            | TypedExpr::OptionLiteral { kind, .. }
-            | TypedExpr::Match { kind, .. }
-            | TypedExpr::Let { kind, .. }
-            | TypedExpr::For { kind, .. }
-            | TypedExpr::FunctionCall { kind, .. } => kind.as_ref(),
+            TypedExpr::Var { typ, .. }
+            | TypedExpr::FieldAccess { typ, .. }
+            | TypedExpr::ArrayLiteral { typ, .. }
+            | TypedExpr::RecordLiteral { typ, .. }
+            | TypedExpr::EnumLiteral { typ, .. }
+            | TypedExpr::OptionLiteral { typ, .. }
+            | TypedExpr::Match { typ, .. }
+            | TypedExpr::Let { typ, .. }
+            | TypedExpr::For { typ, .. }
+            | TypedExpr::FunctionCall { typ, .. } => typ.as_ref(),
 
             TypedExpr::FloatLiteral { .. } | TypedExpr::IntToFloat { .. } => &FLOAT_TYPE,
             TypedExpr::IntLiteral { .. } => &INT_TYPE,

@@ -378,7 +378,7 @@ pub trait Transpiler {
             }
             WriterExpr::FloatLiteral { value, .. } => self.transpile_float_literal(arena, *value),
             WriterExpr::IntLiteral { value, .. } => self.transpile_int_literal(arena, *value),
-            WriterExpr::ArrayLiteral { elements, kind, .. } => match kind.as_ref() {
+            WriterExpr::ArrayLiteral { elements, typ, .. } => match typ.as_ref() {
                 Type::Array(elem_type) => self.transpile_array_literal(arena, elements, elem_type),
                 _ => {
                     unreachable!()
@@ -474,8 +474,8 @@ pub trait Transpiler {
                 variant_name.as_str(),
                 fields,
             ),
-            WriterExpr::OptionLiteral { value, kind, .. } => {
-                let inner_type = match kind.as_ref() {
+            WriterExpr::OptionLiteral { value, typ, .. } => {
+                let inner_type = match typ.as_ref() {
                     Type::Option(inner) => inner.as_ref(),
                     _ => unreachable!("OptionLiteral must have Option type"),
                 };

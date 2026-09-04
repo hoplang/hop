@@ -109,10 +109,10 @@ impl<'a> Compiler<'a> {
                 var: self.bind(&param.var_name),
                 name: param.var_name.clone(),
                 typ: {
-                    let kind: &Arc<Type> = &param.var_type;
-                    match **kind {
+                    let typ: &Arc<Type> = &param.var_type;
+                    match **typ {
                         Type::Attrs => Arc::new(Type::Fragment),
-                        _ => kind.clone(),
+                        _ => typ.clone(),
                     }
                 },
             });
@@ -220,23 +220,23 @@ impl<'a> Compiler<'a> {
         let expr_id = self.next_expr_id();
 
         match expr {
-            TypedExpr::Var { value, kind, .. } => PureExpr::VariableReference {
+            TypedExpr::Var { value, typ, .. } => PureExpr::VariableReference {
                 value: self.resolve(value),
-                kind: match **kind {
+                typ: match **typ {
                     Type::Attrs => Arc::new(Type::Fragment),
-                    _ => kind.clone(),
+                    _ => typ.clone(),
                 },
                 id: expr_id,
             },
             TypedExpr::FieldAccess {
                 record: object,
                 field,
-                kind,
+                typ,
                 ..
             } => PureExpr::FieldAccess {
                 record: Box::new(self.compile_expr(object)),
                 field: field.clone(),
-                kind: kind.clone(),
+                typ: typ.clone(),
                 id: expr_id,
             },
             TypedExpr::BooleanNegation { operand, .. } => PureExpr::BooleanNegation {
@@ -251,15 +251,15 @@ impl<'a> Compiler<'a> {
                 operand_type: operand_type.clone(),
                 id: expr_id,
             },
-            TypedExpr::ArrayLiteral { elements, kind, .. } => PureExpr::ArrayLiteral {
+            TypedExpr::ArrayLiteral { elements, typ, .. } => PureExpr::ArrayLiteral {
                 elements: elements.iter().map(|e| self.compile_expr(e)).collect(),
-                kind: kind.clone(),
+                typ: typ.clone(),
                 id: expr_id,
             },
             TypedExpr::RecordLiteral {
                 record_name,
                 fields,
-                kind,
+                typ,
                 ..
             } => PureExpr::RecordLiteral {
                 record_name: record_name.clone(),
@@ -267,7 +267,7 @@ impl<'a> Compiler<'a> {
                     .iter()
                     .map(|(k, v)| (k.clone(), self.compile_expr(v)))
                     .collect(),
-                kind: kind.clone(),
+                typ: typ.clone(),
                 id: expr_id,
             },
             TypedExpr::StringLiteral { value, .. } => PureExpr::StringLiteral {
@@ -427,7 +427,7 @@ impl<'a> Compiler<'a> {
                 enum_name,
                 variant_name,
                 fields,
-                kind,
+                typ,
             } => PureExpr::EnumLiteral {
                 enum_name: enum_name.clone(),
                 variant_name: variant_name.clone(),
@@ -437,10 +437,10 @@ impl<'a> Compiler<'a> {
                         (field_name.clone(), self.compile_expr(field_expr))
                     })
                     .collect(),
-                kind: kind.clone(),
+                typ: typ.clone(),
                 id: expr_id,
             },
-            TypedExpr::Match { match_, kind } => {
+            TypedExpr::Match { match_, typ } => {
                 let compiled_match = match match_ {
                     Match::Enum { subject, arms } => {
                         let subject = Box::new(self.compile_expr(subject));
@@ -495,13 +495,13 @@ impl<'a> Compiler<'a> {
                 };
                 PureExpr::Match {
                     match_: compiled_match,
-                    kind: kind.clone(),
+                    typ: typ.clone(),
                     id: expr_id,
                 }
             }
-            TypedExpr::OptionLiteral { value, kind } => PureExpr::OptionLiteral {
+            TypedExpr::OptionLiteral { value, typ } => PureExpr::OptionLiteral {
                 value: value.as_ref().map(|v| Box::new(self.compile_expr(v))),
-                kind: kind.clone(),
+                typ: typ.clone(),
                 id: expr_id,
             },
             TypedExpr::FragmentConcat { nodes } => {
@@ -568,7 +568,7 @@ impl<'a> Compiler<'a> {
             TypedExpr::FunctionCall {
                 function_name,
                 args,
-                kind,
+                typ,
             } => PureExpr::FunctionCall {
                 function_name: function_name.clone(),
                 args: args
@@ -578,14 +578,14 @@ impl<'a> Compiler<'a> {
                         expr: self.compile_expr(value),
                     })
                     .collect(),
-                kind: kind.clone(),
+                typ: typ.clone(),
                 id: expr_id,
             },
             TypedExpr::Let {
                 var,
                 value,
                 body,
-                kind,
+                typ,
             } => {
                 let value = Box::new(self.compile_expr(value));
                 self.push_scope();
@@ -596,7 +596,7 @@ impl<'a> Compiler<'a> {
                     var: ir_var,
                     value,
                     body,
-                    kind: kind.clone(),
+                    typ: typ.clone(),
                     id: expr_id,
                 }
             }
@@ -604,12 +604,12 @@ impl<'a> Compiler<'a> {
                 var_name,
                 source,
                 body,
-                kind,
+                typ,
             } => {
                 assert_eq!(
-                    **kind,
+                    **typ,
                     Type::Fragment,
-                    "For must fold into a Fragment, but folds into {kind}"
+                    "For must fold into a Fragment, but folds into {typ}"
                 );
                 let pure_source = match &**source {
                     TypedLoopSource::Array(array_expr) => {
