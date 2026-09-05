@@ -46,10 +46,7 @@ pub(crate) enum ParseErrorKind {
     #[error("Unclosed <>")]
     UnclosedFragment {},
 
-    #[error("Expected a single root: wrap the contents in <>...</>")]
-    MultipleRoots,
-
-    #[error("Expected a single root: use <></> for an empty body")]
+    #[error("Expected an expression: use <></> for an empty body")]
     EmptyBody,
 
     #[error("<{tag}> should not be closed using a closing tag")]

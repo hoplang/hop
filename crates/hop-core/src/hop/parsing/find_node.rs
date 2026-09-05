@@ -31,12 +31,12 @@ pub fn find_node_at_position(ast: &ParsedAst, position: DocumentPosition) -> Opt
 
     for n in ast.get_page_declarations() {
         if n.range.contains_position(position) {
-            for child in n.head.iter().chain([&n.body]) {
-                if let Some(node) = find_node_at_position_in_expr(child, position) {
-                    return Some(node);
-                }
+            if let Some(head) = &n.head
+                && let Some(node) = find_node_at_position_in_expr(head, position)
+            {
+                return Some(node);
             }
-            return None;
+            return find_node_at_position_in_expr(&n.body, position);
         }
     }
 
@@ -53,7 +53,9 @@ fn find_node_at_position_in_expr(
     expr: &ParsedExpr,
     position: DocumentPosition,
 ) -> Option<&ParsedNode> {
-    find_node_at_position_in_node(expr.as_markup()?, position)
+    expr.nodes()
+        .into_iter()
+        .find_map(|root| find_node_at_position_in_node(root, position))
 }
 
 fn find_node_at_position_in_node(
@@ -64,16 +66,12 @@ fn find_node_at_position_in_node(
         return None;
     }
 
-    // Handle Match nodes specially since their children are inside cases
-    if let ParsedNode::Match { cases, .. } = node {
-        for case in cases {
-            for child in &case.children {
-                if let Some(found) = find_node_at_position_in_node(child, position) {
-                    return Some(found);
-                }
+    for expr in node.expressions() {
+        for root in expr.nodes() {
+            if let Some(found) = find_node_at_position_in_node(root, position) {
+                return Some(found);
             }
         }
-        return Some(node);
     }
 
     for child in node.children() {
@@ -504,6 +502,57 @@ mod tests {
                 range
                 4 |             <div>found</div>
                   |             ^^^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_find_markup_inside_an_interpolation() {
+        check_find_node_at_position(
+            indoc! {"
+                component Main {
+                    <div>{<span>text</span>}</div>
+                                   ^
+                }
+            "},
+            expect![[r#"
+                range
+                2 |     <div>{<span>text</span>}</div>
+                  |                 ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_find_markup_inside_an_attribute_value() {
+        check_find_node_at_position(
+            indoc! {"
+                component Main {
+                    <Card slot={<span>text</span>}></Card>
+                                         ^
+                }
+            "},
+            expect![[r#"
+                range
+                2 |     <Card slot={<span>text</span>}></Card>
+                  |                       ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_find_the_outer_node_when_the_position_misses_interpolated_markup() {
+        check_find_node_at_position(
+            indoc! {"
+                component Main {
+                    <div>{<span>text</span>}</div>
+                     ^
+                }
+            "},
+            expect![[r#"
+                range
+                2 |     <div>{<span>text</span>}</div>
+                  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }

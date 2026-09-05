@@ -303,12 +303,74 @@ impl ParsedBinaryOp {
 }
 
 impl ParsedExpr {
-    /// The markup this expression is, if it is markup.
-    pub fn as_markup(&self) -> Option<&ParsedNode> {
+    /// Apply `f` to each direct child expression, in source order.
+    pub fn for_each_child<'a>(&'a self, f: &mut impl FnMut(&'a ParsedExpr)) {
         match self {
-            ParsedExpr::Markup { node } => Some(node),
-            _ => None,
+            ParsedExpr::FieldAccess { record: inner, .. }
+            | ParsedExpr::MethodCall {
+                receiver: inner, ..
+            }
+            | ParsedExpr::BooleanNegation { operand: inner, .. }
+            | ParsedExpr::NumericNegation { operand: inner, .. } => f(inner),
+
+            ParsedExpr::BinaryOp { left, right, .. } => {
+                f(left);
+                f(right);
+            }
+            ParsedExpr::ArrayLiteral { elements, .. }
+            | ParsedExpr::MacroInvocation { args: elements, .. }
+            | ParsedExpr::FunctionCall { args: elements, .. } => {
+                for element in elements {
+                    f(element);
+                }
+            }
+            ParsedExpr::RecordLiteral { fields, spread, .. } => {
+                if let Some(spread) = spread {
+                    f(spread);
+                }
+                for (_, value) in fields {
+                    f(value);
+                }
+            }
+            ParsedExpr::EnumLiteral { fields, .. } => {
+                for (_, _, value) in fields {
+                    f(value);
+                }
+            }
+            ParsedExpr::Match { subject, arms, .. } => {
+                f(subject);
+                for arm in arms {
+                    f(&arm.body);
+                }
+            }
+            ParsedExpr::OptionLiteral { value, .. } => {
+                if let Some(value) = value {
+                    f(value);
+                }
+            }
+
+            ParsedExpr::Markup { .. }
+            | ParsedExpr::Var { .. }
+            | ParsedExpr::StringLiteral { .. }
+            | ParsedExpr::BooleanLiteral { .. }
+            | ParsedExpr::IntLiteral { .. }
+            | ParsedExpr::FloatLiteral { .. }
+            | ParsedExpr::FragmentEmpty { .. } => {}
         }
+    }
+
+    /// The nodes written in this expression, in source order.
+    pub fn nodes(&self) -> Vec<&ParsedNode> {
+        let mut out = Vec::new();
+        self.collect_nodes(&mut out);
+        out
+    }
+
+    fn collect_nodes<'a>(&'a self, out: &mut Vec<&'a ParsedNode>) {
+        if let ParsedExpr::Markup { node } = self {
+            out.push(node);
+        }
+        self.for_each_child(&mut |child| child.collect_nodes(out));
     }
 
     /// Whether this expression is a constant, i.e. a value written out in full

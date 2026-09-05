@@ -12,6 +12,7 @@ use crate::document_id::DocumentId;
 use crate::hop::parsing::parsed_expr::{
     Constructor, ParsedBinaryOp, ParsedExpr, ParsedMatchArm, ParsedMatchPattern,
 };
+use crate::hop::parsing::parsed_node::ParsedNode;
 use crate::hop::patterns::compiler::{Decision, compile_match};
 use crate::hop::patterns::typed::{TypedMatchPattern, typecheck_pattern};
 use crate::hop::patterns::{EnumMatchArm, EnumPattern, Match};
@@ -30,7 +31,7 @@ use crate::variable_scope::VariableScope;
 pub fn typecheck_expr(
     parsed_expr: &ParsedExpr,
     inferred_type: Option<&Arc<Type>>,
-    caller_params: &[VarName],
+    forwarded_params: &[VarName],
     var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
     type_env: &mut TypeEnv,
     registry: &TypeRegistry,
@@ -40,9 +41,12 @@ pub fn typecheck_expr(
     errors: &mut Vec<TypeError>,
 ) -> Option<TypedExpr> {
     match parsed_expr {
+        ParsedExpr::Markup { node } if matches!(**node, ParsedNode::Comment { .. }) => {
+            Some(TypedExpr::FragmentConcat { nodes: Vec::new() })
+        }
         ParsedExpr::Markup { node } => typecheck_node(
             node,
-            caller_params,
+            forwarded_params,
             registry,
             errors,
             var_env,
@@ -96,7 +100,7 @@ pub fn typecheck_expr(
             let typed_base = typecheck_expr(
                 record,
                 None,
-                caller_params,
+                forwarded_params,
                 var_env,
                 type_env,
                 registry,
@@ -157,7 +161,7 @@ pub fn typecheck_expr(
             let typed_left = typecheck_expr(
                 left,
                 None,
-                caller_params,
+                forwarded_params,
                 var_env,
                 type_env,
                 registry,
@@ -173,7 +177,7 @@ pub fn typecheck_expr(
                     let retried = typecheck_expr(
                         right,
                         None,
-                        caller_params,
+                        forwarded_params,
                         var_env,
                         type_env,
                         registry,
@@ -186,7 +190,7 @@ pub fn typecheck_expr(
                         typecheck_expr(
                             left,
                             Some(&typed_right.get_type()),
-                            caller_params,
+                            forwarded_params,
                             var_env,
                             type_env,
                             registry,
@@ -209,7 +213,7 @@ pub fn typecheck_expr(
             let typed_right = typecheck_expr(
                 right,
                 Some(&typed_left.get_type()),
-                caller_params,
+                forwarded_params,
                 var_env,
                 type_env,
                 registry,
@@ -268,7 +272,7 @@ pub fn typecheck_expr(
             let typed_left = typecheck_expr(
                 left,
                 None,
-                caller_params,
+                forwarded_params,
                 var_env,
                 type_env,
                 registry,
@@ -280,7 +284,7 @@ pub fn typecheck_expr(
             let typed_right = typecheck_expr(
                 right,
                 None,
-                caller_params,
+                forwarded_params,
                 var_env,
                 type_env,
                 registry,
@@ -339,7 +343,7 @@ pub fn typecheck_expr(
             let typed_left = typecheck_expr(
                 left,
                 None,
-                caller_params,
+                forwarded_params,
                 var_env,
                 type_env,
                 registry,
@@ -351,7 +355,7 @@ pub fn typecheck_expr(
             let typed_right = typecheck_expr(
                 right,
                 None,
-                caller_params,
+                forwarded_params,
                 var_env,
                 type_env,
                 registry,
@@ -412,7 +416,7 @@ pub fn typecheck_expr(
             let typed_left = typecheck_expr(
                 left,
                 None,
-                caller_params,
+                forwarded_params,
                 var_env,
                 type_env,
                 registry,
@@ -424,7 +428,7 @@ pub fn typecheck_expr(
             let typed_right = typecheck_expr(
                 right,
                 None,
-                caller_params,
+                forwarded_params,
                 var_env,
                 type_env,
                 registry,
@@ -485,7 +489,7 @@ pub fn typecheck_expr(
             let typed_left = typecheck_expr(
                 left,
                 None,
-                caller_params,
+                forwarded_params,
                 var_env,
                 type_env,
                 registry,
@@ -497,7 +501,7 @@ pub fn typecheck_expr(
             let typed_right = typecheck_expr(
                 right,
                 None,
-                caller_params,
+                forwarded_params,
                 var_env,
                 type_env,
                 registry,
@@ -557,7 +561,7 @@ pub fn typecheck_expr(
             let typed_left = typecheck_expr(
                 left,
                 None,
-                caller_params,
+                forwarded_params,
                 var_env,
                 type_env,
                 registry,
@@ -569,7 +573,7 @@ pub fn typecheck_expr(
             let typed_right = typecheck_expr(
                 right,
                 None,
-                caller_params,
+                forwarded_params,
                 var_env,
                 type_env,
                 registry,
@@ -629,7 +633,7 @@ pub fn typecheck_expr(
             let typed_left = typecheck_expr(
                 left,
                 None,
-                caller_params,
+                forwarded_params,
                 var_env,
                 type_env,
                 registry,
@@ -641,7 +645,7 @@ pub fn typecheck_expr(
             let typed_right = typecheck_expr(
                 right,
                 None,
-                caller_params,
+                forwarded_params,
                 var_env,
                 type_env,
                 registry,
@@ -685,7 +689,7 @@ pub fn typecheck_expr(
             let typed_left = typecheck_expr(
                 left,
                 None,
-                caller_params,
+                forwarded_params,
                 var_env,
                 type_env,
                 registry,
@@ -697,7 +701,7 @@ pub fn typecheck_expr(
             let typed_right = typecheck_expr(
                 right,
                 None,
-                caller_params,
+                forwarded_params,
                 var_env,
                 type_env,
                 registry,
@@ -740,7 +744,7 @@ pub fn typecheck_expr(
             let typed_left = typecheck_expr(
                 left,
                 None,
-                caller_params,
+                forwarded_params,
                 var_env,
                 type_env,
                 registry,
@@ -752,7 +756,7 @@ pub fn typecheck_expr(
             let typed_right = typecheck_expr(
                 right,
                 None,
-                caller_params,
+                forwarded_params,
                 var_env,
                 type_env,
                 registry,
@@ -801,7 +805,7 @@ pub fn typecheck_expr(
             let typed_left = typecheck_expr(
                 left,
                 None,
-                caller_params,
+                forwarded_params,
                 var_env,
                 type_env,
                 registry,
@@ -813,7 +817,7 @@ pub fn typecheck_expr(
             let typed_right = typecheck_expr(
                 right,
                 None,
-                caller_params,
+                forwarded_params,
                 var_env,
                 type_env,
                 registry,
@@ -859,7 +863,7 @@ pub fn typecheck_expr(
             let typed_left = typecheck_expr(
                 left,
                 None,
-                caller_params,
+                forwarded_params,
                 var_env,
                 type_env,
                 registry,
@@ -871,7 +875,7 @@ pub fn typecheck_expr(
             let typed_right = typecheck_expr(
                 right,
                 None,
-                caller_params,
+                forwarded_params,
                 var_env,
                 type_env,
                 registry,
@@ -912,7 +916,7 @@ pub fn typecheck_expr(
             let typed_operand = typecheck_expr(
                 operand,
                 None,
-                caller_params,
+                forwarded_params,
                 var_env,
                 type_env,
                 registry,
@@ -941,7 +945,7 @@ pub fn typecheck_expr(
             let typed_operand = typecheck_expr(
                 operand,
                 None,
-                caller_params,
+                forwarded_params,
                 var_env,
                 type_env,
                 registry,
@@ -1002,7 +1006,7 @@ pub fn typecheck_expr(
                 let first_typed = typecheck_expr(
                     &elements[0],
                     expected_elem_type.as_ref(),
-                    caller_params,
+                    forwarded_params,
                     var_env,
                     type_env,
                     registry,
@@ -1021,7 +1025,7 @@ pub fn typecheck_expr(
                     let Some(typed_element) = typecheck_expr(
                         element,
                         elem_context,
-                        caller_params,
+                        forwarded_params,
                         var_env,
                         type_env,
                         registry,
@@ -1129,7 +1133,7 @@ pub fn typecheck_expr(
                     let typed_subject = typecheck_expr(
                         subject,
                         Some(&record_type),
-                        caller_params,
+                        forwarded_params,
                         var_env,
                         type_env,
                         registry,
@@ -1185,7 +1189,7 @@ pub fn typecheck_expr(
                 let Some(typed_value) = typecheck_expr(
                     field_value,
                     Some(expected_type),
-                    caller_params,
+                    forwarded_params,
                     var_env,
                     type_env,
                     registry,
@@ -1400,7 +1404,7 @@ pub fn typecheck_expr(
                             let Some(typed_field_expr) = typecheck_expr(
                                 field_expr,
                                 Some(expected_type),
-                                caller_params,
+                                forwarded_params,
                                 var_env,
                                 type_env,
                                 registry,
@@ -1487,7 +1491,7 @@ pub fn typecheck_expr(
                     let typed_inner = typecheck_expr(
                         inner_expr,
                         expected_inner_type.as_ref(),
-                        caller_params,
+                        forwarded_params,
                         var_env,
                         type_env,
                         registry,
@@ -1526,7 +1530,7 @@ pub fn typecheck_expr(
             let typed_subject = typecheck_expr(
                 subject,
                 None,
-                caller_params,
+                forwarded_params,
                 var_env,
                 type_env,
                 registry,
@@ -1562,7 +1566,7 @@ pub fn typecheck_expr(
             let arm_bodies = typecheck_arm_bodies(
                 arms,
                 &typed_patterns,
-                caller_params,
+                forwarded_params,
                 var_env,
                 type_env,
                 registry,
@@ -1595,7 +1599,7 @@ pub fn typecheck_expr(
                     let Some(typed) = typecheck_expr(
                         arg,
                         Some(&string_type),
-                        caller_params,
+                        forwarded_params,
                         var_env,
                         type_env,
                         registry,
@@ -1697,7 +1701,7 @@ pub fn typecheck_expr(
             let typed_receiver = typecheck_expr(
                 receiver,
                 None,
-                caller_params,
+                forwarded_params,
                 var_env,
                 type_env,
                 registry,
@@ -1818,7 +1822,7 @@ pub fn typecheck_expr(
                 let Some(typed_arg) = typecheck_expr(
                     arg,
                     Some(&param.typ),
-                    caller_params,
+                    forwarded_params,
                     var_env,
                     type_env,
                     registry,
@@ -1903,7 +1907,7 @@ fn collect_pattern_definition_links(
 fn typecheck_arm_bodies(
     arms: &[ParsedMatchArm],
     typed_patterns: &[TypedMatchPattern],
-    caller_params: &[VarName],
+    forwarded_params: &[VarName],
     var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
     type_env: &mut TypeEnv,
     registry: &TypeRegistry,
@@ -1940,7 +1944,7 @@ fn typecheck_arm_bodies(
         let typed_body = typecheck_expr(
             &arm.body,
             result_type.as_ref(),
-            caller_params,
+            forwarded_params,
             var_env,
             type_env,
             registry,

@@ -6932,7 +6932,9 @@ mod tests {
         check(
             indoc! {r#"
                 view Test {
-                  {[1, 2, 3].len().to_string()}
+                  <>
+                    {[1, 2, 3].len().to_string()}
+                  </>
                 }
             "#},
             "3",
@@ -6969,7 +6971,9 @@ mod tests {
         check(
             indoc! {r#"
                 view Test {
-                  {(1 + 2).to_string()}
+                  <>
+                    {(1 + 2).to_string()}
+                  </>
                 }
             "#},
             "3",
@@ -7006,7 +7010,9 @@ mod tests {
         check(
             indoc! {r#"
                 view Test {
-                  {42.to_string()}
+                  <>
+                    {42.to_string()}
+                  </>
                 }
             "#},
             "42",
@@ -8346,11 +8352,15 @@ mod tests {
         check(
             indoc! {r#"
                 view Test {
-                  ok
+                  <>
+                    ok
+                  </>
                 }
 
                 view Other(delete: String) {
-                  {delete}
+                  <>
+                    {delete}
+                  </>
                 }
             "#},
             "ok",
@@ -8393,11 +8403,15 @@ mod tests {
         check(
             indoc! {r#"
                 view Test {
-                  ok
+                  <>
+                    ok
+                  </>
                 }
 
                 view Other(type: String) {
-                  {type}
+                  <>
+                    {type}
+                  </>
                 }
             "#},
             "ok",
@@ -12062,7 +12076,9 @@ mod tests {
         check(
             indoc! {r#"
                 view Test {
-                  hello world
+                  <>
+                    hello world
+                  </>
                 }
             "#},
             "hello world",
@@ -14788,7 +14804,9 @@ mod tests {
                 }
 
                 view Test {
-                  {Foo {...Foo {x: "bar", y: "baz"}, y: "foo"}.x}
+                  <>
+                    {Foo {...Foo {x: "bar", y: "baz"}, y: "foo"}.x}
+                  </>
                 }
             "#},
             r#"bar"#,
@@ -14882,6 +14900,315 @@ mod tests {
                 }
                 -- expected output --
                 <div>0,1,2,3,20</div>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn markup_as_a_function_body() {
+        check(
+            indoc! {r#"
+                fn card(label: String) -> Fragment {
+                  <div>{label}</div>
+                }
+
+                view Test {
+                  <>{card("hello")}</>
+                }
+            "#},
+            "<div>hello</div>",
+            expect![[r#"
+                -- ir (unoptimized) --
+                fn card(label@v0: String) -> Fragment {
+                  write("<div")
+                  write(">")
+                  write_string(v0)
+                  write("</div>")
+                }
+                page Test() {
+                  call card(label = "hello")
+                }
+                -- ir (optimized) --
+                page Test() {
+                  write("<div>hello</div>")
+                }
+                -- expected output --
+                <div>hello</div>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn markup_written_in_an_interpolation() {
+        check(
+            indoc! {r#"
+                view Test {
+                  <div>{<span>hello</span>}</div>
+                }
+            "#},
+            "<div><span>hello</span></div>",
+            expect![[r#"
+                -- ir (unoptimized) --
+                page Test() {
+                  write("<div")
+                  write(">")
+                  write("<span")
+                  write(">")
+                  write("hello")
+                  write("</span>")
+                  write("</div>")
+                }
+                -- ir (optimized) --
+                page Test() {
+                  write("<div><span>hello</span></div>")
+                }
+                -- expected output --
+                <div><span>hello</span></div>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn markup_passed_as_a_function_argument() {
+        check(
+            indoc! {r#"
+                fn wrap(children: Fragment) -> Fragment {
+                  <div>{children}</div>
+                }
+
+                view Test {
+                  <>{wrap(<span>hello</span>)}</>
+                }
+            "#},
+            "<div><span>hello</span></div>",
+            expect![[r#"
+                -- ir (unoptimized) --
+                fn wrap(children@v0: Fragment) -> Fragment {
+                  write("<div")
+                  write(">")
+                  write_fragment(v0)
+                  write("</div>")
+                }
+                page Test() {
+                  call wrap(children = {
+                    write("<span")
+                    write(">")
+                    write("hello")
+                    write("</span>")
+                  })
+                }
+                -- ir (optimized) --
+                page Test() {
+                  write("<div><span>hello</span></div>")
+                }
+                -- expected output --
+                <div><span>hello</span></div>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn markup_passed_as_a_component_attribute() {
+        check(
+            indoc! {r#"
+                component Card(slot: Fragment) {
+                  <div>{slot}</div>
+                }
+
+                view Test {
+                  <Card slot={<span>hello</span>}/>
+                }
+            "#},
+            "<div><span>hello</span></div>",
+            expect![[r#"
+                -- ir (unoptimized) --
+                fn Card(slot@v0: Fragment) -> Fragment {
+                  write("<div")
+                  write(">")
+                  write_fragment(v0)
+                  write("</div>")
+                }
+                page Test() {
+                  call Card(slot = {
+                    write("<span")
+                    write(">")
+                    write("hello")
+                    write("</span>")
+                  })
+                }
+                -- ir (optimized) --
+                page Test() {
+                  write("<div><span>hello</span></div>")
+                }
+                -- expected output --
+                <div><span>hello</span></div>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn markup_in_the_arms_of_a_match_expression() {
+        check(
+            indoc! {r#"
+                fn badge(on: Bool) -> Fragment {
+                  match on {true => <b>yes</b>, false => <i>no</i>}
+                }
+
+                view Test {
+                  <div>{badge(true)}{badge(false)}</div>
+                }
+            "#},
+            "<div><b>yes</b><i>no</i></div>",
+            expect![[r#"
+                -- ir (unoptimized) --
+                fn badge(on@v0: Bool) -> Fragment {
+                  match v0 {
+                    true => {
+                      write("<b")
+                      write(">")
+                      write("yes")
+                      write("</b>")
+                    }
+                    false => {
+                      write("<i")
+                      write(">")
+                      write("no")
+                      write("</i>")
+                    }
+                  }
+                }
+                page Test() {
+                  write("<div")
+                  write(">")
+                  call badge(on = true)
+                  call badge(on = false)
+                  write("</div>")
+                }
+                -- ir (optimized) --
+                page Test() {
+                  write("<div><b>yes</b><i>no</i></div>")
+                }
+                -- expected output --
+                <div><b>yes</b><i>no</i></div>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn a_call_as_a_component_body() {
+        check(
+            indoc! {r#"
+                fn card(label: String) -> Fragment {
+                  <div>{label}</div>
+                }
+
+                component Outer() {
+                  card("hello")
+                }
+
+                view Test {
+                  <Outer/>
+                }
+            "#},
+            "<div>hello</div>",
+            expect![[r#"
+                -- ir (unoptimized) --
+                fn Outer() -> Fragment {
+                  call card(label = "hello")
+                }
+                fn card(label@v0: String) -> Fragment {
+                  write("<div")
+                  write(">")
+                  write_string(v0)
+                  write("</div>")
+                }
+                page Test() {
+                  call Outer()
+                }
+                -- ir (optimized) --
+                page Test() {
+                  write("<div>hello</div>")
+                }
+                -- expected output --
+                <div>hello</div>
                 -- eval (unoptimized) --
                 OK
                 -- eval (optimized) --

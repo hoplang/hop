@@ -13,6 +13,7 @@ use super::r#type::{FunctionSignature, ParamEntry, Tail, Type};
 use super::type_env::{TypeBinding, TypeEnv};
 use crate::dependency_graph::DependencyGraph;
 use crate::document::{CheapString, DocumentRange};
+use crate::hop::parsing::ParsedExpr;
 use crate::hop::parsing::parsed_node::{ParsedAttribute, ParsedNode};
 use crate::html::HtmlElement;
 use crate::symbols::type_name::TypeName;
@@ -64,76 +65,76 @@ fn named_attrs(attributes: &[ParsedAttribute]) -> Vec<CheapString> {
 }
 
 /// Collect every `...name` spread in a body, in source order.
-///
-/// A node's own attributes are visited before its children, so the first
-/// occurrence found is the first one written. Match children live inside the
-/// cases rather than in `children()`, so they are descended into explicitly.
-pub fn collect_spreads(nodes: &[ParsedNode], out: &mut Vec<SpreadOccurrence>) {
-    for node in nodes {
-        match node {
-            ParsedNode::Html {
-                element,
-                attributes,
-                children,
-                ..
-            } => {
-                for attr in attributes {
-                    if let ParsedAttribute::Spread { name, range } = attr {
-                        out.push(SpreadOccurrence {
-                            spread_name: name.clone(),
-                            target: RestSpreadTarget::Element {
-                                element: element.clone(),
-                                supplied_attrs: named_attrs(attributes),
-                                spread_range: range.clone(),
-                            },
-                        });
-                    }
-                }
-                collect_spreads(children, out);
-            }
-            ParsedNode::ComponentInvocation {
-                component_name,
-                attributes,
-                children,
-                ..
-            } => {
-                for attr in attributes {
-                    if let ParsedAttribute::Spread { name, range } = attr {
-                        out.push(SpreadOccurrence {
-                            spread_name: name.clone(),
-                            target: RestSpreadTarget::Component {
-                                callee: component_name.clone(),
-                                supplied_attrs: named_attrs(attributes),
-                                has_children: children.is_some(),
-                                spread_range: range.clone(),
-                            },
-                        });
-                    }
-                }
-                collect_spreads(children.as_deref().unwrap_or(&[]), out);
-            }
-            ParsedNode::Match { cases, .. } => {
-                for case in cases {
-                    collect_spreads(&case.children, out);
+pub fn collect_spreads(body: &ParsedExpr, out: &mut Vec<SpreadOccurrence>) {
+    for node in body.nodes() {
+        collect_spreads_in_node(node, out);
+    }
+}
+
+fn collect_spreads_in_node(node: &ParsedNode, out: &mut Vec<SpreadOccurrence>) {
+    match node {
+        ParsedNode::Html {
+            element,
+            attributes,
+            ..
+        } => {
+            for attr in attributes {
+                if let ParsedAttribute::Spread { name, range } = attr {
+                    out.push(SpreadOccurrence {
+                        spread_name: name.clone(),
+                        target: RestSpreadTarget::Element {
+                            element: element.clone(),
+                            supplied_attrs: named_attrs(attributes),
+                            spread_range: range.clone(),
+                        },
+                    });
                 }
             }
-            other => collect_spreads(other.children(), out),
         }
+        ParsedNode::ComponentInvocation {
+            component_name,
+            attributes,
+            children,
+            ..
+        } => {
+            for attr in attributes {
+                if let ParsedAttribute::Spread { name, range } = attr {
+                    out.push(SpreadOccurrence {
+                        spread_name: name.clone(),
+                        target: RestSpreadTarget::Component {
+                            callee: component_name.clone(),
+                            supplied_attrs: named_attrs(attributes),
+                            has_children: children.is_some(),
+                            spread_range: range.clone(),
+                        },
+                    });
+                }
+            }
+        }
+        _ => {}
+    }
+
+    for expr in node.expressions() {
+        collect_spreads(expr, out);
+    }
+
+    for child in node.children() {
+        collect_spreads_in_node(child, out);
     }
 }
 
 /// Pair a declaration's rest parameter with the single spread that forwards it.
 ///
 /// Every spread must name the declared rest, and a declared rest must be spread
-/// exactly once. Pages and views cannot declare one, so they pass `None` and
-/// every spread they contain is rejected.
+/// exactly once. The rest comes with the component that declares it, for the
+/// diagnostic when it is never spread. Pages, views and functions cannot declare
+/// one, so they pass `None` and every spread they contain is rejected.
 pub fn pair_rest_spread(
-    owner: &TypeName,
-    rest_param: Option<&(VarName, DocumentRange)>,
+    rest_param: Option<(&TypeName, &(VarName, DocumentRange))>,
     spreads: Vec<SpreadOccurrence>,
     errors: &mut Vec<TypeError>,
 ) -> Option<RestSpreadTarget> {
-    let rest_name = rest_param.map(|(name, _)| name);
+    let rest_name = rest_param.map(|(_, (name, _))| name);
     let mut valid: Vec<SpreadOccurrence> = Vec::new();
     for occ in spreads {
         match rest_name {
@@ -154,7 +155,7 @@ pub fn pair_rest_spread(
             occ.target.spread_range().clone(),
         ));
     }
-    if let Some((name, range)) = rest_param {
+    if let Some((owner, (name, range))) = rest_param {
         if valid.is_empty() {
             errors.push(TypeError::new(
                 TypeErrorKind::RestNeverSpread {

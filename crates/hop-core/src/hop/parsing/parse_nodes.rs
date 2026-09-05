@@ -205,9 +205,9 @@ impl MarkupBuilder {
     }
 }
 
-/// Parse one node, from a token that has already been lexed.
+/// Parse one node, from a `<` the caller has already consumed.
 ///
-/// Returns `None` when the token neither built a node nor opened an element.
+/// Returns `None` when nothing there built a node or opened an element.
 ///
 /// We do our best here to build as much markup as possible even when we
 /// encounter errors.
@@ -215,10 +215,10 @@ fn parse_node(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut Vec<ParseError>,
-    first: MarkupToken,
+    left_angle: DocumentRange,
 ) -> Option<ParsedNode> {
     let mut builder = MarkupBuilder::default();
-    let mut token = first;
+    let mut token = tokenize_markup::lex_tag_after_left_angle(iter, errors, left_angle)?;
 
     loop {
         match token {
@@ -321,44 +321,19 @@ fn parse_node(
     }
 }
 
-/// Parse markup for a body.
-/// A body that has no root, or more than one, is an error.
-pub fn parse_body(
+/// Parse markup in expression position, from a '<' the caller has
+/// already consumed.
+pub fn parse_markup(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut Vec<ParseError>,
-    left_brace: &DocumentRange,
-) -> ParsedExpr {
-    let errors_before = errors.len();
-    let mut nodes = Vec::new();
-    while let Some(token) = tokenize_markup::next(iter, errors) {
-        nodes.extend(parse_node(iter, comments, errors, token));
-    }
-    whitespace::normalize(&mut nodes);
-    if nodes.len() == 1 {
-        let body = nodes.pop().unwrap();
-        return ParsedExpr::Markup {
-            node: Box::new(body),
-        };
-    }
-    let (kind, error_range) = match nodes.get(1) {
-        Some(second) => (ParseErrorKind::MultipleRoots {}, second.range().clone()),
-        None => (ParseErrorKind::EmptyBody {}, left_brace.clone()),
-    };
-    if !nodes.is_empty() || errors.len() == errors_before {
-        errors.push(ParseError::new(kind, error_range));
-    }
-    let range = match (nodes.first(), nodes.last()) {
-        (Some(first), Some(last)) => first.range().clone().to(last.range().clone()),
-        _ => left_brace.clone(),
-    };
-
-    ParsedExpr::Markup {
-        node: Box::new(ParsedNode::Fragment {
-            children: nodes,
-            range,
-        }),
-    }
+    left_angle: DocumentRange,
+) -> Option<ParsedExpr> {
+    let mut node = parse_node(iter, comments, errors, left_angle)?;
+    whitespace::normalize_node(&mut node);
+    Some(ParsedExpr::Markup {
+        node: Box::new(node),
+    })
 }
 
 /// Where an opening tag left the parse.

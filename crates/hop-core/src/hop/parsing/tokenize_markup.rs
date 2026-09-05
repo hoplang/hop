@@ -198,6 +198,14 @@ fn lex_tag(
             iter.next().map(|s| s.ch())
         );
     };
+    lex_tag_after_left_angle(iter, errors, left_angle)
+}
+
+pub fn lex_tag_after_left_angle(
+    iter: &mut Peekable<DocumentCursor>,
+    errors: &mut Vec<ParseError>,
+    left_angle: DocumentRange,
+) -> Option<MarkupToken> {
     match iter.peek().map(|s| s.ch()) {
         Some('!') => lex_markup_declaration(iter, errors, left_angle),
         Some('/') => lex_closing_tag(iter, errors, left_angle),

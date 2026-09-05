@@ -271,20 +271,17 @@ fn typecheck_module(
     let mut call_graph = DependencyGraph::new();
     for (name, c) in &component_by_name {
         let mut deps = BTreeSet::new();
-        let mut stack: Vec<&ParsedNode> = c.body.as_markup().into_iter().collect();
+        let mut stack: Vec<&ParsedNode> = c.body.nodes();
         while let Some(node) = stack.pop() {
             if let ParsedNode::ComponentInvocation { component_name, .. } = node {
                 if component_by_name.contains_key(component_name) {
                     deps.insert(component_name.clone());
                 }
             }
-            if let ParsedNode::Match { cases, .. } = node {
-                for case in cases {
-                    stack.extend(case.children.iter());
-                }
-            } else {
-                stack.extend(node.children().iter());
+            for expr in node.expressions() {
+                stack.extend(expr.nodes());
             }
+            stack.extend(node.children());
         }
         call_graph.set_dependencies(name.clone(), deps);
     }
@@ -310,18 +307,26 @@ fn typecheck_module(
     let mut rest_targets: HashMap<TypeName, Option<RestSpreadTarget>> = HashMap::new();
     for component in parsed_ast.get_component_declarations() {
         let mut spreads = Vec::new();
-        if let Some(node) = component.body.as_markup() {
-            collect_spreads(std::slice::from_ref(node), &mut spreads);
-        }
+        collect_spreads(&component.body, &mut spreads);
         rest_targets.insert(
             component.component_name.clone(),
             pair_rest_spread(
-                &component.component_name,
-                component.rest_param.as_ref(),
+                component
+                    .rest_param
+                    .as_ref()
+                    .map(|rest| (&component.component_name, rest)),
                 spreads,
                 errors,
             ),
         );
+    }
+
+    // A function cannot declare a rest, so every spread in its body fails to
+    // name one.
+    for function in parsed_ast.get_function_declarations() {
+        let mut spreads = Vec::new();
+        collect_spreads(&function.body, &mut spreads);
+        pair_rest_spread(None, spreads, errors);
     }
 
     // Settle every signature before checking a single body: a call site needs
@@ -733,12 +738,16 @@ fn typecheck_component_body(
         );
     }
 
-    let declared_names: Vec<VarName> = declared_params.iter().map(|p| p.name.clone()).collect();
+    let forwarded = forwarded_params
+        .get(component_name)
+        .map(Vec::as_slice)
+        .unwrap_or_default();
+    let forwarded_names: Vec<VarName> = forwarded.iter().map(|p| p.name.clone()).collect();
 
     let typed_body = typecheck_expr(
         body,
         None,
-        &declared_names,
+        &forwarded_names,
         var_env,
         type_env,
         registry,
@@ -771,13 +780,11 @@ fn typecheck_component_body(
     }
 
     let mut typed_params = typed_params;
-    if let Some(forwarded) = forwarded_params.get(component_name) {
-        typed_params.extend(forwarded.iter().map(|param| TypedParameter {
-            var_name: param.name.clone(),
-            var_type: param.typ.clone(),
-            examples: None,
-        }));
-    }
+    typed_params.extend(forwarded.iter().map(|param| TypedParameter {
+        var_name: param.name.clone(),
+        var_type: param.typ.clone(),
+        examples: None,
+    }));
 
     let signature = match type_env.lookup(component_name) {
         Some((TypeBinding::Component(settled), _)) => settled.clone(),
@@ -810,8 +817,29 @@ fn typecheck_component_body(
         name: component_name.clone().into(),
         params: typed_params,
         return_type: Arc::new(Type::Fragment),
-        body: typed_body.unwrap_or_else(|| TypedExpr::FragmentConcat { nodes: Vec::new() }),
+        body: check_declaration_body(typed_body, body.range(), errors),
     }
+}
+
+/// A declaration body is what the declaration renders, so it has to be a
+/// `Fragment` already.
+fn check_declaration_body(
+    typed_body: Option<TypedExpr>,
+    range: &DocumentRange,
+    errors: &mut Vec<TypeError>,
+) -> TypedExpr {
+    let Some(typed_body) = typed_body else {
+        return TypedExpr::FragmentConcat { nodes: Vec::new() };
+    };
+    let found = typed_body.get_type();
+    if *found != Type::Fragment {
+        errors.push(TypeError::new(
+            TypeErrorKind::DeclarationBodyTypeMismatch { found },
+            range.clone(),
+        ));
+        return TypedExpr::FragmentConcat { nodes: Vec::new() };
+    }
+    typed_body
 }
 
 fn typecheck_page_declaration(
@@ -835,10 +863,11 @@ fn typecheck_page_declaration(
     // Pages and views cannot declare a rest parameter, so any spread in the
     // head or body fails to name one.
     let mut spreads = Vec::new();
-    for node in head.iter().chain([body]).filter_map(ParsedExpr::as_markup) {
-        collect_spreads(std::slice::from_ref(node), &mut spreads);
+    if let Some(head) = head {
+        collect_spreads(head, &mut spreads);
     }
-    pair_rest_spread(name, None, spreads, errors);
+    collect_spreads(body, &mut spreads);
+    pair_rest_spread(None, spreads, errors);
 
     let mut pushed_params = Vec::new();
     let mut typed_params = Vec::new();
@@ -923,8 +952,11 @@ fn typecheck_page_declaration(
     TypedPageDeclaration {
         name: name.clone(),
         params: typed_params,
-        head: typed_head.unwrap_or_else(|| TypedExpr::FragmentConcat { nodes: Vec::new() }),
-        body: typed_body.unwrap_or_else(|| TypedExpr::FragmentConcat { nodes: Vec::new() }),
+        head: match head {
+            Some(head) => check_declaration_body(typed_head, head.range(), errors),
+            None => TypedExpr::FragmentConcat { nodes: Vec::new() },
+        },
+        body: check_declaration_body(typed_body, body.range(), errors),
     }
 }
 
@@ -1074,7 +1106,7 @@ fn typecheck_function_body(
 
 pub fn typecheck_node(
     node: &ParsedNode,
-    caller_params: &[VarName],
+    forwarded_params: &[VarName],
     registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
     var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
@@ -1090,7 +1122,7 @@ pub fn typecheck_node(
                 .filter_map(|child| {
                     typecheck_node(
                         child,
-                        caller_params,
+                        forwarded_params,
                         registry,
                         errors,
                         var_env,
@@ -1117,7 +1149,7 @@ pub fn typecheck_node(
                 .filter_map(|child| {
                     typecheck_node(
                         child,
-                        caller_params,
+                        forwarded_params,
                         registry,
                         errors,
                         var_env,
@@ -1132,7 +1164,7 @@ pub fn typecheck_node(
             let typed_condition = typecheck_expr(
                 condition,
                 None,
-                caller_params,
+                forwarded_params,
                 var_env,
                 type_env,
                 registry,
@@ -1177,7 +1209,7 @@ pub fn typecheck_node(
                     let typed_array = typecheck_expr(
                         array_expr,
                         None,
-                        caller_params,
+                        forwarded_params,
                         var_env,
                         type_env,
                         registry,
@@ -1203,7 +1235,7 @@ pub fn typecheck_node(
                     let typed_start = typecheck_expr(
                         start,
                         None,
-                        caller_params,
+                        forwarded_params,
                         var_env,
                         type_env,
                         registry,
@@ -1215,7 +1247,7 @@ pub fn typecheck_node(
                     let typed_end = typecheck_expr(
                         end,
                         None,
-                        caller_params,
+                        forwarded_params,
                         var_env,
                         type_env,
                         registry,
@@ -1286,7 +1318,7 @@ pub fn typecheck_node(
                 .filter_map(|child| {
                     typecheck_node(
                         child,
-                        caller_params,
+                        forwarded_params,
                         registry,
                         errors,
                         var_env,
@@ -1374,7 +1406,7 @@ pub fn typecheck_node(
                 let Some(typed_value) = typecheck_expr(
                     &binding.value_expr,
                     declared_type.as_ref(),
-                    caller_params,
+                    forwarded_params,
                     var_env,
                     type_env,
                     registry,
@@ -1437,7 +1469,7 @@ pub fn typecheck_node(
                 .filter_map(|child| {
                     typecheck_node(
                         child,
-                        caller_params,
+                        forwarded_params,
                         registry,
                         errors,
                         var_env,
@@ -1492,7 +1524,7 @@ pub fn typecheck_node(
                 .filter_map(|child| {
                     typecheck_node(
                         child,
-                        caller_params,
+                        forwarded_params,
                         registry,
                         errors,
                         var_env,
@@ -1545,7 +1577,7 @@ pub fn typecheck_node(
                 children.is_some().then_some(typed_children),
                 component_name,
                 component_name_opening_range,
-                caller_params,
+                forwarded_params,
                 registry,
                 errors,
                 var_env,
@@ -1605,7 +1637,7 @@ pub fn typecheck_node(
             let typed_attributes = typecheck_attributes(
                 attributes,
                 element,
-                caller_params,
+                forwarded_params,
                 registry,
                 errors,
                 var_env,
@@ -1620,7 +1652,7 @@ pub fn typecheck_node(
                 .filter_map(|child| {
                     typecheck_node(
                         child,
-                        caller_params,
+                        forwarded_params,
                         registry,
                         errors,
                         var_env,
@@ -1654,7 +1686,7 @@ pub fn typecheck_node(
             if let Some(typed_expr) = typecheck_expr(
                 expression,
                 None,
-                caller_params,
+                forwarded_params,
                 var_env,
                 type_env,
                 registry,
@@ -1686,7 +1718,7 @@ pub fn typecheck_node(
             let typed_subject = typecheck_expr(
                 subject,
                 None,
-                caller_params,
+                forwarded_params,
                 var_env,
                 type_env,
                 registry,
@@ -1757,7 +1789,7 @@ pub fn typecheck_node(
                         .filter_map(|child| {
                             typecheck_node(
                                 child,
-                                caller_params,
+                                forwarded_params,
                                 registry,
                                 errors,
                                 var_env,
@@ -1814,7 +1846,7 @@ pub fn typecheck_node(
 
 fn typecheck_attribute_value(
     value: &Option<ParsedAttributeValue>,
-    caller_params: &[VarName],
+    forwarded_params: &[VarName],
     registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
     var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
@@ -1828,7 +1860,7 @@ fn typecheck_attribute_value(
             let typed_expr = typecheck_expr(
                 expr,
                 None,
-                caller_params,
+                forwarded_params,
                 var_env,
                 type_env,
                 registry,
@@ -1882,7 +1914,7 @@ fn typecheck_arguments(
     children: Option<Vec<TypedExpr>>,
     component_name: &TypeName,
     component_name_opening_range: &DocumentRange,
-    caller_params: &[VarName],
+    forwarded_params: &[VarName],
     registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
     var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
@@ -1932,7 +1964,7 @@ fn typecheck_arguments(
     let covered_by_rest = |param: &ParamEntry| {
         rest_spread.is_some()
             && !supplied_args.contains(&param.name)
-            && !caller_params.contains(&param.name)
+            && forwarded_params.contains(&param.name)
     };
 
     let mut typed_args: Vec<(VarName, TypedExpr)> = Vec::new();
@@ -1955,7 +1987,7 @@ fn typecheck_arguments(
             if accepted {
                 let value = typecheck_attribute_value(
                     arg_value,
-                    caller_params,
+                    forwarded_params,
                     registry,
                     errors,
                     var_env,
@@ -2005,7 +2037,7 @@ fn typecheck_arguments(
         let Some(typed_expr) = typecheck_expr(
             &arg_expr,
             Some(param_type),
-            caller_params,
+            forwarded_params,
             var_env,
             type_env,
             registry,
@@ -2103,7 +2135,7 @@ fn typecheck_arguments(
 fn typecheck_attributes(
     attributes: &[ParsedAttribute],
     element: &HtmlElement,
-    caller_params: &[VarName],
+    forwarded_params: &[VarName],
     registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
     var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
@@ -2122,7 +2154,7 @@ fn typecheck_attributes(
             element,
             attr_name,
             attr_value,
-            caller_params,
+            forwarded_params,
             registry,
             errors,
             var_env,
@@ -2143,7 +2175,7 @@ fn typecheck_html_attribute(
     element: &HtmlElement,
     name: &DocumentRange,
     value: &Option<ParsedAttributeValue>,
-    caller_params: &[VarName],
+    forwarded_params: &[VarName],
     registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
     var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
@@ -2165,7 +2197,7 @@ fn typecheck_html_attribute(
 
     let typed_value = typecheck_attribute_value(
         value,
-        caller_params,
+        forwarded_params,
         registry,
         errors,
         var_env,
@@ -2371,7 +2403,9 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 component Foo(x: Int, x: Int) {
-                  {x.to_string()}
+                  <>
+                    {x.to_string()}
+                  </>
                 }
             "#},
             expect![[r#"
@@ -2389,7 +2423,9 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 component Foo(x: Int, x: String) {
-                  {x.to_string()}
+                  <>
+                    {x.to_string()}
+                  </>
                 }
             "#},
             expect![[r#"
@@ -2407,7 +2443,9 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 view Main(x: Int, x: Int) {
-                  {x.to_string()}
+                  <>
+                    {x.to_string()}
+                  </>
                 }
             "#},
             expect![[r#"
@@ -2425,7 +2463,9 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 view Main(x: Int, x: String) {
-                  {x.to_string()}
+                  <>
+                    {x.to_string()}
+                  </>
                 }
             "#},
             expect![[r#"
@@ -3401,7 +3441,9 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 component Main(a: String) {
-                  {a}
+                  <>
+                    {a}
+                  </>
                 }
                 component Foo {
                     <Main a="" b={1}/>
@@ -3409,9 +3451,9 @@ mod tests {
             "#},
             expect![[r#"
                 error: Component `Main` does not accept attribute `b`
-                  --> main.hop (line 5, col 16)
-                4 | component Foo {
-                5 |     <Main a="" b={1}/>
+                  --> main.hop (line 7, col 16)
+                6 | component Foo {
+                7 |     <Main a="" b={1}/>
                   |                ^
             "#]],
         );
@@ -3447,7 +3489,9 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 component Main {
-                  hello world
+                  <>
+                    hello world
+                  </>
                 }
                 component Foo {
                   <Main a="foo" />
@@ -3455,9 +3499,9 @@ mod tests {
             "#},
             expect![[r#"
                 error: Component `Main` does not accept attribute `a`
-                  --> main.hop (line 5, col 9)
-                4 | component Foo {
-                5 |   <Main a="foo" />
+                  --> main.hop (line 7, col 9)
+                6 | component Foo {
+                7 |   <Main a="foo" />
                   |         ^
             "#]],
         );
@@ -4254,15 +4298,17 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 component Main {
-                    {false}
+                  <>
+                      {false}
+                  </>
                 }
             "#},
             expect![[r#"
                 error: Mismatched type for text expression: expected `String` got Bool
-                  --> main.hop (line 2, col 6)
-                1 | component Main {
-                2 |     {false}
-                  |      ^^^^^
+                  --> main.hop (line 3, col 8)
+                2 |   <>
+                3 |       {false}
+                  |        ^^^^^
             "#]],
         );
     }
@@ -5351,7 +5397,9 @@ mod tests {
                 -- main.hop --
                 record Config { name: String, enabled: Bool }
                 component Settings(config: Config = Config{name: "default", enabled: true}) {
-                  {config.name}
+                  <>
+                    {config.name}
+                  </>
                 }
                 component Main {
                   <Settings />
@@ -5369,7 +5417,7 @@ mod tests {
                 }
 
                 fn Settings(config: main::Config) -> Fragment {
-                  escape(config.name)
+                  concat(escape(config.name))
                 }
             "#]],
         );
@@ -5382,10 +5430,12 @@ mod tests {
                 -- main.hop --
                 enum Status { Active{since: Int}, Inactive, Pending }
                 component Badge(status: Status = Status::Active{since: 2000}) {
-                  {match status {
-                    Status::Active{since: _} => "active",
-                    _ => "not active",
-                  }}
+                  <>
+                    {match status {
+                      Status::Active{since: _} => "active",
+                      _ => "not active",
+                    }}
+                  </>
                 }
                 component Main {
                   <Badge />
@@ -5400,11 +5450,13 @@ mod tests {
                 }
 
                 fn Badge(status: main::Status) -> Fragment {
-                  escape(match status {
-                    Status::Active => "active",
-                    Status::Inactive => "not active",
-                    Status::Pending => "not active",
-                  })
+                  concat(
+                    escape(match status {
+                      Status::Active => "active",
+                      Status::Inactive => "not active",
+                      Status::Pending => "not active",
+                    }),
+                  )
                 }
 
                 fn Main() -> Fragment {
@@ -9981,6 +10033,473 @@ mod tests {
                 1 | fn label() -> String {
                 2 |   42
                   |   ^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_markup_as_a_function_body() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn card(label: String) -> Fragment {
+                  <div>{label}</div>
+                }
+
+                pub view Test {
+                  <>
+                    {card("hello")}
+                  </>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                page Test() {
+                  body {
+                    concat(card(label: "hello"))
+                  }
+                }
+
+                fn card(label: String) -> Fragment {
+                  html(tag: "div", attrs: [], children: concat(escape(label)))
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_markup_as_the_body_of_a_function_returning_a_string() {
+        reject(
+            indoc! {"
+                -- main.hop --
+                fn card() -> String {
+                  <div></div>
+                }
+
+                pub view Test {
+                  <>
+                    {card()}
+                  </>
+                }
+            "},
+            expect![[r#"
+                error: Mismatched type for function body: expected `String` got `Fragment`
+                  --> main.hop (line 2, col 3)
+                1 | fn card() -> String {
+                2 |   <div></div>
+                  |   ^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_markup_as_an_argument_to_a_function() {
+        accept(
+            indoc! {"
+                -- main.hop --
+                fn wrap(children: Fragment) -> Fragment {
+                  <div>{children}</div>
+                }
+
+                pub view Test {
+                  <>
+                    {wrap(<span>hello</span>)}
+                  </>
+                }
+            "},
+            expect![[r#"
+                -- main.hop --
+                page Test() {
+                  body {
+                    concat(
+                      wrap(
+                        children: html(tag: "span", attrs: [], children: concat(raw("hello"))),
+                      ),
+                    )
+                  }
+                }
+
+                fn wrap(children: Fragment) -> Fragment {
+                  html(tag: "div", attrs: [], children: concat(children))
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn reports_an_undefined_component_used_inside_an_interpolation() {
+        reject(
+            indoc! {"
+                -- main.hop --
+                pub view Test {
+                  <div>{<Missing/>}</div>
+                }
+            "},
+            expect![[r#"
+                error: Component Missing is not defined
+                  --> main.hop (line 2, col 10)
+                1 | pub view Test {
+                2 |   <div>{<Missing/>}</div>
+                  |          ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_a_rest_spread_in_markup_inside_an_interpolation() {
+        accept(
+            indoc! {"
+                -- main.hop --
+                pub component Inner(a: String) {
+                  <div>{a}</div>
+                }
+
+                pub component Outer(...rest) {
+                  <div>{<Inner ...rest/>}</div>
+                }
+            "},
+            expect![[r#"
+                -- main.hop --
+                fn Inner(a: String) -> Fragment {
+                  html(tag: "div", attrs: [], children: concat(escape(a)))
+                }
+
+                fn Outer(a: String, rest: Attrs) -> Fragment {
+                  html(tag: "div", attrs: [], children: concat(Inner(a: a)))
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_a_rest_spread_in_markup_inside_an_attribute_value() {
+        accept(
+            indoc! {"
+                -- main.hop --
+                pub component Inner(a: String) {
+                  <div>{a}</div>
+                }
+
+                pub component Slot(slot: Fragment) {
+                  <div>{slot}</div>
+                }
+
+                pub component Outer(...rest) {
+                  <Slot slot={<Inner ...rest/>}/>
+                }
+            "},
+            expect![[r#"
+                -- main.hop --
+                fn Inner(a: String) -> Fragment {
+                  html(tag: "div", attrs: [], children: concat(escape(a)))
+                }
+
+                fn Outer(a: String, rest: Attrs) -> Fragment {
+                  Slot(slot: Inner(a: a))
+                }
+
+                fn Slot(slot: Fragment) -> Fragment {
+                  html(tag: "div", attrs: [], children: concat(slot))
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_a_second_rest_spread_written_in_an_interpolation() {
+        reject(
+            indoc! {"
+                -- main.hop --
+                pub component Inner(a: String) {
+                  <div>{a}</div>
+                }
+
+                pub component Outer(...rest) {
+                  <div ...rest>{<Inner ...rest/>}</div>
+                }
+            "},
+            expect![[r#"
+                error: Component requires arguments: a
+                  --> main.hop (line 6, col 18)
+                5 | pub component Outer(...rest) {
+                6 |   <div ...rest>{<Inner ...rest/>}</div>
+                  |                  ^^^^^
+
+                error: Rest parameter 'rest' is spread more than once
+                  --> main.hop (line 6, col 24)
+                5 | pub component Outer(...rest) {
+                6 |   <div ...rest>{<Inner ...rest/>}</div>
+                  |                        ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_a_callee_written_in_an_interpolation_declared_later() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                pub component Outer() {
+                  <div>{<Inner a="x"/>}</div>
+                }
+
+                pub component Inner(a: String) {
+                  <div>{a}</div>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn Inner(a: String) -> Fragment {
+                  html(tag: "div", attrs: [], children: concat(escape(a)))
+                }
+
+                fn Outer() -> Fragment {
+                  html(tag: "div", attrs: [], children: concat(Inner(a: "x")))
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_a_rest_spread_inside_a_match_case() {
+        accept(
+            indoc! {"
+                -- main.hop --
+                pub component Outer(flag: Bool, ...rest) {
+                  <match {flag}>
+                    <case {true}><div ...rest></div></case>
+                    <case {false}><span></span></case>
+                  </match>
+                }
+            "},
+            expect![[r#"
+                -- main.hop --
+                fn Outer(flag: Bool, rest: Attrs) -> Fragment {
+                  match flag {
+                    true => concat(
+                      html(tag: "div", attrs: concat([], rest), children: concat()),
+                    ),
+                    false => concat(html(tag: "span", attrs: [], children: concat())),
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_a_call_as_a_component_body() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn card(label: String) -> Fragment {
+                  <div>{label}</div>
+                }
+
+                pub component Outer() {
+                  card("hello")
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn Outer() -> Fragment {
+                  card(label: "hello")
+                }
+
+                fn card(label: String) -> Fragment {
+                  html(tag: "div", attrs: [], children: concat(escape(label)))
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_a_parameter_as_a_component_body() {
+        accept(
+            indoc! {"
+                -- main.hop --
+                pub component Outer(children: Fragment) {
+                  children
+                }
+            "},
+            expect![[r#"
+                -- main.hop --
+                fn Outer(children: Fragment) -> Fragment {
+                  children
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_a_string_as_a_component_body() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                pub component Outer() {
+                  "hello"
+                }
+            "#},
+            expect![[r#"
+                error: Mismatched type for declaration: expected `Fragment` got `String`
+                  --> main.hop (line 2, col 3)
+                1 | pub component Outer() {
+                2 |   "hello"
+                  |   ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_a_string_as_a_view_body() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                pub view Test {
+                  "hello"
+                }
+            "#},
+            expect![[r#"
+                error: Mismatched type for declaration: expected `Fragment` got `String`
+                  --> main.hop (line 2, col 3)
+                1 | pub view Test {
+                2 |   "hello"
+                  |   ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_a_string_as_a_page_head() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                pub page Test() {
+                  head {
+                    "hello"
+                  }
+                  body {
+                    <div></div>
+                  }
+                }
+            "#},
+            expect![[r#"
+                error: Mismatched type for declaration: expected `Fragment` got `String`
+                  --> main.hop (line 3, col 5)
+                2 |   head {
+                3 |     "hello"
+                  |     ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_a_comment_as_a_function_body() {
+        accept(
+            indoc! {"
+                -- main.hop --
+                fn f() -> Fragment {
+                  <!-- nothing yet -->
+                }
+
+                pub view Test {
+                  <>{f()}</>
+                }
+            "},
+            expect![[r#"
+                -- main.hop --
+                page Test() {
+                  body {
+                    concat(f())
+                  }
+                }
+
+                fn f() -> Fragment {
+                  concat()
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_a_comment_as_a_call_argument() {
+        accept(
+            indoc! {"
+                -- main.hop --
+                fn wrap(slot: Fragment) -> Fragment {
+                  <div>{slot}</div>
+                }
+
+                pub view Test {
+                  <>{wrap(<!-- nothing yet -->)}</>
+                }
+            "},
+            expect![[r#"
+                -- main.hop --
+                page Test() {
+                  body {
+                    concat(wrap(slot: concat()))
+                  }
+                }
+
+                fn wrap(slot: Fragment) -> Fragment {
+                  html(tag: "div", attrs: [], children: concat(slot))
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_a_component_spread_in_a_function_body() {
+        reject(
+            indoc! {"
+                -- main.hop --
+                pub component Inner(a: String) {
+                  <div>{a}</div>
+                }
+
+                fn f() -> Fragment {
+                  <Inner ...rest/>
+                }
+
+                pub view Test {
+                  <>{f()}</>
+                }
+            "},
+            expect![[r#"
+                error: Component requires arguments: a
+                  --> main.hop (line 6, col 4)
+                 5 | fn f() -> Fragment {
+                 6 |   <Inner ...rest/>
+                   |    ^^^^^
+
+                error: Spread '...rest' does not refer to a declared rest parameter
+                  --> main.hop (line 6, col 10)
+                 5 | fn f() -> Fragment {
+                 6 |   <Inner ...rest/>
+                   |          ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_a_spread_in_a_function_body() {
+        reject(
+            indoc! {"
+                -- main.hop --
+                fn f() -> Fragment {
+                  <div ...rest></div>
+                }
+
+                pub view Test {
+                  <>{f()}</>
+                }
+            "},
+            expect![[r#"
+                error: Spread '...rest' does not refer to a declared rest parameter
+                  --> main.hop (line 2, col 8)
+                1 | fn f() -> Fragment {
+                2 |   <div ...rest></div>
+                  |        ^^^^^^^
             "#]],
         );
     }

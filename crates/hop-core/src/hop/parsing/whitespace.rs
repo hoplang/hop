@@ -17,15 +17,16 @@ use crate::html::HtmlElement;
 ///   else, a tag or an interpolation, emits nothing.
 ///
 /// The children of raw text elements (`<script>`, `<style>`) are left alone.
-pub fn normalize(nodes: &mut Vec<ParsedNode>) {
+fn normalize(nodes: &mut Vec<ParsedNode>) {
     trim_text(nodes);
     drop_newlines(nodes);
     for node in nodes.iter_mut() {
-        normalize_children(node);
+        normalize_node(node);
     }
 }
 
-fn normalize_children(node: &mut ParsedNode) {
+/// Normalize whitespace inside a single node.
+pub fn normalize_node(node: &mut ParsedNode) {
     match node {
         // The content of a raw text element is passed through verbatim.
         ParsedNode::Html {
@@ -273,7 +274,7 @@ mod tests {
 
     #[test]
     fn trims_text_at_the_end_of_a_body() {
-        check("view Test {hello }\n", "hello");
+        check("view Test {<>hello </>}\n", "hello");
     }
 
     #[test]
@@ -295,7 +296,7 @@ mod tests {
         check(
             indoc! {r#"
                 view Test {
-                  {"   "}
+                  <>{"   "}</>
                 }
             "#},
             "   ",
@@ -543,6 +544,148 @@ mod tests {
                 }
             "},
             "<div>hello <b>w</b></div>",
+        );
+    }
+
+    #[test]
+    fn trims_text_in_markup_written_in_expression_position() {
+        check(
+            indoc! {"
+                view Test {
+                  <div>{<span> hello </span>}</div>
+                }
+            "},
+            "<div><span>hello</span></div>",
+        );
+    }
+
+    #[test]
+    fn drops_line_breaks_in_markup_written_in_expression_position() {
+        check(
+            indoc! {"
+                fn card() -> Fragment {
+                  <div>
+                    hello
+                  </div>
+                }
+
+                view Test {
+                  <>{card()}</>
+                }
+            "},
+            "<div>hello</div>",
+        );
+    }
+
+    #[test]
+    fn keeps_a_line_break_between_two_texts_in_expression_position() {
+        check(
+            indoc! {"
+                fn card() -> Fragment {
+                  <div>
+                    hello
+                    world
+                  </div>
+                }
+
+                view Test {
+                  <>{card()}</>
+                }
+            "},
+            "<div>hello world</div>",
+        );
+    }
+
+    #[test]
+    fn normalizes_markup_on_both_sides_of_an_interpolation() {
+        check(
+            indoc! {"
+                view Test {
+                  <div>
+                    hello
+                    {<span>
+                      world
+                    </span>}
+                  </div>
+                }
+            "},
+            "<div>hello<span>world</span></div>",
+        );
+    }
+
+    #[test]
+    fn adds_no_whitespace_to_markup_laid_out_inline() {
+        check(
+            indoc! {"
+                component Card(slot: Fragment) {
+                  <div>{slot}</div>
+                }
+
+                view Test {
+                  <Card slot={<span>a<b>c</b></span>}/>
+                }
+            "},
+            "<div><span>a<b>c</b></span></div>",
+        );
+    }
+
+    #[test]
+    fn keeps_significant_whitespace_in_markup_laid_out_inline() {
+        check(
+            indoc! {"
+                component Card(slot: Fragment) {
+                  <div>{slot}</div>
+                }
+
+                view Test {
+                  <Card slot={<span>a <b>c</b></span>}/>
+                }
+            "},
+            "<div><span>a <b>c</b></span></div>",
+        );
+    }
+
+    #[test]
+    fn leaves_raw_text_content_in_expression_position_alone() {
+        check(
+            indoc! {"
+                view Test {
+                  <div>{<style>  a  </style>}</div>
+                }
+            "},
+            "<div><style>  a  </style></div>",
+        );
+    }
+
+    #[test]
+    fn keeps_significant_whitespace_in_markup_inside_broken_match_arms() {
+        check(
+            indoc! {r#"
+                fn badge(on: Bool) -> Fragment {
+                  match on {true => <span class="a-fairly-long-class">yes <b>indeed</b></span>, false => <i>no</i>}
+                }
+
+                view Test {
+                  <div>{badge(true)}{badge(false)}</div>
+                }
+            "#},
+            "<div><span class=\"a-fairly-long-class\">yes <b>indeed</b></span><i>no</i></div>",
+        );
+    }
+
+    #[test]
+    fn keeps_significant_whitespace_in_markup_passed_as_call_arguments() {
+        check(
+            indoc! {r#"
+                fn pair(a: Fragment, b: Fragment) -> Fragment {
+                  <div>{a}{b}</div>
+                }
+
+                view Test {
+                  <>{pair(<span>first <b>one</b></span>, <span>second one</span>)}</>
+                }
+            "#},
+            "<div><span>first <b>one</b></span><span>second one</span></div>",
         );
     }
 }

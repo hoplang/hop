@@ -433,6 +433,9 @@ pub(crate) enum TypeErrorKind {
         expected: Arc<Type>,
         found: Arc<Type>,
     },
+
+    #[error("Mismatched type for declaration: expected `Fragment` got `{found}`")]
+    DeclarationBodyTypeMismatch { found: Arc<Type> },
 }
 
 impl TypeErrorKind {

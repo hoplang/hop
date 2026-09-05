@@ -2233,6 +2233,7 @@ mod tests {
                 DocumentId::new("a.hop").unwrap(),
                 indoc! {r#"
                     pub component AComp {
+                      <></>
                     }
                 "#}
                 .to_string(),
@@ -2300,6 +2301,7 @@ mod tests {
                 DocumentId::new("c.hop").unwrap(),
                 indoc! {r#"
                     pub component CComp {
+                      <></>
                     }
                 "#}
                 .to_string(),
@@ -2342,6 +2344,7 @@ mod tests {
                 DocumentId::new("b.hop").unwrap(),
                 indoc! {r#"
                     pub component BComp {
+                      <></>
                     }
                 "#}
                 .to_string(),

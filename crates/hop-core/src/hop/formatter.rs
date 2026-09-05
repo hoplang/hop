@@ -911,7 +911,7 @@ fn format_children<'a>(
         };
 
         if need_break {
-            doc = doc.append(arena.line());
+            doc = doc.append(arena.line_());
         }
 
         if let ParsedNode::Text { range } = child {
@@ -938,14 +938,14 @@ fn format_children<'a>(
                 if leading_needs_space {
                     doc = doc
                         .append(escaped_whitespace(arena, leading_ws))
-                        .append(arena.line());
+                        .append(arena.line_());
                 } else {
                     doc = doc.append(arena.text(leading_ws));
                 }
                 doc = doc.append(arena.text(trimmed));
                 if trailing_needs_space {
                     doc = doc
-                        .append(arena.line())
+                        .append(arena.line_())
                         .append(escaped_whitespace(arena, trailing_ws));
                 } else {
                     doc = doc.append(arena.text(trailing_ws));
@@ -956,7 +956,7 @@ fn format_children<'a>(
         }
     }
 
-    arena.line().append(doc).nest(2).append(arena.line())
+    arena.line_().append(doc).nest(2).append(arena.line_())
 }
 
 /// Render a run of whitespace as a text expression, so that it survives the
@@ -1327,10 +1327,20 @@ fn format_match_arm<'a>(
     comments: &mut VecDeque<&'a DocumentRange>,
 ) -> DocBuilder<'a, Arena<'a>> {
     let leading_comments = drain_comments_before(arena, comments, arm.pattern.range().start());
+    let body = format_expr(arena, &arm.body, comments);
+    let body = match &arm.body {
+        ParsedExpr::Markup { .. } => arena
+            .text("(")
+            .flat_alt(arena.nil())
+            .append(arena.line_().append(body).nest(2))
+            .append(arena.line_())
+            .append(arena.text(")").flat_alt(arena.nil())),
+        _ => body,
+    };
     leading_comments
         .append(format_match_pattern(arena, &arm.pattern))
         .append(arena.text(" => "))
-        .append(format_expr(arena, &arm.body, comments))
+        .append(body)
 }
 
 fn format_match_pattern<'a>(
@@ -1544,7 +1554,7 @@ mod tests {
     }
 
     #[test]
-    fn pub_record_to_doc() {
+    fn pub_record() {
         check(
             indoc! {"
                 pub record User { name: String }
@@ -1558,7 +1568,7 @@ mod tests {
     }
 
     #[test]
-    fn pub_enum_to_doc() {
+    fn pub_enum() {
         check(
             indoc! {"
                 pub enum Color { Red, Green, Blue }
@@ -1574,7 +1584,7 @@ mod tests {
     }
 
     #[test]
-    fn pub_component_to_doc() {
+    fn pub_component() {
         check(
             indoc! {"
                 pub component Button(label: String) {
@@ -1592,7 +1602,7 @@ mod tests {
     }
 
     #[test]
-    fn pub_view_to_doc() {
+    fn pub_view() {
         check(
             indoc! {"
                 pub view Home {
@@ -1652,7 +1662,7 @@ mod tests {
     }
 
     #[test]
-    fn import_declaration_to_doc() {
+    fn import_declaration() {
         check(
             indoc! {"
                 import foo::Bar
@@ -1664,7 +1674,7 @@ mod tests {
     }
 
     #[test]
-    fn multiple_import_declarations_to_doc() {
+    fn multiple_import_declarations() {
         check(
             indoc! {"
                 import foo::Bar
@@ -1685,7 +1695,7 @@ mod tests {
     }
 
     #[test]
-    fn record_declaration_single_field_to_doc() {
+    fn record_declaration_single_field() {
         check(
             indoc! {"
                 record User { name: String }
@@ -1699,7 +1709,7 @@ mod tests {
     }
 
     #[test]
-    fn enum_declaration_multiple_variants_to_doc() {
+    fn enum_declaration_multiple_variants() {
         check(
             indoc! {"
                 enum Color { Red, Green, Blue }
@@ -1715,7 +1725,7 @@ mod tests {
     }
 
     #[test]
-    fn two_record_declarations_to_doc() {
+    fn two_record_declarations() {
         check(
             indoc! {"
                 record User { name: String, age: Int }
@@ -1736,7 +1746,7 @@ mod tests {
     }
 
     #[test]
-    fn component_declaration_to_doc() {
+    fn component_declaration() {
         check(
             indoc! {"
                 component Main(name: String, count: Int) {
@@ -1757,7 +1767,7 @@ mod tests {
     }
 
     #[test]
-    fn component_declaration_with_many_parameters_to_doc() {
+    fn component_declaration_with_many_parameters() {
         check(
             indoc! {"
                 component Main(first_name: String, last_name: String, email: String, age: Int, active: Bool, role: String) {<></>}
@@ -1779,7 +1789,7 @@ mod tests {
     }
 
     #[test]
-    fn component_with_match_expression_to_doc() {
+    fn component_with_match_expression() {
         check(
             indoc! {r#"
                 enum Color { Red, Green, Blue }
@@ -2048,7 +2058,7 @@ mod tests {
     }
 
     #[test]
-    fn component_declaration_with_text_child_to_doc() {
+    fn component_declaration_with_text_child() {
         check(
             indoc! {"
                 component Main {hello}
@@ -2062,7 +2072,7 @@ mod tests {
     }
 
     #[test]
-    fn html_with_class_and_expression_to_doc() {
+    fn html_with_class_and_expression() {
         check(
             indoc! {r#"
                 record Character { name: String }
@@ -2085,7 +2095,7 @@ mod tests {
     }
 
     #[test]
-    fn html_with_single_class_expression_to_doc() {
+    fn html_with_single_class_expression() {
         check(
             indoc! {r#"
                 component Main {
@@ -2102,7 +2112,7 @@ mod tests {
     }
 
     #[test]
-    fn if_with_equality_condition_to_doc() {
+    fn if_with_equality_condition() {
         check(
             indoc! {"
                 component Main(a: String, b: String) {
@@ -2127,7 +2137,7 @@ mod tests {
     }
 
     #[test]
-    fn if_with_logical_and_condition_to_doc() {
+    fn if_with_logical_and_condition() {
         check(
             indoc! {"
                 component Main(a: Bool, b: Bool) {
@@ -2152,7 +2162,7 @@ mod tests {
     }
 
     #[test]
-    fn if_with_nested_logical_operators_to_doc() {
+    fn if_with_nested_logical_operators() {
         check(
             indoc! {"
                 component Main(a: Bool, b: Bool, c: Bool) {
@@ -2178,7 +2188,7 @@ mod tests {
     }
 
     #[test]
-    fn if_with_negation_to_doc() {
+    fn if_with_negation() {
         check(
             indoc! {"
                 component Main(a: Bool) {
@@ -2200,7 +2210,7 @@ mod tests {
     }
 
     #[test]
-    fn if_with_negated_equality_to_doc() {
+    fn if_with_negated_equality() {
         check(
             indoc! {"
                 component Main(a: String, b: String) {
@@ -2409,14 +2419,18 @@ mod tests {
         check(
             indoc! {"
                 component Main {
+                  <>
 
-                  hello
+                    hello
 
+                  </>
                 }
             "},
             expect![[r#"
                 component Main {
-                  hello
+                  <>
+                    hello
+                  </>
                 }
             "#]],
         );
@@ -2463,7 +2477,7 @@ mod tests {
     }
 
     #[test]
-    fn nested_components_with_record_attributes_to_doc() {
+    fn nested_components_with_record_attributes() {
         check(
             indoc! {r#"
                 component IconsPage {
@@ -2498,7 +2512,7 @@ mod tests {
     }
 
     #[test]
-    fn component_with_expression_attribute_to_doc() {
+    fn component_with_expression_attribute() {
         check(
             indoc! {r#"
                 import hop::ui::lucide::ChevronDown
@@ -2520,7 +2534,7 @@ mod tests {
     }
 
     #[test]
-    fn component_with_string_concatenation_attribute_to_doc() {
+    fn component_with_string_concatenation_attribute() {
         check(
             indoc! {r#"
                 record Product { id: String }
@@ -2545,7 +2559,7 @@ mod tests {
     }
 
     #[test]
-    fn component_with_default_string_parameter_to_doc() {
+    fn component_with_default_string_parameter() {
         check(
             indoc! {r#"
                 component Greeting(name: String = "World") {
@@ -2566,23 +2580,27 @@ mod tests {
     }
 
     #[test]
-    fn component_with_default_int_parameter_to_doc() {
+    fn component_with_default_int_parameter() {
         check(
             indoc! {"
                 component Counter(count: Int = 0) {
-                  {count}
+                  <>
+                    {count}
+                  </>
                 }
             "},
             expect![[r#"
                 component Counter(count: Int = 0) {
-                  {count}
+                  <>
+                    {count}
+                  </>
                 }
             "#]],
         );
     }
 
     #[test]
-    fn component_with_default_bool_parameter_to_doc() {
+    fn component_with_default_bool_parameter() {
         check(
             indoc! {"
                 component Toggle(enabled: Bool = true) {<></>}
@@ -2597,11 +2615,13 @@ mod tests {
     }
 
     #[test]
-    fn component_with_mixed_required_and_default_parameters_to_doc() {
+    fn component_with_mixed_required_and_default_parameters() {
         check(
             indoc! {r#"
                 component UserCard(name: String, role: String = "user", active: Bool = true) {
-                  {name}
+                  <>
+                    {name}
+                  </>
                 }
             "#},
             expect![[r#"
@@ -2610,14 +2630,16 @@ mod tests {
                   role: String = "user",
                   active: Bool = true,
                 ) {
-                  {name}
+                  <>
+                    {name}
+                  </>
                 }
             "#]],
         );
     }
 
     #[test]
-    fn component_with_default_array_parameter_to_doc() {
+    fn component_with_default_array_parameter() {
         check(
             indoc! {r#"
                 component ItemList(items: Array[String] = ["one", "two"]) {<></>}
@@ -2632,7 +2654,7 @@ mod tests {
     }
 
     #[test]
-    fn component_with_default_empty_array_parameter_to_doc() {
+    fn component_with_default_empty_array_parameter() {
         check(
             indoc! {"
                 component ItemList(items: Array[String] = []) {<></>}
@@ -2647,7 +2669,7 @@ mod tests {
     }
 
     #[test]
-    fn component_with_default_record_parameter_to_doc() {
+    fn component_with_default_record_parameter() {
         check(
             indoc! {r#"
                 record Config { debug: Bool, timeout: Int }
@@ -2670,7 +2692,7 @@ mod tests {
     }
 
     #[test]
-    fn component_with_default_enum_parameter_to_doc() {
+    fn component_with_default_enum_parameter() {
         check(
             indoc! {"
                 enum Status { Active, Inactive, Pending }
@@ -2692,7 +2714,7 @@ mod tests {
     }
 
     #[test]
-    fn record_literal_in_expression_to_doc() {
+    fn record_literal_in_expression() {
         check(
             indoc! {r#"
                 record User { name: String, age: Int }
@@ -2718,7 +2740,7 @@ mod tests {
     }
 
     #[test]
-    fn record_literal_spread_to_doc() {
+    fn record_literal_spread() {
         check(
             indoc! {r#"
                 record User { name: String, age: Int }
@@ -2770,7 +2792,7 @@ mod tests {
     }
 
     #[test]
-    fn record_literal_with_only_spread_to_doc() {
+    fn record_literal_with_only_spread() {
         check(
             indoc! {r#"
                 record User { name: String, age: Int }
@@ -2849,7 +2871,7 @@ mod tests {
     }
 
     #[test]
-    fn empty_record_literal_to_doc() {
+    fn empty_record_literal() {
         check(
             indoc! {"
                 record Empty {}
@@ -2870,7 +2892,7 @@ mod tests {
     }
 
     #[test]
-    fn enum_literal_with_fields_to_doc() {
+    fn enum_literal_with_fields() {
         check(
             indoc! {r#"
                 enum Shape { Circle {radius: Float}, Rect {w: Float, h: Float} }
@@ -2899,7 +2921,7 @@ mod tests {
     }
 
     #[test]
-    fn enum_literal_with_multiple_fields_to_doc() {
+    fn enum_literal_with_multiple_fields() {
         check(
             indoc! {"
                 enum Shape { Circle {radius: Float}, Rect {w: Float, h: Float} }
@@ -3033,7 +3055,7 @@ mod tests {
     }
 
     #[test]
-    fn html_with_string_and_expression_attributes_to_doc() {
+    fn html_with_string_and_expression_attributes() {
         check(
             indoc! {r#"
                 record Product { img_src: String }
@@ -3054,7 +3076,7 @@ mod tests {
     }
 
     #[test]
-    fn component_with_match_node_to_doc() {
+    fn component_with_match_node() {
         check(
             indoc! {"
                 enum Color {
@@ -3287,7 +3309,7 @@ mod tests {
     }
 
     #[test]
-    fn let_with_single_string_binding_to_doc() {
+    fn let_with_single_string_binding() {
         check(
             indoc! {r#"
                 component Main {
@@ -3310,7 +3332,7 @@ mod tests {
     }
 
     #[test]
-    fn let_with_single_int_binding_to_doc() {
+    fn let_with_single_int_binding() {
         check(
             indoc! {"
                 component Main {
@@ -3332,7 +3354,7 @@ mod tests {
     }
 
     #[test]
-    fn let_with_trailing_comma_to_doc() {
+    fn let_with_trailing_comma() {
         check(
             indoc! {r#"
                 component Main {
@@ -3352,7 +3374,7 @@ mod tests {
     }
 
     #[test]
-    fn let_with_multiple_bindings_to_doc() {
+    fn let_with_multiple_bindings() {
         check(
             indoc! {r#"
                 component Main {
@@ -3374,7 +3396,7 @@ mod tests {
     }
 
     #[test]
-    fn let_with_three_bindings_to_doc() {
+    fn let_with_three_bindings() {
         check(
             indoc! {"
                 component Main {
@@ -3404,7 +3426,7 @@ mod tests {
     }
 
     #[test]
-    fn let_with_expression_value_to_doc() {
+    fn let_with_expression_value() {
         check(
             indoc! {"
                 component Main(x: Int, y: Int) {
@@ -3429,7 +3451,7 @@ mod tests {
     }
 
     #[test]
-    fn let_with_field_access_value_to_doc() {
+    fn let_with_field_access_value() {
         check(
             indoc! {"
                 record User { name: String }
@@ -3456,7 +3478,7 @@ mod tests {
     }
 
     #[test]
-    fn nested_let_tags_to_doc() {
+    fn nested_let_tags() {
         check(
             indoc! {r#"
                 component Main {
@@ -3482,7 +3504,7 @@ mod tests {
     }
 
     #[test]
-    fn let_inside_if_to_doc() {
+    fn let_inside_if() {
         check(
             indoc! {r#"
                 component Main (show: Bool) {
@@ -3506,7 +3528,7 @@ mod tests {
     }
 
     #[test]
-    fn let_inside_for_to_doc() {
+    fn let_inside_for() {
         check(
             indoc! {"
                 component Main(items: Array[Int]) {
@@ -3532,7 +3554,7 @@ mod tests {
     }
 
     #[test]
-    fn multiple_sibling_let_tags_to_doc() {
+    fn multiple_sibling_let_tags() {
         check(
             indoc! {r#"
                 component Main {
@@ -3562,7 +3584,7 @@ mod tests {
     }
 
     #[test]
-    fn let_with_empty_children_to_doc() {
+    fn let_with_empty_children() {
         check(
             indoc! {r#"
                 component Main {
@@ -3694,13 +3716,17 @@ mod tests {
             indoc! {"
                 // Main component
                 component Main {
-                  hello
+                  <>
+                    hello
+                  </>
                 }
             "},
             expect![[r#"
                 // Main component
                 component Main {
-                  hello
+                  <>
+                    hello
+                  </>
                 }
             "#]],
         );
@@ -3966,7 +3992,7 @@ mod tests {
                     disabled: Bool = false,
                     // More params to come
                 ) {
-                  {label}
+                  <>{label}</>
                 }
             "#},
             expect![[r#"
@@ -3977,7 +4003,9 @@ mod tests {
                   disabled: Bool = false,
                   // More params to come
                 ) {
-                  {label}
+                  <>
+                    {label}
+                  </>
                 }
             "#]],
         );
@@ -3991,7 +4019,7 @@ mod tests {
                   x: String,
                   // ?
                 ) {
-                  {x}
+                  <>{x}</>
                 }
             "#},
             expect![[r#"
@@ -3999,7 +4027,9 @@ mod tests {
                   x: String,
                   // ?
                 ) {
-                  {x}
+                  <>
+                    {x}
+                  </>
                 }
             "#]],
         );
@@ -4056,7 +4086,7 @@ mod tests {
     }
 
     #[test]
-    fn simple_method_call_to_doc() {
+    fn simple_method_call() {
         check(
             indoc! {"
                 component Main(x: String) {
@@ -4074,7 +4104,7 @@ mod tests {
     }
 
     #[test]
-    fn chained_method_calls_to_doc() {
+    fn chained_method_calls() {
         check(
             indoc! {"
                 component Main(x: String) {
@@ -4092,7 +4122,7 @@ mod tests {
     }
 
     #[test]
-    fn mixed_field_access_and_method_call_to_doc() {
+    fn mixed_field_access_and_method_call() {
         check(
             indoc! {"
                 component Main(x: String) {
@@ -4110,7 +4140,7 @@ mod tests {
     }
 
     #[test]
-    fn method_call_then_field_access_to_doc() {
+    fn method_call_then_field_access() {
         check(
             indoc! {"
                 component Main(x: String) {
@@ -4128,7 +4158,7 @@ mod tests {
     }
 
     #[test]
-    fn float_literal_to_doc() {
+    fn float_literal() {
         check(
             indoc! {"
                 component Main {
@@ -4148,7 +4178,7 @@ mod tests {
     }
 
     #[test]
-    fn float_literals_small_values_to_doc() {
+    fn float_literals_small_values() {
         check(
             indoc! {"
                 component Main {
@@ -4172,7 +4202,7 @@ mod tests {
     }
 
     #[test]
-    fn inline_text_with_nested_element_to_doc() {
+    fn inline_text_with_nested_element() {
         check(
             indoc! {"
                 component Main {
@@ -4195,7 +4225,7 @@ mod tests {
     }
 
     #[test]
-    fn nested_elements_inline_to_doc() {
+    fn nested_elements_inline() {
         check(
             indoc! {"
                 component Main {
@@ -4215,7 +4245,7 @@ mod tests {
     }
 
     #[test]
-    fn text_around_inline_element_to_doc() {
+    fn text_around_inline_element() {
         check(
             indoc! {"
                 component Main {
@@ -4267,7 +4297,7 @@ mod tests {
     }
 
     #[test]
-    fn empty_lines_between_text_collapsed_to_doc() {
+    fn empty_lines_between_text_collapsed() {
         check(
             indoc! {"
                 component Main {
@@ -4292,7 +4322,7 @@ mod tests {
     }
 
     #[test]
-    fn text_around_void_element_to_doc() {
+    fn text_around_void_element() {
         check(
             indoc! {"
                 component Main {
@@ -4314,7 +4344,7 @@ mod tests {
     }
 
     #[test]
-    fn void_element_on_separate_line_to_doc() {
+    fn void_element_on_separate_line() {
         check(
             indoc! {"
                 component Main {
@@ -4338,7 +4368,7 @@ mod tests {
     }
 
     #[test]
-    fn text_around_input_element_to_doc() {
+    fn text_around_input_element() {
         check(
             indoc! {r#"
                 component Main {
@@ -4360,7 +4390,7 @@ mod tests {
     }
 
     #[test]
-    fn input_element_on_separate_line_to_doc() {
+    fn input_element_on_separate_line() {
         check(
             indoc! {r#"
                 component Main {
@@ -4384,7 +4414,7 @@ mod tests {
     }
 
     #[test]
-    fn text_with_multiple_expressions_to_doc() {
+    fn text_with_multiple_expressions() {
         check(
             indoc! {"
                 component Main(rating: String, num_reviews: String) {
@@ -4500,7 +4530,7 @@ mod tests {
     }
 
     #[test]
-    fn view_with_parameters_to_doc() {
+    fn view_with_parameters() {
         check(
             indoc! {r#"
                 record LoginLogo { url: String, name: String }
@@ -4735,7 +4765,7 @@ mod tests {
     }
 
     #[test]
-    fn function_declaration_to_doc() {
+    fn function_declaration() {
         check(
             indoc! {"
                 fn foo(x: Int) -> Int { x + 10 }
@@ -4749,7 +4779,7 @@ mod tests {
     }
 
     #[test]
-    fn function_with_empty_params_to_doc() {
+    fn function_with_empty_params() {
         check(
             indoc! {"
                 fn answer() -> Int {
@@ -4765,7 +4795,7 @@ mod tests {
     }
 
     #[test]
-    fn function_with_multiple_params_to_doc() {
+    fn function_with_multiple_params() {
         check(
             indoc! {r#"
                 fn pick(cond: Bool, a: String, b: String) -> String { "x" }
@@ -4821,7 +4851,7 @@ mod tests {
     }
 
     #[test]
-    fn function_with_match_body_to_doc() {
+    fn function_with_match_body() {
         check(
             indoc! {r#"
                 fn label(flag: Bool) -> String {
@@ -4831,6 +4861,198 @@ mod tests {
             expect![[r#"
                 fn label(flag: Bool) -> String {
                   match flag {true => "on", false => "off"}
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn markup_as_a_function_body() {
+        check(
+            indoc! {"
+                fn card() -> Fragment {
+                  <div>hello</div>
+                }
+            "},
+            expect![[r#"
+                fn card() -> Fragment {
+                  <div>
+                    hello
+                  </div>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn markup_in_an_interpolation() {
+        check(
+            indoc! {"
+                view Test {
+                  <div>{<span>hello</span>}</div>
+                }
+            "},
+            expect![[r#"
+                view Test {
+                  <div>
+                    {<span>
+                      hello
+                    </span>}
+                  </div>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn markup_as_a_call_argument() {
+        check(
+            indoc! {"
+                fn card() -> Fragment {
+                  wrap(<span>a<b>c</b></span>)
+                }
+            "},
+            expect![[r#"
+                fn card() -> Fragment {
+                  wrap(<span>a<b>c</b></span>)
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn markup_as_an_attribute_value() {
+        check(
+            indoc! {"
+                view Test {
+                  <Card slot={<span>a<b>c</b></span>}/>
+                }
+            "},
+            expect![[r#"
+                view Test {
+                  <Card slot={<span>a<b>c</b></span>}/>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn significant_whitespace_in_flat_markup() {
+        check(
+            indoc! {"
+                fn card() -> Fragment {
+                  wrap(<span>a <b>c</b> d</span>)
+                }
+            "},
+            expect![[r#"
+                fn card() -> Fragment {
+                  wrap(<span>a{" "}<b>c</b>{" "}d</span>)
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn markup_in_an_interpolation_short() {
+        check(
+            indoc! {"
+                fn card() -> Fragment {
+                  wrap(<span>a{<b>c</b>}d</span>)
+                }
+            "},
+            expect![[r#"
+                fn card() -> Fragment {
+                  wrap(<span>a{<b>c</b>}d</span>)
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn markup_in_match_arms() {
+        check(
+            indoc! {"
+                fn badge(on: Bool) -> Fragment {
+                  match on {true => <b>yes</b>, false => <i>no</i>}
+                }
+            "},
+            expect![[r#"
+                fn badge(on: Bool) -> Fragment {
+                  match on {true => <b>yes</b>, false => <i>no</i>}
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn markup_in_match_arms_long() {
+        check(
+            indoc! {r#"
+                fn badge(on: Bool) -> Fragment {
+                  match on {true => <span class="a-fairly-long-class">yes <b>indeed</b></span>, false => <i>no</i>}
+                }
+            "#},
+            expect![[r#"
+                fn badge(on: Bool) -> Fragment {
+                  match on {
+                    true => (
+                      <span class="a-fairly-long-class">
+                        yes
+                        {" "}
+                        <b>
+                          indeed
+                        </b>
+                      </span>
+                    ),
+                    false => (
+                      <i>
+                        no
+                      </i>
+                    ),
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn markup_as_multiple_call_arguments() {
+        check(
+            indoc! {"
+                fn card() -> Fragment {
+                  pair(<b>a</b>, <i>c</i>)
+                }
+            "},
+            expect![[r#"
+                fn card() -> Fragment {
+                  pair(<b>a</b>, <i>c</i>)
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn markup_as_multiple_call_arguments_long() {
+        check(
+            indoc! {r#"
+                fn card() -> Fragment {
+                  pair(<span class="a-fairly-long-class">first <b>one</b></span>, <span class="another-long-one">second one</span>)
+                }
+            "#},
+            expect![[r#"
+                fn card() -> Fragment {
+                  pair(
+                    <span class="a-fairly-long-class">
+                      first
+                      {" "}
+                      <b>
+                        one
+                      </b>
+                    </span>,
+                    <span class="another-long-one">
+                      second one
+                    </span>,
+                  )
                 }
             "#]],
         );

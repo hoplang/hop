@@ -6,6 +6,7 @@ use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 
+use super::parse_nodes;
 use super::parsed_expr::{
     Constructor, ParsedBinaryOp, ParsedExpr, ParsedMatchArm, ParsedMatchPattern,
 };
@@ -376,6 +377,9 @@ pub fn parse_primary(
             ParsedExpr::FragmentEmpty {
                 range: start_range.to(right_paren),
             }
+        }
+        Some((LangToken::LessThan, left_angle)) => {
+            parse_nodes::parse_markup(iter, comments, errors, left_angle)?
         }
         Some((token, token_range)) => {
             errors.push(ParseError::new(

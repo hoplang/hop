@@ -244,22 +244,55 @@ impl ParsedNode {
         }
     }
 
-    /// Get the direct children of a node.
-    pub fn children(&self) -> &[Self] {
+    /// The nodes written inside this node's tags, in source order.
+    pub fn children(&self) -> Vec<&Self> {
         match self {
-            ParsedNode::ComponentInvocation { children, .. } => children.as_deref().unwrap_or(&[]),
-            ParsedNode::If { children, .. } => children,
-            ParsedNode::For { children, .. } => children,
-            ParsedNode::Let { children, .. } => children,
-            ParsedNode::Html { children, .. } => children,
-            ParsedNode::Fragment { children, .. } => children,
-            ParsedNode::Match { .. } => &[], // children are inside cases
-            ParsedNode::Comment { .. } => &[],
-            ParsedNode::Text { .. } => &[],
-            ParsedNode::Newline { .. } => &[],
-            ParsedNode::TextExpression { .. } => &[],
+            ParsedNode::ComponentInvocation { children, .. } => children.iter().flatten().collect(),
+            ParsedNode::If { children, .. }
+            | ParsedNode::For { children, .. }
+            | ParsedNode::Let { children, .. }
+            | ParsedNode::Html { children, .. }
+            | ParsedNode::Fragment { children, .. } => children.iter().collect(),
+            ParsedNode::Match { cases, .. } => {
+                cases.iter().flat_map(|case| &case.children).collect()
+            }
+            ParsedNode::Comment { .. }
+            | ParsedNode::Text { .. }
+            | ParsedNode::Newline { .. }
+            | ParsedNode::TextExpression { .. } => Vec::new(),
         }
     }
+    /// The expressions this node contain.
+    pub fn expressions(&self) -> Vec<&ParsedExpr> {
+        match self {
+            ParsedNode::TextExpression { expression, .. } => vec![expression],
+            ParsedNode::If { condition, .. } => vec![condition],
+            ParsedNode::Match { subject, .. } => vec![subject],
+            ParsedNode::ComponentInvocation { attributes, .. }
+            | ParsedNode::Html { attributes, .. } => attributes
+                .iter()
+                .filter_map(|attribute| match attribute {
+                    ParsedAttribute::Named {
+                        value: Some(ParsedAttributeValue::Expression(expr)),
+                        ..
+                    } => Some(expr),
+                    ParsedAttribute::Named { .. } | ParsedAttribute::Spread { .. } => None,
+                })
+                .collect(),
+            ParsedNode::For { source, .. } => match source.as_ref() {
+                ParsedLoopSource::Array(expr) => vec![expr],
+                ParsedLoopSource::RangeInclusive { start, end } => vec![start, end],
+            },
+            ParsedNode::Let { bindings, .. } => {
+                bindings.iter().map(|binding| &binding.value_expr).collect()
+            }
+            ParsedNode::Text { .. }
+            | ParsedNode::Newline { .. }
+            | ParsedNode::Comment { .. }
+            | ParsedNode::Fragment { .. } => Vec::new(),
+        }
+    }
+
     /// Get the range for the opening tag of a node.
     ///
     /// Example:

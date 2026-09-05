@@ -1,5 +1,4 @@
 use super::parse_expr;
-use super::parse_nodes::parse_body;
 use super::parsed_ast::{
     self, ParsedAst, ParsedComponentDeclaration, ParsedDeclaration, ParsedEnumDeclaration,
     ParsedEnumDeclarationVariant, ParsedFunctionDeclaration, ParsedImportDeclaration,
@@ -10,9 +9,9 @@ use super::tokenize_expr;
 use crate::document::{Document, DocumentCursor, DocumentRange};
 use crate::document_id::DocumentId;
 use crate::examples_annotation::ExamplesAnnotation;
-use crate::hop::parsing::ParsedType;
 use crate::hop::parsing::parse_type::parse_type;
 use crate::hop::parsing::parsed_ast::ParsedParameter;
+use crate::hop::parsing::{ParsedExpr, ParsedType};
 use crate::parse_error::{ParseError, ParseErrorKind};
 use crate::symbols::field_name::FieldName;
 use crate::symbols::module_name::ModuleName;
@@ -20,6 +19,38 @@ use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use std::collections::{HashSet, VecDeque};
 use std::iter::Peekable;
+
+fn parse_declaration_body(
+    iter: &mut Peekable<DocumentCursor>,
+    comments: &mut VecDeque<DocumentRange>,
+    errors: &mut Vec<ParseError>,
+    before: &DocumentRange,
+) -> Option<(ParsedExpr, DocumentRange)> {
+    let left_brace =
+        tokenize_expr::expect_token(iter, comments, errors, before, &token::LangToken::LeftBrace)?;
+
+    let body =
+        if let Some((token::LangToken::RightBrace, _)) = tokenize_expr::peek_past_comments(iter) {
+            errors.push(ParseError::new(
+                ParseErrorKind::EmptyBody {},
+                left_brace.clone(),
+            ));
+            ParsedExpr::FragmentEmpty {
+                range: left_brace.clone(),
+            }
+        } else {
+            parse_expr::parse_expr(iter, comments, errors, &left_brace)?
+        };
+
+    let right_brace = tokenize_expr::expect_opposite(
+        iter,
+        comments,
+        errors,
+        &token::LangToken::LeftBrace,
+        &left_brace,
+    )?;
+    Some((body, right_brace))
+}
 
 /// Parse a hop document into a ParsedAst.
 pub fn parse(
@@ -548,23 +579,7 @@ fn parse_component_declaration(
         params = Some((regular, params_range));
     }
 
-    let body_start = tokenize_expr::expect_token(
-        iter,
-        comments,
-        errors,
-        &name_range,
-        &token::LangToken::LeftBrace,
-    )?;
-
-    let body = parse_body(iter, comments, errors, &body_start);
-
-    let body_end = tokenize_expr::expect_opposite(
-        iter,
-        comments,
-        errors,
-        &token::LangToken::LeftBrace,
-        &body_start,
-    )?;
+    let (body, body_end) = parse_declaration_body(iter, comments, errors, &name_range)?;
     let start_range = pub_range.clone().unwrap_or_else(|| keyword_range.clone());
     let range = start_range.to(body_end);
 
@@ -666,14 +681,6 @@ fn parse_page_or_view_header(
         (Vec::new(), name_range.clone())
     };
 
-    let body_start = tokenize_expr::expect_token(
-        iter,
-        comments,
-        errors,
-        &params_range,
-        &token::LangToken::LeftBrace,
-    )?;
-
     let name = match TypeName::new(&name_str) {
         Ok(name) => name,
         Err(error) => {
@@ -685,7 +692,7 @@ fn parse_page_or_view_header(
         }
     };
 
-    Some((name, name_range, params, body_start))
+    Some((name, name_range, params, params_range))
 }
 
 fn parse_view_declaration(
@@ -700,18 +707,10 @@ fn parse_view_declaration(
         return None;
     };
 
-    let (name, name_range, params, body_start) =
+    let (name, name_range, params, params_range) =
         parse_page_or_view_header(iter, comments, errors, &keyword_range)?;
 
-    let body = parse_body(iter, comments, errors, &body_start);
-
-    let body_end = tokenize_expr::expect_opposite(
-        iter,
-        comments,
-        errors,
-        &token::LangToken::LeftBrace,
-        &body_start,
-    )?;
+    let (body, body_end) = parse_declaration_body(iter, comments, errors, &params_range)?;
     let start_range = pub_range.clone().unwrap_or_else(|| keyword_range.clone());
     let range = start_range.to(body_end);
     Some(ParsedPageDeclaration {
@@ -738,37 +737,31 @@ fn parse_page_declaration(
         return None;
     };
 
-    let (name, name_range, params, outer_body_start) =
+    let (name, name_range, params, params_range) =
         parse_page_or_view_header(iter, comments, errors, &keyword_range)?;
 
-    let head = if let Some((token::LangToken::Identifier(word), _)) = tokenize_expr::next_if(
+    let outer_body_start = tokenize_expr::expect_token(
         iter,
         comments,
         errors,
-        |(token, _)| matches!(token, token::LangToken::Identifier(word) if word.as_str() == "head"),
-    ) {
-        debug_assert_eq!(word.as_str(), "head");
-        let head_start = tokenize_expr::expect_token(
+        &params_range,
+        &token::LangToken::LeftBrace,
+    )?;
+
+    let head = if let Some((token::LangToken::Identifier(_), head_keyword_range)) =
+        tokenize_expr::next_if(
             iter,
             comments,
             errors,
-            &name_range,
-            &token::LangToken::LeftBrace,
-        )?;
-        let head = parse_body(iter, comments, errors, &head_start);
-        tokenize_expr::expect_opposite(
-            iter,
-            comments,
-            errors,
-            &token::LangToken::LeftBrace,
-            &head_start,
-        )?;
+            |(token, _)| matches!(token, token::LangToken::Identifier(word) if word.as_str() == "head"),
+        ) {
+        let (head, _) = parse_declaration_body(iter, comments, errors, &head_keyword_range)?;
         Some(head)
     } else {
         None
     };
 
-    let Some((token::LangToken::Identifier(word), body_keyword_range)) = tokenize_expr::next_if(
+    let Some((token::LangToken::Identifier(_), body_keyword_range)) = tokenize_expr::next_if(
         iter,
         comments,
         errors,
@@ -776,7 +769,7 @@ fn parse_page_declaration(
     ) else {
         let range = match tokenize_expr::peek_past_comments(iter) {
             Some((_, range)) => range,
-            None => name_range.clone(),
+            None => name_range,
         };
         errors.push(ParseError::new(
             ParseErrorKind::ExpectedPageBodyBlock {},
@@ -784,22 +777,7 @@ fn parse_page_declaration(
         ));
         return None;
     };
-    debug_assert_eq!(word.as_str(), "body");
-    let body_start = tokenize_expr::expect_token(
-        iter,
-        comments,
-        errors,
-        &body_keyword_range,
-        &token::LangToken::LeftBrace,
-    )?;
-    let body = parse_body(iter, comments, errors, &body_start);
-    tokenize_expr::expect_opposite(
-        iter,
-        comments,
-        errors,
-        &token::LangToken::LeftBrace,
-        &body_start,
-    )?;
+    let (body, _) = parse_declaration_body(iter, comments, errors, &body_keyword_range)?;
 
     let outer_body_end = tokenize_expr::expect_opposite(
         iter,
@@ -1222,7 +1200,7 @@ mod tests {
                   disabled: Bool = false,
                   // More params to come
                 ) {
-                  {label}
+                  <>{label}</>
                 }
             "#},
             expect![[r#"
@@ -1233,7 +1211,9 @@ mod tests {
                   disabled: Bool = false,
                   // More params to come
                 ) {
-                  {label}
+                  <>
+                    {label}
+                  </>
                 }
             "#]],
         );
@@ -1522,10 +1502,15 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Unmatched </div>
+                error: Unexpected character: '/'
                 1 | component Main {
                 2 |     <div></div></div>
-                  |                ^^^^^^
+                  |                 ^
+
+                error: Unexpected token '}'
+                2 |     <div></div></div>
+                3 | }
+                  | ^
             "#]],
         );
     }
@@ -1538,7 +1523,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Expected a single root: use <></> for an empty body
+                error: Expected an expression: use <></> for an empty body
                 1 | component Main {
                   |                ^
             "#]],
@@ -1555,10 +1540,15 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Expected a single root: wrap the contents in <>...</>
+                error: Unexpected character: '/'
                 2 |     <p>one</p>
                 3 |     <p>two</p>
-                  |     ^^^^^^^^^^
+                  |            ^
+
+                error: Unexpected token '}'
+                3 |     <p>two</p>
+                4 | }
+                  | ^
             "#]],
         );
     }
@@ -1573,10 +1563,15 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Expected a single root: wrap the contents in <>...</>
+                error: Unexpected character: '/'
                 2 |     <p>one</p>
                 3 |     <p>two</p>
-                  |     ^^^^^^^^^^
+                  |            ^
+
+                error: Unexpected token '}'
+                3 |     <p>two</p>
+                4 | }
+                  | ^
             "#]],
         );
     }
@@ -1597,32 +1592,15 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Expected a single root: wrap the contents in <>...</>
+                error: Expected token '}' but got 'charset'
                  3 |         <title>one</title>
                  4 |         <meta charset="utf-8"/>
-                   |         ^^^^^^^^^^^^^^^^^^^^^^^
+                   |               ^^^^^^^
 
-                error: Expected a single root: wrap the contents in <>...</>
-                 7 |         <p>one</p>
-                 8 |         <p>two</p>
-                   |         ^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_text_beside_an_expression_as_several_roots() {
-        reject(
-            indoc! {"
-                component Greeting(name: String) {
-                    Hello, {name}!
-                }
-            "},
-            expect![[r#"
-                error: Expected a single root: wrap the contents in <>...</>
-                1 | component Greeting(name: String) {
-                2 |     Hello, {name}!
-                  |            ^^^^^^
+                error: Unexpected text at top level
+                 3 |         <title>one</title>
+                 4 |         <meta charset="utf-8"/>
+                   |                      ^
             "#]],
         );
     }
@@ -1712,6 +1690,11 @@ mod tests {
                 1 | component Main {
                 2 |     < >
                   |     ^
+
+                error: Unexpected text at top level
+                1 | component Main {
+                2 |     < >
+                  |       ^
             "#]],
         );
     }
@@ -1850,10 +1833,14 @@ mod tests {
         reject(
             "component Main {<!foo>}",
             expect![[r#"
-            error: Invalid markup declaration
-            1 | component Main {<!foo>}
-              |                 ^^
-        "#]],
+                error: Invalid markup declaration
+                1 | component Main {<!foo>}
+                  |                 ^^
+
+                error: Unexpected text at top level
+                1 | component Main {<!foo>}
+                  |                   ^^^
+            "#]],
         );
     }
 
@@ -1862,10 +1849,6 @@ mod tests {
         reject(
             "component Main {<!--",
             expect![[r#"
-                error: Unmatched '{'
-                1 | component Main {<!--
-                  |                ^
-
                 error: Unterminated comment
                 1 | component Main {<!--
                   |                 ^^^^
@@ -1934,10 +1917,14 @@ mod tests {
         reject(
             "component Main {< div>}",
             expect![[r#"
-            error: Unterminated tag start
-            1 | component Main {< div>}
-              |                 ^
-        "#]],
+                error: Unterminated tag start
+                1 | component Main {< div>}
+                  |                 ^
+
+                error: Unexpected text at top level
+                1 | component Main {< div>}
+                  |                   ^^^
+            "#]],
         );
     }
 
@@ -1959,6 +1946,11 @@ mod tests {
                 1 | component Main(foo: String) {
                 2 |     <!DOCTYPE html>
                   |     ^^^^^^^^^^^^^^^
+
+                error: Unexpected text at top level
+                2 |     <!DOCTYPE html>
+                3 |     <html>
+                  |     ^
             "#]],
         );
     }
@@ -1978,6 +1970,11 @@ mod tests {
                 1 | component Main {
                 2 |     <if>
                   |     ^^^^
+
+                error: Unexpected text at top level
+                4 |     </if>
+                5 | }
+                  | ^
             "#]],
         );
     }
@@ -1997,6 +1994,11 @@ mod tests {
                 1 | component Main {
                 2 |     <for>
                   |     ^^^^^
+
+                error: Unexpected text at top level
+                4 |     </for>
+                5 | }
+                  | ^
             "#]],
         );
     }
@@ -2016,6 +2018,11 @@ mod tests {
                 1 | component Main {
                 2 |     <for {foo}>
                   |              ^
+
+                error: Unexpected text at top level
+                4 |     </for>
+                5 | }
+                  | ^
             "#]],
         );
     }
@@ -2040,6 +2047,11 @@ mod tests {
                 1 | component Main {
                 2 |     <if {~}>
                   |           ^
+
+                error: Unexpected text at top level
+                4 |     </if>
+                5 | }
+                  | ^
             "#]],
         );
     }
@@ -2422,6 +2434,11 @@ mod tests {
                 1 | component Main {
                 2 |     <dvi>oops</dvi>
                   |      ^^^
+
+                error: Unexpected text at top level
+                2 |     <dvi>oops</dvi>
+                3 | }
+                  | ^
             "#]],
         );
     }
@@ -2439,6 +2456,11 @@ mod tests {
                 1 | component Main {
                 2 |     <math></math>
                   |      ^^^^
+
+                error: Unexpected text at top level
+                2 |     <math></math>
+                3 | }
+                  | ^
             "#]],
         );
     }
@@ -2814,7 +2836,7 @@ mod tests {
                 enum Color {Red, Green, Blue}
 
                 component Main(color: Color) {
-                    {match color {Color::Red => "red", Color::Blue => "blue"}}
+                    <>{match color {Color::Red => "red", Color::Blue => "blue"}}</>
                 }
             "#},
             expect![[r#"
@@ -2825,7 +2847,12 @@ mod tests {
                 }
 
                 component Main(color: Color) {
-                  {match color {Color::Red => "red", Color::Blue => "blue"}}
+                  <>
+                    {match color {
+                      Color::Red => "red",
+                      Color::Blue => "blue",
+                    }}
+                  </>
                 }
             "#]],
         );
@@ -2868,11 +2895,13 @@ mod tests {
                 enum Status {Active, Inactive, Pending}
 
                 component Main(status: Status) {
-                    {match status {
-                        Status::Active => "active",
-                        Status::Inactive => "inactive",
-                        Status::Pending => "pending",
-                    }}
+                    <>
+                        {match status {
+                            Status::Active => "active",
+                            Status::Inactive => "inactive",
+                            Status::Pending => "pending",
+                        }}
+                    </>
                 }
             "#},
             expect![[r#"
@@ -2883,11 +2912,13 @@ mod tests {
                 }
 
                 component Main(status: Status) {
-                  {match status {
-                    Status::Active => "active",
-                    Status::Inactive => "inactive",
-                    Status::Pending => "pending",
-                  }}
+                  <>
+                    {match status {
+                      Status::Active => "active",
+                      Status::Inactive => "inactive",
+                      Status::Pending => "pending",
+                    }}
+                  </>
                 }
             "#]],
         );
@@ -3503,6 +3534,11 @@ mod tests {
                 1 | component Main {
                 2 |     <match>
                   |     ^^^^^^^
+
+                error: Unexpected text at top level
+                4 |     </match>
+                5 | }
+                  | ^
             "#]],
         );
     }
@@ -3558,6 +3594,11 @@ mod tests {
                 1 | component Main {
                 2 |     <case {true}>standalone case</case>
                   |      ^^^^
+
+                error: Unexpected text at top level
+                2 |     <case {true}>standalone case</case>
+                3 | }
+                  | ^
             "#]],
         );
     }
@@ -3680,6 +3721,11 @@ mod tests {
                 1 | component Main {
                 2 |     <let>
                   |     ^^^^^
+
+                error: Unexpected text at top level
+                4 |     </let>
+                5 | }
+                  | ^
             "#]],
         );
     }
@@ -3721,6 +3767,11 @@ mod tests {
                 1 | component Main {
                 2 |     <let {x: String}>
                   |                    ^
+
+                error: Unexpected text at top level
+                4 |     </let>
+                5 | }
+                  | ^
             "#]],
         );
     }
@@ -4118,6 +4169,11 @@ mod tests {
                 1 | view Test {
                 2 |   <let {default: String = "x"}>
                   |         ^^^^^^^
+
+                error: Unexpected text at top level
+                4 |   </let>
+                5 | }
+                  | ^
             "#]],
         );
     }
@@ -4137,8 +4193,7 @@ mod tests {
 
                 error: Unexpected text at top level
                 1 | view Error() {
-                2 |     <div>Hello</div>
-                  |     ^
+                  |              ^
             "#]],
         );
     }
@@ -4192,6 +4247,11 @@ mod tests {
                 1 | component Card() {
                 2 |     <Foo-Bar />
                   |      ^^^^^^^
+
+                error: Unexpected text at top level
+                2 |     <Foo-Bar />
+                3 | }
+                  | ^
             "#]],
         );
     }
@@ -4345,7 +4405,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Expected a single root: use <></> for an empty body
+                error: Expected an expression: use <></> for an empty body
                 1 | view Index() {
                   |              ^
             "#]],
@@ -4597,17 +4657,23 @@ mod tests {
     }
 
     #[test]
-    fn accepts_view_with_top_level_text() {
-        accept(
+    fn rejects_bare_text_as_a_view_body() {
+        reject(
             indoc! {"
                 view Test {
                   hello world
                 }
             "},
             expect![[r#"
-                view Test {
-                  hello world
-                }
+                error: Expected token '}' but got 'world'
+                1 | view Test {
+                2 |   hello world
+                  |         ^^^^^
+
+                error: Unexpected text at top level
+                2 |   hello world
+                3 | }
+                  | ^
             "#]],
         );
     }
@@ -4641,11 +4707,11 @@ mod tests {
     #[test]
     fn rejects_invalid_escape_sequences_in_strings() {
         reject(
-            r#"component Test {{"invalid\q"}}"#,
+            r#"fn test() -> String {"invalid\q"}"#,
             expect![[r#"
                 error: Invalid escape sequence '\q'
-                1 | component Test {{"invalid\q"}}
-                  |                          ^^
+                1 | fn test() -> String {"invalid\q"}
+                  |                              ^^
             "#]],
         );
     }
@@ -4929,6 +4995,321 @@ mod tests {
                 error: Unexpected text at top level
                 1 | fn foo(...rest) -> Int {
                   |           ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_markup_as_a_function_body() {
+        accept(
+            indoc! {"
+                fn card() -> Fragment {
+                  <div>hello</div>
+                }
+            "},
+            expect![[r#"
+                fn card() -> Fragment {
+                  <div>
+                    hello
+                  </div>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_a_fragment_as_a_function_body() {
+        accept(
+            indoc! {"
+                fn card() -> Fragment {
+                  <></>
+                }
+            "},
+            expect![[r#"
+                fn card() -> Fragment {
+                  <>
+                  </>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_markup_in_an_interpolation() {
+        accept(
+            indoc! {"
+                view Test {
+                  <div>{<span>hello</span>}</div>
+                }
+            "},
+            expect![[r#"
+                view Test {
+                  <div>
+                    {<span>
+                      hello
+                    </span>}
+                  </div>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_markup_nested_through_two_interpolations() {
+        accept(
+            indoc! {"
+                view Test {
+                  <div>{<span>{<b>hello</b>}</span>}</div>
+                }
+            "},
+            expect![[r#"
+                view Test {
+                  <div>
+                    {<span>
+                      {<b>
+                        hello
+                      </b>}
+                    </span>}
+                  </div>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_markup_as_a_call_argument() {
+        accept(
+            indoc! {"
+                fn wrap(children: Fragment) -> Fragment {
+                  <div>{children}</div>
+                }
+
+                fn card() -> Fragment {
+                  wrap(<span>hello</span>)
+                }
+            "},
+            expect![[r#"
+                fn wrap(children: Fragment) -> Fragment {
+                  <div>
+                    {children}
+                  </div>
+                }
+
+                fn card() -> Fragment {
+                  wrap(<span>hello</span>)
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_markup_in_an_array_literal() {
+        accept(
+            indoc! {"
+                fn cards() -> Array[Fragment] {
+                  [<div>a</div>, <div>b</div>]
+                }
+            "},
+            expect![[r#"
+                fn cards() -> Array[Fragment] {
+                  [<div>a</div>, <div>b</div>]
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_markup_in_a_match_arm() {
+        accept(
+            indoc! {"
+                fn badge(on: Bool) -> Fragment {
+                  match on {
+                    true => <b>yes</b>,
+                    false => <i>no</i>,
+                  }
+                }
+            "},
+            expect![[r#"
+                fn badge(on: Bool) -> Fragment {
+                  match on {true => <b>yes</b>, false => <i>no</i>}
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_markup_as_a_component_attribute_value() {
+        accept(
+            indoc! {"
+                component Card(slot: Fragment) {
+                  <div>{slot}</div>
+                }
+
+                view Test {
+                  <Card slot={<span>hello</span>}/>
+                }
+            "},
+            expect![[r#"
+                component Card(slot: Fragment) {
+                  <div>
+                    {slot}
+                  </div>
+                }
+
+                view Test {
+                  <Card slot={<span>hello</span>}/>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_a_control_flow_tag_in_expression_position() {
+        accept(
+            indoc! {"
+                fn card(on: Bool) -> Fragment {
+                  <if {on}>
+                    <div>hello</div>
+                  </if>
+                }
+            "},
+            expect![[r#"
+                fn card(on: Bool) -> Fragment {
+                  <if {on}>
+                    <div>
+                      hello
+                    </div>
+                  </if>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_a_comment_before_markup_in_expression_position() {
+        accept(
+            indoc! {"
+                fn card() -> Fragment {
+                  // a note
+                  <div>hello</div>
+                }
+            "},
+            expect![[r#"
+                fn card() -> Fragment {
+                  // a note
+                  <div>
+                    hello
+                  </div>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_a_markup_comment_in_expression_position() {
+        accept(
+            indoc! {"
+                fn card() -> Fragment {
+                  <!-- a note -->
+                }
+            "},
+            expect![[r#"
+                fn card() -> Fragment {
+                  <!-- a note -->
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_comparisons_in_expression_position() {
+        accept(
+            indoc! {"
+                fn check(a: Int, b: Int, c: Int, d: Int) -> Bool {
+                  a < b && c > d
+                }
+
+                fn at_most(a: Int, b: Int) -> Bool {
+                  a <= b
+                }
+            "},
+            expect![[r#"
+                fn check(
+                  a: Int,
+                  b: Int,
+                  c: Int,
+                  d: Int,
+                ) -> Bool {
+                  a < b && c > d
+                }
+
+                fn at_most(
+                  a: Int,
+                  b: Int,
+                ) -> Bool {
+                  a <= b
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_a_second_root_in_expression_position() {
+        reject(
+            indoc! {"
+                fn card() -> Fragment {
+                  <div/><span/>
+                }
+            "},
+            expect![[r#"
+                error: Unexpected character: '/'
+                1 | fn card() -> Fragment {
+                2 |   <div/><span/>
+                  |              ^
+
+                error: Unexpected token '}'
+                2 |   <div/><span/>
+                3 | }
+                  | ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_a_space_between_the_angle_and_the_tag_name() {
+        reject(
+            indoc! {"
+                fn card() -> Fragment {
+                  < div
+                }
+            "},
+            expect![[r#"
+                error: Unterminated tag start
+                1 | fn card() -> Fragment {
+                2 |   < div
+                  |   ^
+
+                error: Unexpected text at top level
+                1 | fn card() -> Fragment {
+                2 |   < div
+                  |     ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_an_unclosed_tag_in_expression_position() {
+        reject(
+            indoc! {"
+                fn card() -> Fragment {
+                  <div>
+                }
+            "},
+            expect![[r#"
+                error: Unclosed <div>
+                1 | fn card() -> Fragment {
+                2 |   <div>
+                  |    ^^^
             "#]],
         );
     }
