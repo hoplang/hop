@@ -1,6 +1,6 @@
 use std::{collections::VecDeque, iter::Peekable};
 
-use super::tokenize_expr::{expect_opposite, expect_token, next_collecting_comments as next};
+use super::parse_helpers::{expect_opposite, expect_token, next_collecting_comments as next};
 
 use super::parsed_type::ParsedType;
 use super::token::LangToken;

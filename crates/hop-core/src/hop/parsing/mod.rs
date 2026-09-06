@@ -1,6 +1,7 @@
 pub mod find_node;
 pub mod parse;
 pub mod parse_expr;
+pub mod parse_helpers;
 mod parse_nodes;
 pub mod parse_type;
 pub mod parsed_ast;

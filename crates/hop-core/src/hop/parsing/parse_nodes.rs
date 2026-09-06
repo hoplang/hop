@@ -2,12 +2,12 @@ use std::collections::VecDeque;
 use std::iter::Peekable;
 
 use super::parse_expr;
+use super::parse_helpers;
 use super::parsed_expr::ParsedExpr;
 use super::parsed_node::{
     ParsedAttribute, ParsedLetBinding, ParsedLoopSource, ParsedMatchCase, ParsedNode,
 };
 use super::token;
-use super::tokenize_expr;
 use super::tokenize_markup;
 use super::whitespace;
 use crate::document::{DocumentCursor, DocumentRange};
@@ -228,7 +228,7 @@ fn parse_node(
             MarkupToken::ExpressionStart { left_brace } => {
                 if let Some(expression) =
                     parse_expr::parse_expr(iter, comments, errors, &left_brace)
-                    && let Some(right_brace) = tokenize_expr::expect_opposite(
+                    && let Some(right_brace) = parse_helpers::expect_opposite(
                         iter,
                         comments,
                         errors,
@@ -429,7 +429,7 @@ fn parse_opening_tag(
 
             TagToken::AttributeExpressionStart { name, left_brace } => {
                 if let Some(value) = parse_expr::parse_expr(iter, comments, errors, &left_brace)
-                    && tokenize_expr::expect_opposite(
+                    && parse_helpers::expect_opposite(
                         iter,
                         comments,
                         errors,
@@ -497,7 +497,7 @@ fn parse_opening_tag(
                 };
                 expression_range = Some(left_brace.clone());
                 if parse_succeeded {
-                    let right_brace = tokenize_expr::expect_opposite(
+                    let right_brace = parse_helpers::expect_opposite(
                         iter,
                         comments,
                         errors,
@@ -803,17 +803,17 @@ fn parse_loop_header(
     range: &DocumentRange,
 ) -> Option<LoopHeader> {
     let (var_name, var_name_range) = if let Some(underscore_range) =
-        tokenize_expr::advance_if(iter, comments, errors, token::LangToken::Underscore)
+        parse_helpers::advance_if(iter, comments, errors, token::LangToken::Underscore)
     {
         (None, Some(underscore_range))
     } else {
         let (name, name_range) =
-            tokenize_expr::expect_variable_name(iter, comments, errors, range)?;
+            parse_helpers::expect_variable_name(iter, comments, errors, range)?;
         (Some(name), Some(name_range))
     };
-    tokenize_expr::expect_token(iter, comments, errors, range, &token::LangToken::In)?;
+    parse_helpers::expect_token(iter, comments, errors, range, &token::LangToken::In)?;
     let start_expr = parse_expr::parse_expr(iter, comments, errors, range)?;
-    let source = if tokenize_expr::advance_if(iter, comments, errors, token::LangToken::DotDotEq)
+    let source = if parse_helpers::advance_if(iter, comments, errors, token::LangToken::DotDotEq)
         .is_some()
     {
         let end_expr = parse_expr::parse_expr(iter, comments, errors, range)?;
@@ -837,18 +837,18 @@ fn parse_let_bindings(
     errors: &mut Vec<ParseError>,
     range: &DocumentRange,
 ) -> Option<Vec<ParsedLetBinding>> {
-    let bindings = tokenize_expr::parse_comma_separated(
+    let bindings = parse_helpers::parse_comma_separated(
         iter,
         comments,
         errors,
         range,
         |iter, comments, errors, range| {
             let (var_name, var_name_range) =
-                tokenize_expr::expect_variable_name(iter, comments, errors, range)?;
+                parse_helpers::expect_variable_name(iter, comments, errors, range)?;
             let var_type = if let Some((token::LangToken::Colon, _)) =
-                tokenize_expr::peek_past_comments(iter)
+                parse_helpers::peek_past_comments(iter)
             {
-                tokenize_expr::expect_token(
+                parse_helpers::expect_token(
                     iter,
                     comments,
                     errors,
@@ -859,7 +859,7 @@ fn parse_let_bindings(
             } else {
                 None
             };
-            tokenize_expr::expect_token(iter, comments, errors, range, &token::LangToken::Assign)?;
+            parse_helpers::expect_token(iter, comments, errors, range, &token::LangToken::Assign)?;
             let value_expr = parse_expr::parse_expr(iter, comments, errors, range)?;
             Some(ParsedLetBinding {
                 var_name,
