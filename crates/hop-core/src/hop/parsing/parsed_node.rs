@@ -10,24 +10,44 @@ use std::fmt::{self, Display};
 
 #[derive(Debug, Clone)]
 pub enum ParsedNode {
-    /// A Text node represents text in the document.
-    /// E.g. <div>hello world</div>
-    ///           ^^^^^^^^^^^
+    /// A Text node represents plain text. E.g.
+    /// ```text
+    /// <div>hello</div>
+    ///      ^^^^^
+    /// ```
     Text { range: DocumentRange },
 
     /// A Newline node represents a newline character in text position.
     /// This is separate from Text to allow precise whitespace handling.
     Newline { range: DocumentRange },
 
-    /// A TextExpression represents an expression that occurs in a text position.
-    /// E.g. <div>hello {world}</div>
-    ///                 ^^^^^^^
-    TextExpression {
+    /// An interpolation of an expression. E.g.
+    /// ```text
+    /// <div>hello {world}</div>
+    ///            ^^^^^^^
+    /// ```
+    Interpolation {
         expression: ParsedExpr,
         range: DocumentRange,
     },
 
-    /// A ComponentInvocation represents an invocation of a component.
+    /// An HTML node represents a plain HTML node. E.g.
+    /// ```text
+    /// <div class="hidden">...</div>
+    /// ```
+    Html {
+        element: HtmlElement,
+        tag_name: DocumentRange,
+        closing_tag_name: Option<DocumentRange>,
+        attributes: Vec<ParsedAttribute>,
+        children: Vec<ParsedNode>,
+        range: DocumentRange,
+    },
+
+    /// A ComponentInvocation represents an invocation of a component. E.g.
+    /// ```text
+    /// <Foo x={10} y={20}>...</Foo>
+    /// ```
     ComponentInvocation {
         component_name: TypeName,
         component_name_opening_range: DocumentRange,
@@ -38,7 +58,10 @@ pub enum ParsedNode {
     },
 
     /// An If node contains content that is only evaluated when its condition
-    /// expression evaluates to true.
+    /// expression evaluates to true. E.g.
+    /// ```text
+    /// <if {x == 20}>...</if>
+    /// ```
     If {
         condition: ParsedExpr,
         children: Vec<ParsedNode>,
@@ -46,9 +69,13 @@ pub enum ParsedNode {
     },
 
     /// A For node contains content that is evaluated once for each item of
-    /// an array or each value in a range.
-    /// When var_name is None, the loop variable is discarded (underscore syntax).
+    /// an array or each value in a range. E.g.
+    /// ```text
+    /// <for {user in users}>...</for>
+    /// ```
     For {
+        /// The bound variable name, `None` when the variable is discarded
+        /// using `_`.
         var_name: Option<VarName>,
         var_name_range: Option<DocumentRange>,
         source: Box<ParsedLoopSource>,
@@ -56,19 +83,23 @@ pub enum ParsedNode {
         range: DocumentRange,
     },
 
-    /// A Match node contains pattern matching over a subject expression.
-    /// E.g. <match {x}>
-    ///        <case {Some(y)}>found {y}!</case>
-    ///        <case {None}>not found</case>
-    ///      </match>
+    /// A Match node contains pattern matching over an expression. E.g.
+    /// ```text
+    /// <match {x}>
+    ///   <case {Some(y)}>found {y}!</case>
+    ///   <case {None}>not found</case>
+    /// </match>
+    /// ```
     Match {
         subject: ParsedExpr,
         cases: Vec<ParsedMatchCase>,
         range: DocumentRange,
     },
 
-    /// A Let node introduces one or more local variable bindings.
-    /// E.g. <let {name: String = "World", count: Int = 0}>Hello {name}</let>
+    /// A Let node introduces one or more local variable bindings. E.g.
+    /// ```text
+    /// <let {name: String = "World", count: Int = 0}>...</let>
+    /// ```
     Let {
         bindings: Vec<ParsedLetBinding>,
         bindings_range: DocumentRange,
@@ -76,38 +107,30 @@ pub enum ParsedNode {
         range: DocumentRange,
     },
 
-    /// A Comment node represents an HTML comment.
-    /// E.g. <!-- This is a comment -->
+    /// A Comment node represents an HTML comment. E.g.
+    /// ```text
+    /// <!-- This is a comment -->
+    /// ```
     Comment { range: DocumentRange },
 
     /// A Fragment node groups children under no tag of its own, so that
-    /// markup with several roots can still be written where one is required.
-    /// E.g. <>hello {name}</>
+    /// markup with several roots can still be written where one is required. E.g.
+    /// ```text
+    /// <>hello {name}</>
+    /// ```
     Fragment {
-        children: Vec<ParsedNode>,
-        range: DocumentRange,
-    },
-
-    /// An HTML node represents a plain HTML node.
-    /// E.g. <div>...</div>
-    ///      ^^^^^^^^^^^^^^
-    Html {
-        element: HtmlElement,
-        tag_name: DocumentRange,
-        closing_tag_name: Option<DocumentRange>,
-        attributes: Vec<ParsedAttribute>,
         children: Vec<ParsedNode>,
         range: DocumentRange,
     },
 }
 
-/// A ParsedAttribute is a single entry in a node's attribute list.
+/// A ParsedAttribute is a single entry in the attribute list of a ParsedNode.
 ///
 /// It is either:
-/// * empty - <foo a>
-/// * an expression - <foo a={bar}>
-/// * a string value - <foo a="b">
-/// * or a spread - <foo ...rest>
+/// * empty: `<foo a>`
+/// * an expression: `<foo a={bar}>`
+/// * a string value: `<foo a="b">`
+/// * or a spread: `<foo ...rest>`
 #[derive(Debug, Clone)]
 pub enum ParsedAttribute {
     Named {
@@ -232,7 +255,7 @@ impl ParsedNode {
         match self {
             ParsedNode::Text { range, .. }
             | ParsedNode::Newline { range }
-            | ParsedNode::TextExpression { range, .. }
+            | ParsedNode::Interpolation { range, .. }
             | ParsedNode::ComponentInvocation { range, .. }
             | ParsedNode::If { range, .. }
             | ParsedNode::For { range, .. }
@@ -259,13 +282,13 @@ impl ParsedNode {
             ParsedNode::Comment { .. }
             | ParsedNode::Text { .. }
             | ParsedNode::Newline { .. }
-            | ParsedNode::TextExpression { .. } => Vec::new(),
+            | ParsedNode::Interpolation { .. } => Vec::new(),
         }
     }
     /// The expressions this node contain.
     pub fn expressions(&self) -> Vec<&ParsedExpr> {
         match self {
-            ParsedNode::TextExpression { expression, .. } => vec![expression],
+            ParsedNode::Interpolation { expression, .. } => vec![expression],
             ParsedNode::If { condition, .. } => vec![condition],
             ParsedNode::Match { subject, .. } => vec![subject],
             ParsedNode::ComponentInvocation { attributes, .. }
@@ -341,7 +364,7 @@ impl ParsedNode {
             ParsedNode::Text { range } => BoxDoc::text(range.as_str()),
             // Newlines don't produce output - they signal where breaks can occur
             ParsedNode::Newline { .. } => BoxDoc::nil(),
-            ParsedNode::TextExpression { expression, .. } => BoxDoc::text("{")
+            ParsedNode::Interpolation { expression, .. } => BoxDoc::text("{")
                 .append(expression.to_doc())
                 .append(BoxDoc::text("}")),
             ParsedNode::ComponentInvocation {

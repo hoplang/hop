@@ -1679,7 +1679,7 @@ pub fn typecheck_node(
             })
         }
 
-        ParsedNode::TextExpression {
+        ParsedNode::Interpolation {
             expression,
             range: _,
         } => {
@@ -1703,7 +1703,7 @@ pub fn typecheck_node(
                     }),
                     _ => {
                         errors.push(TypeError::new(
-                            TypeErrorKind::TextExpressionTypeMismatch { found: expr_type },
+                            TypeErrorKind::InterpolationTypeMismatch { found: expr_type },
                             expression.range().clone(),
                         ));
                         None
@@ -4304,7 +4304,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Mismatched type for text expression: expected `String` got Bool
+                error: Mismatched type for interpolation: expected `String` or `Fragment` got Bool
                   --> main.hop (line 3, col 8)
                 2 |   <>
                 3 |       {false}
@@ -5913,7 +5913,7 @@ mod tests {
                  3 |         <case {Some(x)}>
                    |                     ^
 
-                error: Mismatched type for text expression: expected `String` got Option[String]
+                error: Mismatched type for interpolation: expected `String` or `Fragment` got Option[String]
                   --> main.hop (line 4, col 14)
                  3 |         <case {Some(x)}>
                  4 |             {x}

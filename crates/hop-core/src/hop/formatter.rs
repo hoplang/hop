@@ -633,7 +633,7 @@ fn format_node<'a>(
         // Newline nodes are handled by format_children (they signal where to break).
         // This case is here for completeness but shouldn't be reached in normal formatting.
         ParsedNode::Newline { .. } => arena.nil(),
-        ParsedNode::TextExpression { expression, .. } => arena
+        ParsedNode::Interpolation { expression, .. } => arena
             .text("{")
             .append(format_expr(arena, expression, comments))
             .append(arena.text("}")),
@@ -959,7 +959,7 @@ fn format_children<'a>(
     arena.line_().append(doc).nest(2).append(arena.line_())
 }
 
-/// Render a run of whitespace as a text expression, so that it survives the
+/// Render a run of whitespace as an interpolation, so that it survives the
 /// line break the formatter puts next to it.
 fn escaped_whitespace<'a>(arena: &'a Arena<'a>, whitespace: &str) -> DocBuilder<'a, Arena<'a>> {
     arena.text(format!("{{\"{whitespace}\"}}"))

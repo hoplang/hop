@@ -50,7 +50,7 @@ pub fn normalize_node(node: &mut ParsedNode) {
         }
         ParsedNode::Text { .. }
         | ParsedNode::Newline { .. }
-        | ParsedNode::TextExpression { .. }
+        | ParsedNode::Interpolation { .. }
         | ParsedNode::Comment { .. } => {}
     }
 }

@@ -237,7 +237,7 @@ fn parse_node(
                         &left_brace,
                     )
                 {
-                    builder.append_node(ParsedNode::TextExpression {
+                    builder.append_node(ParsedNode::Interpolation {
                         expression,
                         range: left_brace.to(right_brace),
                     });

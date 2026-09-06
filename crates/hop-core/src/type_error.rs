@@ -157,8 +157,8 @@ pub(crate) enum TypeErrorKind {
         found: Arc<Type>,
     },
 
-    #[error("Mismatched type for text expression: expected `String` got {found}")]
-    TextExpressionTypeMismatch { found: Arc<Type> },
+    #[error("Mismatched type for interpolation: expected `String` or `Fragment` got {found}")]
+    InterpolationTypeMismatch { found: Arc<Type> },
 
     #[error("Undefined variable: {name}")]
     UndefinedVariable { name: VarName },
