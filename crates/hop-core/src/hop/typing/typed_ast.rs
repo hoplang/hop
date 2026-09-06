@@ -155,7 +155,7 @@ impl TypedEnumDeclaration {
                                 BoxDoc::text(variant.name.as_str())
                             } else {
                                 BoxDoc::text(variant.name.as_str())
-                                    .append(BoxDoc::text("{"))
+                                    .append(BoxDoc::text(" { "))
                                     .append(BoxDoc::intersperse(
                                         variant.fields.iter().map(|(field_name, field_type, _)| {
                                             BoxDoc::text(field_name.as_str())
@@ -164,7 +164,7 @@ impl TypedEnumDeclaration {
                                         }),
                                         BoxDoc::text(", "),
                                     ))
-                                    .append(BoxDoc::text("}"))
+                                    .append(BoxDoc::text(" }"))
                             }
                         }),
                         BoxDoc::text(",").append(BoxDoc::line()),

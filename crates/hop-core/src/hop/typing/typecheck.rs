@@ -5128,8 +5128,8 @@ mod tests {
                 }
 
                 enum Node {
-                  Leaf{label: String},
-                  Branch{children: Array[main::Tree]},
+                  Leaf { label: String },
+                  Branch { children: Array[main::Tree] },
                 }
 
                 fn Main(t: main::Tree) -> Fragment {
@@ -5419,7 +5419,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 enum Status {
-                  Active{since: Int},
+                  Active { since: Int },
                   Inactive,
                   Pending,
                 }
@@ -5644,7 +5644,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 enum Status {
-                  Active{name: String},
+                  Active { name: String },
                   Inactive,
                 }
 
@@ -7623,8 +7623,8 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 enum Expr {
-                  Literal{value: Int},
-                  Neg{inner: main::Expr},
+                  Literal { value: Int },
+                  Neg { inner: main::Expr },
                 }
 
                 fn Main() -> Fragment {

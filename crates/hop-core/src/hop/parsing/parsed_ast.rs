@@ -343,7 +343,7 @@ impl ParsedEnumDeclarationVariant {
             BoxDoc::text(self.name.as_str())
         } else {
             BoxDoc::text(self.name.as_str())
-                .append(BoxDoc::text("("))
+                .append(BoxDoc::text(" { "))
                 .append(BoxDoc::intersperse(
                     self.fields.iter().map(|(field_name, _, field_type, _)| {
                         BoxDoc::text(field_name.to_string())
@@ -352,7 +352,7 @@ impl ParsedEnumDeclarationVariant {
                     }),
                     BoxDoc::text(", "),
                 ))
-                .append(BoxDoc::text(")"))
+                .append(BoxDoc::text(" }"))
         }
     }
 }
