@@ -244,7 +244,7 @@ fn parse_record_declaration(
     let left_brace =
         parse_helpers::expect_token(iter, comments, errors, range, &token::LangToken::LeftBrace)?;
     let mut seen_names = HashSet::new();
-    let (fields, right_brace) = parse_helpers::parse_delimited_list(
+    let (fields, braces) = parse_helpers::parse_delimited_list(
         iter,
         comments,
         errors,
@@ -274,7 +274,7 @@ fn parse_record_declaration(
             })
         },
     )?;
-    let full_range = start_range.to(right_brace);
+    let full_range = start_range.to(braces);
     Some(ParsedRecordDeclaration {
         name,
         name_range,
@@ -298,7 +298,7 @@ fn parse_enum_declaration(
     let left_brace =
         parse_helpers::expect_token(iter, comments, errors, range, &token::LangToken::LeftBrace)?;
     let mut seen_names = HashSet::new();
-    let (variants, right_brace) = parse_helpers::parse_delimited_list(
+    let (variants, braces) = parse_helpers::parse_delimited_list(
         iter,
         comments,
         errors,
@@ -368,7 +368,7 @@ fn parse_enum_declaration(
             })
         },
     )?;
-    let full_range = start_range.to(right_brace);
+    let full_range = start_range.to(braces);
     Some(ParsedEnumDeclaration {
         name,
         name_range,
@@ -422,7 +422,7 @@ fn parse_component_declaration(
     let parsed_params = if let Some(left_paren) =
         parse_helpers::advance_if(iter, comments, errors, token::LangToken::LeftParen)
     {
-        let (items, right_paren) = parse_helpers::parse_delimited_list(
+        let (items, parens) = parse_helpers::parse_delimited_list(
             iter,
             comments,
             errors,
@@ -480,7 +480,7 @@ fn parse_component_declaration(
                 })))
             },
         )?;
-        Some((items, left_paren.to(right_paren)))
+        Some((items, parens))
     } else {
         None
     };
@@ -584,7 +584,7 @@ fn parse_page_or_view_header(
     let (params, params_range) = if let Some(left_paren) =
         parse_helpers::advance_if(iter, comments, errors, token::LangToken::LeftParen)
     {
-        let (params, right_paren) = parse_helpers::parse_delimited_list(
+        let (params, parens) = parse_helpers::parse_delimited_list(
             iter,
             comments,
             errors,
@@ -621,7 +621,7 @@ fn parse_page_or_view_header(
                 })
             },
         )?;
-        (params, left_paren.to(right_paren))
+        (params, parens)
     } else {
         (Vec::new(), name_range.clone())
     };
@@ -786,17 +786,18 @@ fn parse_function_declaration(
     )?;
     parse_helpers::expect_token(iter, comments, errors, range, &token::LangToken::Arrow)?;
     let return_type = parse_type(iter, comments, errors, range)?;
-    let body_start =
+    let left_brace =
         parse_helpers::expect_token(iter, comments, errors, range, &token::LangToken::LeftBrace)?;
-    let body = parse_expr::parse_expr(iter, comments, errors, range)?;
-    let body_end = parse_helpers::expect_right_delimiter(
+    let (body, braces) = parse_helpers::parse_delimited(
         iter,
         comments,
         errors,
+        range,
         LangTokenPair::Braces,
-        &body_start,
+        &left_brace,
+        parse_expr::parse_expr,
     )?;
-    let full_range = keyword_range.to(body_end);
+    let full_range = keyword_range.to(braces);
     Some(ParsedFunctionDeclaration {
         name,
         name_range,
@@ -815,27 +816,26 @@ fn parse_declaration_body(
 ) -> Option<(ParsedExpr, DocumentRange)> {
     let left_brace =
         parse_helpers::expect_token(iter, comments, errors, before, &token::LangToken::LeftBrace)?;
-
-    let body = if let Some((token::LangToken::RightBrace, _)) = tokenize_expr::peek(iter) {
-        errors.push(ParseError::new(
-            ParseErrorKind::EmptyBody {},
-            left_brace.clone(),
-        ));
-        ParsedExpr::FragmentEmpty {
-            range: left_brace.clone(),
-        }
-    } else {
-        parse_expr::parse_expr(iter, comments, errors, &left_brace)?
-    };
-
-    let right_brace = parse_helpers::expect_right_delimiter(
+    parse_helpers::parse_delimited(
         iter,
         comments,
         errors,
+        &left_brace,
         LangTokenPair::Braces,
         &left_brace,
-    )?;
-    Some((body, right_brace))
+        |iter, comments, errors, left_brace| {
+            if let Some((token::LangToken::RightBrace, _)) = tokenize_expr::peek(iter) {
+                errors.push(ParseError::new(
+                    ParseErrorKind::EmptyBody {},
+                    left_brace.clone(),
+                ));
+                return Some(ParsedExpr::FragmentEmpty {
+                    range: left_brace.clone(),
+                });
+            }
+            parse_expr::parse_expr(iter, comments, errors, left_brace)
+        },
+    )
 }
 
 /// Parse a `#[examples(...)]` annotation using the expr tokenizer.

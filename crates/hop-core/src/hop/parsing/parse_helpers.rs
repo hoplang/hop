@@ -207,6 +207,34 @@ pub fn expect_type_name(
     }
 }
 
+/// Parse one item after a left delimiter the caller has already consumed,
+/// then the right delimiter that matches it. Returns the item with the range
+/// from the left delimiter through the right.
+pub fn parse_delimited<T, F>(
+    iter: &mut Peekable<DocumentCursor>,
+    comments: &mut VecDeque<DocumentRange>,
+    errors: &mut Vec<ParseError>,
+    range: &DocumentRange,
+    pair: LangTokenPair,
+    left_delimiter_range: &DocumentRange,
+    parse: F,
+) -> Option<(T, DocumentRange)>
+where
+    F: FnOnce(
+        &mut Peekable<DocumentCursor>,
+        &mut VecDeque<DocumentRange>,
+        &mut Vec<ParseError>,
+        &DocumentRange,
+    ) -> Option<T>,
+{
+    let item = parse(iter, comments, errors, range)?;
+    let closing_range = expect_right_delimiter(iter, comments, errors, pair, left_delimiter_range)?;
+    Some((item, left_delimiter_range.clone().to(closing_range)))
+}
+
+/// Parse comma-separated items after a left delimiter the caller has already
+/// consumed, then the right delimiter that matches it. Returns the items with
+/// the range from the left delimiter through the right.
 pub fn parse_delimited_list<T, F>(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
@@ -226,7 +254,7 @@ where
 {
     let right_delimiter = pair.right_delimiter();
     if let Some(closing_range) = advance_if(iter, comments, errors, right_delimiter.clone()) {
-        return Some((Vec::new(), closing_range));
+        return Some((Vec::new(), left_delimiter_range.clone().to(closing_range)));
     }
     let mut items = vec![parse(iter, comments, errors, range)?];
     while advance_if(iter, comments, errors, LangToken::Comma).is_some() {
@@ -237,5 +265,5 @@ where
         items.push(parse(iter, comments, errors, range)?);
     }
     let closing_range = expect_right_delimiter(iter, comments, errors, pair, left_delimiter_range)?;
-    Some((items, closing_range))
+    Some((items, left_delimiter_range.clone().to(closing_range)))
 }

@@ -67,13 +67,6 @@ struct OpenElement {
     /// ^^^^^^^^^^^^^^^
     /// ```
     opening_range: DocumentRange,
-    /// The range of the `{...}` the opening tag carried, if it carried one.
-    /// E.g.
-    /// ```text
-    /// <if {done}>
-    ///     ^^^^^^
-    /// ```
-    expression_range: Option<DocumentRange>,
     /// What was read off the opening tag, waiting for the children.
     header: TagHeader,
     children: Vec<MarkupItem>,
@@ -91,23 +84,30 @@ impl OpenElement {
 }
 
 /// What an opening tag carried, kept until the element can be built.
+///
+/// A tag that takes a `{...}` keeps what it held together with the range of
+/// the whole `{...}`. E.g.
+/// ```text
+/// <if {done}>
+///     ^^^^^^
+/// ```
 enum TagHeader {
     /// A `<>`, which carries nothing at all.
     Fragment,
     If {
-        cond: Option<ParsedExpr>,
+        cond: Option<(ParsedExpr, DocumentRange)>,
     },
     For {
-        expr: Option<LoopHeader>,
+        expr: Option<(LoopHeader, DocumentRange)>,
     },
     Let {
-        bindings: Option<Vec<ParsedLetBinding>>,
+        bindings: Option<(Vec<ParsedLetBinding>, DocumentRange)>,
     },
     Match {
-        expr: Option<ParsedExpr>,
+        expr: Option<(ParsedExpr, DocumentRange)>,
     },
     Case {
-        pattern: Option<ParsedMatchPattern>,
+        pattern: Option<(ParsedMatchPattern, DocumentRange)>,
     },
     Component {
         name: Option<TypeName>,
@@ -228,20 +228,16 @@ fn parse_node(
             MarkupToken::Comment { range } => builder.append_node(ParsedNode::Comment { range }),
 
             MarkupToken::ExpressionStart { left_brace } => {
-                if let Some(expression) =
-                    parse_expr::parse_expr(iter, comments, errors, &left_brace)
-                    && let Some(right_brace) = parse_helpers::expect_right_delimiter(
-                        iter,
-                        comments,
-                        errors,
-                        LangTokenPair::Braces,
-                        &left_brace,
-                    )
-                {
-                    builder.append_node(ParsedNode::Interpolation {
-                        expression,
-                        range: left_brace.to(right_brace),
-                    });
+                if let Some((expression, range)) = parse_helpers::parse_delimited(
+                    iter,
+                    comments,
+                    errors,
+                    &left_brace,
+                    LangTokenPair::Braces,
+                    &left_brace,
+                    parse_expr::parse_expr,
+                ) {
+                    builder.append_node(ParsedNode::Interpolation { expression, range });
                 }
             }
 
@@ -282,7 +278,6 @@ fn parse_node(
             MarkupToken::FragmentStart { range } => builder.enter(OpenElement {
                 tag_name_range: range.clone(),
                 opening_range: range,
-                expression_range: None,
                 header: TagHeader::Fragment,
                 children: Vec::new(),
             }),
@@ -430,16 +425,15 @@ fn parse_opening_tag(
             }
 
             TagToken::AttributeExpressionStart { name, left_brace } => {
-                if let Some(value) = parse_expr::parse_expr(iter, comments, errors, &left_brace)
-                    && parse_helpers::expect_right_delimiter(
-                        iter,
-                        comments,
-                        errors,
-                        LangTokenPair::Braces,
-                        &left_brace,
-                    )
-                    .is_some()
-                {
+                if let Some((value, _)) = parse_helpers::parse_delimited(
+                    iter,
+                    comments,
+                    errors,
+                    &left_brace,
+                    LangTokenPair::Braces,
+                    &left_brace,
+                    parse_expr::parse_expr,
+                ) {
                     push_attribute(
                         &mut header,
                         &tag_name_range,
@@ -469,72 +463,68 @@ fn parse_opening_tag(
             },
 
             TagToken::ExpressionStart { left_brace } => {
-                let right_brace = match &mut header {
-                    TagHeader::If { cond: expr } | TagHeader::Match { expr } => {
-                        *expr = parse_expr::parse_expr(iter, comments, errors, &left_brace);
-                        expr.as_ref().and_then(|_| {
-                            parse_helpers::expect_right_delimiter(
-                                iter,
-                                comments,
-                                errors,
-                                LangTokenPair::Braces,
-                                &left_brace,
-                            )
-                        })
+                let braces = match &mut header {
+                    TagHeader::If { cond: slot } | TagHeader::Match { expr: slot } => {
+                        *slot = parse_helpers::parse_delimited(
+                            iter,
+                            comments,
+                            errors,
+                            &left_brace,
+                            LangTokenPair::Braces,
+                            &left_brace,
+                            parse_expr::parse_expr,
+                        );
+                        slot.as_ref().map(|(_, range)| range.clone())
                     }
 
-                    TagHeader::For { expr } => {
-                        *expr = parse_loop_header(iter, comments, errors, &left_brace);
-                        expr.as_ref().and_then(|_| {
-                            parse_helpers::expect_right_delimiter(
-                                iter,
-                                comments,
-                                errors,
-                                LangTokenPair::Braces,
-                                &left_brace,
-                            )
-                        })
+                    TagHeader::For { expr: slot } => {
+                        *slot = parse_helpers::parse_delimited(
+                            iter,
+                            comments,
+                            errors,
+                            &left_brace,
+                            LangTokenPair::Braces,
+                            &left_brace,
+                            parse_loop_header,
+                        );
+                        slot.as_ref().map(|(_, range)| range.clone())
                     }
 
-                    TagHeader::Case { pattern } => {
-                        *pattern =
-                            parse_expr::parse_match_pattern(iter, comments, errors, &left_brace);
-                        pattern.as_ref().and_then(|_| {
-                            parse_helpers::expect_right_delimiter(
-                                iter,
-                                comments,
-                                errors,
-                                LangTokenPair::Braces,
-                                &left_brace,
-                            )
-                        })
+                    TagHeader::Case { pattern: slot } => {
+                        *slot = parse_helpers::parse_delimited(
+                            iter,
+                            comments,
+                            errors,
+                            &left_brace,
+                            LangTokenPair::Braces,
+                            &left_brace,
+                            parse_expr::parse_match_pattern,
+                        );
+                        slot.as_ref().map(|(_, range)| range.clone())
                     }
 
-                    TagHeader::Let { bindings } => {
-                        let (parsed_bindings, right_brace) =
-                            parse_let_bindings(iter, comments, errors, &left_brace).unzip();
-                        *bindings = parsed_bindings;
-                        right_brace
+                    TagHeader::Let { bindings: slot } => {
+                        *slot = parse_let_bindings(iter, comments, errors, &left_brace);
+                        slot.as_ref().map(|(_, range)| range.clone())
                     }
 
                     TagHeader::Component { .. } | TagHeader::Html { .. } => {
-                        parse_expr::parse_expr(iter, comments, errors, &left_brace).and_then(|_| {
-                            parse_helpers::expect_right_delimiter(
-                                iter,
-                                comments,
-                                errors,
-                                LangTokenPair::Braces,
-                                &left_brace,
-                            )
-                        })
+                        parse_helpers::parse_delimited(
+                            iter,
+                            comments,
+                            errors,
+                            &left_brace,
+                            LangTokenPair::Braces,
+                            &left_brace,
+                            parse_expr::parse_expr,
+                        )
+                        .map(|(_, range)| range)
                     }
 
                     TagHeader::Fragment => unreachable!(),
                 };
-                expression_range = Some(match right_brace {
-                    Some(right_brace) => left_brace.to(right_brace),
-                    None => left_brace,
-                });
+                // The tag carried an expression, whether or not it parsed.
+                expression_range = Some(braces.unwrap_or(left_brace));
             }
         }
     }
@@ -547,9 +537,9 @@ fn parse_opening_tag(
         (TagHeader::Let { .. }, None) => Some((ParseErrorKind::MissingLetBinding {}, &full_range)),
         (
             TagHeader::Let {
-                bindings: Some(bindings),
+                bindings: Some((bindings, range)),
             },
-            Some(range),
+            _,
         ) if bindings.is_empty() => Some((ParseErrorKind::MissingLetBinding {}, range)),
         (TagHeader::Match { .. }, None) => {
             Some((ParseErrorKind::MissingMatchExpression {}, &full_range))
@@ -598,7 +588,6 @@ fn parse_opening_tag(
         OpenElement {
             tag_name_range,
             opening_range: full_range,
-            expression_range,
             header,
             children,
         },
@@ -662,7 +651,6 @@ fn close_element(
     let OpenElement {
         tag_name_range,
         opening_range,
-        expression_range,
         header,
         children,
     } = element;
@@ -681,7 +669,7 @@ fn close_element(
 
         TagHeader::If { cond: condition } => {
             let children = expect_nodes(children, errors);
-            condition.map(|condition| {
+            condition.map(|(condition, _)| {
                 MarkupItem::Node(ParsedNode::If {
                     condition,
                     range,
@@ -692,7 +680,7 @@ fn close_element(
 
         TagHeader::For { expr: header } => {
             let children = expect_nodes(children, errors);
-            header.map(|header| {
+            header.map(|(header, _)| {
                 MarkupItem::Node(ParsedNode::For {
                     var_name: header.var_name,
                     var_name_range: header.var_name_range,
@@ -705,21 +693,19 @@ fn close_element(
 
         TagHeader::Let { bindings } => {
             let children = expect_nodes(children, errors);
-            bindings
-                .zip(expression_range)
-                .map(|(bindings, bindings_range)| {
-                    MarkupItem::Node(ParsedNode::Let {
-                        bindings,
-                        bindings_range,
-                        range,
-                        children,
-                    })
+            bindings.map(|(bindings, bindings_range)| {
+                MarkupItem::Node(ParsedNode::Let {
+                    bindings,
+                    bindings_range,
+                    range,
+                    children,
                 })
+            })
         }
 
         TagHeader::Match { expr: subject } => {
             let cases = expect_cases(children, errors);
-            subject.map(|subject| {
+            subject.map(|(subject, _)| {
                 MarkupItem::Node(ParsedNode::Match {
                     subject,
                     cases,
@@ -730,7 +716,7 @@ fn close_element(
 
         TagHeader::Case { pattern } => {
             let children = expect_nodes(children, errors);
-            pattern.map(|pattern| MarkupItem::Case {
+            pattern.map(|(pattern, _)| MarkupItem::Case {
                 case: ParsedMatchCase { pattern, children },
                 tag_name_range,
             })
@@ -864,6 +850,9 @@ fn parse_loop_header(
     })
 }
 
+/// Parse the bindings of a `<let>` from a `{` the caller has already
+/// consumed, through the `}` that closes them. Returns the bindings with the
+/// range of the whole `{...}`.
 fn parse_let_bindings(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,

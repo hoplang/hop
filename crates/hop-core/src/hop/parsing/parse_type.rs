@@ -1,6 +1,6 @@
 use std::{collections::VecDeque, iter::Peekable};
 
-use super::parse_helpers::{expect_right_delimiter, expect_token};
+use super::parse_helpers::{expect_token, parse_delimited};
 use super::tokenize_expr::next;
 
 use super::parsed_type::ParsedType;
@@ -27,33 +27,35 @@ pub fn parse_type(
         Some((LangToken::TypeArray, type_array)) => {
             let left_bracket =
                 expect_token(iter, comments, errors, range, &LangToken::LeftBracket)?;
-            let element = parse_type(iter, comments, errors, range)?;
-            let right_bracket = expect_right_delimiter(
+            let (element, brackets) = parse_delimited(
                 iter,
                 comments,
                 errors,
+                range,
                 LangTokenPair::Brackets,
                 &left_bracket,
+                parse_type,
             )?;
             Some(ParsedType::Array {
                 element: Box::new(element),
-                range: type_array.to(right_bracket),
+                range: type_array.to(brackets),
             })
         }
         Some((LangToken::TypeOption, type_option)) => {
             let left_bracket =
                 expect_token(iter, comments, errors, range, &LangToken::LeftBracket)?;
-            let element = parse_type(iter, comments, errors, range)?;
-            let right_bracket = expect_right_delimiter(
+            let (element, brackets) = parse_delimited(
                 iter,
                 comments,
                 errors,
+                range,
                 LangTokenPair::Brackets,
                 &left_bracket,
+                parse_type,
             )?;
             Some(ParsedType::Option {
                 element: Box::new(element),
-                range: type_option.to(right_bracket),
+                range: type_option.to(brackets),
             })
         }
         Some((LangToken::TypeName(name), type_range)) => match TypeName::from_cheap_string(name) {
