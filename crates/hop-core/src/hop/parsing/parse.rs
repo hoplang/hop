@@ -20,39 +20,6 @@ use crate::symbols::var_name::VarName;
 use std::collections::{HashSet, VecDeque};
 use std::iter::Peekable;
 
-fn parse_declaration_body(
-    iter: &mut Peekable<DocumentCursor>,
-    comments: &mut VecDeque<DocumentRange>,
-    errors: &mut Vec<ParseError>,
-    before: &DocumentRange,
-) -> Option<(ParsedExpr, DocumentRange)> {
-    let left_brace =
-        tokenize_expr::expect_token(iter, comments, errors, before, &token::LangToken::LeftBrace)?;
-
-    let body =
-        if let Some((token::LangToken::RightBrace, _)) = tokenize_expr::peek_past_comments(iter) {
-            errors.push(ParseError::new(
-                ParseErrorKind::EmptyBody {},
-                left_brace.clone(),
-            ));
-            ParsedExpr::FragmentEmpty {
-                range: left_brace.clone(),
-            }
-        } else {
-            parse_expr::parse_expr(iter, comments, errors, &left_brace)?
-        };
-
-    let right_brace = tokenize_expr::expect_opposite(
-        iter,
-        comments,
-        errors,
-        &token::LangToken::LeftBrace,
-        &left_brace,
-    )?;
-    Some((body, right_brace))
-}
-
-/// Parse a hop document into a ParsedAst.
 pub fn parse(
     document_id: DocumentId,
     document: Document,
@@ -426,11 +393,6 @@ fn parse_enum_variant_fields(
     Some(fields)
 }
 
-/// Parse a component declaration from a document cursor.
-///
-/// Syntax: `component Name(param: Type, ...) { ... }`
-///
-/// Returns `None` if parsing fails.
 fn parse_component_declaration(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
@@ -862,6 +824,38 @@ fn parse_function_declaration(
         body,
         range: full_range,
     })
+}
+
+fn parse_declaration_body(
+    iter: &mut Peekable<DocumentCursor>,
+    comments: &mut VecDeque<DocumentRange>,
+    errors: &mut Vec<ParseError>,
+    before: &DocumentRange,
+) -> Option<(ParsedExpr, DocumentRange)> {
+    let left_brace =
+        tokenize_expr::expect_token(iter, comments, errors, before, &token::LangToken::LeftBrace)?;
+
+    let body =
+        if let Some((token::LangToken::RightBrace, _)) = tokenize_expr::peek_past_comments(iter) {
+            errors.push(ParseError::new(
+                ParseErrorKind::EmptyBody {},
+                left_brace.clone(),
+            ));
+            ParsedExpr::FragmentEmpty {
+                range: left_brace.clone(),
+            }
+        } else {
+            parse_expr::parse_expr(iter, comments, errors, &left_brace)?
+        };
+
+    let right_brace = tokenize_expr::expect_opposite(
+        iter,
+        comments,
+        errors,
+        &token::LangToken::LeftBrace,
+        &left_brace,
+    )?;
+    Some((body, right_brace))
 }
 
 /// Parse a `#[examples(...)]` annotation using the expr tokenizer.

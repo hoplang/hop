@@ -9,27 +9,27 @@ use crate::hop::parsing::ParsedExpr;
 /// Upper bound on time complexity is max(depth of tree, number of top level nodes).
 ///
 /// # Example
-///
+/// ```text
 /// <div>
 ///     <span>text</span>
 ///                  ^
 /// </div>
-///
+/// ```
 /// returns
-///
+/// ```text
 /// <div>
 ///     <span>text</span>
 ///     ^^^^^^^^^^^^^^^^^
 /// </div>
-///
+/// ```
 pub fn find_node_at_position(ast: &ParsedAst, position: DocumentPosition) -> Option<&ParsedNode> {
-    for n in ast.get_component_declarations() {
+    for n in ast.component_declarations() {
         if n.range.contains_position(position) {
             return find_node_at_position_in_expr(&n.body, position);
         }
     }
 
-    for n in ast.get_page_declarations() {
+    for n in ast.page_declarations() {
         if n.range.contains_position(position) {
             if let Some(head) = &n.head
                 && let Some(node) = find_node_at_position_in_expr(head, position)
@@ -40,7 +40,7 @@ pub fn find_node_at_position(ast: &ParsedAst, position: DocumentPosition) -> Opt
         }
     }
 
-    for n in ast.get_function_declarations() {
+    for n in ast.function_declarations() {
         if n.range.contains_position(position) {
             return None;
         }

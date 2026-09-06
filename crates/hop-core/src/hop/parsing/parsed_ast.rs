@@ -31,6 +31,13 @@ pub enum ParsedDeclaration {
     Function(ParsedFunctionDeclaration),
 }
 
+/// A function declaration.
+///
+/// ```text
+/// fn add_five(x: Int) -> {
+///   x + 5
+/// }
+/// ```
 #[derive(Debug, Clone)]
 pub struct ParsedFunctionDeclaration {
     pub name: VarName,
@@ -123,9 +130,10 @@ pub struct ParsedParameter {
     pub var_name: VarName,
     pub var_name_range: DocumentRange,
     pub var_type: ParsedType,
-    // The default value for this parameter. The parser guarantees that this
-    // expression is a constant and that it does not reference variables or
-    // invoke functions.
+    /// The default value for this parameter.
+    ///
+    /// The parser guarantees that this expression is a constant and that it
+    /// does not reference variables or invoke functions.
     pub default_value: Option<ParsedExpr>,
     pub examples: Option<ExamplesAnnotation>,
 }
@@ -185,17 +193,17 @@ impl ParsedAst {
     }
 
     /// Returns a reference to all declarations in the AST, preserving their original order.
-    pub fn get_declarations(&self) -> &[ParsedDeclaration] {
+    pub fn declarations(&self) -> &[ParsedDeclaration] {
         &self.declarations
     }
 
     /// Finds a record declaration by name.
-    pub fn get_record_declaration(&self, name: &str) -> Option<&ParsedRecordDeclaration> {
-        self.get_record_declarations().find(|r| r.name() == name)
+    pub fn find_record_declaration(&self, name: &str) -> Option<&ParsedRecordDeclaration> {
+        self.record_declarations().find(|r| r.name() == name)
     }
 
     /// Returns an iterator over all component declarations in the AST.
-    pub fn get_component_declarations(&self) -> impl Iterator<Item = &ParsedComponentDeclaration> {
+    pub fn component_declarations(&self) -> impl Iterator<Item = &ParsedComponentDeclaration> {
         self.declarations.iter().filter_map(|d| match d {
             ParsedDeclaration::Component(c) => Some(c),
             _ => None,
@@ -203,7 +211,7 @@ impl ParsedAst {
     }
 
     /// Returns an iterator over all import declarations in the AST.
-    pub fn get_import_declarations(&self) -> impl Iterator<Item = &ParsedImportDeclaration> {
+    pub fn import_declarations(&self) -> impl Iterator<Item = &ParsedImportDeclaration> {
         self.declarations.iter().filter_map(|d| match d {
             ParsedDeclaration::Import(i) => Some(i),
             _ => None,
@@ -211,7 +219,7 @@ impl ParsedAst {
     }
 
     /// Returns an iterator over all record declarations in the AST.
-    pub fn get_record_declarations(&self) -> impl Iterator<Item = &ParsedRecordDeclaration> {
+    pub fn record_declarations(&self) -> impl Iterator<Item = &ParsedRecordDeclaration> {
         self.declarations.iter().filter_map(|d| match d {
             ParsedDeclaration::Record(r) => Some(r),
             _ => None,
@@ -219,26 +227,26 @@ impl ParsedAst {
     }
 
     /// Finds an enum declaration by name.
-    pub fn get_enum_declaration(&self, name: &str) -> Option<&ParsedEnumDeclaration> {
-        self.get_enum_declarations().find(|e| e.name() == name)
+    pub fn find_enum_declaration(&self, name: &str) -> Option<&ParsedEnumDeclaration> {
+        self.enum_declarations().find(|e| e.name() == name)
     }
 
     /// Returns an iterator over all enum declarations in the AST.
-    pub fn get_enum_declarations(&self) -> impl Iterator<Item = &ParsedEnumDeclaration> {
+    pub fn enum_declarations(&self) -> impl Iterator<Item = &ParsedEnumDeclaration> {
         self.declarations.iter().filter_map(|d| match d {
             ParsedDeclaration::Enum(e) => Some(e),
             _ => None,
         })
     }
 
-    pub fn get_page_declarations(&self) -> impl Iterator<Item = &ParsedPageDeclaration> {
+    pub fn page_declarations(&self) -> impl Iterator<Item = &ParsedPageDeclaration> {
         self.declarations.iter().filter_map(|d| match d {
             ParsedDeclaration::Page(e) => Some(e),
             _ => None,
         })
     }
 
-    pub fn get_function_declarations(&self) -> impl Iterator<Item = &ParsedFunctionDeclaration> {
+    pub fn function_declarations(&self) -> impl Iterator<Item = &ParsedFunctionDeclaration> {
         self.declarations.iter().filter_map(|d| match d {
             ParsedDeclaration::Function(f) => Some(f),
             _ => None,

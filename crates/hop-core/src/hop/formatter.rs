@@ -95,7 +95,7 @@ where
 }
 
 fn format_ast<'a>(ast: &'a ParsedAst, arena: &'a Arena<'a>) -> DocBuilder<'a, Arena<'a>> {
-    let declarations = ast.get_declarations();
+    let declarations = ast.declarations();
     let mut comments: VecDeque<_> = ast.comments().iter().collect();
     if declarations.is_empty() {
         arena.nil()

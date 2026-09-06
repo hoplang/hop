@@ -40,7 +40,7 @@ pub fn orchestrate_pure(
         .iter()
         .flat_map(|id| {
             typed_asts[id]
-                .get_page_declarations()
+                .page_declarations()
                 .iter()
                 .filter(|ep| match &options.page_filter {
                     Some((_, page_name)) => ep.name.as_str() == page_name.as_str(),
@@ -64,16 +64,16 @@ pub fn orchestrate_pure(
 
     let functions: Vec<_> = document_ids
         .iter()
-        .flat_map(|id| typed_asts[id].get_function_declarations())
+        .flat_map(|id| typed_asts[id].function_declarations())
         .collect();
 
     let records: Vec<_> = document_ids
         .iter()
-        .flat_map(|id| typed_asts[id].get_record_declarations())
+        .flat_map(|id| typed_asts[id].record_declarations())
         .collect();
     let enums: Vec<_> = document_ids
         .iter()
-        .flat_map(|id| typed_asts[id].get_enum_declarations())
+        .flat_map(|id| typed_asts[id].enum_declarations())
         .collect();
 
     let pure_module = compile(

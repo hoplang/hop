@@ -12,48 +12,6 @@ use pretty::BoxDoc;
 
 use super::r#type::{ComparableType, EquatableType, NumericType, Type};
 
-/// The source of iteration in a for loop - either an array or an inclusive range.
-#[derive(Debug, Clone)]
-pub enum TypedLoopSource {
-    /// Iterate over elements of an array
-    Array(TypedExpr),
-    /// Iterate over an inclusive integer range
-    RangeInclusive { start: TypedExpr, end: TypedExpr },
-}
-
-#[derive(Debug, Clone)]
-pub enum TypedAttributeValue {
-    Expression(TypedExpr),
-    String(CheapString),
-}
-
-impl TypedAttributeValue {
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        match self {
-            TypedAttributeValue::Expression(expr) => BoxDoc::text("escape(")
-                .append(expr.to_doc())
-                .append(BoxDoc::text(")")),
-            TypedAttributeValue::String(s) => BoxDoc::text(format!("raw({:?})", s.as_str())),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct TypedAttribute {
-    pub name: CheapString,
-    pub value: Option<TypedAttributeValue>,
-}
-
-impl TypedAttribute {
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        let name_doc = BoxDoc::text(self.name.as_str());
-        match &self.value {
-            Some(value) => name_doc.append(BoxDoc::text(": ")).append(value.to_doc()),
-            None => name_doc,
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub enum TypedExpr {
     /// A variable expression, e.g. foo
@@ -318,43 +276,42 @@ pub enum TypedExpr {
     },
 }
 
-fn concat_to_doc(nodes: &[TypedExpr]) -> BoxDoc<'_> {
-    if nodes.is_empty() {
-        BoxDoc::text("concat()")
-    } else {
-        BoxDoc::text("concat(")
-            .append(
-                BoxDoc::line_()
-                    .append(BoxDoc::intersperse(
-                        nodes.iter().map(|node| node.to_doc()),
-                        BoxDoc::text(",").append(BoxDoc::line()),
-                    ))
-                    .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
-                    .append(BoxDoc::line_())
-                    .nest(2)
-                    .group(),
-            )
-            .append(BoxDoc::text(")"))
+#[derive(Debug, Clone)]
+pub enum TypedLoopSource {
+    Array(TypedExpr),
+    RangeInclusive { start: TypedExpr, end: TypedExpr },
+}
+
+#[derive(Debug, Clone)]
+pub enum TypedAttributeValue {
+    Expression(TypedExpr),
+    String(CheapString),
+}
+
+#[derive(Debug, Clone)]
+pub struct TypedAttribute {
+    pub name: CheapString,
+    pub value: Option<TypedAttributeValue>,
+}
+
+impl TypedAttribute {
+    pub fn to_doc(&self) -> BoxDoc<'_> {
+        let name_doc = BoxDoc::text(self.name.as_str());
+        match &self.value {
+            Some(value) => name_doc.append(BoxDoc::text(": ")).append(value.to_doc()),
+            None => name_doc,
+        }
     }
 }
 
-fn bracketed_to_doc(items: Vec<BoxDoc<'_>>) -> BoxDoc<'_> {
-    if items.is_empty() {
-        BoxDoc::text("[]")
-    } else {
-        BoxDoc::text("[")
-            .append(
-                BoxDoc::line_()
-                    .append(BoxDoc::intersperse(
-                        items,
-                        BoxDoc::text(",").append(BoxDoc::line()),
-                    ))
-                    .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
-                    .append(BoxDoc::line_())
-                    .nest(2)
-                    .group(),
-            )
-            .append(BoxDoc::text("]"))
+impl TypedAttributeValue {
+    pub fn to_doc(&self) -> BoxDoc<'_> {
+        match self {
+            TypedAttributeValue::Expression(expr) => BoxDoc::text("escape(")
+                .append(expr.to_doc())
+                .append(BoxDoc::text(")")),
+            TypedAttributeValue::String(s) => BoxDoc::text(format!("raw({:?})", s.as_str())),
+        }
     }
 }
 
@@ -483,6 +440,46 @@ impl TypedExpr {
     }
 
     pub fn to_doc(&self) -> BoxDoc<'_> {
+        fn concat_to_doc(nodes: &[TypedExpr]) -> BoxDoc<'_> {
+            if nodes.is_empty() {
+                BoxDoc::text("concat()")
+            } else {
+                BoxDoc::text("concat(")
+                    .append(
+                        BoxDoc::line_()
+                            .append(BoxDoc::intersperse(
+                                nodes.iter().map(|node| node.to_doc()),
+                                BoxDoc::text(",").append(BoxDoc::line()),
+                            ))
+                            .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
+                            .append(BoxDoc::line_())
+                            .nest(2)
+                            .group(),
+                    )
+                    .append(BoxDoc::text(")"))
+            }
+        }
+
+        fn bracketed_to_doc(items: Vec<BoxDoc<'_>>) -> BoxDoc<'_> {
+            if items.is_empty() {
+                BoxDoc::text("[]")
+            } else {
+                BoxDoc::text("[")
+                    .append(
+                        BoxDoc::line_()
+                            .append(BoxDoc::intersperse(
+                                items,
+                                BoxDoc::text(",").append(BoxDoc::line()),
+                            ))
+                            .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
+                            .append(BoxDoc::line_())
+                            .nest(2)
+                            .group(),
+                    )
+                    .append(BoxDoc::text("]"))
+            }
+        }
+
         match self {
             TypedExpr::Var { value, .. } => BoxDoc::text(value.as_str()),
             TypedExpr::FieldAccess {

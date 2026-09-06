@@ -68,23 +68,19 @@ impl TypedAst {
         }
     }
 
-    /// Returns a reference to all record declarations in the AST.
-    pub fn get_record_declarations(&self) -> &[TypedRecordDeclaration] {
+    pub fn record_declarations(&self) -> &[TypedRecordDeclaration] {
         &self.record_declarations
     }
 
-    /// Returns a reference to all enum declarations in the AST.
-    pub fn get_enum_declarations(&self) -> &[TypedEnumDeclaration] {
+    pub fn enum_declarations(&self) -> &[TypedEnumDeclaration] {
         &self.enum_declarations
     }
 
-    /// Returns a reference to all page declarations in the AST (this
-    /// includes `view` declarations, which are sugar for `page`).
-    pub fn get_page_declarations(&self) -> &[TypedPageDeclaration] {
+    pub fn page_declarations(&self) -> &[TypedPageDeclaration] {
         &self.page_declarations
     }
 
-    pub fn get_function_declarations(&self) -> &[TypedFunctionDeclaration] {
+    pub fn function_declarations(&self) -> &[TypedFunctionDeclaration] {
         &self.function_declarations
     }
 

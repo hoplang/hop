@@ -115,7 +115,7 @@ impl Program {
 
         // Get all modules that this module depends on
         let module_dependencies = parsed_ast
-            .get_import_declarations()
+            .import_declarations()
             .map(|import_node| import_node.module_name.to_document_id())
             .collect::<BTreeSet<DocumentId>>();
 
@@ -314,20 +314,20 @@ impl Program {
         let ast = self.parsed_asts.get(document_id)?;
 
         // Check if cursor is on a record declaration name
-        for record in ast.get_record_declarations() {
+        for record in ast.record_declarations() {
             if record.name_range.contains_position(position) {
                 return Some(self.collect_record_rename_locations(&record.name, document_id));
             }
         }
 
         // Check if cursor is on an enum declaration name
-        for enum_decl in ast.get_enum_declarations() {
+        for enum_decl in ast.enum_declarations() {
             if enum_decl.name_range.contains_position(position) {
                 return Some(self.collect_enum_rename_locations(&enum_decl.name, document_id));
             }
         }
 
-        for node in ast.get_component_declarations() {
+        for node in ast.component_declarations() {
             if node
                 .tag_name_ranges()
                 .any(|r| r.contains_position(position))
@@ -376,7 +376,7 @@ impl Program {
         let ast = self.parsed_asts.get(document_id)?;
 
         // Check if cursor is on a record declaration name
-        for record in ast.get_record_declarations() {
+        for record in ast.record_declarations() {
             if record.name_range.contains_position(position) {
                 return Some(RenameableSymbol {
                     range: record.name_range.clone(),
@@ -385,7 +385,7 @@ impl Program {
         }
 
         // Check if cursor is on an enum declaration name
-        for enum_decl in ast.get_enum_declarations() {
+        for enum_decl in ast.enum_declarations() {
             if enum_decl.name_range.contains_position(position) {
                 return Some(RenameableSymbol {
                     range: enum_decl.name_range.clone(),
@@ -393,7 +393,7 @@ impl Program {
             }
         }
 
-        for component_node in ast.get_component_declarations() {
+        for component_node in ast.component_declarations() {
             if let Some(range) = component_node
                 .tag_name_ranges()
                 .find(|r| r.contains_position(position))
@@ -446,7 +446,7 @@ impl Program {
         let definition_range = self
             .parsed_asts
             .get(definition_module)
-            .and_then(|module| module.get_record_declaration(record_name.as_str()))
+            .and_then(|module| module.find_record_declaration(record_name.as_str()))
             .map(|decl| &decl.name_range);
 
         let Some(definition_range) = definition_range else {
@@ -478,7 +478,7 @@ impl Program {
         let definition_range = self
             .parsed_asts
             .get(definition_module)
-            .and_then(|module| module.get_enum_declaration(enum_name.as_str()))
+            .and_then(|module| module.find_enum_declaration(enum_name.as_str()))
             .map(|decl| &decl.name_range);
 
         let Some(definition_range) = definition_range else {
@@ -562,13 +562,13 @@ impl Program {
 
         // Check if the page exists in this module
         let page_exists = module
-            .get_page_declarations()
+            .page_declarations()
             .iter()
             .any(|ep| ep.name.as_str() == page_name.as_str());
 
         if !page_exists {
             let available_pages: Vec<_> = module
-                .get_page_declarations()
+                .page_declarations()
                 .iter()
                 .map(|ep| ep.name.as_str())
                 .collect();
@@ -619,7 +619,7 @@ impl Program {
         })?;
 
         let page_decl = typed_ast
-            .get_page_declarations()
+            .page_declarations()
             .iter()
             .find(|ep| ep.name.as_str() == page)
             .ok_or_else(|| {
@@ -699,7 +699,7 @@ impl Program {
         let mut all_pages = Vec::new();
 
         for (document_id, ast) in &self.typed_asts {
-            for ep in ast.get_page_declarations() {
+            for ep in ast.page_declarations() {
                 if ep.name.as_str() == page {
                     return Ok(document_id.clone());
                 }

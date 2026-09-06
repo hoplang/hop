@@ -82,7 +82,7 @@ pub fn typecheck(
 
         if modules.len() > 1 {
             module_errors.clear();
-            for import_node in module.get_import_declarations() {
+            for import_node in module.import_declarations() {
                 module_errors.push(TypeError::import_cycle(
                     &module.document_id.to_string(),
                     &import_node.module_name.to_string(),
@@ -115,7 +115,7 @@ fn typecheck_module(
     let mut typed_pages = Vec::new();
 
     let component_snake_names: HashMap<String, TypeName> = parsed_ast
-        .get_component_declarations()
+        .component_declarations()
         .map(|c| {
             (
                 FunctionName::from(c.component_name.clone()).to_snake_case(),
@@ -128,7 +128,7 @@ fn typecheck_module(
     // Register all top level names in document order. Duplicates are
     // reported at the second occurrence. Pre-registering also lets type
     // declarations reference each other regardless of declaration order.
-    for decl in parsed_ast.get_declarations() {
+    for decl in parsed_ast.declarations() {
         match decl {
             ParsedDeclaration::Import(import) => {
                 typecheck_import_declaration(
@@ -230,7 +230,7 @@ fn typecheck_module(
     }
 
     // Resolve type definitions
-    for record in parsed_ast.get_record_declarations() {
+    for record in parsed_ast.record_declarations() {
         typed_records.push(typecheck_record_declaration(
             record,
             &parsed_ast.document_id,
@@ -240,7 +240,7 @@ fn typecheck_module(
             definition_links,
         ));
     }
-    for enum_decl in parsed_ast.get_enum_declarations() {
+    for enum_decl in parsed_ast.enum_declarations() {
         typed_enums.push(typecheck_enum_declaration(
             enum_decl,
             &parsed_ast.document_id,
@@ -252,7 +252,7 @@ fn typecheck_module(
     }
 
     let mut pending_functions = Vec::new();
-    for function in parsed_ast.get_function_declarations() {
+    for function in parsed_ast.function_declarations() {
         pending_functions.extend(register_function_signature(
             function,
             &mut type_env,
@@ -265,7 +265,7 @@ fn typecheck_module(
     // Type check components in dependency order so that callee signatures
     // are final before their callers are checked.
     let component_by_name: HashMap<_, _> = parsed_ast
-        .get_component_declarations()
+        .component_declarations()
         .map(|c| (c.component_name.clone(), c))
         .collect();
     let mut call_graph = DependencyGraph::new();
@@ -305,7 +305,7 @@ fn typecheck_module(
     // This is purely syntactic, so it runs before any signature is settled, and
     // in declaration order to keep diagnostics stable.
     let mut rest_targets: HashMap<TypeName, Option<RestSpreadTarget>> = HashMap::new();
-    for component in parsed_ast.get_component_declarations() {
+    for component in parsed_ast.component_declarations() {
         let mut spreads = Vec::new();
         collect_spreads(&component.body, &mut spreads);
         rest_targets.insert(
@@ -323,7 +323,7 @@ fn typecheck_module(
 
     // A function cannot declare a rest, so every spread in its body fails to
     // name one.
-    for function in parsed_ast.get_function_declarations() {
+    for function in parsed_ast.function_declarations() {
         let mut spreads = Vec::new();
         collect_spreads(&function.body, &mut spreads);
         pair_rest_spread(None, spreads, errors);
@@ -365,7 +365,7 @@ fn typecheck_module(
     // Sort by name for stable output
     typed_component_declarations.sort_by(|a, b| a.name.as_str().cmp(b.name.as_str()));
 
-    for page in parsed_ast.get_page_declarations() {
+    for page in parsed_ast.page_declarations() {
         typed_pages.push(typecheck_page_declaration(
             page,
             registry,
