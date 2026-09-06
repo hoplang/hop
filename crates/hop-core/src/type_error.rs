@@ -135,6 +135,9 @@ pub(crate) enum TypeErrorKind {
         found: Arc<Type>,
     },
 
+    #[error("Default values must be constant")]
+    DefaultValueMustBeConstant,
+
     #[error("Mismatched type: expected `{expected}` got `{found}`")]
     DefaultValueTypeMismatch {
         param_name: VarName,

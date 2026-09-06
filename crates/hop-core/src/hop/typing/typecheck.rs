@@ -617,15 +617,20 @@ fn register_component_signature<'a>(
 
         let typed_default_value = {
             if let Some(default_expr) = &param.default_value {
-                // Use a fresh variable scope, default values
-                // are constant and can't reference anything from
-                // the environment.
-                let mut fresh_var_env = VariableScope::new();
-                if let Some(typed_default) = typecheck_expr(
+                if !default_expr.is_constant() {
+                    errors.push(TypeError::new(
+                        TypeErrorKind::DefaultValueMustBeConstant {},
+                        default_expr.range().clone(),
+                    ));
+                    None
+                } else if let Some(typed_default) = typecheck_expr(
                     default_expr,
                     Some(&param_type),
                     &[],
-                    &mut fresh_var_env,
+                    // Use a fresh variable scope, default values
+                    // are constant and can't reference anything from
+                    // the environment.
+                    &mut VariableScope::new(),
                     type_env,
                     registry,
                     annotations,
@@ -4206,6 +4211,226 @@ mod tests {
                 6 | component Main {
                 7 |   <Greeting />
                   |    ^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_parameter_with_default_function_call() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn greeting() -> String {
+                    "hi"
+                }
+                component Main(msg: String = greeting()) {
+                    <div></div>
+                }
+            "#},
+            expect![[r#"
+                error: Default values must be constant
+                  --> main.hop (line 4, col 30)
+                3 | }
+                4 | component Main(msg: String = greeting()) {
+                  |                              ^^^^^^^^^^
+
+                warning: Unused variable msg
+                  --> main.hop (line 4, col 16)
+                3 | }
+                4 | component Main(msg: String = greeting()) {
+                  |                ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_parameter_with_default_variable() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component Main(msg: String = other) {
+                    <div></div>
+                }
+            "#},
+            expect![[r#"
+                error: Default values must be constant
+                  --> main.hop (line 1, col 30)
+                1 | component Main(msg: String = other) {
+                  |                              ^^^^^
+
+                warning: Unused variable msg
+                  --> main.hop (line 1, col 16)
+                1 | component Main(msg: String = other) {
+                  |                ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_parameter_with_default_referencing_another_parameter() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component Main(a: String, b: String = a) {
+                    <div></div>
+                }
+            "#},
+            expect![[r#"
+                error: Default values must be constant
+                  --> main.hop (line 1, col 39)
+                1 | component Main(a: String, b: String = a) {
+                  |                                       ^
+
+                warning: Unused variable a
+                  --> main.hop (line 1, col 16)
+                1 | component Main(a: String, b: String = a) {
+                  |                ^
+
+                warning: Unused variable b
+                  --> main.hop (line 1, col 27)
+                1 | component Main(a: String, b: String = a) {
+                  |                           ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_parameter_with_default_method_call() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component Main(msg: String = "hi".to_uppercase()) {
+                    <div></div>
+                }
+            "#},
+            expect![[r#"
+                error: Default values must be constant
+                  --> main.hop (line 1, col 30)
+                1 | component Main(msg: String = "hi".to_uppercase()) {
+                  |                              ^^^^^^^^^^^^^^^^^^^
+
+                warning: Unused variable msg
+                  --> main.hop (line 1, col 16)
+                1 | component Main(msg: String = "hi".to_uppercase()) {
+                  |                ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_parameter_with_default_binary_operation() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component Main(count: Int = (1 + 2)) {
+                    <div></div>
+                }
+            "#},
+            expect![[r#"
+                error: Default values must be constant
+                  --> main.hop (line 1, col 30)
+                1 | component Main(count: Int = (1 + 2)) {
+                  |                              ^^^^^
+
+                warning: Unused variable count
+                  --> main.hop (line 1, col 16)
+                1 | component Main(count: Int = (1 + 2)) {
+                  |                ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_parameter_with_default_macro_invocation() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component Main(src: String = asset!("/logo.png")) {
+                    <div></div>
+                }
+            "#},
+            expect![[r#"
+                error: Default values must be constant
+                  --> main.hop (line 1, col 30)
+                1 | component Main(src: String = asset!("/logo.png")) {
+                  |                              ^^^^^^^^^^^^^^^^^^^
+
+                warning: Unused variable src
+                  --> main.hop (line 1, col 16)
+                1 | component Main(src: String = asset!("/logo.png")) {
+                  |                ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_parameter_with_default_match_expression() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component Main(msg: String = match true { true => "y", false => "n" }) {
+                    <div></div>
+                }
+            "#},
+            expect![[r#"
+                error: Default values must be constant
+                  --> main.hop (line 1, col 30)
+                1 | component Main(msg: String = match true { true => "y", false => "n" }) {
+                  |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+                warning: Unused variable msg
+                  --> main.hop (line 1, col 16)
+                1 | component Main(msg: String = match true { true => "y", false => "n" }) {
+                  |                ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_parameter_with_default_record_spread() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                record Config { name: String }
+                component Main(config: Config = Config{...base, name: "x"}) {
+                    <div></div>
+                }
+            "#},
+            expect![[r#"
+                error: Default values must be constant
+                  --> main.hop (line 2, col 33)
+                1 | record Config { name: String }
+                2 | component Main(config: Config = Config{...base, name: "x"}) {
+                  |                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+                warning: Unused variable config
+                  --> main.hop (line 2, col 16)
+                1 | record Config { name: String }
+                2 | component Main(config: Config = Config{...base, name: "x"}) {
+                  |                ^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_parameter_with_default_non_literal_nested_in_literal() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component Main(names: Array[String] = ["a", other]) {
+                    <div></div>
+                }
+            "#},
+            expect![[r#"
+                error: Default values must be constant
+                  --> main.hop (line 1, col 39)
+                1 | component Main(names: Array[String] = ["a", other]) {
+                  |                                       ^^^^^^^^^^^^
+
+                warning: Unused variable names
+                  --> main.hop (line 1, col 16)
+                1 | component Main(names: Array[String] = ["a", other]) {
+                  |                ^^^^^
             "#]],
         );
     }

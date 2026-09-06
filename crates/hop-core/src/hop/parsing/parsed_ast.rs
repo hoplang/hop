@@ -194,10 +194,6 @@ pub struct ParsedParameter {
     pub var_name: VarName,
     pub var_name_range: DocumentRange,
     pub var_type: ParsedType,
-    /// The default value for this parameter.
-    ///
-    /// The parser reports a default that is not a constant, or that the
-    /// declaration does not allow, but keeps it here as written.
     pub default_value: Option<ParsedExpr>,
     pub examples: Option<ExamplesAnnotation>,
     /// The range of the `#[examples(...)]` annotation, present exactly when
