@@ -234,14 +234,12 @@ fn format_enum_declaration_variant<'a>(
         leading_comments.append(arena.text(variant.name.as_str()))
     } else {
         let mut fields_doc = arena.nil();
-        for (i, (field_name, field_name_range, field_type, examples)) in
-            variant.fields.iter().enumerate()
-        {
+        for (i, field) in variant.fields.iter().enumerate() {
             if i > 0 {
                 fields_doc = fields_doc.append(arena.text(",")).append(arena.line());
             }
-            let field_comments = drain_comments_before(arena, comments, field_name_range.start());
-            let base = if let Some(e) = examples {
+            let field_comments = drain_comments_before(arena, comments, field.name_range.start());
+            let base = if let Some(e) = &field.examples {
                 field_comments
                     .append(arena.text(e.to_annotation_string()))
                     .append(arena.hardline())
@@ -250,9 +248,9 @@ fn format_enum_declaration_variant<'a>(
             };
             fields_doc = fields_doc
                 .append(base)
-                .append(arena.text(field_name.to_string()))
+                .append(arena.text(field.name.to_string()))
                 .append(arena.text(": "))
-                .append(format_type(arena, field_type));
+                .append(format_type(arena, &field.field_type));
         }
         fields_doc = fields_doc.append(arena.text(","));
 

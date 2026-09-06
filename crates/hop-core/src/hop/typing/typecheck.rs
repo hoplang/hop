@@ -534,13 +534,19 @@ fn typecheck_enum_declaration(
 
     for variant in variants {
         let mut typed_fields = Vec::new();
-        for (field_name, field_name_range, field_type, examples) in &variant.fields {
-            let Some(resolved_type) = resolve_type(field_type, type_env, definition_links, errors)
+        for field in &variant.fields {
+            let Some(resolved_type) =
+                resolve_type(&field.field_type, type_env, definition_links, errors)
             else {
                 continue;
             };
-            validate_examples_annotation(examples, &resolved_type, field_name_range, errors);
-            typed_fields.push((field_name.clone(), resolved_type, examples.clone()));
+            validate_examples_annotation(
+                &field.examples,
+                &resolved_type,
+                &field.name_range,
+                errors,
+            );
+            typed_fields.push((field.name.clone(), resolved_type, field.examples.clone()));
         }
         typed_variants.push(EnumVariant {
             name: variant.name.clone(),

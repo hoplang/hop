@@ -147,8 +147,34 @@ pub struct ParsedEnumDeclaration {
     pub pub_range: Option<DocumentRange>,
 }
 
+/// A field in a record declaration.
+///
+/// ```text
+/// record User {
+///   name: String,
+///   ^^^^^^^^^^^^
+/// }
+/// ```
 #[derive(Debug, Clone)]
 pub struct ParsedRecordDeclarationField {
+    pub name: FieldName,
+    pub name_range: DocumentRange,
+    pub field_type: ParsedType,
+    pub examples: Option<ExamplesAnnotation>,
+}
+
+/// A field in an enum variant declaration.
+///
+/// ```text
+/// enum AuthState {
+///   Authenticated {
+///     user: User,
+///     ^^^^^^^^^^
+///   },
+/// }
+/// ```
+#[derive(Debug, Clone)]
+pub struct ParsedEnumDeclarationField {
     pub name: FieldName,
     pub name_range: DocumentRange,
     pub field_type: ParsedType,
@@ -160,12 +186,7 @@ pub struct ParsedEnumDeclarationVariant {
     pub name: TypeName,
     pub name_range: DocumentRange,
     /// Optional fields for this variant (empty for unit variants)
-    pub fields: Vec<(
-        FieldName,
-        DocumentRange,
-        ParsedType,
-        Option<ExamplesAnnotation>,
-    )>,
+    pub fields: Vec<ParsedEnumDeclarationField>,
 }
 
 #[derive(Debug, Clone)]
@@ -388,10 +409,10 @@ impl ParsedEnumDeclarationVariant {
             BoxDoc::text(self.name.as_str())
                 .append(BoxDoc::text(" { "))
                 .append(BoxDoc::intersperse(
-                    self.fields.iter().map(|(field_name, _, field_type, _)| {
-                        BoxDoc::text(field_name.to_string())
+                    self.fields.iter().map(|field| {
+                        BoxDoc::text(field.name.to_string())
                             .append(BoxDoc::text(": "))
-                            .append(field_type.to_doc())
+                            .append(field.field_type.to_doc())
                     }),
                     BoxDoc::text(", "),
                 ))

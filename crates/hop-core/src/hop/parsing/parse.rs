@@ -2,20 +2,20 @@ use super::parse_expr;
 use super::parse_helpers;
 use super::parsed_ast::{
     self, ParsedAst, ParsedComponentDeclaration, ParsedDeclaration, ParsedEnumDeclaration,
-    ParsedEnumDeclarationVariant, ParsedFunctionDeclaration, ParsedImportDeclaration,
-    ParsedPageDeclaration, ParsedRecordDeclaration, ParsedRecordDeclarationField,
+    ParsedEnumDeclarationField, ParsedEnumDeclarationVariant, ParsedFunctionDeclaration,
+    ParsedImportDeclaration, ParsedPageDeclaration, ParsedRecordDeclaration,
+    ParsedRecordDeclarationField,
 };
 use super::token;
 use super::tokenize_expr;
 use crate::document::{Document, DocumentCursor, DocumentRange};
 use crate::document_id::DocumentId;
 use crate::examples_annotation::ExamplesAnnotation;
+use crate::hop::parsing::ParsedExpr;
 use crate::hop::parsing::parse_type::parse_type;
 use crate::hop::parsing::parsed_ast::ParsedParameter;
 use crate::hop::parsing::token::LangTokenPair;
-use crate::hop::parsing::{ParsedExpr, ParsedType};
 use crate::parse_error::{ParseError, ParseErrorKind};
-use crate::symbols::field_name::FieldName;
 use crate::symbols::module_name::ModuleName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
@@ -317,20 +317,50 @@ fn parse_enum_declaration(
                 ));
                 return None;
             }
-            let fields =
-                if parse_helpers::advance_if(iter, comments, errors, token::LangToken::LeftBrace)
-                    .is_some()
-                {
-                    parse_enum_variant_fields(
-                        iter,
-                        comments,
-                        errors,
-                        range,
-                        &token::LangToken::RightBrace,
-                    )?
-                } else {
-                    Vec::new()
-                };
+            let fields = if let Some(left_brace) =
+                parse_helpers::advance_if(iter, comments, errors, token::LangToken::LeftBrace)
+            {
+                let mut seen_field_names = HashSet::new();
+                let (fields, _) = parse_helpers::parse_delimited_list(
+                    iter,
+                    comments,
+                    errors,
+                    range,
+                    LangTokenPair::Braces,
+                    &left_brace,
+                    |iter, comments, errors, range| {
+                        let examples = parse_examples_annotation(iter, comments, errors);
+                        let (field_name, field_name_range) =
+                            parse_helpers::expect_field_name(iter, comments, errors, range)?;
+                        parse_helpers::expect_token(
+                            iter,
+                            comments,
+                            errors,
+                            range,
+                            &token::LangToken::Colon,
+                        )?;
+                        let field_type = parse_type(iter, comments, errors, range)?;
+                        if !seen_field_names.insert(field_name_range.to_cheap_string()) {
+                            errors.push(ParseError::new(
+                                ParseErrorKind::DuplicateField {
+                                    name: field_name_range.to_cheap_string(),
+                                },
+                                field_name_range,
+                            ));
+                            return None;
+                        }
+                        Some(ParsedEnumDeclarationField {
+                            name: field_name,
+                            name_range: field_name_range,
+                            field_type,
+                            examples,
+                        })
+                    },
+                )?;
+                fields
+            } else {
+                Vec::new()
+            };
             Some(ParsedEnumDeclarationVariant {
                 name: variant_name,
                 name_range: variant_range,
@@ -346,53 +376,6 @@ fn parse_enum_declaration(
         variants,
         pub_range,
     })
-}
-
-fn parse_enum_variant_fields(
-    iter: &mut Peekable<DocumentCursor>,
-    comments: &mut VecDeque<DocumentRange>,
-    errors: &mut Vec<ParseError>,
-    range: &DocumentRange,
-    closing: &token::LangToken,
-) -> Option<
-    Vec<(
-        FieldName,
-        DocumentRange,
-        ParsedType,
-        Option<ExamplesAnnotation>,
-    )>,
-> {
-    let mut fields = Vec::new();
-    let mut seen_names = HashSet::new();
-    if parse_helpers::advance_if(iter, comments, errors, closing.clone()).is_some() {
-        return Some(fields);
-    }
-    loop {
-        let examples = parse_examples_annotation(iter, comments, errors);
-        let (field_name, field_name_range) =
-            parse_helpers::expect_field_name(iter, comments, errors, range)?;
-        parse_helpers::expect_token(iter, comments, errors, range, &token::LangToken::Colon)?;
-        let field_type = parse_type(iter, comments, errors, range)?;
-        if !seen_names.insert(field_name_range.to_cheap_string()) {
-            errors.push(ParseError::new(
-                ParseErrorKind::DuplicateField {
-                    name: field_name_range.to_cheap_string(),
-                },
-                field_name_range,
-            ));
-            return None;
-        }
-        fields.push((field_name, field_name_range, field_type, examples));
-        if parse_helpers::advance_if(iter, comments, errors, token::LangToken::Comma).is_some() {
-            if parse_helpers::advance_if(iter, comments, errors, closing.clone()).is_some() {
-                break;
-            }
-        } else {
-            parse_helpers::expect_token(iter, comments, errors, range, closing)?;
-            break;
-        }
-    }
-    Some(fields)
 }
 
 fn parse_component_declaration(
