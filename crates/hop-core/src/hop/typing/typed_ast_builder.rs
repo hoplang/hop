@@ -7,7 +7,7 @@ use crate::hop::typing::Type;
 use crate::hop::typing::TypedExpr;
 use crate::hop::typing::typed_ast::TypedParameter;
 use crate::hop::typing::{TypedAttribute, TypedAttributeValue, TypedLoopSource};
-use crate::html::HtmlElement;
+use crate::html::HtmlElementKind;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 
@@ -171,7 +171,7 @@ impl TypedAstBuilder {
             .collect();
 
         self.children.push(TypedExpr::FragmentHtml {
-            element: HtmlElement::parse(tag_name)
+            element: HtmlElementKind::parse(tag_name)
                 .expect("builder html() called with an unrecognized tag name"),
             attrs: Box::new(TypedExpr::AttrsLiteral { attributes: attrs }),
             children: Box::new(TypedExpr::FragmentConcat {

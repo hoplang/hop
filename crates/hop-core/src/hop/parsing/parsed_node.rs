@@ -2,7 +2,7 @@ use crate::document::DocumentRange;
 use crate::hop::parsing::ParsedExpr;
 use crate::hop::parsing::ParsedType;
 use crate::hop::parsing::parsed_expr::ParsedMatchPattern;
-use crate::html::HtmlElement;
+use crate::html::HtmlElementKind;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use pretty::BoxDoc;
@@ -34,15 +34,15 @@ pub enum ParsedNode {
         range: DocumentRange,
     },
 
-    /// A plain HTML node.
+    /// An HTML element.
     ///
     /// ```text
     /// <div class="hidden">
     ///   ...
     /// </div>
     /// ```
-    Html {
-        element: HtmlElement,
+    HtmlElement {
+        kind: HtmlElementKind,
         tag_name: DocumentRange,
         closing_tag_name: Option<DocumentRange>,
         attributes: Vec<ParsedAttribute>,
@@ -302,7 +302,7 @@ impl ParsedNode {
             | ParsedNode::Match { range, .. }
             | ParsedNode::Comment { range }
             | ParsedNode::Fragment { range, .. }
-            | ParsedNode::Html { range, .. } => range,
+            | ParsedNode::HtmlElement { range, .. } => range,
         }
     }
 
@@ -313,7 +313,7 @@ impl ParsedNode {
             ParsedNode::If { children, .. }
             | ParsedNode::For { children, .. }
             | ParsedNode::Let { children, .. }
-            | ParsedNode::Html { children, .. }
+            | ParsedNode::HtmlElement { children, .. }
             | ParsedNode::Fragment { children, .. } => children.iter().collect(),
             ParsedNode::Match { cases, .. } => {
                 cases.iter().flat_map(|case| &case.children).collect()
@@ -331,7 +331,7 @@ impl ParsedNode {
             ParsedNode::If { condition, .. } => vec![condition],
             ParsedNode::Match { subject, .. } => vec![subject],
             ParsedNode::ComponentInvocation { attributes, .. }
-            | ParsedNode::Html { attributes, .. } => attributes
+            | ParsedNode::HtmlElement { attributes, .. } => attributes
                 .iter()
                 .filter_map(|attribute| match attribute {
                     ParsedAttribute::Expression { value, .. } => Some(value),
@@ -366,7 +366,7 @@ impl ParsedNode {
                 component_name_opening_range: tag_name,
                 ..
             } => Some(tag_name),
-            ParsedNode::Html { tag_name, .. } => Some(tag_name),
+            ParsedNode::HtmlElement { tag_name, .. } => Some(tag_name),
             _ => None,
         }
     }
@@ -383,7 +383,7 @@ impl ParsedNode {
                 component_name_closing_range: closing_tag_name,
                 ..
             } => closing_tag_name.as_ref(),
-            ParsedNode::Html {
+            ParsedNode::HtmlElement {
                 closing_tag_name, ..
             } => closing_tag_name.as_ref(),
             _ => None,
@@ -573,8 +573,8 @@ impl ParsedNode {
                         .append(BoxDoc::line())
                 })
                 .append(BoxDoc::text("</match>")),
-            ParsedNode::Html {
-                element,
+            ParsedNode::HtmlElement {
+                kind: element,
                 tag_name,
                 attributes,
                 children,

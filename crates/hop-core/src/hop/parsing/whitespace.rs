@@ -1,5 +1,5 @@
 use super::parsed_node::ParsedNode;
-use crate::html::HtmlElement;
+use crate::html::HtmlElementKind;
 
 /// Normalize whitespace in a parsed node sequence.
 ///
@@ -29,11 +29,11 @@ fn normalize(nodes: &mut Vec<ParsedNode>) {
 pub fn normalize_node(node: &mut ParsedNode) {
     match node {
         // The content of a raw text element is passed through verbatim.
-        ParsedNode::Html {
-            element: HtmlElement::Script | HtmlElement::Style,
+        ParsedNode::HtmlElement {
+            kind: HtmlElementKind::Script | HtmlElementKind::Style,
             ..
         } => {}
-        ParsedNode::Html { children, .. }
+        ParsedNode::HtmlElement { children, .. }
         | ParsedNode::Fragment { children, .. }
         | ParsedNode::If { children, .. }
         | ParsedNode::For { children, .. }

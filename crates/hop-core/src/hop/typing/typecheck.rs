@@ -21,7 +21,7 @@ use crate::hop::typing::type_export::TypeExport;
 use crate::hop::typing::type_registry::{TypeDef, TypeRegistry};
 use crate::hop::typing::typecheck_expr::{decision_to_typed_expr, typecheck_expr};
 use crate::hover_annotation::HoverAnnotation;
-use crate::html::HtmlElement;
+use crate::html::HtmlElementKind;
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
@@ -1571,8 +1571,8 @@ pub fn typecheck_node(
             })
         }
 
-        ParsedNode::Html {
-            element,
+        ParsedNode::HtmlElement {
+            kind: element,
             tag_name,
             closing_tag_name: _,
             attributes,
@@ -1580,9 +1580,9 @@ pub fn typecheck_node(
             range: _,
         } => {
             let disallowed_tag = match element {
-                HtmlElement::Head => Some("head"),
-                HtmlElement::Body => Some("body"),
-                HtmlElement::Html => Some("html"),
+                HtmlElementKind::Head => Some("head"),
+                HtmlElementKind::Body => Some("body"),
+                HtmlElementKind::Html => Some("html"),
                 _ => None,
             };
             if let Some(tag) = disallowed_tag {
@@ -2098,7 +2098,7 @@ fn typecheck_arguments(
 
 fn typecheck_attributes(
     attributes: &[ParsedAttribute],
-    element: &HtmlElement,
+    element: &HtmlElementKind,
     forwarded_params: &[VarName],
     registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
@@ -2131,7 +2131,7 @@ fn typecheck_attributes(
 
 /// Type-check a single HTML attribute: validate the name; expression values must be `String`.
 fn typecheck_html_attribute(
-    element: &HtmlElement,
+    element: &HtmlElementKind,
     attribute: &ParsedAttribute,
     forwarded_params: &[VarName],
     registry: &TypeRegistry,

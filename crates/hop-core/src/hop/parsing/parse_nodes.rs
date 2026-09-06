@@ -17,7 +17,7 @@ use crate::hop::parsing::parsed_expr::ParsedMatchPattern;
 use crate::hop::parsing::token::MarkupToken;
 use crate::hop::parsing::token::RawTextToken;
 use crate::hop::parsing::token::TagToken;
-use crate::html::{HtmlElement, is_raw_content_tag, is_void_element_tag};
+use crate::html::{HtmlElementKind, is_raw_content_tag, is_void_element_tag};
 use crate::parse_error::{ParseError, ParseErrorKind};
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
@@ -113,7 +113,7 @@ enum TagHeader {
         attributes: Vec<ParsedAttribute>,
     },
     Html {
-        element: Option<HtmlElement>,
+        element: Option<HtmlElementKind>,
         attributes: Vec<ParsedAttribute>,
     },
 }
@@ -379,7 +379,7 @@ fn parse_opening_tag(
         _ => TagHeader::Html {
             attributes: Vec::new(),
             element: {
-                let element = HtmlElement::parse(tag_name_range.as_str());
+                let element = HtmlElementKind::parse(tag_name_range.as_str());
                 if element.is_none() {
                     errors.push(ParseError::new(
                         ParseErrorKind::UnknownHtmlElement {
@@ -725,8 +725,8 @@ fn close_element(
         } => {
             let children = expect_nodes(children, errors);
             element.map(|element| {
-                MarkupItem::Node(ParsedNode::Html {
-                    element,
+                MarkupItem::Node(ParsedNode::HtmlElement {
+                    kind: element,
                     tag_name: tag_name_range,
                     closing_tag_name,
                     attributes,

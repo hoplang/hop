@@ -11,7 +11,7 @@ use crate::hop::parsing::parsed_expr::{
 use crate::hop::parsing::parsed_node::{
     ParsedAttribute, ParsedLetBinding, ParsedLoopSource, ParsedMatchCase, ParsedNode,
 };
-use crate::html::HtmlElement;
+use crate::html::HtmlElementKind;
 use pretty::{Arena, DocAllocator, DocBuilder};
 use std::collections::VecDeque;
 
@@ -772,8 +772,8 @@ fn format_node<'a>(
                 .append(cases_doc)
                 .append(arena.text("</match>"))
         }
-        ParsedNode::Html {
-            element,
+        ParsedNode::HtmlElement {
+            kind: element,
             attributes,
             children,
             ..
@@ -814,17 +814,18 @@ fn format_node<'a>(
             } else if children.is_empty() {
                 // Empty element - put opening and closing tags on separate lines,
                 // except for script/style where whitespace would become content
-                let sep = if *element == HtmlElement::Script || *element == HtmlElement::Style {
-                    arena.nil()
-                } else {
-                    arena.line()
-                };
+                let sep =
+                    if *element == HtmlElementKind::Script || *element == HtmlElementKind::Style {
+                        arena.nil()
+                    } else {
+                        arena.line()
+                    };
                 opening_tag_doc
                     .append(sep)
                     .append(arena.text("</"))
                     .append(arena.text(element_str))
                     .append(arena.text(">"))
-            } else if *element == HtmlElement::Script || *element == HtmlElement::Style {
+            } else if *element == HtmlElementKind::Script || *element == HtmlElementKind::Style {
                 // For script/style, preserve text content exactly as written
                 // to avoid altering semantically significant whitespace
                 let mut doc = opening_tag_doc;

@@ -15,7 +15,7 @@ use crate::dependency_graph::DependencyGraph;
 use crate::document::{CheapString, DocumentRange};
 use crate::hop::parsing::ParsedExpr;
 use crate::hop::parsing::parsed_node::{ParsedAttribute, ParsedNode};
-use crate::html::HtmlElement;
+use crate::html::HtmlElementKind;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use crate::type_error::{TypeError, TypeErrorKind};
@@ -25,7 +25,7 @@ use crate::type_error::{TypeError, TypeErrorKind};
 #[derive(Debug, Clone)]
 pub enum RestSpreadTarget {
     Element {
-        element: HtmlElement,
+        element: HtmlElementKind,
         supplied_attrs: Vec<CheapString>,
         spread_range: DocumentRange,
     },
@@ -70,8 +70,8 @@ pub fn collect_spreads(body: &ParsedExpr, out: &mut Vec<SpreadOccurrence>) {
 
 fn collect_spreads_in_node(node: &ParsedNode, out: &mut Vec<SpreadOccurrence>) {
     match node {
-        ParsedNode::Html {
-            element,
+        ParsedNode::HtmlElement {
+            kind: element,
             attributes,
             ..
         } => {

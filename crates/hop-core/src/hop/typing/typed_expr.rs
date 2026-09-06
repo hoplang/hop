@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use crate::document::CheapString;
 use crate::hop::patterns::{EnumPattern, Match};
-use crate::html::HtmlElement;
+use crate::html::HtmlElementKind;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::type_name::TypeName;
@@ -249,7 +249,7 @@ pub enum TypedExpr {
 
     /// An HTML element, e.g. `<div class="x">...</div>`
     FragmentHtml {
-        element: HtmlElement,
+        element: HtmlElementKind,
         attrs: Box<Self>,
         children: Box<Self>,
     },

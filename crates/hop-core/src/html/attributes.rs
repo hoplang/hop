@@ -1,4 +1,4 @@
-use super::element::HtmlElement;
+use super::element_kind::HtmlElementKind;
 
 /// Attributes valid on every HTML element.
 fn is_global_attribute(name: &str) -> bool {
@@ -41,9 +41,9 @@ fn is_global_attribute(name: &str) -> bool {
 
 /// Attributes valid on a specific element (beyond the global set).
 /// `name` must already be lowercased.
-fn element_specific_attribute(element: &HtmlElement, name: &str) -> bool {
+fn element_specific_attribute(element: &HtmlElementKind, name: &str) -> bool {
     match element {
-        HtmlElement::A => matches!(
+        HtmlElementKind::A => matches!(
             name,
             "download"
                 | "href"
@@ -54,7 +54,7 @@ fn element_specific_attribute(element: &HtmlElement, name: &str) -> bool {
                 | "target"
                 | "type"
         ),
-        HtmlElement::Area => matches!(
+        HtmlElementKind::Area => matches!(
             name,
             "alt"
                 | "coords"
@@ -66,13 +66,13 @@ fn element_specific_attribute(element: &HtmlElement, name: &str) -> bool {
                 | "shape"
                 | "target"
         ),
-        HtmlElement::Audio => matches!(
+        HtmlElementKind::Audio => matches!(
             name,
             "autoplay" | "controls" | "crossorigin" | "loop" | "muted" | "preload" | "src"
         ),
-        HtmlElement::Base => matches!(name, "href" | "target"),
-        HtmlElement::Blockquote => matches!(name, "cite"),
-        HtmlElement::Button => matches!(
+        HtmlElementKind::Base => matches!(name, "href" | "target"),
+        HtmlElementKind::Blockquote => matches!(name, "cite"),
+        HtmlElementKind::Button => matches!(
             name,
             "command"
                 | "commandfor"
@@ -89,16 +89,16 @@ fn element_specific_attribute(element: &HtmlElement, name: &str) -> bool {
                 | "type"
                 | "value"
         ),
-        HtmlElement::Canvas => matches!(name, "height" | "width"),
-        HtmlElement::Col => matches!(name, "span"),
-        HtmlElement::Colgroup => matches!(name, "span"),
-        HtmlElement::Data => matches!(name, "value"),
-        HtmlElement::Del => matches!(name, "cite" | "datetime"),
-        HtmlElement::Details => matches!(name, "name" | "open"),
-        HtmlElement::Dialog => matches!(name, "closedby" | "open"),
-        HtmlElement::Embed => matches!(name, "height" | "src" | "type" | "width"),
-        HtmlElement::Fieldset => matches!(name, "disabled" | "form" | "name"),
-        HtmlElement::Form => matches!(
+        HtmlElementKind::Canvas => matches!(name, "height" | "width"),
+        HtmlElementKind::Col => matches!(name, "span"),
+        HtmlElementKind::Colgroup => matches!(name, "span"),
+        HtmlElementKind::Data => matches!(name, "value"),
+        HtmlElementKind::Del => matches!(name, "cite" | "datetime"),
+        HtmlElementKind::Details => matches!(name, "name" | "open"),
+        HtmlElementKind::Dialog => matches!(name, "closedby" | "open"),
+        HtmlElementKind::Embed => matches!(name, "height" | "src" | "type" | "width"),
+        HtmlElementKind::Fieldset => matches!(name, "disabled" | "form" | "name"),
+        HtmlElementKind::Form => matches!(
             name,
             "accept-charset"
                 | "action"
@@ -110,7 +110,7 @@ fn element_specific_attribute(element: &HtmlElement, name: &str) -> bool {
                 | "rel"
                 | "target"
         ),
-        HtmlElement::Iframe => matches!(
+        HtmlElementKind::Iframe => matches!(
             name,
             "allow"
                 | "allowfullscreen"
@@ -123,7 +123,7 @@ fn element_specific_attribute(element: &HtmlElement, name: &str) -> bool {
                 | "srcdoc"
                 | "width"
         ),
-        HtmlElement::Img => matches!(
+        HtmlElementKind::Img => matches!(
             name,
             "alt"
                 | "crossorigin"
@@ -139,7 +139,7 @@ fn element_specific_attribute(element: &HtmlElement, name: &str) -> bool {
                 | "usemap"
                 | "width"
         ),
-        HtmlElement::Input => matches!(
+        HtmlElementKind::Input => matches!(
             name,
             "accept"
                 | "alpha"
@@ -177,10 +177,10 @@ fn element_specific_attribute(element: &HtmlElement, name: &str) -> bool {
                 | "value"
                 | "width"
         ),
-        HtmlElement::Ins => matches!(name, "cite" | "datetime"),
-        HtmlElement::Label => matches!(name, "for" | "form"),
-        HtmlElement::Li => matches!(name, "value"),
-        HtmlElement::Link => matches!(
+        HtmlElementKind::Ins => matches!(name, "cite" | "datetime"),
+        HtmlElementKind::Label => matches!(name, "for" | "form"),
+        HtmlElementKind::Li => matches!(name, "value"),
+        HtmlElementKind::Link => matches!(
             name,
             "as" | "blocking"
                 | "color"
@@ -198,23 +198,25 @@ fn element_specific_attribute(element: &HtmlElement, name: &str) -> bool {
                 | "sizes"
                 | "type"
         ),
-        HtmlElement::Map => matches!(name, "name"),
-        HtmlElement::Meta => matches!(
+        HtmlElementKind::Map => matches!(name, "name"),
+        HtmlElementKind::Meta => matches!(
             name,
             "charset" | "content" | "http-equiv" | "media" | "name"
         ),
-        HtmlElement::Meter => matches!(name, "high" | "low" | "max" | "min" | "optimum" | "value"),
-        HtmlElement::Object => matches!(
+        HtmlElementKind::Meter => {
+            matches!(name, "high" | "low" | "max" | "min" | "optimum" | "value")
+        }
+        HtmlElementKind::Object => matches!(
             name,
             "data" | "form" | "height" | "name" | "type" | "usemap" | "width"
         ),
-        HtmlElement::Ol => matches!(name, "reversed" | "start" | "type"),
-        HtmlElement::Optgroup => matches!(name, "disabled" | "label"),
-        HtmlElement::Option => matches!(name, "disabled" | "label" | "selected" | "value"),
-        HtmlElement::Output => matches!(name, "for" | "form" | "name"),
-        HtmlElement::Progress => matches!(name, "max" | "value"),
-        HtmlElement::Q => matches!(name, "cite"),
-        HtmlElement::Script => matches!(
+        HtmlElementKind::Ol => matches!(name, "reversed" | "start" | "type"),
+        HtmlElementKind::Optgroup => matches!(name, "disabled" | "label"),
+        HtmlElementKind::Option => matches!(name, "disabled" | "label" | "selected" | "value"),
+        HtmlElementKind::Output => matches!(name, "for" | "form" | "name"),
+        HtmlElementKind::Progress => matches!(name, "max" | "value"),
+        HtmlElementKind::Q => matches!(name, "cite"),
+        HtmlElementKind::Script => matches!(
             name,
             "async"
                 | "blocking"
@@ -227,18 +229,18 @@ fn element_specific_attribute(element: &HtmlElement, name: &str) -> bool {
                 | "src"
                 | "type"
         ),
-        HtmlElement::Select => matches!(
+        HtmlElementKind::Select => matches!(
             name,
             "autocomplete" | "disabled" | "form" | "multiple" | "name" | "required" | "size"
         ),
-        HtmlElement::Slot => matches!(name, "name"),
-        HtmlElement::Source => matches!(
+        HtmlElementKind::Slot => matches!(name, "name"),
+        HtmlElementKind::Source => matches!(
             name,
             "height" | "media" | "sizes" | "src" | "srcset" | "type" | "width"
         ),
-        HtmlElement::Style => matches!(name, "blocking" | "media"),
-        HtmlElement::Td => matches!(name, "colspan" | "headers" | "rowspan"),
-        HtmlElement::Textarea => matches!(
+        HtmlElementKind::Style => matches!(name, "blocking" | "media"),
+        HtmlElementKind::Td => matches!(name, "colspan" | "headers" | "rowspan"),
+        HtmlElementKind::Textarea => matches!(
             name,
             "autocomplete"
                 | "cols"
@@ -254,10 +256,10 @@ fn element_specific_attribute(element: &HtmlElement, name: &str) -> bool {
                 | "rows"
                 | "wrap"
         ),
-        HtmlElement::Th => matches!(name, "abbr" | "colspan" | "headers" | "rowspan" | "scope"),
-        HtmlElement::Time => matches!(name, "datetime"),
-        HtmlElement::Track => matches!(name, "default" | "kind" | "label" | "src" | "srclang"),
-        HtmlElement::Video => matches!(
+        HtmlElementKind::Th => matches!(name, "abbr" | "colspan" | "headers" | "rowspan" | "scope"),
+        HtmlElementKind::Time => matches!(name, "datetime"),
+        HtmlElementKind::Track => matches!(name, "default" | "kind" | "label" | "src" | "srclang"),
+        HtmlElementKind::Video => matches!(
             name,
             "autoplay"
                 | "controls"
@@ -272,75 +274,75 @@ fn element_specific_attribute(element: &HtmlElement, name: &str) -> bool {
                 | "width"
         ),
 
-        HtmlElement::Html
-        | HtmlElement::Head
-        | HtmlElement::Title
-        | HtmlElement::Body
-        | HtmlElement::Address
-        | HtmlElement::Article
-        | HtmlElement::Aside
-        | HtmlElement::Footer
-        | HtmlElement::Header
-        | HtmlElement::H1
-        | HtmlElement::H2
-        | HtmlElement::H3
-        | HtmlElement::H4
-        | HtmlElement::H5
-        | HtmlElement::H6
-        | HtmlElement::Hgroup
-        | HtmlElement::Main
-        | HtmlElement::Nav
-        | HtmlElement::Section
-        | HtmlElement::Search
-        | HtmlElement::Dd
-        | HtmlElement::Div
-        | HtmlElement::Dl
-        | HtmlElement::Dt
-        | HtmlElement::Figcaption
-        | HtmlElement::Figure
-        | HtmlElement::Hr
-        | HtmlElement::Menu
-        | HtmlElement::P
-        | HtmlElement::Pre
-        | HtmlElement::Ul
-        | HtmlElement::Abbr
-        | HtmlElement::B
-        | HtmlElement::Bdi
-        | HtmlElement::Bdo
-        | HtmlElement::Br
-        | HtmlElement::Cite
-        | HtmlElement::Code
-        | HtmlElement::Dfn
-        | HtmlElement::Em
-        | HtmlElement::I
-        | HtmlElement::Kbd
-        | HtmlElement::Mark
-        | HtmlElement::Rp
-        | HtmlElement::Rt
-        | HtmlElement::Ruby
-        | HtmlElement::S
-        | HtmlElement::Samp
-        | HtmlElement::Small
-        | HtmlElement::Span
-        | HtmlElement::Strong
-        | HtmlElement::Sub
-        | HtmlElement::Sup
-        | HtmlElement::U
-        | HtmlElement::Var
-        | HtmlElement::Wbr
-        | HtmlElement::Picture
-        | HtmlElement::Noscript
-        | HtmlElement::Caption
-        | HtmlElement::Table
-        | HtmlElement::Tbody
-        | HtmlElement::Tfoot
-        | HtmlElement::Thead
-        | HtmlElement::Tr
-        | HtmlElement::Datalist
-        | HtmlElement::Legend
-        | HtmlElement::Summary => false,
+        HtmlElementKind::Html
+        | HtmlElementKind::Head
+        | HtmlElementKind::Title
+        | HtmlElementKind::Body
+        | HtmlElementKind::Address
+        | HtmlElementKind::Article
+        | HtmlElementKind::Aside
+        | HtmlElementKind::Footer
+        | HtmlElementKind::Header
+        | HtmlElementKind::H1
+        | HtmlElementKind::H2
+        | HtmlElementKind::H3
+        | HtmlElementKind::H4
+        | HtmlElementKind::H5
+        | HtmlElementKind::H6
+        | HtmlElementKind::Hgroup
+        | HtmlElementKind::Main
+        | HtmlElementKind::Nav
+        | HtmlElementKind::Section
+        | HtmlElementKind::Search
+        | HtmlElementKind::Dd
+        | HtmlElementKind::Div
+        | HtmlElementKind::Dl
+        | HtmlElementKind::Dt
+        | HtmlElementKind::Figcaption
+        | HtmlElementKind::Figure
+        | HtmlElementKind::Hr
+        | HtmlElementKind::Menu
+        | HtmlElementKind::P
+        | HtmlElementKind::Pre
+        | HtmlElementKind::Ul
+        | HtmlElementKind::Abbr
+        | HtmlElementKind::B
+        | HtmlElementKind::Bdi
+        | HtmlElementKind::Bdo
+        | HtmlElementKind::Br
+        | HtmlElementKind::Cite
+        | HtmlElementKind::Code
+        | HtmlElementKind::Dfn
+        | HtmlElementKind::Em
+        | HtmlElementKind::I
+        | HtmlElementKind::Kbd
+        | HtmlElementKind::Mark
+        | HtmlElementKind::Rp
+        | HtmlElementKind::Rt
+        | HtmlElementKind::Ruby
+        | HtmlElementKind::S
+        | HtmlElementKind::Samp
+        | HtmlElementKind::Small
+        | HtmlElementKind::Span
+        | HtmlElementKind::Strong
+        | HtmlElementKind::Sub
+        | HtmlElementKind::Sup
+        | HtmlElementKind::U
+        | HtmlElementKind::Var
+        | HtmlElementKind::Wbr
+        | HtmlElementKind::Picture
+        | HtmlElementKind::Noscript
+        | HtmlElementKind::Caption
+        | HtmlElementKind::Table
+        | HtmlElementKind::Tbody
+        | HtmlElementKind::Tfoot
+        | HtmlElementKind::Thead
+        | HtmlElementKind::Tr
+        | HtmlElementKind::Datalist
+        | HtmlElementKind::Legend
+        | HtmlElementKind::Summary => false,
 
-        HtmlElement::Template => matches!(
+        HtmlElementKind::Template => matches!(
             name,
             "shadowrootclonable"
                 | "shadowrootcustomelementregistry"
@@ -349,44 +351,44 @@ fn element_specific_attribute(element: &HtmlElement, name: &str) -> bool {
                 | "shadowrootserializable"
         ),
 
-        HtmlElement::Svg
-        | HtmlElement::G
-        | HtmlElement::Path
-        | HtmlElement::Circle
-        | HtmlElement::Rect
-        | HtmlElement::Line
-        | HtmlElement::Polygon
-        | HtmlElement::Polyline
-        | HtmlElement::Ellipse
-        | HtmlElement::Defs
-        | HtmlElement::Use
-        | HtmlElement::Symbol
-        | HtmlElement::Desc
-        | HtmlElement::Marker
-        | HtmlElement::Mask
-        | HtmlElement::Pattern
-        | HtmlElement::Stop
-        | HtmlElement::Switch
-        | HtmlElement::Text
-        | HtmlElement::Tspan
-        | HtmlElement::Image
-        | HtmlElement::View
-        | HtmlElement::Animate
-        | HtmlElement::Set
-        | HtmlElement::Mpath
-        | HtmlElement::Metadata
-        | HtmlElement::Filter
-        | HtmlElement::Custom(_) => false,
+        HtmlElementKind::Svg
+        | HtmlElementKind::G
+        | HtmlElementKind::Path
+        | HtmlElementKind::Circle
+        | HtmlElementKind::Rect
+        | HtmlElementKind::Line
+        | HtmlElementKind::Polygon
+        | HtmlElementKind::Polyline
+        | HtmlElementKind::Ellipse
+        | HtmlElementKind::Defs
+        | HtmlElementKind::Use
+        | HtmlElementKind::Symbol
+        | HtmlElementKind::Desc
+        | HtmlElementKind::Marker
+        | HtmlElementKind::Mask
+        | HtmlElementKind::Pattern
+        | HtmlElementKind::Stop
+        | HtmlElementKind::Switch
+        | HtmlElementKind::Text
+        | HtmlElementKind::Tspan
+        | HtmlElementKind::Image
+        | HtmlElementKind::View
+        | HtmlElementKind::Animate
+        | HtmlElementKind::Set
+        | HtmlElementKind::Mpath
+        | HtmlElementKind::Metadata
+        | HtmlElementKind::Filter
+        | HtmlElementKind::Custom(_) => false,
     }
 }
 
-impl HtmlElement {
+impl HtmlElementKind {
     /// Return true if this element accepts an attribute named `name`
     /// (case-insensitive). SVG and custom elements accept anything;
     /// `data-`/`aria-` prefixes are always accepted; `on*` handlers are never
     /// accepted (they are not in any list).
     pub fn accepts_attribute(&self, name: &str) -> bool {
-        if self.is_svg() || matches!(self, HtmlElement::Custom(_)) {
+        if self.is_svg() || matches!(self, HtmlElementKind::Custom(_)) {
             return true;
         }
         let name = name.to_ascii_lowercase();
@@ -399,20 +401,20 @@ impl HtmlElement {
 
 #[cfg(test)]
 mod tests {
-    use super::HtmlElement;
+    use super::HtmlElementKind;
 
     #[test]
     fn accepts_global_attribute_on_any_element() {
-        let div = HtmlElement::parse("div").unwrap();
-        let button = HtmlElement::parse("button").unwrap();
+        let div = HtmlElementKind::parse("div").unwrap();
+        let button = HtmlElementKind::parse("button").unwrap();
         assert!(div.accepts_attribute("class"));
         assert!(button.accepts_attribute("id"));
     }
 
     #[test]
     fn accepts_element_specific_attribute_on_its_element() {
-        let a = HtmlElement::parse("a").unwrap();
-        let input = HtmlElement::parse("input").unwrap();
+        let a = HtmlElementKind::parse("a").unwrap();
+        let input = HtmlElementKind::parse("input").unwrap();
         assert!(a.accepts_attribute("href"));
         assert!(input.accepts_attribute("value"));
         assert!(input.accepts_attribute("placeholder"));
@@ -420,8 +422,8 @@ mod tests {
 
     #[test]
     fn rejects_element_specific_attribute_on_wrong_element() {
-        let button = HtmlElement::parse("button").unwrap();
-        let div = HtmlElement::parse("div").unwrap();
+        let button = HtmlElementKind::parse("button").unwrap();
+        let div = HtmlElementKind::parse("div").unwrap();
         assert!(!button.accepts_attribute("href"));
         assert!(!div.accepts_attribute("value"));
         assert!(!div.accepts_attribute("placeholder"));
@@ -429,9 +431,9 @@ mod tests {
 
     #[test]
     fn accepts_shared_attribute_on_each_owning_element() {
-        let button = HtmlElement::parse("button").unwrap();
-        let input = HtmlElement::parse("input").unwrap();
-        let select = HtmlElement::parse("select").unwrap();
+        let button = HtmlElementKind::parse("button").unwrap();
+        let input = HtmlElementKind::parse("input").unwrap();
+        let select = HtmlElementKind::parse("select").unwrap();
         assert!(button.accepts_attribute("disabled"));
         assert!(input.accepts_attribute("disabled"));
         assert!(select.accepts_attribute("disabled"));
@@ -439,7 +441,7 @@ mod tests {
 
     #[test]
     fn accepts_data_and_aria_prefixes_and_rejects_event_handlers() {
-        let div = HtmlElement::parse("div").unwrap();
+        let div = HtmlElementKind::parse("div").unwrap();
         assert!(div.accepts_attribute("data-x"));
         assert!(div.accepts_attribute("aria-label"));
         assert!(!div.accepts_attribute("onclick"));
@@ -447,30 +449,30 @@ mod tests {
 
     #[test]
     fn is_case_insensitive() {
-        let a = HtmlElement::parse("a").unwrap();
+        let a = HtmlElementKind::parse("a").unwrap();
         assert!(a.accepts_attribute("HREF"));
         assert!(a.accepts_attribute("Class"));
     }
 
     #[test]
     fn accepts_value_on_data_element() {
-        let data = HtmlElement::parse("data").unwrap();
+        let data = HtmlElementKind::parse("data").unwrap();
         assert!(data.accepts_attribute("value"));
         // a non-owning element still rejects it
-        let div = HtmlElement::parse("div").unwrap();
+        let div = HtmlElementKind::parse("div").unwrap();
         assert!(!div.accepts_attribute("value"));
     }
 
     #[test]
     fn accepts_rel_on_form_element() {
-        let form = HtmlElement::parse("form").unwrap();
+        let form = HtmlElementKind::parse("form").unwrap();
         assert!(form.accepts_attribute("rel"));
     }
 
     #[test]
     fn bypasses_svg_and_custom_elements() {
-        let circle = HtmlElement::parse("circle").unwrap();
-        let widget = HtmlElement::parse("my-widget").unwrap();
+        let circle = HtmlElementKind::parse("circle").unwrap();
+        let widget = HtmlElementKind::parse("my-widget").unwrap();
         assert!(circle.accepts_attribute("foobar"));
         assert!(widget.accepts_attribute("foobar"));
     }
@@ -489,7 +491,7 @@ mod tests {
             ("template", "shadowrootserializable"),
         ];
         for (tag, attr) in cases {
-            let el = HtmlElement::parse(tag).unwrap();
+            let el = HtmlElementKind::parse(tag).unwrap();
             assert!(
                 el.accepts_attribute(attr),
                 "expected <{tag}> to accept {attr}"
@@ -499,16 +501,16 @@ mod tests {
 
     #[test]
     fn accepts_autocorrect_global_attribute() {
-        let div = HtmlElement::parse("div").unwrap();
+        let div = HtmlElementKind::parse("div").unwrap();
         assert!(div.accepts_attribute("autocorrect"));
     }
 
     #[test]
     fn rejects_form_attribute_on_meter() {
-        let meter = HtmlElement::parse("meter").unwrap();
+        let meter = HtmlElementKind::parse("meter").unwrap();
         assert!(!meter.accepts_attribute("form"));
         // still accepted where it belongs
-        let button = HtmlElement::parse("button").unwrap();
+        let button = HtmlElementKind::parse("button").unwrap();
         assert!(button.accepts_attribute("form"));
     }
 }

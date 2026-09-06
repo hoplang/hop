@@ -7,7 +7,7 @@ use super::typed_expr::TypedExpr;
 use crate::document::CheapString;
 use crate::document_id::DocumentId;
 use crate::examples_annotation::ExamplesAnnotation;
-use crate::html::HtmlElement;
+use crate::html::HtmlElementKind;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
@@ -44,7 +44,7 @@ pub struct ParamEntry {
 pub enum Tail {
     Closed,
     Html {
-        element: HtmlElement,
+        element: HtmlElementKind,
         reserved: Vec<CheapString>,
     },
 }

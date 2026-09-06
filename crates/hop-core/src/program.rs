@@ -350,7 +350,7 @@ impl Program {
                     .find(|link| link.use_range.contains_position(position))?;
                 Some(self.collect_component_rename_locations(&link.definition_range))
             }
-            n @ ParsedNode::Html { .. } => Some(
+            n @ ParsedNode::HtmlElement { .. } => Some(
                 n.tag_names()
                     .map(|range| RenameLocation {
                         range: range.clone(),
