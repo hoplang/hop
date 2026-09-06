@@ -971,7 +971,7 @@ mod tests {
     fn reject(input: &str, expected: Expect) {
         let mut errors = Vec::new();
         let document_id = DocumentId::new("test.hop").unwrap();
-        parse(
+        let module = parse(
             document_id.clone(),
             Document::new(document_id, input.to_string()),
             &mut errors,
@@ -979,11 +979,12 @@ mod tests {
         if errors.is_empty() {
             panic!("expected parse errors but got none");
         }
-        let actual = DocumentAnnotator::new()
+        let rendered = DocumentAnnotator::new()
             .with_label("error")
             .with_lines_before(1)
             .annotate(&DocumentId::new("test.hop").unwrap(), errors.clone())
             .render();
+        let actual = format!("-- errors --\n{rendered}-- ast --\n{}", format(&module));
         expected.assert_eq(&actual);
     }
 
@@ -1091,9 +1092,16 @@ mod tests {
                 }
             "},
             expect![[r#"
+                -- errors --
                 error: 'pub' is not allowed here
                 1 | pub import other::Foo
                   | ^^^
+                -- ast --
+                import other::Foo
+
+                component Main {
+                  <Foo/>
+                }
             "#]],
         );
     }
@@ -1103,9 +1111,11 @@ mod tests {
         reject(
             "pub",
             expect![[r#"
+                -- errors --
                 error: 'pub' is not allowed here
                 1 | pub
                   | ^^^
+                -- ast --
             "#]],
         );
     }
@@ -1407,6 +1417,7 @@ mod tests {
                 }
             "},
             expect![[r#"
+                -- errors --
                 error: Unclosed <div>
                 1 | component Main {
                 2 |     <div>
@@ -1416,6 +1427,13 @@ mod tests {
                 2 |     <div>
                 3 |     <p>
                   |      ^
+                -- ast --
+                component Main {
+                  <div>
+                    <p>
+                    </p>
+                  </div>
+                }
             "#]],
         );
     }
@@ -1429,10 +1447,18 @@ mod tests {
                 }
             "},
             expect![[r#"
+                -- errors --
                 error: Unclosed <span>
                 1 | component Main {
                 2 |     <div><span></div>
                   |           ^^^^
+                -- ast --
+                component Main {
+                  <div>
+                    <span>
+                    </span>
+                  </div>
+                }
             "#]],
         );
     }
@@ -1442,19 +1468,36 @@ mod tests {
         reject(
             indoc! {"
                 component Main {
-                    <div><span><b></div>
+                    <div><span><><b></div>
                 }
             "},
             expect![[r#"
+                -- errors --
                 error: Unclosed <span>
                 1 | component Main {
-                2 |     <div><span><b></div>
+                2 |     <div><span><><b></div>
                   |           ^^^^
+
+                error: Unclosed <>
+                1 | component Main {
+                2 |     <div><span><><b></div>
+                  |                ^^
 
                 error: Unclosed <b>
                 1 | component Main {
-                2 |     <div><span><b></div>
-                  |                 ^
+                2 |     <div><span><><b></div>
+                  |                   ^
+                -- ast --
+                component Main {
+                  <div>
+                    <span>
+                      <>
+                        <b>
+                        </b>
+                      </>
+                    </span>
+                  </div>
+                }
             "#]],
         );
     }
@@ -1464,14 +1507,25 @@ mod tests {
         reject(
             indoc! {"
                 component Main {
-                    <div></p></div>
+                    <div></p></></div>
                 }
             "},
             expect![[r#"
+                -- errors --
                 error: Unmatched </p>
                 1 | component Main {
-                2 |     <div></p></div>
+                2 |     <div></p></></div>
                   |          ^^^^
+
+                error: Unmatched </>
+                1 | component Main {
+                2 |     <div></p></></div>
+                  |              ^^^
+                -- ast --
+                component Main {
+                  <div>
+                  </div>
+                }
             "#]],
         );
     }
@@ -1485,6 +1539,7 @@ mod tests {
                 }
             "},
             expect![[r#"
+                -- errors --
                 error: Unexpected character: '/'
                 1 | component Main {
                 2 |     <div></div></div>
@@ -1494,6 +1549,7 @@ mod tests {
                 2 |     <div></div></div>
                 3 | }
                   | ^
+                -- ast --
             "#]],
         );
     }
@@ -1506,9 +1562,14 @@ mod tests {
                 }
             "},
             expect![[r#"
+                -- errors --
                 error: Expected an expression: use <></> for an empty body
                 1 | component Main {
                   |                ^
+                -- ast --
+                component Main {
+                  Fragment::empty()
+                }
             "#]],
         );
     }
@@ -1523,6 +1584,7 @@ mod tests {
                 }
             "},
             expect![[r#"
+                -- errors --
                 error: Unexpected character: '/'
                 2 |     <p>one</p>
                 3 |     <p>two</p>
@@ -1532,6 +1594,7 @@ mod tests {
                 3 |     <p>two</p>
                 4 | }
                   | ^
+                -- ast --
             "#]],
         );
     }
@@ -1546,6 +1609,7 @@ mod tests {
                 }
             "},
             expect![[r#"
+                -- errors --
                 error: Unexpected character: '/'
                 2 |     <p>one</p>
                 3 |     <p>two</p>
@@ -1555,6 +1619,7 @@ mod tests {
                 3 |     <p>two</p>
                 4 | }
                   | ^
+                -- ast --
             "#]],
         );
     }
@@ -1575,6 +1640,7 @@ mod tests {
                 }
             "},
             expect![[r#"
+                -- errors --
                 error: Expected token '}' but got 'charset'
                  3 |         <title>one</title>
                  4 |         <meta charset="utf-8"/>
@@ -1584,6 +1650,7 @@ mod tests {
                  3 |         <title>one</title>
                  4 |         <meta charset="utf-8"/>
                    |                      ^
+                -- ast --
             "#]],
         );
     }
@@ -1618,10 +1685,17 @@ mod tests {
                 }
             "},
             expect![[r#"
+                -- errors --
                 error: Unclosed <>
                 1 | component Main {
                 2 |     <>one
                   |     ^^
+                -- ast --
+                component Main {
+                  <>
+                    one
+                  </>
+                }
             "#]],
         );
     }
@@ -1635,10 +1709,16 @@ mod tests {
                 }
             "},
             expect![[r#"
+                -- errors --
                 error: Unmatched </>
                 1 | component Main {
                 2 |     <div></></div>
                   |          ^^^
+                -- ast --
+                component Main {
+                  <div>
+                  </div>
+                }
             "#]],
         );
     }
@@ -1652,10 +1732,18 @@ mod tests {
                 }
             "},
             expect![[r#"
+                -- errors --
                 error: Unclosed <div>
                 1 | component Main {
                 2 |     <><div></>
                   |        ^^^
+                -- ast --
+                component Main {
+                  <>
+                    <div>
+                    </div>
+                  </>
+                }
             "#]],
         );
     }
@@ -1669,6 +1757,7 @@ mod tests {
                 }
             "},
             expect![[r#"
+                -- errors --
                 error: Unterminated tag start
                 1 | component Main {
                 2 |     < >
@@ -1678,6 +1767,7 @@ mod tests {
                 1 | component Main {
                 2 |     < >
                   |       ^
+                -- ast --
             "#]],
         );
     }
@@ -1691,10 +1781,15 @@ mod tests {
                 }
             "},
             expect![[r#"
+                -- errors --
                 error: Only <case> tags are allowed inside <match>
                 1 | component Main {
                 2 |     <match {x}><>one</></match>
                   |                ^^^^^^^^
+                -- ast --
+                component Main {
+                  <match {x}></match>
+                }
             "#]],
         );
     }
@@ -1708,6 +1803,7 @@ mod tests {
                 }
             "},
             expect![[r#"
+                -- errors --
                 error: Only <case> tags are allowed inside <match>
                 1 | component Main {
                 2 |     <match {x}><><case {None}>one</case></></match>
@@ -1717,6 +1813,10 @@ mod tests {
                 1 | component Main {
                 2 |     <match {x}><><case {None}>one</case></></match>
                   |                   ^^^^
+                -- ast --
+                component Main {
+                  <match {x}></match>
+                }
             "#]],
         );
     }
@@ -1734,6 +1834,7 @@ mod tests {
                 }
             "},
             expect![[r#"
+                -- errors --
                 error: <hr> should not be closed using a closing tag
                 2 |     <>
                 3 |         <hr></hr>
@@ -1748,6 +1849,14 @@ mod tests {
                 4 |         <br></br>
                 5 |         <input></input>
                   |                ^^^^^^^^
+                -- ast --
+                component Main {
+                  <>
+                    <hr>
+                    <br>
+                    <input>
+                  </>
+                }
             "#]],
         );
     }
@@ -1792,9 +1901,15 @@ mod tests {
         reject(
             "component Main {<div class=foo></div>}",
             expect![[r#"
+                -- errors --
                 error: Expected quoted attribute value or expression
                 1 | component Main {<div class=foo></div>}
                   |                      ^^^^^^
+                -- ast --
+                component Main {
+                  <div foo>
+                  </div>
+                }
             "#]],
         );
     }
@@ -1804,9 +1919,14 @@ mod tests {
         reject(
             "component Main {<input type='number'/>}",
             expect![[r#"
+                -- errors --
                 error: Single-quoted attribute values are not supported: use double quotes
                 1 | component Main {<input type='number'/>}
                   |                             ^^^^^^^^
+                -- ast --
+                component Main {
+                  <input>
+                }
             "#]],
         );
     }
@@ -1816,6 +1936,7 @@ mod tests {
         reject(
             "component Main {<!foo>}",
             expect![[r#"
+                -- errors --
                 error: Invalid markup declaration
                 1 | component Main {<!foo>}
                   |                 ^^
@@ -1823,6 +1944,7 @@ mod tests {
                 error: Unexpected text at top level
                 1 | component Main {<!foo>}
                   |                   ^^^
+                -- ast --
             "#]],
         );
     }
@@ -1832,9 +1954,11 @@ mod tests {
         reject(
             "component Main {<!--",
             expect![[r#"
+                -- errors --
                 error: Unterminated comment
                 1 | component Main {<!--
                   |                 ^^^^
+                -- ast --
             "#]],
         );
     }
@@ -1844,14 +1968,20 @@ mod tests {
         reject(
             "component Main {<div <div>}",
             expect![[r#"
-            error: Unterminated opening tag
-            1 | component Main {<div <div>}
-              |                  ^^^
+                -- errors --
+                error: Unterminated opening tag
+                1 | component Main {<div <div>}
+                  |                  ^^^
 
-            error: Unclosed <div>
-            1 | component Main {<div <div>}
-              |                  ^^^
-        "#]],
+                error: Unclosed <div>
+                1 | component Main {<div <div>}
+                  |                  ^^^
+                -- ast --
+                component Main {
+                  <div>
+                  </div>
+                }
+            "#]],
         );
     }
 
@@ -1860,14 +1990,20 @@ mod tests {
         reject(
             "component Main {<div></div }",
             expect![[r#"
-            error: Unclosed <div>
-            1 | component Main {<div></div }
-              |                  ^^^
+                -- errors --
+                error: Unclosed <div>
+                1 | component Main {<div></div }
+                  |                  ^^^
 
-            error: Unterminated closing tag
-            1 | component Main {<div></div }
-              |                        ^^^
-        "#]],
+                error: Unterminated closing tag
+                1 | component Main {<div></div }
+                  |                        ^^^
+                -- ast --
+                component Main {
+                  <div>
+                  </div>
+                }
+            "#]],
         );
     }
 
@@ -1876,9 +2012,15 @@ mod tests {
         reject(
             r#"component Main {<div class="foo" class="bar"></div>}"#,
             expect![[r#"
+                -- errors --
                 error: Duplicate attribute 'class'
                 1 | component Main {<div class="foo" class="bar"></div>}
                   |                                  ^^^^^
+                -- ast --
+                component Main {
+                  <div class="foo">
+                  </div>
+                }
             "#]],
         );
     }
@@ -1888,9 +2030,16 @@ mod tests {
         reject(
             "component Main {<div ...>text</div>}",
             expect![[r#"
+                -- errors --
                 error: Missing variable name for spread
                 1 | component Main {<div ...>text</div>}
                   |                      ^^^
+                -- ast --
+                component Main {
+                  <div>
+                    text
+                  </div>
+                }
             "#]],
         );
     }
@@ -1900,6 +2049,7 @@ mod tests {
         reject(
             "component Main {< div>}",
             expect![[r#"
+                -- errors --
                 error: Unterminated tag start
                 1 | component Main {< div>}
                   |                 ^
@@ -1907,6 +2057,7 @@ mod tests {
                 error: Unexpected text at top level
                 1 | component Main {< div>}
                   |                   ^^^
+                -- ast --
             "#]],
         );
     }
@@ -1925,6 +2076,7 @@ mod tests {
                 }
             "},
             expect![[r#"
+                -- errors --
                 error: <!doctype> declarations are not allowed: one is inserted automatically
                 1 | component Main(foo: String) {
                 2 |     <!DOCTYPE html>
@@ -1934,6 +2086,7 @@ mod tests {
                 2 |     <!DOCTYPE html>
                 3 |     <html>
                   |     ^
+                -- ast --
             "#]],
         );
     }
@@ -1949,6 +2102,7 @@ mod tests {
                 }
             "},
             expect![[r#"
+                -- errors --
                 error: Missing expression in <if> tag
                 1 | component Main {
                 2 |     <if>
@@ -1958,6 +2112,7 @@ mod tests {
                 4 |     </if>
                 5 | }
                   | ^
+                -- ast --
             "#]],
         );
     }
@@ -1973,6 +2128,7 @@ mod tests {
                 }
             "},
             expect![[r#"
+                -- errors --
                 error: Missing loop generator expression in <for> tag
                 1 | component Main {
                 2 |     <for>
@@ -1982,6 +2138,7 @@ mod tests {
                 4 |     </for>
                 5 | }
                   | ^
+                -- ast --
             "#]],
         );
     }
@@ -1997,6 +2154,7 @@ mod tests {
                 }
             "},
             expect![[r#"
+                -- errors --
                 error: Expected token 'in' but got '}'
                 1 | component Main {
                 2 |     <for {foo}>
@@ -2006,6 +2164,7 @@ mod tests {
                 4 |     </for>
                 5 | }
                   | ^
+                -- ast --
             "#]],
         );
     }
@@ -2021,6 +2180,7 @@ mod tests {
                 }
             "},
             expect![[r#"
+                -- errors --
                 error: Unexpected character: '~'
                 1 | component Main {
                 2 |     <if {~}>
@@ -2035,6 +2195,7 @@ mod tests {
                 4 |     </if>
                 5 | }
                   | ^
+                -- ast --
             "#]],
         );
     }
@@ -2048,6 +2209,7 @@ mod tests {
                 }
             "},
             expect![[r#"
+                -- errors --
                 error: Expected type name but got ')'
                 1 | component Main(data: Array[) {
                   |                            ^
@@ -2055,6 +2217,7 @@ mod tests {
                 error: Unexpected text at top level
                 1 | component Main(data: Array[) {
                   |                              ^
+                -- ast --
             "#]],
         );
     }
@@ -2087,6 +2250,31 @@ mod tests {
     }
 
     #[test]
+    fn rejects_record_with_invalid_type_in_declaration() {
+        reject(
+            indoc! {r#"
+                record User {
+                  url: x,
+                  theme: String,
+                }
+            "#},
+            expect![[r#"
+                -- errors --
+                error: Expected type name but got 'x'
+                1 | record User {
+                2 |   url: x,
+                  |        ^
+
+                error: Unexpected text at top level
+                1 | record User {
+                2 |   url: x,
+                  |         ^
+                -- ast --
+            "#]],
+        );
+    }
+
+    #[test]
     fn rejects_multiple_expressions_in_attribute() {
         reject(
             indoc! {r#"
@@ -2095,6 +2283,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
+                -- errors --
                 error: Unterminated opening tag
                 1 | component Main(style1: String, style2: String, style3: String) {
                 2 |     <div class={style1, style2, style3}>Content</div>
@@ -2104,6 +2293,16 @@ mod tests {
                 1 | component Main(style1: String, style2: String, style3: String) {
                 2 |     <div class={style1, style2, style3}>Content</div>
                   |                       ^
+                -- ast --
+                component Main(
+                  style1: String,
+                  style2: String,
+                  style3: String,
+                ) {
+                  <div style2>
+                    Content
+                  </div>
+                }
             "#]],
         );
     }
@@ -2119,9 +2318,14 @@ mod tests {
                 }
             "#},
             expect![[r#"
+                -- errors --
                 error: Import path must have at least two segments: module::Component
                 1 | import Foo
                   |        ^^^
+                -- ast --
+                component Main {
+                  <Foo/>
+                }
             "#]],
         );
     }
@@ -2413,6 +2617,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
+                -- errors --
                 error: Unknown HTML element <dvi>
                 1 | component Main {
                 2 |     <dvi>oops</dvi>
@@ -2422,6 +2627,7 @@ mod tests {
                 2 |     <dvi>oops</dvi>
                 3 | }
                   | ^
+                -- ast --
             "#]],
         );
     }
@@ -2435,6 +2641,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
+                -- errors --
                 error: Unknown HTML element <math>
                 1 | component Main {
                 2 |     <math></math>
@@ -2444,6 +2651,7 @@ mod tests {
                 2 |     <math></math>
                 3 | }
                   | ^
+                -- ast --
             "#]],
         );
     }
@@ -2722,9 +2930,16 @@ mod tests {
         reject(
             "component Main {<div>Empty: {}</div>}",
             expect![[r#"
+                -- errors --
                 error: Unexpected token '}'
                 1 | component Main {<div>Empty: {}</div>}
                   |                              ^
+                -- ast --
+                component Main {
+                  <div>
+                    Empty:
+                  </div>
+                }
             "#]],
         );
     }
@@ -2783,6 +2998,7 @@ mod tests {
                 }
             "},
             expect![[r#"
+                -- errors --
                 error: Expected type name but got 'component'
                 1 | record
                 2 | component Main {
@@ -2792,6 +3008,7 @@ mod tests {
                 1 | record
                 2 | component Main {
                   |           ^^^^
+                -- ast --
             "#]],
         );
     }
@@ -2805,9 +3022,11 @@ mod tests {
                 }
             "},
             expect![[r#"
+                -- errors --
                 error: Unexpected text at top level
                 1 | foo
                   | ^^^
+                -- ast --
             "#]],
         );
     }
@@ -3148,10 +3367,20 @@ mod tests {
                 }
             "},
             expect![[r#"
+                -- errors --
                 error: Default values must be constant
                 3 | }
                 4 | component Main(msg: String = greeting()) {
                   |                              ^^^^^^^^^^
+                -- ast --
+                fn greeting() -> String {
+                  "hi"
+                }
+
+                component Main(msg: String) {
+                  <div>
+                  </div>
+                }
             "#]],
         );
     }
@@ -3165,9 +3394,15 @@ mod tests {
                 }
             "},
             expect![[r#"
+                -- errors --
                 error: Default values must be constant
                 1 | component Main(msg: String = other) {
                   |                              ^^^^^
+                -- ast --
+                component Main(msg: String) {
+                  <div>
+                  </div>
+                }
             "#]],
         );
     }
@@ -3181,9 +3416,18 @@ mod tests {
                 }
             "},
             expect![[r#"
+                -- errors --
                 error: Default values must be constant
                 1 | component Main(a: String, b: String = a) {
                   |                                       ^
+                -- ast --
+                component Main(
+                  a: String,
+                  b: String,
+                ) {
+                  <div>
+                  </div>
+                }
             "#]],
         );
     }
@@ -3197,9 +3441,15 @@ mod tests {
                 }
             "#},
             expect![[r#"
+                -- errors --
                 error: Default values must be constant
                 1 | component Main(msg: String = "hi".to_uppercase()) {
                   |                              ^^^^^^^^^^^^^^^^^^^
+                -- ast --
+                component Main(msg: String) {
+                  <div>
+                  </div>
+                }
             "#]],
         );
     }
@@ -3213,9 +3463,15 @@ mod tests {
                 }
             "},
             expect![[r#"
+                -- errors --
                 error: Default values must be constant
                 1 | component Main(count: Int = (1 + 2)) {
                   |                              ^^^^^
+                -- ast --
+                component Main(count: Int) {
+                  <div>
+                  </div>
+                }
             "#]],
         );
     }
@@ -3229,9 +3485,15 @@ mod tests {
                 }
             "#},
             expect![[r#"
+                -- errors --
                 error: Default values must be constant
                 1 | component Main(src: String = asset!("/logo.png")) {
                   |                              ^^^^^^^^^^^^^^^^^^^
+                -- ast --
+                component Main(src: String) {
+                  <div>
+                  </div>
+                }
             "#]],
         );
     }
@@ -3245,9 +3507,15 @@ mod tests {
                 }
             "#},
             expect![[r#"
+                -- errors --
                 error: Default values must be constant
                 1 | component Main(msg: String = match true { true => "y", false => "n" }) {
                   |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                -- ast --
+                component Main(msg: String) {
+                  <div>
+                  </div>
+                }
             "#]],
         );
     }
@@ -3262,10 +3530,20 @@ mod tests {
                 }
             "#},
             expect![[r#"
+                -- errors --
                 error: Default values must be constant
                 1 | record Config { name: String }
                 2 | component Main(config: Config = Config{...base, name: "x"}) {
                   |                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^
+                -- ast --
+                record Config {
+                  name: String,
+                }
+
+                component Main(config: Config) {
+                  <div>
+                  </div>
+                }
             "#]],
         );
     }
@@ -3279,9 +3557,15 @@ mod tests {
                 }
             "#},
             expect![[r#"
+                -- errors --
                 error: Default values must be constant
                 1 | component Main(names: Array[String] = ["a", other]) {
                   |                                       ^^^^^^^^^^^^
+                -- ast --
+                component Main(names: Array[String]) {
+                  <div>
+                  </div>
+                }
             "#]],
         );
     }
@@ -3513,6 +3797,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
+                -- errors --
                 error: Missing expression in <match> tag
                 1 | component Main {
                 2 |     <match>
@@ -3522,6 +3807,7 @@ mod tests {
                 4 |     </match>
                 5 | }
                   | ^
+                -- ast --
             "#]],
         );
     }
@@ -3537,10 +3823,15 @@ mod tests {
                 }
             "#},
             expect![[r#"
+                -- errors --
                 error: Missing pattern in <case> tag
                 2 |     <match {flag}>
                 3 |         <case>yes</case>
                   |         ^^^^^^
+                -- ast --
+                component Main(flag: Bool) {
+                  <match {flag}></match>
+                }
             "#]],
         );
     }
@@ -3556,10 +3847,15 @@ mod tests {
                 }
             "#},
             expect![[r#"
+                -- errors --
                 error: Only <case> tags are allowed inside <match>
                 2 |     <match {flag}>
                 3 |         <div>not allowed</div>
                   |         ^^^^^^^^^^^^^^^^^^^^^^
+                -- ast --
+                component Main(flag: Bool) {
+                  <match {flag}></match>
+                }
             "#]],
         );
     }
@@ -3573,6 +3869,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
+                -- errors --
                 error: <case> is only allowed inside <match>
                 1 | component Main {
                 2 |     <case {true}>standalone case</case>
@@ -3582,6 +3879,7 @@ mod tests {
                 2 |     <case {true}>standalone case</case>
                 3 | }
                   | ^
+                -- ast --
             "#]],
         );
     }
@@ -3700,6 +3998,7 @@ mod tests {
                 }
             "},
             expect![[r#"
+                -- errors --
                 error: Missing binding in <let> tag
                 1 | component Main {
                 2 |     <let>
@@ -3709,6 +4008,7 @@ mod tests {
                 4 |     </let>
                 5 | }
                   | ^
+                -- ast --
             "#]],
         );
     }
@@ -3746,6 +4046,7 @@ mod tests {
                 }
             "},
             expect![[r#"
+                -- errors --
                 error: Expected token '=' but got '}'
                 1 | component Main {
                 2 |     <let {x: String}>
@@ -3755,6 +4056,7 @@ mod tests {
                 4 |     </let>
                 5 | }
                   | ^
+                -- ast --
             "#]],
         );
     }
@@ -3899,6 +4201,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
+                -- errors --
                 error: Unterminated opening tag
                 1 | component Main {
                 2 |     <let {first: String = "a" second: String = "b"}>
@@ -3908,6 +4211,16 @@ mod tests {
                 1 | component Main {
                 2 |     <let {first: String = "a" second: String = "b"}>
                   |                               ^^^^^^
+                -- ast --
+                component Main {
+                  <let {first: String = "a"}>
+                    <div>
+                      {first}
+                      {" "}
+                      {second}
+                    </div>
+                  </let>
+                }
             "#]],
         );
     }
@@ -4011,9 +4324,11 @@ mod tests {
         reject(
             "<div></div>",
             expect![[r#"
+                -- errors --
                 error: Unexpected text at top level
                 1 | <div></div>
                   | ^
+                -- ast --
             "#]],
         );
     }
@@ -4143,6 +4458,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
+                -- errors --
                 error: Unterminated opening tag
                 1 | view Test {
                 2 |   <let {default: String = "x"}>
@@ -4157,6 +4473,7 @@ mod tests {
                 4 |   </let>
                 5 | }
                   | ^
+                -- ast --
             "#]],
         );
     }
@@ -4170,6 +4487,7 @@ mod tests {
                 }
             "},
             expect![[r#"
+                -- errors --
                 error: Type name 'Error' is a reserved word
                 1 | view Error() {
                   |      ^^^^^
@@ -4177,6 +4495,7 @@ mod tests {
                 error: Unexpected text at top level
                 1 | view Error() {
                   |              ^
+                -- ast --
             "#]],
         );
     }
@@ -4190,9 +4509,11 @@ mod tests {
                 }
             "},
             expect![[r#"
+                -- errors --
                 error: Type name 'Error' is a reserved word
                 1 | component Error() {
                   |           ^^^^^
+                -- ast --
             "#]],
         );
     }
@@ -4206,6 +4527,7 @@ mod tests {
                 }
             "},
             expect![[r#"
+                -- errors --
                 error: Expected type name but got 'card'
                 1 | component card() {
                   |           ^^^^
@@ -4213,6 +4535,7 @@ mod tests {
                 error: Unexpected text at top level
                 1 | component card() {
                   |               ^
+                -- ast --
             "#]],
         );
     }
@@ -4226,6 +4549,7 @@ mod tests {
                 }
             "},
             expect![[r#"
+                -- errors --
                 error: Type name contains invalid character: '-'
                 1 | component Card() {
                 2 |     <Foo-Bar />
@@ -4235,6 +4559,7 @@ mod tests {
                 2 |     <Foo-Bar />
                 3 | }
                   | ^
+                -- ast --
             "#]],
         );
     }
@@ -4248,6 +4573,7 @@ mod tests {
                 }
             "},
             expect![[r#"
+                -- errors --
                 error: Expected type name but got 'index'
                 1 | view index() {
                   |      ^^^^^
@@ -4255,6 +4581,7 @@ mod tests {
                 error: Unexpected text at top level
                 1 | view index() {
                   |           ^
+                -- ast --
             "#]],
         );
     }
@@ -4268,9 +4595,18 @@ mod tests {
                 }
             "#},
             expect![[r#"
+                -- errors --
                 error: Default values are not allowed on view parameters
                 1 | view Index(name: String = "World") {
                   |                         ^
+                -- ast --
+                view Index(name: String) {
+                  <div>
+                    Hello
+                    {" "}
+                    {name}
+                  </div>
+                }
             "#]],
         );
     }
@@ -4340,6 +4676,7 @@ mod tests {
                 }
             "},
             expect![[r#"
+                -- errors --
                 error: Expected a 'body' block
                 4 |     }
                 5 | }
@@ -4349,6 +4686,7 @@ mod tests {
                 4 |     }
                 5 | }
                   | ^
+                -- ast --
             "#]],
         );
     }
@@ -4367,6 +4705,7 @@ mod tests {
                 }
             "},
             expect![[r#"
+                -- errors --
                 error: Expected token '}' but got 'head'
                 4 |     }
                 5 |     head {
@@ -4376,6 +4715,7 @@ mod tests {
                 4 |     }
                 5 |     head {
                   |          ^
+                -- ast --
             "#]],
         );
     }
@@ -4388,9 +4728,14 @@ mod tests {
                 }
             "},
             expect![[r#"
+                -- errors --
                 error: Expected an expression: use <></> for an empty body
                 1 | view Index() {
                   |              ^
+                -- ast --
+                view Index {
+                  Fragment::empty()
+                }
             "#]],
         );
     }
@@ -4632,9 +4977,22 @@ mod tests {
                 }
             "#},
             expect![[r#"
+                -- errors --
                 error: Default values are not allowed on view parameters
                 1 | view Index(required: String, optional: Int = 42) {
                   |                                            ^
+                -- ast --
+                view Index(
+                  required: String,
+                  optional: Int,
+                ) {
+                  <div>
+                    {required}
+                    :
+                    {" "}
+                    {optional}
+                  </div>
+                }
             "#]],
         );
     }
@@ -4648,6 +5006,7 @@ mod tests {
                 }
             "},
             expect![[r#"
+                -- errors --
                 error: Expected token '}' but got 'world'
                 1 | view Test {
                 2 |   hello world
@@ -4657,6 +5016,7 @@ mod tests {
                 2 |   hello world
                 3 | }
                   | ^
+                -- ast --
             "#]],
         );
     }
@@ -4692,9 +5052,14 @@ mod tests {
         reject(
             r#"fn test() -> String {"invalid\q"}"#,
             expect![[r#"
+                -- errors --
                 error: Invalid escape sequence '\q'
                 1 | fn test() -> String {"invalid\q"}
                   |                              ^^
+                -- ast --
+                fn test() -> String {
+                  "invalid\q"
+                }
             "#]],
         );
     }
@@ -4728,9 +5093,19 @@ mod tests {
                 }
             "#},
             expect![[r#"
+                -- errors --
                 error: Rest parameter must be the last parameter
                 1 | component Foo(...rest, a: String, b: String) {
                   |               ^^^^^^^
+                -- ast --
+                component Foo(
+                  a: String,
+                  b: String,
+                  ...rest,
+                ) {
+                  <div ...rest>
+                  </div>
+                }
             "#]],
         );
     }
@@ -4744,9 +5119,15 @@ mod tests {
                 }
             "#},
             expect![[r#"
+                -- errors --
                 error: At most one rest parameter is allowed
                 1 | component Foo(...a, ...b) {
                   |                     ^^^^
+                -- ast --
+                component Foo(...a) {
+                  <div ...a>
+                  </div>
+                }
             "#]],
         );
     }
@@ -4794,10 +5175,16 @@ mod tests {
                 }
             "#},
             expect![[r#"
+                -- errors --
                 error: Invalid variable name 'Bar': Variable name must be lowercase (found uppercase: 'B')
                 1 | component Foo() {
                 2 |   <button ...Bar></button>
                   |              ^^^
+                -- ast --
+                component Foo {
+                  <button>
+                  </button>
+                }
             "#]],
         );
     }
@@ -4811,10 +5198,16 @@ mod tests {
                 }
             "#},
             expect![[r#"
+                -- errors --
                 error: Invalid variable name '_x': Variable name cannot start with underscore
                 1 | component Foo() {
                 2 |   <button ..._x></button>
                   |              ^^
+                -- ast --
+                component Foo {
+                  <button>
+                  </button>
+                }
             "#]],
         );
     }
@@ -4898,9 +5291,14 @@ mod tests {
                 }
             "},
             expect![[r#"
+                -- errors --
                 error: 'pub' is not allowed here
                 1 | pub fn foo(x: Int) -> Int {
                   | ^^^
+                -- ast --
+                fn foo(x: Int) -> Int {
+                  x
+                }
             "#]],
         );
     }
@@ -4914,6 +5312,7 @@ mod tests {
                 }
             "},
             expect![[r#"
+                -- errors --
                 error: Expected token '->' but got '{'
                 1 | fn foo(x: Int) {
                   |                ^
@@ -4922,6 +5321,7 @@ mod tests {
                 1 | fn foo(x: Int) {
                 2 |   x
                   |   ^
+                -- ast --
             "#]],
         );
     }
@@ -4935,6 +5335,7 @@ mod tests {
                 }
             "},
             expect![[r#"
+                -- errors --
                 error: Expected token '(' but got '->'
                 1 | fn foo -> Int {
                   |        ^^
@@ -4942,6 +5343,7 @@ mod tests {
                 error: Unexpected text at top level
                 1 | fn foo -> Int {
                   |           ^^^
+                -- ast --
             "#]],
         );
     }
@@ -4955,9 +5357,14 @@ mod tests {
                 }
             "},
             expect![[r#"
+                -- errors --
                 error: Default values are not allowed on function parameters
                 1 | fn foo(x: Int = 1) -> Int {
                   |               ^
+                -- ast --
+                fn foo(x: Int) -> Int {
+                  x
+                }
             "#]],
         );
     }
@@ -4971,6 +5378,7 @@ mod tests {
                 }
             "},
             expect![[r#"
+                -- errors --
                 error: Expected variable name but got '...'
                 1 | fn foo(...rest) -> Int {
                   |        ^^^
@@ -4978,6 +5386,7 @@ mod tests {
                 error: Unexpected text at top level
                 1 | fn foo(...rest) -> Int {
                   |           ^^^^
+                -- ast --
             "#]],
         );
     }
@@ -5245,6 +5654,7 @@ mod tests {
                 }
             "},
             expect![[r#"
+                -- errors --
                 error: Unexpected character: '/'
                 1 | fn card() -> Fragment {
                 2 |   <div/><span/>
@@ -5254,6 +5664,7 @@ mod tests {
                 2 |   <div/><span/>
                 3 | }
                   | ^
+                -- ast --
             "#]],
         );
     }
@@ -5267,6 +5678,7 @@ mod tests {
                 }
             "},
             expect![[r#"
+                -- errors --
                 error: Unterminated tag start
                 1 | fn card() -> Fragment {
                 2 |   < div
@@ -5276,6 +5688,7 @@ mod tests {
                 1 | fn card() -> Fragment {
                 2 |   < div
                   |     ^^^
+                -- ast --
             "#]],
         );
     }
@@ -5289,10 +5702,16 @@ mod tests {
                 }
             "},
             expect![[r#"
+                -- errors --
                 error: Unclosed <div>
                 1 | fn card() -> Fragment {
                 2 |   <div>
                   |    ^^^
+                -- ast --
+                fn card() -> Fragment {
+                  <div>
+                  </div>
+                }
             "#]],
         );
     }
