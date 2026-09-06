@@ -9,8 +9,7 @@ use crate::hop::parsing::parsed_expr::{
     Constructor, ParsedExpr, ParsedMatchArm, ParsedMatchPattern,
 };
 use crate::hop::parsing::parsed_node::{
-    ParsedAttribute, ParsedAttributeValue, ParsedLetBinding, ParsedLoopSource, ParsedMatchCase,
-    ParsedNode,
+    ParsedAttribute, ParsedLetBinding, ParsedLoopSource, ParsedMatchCase, ParsedNode,
 };
 use crate::html::HtmlElement;
 use pretty::{Arena, DocAllocator, DocBuilder};
@@ -583,43 +582,28 @@ fn format_attribute<'a>(
     comments: &mut VecDeque<&'a DocumentRange>,
 ) -> DocBuilder<'a, Arena<'a>> {
     match item {
-        ParsedAttribute::Named { name, value } => {
-            let name_doc = arena.text(name.as_str());
-            match value {
-                Some(value) => name_doc
-                    .append(arena.text("="))
-                    .append(format_attribute_value(arena, value, comments)),
-                None => name_doc,
-            }
-        }
-        ParsedAttribute::Spread { name, .. } => arena.text("...").append(arena.text(name.as_str())),
-    }
-}
-
-fn format_attribute_value<'a>(
-    arena: &'a Arena<'a>,
-    value: &'a ParsedAttributeValue,
-    comments: &mut VecDeque<&'a DocumentRange>,
-) -> DocBuilder<'a, Arena<'a>> {
-    match value {
-        ParsedAttributeValue::Expression(expr) => arena
-            .text("{")
+        ParsedAttribute::KeyOnly { name } => arena.text(name.as_str()),
+        ParsedAttribute::Expression { name, value } => arena
+            .text(name.as_str())
+            .append(arena.text("={"))
             .append(
                 arena
                     .line_()
-                    .append(format_expr(arena, expr, comments))
+                    .append(format_expr(arena, value, comments))
                     .nest(2),
             )
             .append(arena.line_())
             .append(arena.text("}"))
             .group(),
-        ParsedAttributeValue::String { content, .. } => {
+        ParsedAttribute::String { name, content, .. } => {
             let content = content.as_ref().map(|r| r.as_str()).unwrap_or("");
             arena
-                .text("\"")
+                .text(name.as_str())
+                .append(arena.text("=\""))
                 .append(arena.text(content))
                 .append(arena.text("\""))
         }
+        ParsedAttribute::Spread { name, .. } => arena.text("...").append(arena.text(name.as_str())),
     }
 }
 

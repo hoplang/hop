@@ -4,8 +4,7 @@ use std::iter::Peekable;
 use super::parse_expr;
 use super::parsed_expr::ParsedExpr;
 use super::parsed_node::{
-    ParsedAttribute, ParsedAttributeValue, ParsedLetBinding, ParsedLoopSource, ParsedMatchCase,
-    ParsedNode,
+    ParsedAttribute, ParsedLetBinding, ParsedLoopSource, ParsedMatchCase, ParsedNode,
 };
 use super::token;
 use super::tokenize_expr;
@@ -417,16 +416,15 @@ fn parse_opening_tag(
             }
 
             TagToken::Attribute { name, value } => {
-                let value = value.map(|value| ParsedAttributeValue::String {
-                    content: value.content_range,
-                    quoted_range: value.quoted_range,
-                });
-                push_attribute(
-                    &mut header,
-                    &tag_name_range,
-                    ParsedAttribute::Named { name, value },
-                    errors,
-                );
+                let attribute = match value {
+                    Some(value) => ParsedAttribute::String {
+                        name,
+                        content: value.content_range,
+                        quoted_range: value.quoted_range,
+                    },
+                    None => ParsedAttribute::KeyOnly { name },
+                };
+                push_attribute(&mut header, &tag_name_range, attribute, errors);
             }
 
             TagToken::AttributeExpressionStart { name, left_brace } => {
@@ -443,10 +441,7 @@ fn parse_opening_tag(
                     push_attribute(
                         &mut header,
                         &tag_name_range,
-                        ParsedAttribute::Named {
-                            name,
-                            value: Some(ParsedAttributeValue::Expression(value)),
-                        },
+                        ParsedAttribute::Expression { name, value },
                         errors,
                     );
                 }
@@ -589,7 +584,9 @@ fn push_attribute(
     let (TagHeader::Component { attributes, .. } | TagHeader::Html { attributes, .. }) = header
     else {
         let (attr_name, range) = match &attribute {
-            ParsedAttribute::Named { name, .. } => (name.to_cheap_string(), name.clone()),
+            ParsedAttribute::KeyOnly { name }
+            | ParsedAttribute::Expression { name, .. }
+            | ParsedAttribute::String { name, .. } => (name.to_cheap_string(), name.clone()),
             ParsedAttribute::Spread { range, .. } => (range.to_cheap_string(), range.clone()),
         };
         errors.push(ParseError::new(
@@ -601,10 +598,11 @@ fn push_attribute(
         ));
         return;
     };
-    if let ParsedAttribute::Named { name, .. } = &attribute
-        && attributes.iter().any(|existing| match existing {
-            ParsedAttribute::Named { name: existing, .. } => existing.as_str() == name.as_str(),
-            ParsedAttribute::Spread { .. } => false,
+    if let Some(name) = attribute.name_range()
+        && attributes.iter().any(|existing| {
+            existing
+                .name_range()
+                .is_some_and(|existing| existing.as_str() == name.as_str())
         })
     {
         errors.push(ParseError::new(

@@ -33,7 +33,7 @@ use std::sync::Arc;
 use crate::document_id::DocumentId;
 use crate::hop::parsing::parsed_ast::ParsedAst;
 use crate::hop::parsing::parsed_node::{
-    ParsedAttribute, ParsedAttributeValue, ParsedLetBinding, ParsedLoopSource, ParsedNode,
+    ParsedAttribute, ParsedLetBinding, ParsedLoopSource, ParsedNode,
 };
 use crate::hop::patterns::Match;
 use crate::hop::patterns::typed::typecheck_pattern;
@@ -1670,7 +1670,9 @@ pub fn typecheck_node(
                     typed_attributes,
                     attributes.iter().find_map(|a| match a {
                         ParsedAttribute::Spread { name, .. } => Some(name.clone()),
-                        ParsedAttribute::Named { .. } => None,
+                        ParsedAttribute::KeyOnly { .. }
+                        | ParsedAttribute::Expression { .. }
+                        | ParsedAttribute::String { .. } => None,
                     }),
                 )),
                 children: Box::new(TypedExpr::FragmentConcat {
@@ -1845,7 +1847,7 @@ pub fn typecheck_node(
 }
 
 fn typecheck_attribute_value(
-    value: &Option<ParsedAttributeValue>,
+    attribute: &ParsedAttribute,
     forwarded_params: &[VarName],
     registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
@@ -1855,10 +1857,10 @@ fn typecheck_attribute_value(
     definition_links: &mut Vec<DefinitionLink>,
     asset_references: &mut Vec<AssetReference>,
 ) -> Option<TypedAttributeValue> {
-    match value {
-        Some(ParsedAttributeValue::Expression(expr)) => {
+    match attribute {
+        ParsedAttribute::Expression { value, .. } => {
             let typed_expr = typecheck_expr(
-                expr,
+                value,
                 None,
                 forwarded_params,
                 var_env,
@@ -1875,19 +1877,19 @@ fn typecheck_attribute_value(
                         expected: Arc::new(Type::String),
                         found: typed_expr.get_type(),
                     },
-                    expr.range().clone(),
+                    value.range().clone(),
                 ));
             }
             Some(TypedAttributeValue::Expression(typed_expr))
         }
-        Some(ParsedAttributeValue::String { content, .. }) => {
+        ParsedAttribute::String { content, .. } => {
             let string_span = match content {
                 Some(range) => range.to_cheap_string(),
                 None => CheapString::new("".to_string()),
             };
             Some(TypedAttributeValue::String(string_span))
         }
-        None => None,
+        ParsedAttribute::KeyOnly { .. } | ParsedAttribute::Spread { .. } => None,
     }
 }
 
@@ -1931,9 +1933,9 @@ fn typecheck_arguments(
     let children_param = callee_params
         .iter()
         .find(|p| p.name.as_str() == "children" && *p.typ == Type::Fragment);
-    let has_explicit_children_arg = attributes.iter().any(|a| match a {
-        ParsedAttribute::Named { name, .. } => name.as_str() == "children",
-        ParsedAttribute::Spread { .. } => false,
+    let has_explicit_children_arg = attributes.iter().any(|a| {
+        a.name_range()
+            .is_some_and(|name| name.as_str() == "children")
     });
     let synthesize_children_arg =
         has_body && children_param.is_some() && !has_explicit_children_arg;
@@ -1949,13 +1951,15 @@ fn typecheck_arguments(
 
     let rest_spread = attributes.iter().find_map(|a| match a {
         ParsedAttribute::Spread { name, .. } => Some(name.clone()),
-        ParsedAttribute::Named { .. } => None,
+        ParsedAttribute::KeyOnly { .. }
+        | ParsedAttribute::Expression { .. }
+        | ParsedAttribute::String { .. } => None,
     });
     let mut supplied_args: Vec<VarName> = attributes
         .iter()
-        .filter_map(|a| match a {
-            ParsedAttribute::Named { name, .. } => VarName::new(name.as_str()).ok(),
-            ParsedAttribute::Spread { .. } => None,
+        .filter_map(|a| {
+            a.name_range()
+                .and_then(|name| VarName::new(name.as_str()).ok())
         })
         .collect();
     if has_body {
@@ -1970,9 +1974,8 @@ fn typecheck_arguments(
     let mut typed_args: Vec<(VarName, TypedExpr)> = Vec::new();
     let mut extra_attributes: Vec<TypedAttribute> = Vec::new();
     for arg in attributes {
-        let (arg_name_range, arg_value) = match arg {
-            ParsedAttribute::Named { name, value } => (name, value),
-            ParsedAttribute::Spread { .. } => continue,
+        let Some(arg_name_range) = arg.name_range() else {
+            continue;
         };
         let arg_name = arg_name_range.as_str();
 
@@ -1986,7 +1989,7 @@ fn typecheck_arguments(
             };
             if accepted {
                 let value = typecheck_attribute_value(
-                    arg_value,
+                    arg,
                     forwarded_params,
                     registry,
                     errors,
@@ -2013,12 +2016,13 @@ fn typecheck_arguments(
         };
         let param_type = &param.typ;
 
-        let arg_expr = match arg_value {
-            Some(ParsedAttributeValue::Expression(expr)) => expr.clone(),
-            Some(ParsedAttributeValue::String {
+        let arg_expr = match arg {
+            ParsedAttribute::Expression { value, .. } => value.clone(),
+            ParsedAttribute::String {
                 content,
                 quoted_range,
-            }) => {
+                ..
+            } => {
                 let value = content
                     .as_ref()
                     .map(|r| r.to_cheap_string())
@@ -2028,10 +2032,12 @@ fn typecheck_arguments(
                     range: quoted_range.clone(),
                 }
             }
-            None => ParsedExpr::BooleanLiteral {
-                value: true,
-                range: arg_name_range.clone(),
-            },
+            ParsedAttribute::KeyOnly { .. } | ParsedAttribute::Spread { .. } => {
+                ParsedExpr::BooleanLiteral {
+                    value: true,
+                    range: arg_name_range.clone(),
+                }
+            }
         };
 
         let Some(typed_expr) = typecheck_expr(
@@ -2086,9 +2092,9 @@ fn typecheck_arguments(
             if p.default.is_some() {
                 return false;
             }
-            let supplied = attributes.iter().any(|a| match a {
-                ParsedAttribute::Named { name: n, .. } => n.as_str() == p.name.as_str(),
-                ParsedAttribute::Spread { .. } => false,
+            let supplied = attributes.iter().any(|a| {
+                a.name_range()
+                    .is_some_and(|n| n.as_str() == p.name.as_str())
             });
             let is_synthesized_children = synthesize_children_arg && p.name.as_str() == "children";
             !supplied && !is_synthesized_children && !covered_by_rest(p)
@@ -2146,14 +2152,9 @@ fn typecheck_attributes(
 ) -> Vec<TypedAttribute> {
     let mut typed_attributes = Vec::new();
     for attr in attributes {
-        let (attr_name, attr_value) = match attr {
-            ParsedAttribute::Named { name, value } => (name, value),
-            ParsedAttribute::Spread { .. } => continue,
-        };
         if let Some(typed) = typecheck_html_attribute(
             element,
-            attr_name,
-            attr_value,
+            attr,
             forwarded_params,
             registry,
             errors,
@@ -2173,8 +2174,7 @@ fn typecheck_attributes(
 /// Type-check a single HTML attribute: validate the name; expression values must be `String`.
 fn typecheck_html_attribute(
     element: &HtmlElement,
-    name: &DocumentRange,
-    value: &Option<ParsedAttributeValue>,
+    attribute: &ParsedAttribute,
     forwarded_params: &[VarName],
     registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
@@ -2184,6 +2184,7 @@ fn typecheck_html_attribute(
     definition_links: &mut Vec<DefinitionLink>,
     asset_references: &mut Vec<AssetReference>,
 ) -> Option<TypedAttribute> {
+    let name = attribute.name_range()?;
     if !element.accepts_attribute(name.as_str()) {
         errors.push(TypeError::new(
             TypeErrorKind::ElementDoesNotAcceptAttribute {
@@ -2196,7 +2197,7 @@ fn typecheck_html_attribute(
     }
 
     let typed_value = typecheck_attribute_value(
-        value,
+        attribute,
         forwarded_params,
         registry,
         errors,

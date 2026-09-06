@@ -57,10 +57,7 @@ pub struct SpreadOccurrence {
 fn named_attrs(attributes: &[ParsedAttribute]) -> Vec<CheapString> {
     attributes
         .iter()
-        .filter_map(|a| match a {
-            ParsedAttribute::Named { name, .. } => Some(name.to_cheap_string()),
-            ParsedAttribute::Spread { .. } => None,
-        })
+        .filter_map(|a| a.name_range().map(|name| name.to_cheap_string()))
         .collect()
 }
 

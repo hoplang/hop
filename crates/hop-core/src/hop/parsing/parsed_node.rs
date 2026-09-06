@@ -124,62 +124,67 @@ pub enum ParsedNode {
     },
 }
 
-/// A ParsedAttribute is a single entry in the attribute list of a ParsedNode.
-///
-/// It is either:
-/// * empty: `<foo a>`
-/// * an expression: `<foo a={bar}>`
-/// * a string value: `<foo a="b">`
-/// * or a spread: `<foo ...rest>`
+/// A ParsedAttribute is a single entry an attribute list.
 #[derive(Debug, Clone)]
 pub enum ParsedAttribute {
-    Named {
+    /// An attribute containing only a key. E.g.
+    /// ```text
+    /// <input required>
+    ///        ^^^^^^^^
+    /// ```
+    KeyOnly { name: DocumentRange },
+    /// An attribute containing an expression. E.g.
+    /// ```text
+    /// <Square side={5 + 3}>
+    ///         ^^^^^^^^^^^^
+    /// ```
+    Expression {
         name: DocumentRange,
-        value: Option<ParsedAttributeValue>,
+        value: ParsedExpr,
     },
-    Spread {
-        name: VarName,
-        range: DocumentRange,
-    },
-}
-
-#[derive(Debug, Clone)]
-pub enum ParsedAttributeValue {
-    Expression(ParsedExpr),
-    /// A quoted string value.
+    /// An attribute containing a static string. E.g.
+    /// ```text
+    /// <div class="hidden">
+    ///      ^^^^^^^^^^^^^^
+    /// ```
     String {
+        name: DocumentRange,
         /// The inner content range, excluding quotes. None for empty strings like `attr=""`.
         content: Option<DocumentRange>,
         /// Range of the whole value including the surrounding quotes, e.g. `"bar"`.
         quoted_range: DocumentRange,
     },
-}
-
-impl ParsedAttributeValue {
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        match self {
-            ParsedAttributeValue::Expression(expr) => BoxDoc::text("{")
-                .append(BoxDoc::line_().append(expr.to_doc()).nest(2))
-                .append(BoxDoc::line_())
-                .append(BoxDoc::text("}"))
-                .group(),
-            ParsedAttributeValue::String { content, .. } => {
-                let content = content.as_ref().map(|r| r.as_str()).unwrap_or("");
-                BoxDoc::text(format!("\"{}\"", content))
-            }
-        }
-    }
+    /// A spread. E.g.
+    /// ```text
+    /// <div ...rest>
+    ///      ^^^^^^^
+    /// ```
+    Spread { name: VarName, range: DocumentRange },
 }
 
 impl ParsedAttribute {
+    /// The range of the attribute name, or `None` for a spread.
+    pub fn name_range(&self) -> Option<&DocumentRange> {
+        match self {
+            ParsedAttribute::KeyOnly { name }
+            | ParsedAttribute::Expression { name, .. }
+            | ParsedAttribute::String { name, .. } => Some(name),
+            ParsedAttribute::Spread { .. } => None,
+        }
+    }
+
     pub fn to_doc(&self) -> BoxDoc<'_> {
         match self {
-            ParsedAttribute::Named { name, value } => {
-                let name_doc = BoxDoc::text(name.as_str());
-                match value {
-                    Some(value) => name_doc.append(BoxDoc::text("=")).append(value.to_doc()),
-                    None => name_doc,
-                }
+            ParsedAttribute::KeyOnly { name } => BoxDoc::text(name.as_str()),
+            ParsedAttribute::Expression { name, value } => BoxDoc::text(name.as_str())
+                .append(BoxDoc::text("={"))
+                .append(BoxDoc::line_().append(value.to_doc()).nest(2))
+                .append(BoxDoc::line_())
+                .append(BoxDoc::text("}"))
+                .group(),
+            ParsedAttribute::String { name, content, .. } => {
+                let content = content.as_ref().map(|r| r.as_str()).unwrap_or("");
+                BoxDoc::text(name.as_str()).append(BoxDoc::text(format!("=\"{}\"", content)))
             }
             ParsedAttribute::Spread { name, .. } => {
                 BoxDoc::text("...").append(BoxDoc::text(name.as_str()))
@@ -191,9 +196,17 @@ impl ParsedAttribute {
 /// The source of iteration in a for loop - either an array or an inclusive range.
 #[derive(Debug, Clone)]
 pub enum ParsedLoopSource {
-    /// Iterate over elements of an array, e.g. `item in items`
+    /// Iterate over elements of an array. E.g.
+    /// ```text
+    /// <for {item in [1, 2, 3]}>
+    ///               ^^^^^^^^^
+    /// ```
     Array(ParsedExpr),
     /// Iterate over an inclusive integer range, e.g. `i in 0..=5`
+    /// ```text
+    /// <for {i in 0..=5}>
+    ///            ^^^^^
+    /// ```
     RangeInclusive { start: ParsedExpr, end: ParsedExpr },
 }
 
@@ -295,11 +308,10 @@ impl ParsedNode {
             | ParsedNode::Html { attributes, .. } => attributes
                 .iter()
                 .filter_map(|attribute| match attribute {
-                    ParsedAttribute::Named {
-                        value: Some(ParsedAttributeValue::Expression(expr)),
-                        ..
-                    } => Some(expr),
-                    ParsedAttribute::Named { .. } | ParsedAttribute::Spread { .. } => None,
+                    ParsedAttribute::Expression { value, .. } => Some(value),
+                    ParsedAttribute::KeyOnly { .. }
+                    | ParsedAttribute::String { .. }
+                    | ParsedAttribute::Spread { .. } => None,
                 })
                 .collect(),
             ParsedNode::For { source, .. } => match source.as_ref() {
