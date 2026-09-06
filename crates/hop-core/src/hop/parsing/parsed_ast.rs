@@ -77,9 +77,9 @@ pub struct ParsedImportDeclaration {
 #[derive(Debug, Clone)]
 pub struct ParsedComponentDeclaration {
     pub component_name: TypeName,
-    pub tag_name: DocumentRange,
-    pub closing_tag_name: Option<DocumentRange>,
-    pub params: Option<(Vec<ParsedParameter>, DocumentRange)>,
+    pub name_range: DocumentRange,
+    pub params: Vec<ParsedParameter>,
+    pub params_range: Option<DocumentRange>,
     pub rest_param: Option<(VarName, DocumentRange)>,
     pub body: ParsedExpr,
     pub range: DocumentRange,
@@ -391,19 +391,17 @@ impl ParsedEnumDeclaration {
 }
 
 impl ParsedComponentDeclaration {
-    pub fn tag_name_ranges(&self) -> impl Iterator<Item = &DocumentRange> {
-        self.closing_tag_name.iter().chain(Some(&self.tag_name))
-    }
-
     pub fn to_doc(&self) -> BoxDoc<'_> {
-        let params_doc = match &self.params {
-            Some((params, _)) if !params.is_empty() => BoxDoc::text("(")
-                .append(BoxDoc::intersperse(
-                    params.iter().map(|p| p.to_doc()),
-                    BoxDoc::text(", "),
-                ))
-                .append(BoxDoc::text(")")),
-            _ => BoxDoc::nil(),
+        let params_doc = if self.params.is_empty() && self.rest_param.is_none() {
+            BoxDoc::nil()
+        } else {
+            let mut parts: Vec<BoxDoc<'_>> = self.params.iter().map(|p| p.to_doc()).collect();
+            if let Some((name, _)) = &self.rest_param {
+                parts.push(BoxDoc::text("...").append(BoxDoc::text(name.as_str())));
+            }
+            BoxDoc::text("(")
+                .append(BoxDoc::intersperse(parts, BoxDoc::text(", ")))
+                .append(BoxDoc::text(")"))
         };
         let pub_prefix = if self.pub_range.is_some() {
             BoxDoc::text("pub").append(BoxDoc::space())

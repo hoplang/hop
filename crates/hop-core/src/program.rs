@@ -328,11 +328,8 @@ impl Program {
         }
 
         for node in ast.component_declarations() {
-            if node
-                .tag_name_ranges()
-                .any(|r| r.contains_position(position))
-            {
-                return Some(self.collect_component_rename_locations(&node.tag_name));
+            if node.name_range.contains_position(position) {
+                return Some(self.collect_component_rename_locations(&node.name_range));
             }
         }
 
@@ -394,12 +391,9 @@ impl Program {
         }
 
         for component_node in ast.component_declarations() {
-            if let Some(range) = component_node
-                .tag_name_ranges()
-                .find(|r| r.contains_position(position))
-            {
+            if component_node.name_range.contains_position(position) {
                 return Some(RenameableSymbol {
-                    range: range.clone(),
+                    range: component_node.name_range.clone(),
                 });
             }
         }

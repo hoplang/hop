@@ -501,9 +501,11 @@ fn parse_component_declaration(
         None
     };
 
-    let mut params = None;
+    let mut params = Vec::new();
+    let mut params_range = None;
     let mut rest_param: Option<(VarName, DocumentRange)> = None;
-    if let Some((items, params_range)) = parsed_params {
+    if let Some((items, range)) = parsed_params {
+        params_range = Some(range);
         if let Some(first) = items
             .iter()
             .position(|i| matches!(i, ParamItem::Rest { .. }))
@@ -527,10 +529,9 @@ fn parse_component_declaration(
             }
         }
 
-        let mut regular = Vec::new();
         for item in items {
             match item {
-                ParamItem::Param(p) => regular.push(*p),
+                ParamItem::Param(p) => params.push(*p),
                 ParamItem::Rest {
                     var_name, range, ..
                 } => {
@@ -538,7 +539,6 @@ fn parse_component_declaration(
                 }
             }
         }
-        params = Some((regular, params_range));
     }
 
     let (body, body_end) = parse_declaration_body(iter, comments, errors, &name_range)?;
@@ -558,9 +558,9 @@ fn parse_component_declaration(
 
     Some(ParsedComponentDeclaration {
         component_name,
-        tag_name: name_range,
-        closing_tag_name: None,
+        name_range,
         params,
+        params_range,
         rest_param,
         range,
         body,

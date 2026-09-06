@@ -185,14 +185,14 @@ fn typecheck_module(
                         tail: Tail::Closed,
                         rest_param: c.rest_param.as_ref().map(|(name, _)| name.clone()),
                     }),
-                    c.tag_name.clone(),
+                    c.name_range.clone(),
                 );
                 if insertion.is_err() {
                     errors.push(TypeError::new(
                         TypeErrorKind::TypeNameIsAlreadyDefined {
                             name: c.component_name.clone(),
                         },
-                        c.tag_name.clone(),
+                        c.name_range.clone(),
                     ));
                 }
             }
@@ -601,88 +601,80 @@ fn register_component_signature<'a>(
     let mut declared_params: Vec<ParamEntry> = Vec::new();
     let mut typed_params = Vec::new();
     let mut seen_param_names: HashSet<VarName> = HashSet::new();
-    if let Some((params, _)) = params {
-        for param in params {
-            if !seen_param_names.insert(param.var_name.clone()) {
-                errors.push(TypeError::new(
-                    TypeErrorKind::DuplicateParameter {
-                        name: param.var_name.clone(),
-                    },
-                    param.var_name_range.clone(),
-                ));
-                continue;
-            }
+    for param in params {
+        if !seen_param_names.insert(param.var_name.clone()) {
+            errors.push(TypeError::new(
+                TypeErrorKind::DuplicateParameter {
+                    name: param.var_name.clone(),
+                },
+                param.var_name_range.clone(),
+            ));
+            continue;
+        }
 
-            let Some(param_type) =
-                resolve_type(&param.var_type, type_env, definition_links, errors)
-            else {
-                continue;
-            };
+        let Some(param_type) = resolve_type(&param.var_type, type_env, definition_links, errors)
+        else {
+            continue;
+        };
 
-            let typed_default_value = {
-                if let Some(default_expr) = &param.default_value {
-                    // Use a fresh variable scope, default values
-                    // are constant and can't reference anything from
-                    // the environment.
-                    let mut fresh_var_env = VariableScope::new();
-                    if let Some(typed_default) = typecheck_expr(
-                        default_expr,
-                        Some(&param_type),
-                        &[],
-                        &mut fresh_var_env,
-                        type_env,
-                        registry,
-                        annotations,
-                        definition_links,
-                        asset_references,
-                        errors,
-                    ) {
-                        let default_type = typed_default.get_type();
-                        if *default_type != *param_type {
-                            errors.push(TypeError::new(
-                                TypeErrorKind::DefaultValueTypeMismatch {
-                                    param_name: param.var_name.clone(),
-                                    expected: param_type.clone(),
-                                    found: default_type,
-                                },
-                                default_expr.range().clone(),
-                            ));
-                            None
-                        } else {
-                            Some(typed_default)
-                        }
-                    } else {
+        let typed_default_value = {
+            if let Some(default_expr) = &param.default_value {
+                // Use a fresh variable scope, default values
+                // are constant and can't reference anything from
+                // the environment.
+                let mut fresh_var_env = VariableScope::new();
+                if let Some(typed_default) = typecheck_expr(
+                    default_expr,
+                    Some(&param_type),
+                    &[],
+                    &mut fresh_var_env,
+                    type_env,
+                    registry,
+                    annotations,
+                    definition_links,
+                    asset_references,
+                    errors,
+                ) {
+                    let default_type = typed_default.get_type();
+                    if *default_type != *param_type {
+                        errors.push(TypeError::new(
+                            TypeErrorKind::DefaultValueTypeMismatch {
+                                param_name: param.var_name.clone(),
+                                expected: param_type.clone(),
+                                found: default_type,
+                            },
+                            default_expr.range().clone(),
+                        ));
                         None
+                    } else {
+                        Some(typed_default)
                     }
                 } else {
                     None
                 }
-            };
+            } else {
+                None
+            }
+        };
 
-            annotations.push(HoverAnnotation::TypeForVarName {
-                range: param.var_name_range.clone(),
-                typ: param_type.clone(),
-                var_name: param.var_name.clone(),
-            });
-            validate_examples_annotation(
-                &param.examples,
-                &param_type,
-                &param.var_name_range,
-                errors,
-            );
+        annotations.push(HoverAnnotation::TypeForVarName {
+            range: param.var_name_range.clone(),
+            typ: param_type.clone(),
+            var_name: param.var_name.clone(),
+        });
+        validate_examples_annotation(&param.examples, &param_type, &param.var_name_range, errors);
 
-            resolved_params.push((param, param_type.clone()));
-            declared_params.push(ParamEntry {
-                name: param.var_name.clone(),
-                typ: param_type.clone(),
-                default: typed_default_value,
-            });
-            typed_params.push(TypedParameter {
-                var_name: param.var_name.clone(),
-                var_type: param_type,
-                examples: param.examples.clone(),
-            });
-        }
+        resolved_params.push((param, param_type.clone()));
+        declared_params.push(ParamEntry {
+            name: param.var_name.clone(),
+            typ: param_type.clone(),
+            default: typed_default_value,
+        });
+        typed_params.push(TypedParameter {
+            var_name: param.var_name.clone(),
+            var_type: param_type,
+            examples: param.examples.clone(),
+        });
     }
 
     let component_signature = FunctionSignature {
@@ -724,8 +716,7 @@ fn typecheck_component_body(
     let ParsedComponentDeclaration {
         body,
         component_name,
-        tag_name,
-        closing_tag_name,
+        name_range,
         rest_param,
         pub_range,
         ..
@@ -768,16 +759,9 @@ fn typecheck_component_body(
     }
 
     definition_links.push(DefinitionLink {
-        use_range: tag_name.clone(),
-        definition_range: tag_name.clone(),
+        use_range: name_range.clone(),
+        definition_range: name_range.clone(),
     });
-
-    if let Some(closing_range) = closing_tag_name {
-        definition_links.push(DefinitionLink {
-            use_range: closing_range.clone(),
-            definition_range: tag_name.clone(),
-        });
-    }
 
     let mut typed_params = typed_params;
     typed_params.extend(forwarded.iter().map(|param| TypedParameter {
@@ -799,7 +783,7 @@ fn typecheck_component_body(
         component_name.clone(),
         TypeExport::Component {
             signature,
-            definition_range: tag_name.clone(),
+            definition_range: name_range.clone(),
             is_pub: pub_range.is_some(),
         },
     );

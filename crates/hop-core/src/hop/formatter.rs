@@ -272,8 +272,8 @@ fn format_component_declaration<'a>(
     let leading_comments = drain_comments_before(arena, comments, component.range.start());
 
     // Format parameters (omit parentheses if no parameters and no rest param)
-    let params_doc = match &component.params {
-        Some((params, params_range)) if !params.is_empty() => {
+    let params_doc = match (&component.params, &component.params_range) {
+        (params, Some(params_range)) if !params.is_empty() => {
             let mut params_inner = arena.nil();
             let rest_param_doc = component
                 .rest_param
