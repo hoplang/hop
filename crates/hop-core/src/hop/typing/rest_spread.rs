@@ -169,7 +169,7 @@ pub fn pair_rest_spread(
 /// Follow every component's rest to wherever it lands, and record which of the
 /// target's parameters it carries.
 ///
-/// A component spreads its rest exactly once, the parser rejects a second
+/// A component spreads its rest exactly once, the typechecker rejects a second
 /// spread, so the spread relation is a function, and following it either
 /// reaches an HTML element, leaves the module for an import, or comes back to a
 /// component already on the path. Only that last case has no tail to assign.

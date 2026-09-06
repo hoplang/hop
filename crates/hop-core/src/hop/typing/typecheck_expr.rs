@@ -1862,7 +1862,6 @@ pub fn typecheck_expr(
     }
 }
 
-// Typecheck a match expression and compile it to a TypedExpr.
 /// Collect definition links for enum variant references in match patterns.
 fn collect_pattern_definition_links(
     pattern: &ParsedMatchPattern,

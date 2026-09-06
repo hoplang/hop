@@ -34,7 +34,7 @@ pub enum ParsedDeclaration {
 /// A function declaration.
 ///
 /// ```text
-/// fn add_five(x: Int) -> {
+/// fn add_five(x: Int) -> Int {
 ///   x + 5
 /// }
 /// ```

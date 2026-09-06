@@ -441,7 +441,7 @@ fn lex_closing_tag(
 ///      ^^^^^
 /// ```
 /// Expects that the iterator points to the initial char.
-/// Stops at '<', '{', or '\n' (newlines are emitted as separate tokens).
+/// Stops at '<', '{', '}', or '\n' (newlines are emitted as separate tokens).
 fn lex_text(iter: &mut Peekable<DocumentCursor>) -> MarkupToken {
     let Some(initial) = iter.next() else {
         panic!("Expected an initial char in lex_text but got None");
