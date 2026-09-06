@@ -207,35 +207,6 @@ pub fn expect_type_name(
     }
 }
 
-pub fn parse_comma_separated<T, F>(
-    iter: &mut Peekable<DocumentCursor>,
-    comments: &mut VecDeque<DocumentRange>,
-    errors: &mut Vec<ParseError>,
-    range: &DocumentRange,
-    mut parse: F,
-    end_token: Option<&LangToken>,
-) -> Option<Vec<T>>
-where
-    F: FnMut(
-        &mut Peekable<DocumentCursor>,
-        &mut VecDeque<DocumentRange>,
-        &mut Vec<ParseError>,
-        &DocumentRange,
-    ) -> Option<T>,
-{
-    let mut items = Vec::new();
-    items.push(parse(iter, comments, errors, range)?);
-    while advance_if(iter, comments, errors, LangToken::Comma).is_some() {
-        let next_token = peek(iter).map(|(t, _)| t);
-        if next_token.as_ref() == end_token || (end_token.is_some() && next_token.is_none()) {
-            break;
-        }
-        items.push(parse(iter, comments, errors, range)?);
-    }
-
-    Some(items)
-}
-
 pub fn parse_delimited_list<T, F>(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
@@ -243,7 +214,7 @@ pub fn parse_delimited_list<T, F>(
     range: &DocumentRange,
     pair: LangTokenPair,
     left_delimiter_range: &DocumentRange,
-    parse: F,
+    mut parse: F,
 ) -> Option<(Vec<T>, DocumentRange)>
 where
     F: FnMut(
@@ -257,8 +228,14 @@ where
     if let Some(closing_range) = advance_if(iter, comments, errors, right_delimiter.clone()) {
         return Some((Vec::new(), closing_range));
     }
-    let items =
-        parse_comma_separated(iter, comments, errors, range, parse, Some(&right_delimiter))?;
+    let mut items = vec![parse(iter, comments, errors, range)?];
+    while advance_if(iter, comments, errors, LangToken::Comma).is_some() {
+        // Allow a trailing comma before the right delimiter.
+        if peek(iter).is_none_or(|(token, _)| token == right_delimiter) {
+            break;
+        }
+        items.push(parse(iter, comments, errors, range)?);
+    }
     let closing_range = expect_right_delimiter(iter, comments, errors, pair, left_delimiter_range)?;
     Some((items, closing_range))
 }

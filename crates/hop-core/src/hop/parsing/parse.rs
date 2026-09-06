@@ -4037,6 +4037,34 @@ mod tests {
     }
 
     #[test]
+    fn rejects_let_with_no_bindings() {
+        reject(
+            indoc! {"
+                component Main {
+                    <let {}>
+                        <div>Content</div>
+                    </let>
+                }
+            "},
+            expect![[r#"
+                -- errors --
+                error: Missing binding in <let> tag
+                1 | component Main {
+                2 |     <let {}>
+                  |          ^^
+                -- ast --
+                component Main {
+                  <let {}>
+                    <div>
+                      Content
+                    </div>
+                  </let>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
     fn rejects_let_with_missing_value() {
         reject(
             indoc! {"
@@ -4212,16 +4240,12 @@ mod tests {
                 1 | component Main {
                 2 |     <let {first: String = "a" second: String = "b"}>
                   |                               ^^^^^^
+
+                error: Unexpected text at top level
+                4 |     </let>
+                5 | }
+                  | ^
                 -- ast --
-                component Main {
-                  <let {first: String = "a"}>
-                    <div>
-                      {first}
-                      {" "}
-                      {second}
-                    </div>
-                  </let>
-                }
             "#]],
         );
     }

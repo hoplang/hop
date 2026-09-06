@@ -469,14 +469,14 @@ fn parse_record_literal(
         Field(FieldName, ParsedExpr),
         Spread(ParsedExpr, DocumentRange),
     }
-    let left_delim = expect_token(iter, comments, errors, range, &LangToken::LeftBrace)?;
-    let (entries, right_delim) = parse_delimited_list(
+    let left_delimiter = expect_token(iter, comments, errors, range, &LangToken::LeftBrace)?;
+    let (entries, right_delimiter) = parse_delimited_list(
         iter,
         comments,
         errors,
         range,
         LangTokenPair::Braces,
-        &left_delim,
+        &left_delimiter,
         |iter, comments, errors, range| {
             if let Some(spread_range) = advance_if(iter, comments, errors, LangToken::DotDotDot) {
                 let subject = parse_expr(iter, comments, errors, range)?;
@@ -513,7 +513,7 @@ fn parse_record_literal(
         record_name_range: name_range.clone(),
         fields,
         spread,
-        range: name_range.to(right_delim),
+        range: name_range.to(right_delimiter),
     })
 }
 

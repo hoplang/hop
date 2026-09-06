@@ -469,47 +469,72 @@ fn parse_opening_tag(
             },
 
             TagToken::ExpressionStart { left_brace } => {
-                let parse_succeeded = match &mut header {
+                let right_brace = match &mut header {
                     TagHeader::If { cond: expr } | TagHeader::Match { expr } => {
                         *expr = parse_expr::parse_expr(iter, comments, errors, &left_brace);
-                        expr.is_some()
+                        expr.as_ref().and_then(|_| {
+                            parse_helpers::expect_right_delimiter(
+                                iter,
+                                comments,
+                                errors,
+                                LangTokenPair::Braces,
+                                &left_brace,
+                            )
+                        })
                     }
 
                     TagHeader::For { expr } => {
                         *expr = parse_loop_header(iter, comments, errors, &left_brace);
-                        expr.is_some()
+                        expr.as_ref().and_then(|_| {
+                            parse_helpers::expect_right_delimiter(
+                                iter,
+                                comments,
+                                errors,
+                                LangTokenPair::Braces,
+                                &left_brace,
+                            )
+                        })
                     }
 
                     TagHeader::Case { pattern } => {
                         *pattern =
                             parse_expr::parse_match_pattern(iter, comments, errors, &left_brace);
-                        pattern.is_some()
+                        pattern.as_ref().and_then(|_| {
+                            parse_helpers::expect_right_delimiter(
+                                iter,
+                                comments,
+                                errors,
+                                LangTokenPair::Braces,
+                                &left_brace,
+                            )
+                        })
                     }
 
                     TagHeader::Let { bindings } => {
-                        *bindings = parse_let_bindings(iter, comments, errors, &left_brace);
-                        bindings.is_some()
+                        let (parsed_bindings, right_brace) =
+                            parse_let_bindings(iter, comments, errors, &left_brace).unzip();
+                        *bindings = parsed_bindings;
+                        right_brace
                     }
 
                     TagHeader::Component { .. } | TagHeader::Html { .. } => {
-                        parse_expr::parse_expr(iter, comments, errors, &left_brace).is_some()
+                        parse_expr::parse_expr(iter, comments, errors, &left_brace).and_then(|_| {
+                            parse_helpers::expect_right_delimiter(
+                                iter,
+                                comments,
+                                errors,
+                                LangTokenPair::Braces,
+                                &left_brace,
+                            )
+                        })
                     }
 
                     TagHeader::Fragment => unreachable!(),
                 };
-                expression_range = Some(left_brace.clone());
-                if parse_succeeded {
-                    let right_brace = parse_helpers::expect_right_delimiter(
-                        iter,
-                        comments,
-                        errors,
-                        LangTokenPair::Braces,
-                        &left_brace,
-                    );
-                    if let Some(right_brace) = right_brace {
-                        expression_range = Some(left_brace.to(right_brace));
-                    }
-                }
+                expression_range = Some(match right_brace {
+                    Some(right_brace) => left_brace.to(right_brace),
+                    None => left_brace,
+                });
             }
         }
     }
@@ -520,6 +545,12 @@ fn parse_opening_tag(
             Some((ParseErrorKind::MissingForExpression {}, &full_range))
         }
         (TagHeader::Let { .. }, None) => Some((ParseErrorKind::MissingLetBinding {}, &full_range)),
+        (
+            TagHeader::Let {
+                bindings: Some(bindings),
+            },
+            Some(range),
+        ) if bindings.is_empty() => Some((ParseErrorKind::MissingLetBinding {}, range)),
         (TagHeader::Match { .. }, None) => {
             Some((ParseErrorKind::MissingMatchExpression {}, &full_range))
         }
@@ -837,13 +868,15 @@ fn parse_let_bindings(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut Vec<ParseError>,
-    range: &DocumentRange,
-) -> Option<Vec<ParsedLetBinding>> {
-    let bindings = parse_helpers::parse_comma_separated(
+    left_brace: &DocumentRange,
+) -> Option<(Vec<ParsedLetBinding>, DocumentRange)> {
+    parse_helpers::parse_delimited_list(
         iter,
         comments,
         errors,
-        range,
+        left_brace,
+        LangTokenPair::Braces,
+        left_brace,
         |iter, comments, errors, range| {
             let (var_name, var_name_range) =
                 parse_helpers::expect_variable_name(iter, comments, errors, range)?;
@@ -868,7 +901,5 @@ fn parse_let_bindings(
                 value_expr,
             })
         },
-        Some(&token::LangToken::RightBrace),
-    )?;
-    Some(bindings)
+    )
 }
