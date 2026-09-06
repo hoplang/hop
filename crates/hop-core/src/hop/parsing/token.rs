@@ -2,6 +2,29 @@ use std::fmt;
 
 use crate::document::{CheapString, DocumentRange};
 
+pub enum LangTokenPair {
+    Parens,
+    Brackets,
+    Braces,
+}
+
+impl LangTokenPair {
+    pub fn left_delimiter(&self) -> LangToken {
+        match self {
+            LangTokenPair::Braces => LangToken::LeftBrace,
+            LangTokenPair::Parens => LangToken::LeftParen,
+            LangTokenPair::Brackets => LangToken::LeftBracket,
+        }
+    }
+    pub fn right_delimiter(&self) -> LangToken {
+        match self {
+            LangTokenPair::Braces => LangToken::RightBrace,
+            LangTokenPair::Parens => LangToken::RightParen,
+            LangTokenPair::Brackets => LangToken::RightBracket,
+        }
+    }
+}
+
 /// A token in the surface languge, outside of the markup tokenization mode.
 #[derive(Debug, Clone, PartialEq)]
 pub enum LangToken {
@@ -195,19 +218,6 @@ pub struct RawTextToken {
 pub struct AttributeString {
     pub content_range: Option<DocumentRange>,
     pub quoted_range: DocumentRange,
-}
-
-impl LangToken {
-    pub fn opposite_token(&self) -> LangToken {
-        match self {
-            LangToken::LeftBrace => LangToken::RightBrace,
-            LangToken::LeftBracket => LangToken::RightBracket,
-            LangToken::LeftParen => LangToken::RightParen,
-            _ => {
-                panic!("opposite_token called on {}", self)
-            }
-        }
-    }
 }
 
 impl fmt::Display for LangToken {

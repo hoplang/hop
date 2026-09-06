@@ -2,12 +2,13 @@ use std::collections::VecDeque;
 use std::iter::Peekable;
 
 use crate::document::{CheapString, DocumentCursor, DocumentRange};
+use crate::hop::parsing::token::LangTokenPair;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 
 use super::parse_helpers::{
-    advance_if, expect_field_name, expect_opposite, expect_token, expect_type_name,
+    advance_if, expect_field_name, expect_right_delimiter, expect_token, expect_type_name,
     expect_variable_name, next_if, parse_delimited_list,
 };
 use super::parse_nodes;
@@ -219,7 +220,7 @@ fn parse_array_literal(
         comments,
         errors,
         range,
-        &LangToken::LeftBracket,
+        LangTokenPair::Brackets,
         &left_bracket,
         parse_expr,
     )?;
@@ -263,7 +264,7 @@ pub fn parse_primary(
                     comments,
                     errors,
                     range,
-                    &LangToken::LeftParen,
+                    LangTokenPair::Parens,
                     &left_paren,
                     parse_expr,
                 )?;
@@ -323,7 +324,7 @@ pub fn parse_primary(
         }
         Some((LangToken::LeftParen, left_paren)) => {
             let inner = parse_expr(iter, comments, errors, range)?;
-            expect_opposite(iter, comments, errors, &LangToken::LeftParen, &left_paren)?;
+            expect_right_delimiter(iter, comments, errors, LangTokenPair::Parens, &left_paren)?;
             inner
         }
         Some((LangToken::Match, match_range)) => {
@@ -333,7 +334,7 @@ pub fn parse_primary(
             let left_paren = expect_token(iter, comments, errors, range, &LangToken::LeftParen)?;
             let value = parse_expr(iter, comments, errors, range)?;
             let right_paren =
-                expect_opposite(iter, comments, errors, &LangToken::LeftParen, &left_paren)?;
+                expect_right_delimiter(iter, comments, errors, LangTokenPair::Parens, &left_paren)?;
             ParsedExpr::OptionLiteral {
                 value: Some(Box::new(value)),
                 range: some_range.to(right_paren),
@@ -373,7 +374,7 @@ pub fn parse_primary(
             }
             let left_paren = expect_token(iter, comments, errors, range, &LangToken::LeftParen)?;
             let right_paren =
-                expect_opposite(iter, comments, errors, &LangToken::LeftParen, &left_paren)?;
+                expect_right_delimiter(iter, comments, errors, LangTokenPair::Parens, &left_paren)?;
             ParsedExpr::FragmentEmpty {
                 range: start_range.to(right_paren),
             }
@@ -402,7 +403,7 @@ pub fn parse_primary(
         let (field_name, field_range) = expect_field_name(iter, comments, errors, &dot_range)?;
         if let Some(left_paren) = advance_if(iter, comments, errors, LangToken::LeftParen) {
             let right_paren =
-                expect_opposite(iter, comments, errors, &LangToken::LeftParen, &left_paren)?;
+                expect_right_delimiter(iter, comments, errors, LangTokenPair::Parens, &left_paren)?;
             let new_range = expr.range().clone().to(right_paren);
             expr = ParsedExpr::MethodCall {
                 receiver: Box::new(expr),
@@ -444,7 +445,7 @@ fn parse_macro_invocation(
         comments,
         errors,
         range,
-        &LangToken::LeftParen,
+        LangTokenPair::Parens,
         &left_paren,
         parse_expr,
     )?;
@@ -474,7 +475,7 @@ fn parse_record_literal(
         comments,
         errors,
         range,
-        &LangToken::LeftBrace,
+        LangTokenPair::Braces,
         &left_delim,
         |iter, comments, errors, range| {
             if let Some(spread_range) = advance_if(iter, comments, errors, LangToken::DotDotDot) {
@@ -535,7 +536,7 @@ fn parse_enum_literal(
             comments,
             errors,
             range,
-            &LangToken::LeftBrace,
+            LangTokenPair::Braces,
             &left_delim,
             |iter, comments, errors, range| {
                 if let Some(spread_range) = advance_if(iter, comments, errors, LangToken::DotDotDot)
@@ -583,7 +584,7 @@ fn parse_match(
         comments,
         errors,
         range,
-        &LangToken::LeftBrace,
+        LangTokenPair::Braces,
         &left_brace,
         |iter, comments, errors, range| {
             let pattern = parse_match_pattern(iter, comments, errors, range)?;
@@ -634,7 +635,7 @@ pub fn parse_match_pattern(
         let left_paren = expect_token(iter, comments, errors, range, &LangToken::LeftParen)?;
         let inner_pattern = parse_match_pattern(iter, comments, errors, range)?;
         let right_paren =
-            expect_opposite(iter, comments, errors, &LangToken::LeftParen, &left_paren)?;
+            expect_right_delimiter(iter, comments, errors, LangTokenPair::Parens, &left_paren)?;
         return Some(ParsedMatchPattern::Constructor {
             constructor: Constructor::OptionSome,
             args: vec![inner_pattern],
@@ -680,7 +681,7 @@ pub fn parse_match_pattern(
                     comments,
                     errors,
                     range,
-                    &LangToken::LeftBrace,
+                    LangTokenPair::Braces,
                     &left_brace,
                     |iter, comments, errors, range| {
                         let (field_name, field_range) =
@@ -732,7 +733,7 @@ pub fn parse_match_pattern(
                 comments,
                 errors,
                 range,
-                &LangToken::LeftBrace,
+                LangTokenPair::Braces,
                 &left_brace,
                 |iter, comments, errors, range| {
                     let (field_name, field_range) =

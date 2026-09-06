@@ -12,6 +12,7 @@ use crate::document_id::DocumentId;
 use crate::examples_annotation::ExamplesAnnotation;
 use crate::hop::parsing::parse_type::parse_type;
 use crate::hop::parsing::parsed_ast::ParsedParameter;
+use crate::hop::parsing::token::LangTokenPair;
 use crate::hop::parsing::{ParsedExpr, ParsedType};
 use crate::parse_error::{ParseError, ParseErrorKind};
 use crate::symbols::field_name::FieldName;
@@ -248,7 +249,7 @@ fn parse_record_declaration(
         comments,
         errors,
         range,
-        &token::LangToken::LeftBrace,
+        LangTokenPair::Braces,
         &left_brace,
         |iter, comments, errors, range| {
             let examples = parse_examples_annotation(iter, comments, errors);
@@ -302,7 +303,7 @@ fn parse_enum_declaration(
         comments,
         errors,
         range,
-        &token::LangToken::LeftBrace,
+        LangTokenPair::Braces,
         &left_brace,
         |iter, comments, errors, range| {
             let (variant_name, variant_range) =
@@ -443,7 +444,7 @@ fn parse_component_declaration(
             comments,
             errors,
             &left_paren,
-            &token::LangToken::LeftParen,
+            LangTokenPair::Parens,
             &left_paren,
             |iter, comments, errors, range| {
                 // A `...name` rest parameter.
@@ -605,7 +606,7 @@ fn parse_page_or_view_header(
             comments,
             errors,
             &left_paren,
-            &token::LangToken::LeftParen,
+            LangTokenPair::Parens,
             &left_paren,
             |iter, comments, errors, range| {
                 let examples = parse_examples_annotation(iter, comments, errors);
@@ -738,11 +739,11 @@ fn parse_page_declaration(
     };
     let (body, _) = parse_declaration_body(iter, comments, errors, &body_keyword_range)?;
 
-    let outer_body_end = parse_helpers::expect_opposite(
+    let outer_body_end = parse_helpers::expect_right_delimiter(
         iter,
         comments,
         errors,
-        &token::LangToken::LeftBrace,
+        LangTokenPair::Braces,
         &outer_body_start,
     )?;
     let start_range = pub_range.clone().unwrap_or_else(|| keyword_range.clone());
@@ -775,7 +776,7 @@ fn parse_function_declaration(
         comments,
         errors,
         &left_paren,
-        &token::LangToken::LeftParen,
+        LangTokenPair::Parens,
         &left_paren,
         |iter, comments, errors, range| {
             let (var_name, var_name_range) =
@@ -805,11 +806,11 @@ fn parse_function_declaration(
     let body_start =
         parse_helpers::expect_token(iter, comments, errors, range, &token::LangToken::LeftBrace)?;
     let body = parse_expr::parse_expr(iter, comments, errors, range)?;
-    let body_end = parse_helpers::expect_opposite(
+    let body_end = parse_helpers::expect_right_delimiter(
         iter,
         comments,
         errors,
-        &token::LangToken::LeftBrace,
+        LangTokenPair::Braces,
         &body_start,
     )?;
     let full_range = keyword_range.to(body_end);
@@ -844,11 +845,11 @@ fn parse_declaration_body(
         parse_expr::parse_expr(iter, comments, errors, &left_brace)?
     };
 
-    let right_brace = parse_helpers::expect_opposite(
+    let right_brace = parse_helpers::expect_right_delimiter(
         iter,
         comments,
         errors,
-        &token::LangToken::LeftBrace,
+        LangTokenPair::Braces,
         &left_brace,
     )?;
     Some((body, right_brace))

@@ -2,6 +2,7 @@ use std::collections::VecDeque;
 use std::iter::Peekable;
 
 use crate::document::{DocumentCursor, DocumentRange};
+use crate::hop::parsing::token::LangTokenPair;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
@@ -71,14 +72,14 @@ pub fn expect_token(
     }
 }
 
-pub fn expect_opposite(
+pub fn expect_right_delimiter(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut Vec<ParseError>,
-    token: &LangToken,
-    token_range: &DocumentRange,
+    pair: LangTokenPair,
+    left_delimiter_range: &DocumentRange,
 ) -> Option<DocumentRange> {
-    let expected = token.opposite_token();
+    let expected = pair.right_delimiter();
     match next(iter, comments, errors) {
         Some((actual, actual_range)) if actual == expected => Some(actual_range),
         Some((actual, actual_range)) => {
@@ -91,9 +92,9 @@ pub fn expect_opposite(
         None => {
             errors.push(ParseError::new(
                 ParseErrorKind::UnmatchedToken {
-                    token: token.clone(),
+                    token: pair.left_delimiter(),
                 },
-                token_range.clone(),
+                left_delimiter_range.clone(),
             ));
             None
         }
@@ -240,8 +241,8 @@ pub fn parse_delimited_list<T, F>(
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut Vec<ParseError>,
     range: &DocumentRange,
-    opening_token: &LangToken,
-    opening_range: &DocumentRange,
+    pair: LangTokenPair,
+    left_delimiter_range: &DocumentRange,
     parse: F,
 ) -> Option<(Vec<T>, DocumentRange)>
 where
@@ -252,11 +253,12 @@ where
         &DocumentRange,
     ) -> Option<T>,
 {
-    let closing_token = opening_token.opposite_token();
-    if let Some(closing_range) = advance_if(iter, comments, errors, closing_token.clone()) {
+    let right_delimiter = pair.right_delimiter();
+    if let Some(closing_range) = advance_if(iter, comments, errors, right_delimiter.clone()) {
         return Some((Vec::new(), closing_range));
     }
-    let items = parse_comma_separated(iter, comments, errors, range, parse, Some(&closing_token))?;
-    let closing_range = expect_opposite(iter, comments, errors, opening_token, opening_range)?;
+    let items =
+        parse_comma_separated(iter, comments, errors, range, parse, Some(&right_delimiter))?;
+    let closing_range = expect_right_delimiter(iter, comments, errors, pair, left_delimiter_range)?;
     Some((items, closing_range))
 }

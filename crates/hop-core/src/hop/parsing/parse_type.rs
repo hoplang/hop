@@ -1,11 +1,12 @@
 use std::{collections::VecDeque, iter::Peekable};
 
-use super::parse_helpers::{expect_opposite, expect_token};
+use super::parse_helpers::{expect_right_delimiter, expect_token};
 use super::tokenize_expr::next;
 
 use super::parsed_type::ParsedType;
 use super::token::LangToken;
 use crate::document::{DocumentCursor, DocumentRange};
+use crate::hop::parsing::token::LangTokenPair;
 use crate::parse_error::{ParseError, ParseErrorKind};
 use crate::symbols::type_name::TypeName;
 
@@ -27,11 +28,11 @@ pub fn parse_type(
             let left_bracket =
                 expect_token(iter, comments, errors, range, &LangToken::LeftBracket)?;
             let element = parse_type(iter, comments, errors, range)?;
-            let right_bracket = expect_opposite(
+            let right_bracket = expect_right_delimiter(
                 iter,
                 comments,
                 errors,
-                &LangToken::LeftBracket,
+                LangTokenPair::Brackets,
                 &left_bracket,
             )?;
             Some(ParsedType::Array {
@@ -43,11 +44,11 @@ pub fn parse_type(
             let left_bracket =
                 expect_token(iter, comments, errors, range, &LangToken::LeftBracket)?;
             let element = parse_type(iter, comments, errors, range)?;
-            let right_bracket = expect_opposite(
+            let right_bracket = expect_right_delimiter(
                 iter,
                 comments,
                 errors,
-                &LangToken::LeftBracket,
+                LangTokenPair::Brackets,
                 &left_bracket,
             )?;
             Some(ParsedType::Option {

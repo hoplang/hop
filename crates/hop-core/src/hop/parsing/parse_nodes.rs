@@ -14,6 +14,7 @@ use super::whitespace;
 use crate::document::{DocumentCursor, DocumentRange};
 use crate::hop::parsing::parse_type::parse_type;
 use crate::hop::parsing::parsed_expr::ParsedMatchPattern;
+use crate::hop::parsing::token::LangTokenPair;
 use crate::hop::parsing::token::MarkupToken;
 use crate::hop::parsing::token::RawTextToken;
 use crate::hop::parsing::token::TagToken;
@@ -229,11 +230,11 @@ fn parse_node(
             MarkupToken::ExpressionStart { left_brace } => {
                 if let Some(expression) =
                     parse_expr::parse_expr(iter, comments, errors, &left_brace)
-                    && let Some(right_brace) = parse_helpers::expect_opposite(
+                    && let Some(right_brace) = parse_helpers::expect_right_delimiter(
                         iter,
                         comments,
                         errors,
-                        &token::LangToken::LeftBrace,
+                        LangTokenPair::Braces,
                         &left_brace,
                     )
                 {
@@ -430,11 +431,11 @@ fn parse_opening_tag(
 
             TagToken::AttributeExpressionStart { name, left_brace } => {
                 if let Some(value) = parse_expr::parse_expr(iter, comments, errors, &left_brace)
-                    && parse_helpers::expect_opposite(
+                    && parse_helpers::expect_right_delimiter(
                         iter,
                         comments,
                         errors,
-                        &token::LangToken::LeftBrace,
+                        LangTokenPair::Braces,
                         &left_brace,
                     )
                     .is_some()
@@ -498,11 +499,11 @@ fn parse_opening_tag(
                 };
                 expression_range = Some(left_brace.clone());
                 if parse_succeeded {
-                    let right_brace = parse_helpers::expect_opposite(
+                    let right_brace = parse_helpers::expect_right_delimiter(
                         iter,
                         comments,
                         errors,
-                        &token::LangToken::LeftBrace,
+                        LangTokenPair::Braces,
                         &left_brace,
                     );
                     if let Some(right_brace) = right_brace {
