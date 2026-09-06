@@ -8,6 +8,7 @@ pub mod type_registry;
 pub mod type_registry_builder;
 pub mod typecheck;
 pub mod typecheck_expr;
+pub mod typecheck_node;
 pub mod typed_ast;
 #[cfg(test)]
 pub mod typed_ast_builder;

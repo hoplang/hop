@@ -4,7 +4,7 @@ use std::sync::Arc;
 use super::r#type::{NumericType, Type};
 use super::type_env::TypeBinding;
 use super::type_registry::{ResolvedType, TypeRegistry};
-use super::typecheck::typecheck_node;
+use super::typecheck_node::typecheck_node;
 use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
 use crate::document::{CheapString, DocumentRange};
