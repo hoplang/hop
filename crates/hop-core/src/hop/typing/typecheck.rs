@@ -1373,18 +1373,34 @@ pub fn typecheck_node(
                     None => None,
                 };
 
-                // For annotated bindings the type is known up front, so push the
-                // variable into scope before typechecking the value. This lets
-                // later bindings reference it even if the value fails to typecheck.
-                if let Some(declared) = &declared_type {
+                let typed_value = typecheck_expr(
+                    &binding.value_expr,
+                    declared_type.as_ref(),
+                    forwarded_params,
+                    var_env,
+                    type_env,
+                    registry,
+                    annotations,
+                    definition_links,
+                    asset_references,
+                    errors,
+                );
+
+                let binding_type = match (&declared_type, &typed_value) {
+                    (Some(declared), _) => Some(declared.clone()),
+                    (None, Some(typed_value)) => Some(typed_value.get_type()),
+                    (None, None) => None,
+                };
+
+                if let Some(binding_type) = binding_type {
                     match var_env.push(
                         binding.var_name.clone(),
-                        (declared.clone(), binding.var_name_range.clone()),
+                        (binding_type.clone(), binding.var_name_range.clone()),
                     ) {
                         Ok(_) => {
                             annotations.push(HoverAnnotation::TypeForVarName {
                                 range: binding.var_name_range.clone(),
-                                typ: declared.clone(),
+                                typ: binding_type,
                                 var_name: binding.var_name.clone(),
                             });
                             pushed_bindings.push(binding);
@@ -1400,63 +1416,21 @@ pub fn typecheck_node(
                     }
                 }
 
-                // Type-check the value. An annotation acts as the expected type;
-                // otherwise the value is checked with no expectation and its
-                // inferred type becomes the binding's type.
-                let Some(typed_value) = typecheck_expr(
-                    &binding.value_expr,
-                    declared_type.as_ref(),
-                    forwarded_params,
-                    var_env,
-                    type_env,
-                    registry,
-                    annotations,
-                    definition_links,
-                    asset_references,
-                    errors,
-                ) else {
+                let Some(typed_value) = typed_value else {
                     continue;
                 };
 
-                match &declared_type {
-                    Some(declared) => {
-                        // Validate that the value type matches the declared type.
-                        let value_type = typed_value.get_type();
-                        if *value_type != **declared {
-                            errors.push(TypeError::new(
-                                TypeErrorKind::LetBindingTypeMismatch {
-                                    expected: declared.clone(),
-                                    found: value_type,
-                                },
-                                binding.value_expr.range().clone(),
-                            ));
-                        }
-                    }
-                    None => {
-                        // Inferred binding: adopt the value's type and push the
-                        // variable into scope now that the type is known.
-                        let inferred = typed_value.get_type();
-                        match var_env.push(
-                            binding.var_name.clone(),
-                            (inferred.clone(), binding.var_name_range.clone()),
-                        ) {
-                            Ok(_) => {
-                                annotations.push(HoverAnnotation::TypeForVarName {
-                                    range: binding.var_name_range.clone(),
-                                    typ: inferred.clone(),
-                                    var_name: binding.var_name.clone(),
-                                });
-                                pushed_bindings.push(binding);
-                            }
-                            Err(_) => {
-                                errors.push(TypeError::new(
-                                    TypeErrorKind::VariableAlreadyDefined {
-                                        name: binding.var_name.clone(),
-                                    },
-                                    binding.var_name_range.clone(),
-                                ));
-                            }
-                        }
+                // Validate that the value type matches the declared type.
+                if let Some(declared) = &declared_type {
+                    let value_type = typed_value.get_type();
+                    if *value_type != **declared {
+                        errors.push(TypeError::new(
+                            TypeErrorKind::LetBindingTypeMismatch {
+                                expected: declared.clone(),
+                                found: value_type,
+                            },
+                            binding.value_expr.range().clone(),
+                        ));
                     }
                 }
 
@@ -7318,6 +7292,75 @@ mod tests {
                 1 | component Main {
                 2 |   <let {x: Int = y + 1, y: Int = 0}>
                   |                         ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_annotated_binding_that_references_itself() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component Main {
+                  <let {x: Int = x}>
+                    <div>{x.to_string()}</div>
+                  </let>
+                }
+            "#},
+            expect![[r#"
+                error: Undefined variable: x
+                  --> main.hop (line 2, col 18)
+                1 | component Main {
+                2 |   <let {x: Int = x}>
+                  |                  ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_inferred_binding_that_references_itself() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component Main {
+                  <let {x = x}>
+                    <div>{x.to_string()}</div>
+                  </let>
+                }
+            "#},
+            expect![[r#"
+                error: Undefined variable: x
+                  --> main.hop (line 2, col 13)
+                1 | component Main {
+                2 |   <let {x = x}>
+                  |             ^
+
+                error: Undefined variable: x
+                  --> main.hop (line 3, col 11)
+                2 |   <let {x = x}>
+                3 |     <div>{x.to_string()}</div>
+                  |           ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn reports_later_binding_referencing_annotated_binding_with_bad_value_once() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component Main {
+                  <let {x: Int = missing, y: Int = x + 1}>
+                    <div>{y.to_string()}</div>
+                  </let>
+                }
+            "#},
+            expect![[r#"
+                error: Undefined variable: missing
+                  --> main.hop (line 2, col 18)
+                1 | component Main {
+                2 |   <let {x: Int = missing, y: Int = x + 1}>
+                  |                  ^^^^^^^
             "#]],
         );
     }
