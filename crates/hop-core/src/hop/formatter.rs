@@ -1004,7 +1004,7 @@ fn format_expr<'a>(
     comments: &mut VecDeque<&'a DocumentRange>,
 ) -> DocBuilder<'a, Arena<'a>> {
     match expr {
-        ParsedExpr::Var { value, .. } => arena.text(value.as_str()),
+        ParsedExpr::VariableReference { value, .. } => arena.text(value.as_str()),
         ParsedExpr::Markup { node } => format_node(arena, node, comments),
         expr @ ParsedExpr::FieldAccess {
             record: object,

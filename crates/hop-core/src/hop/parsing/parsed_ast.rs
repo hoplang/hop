@@ -20,7 +20,6 @@ pub struct ParsedAst {
     comments: VecDeque<DocumentRange>,
 }
 
-/// A parsed declaration.
 #[derive(Debug, Clone)]
 pub enum ParsedDeclaration {
     Import(ParsedImportDeclaration),
@@ -48,6 +47,41 @@ pub struct ParsedFunctionDeclaration {
     pub range: DocumentRange,
 }
 
+/// A component declaration.
+///
+/// ```text
+/// component Button(label: String) {
+///   <button class="border p-2">
+///     {label}
+///   </button>
+/// }
+/// ```
+#[derive(Debug, Clone)]
+pub struct ParsedComponentDeclaration {
+    pub component_name: TypeName,
+    pub name_range: DocumentRange,
+    pub params: Vec<ParsedParameter>,
+    pub params_range: Option<DocumentRange>,
+    pub rest_param: Option<(VarName, DocumentRange)>,
+    pub body: ParsedExpr,
+    pub range: DocumentRange,
+    pub pub_range: Option<DocumentRange>,
+}
+
+/// A page declaration.
+///
+/// ```text
+/// page Main {
+///   head {
+///     <title>My page</title>
+///   }
+///   body {
+///     <div>
+///       Welcome!
+///     </div>
+///   }
+/// }
+/// ```
 #[derive(Debug, Clone)]
 pub struct ParsedPageDeclaration {
     pub name: TypeName,
@@ -62,6 +96,11 @@ pub struct ParsedPageDeclaration {
     pub is_view: bool,
 }
 
+/// An import declaration.
+///
+/// ```text
+/// import foo::bar::Baz
+/// ```
 #[derive(Debug, Clone)]
 pub struct ParsedImportDeclaration {
     pub type_name: TypeName,
@@ -74,18 +113,14 @@ pub struct ParsedImportDeclaration {
     pub module_name: ModuleName,
 }
 
-#[derive(Debug, Clone)]
-pub struct ParsedComponentDeclaration {
-    pub component_name: TypeName,
-    pub name_range: DocumentRange,
-    pub params: Vec<ParsedParameter>,
-    pub params_range: Option<DocumentRange>,
-    pub rest_param: Option<(VarName, DocumentRange)>,
-    pub body: ParsedExpr,
-    pub range: DocumentRange,
-    pub pub_range: Option<DocumentRange>,
-}
-
+/// A record declaration.
+///
+/// ```text
+/// record User {
+///   name: String,
+///   email: String,
+/// }
+/// ```
 #[derive(Debug, Clone)]
 pub struct ParsedRecordDeclaration {
     pub name: TypeName,
@@ -95,14 +130,14 @@ pub struct ParsedRecordDeclaration {
     pub pub_range: Option<DocumentRange>,
 }
 
-#[derive(Debug, Clone)]
-pub struct ParsedRecordDeclarationField {
-    pub name: FieldName,
-    pub name_range: DocumentRange,
-    pub field_type: ParsedType,
-    pub examples: Option<ExamplesAnnotation>,
-}
-
+/// An enum declaration.
+///
+/// ```text
+/// enum AuthState {
+///   Authenticated { user: User },
+///   Unauthenticated,
+/// }
+/// ```
 #[derive(Debug, Clone)]
 pub struct ParsedEnumDeclaration {
     pub name: TypeName,
@@ -110,6 +145,14 @@ pub struct ParsedEnumDeclaration {
     pub range: DocumentRange,
     pub variants: Vec<ParsedEnumDeclarationVariant>,
     pub pub_range: Option<DocumentRange>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ParsedRecordDeclarationField {
+    pub name: FieldName,
+    pub name_range: DocumentRange,
+    pub field_type: ParsedType,
+    pub examples: Option<ExamplesAnnotation>,
 }
 
 #[derive(Debug, Clone)]

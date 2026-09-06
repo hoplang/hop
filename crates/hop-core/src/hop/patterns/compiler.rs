@@ -770,7 +770,7 @@ mod tests {
 
         let (subject_range, patterns) = match expr {
             ParsedExpr::Match { subject, arms, .. } => {
-                let ParsedExpr::Var {
+                let ParsedExpr::VariableReference {
                     range: subject_range,
                     ..
                 } = *subject

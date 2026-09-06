@@ -56,7 +56,7 @@ pub fn typecheck_expr(
             asset_references,
         ),
 
-        ParsedExpr::Var {
+        ParsedExpr::VariableReference {
             value: var_name, ..
         } => {
             if let Some((var_type, def_range)) = var_env.lookup(var_name) {

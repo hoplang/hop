@@ -274,7 +274,7 @@ pub fn parse_primary(
                     range: name_range.to(right_paren),
                 }
             } else {
-                ParsedExpr::Var {
+                ParsedExpr::VariableReference {
                     range: name_range,
                     value: var_name,
                 }

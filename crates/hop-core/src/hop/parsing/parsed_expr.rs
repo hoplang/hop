@@ -10,20 +10,17 @@ use pretty::BoxDoc;
 
 #[derive(Debug, Clone)]
 pub enum ParsedExpr {
-    /// A variable name expression, e.g. `foo`
-    Var {
+    VariableReference {
         value: VarName,
         range: DocumentRange,
     },
 
-    /// A field access expression, e.g. `foo.bar`
     FieldAccess {
         record: Box<Self>,
         field: FieldName,
         range: DocumentRange,
     },
 
-    /// A method call expression, e.g. `foo.bar()`
     MethodCall {
         receiver: Box<Self>,
         method: FieldName,
@@ -31,28 +28,31 @@ pub enum ParsedExpr {
         range: DocumentRange,
     },
 
-    /// A string literal expression, e.g. `"foo bar"`
     StringLiteral {
         value: CheapString,
         range: DocumentRange,
     },
 
-    /// A boolean literal expression, e.g. `true`
-    BooleanLiteral { value: bool, range: DocumentRange },
+    BooleanLiteral {
+        value: bool,
+        range: DocumentRange,
+    },
 
-    /// An integer literal expression, e.g. `42`
-    IntLiteral { value: i32, range: DocumentRange },
+    IntLiteral {
+        value: i32,
+        range: DocumentRange,
+    },
 
-    /// A float literal expression, e.g. `2.5`
-    FloatLiteral { value: f64, range: DocumentRange },
+    FloatLiteral {
+        value: f64,
+        range: DocumentRange,
+    },
 
-    /// An array literal expression, e.g. `[1, 2, 3]`
     ArrayLiteral {
         elements: Vec<Self>,
         range: DocumentRange,
     },
 
-    /// A record literal expression, e.g. `User {name: "John", age: 30}`
     RecordLiteral {
         record_name: TypeName,
         record_name_range: DocumentRange,
@@ -61,7 +61,6 @@ pub enum ParsedExpr {
         range: DocumentRange,
     },
 
-    /// An enum literal expression, e.g. `Color::Red`
     EnumLiteral {
         enum_name: TypeName,
         variant_name: TypeName,
@@ -75,7 +74,6 @@ pub enum ParsedExpr {
         range: DocumentRange,
     },
 
-    /// A binary operation expression
     BinaryOp {
         left: Box<Self>,
         operator: ParsedBinaryOp,
@@ -83,32 +81,27 @@ pub enum ParsedExpr {
         range: DocumentRange,
     },
 
-    /// Boolean negation expression
     BooleanNegation {
         operand: Box<Self>,
         range: DocumentRange,
     },
 
-    /// Numeric negation expression
     NumericNegation {
         operand: Box<Self>,
         range: DocumentRange,
     },
 
-    /// A match expression, e.g. `match color {Color::Red => "red", Color::Blue => "blue"}`
     Match {
         subject: Box<Self>,
         arms: Vec<ParsedMatchArm>,
         range: DocumentRange,
     },
 
-    /// An option literal expression, e.g. `Some(42)` or `None`
     OptionLiteral {
         value: Option<Box<Self>>,
         range: DocumentRange,
     },
 
-    /// A macro invocation, e.g. `join!(a, b, c)`
     MacroInvocation {
         /// The name of the macro, e.g. `join`.
         name: CheapString,
@@ -118,13 +111,14 @@ pub enum ParsedExpr {
         range: DocumentRange,
     },
 
-    /// An empty Fragment literal, e.g. `Fragment::empty()`
-    FragmentEmpty { range: DocumentRange },
+    FragmentEmpty {
+        range: DocumentRange,
+    },
 
-    /// Markup, e.g. `<div>{name}</div>`.
-    Markup { node: Box<ParsedNode> },
+    Markup {
+        node: Box<ParsedNode>,
+    },
 
-    /// A function call expression, e.g. `foo(1, 2)`
     FunctionCall {
         name: VarName,
         name_range: DocumentRange,
@@ -350,7 +344,7 @@ impl ParsedExpr {
             }
 
             ParsedExpr::Markup { .. }
-            | ParsedExpr::Var { .. }
+            | ParsedExpr::VariableReference { .. }
             | ParsedExpr::StringLiteral { .. }
             | ParsedExpr::BooleanLiteral { .. }
             | ParsedExpr::IntLiteral { .. }
@@ -394,7 +388,7 @@ impl ParsedExpr {
             ParsedExpr::OptionLiteral { value, .. } => {
                 value.as_ref().is_none_or(|value| value.is_constant())
             }
-            ParsedExpr::Var { .. }
+            ParsedExpr::VariableReference { .. }
             | ParsedExpr::FieldAccess { .. }
             | ParsedExpr::MethodCall { .. }
             | ParsedExpr::BinaryOp { .. }
@@ -409,7 +403,7 @@ impl ParsedExpr {
 
     pub fn range(&self) -> &DocumentRange {
         match self {
-            ParsedExpr::Var { range, .. }
+            ParsedExpr::VariableReference { range, .. }
             | ParsedExpr::FieldAccess { range, .. }
             | ParsedExpr::MethodCall { range, .. }
             | ParsedExpr::StringLiteral { range, .. }
@@ -465,7 +459,7 @@ impl ParsedExpr {
 
     pub fn to_doc(&self) -> BoxDoc<'_> {
         match self {
-            ParsedExpr::Var { value, .. } => BoxDoc::text(value.as_str()),
+            ParsedExpr::VariableReference { value, .. } => BoxDoc::text(value.as_str()),
             ParsedExpr::FieldAccess {
                 record: object,
                 field,
