@@ -126,7 +126,7 @@ pub struct ParsedRecordDeclaration {
     pub name: TypeName,
     pub name_range: DocumentRange,
     pub range: DocumentRange,
-    pub fields: Vec<ParsedRecordDeclarationField>,
+    pub fields: Vec<ParsedFieldDeclaration>,
     pub pub_range: Option<DocumentRange>,
 }
 
@@ -147,25 +147,14 @@ pub struct ParsedEnumDeclaration {
     pub pub_range: Option<DocumentRange>,
 }
 
-/// A field in a record declaration.
+/// A field in a record declaration or an enum variant declaration.
 ///
 /// ```text
 /// record User {
 ///   name: String,
 ///   ^^^^^^^^^^^^
 /// }
-/// ```
-#[derive(Debug, Clone)]
-pub struct ParsedRecordDeclarationField {
-    pub name: FieldName,
-    pub name_range: DocumentRange,
-    pub field_type: ParsedType,
-    pub examples: Option<ExamplesAnnotation>,
-}
-
-/// A field in an enum variant declaration.
 ///
-/// ```text
 /// enum AuthState {
 ///   Authenticated {
 ///     user: User,
@@ -174,7 +163,7 @@ pub struct ParsedRecordDeclarationField {
 /// }
 /// ```
 #[derive(Debug, Clone)]
-pub struct ParsedEnumDeclarationField {
+pub struct ParsedFieldDeclaration {
     pub name: FieldName,
     pub name_range: DocumentRange,
     pub field_type: ParsedType,
@@ -186,7 +175,7 @@ pub struct ParsedEnumDeclarationVariant {
     pub name: TypeName,
     pub name_range: DocumentRange,
     /// Optional fields for this variant (empty for unit variants)
-    pub fields: Vec<ParsedEnumDeclarationField>,
+    pub fields: Vec<ParsedFieldDeclaration>,
 }
 
 #[derive(Debug, Clone)]
@@ -354,7 +343,7 @@ impl ParsedImportDeclaration {
     }
 }
 
-impl ParsedRecordDeclarationField {
+impl ParsedFieldDeclaration {
     pub fn to_doc(&self) -> BoxDoc<'_> {
         let base = if let Some(examples) = &self.examples {
             BoxDoc::text(examples.to_annotation_string()).append(BoxDoc::line())

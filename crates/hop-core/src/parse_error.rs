@@ -222,6 +222,9 @@ pub(crate) enum ParseErrorKind {
     #[error("Examples annotations are not allowed on function parameters")]
     ExamplesNotAllowedOnFunction,
 
+    #[error("Function '{name}' is missing a return type")]
+    FunctionMissingReturnType { name: CheapString },
+
     #[error("Unknown macro '{name}'")]
     UnknownMacro { name: CheapString },
 

@@ -2,8 +2,8 @@ use crate::document::DocumentRange;
 use crate::hop::parsing::ParsedType;
 use crate::hop::parsing::parsed_ast::{
     ParsedAst, ParsedComponentDeclaration, ParsedDeclaration, ParsedEnumDeclaration,
-    ParsedEnumDeclarationVariant, ParsedFunctionDeclaration, ParsedImportDeclaration,
-    ParsedPageDeclaration, ParsedParameter, ParsedRecordDeclaration, ParsedRecordDeclarationField,
+    ParsedEnumDeclarationVariant, ParsedFieldDeclaration, ParsedFunctionDeclaration,
+    ParsedImportDeclaration, ParsedPageDeclaration, ParsedParameter, ParsedRecordDeclaration,
 };
 use crate::hop::parsing::parsed_expr::{
     Constructor, ParsedExpr, ParsedMatchArm, ParsedMatchPattern,
@@ -180,7 +180,7 @@ fn format_record_declaration<'a>(
 
 fn format_record_declaration_field<'a>(
     arena: &'a Arena<'a>,
-    field: &'a ParsedRecordDeclarationField,
+    field: &'a ParsedFieldDeclaration,
     comments: &mut VecDeque<&'a DocumentRange>,
 ) -> DocBuilder<'a, Arena<'a>> {
     let leading_comments = drain_comments_before(arena, comments, field.name_range.start());
