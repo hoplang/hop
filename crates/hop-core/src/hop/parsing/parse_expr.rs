@@ -8,14 +8,14 @@ use crate::symbols::var_name::VarName;
 
 use super::parse_helpers::{
     advance_if, expect_field_name, expect_opposite, expect_token, expect_type_name,
-    expect_variable_name, next_collecting_comments as next, next_if, parse_delimited_list,
-    peek_past_comments as peek,
+    expect_variable_name, next_if, parse_delimited_list,
 };
 use super::parse_nodes;
 use super::parsed_expr::{
     Constructor, ParsedBinaryOp, ParsedExpr, ParsedMatchArm, ParsedMatchPattern,
 };
 use super::token::LangToken;
+use super::tokenize_expr::{next, peek};
 use crate::parse_error::{ParseError, ParseErrorKind};
 
 pub fn parse_expr(

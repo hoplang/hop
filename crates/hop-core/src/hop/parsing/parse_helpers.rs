@@ -7,34 +7,8 @@ use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 
 use super::token::LangToken;
-use super::tokenize_expr::next;
+use super::tokenize_expr::{next, peek};
 use crate::parse_error::{ParseError, ParseErrorKind};
-
-/// Returns the next non-comment token, collecting any comment tokens into the provided deque.
-pub fn next_collecting_comments(
-    iter: &mut Peekable<DocumentCursor>,
-    comments: &mut VecDeque<DocumentRange>,
-    errors: &mut Vec<ParseError>,
-) -> Option<(LangToken, DocumentRange)> {
-    loop {
-        match next(iter, errors) {
-            Some((LangToken::Comment(_), range)) => {
-                comments.push_back(range);
-                continue;
-            }
-            other => return other,
-        }
-    }
-}
-
-/// Peeks at the next non-comment token without consuming it.
-/// Uses a temporary error collector that is discarded.
-pub fn peek_past_comments(iter: &Peekable<DocumentCursor>) -> Option<(LangToken, DocumentRange)> {
-    let mut cloned = iter.clone();
-    let mut discarded_comments = VecDeque::new();
-    let mut discarded_errors = Vec::new();
-    next_collecting_comments(&mut cloned, &mut discarded_comments, &mut discarded_errors)
-}
 
 pub fn advance_if(
     iter: &mut Peekable<DocumentCursor>,
@@ -42,9 +16,9 @@ pub fn advance_if(
     errors: &mut Vec<ParseError>,
     token: LangToken,
 ) -> Option<DocumentRange> {
-    match peek_past_comments(iter) {
+    match peek(iter) {
         Some((t, _)) if t == token => {
-            let (_, range) = next_collecting_comments(iter, comments, errors)?;
+            let (_, range) = next(iter, comments, errors)?;
             Some(range)
         }
         _ => None,
@@ -60,8 +34,8 @@ pub fn next_if<F>(
 where
     F: FnOnce(&(LangToken, DocumentRange)) -> bool,
 {
-    match peek_past_comments(iter) {
-        Some(ref result) if predicate(result) => next_collecting_comments(iter, comments, errors),
+    match peek(iter) {
+        Some(ref result) if predicate(result) => next(iter, comments, errors),
         _ => None,
     }
 }
@@ -73,7 +47,7 @@ pub fn expect_token(
     range: &DocumentRange,
     expected: &LangToken,
 ) -> Option<DocumentRange> {
-    match next_collecting_comments(iter, comments, errors) {
+    match next(iter, comments, errors) {
         Some((token, token_range)) if token == *expected => Some(token_range),
         Some((actual, token_range)) => {
             errors.push(ParseError::new(
@@ -105,7 +79,7 @@ pub fn expect_opposite(
     token_range: &DocumentRange,
 ) -> Option<DocumentRange> {
     let expected = token.opposite_token();
-    match next_collecting_comments(iter, comments, errors) {
+    match next(iter, comments, errors) {
         Some((actual, actual_range)) if actual == expected => Some(actual_range),
         Some((actual, actual_range)) => {
             errors.push(ParseError::new(
@@ -132,7 +106,7 @@ pub fn expect_variable_name(
     errors: &mut Vec<ParseError>,
     range: &DocumentRange,
 ) -> Option<(VarName, DocumentRange)> {
-    match next_collecting_comments(iter, comments, errors) {
+    match next(iter, comments, errors) {
         Some((LangToken::Identifier(name), name_range)) => {
             match VarName::from_cheap_string(name.clone()) {
                 Ok(var_name) => Some((var_name, name_range)),
@@ -168,7 +142,7 @@ pub fn expect_field_name(
     errors: &mut Vec<ParseError>,
     range: &DocumentRange,
 ) -> Option<(FieldName, DocumentRange)> {
-    match next_collecting_comments(iter, comments, errors) {
+    match next(iter, comments, errors) {
         Some((LangToken::Identifier(name), name_range)) => {
             match FieldName::from_cheap_string(name.clone()) {
                 Ok(prop_name) => Some((prop_name, name_range)),
@@ -204,7 +178,7 @@ pub fn expect_type_name(
     errors: &mut Vec<ParseError>,
     range: &DocumentRange,
 ) -> Option<(TypeName, DocumentRange)> {
-    match next_collecting_comments(iter, comments, errors) {
+    match next(iter, comments, errors) {
         Some((LangToken::TypeName(name), name_range)) => match TypeName::from_cheap_string(name) {
             Ok(type_name) => Some((type_name, name_range)),
             Err(error) => {
@@ -251,7 +225,7 @@ where
     let mut items = Vec::new();
     items.push(parse(iter, comments, errors, range)?);
     while advance_if(iter, comments, errors, LangToken::Comma).is_some() {
-        let next_token = peek_past_comments(iter).map(|(t, _)| t);
+        let next_token = peek(iter).map(|(t, _)| t);
         if next_token.as_ref() == end_token || (end_token.is_some() && next_token.is_none()) {
             break;
         }

@@ -8,6 +8,7 @@ use super::parsed_node::{
     ParsedAttribute, ParsedLetBinding, ParsedLoopSource, ParsedMatchCase, ParsedNode,
 };
 use super::token;
+use super::tokenize_expr;
 use super::tokenize_markup;
 use super::whitespace;
 use crate::document::{DocumentCursor, DocumentRange};
@@ -845,9 +846,7 @@ fn parse_let_bindings(
         |iter, comments, errors, range| {
             let (var_name, var_name_range) =
                 parse_helpers::expect_variable_name(iter, comments, errors, range)?;
-            let var_type = if let Some((token::LangToken::Colon, _)) =
-                parse_helpers::peek_past_comments(iter)
-            {
+            let var_type = if let Some((token::LangToken::Colon, _)) = tokenize_expr::peek(iter) {
                 parse_helpers::expect_token(
                     iter,
                     comments,

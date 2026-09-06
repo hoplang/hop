@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::iter::Peekable;
 
 use crate::itertools::PeekingExt as _;
@@ -7,306 +8,320 @@ use crate::document::{CheapString, DocumentCursor, DocumentRange};
 use super::token::LangToken;
 use crate::parse_error::{ParseError, ParseErrorKind};
 
+/// Peeks at the next token without consuming it.
+///
+/// Comments and tokenizer errors encountered while scanning ahead are dropped;
+/// the `next` call that eventually consumes this token collects them for real.
+pub fn peek(iter: &Peekable<DocumentCursor>) -> Option<(LangToken, DocumentRange)> {
+    let mut cloned = iter.clone();
+    let mut dropped_comments = VecDeque::new();
+    let mut dropped_errors = Vec::new();
+    next(&mut cloned, &mut dropped_comments, &mut dropped_errors)
+}
+
+/// Returns the next token, collecting any comments encountered along the way
+/// into the provided deque.
 pub fn next(
     iter: &mut Peekable<DocumentCursor>,
+    comments: &mut VecDeque<DocumentRange>,
     errors: &mut Vec<ParseError>,
 ) -> Option<(LangToken, DocumentRange)> {
-    // Skip whitespace
-    while iter.peek().is_some_and(|s| s.ch().is_whitespace()) {
-        iter.next();
-    }
-
-    let start = iter.next()?;
-
-    let result = match start.ch() {
-        '.' => {
-            // Check for ..= or ...
-            let mut lookahead = iter.clone();
-            let second_is_dot = lookahead.next_if(|s| s.ch() == '.').is_some();
-            let third = lookahead.peek().map(|s| s.ch());
-            if second_is_dot && third == Some('.') {
-                iter.next(); // second dot
-                let third = iter.next().unwrap(); // third dot
-                (LangToken::DotDotDot, start.to(third))
-            } else if second_is_dot && third == Some('=') {
-                iter.next(); // second dot
-                let eq = iter.next().unwrap(); // '='
-                (LangToken::DotDotEq, start.to(eq))
-            } else {
-                (LangToken::Dot, start)
-            }
+    loop {
+        // Skip whitespace
+        while iter.peek().is_some_and(|s| s.ch().is_whitespace()) {
+            iter.next();
         }
-        '(' => (LangToken::LeftParen, start),
-        ')' => (LangToken::RightParen, start),
-        '[' => (LangToken::LeftBracket, start),
-        ']' => (LangToken::RightBracket, start),
-        '{' => (LangToken::LeftBrace, start),
-        '}' => (LangToken::RightBrace, start),
-        ':' => match iter.next_if(|s| s.ch() == ':') {
-            Some(end) => (LangToken::ColonColon, start.to(end)),
-            None => (LangToken::Colon, start),
-        },
-        ',' => (LangToken::Comma, start),
-        '#' => match iter.next_if(|s| s.ch() == '[') {
-            Some(end) => (LangToken::HashBracket, start.to(end)),
-            None => {
-                errors.push(ParseError::new(
-                    ParseErrorKind::UnexpectedCharacter { ch: '#' },
-                    start,
-                ));
-                return next(iter, errors);
-            }
-        },
-        '+' => (LangToken::Plus, start),
-        '-' => match iter.next_if(|s| s.ch() == '>') {
-            Some(end) => (LangToken::Arrow, start.to(end)),
-            None => (LangToken::Minus, start),
-        },
-        '*' => (LangToken::Asterisk, start),
-        '&' => match iter.next_if(|s| s.ch() == '&') {
-            Some(end) => (LangToken::LogicalAnd, start.to(end)),
-            None => {
-                errors.push(ParseError::new(
-                    ParseErrorKind::UnexpectedCharacter { ch: '&' },
-                    start,
-                ));
-                return next(iter, errors); // Continue tokenization after error
-            }
-        },
-        '|' => match iter.next_if(|s| s.ch() == '|') {
-            Some(end) => (LangToken::LogicalOr, start.to(end)),
-            None => {
-                errors.push(ParseError::new(
-                    ParseErrorKind::UnexpectedCharacter { ch: '|' },
-                    start,
-                ));
-                return next(iter, errors); // Continue tokenization after error
-            }
-        },
-        '/' => match iter.next_if(|s| s.ch() == '/') {
-            Some(second_slash) => {
-                let comment = start
-                    .to(second_slash)
-                    .extend(iter.peeking_take_while(|s| s.ch() != '\n'));
-                let text = comment.to_cheap_string();
-                (LangToken::Comment(text), comment)
-            }
-            None => {
-                errors.push(ParseError::new(
-                    ParseErrorKind::UnexpectedCharacter { ch: '/' },
-                    start,
-                ));
-                return next(iter, errors); // Continue tokenization after error
-            }
-        },
-        '!' => match iter.next_if(|s| s.ch() == '=') {
-            Some(end) => (LangToken::NotEq, start.to(end)),
-            None => (LangToken::Not, start),
-        },
-        '<' => match iter.next_if(|s| s.ch() == '=') {
-            Some(end) => (LangToken::LessThanOrEqual, start.to(end)),
-            None => (LangToken::LessThan, start),
-        },
-        '>' => match iter.next_if(|s| s.ch() == '=') {
-            Some(end) => (LangToken::GreaterThanOrEqual, start.to(end)),
-            None => (LangToken::GreaterThan, start),
-        },
-        '=' => match iter.peek().map(|s| s.ch()) {
-            Some('=') => {
-                let end = iter.next().unwrap();
-                (LangToken::Eq, start.to(end))
-            }
-            Some('>') => {
-                let end = iter.next().unwrap();
-                (LangToken::FatArrow, start.to(end))
-            }
-            _ => (LangToken::Assign, start),
-        },
-        '"' => {
-            // Parse string with escape sequence validation
-            let mut content: Option<DocumentRange> = None;
-            loop {
-                match iter.peek().map(|s| s.ch()) {
-                    None => {
-                        // Unterminated string
-                        errors.push(ParseError::new(
-                            ParseErrorKind::UnterminatedStringLiteral {},
-                            content.map(|c| start.clone().to(c)).unwrap_or(start),
-                        ));
-                        return None;
-                    }
-                    Some('"') => {
-                        // End of string
-                        let end = iter.next().unwrap();
-                        let value = content
-                            .map(|c| c.to_cheap_string())
-                            .unwrap_or_else(|| CheapString::new(String::new()));
-                        break (LangToken::StringLiteral(value), start.to(end));
-                    }
-                    Some('\\') => {
-                        // Escape sequence - consume backslash
-                        let backslash = iter.next().unwrap();
-                        content = Some(
-                            content
-                                .map(|c| c.to(backslash.clone()))
-                                .unwrap_or(backslash.clone()),
-                        );
 
-                        // Check what follows the backslash
-                        match iter.peek().map(|s| s.ch()) {
-                            None => {
-                                // Backslash at end of input
-                                errors.push(ParseError::new(
-                                    ParseErrorKind::InvalidEscapeSequenceAtEndOfString {},
-                                    backslash.clone(),
-                                ));
-                                errors.push(ParseError::new(
-                                    ParseErrorKind::UnterminatedStringLiteral {},
-                                    start.to(backslash),
-                                ));
-                                return None;
-                            }
-                            Some(ch @ ('n' | 't' | 'r' | '\\' | '"')) => {
-                                // Valid escape sequence - consume the character
-                                let escape_char = iter.next().unwrap();
-                                content = Some(
-                                    content
-                                        .map(|c| c.to(escape_char.clone()))
-                                        .unwrap_or(escape_char),
-                                );
-                                // Continue parsing - the raw escape sequence is kept
-                                let _ = ch; // silence unused warning
-                            }
-                            Some(ch) => {
-                                // Invalid escape sequence - report error but continue
-                                let escape_char = iter.next().unwrap();
-                                errors.push(ParseError::new(
-                                    ParseErrorKind::InvalidEscapeSequence { ch },
-                                    backslash.to(escape_char.clone()),
-                                ));
-                                content = Some(
-                                    content
-                                        .map(|c| c.to(escape_char.clone()))
-                                        .unwrap_or(escape_char),
-                                );
+        let start = iter.next()?;
+
+        return Some(match start.ch() {
+            '.' => {
+                // Check for ..= or ...
+                let mut lookahead = iter.clone();
+                let second_is_dot = lookahead.next_if(|s| s.ch() == '.').is_some();
+                let third = lookahead.peek().map(|s| s.ch());
+                if second_is_dot && third == Some('.') {
+                    iter.next(); // second dot
+                    let third = iter.next().unwrap(); // third dot
+                    (LangToken::DotDotDot, start.to(third))
+                } else if second_is_dot && third == Some('=') {
+                    iter.next(); // second dot
+                    let eq = iter.next().unwrap(); // '='
+                    (LangToken::DotDotEq, start.to(eq))
+                } else {
+                    (LangToken::Dot, start)
+                }
+            }
+            '(' => (LangToken::LeftParen, start),
+            ')' => (LangToken::RightParen, start),
+            '[' => (LangToken::LeftBracket, start),
+            ']' => (LangToken::RightBracket, start),
+            '{' => (LangToken::LeftBrace, start),
+            '}' => (LangToken::RightBrace, start),
+            ':' => match iter.next_if(|s| s.ch() == ':') {
+                Some(end) => (LangToken::ColonColon, start.to(end)),
+                None => (LangToken::Colon, start),
+            },
+            ',' => (LangToken::Comma, start),
+            '#' => match iter.next_if(|s| s.ch() == '[') {
+                Some(end) => (LangToken::HashBracket, start.to(end)),
+                None => {
+                    errors.push(ParseError::new(
+                        ParseErrorKind::UnexpectedCharacter { ch: '#' },
+                        start,
+                    ));
+                    continue;
+                }
+            },
+            '+' => (LangToken::Plus, start),
+            '-' => match iter.next_if(|s| s.ch() == '>') {
+                Some(end) => (LangToken::Arrow, start.to(end)),
+                None => (LangToken::Minus, start),
+            },
+            '*' => (LangToken::Asterisk, start),
+            '&' => match iter.next_if(|s| s.ch() == '&') {
+                Some(end) => (LangToken::LogicalAnd, start.to(end)),
+                None => {
+                    errors.push(ParseError::new(
+                        ParseErrorKind::UnexpectedCharacter { ch: '&' },
+                        start,
+                    ));
+                    continue;
+                }
+            },
+            '|' => match iter.next_if(|s| s.ch() == '|') {
+                Some(end) => (LangToken::LogicalOr, start.to(end)),
+                None => {
+                    errors.push(ParseError::new(
+                        ParseErrorKind::UnexpectedCharacter { ch: '|' },
+                        start,
+                    ));
+                    continue;
+                }
+            },
+            '/' => match iter.next_if(|s| s.ch() == '/') {
+                Some(second_slash) => {
+                    comments.push_back(
+                        start
+                            .to(second_slash)
+                            .extend(iter.peeking_take_while(|s| s.ch() != '\n')),
+                    );
+                    continue;
+                }
+                None => {
+                    errors.push(ParseError::new(
+                        ParseErrorKind::UnexpectedCharacter { ch: '/' },
+                        start,
+                    ));
+                    continue;
+                }
+            },
+            '!' => match iter.next_if(|s| s.ch() == '=') {
+                Some(end) => (LangToken::NotEq, start.to(end)),
+                None => (LangToken::Not, start),
+            },
+            '<' => match iter.next_if(|s| s.ch() == '=') {
+                Some(end) => (LangToken::LessThanOrEqual, start.to(end)),
+                None => (LangToken::LessThan, start),
+            },
+            '>' => match iter.next_if(|s| s.ch() == '=') {
+                Some(end) => (LangToken::GreaterThanOrEqual, start.to(end)),
+                None => (LangToken::GreaterThan, start),
+            },
+            '=' => match iter.peek().map(|s| s.ch()) {
+                Some('=') => {
+                    let end = iter.next().unwrap();
+                    (LangToken::Eq, start.to(end))
+                }
+                Some('>') => {
+                    let end = iter.next().unwrap();
+                    (LangToken::FatArrow, start.to(end))
+                }
+                _ => (LangToken::Assign, start),
+            },
+            '"' => {
+                // Parse string with escape sequence validation
+                let mut content: Option<DocumentRange> = None;
+                loop {
+                    match iter.peek().map(|s| s.ch()) {
+                        None => {
+                            // Unterminated string
+                            errors.push(ParseError::new(
+                                ParseErrorKind::UnterminatedStringLiteral {},
+                                content.map(|c| start.clone().to(c)).unwrap_or(start),
+                            ));
+                            return None;
+                        }
+                        Some('"') => {
+                            // End of string
+                            let end = iter.next().unwrap();
+                            let value = content
+                                .map(|c| c.to_cheap_string())
+                                .unwrap_or_else(|| CheapString::new(String::new()));
+                            break (LangToken::StringLiteral(value), start.to(end));
+                        }
+                        Some('\\') => {
+                            // Escape sequence - consume backslash
+                            let backslash = iter.next().unwrap();
+                            content = Some(
+                                content
+                                    .map(|c| c.to(backslash.clone()))
+                                    .unwrap_or(backslash.clone()),
+                            );
+
+                            // Check what follows the backslash
+                            match iter.peek().map(|s| s.ch()) {
+                                None => {
+                                    // Backslash at end of input
+                                    errors.push(ParseError::new(
+                                        ParseErrorKind::InvalidEscapeSequenceAtEndOfString {},
+                                        backslash.clone(),
+                                    ));
+                                    errors.push(ParseError::new(
+                                        ParseErrorKind::UnterminatedStringLiteral {},
+                                        start.to(backslash),
+                                    ));
+                                    return None;
+                                }
+                                Some(ch @ ('n' | 't' | 'r' | '\\' | '"')) => {
+                                    // Valid escape sequence - consume the character
+                                    let escape_char = iter.next().unwrap();
+                                    content = Some(
+                                        content
+                                            .map(|c| c.to(escape_char.clone()))
+                                            .unwrap_or(escape_char),
+                                    );
+                                    // Continue parsing - the raw escape sequence is kept
+                                    let _ = ch; // silence unused warning
+                                }
+                                Some(ch) => {
+                                    // Invalid escape sequence - report error but continue
+                                    let escape_char = iter.next().unwrap();
+                                    errors.push(ParseError::new(
+                                        ParseErrorKind::InvalidEscapeSequence { ch },
+                                        backslash.to(escape_char.clone()),
+                                    ));
+                                    content = Some(
+                                        content
+                                            .map(|c| c.to(escape_char.clone()))
+                                            .unwrap_or(escape_char),
+                                    );
+                                }
                             }
                         }
-                    }
-                    Some(_) => {
-                        // Regular character - consume it
-                        let ch = iter.next().unwrap();
-                        content = Some(content.map(|c| c.to(ch.clone())).unwrap_or(ch));
+                        Some(_) => {
+                            // Regular character - consume it
+                            let ch = iter.next().unwrap();
+                            content = Some(content.map(|c| c.to(ch.clone())).unwrap_or(ch));
+                        }
                     }
                 }
             }
-        }
-        'A'..='Z' | 'a'..='z' | '_' => {
-            let identifier =
-                start.extend(iter.peeking_take_while(
+            'A'..='Z' | 'a'..='z' | '_' => {
+                let identifier = start.extend(iter.peeking_take_while(
                     |s| matches!(s.ch(), 'A'..='Z' | 'a'..='z' | '0'..='9' | '_'),
                 ));
-            let t = match identifier.as_str() {
-                // Wildcard
-                "_" => LangToken::Underscore,
-                // Keywords
-                "component" => LangToken::Component,
-                "entrypoint" | "view" => LangToken::View,
-                "enum" => LangToken::Enum,
-                "false" => LangToken::False,
-                "fn" => LangToken::Fn,
-                "import" => LangToken::Import,
-                "in" => LangToken::In,
-                "match" => LangToken::Match,
-                "page" => LangToken::Page,
-                "pub" => LangToken::Pub,
-                "record" => LangToken::Record,
-                "true" => LangToken::True,
-                // Constructors
-                "None" => LangToken::None,
-                "Some" => LangToken::Some,
-                // Types
-                "Array" => LangToken::TypeArray,
-                "Bool" => LangToken::TypeBoolean,
-                "Float" => LangToken::TypeFloat,
-                "Fragment" => LangToken::TypeFragment,
-                "Int" => LangToken::TypeInt,
-                "Option" => LangToken::TypeOption,
-                "String" => LangToken::TypeString,
-                _ => {
-                    let first_char = identifier.as_str().chars().next().unwrap();
-                    if first_char.is_ascii_uppercase() {
-                        LangToken::TypeName(identifier.to_cheap_string())
-                    } else {
-                        LangToken::Identifier(identifier.to_cheap_string())
+                let t = match identifier.as_str() {
+                    // Wildcard
+                    "_" => LangToken::Underscore,
+                    // Keywords
+                    "component" => LangToken::Component,
+                    "entrypoint" | "view" => LangToken::View,
+                    "enum" => LangToken::Enum,
+                    "false" => LangToken::False,
+                    "fn" => LangToken::Fn,
+                    "import" => LangToken::Import,
+                    "in" => LangToken::In,
+                    "match" => LangToken::Match,
+                    "page" => LangToken::Page,
+                    "pub" => LangToken::Pub,
+                    "record" => LangToken::Record,
+                    "true" => LangToken::True,
+                    // Constructors
+                    "None" => LangToken::None,
+                    "Some" => LangToken::Some,
+                    // Types
+                    "Array" => LangToken::TypeArray,
+                    "Bool" => LangToken::TypeBoolean,
+                    "Float" => LangToken::TypeFloat,
+                    "Fragment" => LangToken::TypeFragment,
+                    "Int" => LangToken::TypeInt,
+                    "Option" => LangToken::TypeOption,
+                    "String" => LangToken::TypeString,
+                    _ => {
+                        let first_char = identifier.as_str().chars().next().unwrap();
+                        if first_char.is_ascii_uppercase() {
+                            LangToken::TypeName(identifier.to_cheap_string())
+                        } else {
+                            LangToken::Identifier(identifier.to_cheap_string())
+                        }
                     }
-                }
-            };
-            (t, identifier)
-        }
-        ch if ch.is_ascii_digit() => {
-            let mut number_string =
-                start.extend(iter.peeking_take_while(|s| s.ch().is_ascii_digit()));
-            // Only consume '.' as decimal if followed by a digit
-            let has_decimal = if iter.peek().map(|s| s.ch()) == Some('.') {
-                let mut lookahead = iter.clone();
-                lookahead.next(); // consume dot in lookahead
-                if lookahead.peek().is_some_and(|s| s.ch().is_ascii_digit()) {
-                    let dot = iter.next().unwrap();
-                    number_string = number_string.to(dot);
-                    number_string =
-                        number_string.extend(iter.peeking_take_while(|s| s.ch().is_ascii_digit()));
-                    true
+                };
+                (t, identifier)
+            }
+            ch if ch.is_ascii_digit() => {
+                let mut number_string =
+                    start.extend(iter.peeking_take_while(|s| s.ch().is_ascii_digit()));
+                // Only consume '.' as decimal if followed by a digit
+                let has_decimal = if iter.peek().map(|s| s.ch()) == Some('.') {
+                    let mut lookahead = iter.clone();
+                    lookahead.next(); // consume dot in lookahead
+                    if lookahead.peek().is_some_and(|s| s.ch().is_ascii_digit()) {
+                        let dot = iter.next().unwrap();
+                        number_string = number_string.to(dot);
+                        number_string = number_string
+                            .extend(iter.peeking_take_while(|s| s.ch().is_ascii_digit()));
+                        true
+                    } else {
+                        false
+                    }
                 } else {
                     false
-                }
-            } else {
-                false
-            };
+                };
 
-            // Reject leading zeros (e.g. 000, 0123) but allow bare 0 and 0.x
-            let s = number_string.as_str();
-            let has_leading_zero = s.starts_with('0') && s.len() > 1 && !s.starts_with("0.");
+                // Reject leading zeros (e.g. 000, 0123) but allow bare 0 and 0.x
+                let s = number_string.as_str();
+                let has_leading_zero = s.starts_with('0') && s.len() > 1 && !s.starts_with("0.");
 
-            if has_leading_zero {
-                errors.push(ParseError::new(
-                    ParseErrorKind::InvalidNumberFormat {},
-                    number_string,
-                ));
-                return next(iter, errors);
-            } else if has_decimal {
-                match number_string.as_str().parse::<f64>() {
-                    Ok(f) => (LangToken::FloatLiteral(f), number_string),
-                    Err(_) => {
-                        errors.push(ParseError::new(
-                            ParseErrorKind::InvalidNumberFormat {},
-                            number_string,
-                        ));
-                        return next(iter, errors);
+                if has_leading_zero {
+                    errors.push(ParseError::new(
+                        ParseErrorKind::InvalidNumberFormat {},
+                        number_string,
+                    ));
+                    continue;
+                } else if has_decimal {
+                    match number_string.as_str().parse::<f64>() {
+                        Ok(f) => (LangToken::FloatLiteral(f), number_string),
+                        Err(_) => {
+                            errors.push(ParseError::new(
+                                ParseErrorKind::InvalidNumberFormat {},
+                                number_string,
+                            ));
+                            continue;
+                        }
                     }
-                }
-            } else {
-                match number_string.as_str().parse::<i32>() {
-                    Ok(i) => (LangToken::IntLiteral(i), number_string),
-                    Err(_) => {
-                        errors.push(ParseError::new(
-                            ParseErrorKind::IntLiteralOutOfRange {},
-                            number_string,
-                        ));
-                        return next(iter, errors);
+                } else {
+                    match number_string.as_str().parse::<i32>() {
+                        Ok(i) => (LangToken::IntLiteral(i), number_string),
+                        Err(_) => {
+                            errors.push(ParseError::new(
+                                ParseErrorKind::IntLiteralOutOfRange {},
+                                number_string,
+                            ));
+                            continue;
+                        }
                     }
                 }
             }
-        }
-        ch => {
-            errors.push(ParseError::new(
-                ParseErrorKind::UnexpectedCharacter { ch },
-                start,
-            ));
-            return next(iter, errors); // Continue tokenization after error
-        }
-    };
-
-    Some(result)
+            ch => {
+                errors.push(ParseError::new(
+                    ParseErrorKind::UnexpectedCharacter { ch },
+                    start,
+                ));
+                continue;
+            }
+        });
+    }
 }
 
 #[cfg(test)]
@@ -321,10 +336,17 @@ mod tests {
         let mut cursor =
             DocumentCursor::new(DocumentId::new("test.hop").unwrap(), input.to_string()).peekable();
         let mut errors = Vec::new();
+        let mut comments = VecDeque::new();
         let mut annotations = Vec::new();
-        while let Some((tok, range)) = next(&mut cursor, &mut errors) {
+        while let Some((tok, range)) = next(&mut cursor, &mut comments, &mut errors) {
             annotations.push(SimpleAnnotation {
                 message: format!("token: {:?}", tok),
+                range,
+            });
+        }
+        for range in comments {
+            annotations.push(SimpleAnnotation {
+                message: format!("comment: {}", range.as_str()),
                 range,
             });
         }
@@ -1681,7 +1703,7 @@ mod tests {
         accept(
             "// this is a comment",
             expect![[r#"
-                token: Comment("// this is a comment")
+                comment: // this is a comment
                 // this is a comment
                 ^^^^^^^^^^^^^^^^^^^^
             "#]],
@@ -1697,7 +1719,7 @@ mod tests {
                 foo // comment
                 ^^^
 
-                token: Comment("// comment")
+                comment: // comment
                 foo // comment
                     ^^^^^^^^^^
             "#]],
@@ -1709,7 +1731,7 @@ mod tests {
         accept(
             "// comment\nfoo",
             expect![[r#"
-                token: Comment("// comment")
+                comment: // comment
                 // comment
                 ^^^^^^^^^^
 
@@ -1725,7 +1747,7 @@ mod tests {
         accept(
             "//",
             expect![[r#"
-                token: Comment("//")
+                comment: //
                 //
                 ^^
             "#]],
@@ -1737,11 +1759,11 @@ mod tests {
         accept(
             "// first\n// second",
             expect![[r#"
-                token: Comment("// first")
+                comment: // first
                 // first
                 ^^^^^^^^
 
-                token: Comment("// second")
+                comment: // second
                 // second
                 ^^^^^^^^^
             "#]],
