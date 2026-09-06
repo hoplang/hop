@@ -631,9 +631,10 @@ pub fn parse_match_pattern(
         });
     }
     if let Some(some_range) = advance_if(iter, comments, errors, LangToken::Some) {
-        expect_token(iter, comments, errors, range, &LangToken::LeftParen)?;
+        let left_paren = expect_token(iter, comments, errors, range, &LangToken::LeftParen)?;
         let inner_pattern = parse_match_pattern(iter, comments, errors, range)?;
-        let right_paren = expect_token(iter, comments, errors, range, &LangToken::RightParen)?;
+        let right_paren =
+            expect_opposite(iter, comments, errors, &LangToken::LeftParen, &left_paren)?;
         return Some(ParsedMatchPattern::Constructor {
             constructor: Constructor::OptionSome,
             args: vec![inner_pattern],
@@ -2532,6 +2533,18 @@ mod tests {
             "match event { Event::Click{x, y: b} => x + b }",
             expect![[r#"
                 match event {Event::Click{x, y: b} => x + b}
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_match_when_some_pattern_parenthesis_is_unmatched() {
+        reject(
+            "match maybe { Some(x",
+            expect![[r#"
+                error: Unmatched '('
+                match maybe { Some(x
+                                  ^
             "#]],
         );
     }
