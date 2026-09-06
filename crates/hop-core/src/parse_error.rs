@@ -216,6 +216,15 @@ pub(crate) enum ParseErrorKind {
     #[error("Default values must be constant")]
     DefaultValueMustBeConstant,
 
+    #[error("Rest parameters are not allowed on views")]
+    RestParamNotAllowedOnView,
+
+    #[error("Rest parameters are not allowed on functions")]
+    RestParamNotAllowedOnFunction,
+
+    #[error("Examples annotations are not allowed on function parameters")]
+    ExamplesNotAllowedOnFunction,
+
     #[error("Unknown macro '{name}'")]
     UnknownMacro { name: CheapString },
 

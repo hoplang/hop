@@ -196,10 +196,13 @@ pub struct ParsedParameter {
     pub var_type: ParsedType,
     /// The default value for this parameter.
     ///
-    /// The parser guarantees that this expression is a constant and that it
-    /// does not reference variables or invoke functions.
+    /// The parser reports a default that is not a constant, or that the
+    /// declaration does not allow, but keeps it here as written.
     pub default_value: Option<ParsedExpr>,
     pub examples: Option<ExamplesAnnotation>,
+    /// The range of the `#[examples(...)]` annotation, present exactly when
+    /// `examples` is.
+    pub examples_range: Option<DocumentRange>,
 }
 
 impl Display for ParsedParameter {

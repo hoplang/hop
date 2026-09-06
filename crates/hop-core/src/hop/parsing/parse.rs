@@ -252,7 +252,8 @@ fn parse_record_declaration(
         LangTokenPair::Braces,
         &left_brace,
         |iter, comments, errors, range| {
-            let examples = parse_examples_annotation(iter, comments, errors);
+            let examples =
+                parse_examples_annotation(iter, comments, errors).map(|(examples, _)| examples);
             let (field_name, field_name_range) =
                 parse_helpers::expect_field_name(iter, comments, errors, range)?;
             parse_helpers::expect_token(iter, comments, errors, range, &token::LangToken::Colon)?;
@@ -329,7 +330,8 @@ fn parse_enum_declaration(
                     LangTokenPair::Braces,
                     &left_brace,
                     |iter, comments, errors, range| {
-                        let examples = parse_examples_annotation(iter, comments, errors);
+                        let examples = parse_examples_annotation(iter, comments, errors)
+                            .map(|(examples, _)| examples);
                         let (field_name, field_name_range) =
                             parse_helpers::expect_field_name(iter, comments, errors, range)?;
                         parse_helpers::expect_token(
@@ -411,115 +413,45 @@ fn parse_component_declaration(
     };
 
     // Parse parameters (parentheses are optional if no parameters)
-    enum ParamItem {
-        Param(Box<ParsedParameter>),
-        Rest {
-            var_name: VarName,
-            range: DocumentRange,
-        },
-    }
-
-    let parsed_params = if let Some(left_paren) =
-        parse_helpers::advance_if(iter, comments, errors, token::LangToken::LeftParen)
-    {
-        let (items, parens) = parse_helpers::parse_delimited_list(
-            iter,
-            comments,
-            errors,
-            &left_paren,
-            LangTokenPair::Parens,
-            &left_paren,
-            |iter, comments, errors, range| {
-                // A `...name` rest parameter.
-                if let Some(dots_range) =
-                    parse_helpers::advance_if(iter, comments, errors, token::LangToken::DotDotDot)
-                {
-                    let (var_name, var_name_range) =
-                        parse_helpers::expect_variable_name(iter, comments, errors, range)?;
-                    return Some(ParamItem::Rest {
-                        range: dots_range.to(var_name_range),
-                        var_name,
-                    });
-                }
-                // A regular parameter.
-                let examples = parse_examples_annotation(iter, comments, errors);
-                let (var_name, var_name_range) =
-                    parse_helpers::expect_variable_name(iter, comments, errors, range)?;
-                parse_helpers::expect_token(
-                    iter,
-                    comments,
-                    errors,
-                    range,
-                    &token::LangToken::Colon,
-                )?;
-                let var_type = parse_type(iter, comments, errors, range)?;
-                let default_value =
-                    if parse_helpers::advance_if(iter, comments, errors, token::LangToken::Assign)
-                        .is_some()
-                    {
-                        match parse_expr::parse_primary(iter, comments, errors, range) {
-                            Some(default) if default.is_constant() => Some(default),
-                            Some(default) => {
-                                errors.push(ParseError::new(
-                                    ParseErrorKind::DefaultValueMustBeConstant {},
-                                    default.range().clone(),
-                                ));
-                                None
-                            }
-                            None => None,
-                        }
-                    } else {
-                        None
-                    };
-                Some(ParamItem::Param(Box::new(parsed_ast::ParsedParameter {
-                    var_name,
-                    var_name_range,
-                    var_type,
-                    default_value,
-                    examples,
-                })))
-            },
-        )?;
-        Some((items, parens))
-    } else {
-        None
-    };
+    let parsed_params =
+        match parse_helpers::advance_if(iter, comments, errors, token::LangToken::LeftParen) {
+            Some(left_paren) => Some(parse_parameters(iter, comments, errors, &left_paren)?),
+            None => None,
+        };
 
     let mut params = Vec::new();
     let mut params_range = None;
     let mut rest_param: Option<(VarName, DocumentRange)> = None;
     if let Some((items, range)) = parsed_params {
         params_range = Some(range);
-        if let Some(first) = items
-            .iter()
-            .position(|i| matches!(i, ParamItem::Rest { .. }))
-        {
-            let after_rest = &items[first + 1..];
-            for item in after_rest {
-                if let ParamItem::Rest { range, .. } = item {
-                    errors.push(ParseError::new(
-                        ParseErrorKind::DuplicateRestParam {},
-                        range.clone(),
-                    ));
-                }
-            }
-            if after_rest.iter().any(|i| matches!(i, ParamItem::Param(_))) {
-                if let ParamItem::Rest { range, .. } = &items[first] {
-                    errors.push(ParseError::new(
-                        ParseErrorKind::RestParamMustBeLast {},
-                        range.clone(),
-                    ));
-                }
-            }
-        }
-
-        for item in items {
+        let count = items.len();
+        for (index, item) in items.into_iter().enumerate() {
             match item {
-                ParamItem::Param(p) => params.push(*p),
-                ParamItem::Rest {
-                    var_name, range, ..
-                } => {
-                    rest_param.get_or_insert((var_name, range));
+                ParameterItem::Parameter(parameter) => {
+                    if let Some(value) = &parameter.default_value
+                        && !value.is_constant()
+                    {
+                        errors.push(ParseError::new(
+                            ParseErrorKind::DefaultValueMustBeConstant {},
+                            value.range().clone(),
+                        ));
+                    }
+                    params.push(*parameter);
+                }
+                ParameterItem::Rest { var_name, range } => {
+                    if index + 1 != count {
+                        errors.push(ParseError::new(
+                            ParseErrorKind::RestParamMustBeLast {},
+                            range.clone(),
+                        ));
+                    }
+                    match rest_param {
+                        Some(_) => errors.push(ParseError::new(
+                            ParseErrorKind::DuplicateRestParam {},
+                            range,
+                        )),
+                        None => rest_param = Some((var_name, range)),
+                    }
                 }
             }
         }
@@ -557,12 +489,7 @@ fn parse_page_or_view_header(
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut Vec<ParseError>,
     keyword_range: &DocumentRange,
-) -> Option<(
-    TypeName,
-    DocumentRange,
-    Vec<parsed_ast::ParsedParameter>,
-    DocumentRange,
-)> {
+) -> Option<(TypeName, DocumentRange, Vec<ParsedParameter>, DocumentRange)> {
     let (name_str, name_range) = match tokenize_expr::next(iter, comments, errors) {
         Some((token::LangToken::TypeName(name_str), range)) => (name_str, range),
         Some((actual, range)) => {
@@ -581,50 +508,32 @@ fn parse_page_or_view_header(
         }
     };
 
-    let (params, params_range) = if let Some(left_paren) =
-        parse_helpers::advance_if(iter, comments, errors, token::LangToken::LeftParen)
-    {
-        let (params, parens) = parse_helpers::parse_delimited_list(
-            iter,
-            comments,
-            errors,
-            &left_paren,
-            LangTokenPair::Parens,
-            &left_paren,
-            |iter, comments, errors, range| {
-                let examples = parse_examples_annotation(iter, comments, errors);
-                let (var_name, var_name_range) =
-                    parse_helpers::expect_variable_name(iter, comments, errors, range)?;
-                parse_helpers::expect_token(
-                    iter,
-                    comments,
-                    errors,
-                    range,
-                    &token::LangToken::Colon,
-                )?;
-                let var_type = parse_type(iter, comments, errors, range)?;
-                if let Some(assign_range) =
-                    parse_helpers::advance_if(iter, comments, errors, token::LangToken::Assign)
-                {
-                    errors.push(ParseError::new(
-                        ParseErrorKind::DefaultValueNotAllowedOnView {},
-                        assign_range,
-                    ));
-                    parse_expr::parse_primary(iter, comments, errors, range);
+    let (params, params_range) =
+        match parse_helpers::advance_if(iter, comments, errors, token::LangToken::LeftParen) {
+            Some(left_paren) => {
+                let (items, parens) = parse_parameters(iter, comments, errors, &left_paren)?;
+                let mut params = Vec::new();
+                for item in items {
+                    match item {
+                        ParameterItem::Parameter(parameter) => {
+                            if let Some(value) = &parameter.default_value {
+                                errors.push(ParseError::new(
+                                    ParseErrorKind::DefaultValueNotAllowedOnView {},
+                                    value.range().clone(),
+                                ));
+                            }
+                            params.push(*parameter);
+                        }
+                        ParameterItem::Rest { range, .. } => errors.push(ParseError::new(
+                            ParseErrorKind::RestParamNotAllowedOnView {},
+                            range,
+                        )),
+                    }
                 }
-                Some(parsed_ast::ParsedParameter {
-                    var_name,
-                    var_name_range,
-                    var_type,
-                    default_value: None,
-                    examples,
-                })
-            },
-        )?;
-        (params, parens)
-    } else {
-        (Vec::new(), name_range.clone())
-    };
+                (params, parens)
+            }
+            None => (Vec::new(), name_range.clone()),
+        };
 
     let name = match TypeName::new(&name_str) {
         Ok(name) => name,
@@ -754,36 +663,31 @@ fn parse_function_declaration(
     let (name, name_range) = parse_helpers::expect_variable_name(iter, comments, errors, range)?;
     let left_paren =
         parse_helpers::expect_token(iter, comments, errors, range, &token::LangToken::LeftParen)?;
-    let (params, _) = parse_helpers::parse_delimited_list(
-        iter,
-        comments,
-        errors,
-        &left_paren,
-        LangTokenPair::Parens,
-        &left_paren,
-        |iter, comments, errors, range| {
-            let (var_name, var_name_range) =
-                parse_helpers::expect_variable_name(iter, comments, errors, range)?;
-            parse_helpers::expect_token(iter, comments, errors, range, &token::LangToken::Colon)?;
-            let var_type = parse_type(iter, comments, errors, range)?;
-            if let Some(assign_range) =
-                parse_helpers::advance_if(iter, comments, errors, token::LangToken::Assign)
-            {
-                errors.push(ParseError::new(
-                    ParseErrorKind::DefaultValueNotAllowedOnFunction {},
-                    assign_range,
-                ));
-                parse_expr::parse_primary(iter, comments, errors, range);
+    let (items, _) = parse_parameters(iter, comments, errors, &left_paren)?;
+    let mut params = Vec::new();
+    for item in items {
+        match item {
+            ParameterItem::Parameter(parameter) => {
+                if let Some(examples_range) = &parameter.examples_range {
+                    errors.push(ParseError::new(
+                        ParseErrorKind::ExamplesNotAllowedOnFunction {},
+                        examples_range.clone(),
+                    ));
+                }
+                if let Some(value) = &parameter.default_value {
+                    errors.push(ParseError::new(
+                        ParseErrorKind::DefaultValueNotAllowedOnFunction {},
+                        value.range().clone(),
+                    ));
+                }
+                params.push(*parameter);
             }
-            Some(parsed_ast::ParsedParameter {
-                var_name,
-                var_name_range,
-                var_type,
-                default_value: None,
-                examples: None,
-            })
-        },
-    )?;
+            ParameterItem::Rest { range, .. } => errors.push(ParseError::new(
+                ParseErrorKind::RestParamNotAllowedOnFunction {},
+                range,
+            )),
+        }
+    }
     parse_helpers::expect_token(iter, comments, errors, range, &token::LangToken::Arrow)?;
     let return_type = parse_type(iter, comments, errors, range)?;
     let left_brace =
@@ -806,6 +710,71 @@ fn parse_function_declaration(
         body,
         range: full_range,
     })
+}
+
+/// An item in a parameter list as written. Every declaration's parameter
+/// list is parsed the same way; the declaration then rejects the items it
+/// does not take.
+enum ParameterItem {
+    Parameter(Box<ParsedParameter>),
+    /// A `...name` rest parameter.
+    Rest {
+        var_name: VarName,
+        range: DocumentRange,
+    },
+}
+
+/// Parse a parameter list from a `(` the caller has already consumed,
+/// through the `)` that closes it. Returns the items with the range of the
+/// parentheses.
+fn parse_parameters(
+    iter: &mut Peekable<DocumentCursor>,
+    comments: &mut VecDeque<DocumentRange>,
+    errors: &mut Vec<ParseError>,
+    left_paren: &DocumentRange,
+) -> Option<(Vec<ParameterItem>, DocumentRange)> {
+    parse_helpers::parse_delimited_list(
+        iter,
+        comments,
+        errors,
+        left_paren,
+        LangTokenPair::Parens,
+        left_paren,
+        |iter, comments, errors, range| {
+            if let Some(dots_range) =
+                parse_helpers::advance_if(iter, comments, errors, token::LangToken::DotDotDot)
+            {
+                let (var_name, var_name_range) =
+                    parse_helpers::expect_variable_name(iter, comments, errors, range)?;
+                return Some(ParameterItem::Rest {
+                    range: dots_range.to(var_name_range),
+                    var_name,
+                });
+            }
+            let (examples, examples_range) =
+                parse_examples_annotation(iter, comments, errors).unzip();
+            let (var_name, var_name_range) =
+                parse_helpers::expect_variable_name(iter, comments, errors, range)?;
+            parse_helpers::expect_token(iter, comments, errors, range, &token::LangToken::Colon)?;
+            let var_type = parse_type(iter, comments, errors, range)?;
+            let default_value =
+                if parse_helpers::advance_if(iter, comments, errors, token::LangToken::Assign)
+                    .is_some()
+                {
+                    parse_expr::parse_primary(iter, comments, errors, range)
+                } else {
+                    None
+                };
+            Some(ParameterItem::Parameter(Box::new(ParsedParameter {
+                var_name,
+                var_name_range,
+                var_type,
+                default_value,
+                examples,
+                examples_range,
+            })))
+        },
+    )
 }
 
 fn parse_declaration_body(
@@ -838,13 +807,14 @@ fn parse_declaration_body(
     )
 }
 
-/// Parse a `#[examples(...)]` annotation using the expr tokenizer.
+/// Parse a `#[examples(...)]` annotation using the expr tokenizer. Returns
+/// the annotation with its range.
 fn parse_examples_annotation(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
     errors: &mut Vec<ParseError>,
-) -> Option<ExamplesAnnotation> {
-    if let Some((token::LangToken::HashBracket, _)) = tokenize_expr::peek(iter) {
+) -> Option<(ExamplesAnnotation, DocumentRange)> {
+    if let Some((token::LangToken::HashBracket, hash_bracket)) = tokenize_expr::peek(iter) {
         tokenize_expr::next(iter, comments, errors);
         match tokenize_expr::next(iter, comments, errors) {
             Some((token::LangToken::Identifier(name), _)) if &*name == "examples" => {}
@@ -914,12 +884,12 @@ fn parse_examples_annotation(
         {
             return None;
         }
-        if tokenize_expr::next(iter, comments, errors).map(|(t, _)| t)
-            != Some(token::LangToken::RightBracket)
-        {
+        let Some((token::LangToken::RightBracket, right_bracket)) =
+            tokenize_expr::next(iter, comments, errors)
+        else {
             return None;
-        }
-        Some(annotation)
+        };
+        Some((annotation, hash_bracket.to(right_bracket)))
     } else {
         None
     }
@@ -3361,7 +3331,7 @@ mod tests {
                   "hi"
                 }
 
-                component Main(msg: String) {
+                component Main(msg: String = greeting()) {
                   <div>
                   </div>
                 }
@@ -3383,7 +3353,7 @@ mod tests {
                 1 | component Main(msg: String = other) {
                   |                              ^^^^^
                 -- ast --
-                component Main(msg: String) {
+                component Main(msg: String = other) {
                   <div>
                   </div>
                 }
@@ -3407,7 +3377,7 @@ mod tests {
                 -- ast --
                 component Main(
                   a: String,
-                  b: String,
+                  b: String = a,
                 ) {
                   <div>
                   </div>
@@ -3430,7 +3400,7 @@ mod tests {
                 1 | component Main(msg: String = "hi".to_uppercase()) {
                   |                              ^^^^^^^^^^^^^^^^^^^
                 -- ast --
-                component Main(msg: String) {
+                component Main(msg: String = "hi".to_uppercase()) {
                   <div>
                   </div>
                 }
@@ -3452,7 +3422,7 @@ mod tests {
                 1 | component Main(count: Int = (1 + 2)) {
                   |                              ^^^^^
                 -- ast --
-                component Main(count: Int) {
+                component Main(count: Int = 1 + 2) {
                   <div>
                   </div>
                 }
@@ -3474,7 +3444,7 @@ mod tests {
                 1 | component Main(src: String = asset!("/logo.png")) {
                   |                              ^^^^^^^^^^^^^^^^^^^
                 -- ast --
-                component Main(src: String) {
+                component Main(src: String = asset!("/logo.png")) {
                   <div>
                   </div>
                 }
@@ -3496,7 +3466,9 @@ mod tests {
                 1 | component Main(msg: String = match true { true => "y", false => "n" }) {
                   |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
                 -- ast --
-                component Main(msg: String) {
+                component Main(
+                  msg: String = match true {true => "y", false => "n"},
+                ) {
                   <div>
                   </div>
                 }
@@ -3524,7 +3496,9 @@ mod tests {
                   name: String,
                 }
 
-                component Main(config: Config) {
+                component Main(
+                  config: Config = Config {...base, name: "x"},
+                ) {
                   <div>
                   </div>
                 }
@@ -3546,7 +3520,7 @@ mod tests {
                 1 | component Main(names: Array[String] = ["a", other]) {
                   |                                       ^^^^^^^^^^^^
                 -- ast --
-                component Main(names: Array[String]) {
+                component Main(names: Array[String] = ["a", other]) {
                   <div>
                   </div>
                 }
@@ -4606,9 +4580,9 @@ mod tests {
                 -- errors --
                 error: Default values are not allowed on view parameters
                 1 | view Index(name: String = "World") {
-                  |                         ^
+                  |                           ^^^^^^^
                 -- ast --
-                view Index(name: String) {
+                view Index(name: String = "World") {
                   <div>
                     Hello
                     {" "}
@@ -4988,11 +4962,11 @@ mod tests {
                 -- errors --
                 error: Default values are not allowed on view parameters
                 1 | view Index(required: String, optional: Int = 42) {
-                  |                                            ^
+                  |                                              ^^
                 -- ast --
                 view Index(
                   required: String,
-                  optional: Int,
+                  optional: Int = 42,
                 ) {
                   <div>
                     {required}
@@ -5128,6 +5102,10 @@ mod tests {
             "#},
             expect![[r#"
                 -- errors --
+                error: Rest parameter must be the last parameter
+                1 | component Foo(...a, ...b) {
+                  |               ^^^^
+
                 error: At most one rest parameter is allowed
                 1 | component Foo(...a, ...b) {
                   |                     ^^^^
@@ -5368,9 +5346,9 @@ mod tests {
                 -- errors --
                 error: Default values are not allowed on function parameters
                 1 | fn foo(x: Int = 1) -> Int {
-                  |               ^
+                  |                 ^
                 -- ast --
-                fn foo(x: Int) -> Int {
+                fn foo(x: Int = 1) -> Int {
                   x
                 }
             "#]],
@@ -5387,14 +5365,84 @@ mod tests {
             "},
             expect![[r#"
                 -- errors --
-                error: Expected variable name but got '...'
+                error: Rest parameters are not allowed on functions
                 1 | fn foo(...rest) -> Int {
-                  |        ^^^
-
-                error: Unexpected text at top level
-                1 | fn foo(...rest) -> Int {
-                  |           ^^^^
+                  |        ^^^^^^^
                 -- ast --
+                fn foo() -> Int {
+                  1
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_rest_param_on_view() {
+        reject(
+            indoc! {"
+                view Foo(...rest) {
+                  <div></div>
+                }
+            "},
+            expect![[r#"
+                -- errors --
+                error: Rest parameters are not allowed on views
+                1 | view Foo(...rest) {
+                  |          ^^^^^^^
+                -- ast --
+                view Foo {
+                  <div>
+                  </div>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_examples_annotation_on_function() {
+        reject(
+            indoc! {"
+                fn foo(#[examples(min = 1)] x: Int) -> Int {
+                  x
+                }
+            "},
+            expect![[r#"
+                -- errors --
+                error: Examples annotations are not allowed on function parameters
+                1 | fn foo(#[examples(min = 1)] x: Int) -> Int {
+                  |        ^^^^^^^^^^^^^^^^^^^^
+                -- ast --
+                fn foo(
+                  #[examples(min = 1)]
+                  x: Int,
+                ) -> Int {
+                  x
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_param_after_rest_param() {
+        reject(
+            indoc! {r#"
+                component Foo(...rest, class: String) {
+                  <div ...rest></div>
+                }
+            "#},
+            expect![[r#"
+                -- errors --
+                error: Rest parameter must be the last parameter
+                1 | component Foo(...rest, class: String) {
+                  |               ^^^^^^^
+                -- ast --
+                component Foo(
+                  class: String,
+                  ...rest,
+                ) {
+                  <div ...rest>
+                  </div>
+                }
             "#]],
         );
     }
