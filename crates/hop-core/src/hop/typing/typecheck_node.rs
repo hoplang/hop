@@ -7,12 +7,11 @@ use crate::hop::parsing::parsed_node::{
     ParsedAttribute, ParsedLetBinding, ParsedLoopSource, ParsedNode,
 };
 use crate::hop::patterns::Match;
-use crate::hop::patterns::compiler::compile_match;
-use crate::hop::patterns::typed::typecheck_pattern;
 use crate::hop::typing::resolve_type::resolve_type;
 use crate::hop::typing::type_env::TypeEnv;
 use crate::hop::typing::type_registry::TypeRegistry;
-use crate::hop::typing::typecheck_expr::{decision_to_typed_expr, typecheck_expr};
+use crate::hop::typing::typecheck_expr::typecheck_expr;
+use crate::hop::typing::typecheck_match::{MatchArms, typecheck_match};
 use crate::hop::typing::{TypedAttribute, TypedAttributeValue, TypedLoopSource};
 use crate::hover_annotation::HoverAnnotation;
 use crate::html::HtmlElementKind;
@@ -608,123 +607,18 @@ pub fn typecheck_node(
             }
         }
 
-        ParsedNode::Match { subject, cases, .. } => {
-            let typed_subject = typecheck_expr(
-                subject,
-                None,
-                forwarded_params,
-                var_env,
-                type_env,
-                registry,
-                annotations,
-                definition_links,
-                asset_references,
-                errors,
-            )?;
-
-            let subject_type = typed_subject.get_type();
-            if !subject_type.is_matchable() {
-                errors.push(TypeError::new(
-                    TypeErrorKind::MatchNotImplementedForType {
-                        found: subject_type,
-                    },
-                    subject.range().clone(),
-                ));
-                return None;
-            }
-
-            let typed_patterns = cases
-                .iter()
-                .map(|case| {
-                    typecheck_pattern(&case.pattern, subject_type.clone(), registry, errors)
-                })
-                .collect::<Option<Vec<_>>>()?;
-
-            let decision = compile_match(
-                var_env.fresh_var_counter(),
-                registry,
-                &typed_patterns,
-                subject_type,
-                subject.range(),
-                errors,
-            )?;
-
-            let typed_bodies = cases
-                .iter()
-                .zip(&typed_patterns)
-                .map(|(case, typed_pattern)| {
-                    let bindings = typed_pattern.bindings();
-
-                    // Push bindings into scope
-                    let mut pushed_count = 0;
-                    for (name, typ, bind_range) in &bindings {
-                        match var_env.push(name.clone(), (typ.clone(), bind_range.clone())) {
-                            Ok(_) => {
-                                annotations.push(HoverAnnotation::TypeForVarName {
-                                    range: bind_range.clone(),
-                                    typ: typ.clone(),
-                                    var_name: name.clone(),
-                                });
-                                pushed_count += 1;
-                            }
-                            Err(_) => {
-                                errors.push(TypeError::new(
-                                    TypeErrorKind::VariableAlreadyDefined { name: name.clone() },
-                                    bind_range.clone(),
-                                ));
-                            }
-                        }
-                    }
-
-                    // Typecheck case children
-                    let typed_children = case
-                        .children
-                        .iter()
-                        .filter_map(|child| {
-                            typecheck_node(
-                                child,
-                                forwarded_params,
-                                registry,
-                                errors,
-                                var_env,
-                                type_env,
-                                annotations,
-                                definition_links,
-                                asset_references,
-                            )
-                        })
-                        .collect::<Vec<_>>();
-
-                    // Pop bindings and check for unused
-                    for _ in 0..pushed_count {
-                        let (name, _, accessed) = var_env.pop();
-                        if !accessed {
-                            if let Some((_, _, bind_range)) =
-                                bindings.iter().find(|(n, _, _)| n == &name)
-                            {
-                                errors.push(TypeError::new(
-                                    TypeErrorKind::UnusedVariable {
-                                        var_name: name.clone(),
-                                    },
-                                    bind_range.clone(),
-                                ));
-                            }
-                        }
-                    }
-
-                    TypedExpr::FragmentConcat {
-                        nodes: typed_children,
-                    }
-                })
-                .collect::<Vec<_>>();
-
-            Some(decision_to_typed_expr(
-                &decision,
-                &typed_bodies,
-                Arc::new(Type::Fragment),
-                Some(typed_subject),
-            ))
-        }
+        ParsedNode::Match { subject, cases, .. } => typecheck_match(
+            subject,
+            MatchArms::Cases(cases),
+            forwarded_params,
+            var_env,
+            type_env,
+            registry,
+            annotations,
+            definition_links,
+            asset_references,
+            errors,
+        ),
 
         ParsedNode::Text { range } => Some(TypedExpr::FragmentRaw {
             value: range.to_cheap_string(),

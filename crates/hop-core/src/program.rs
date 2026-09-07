@@ -1686,6 +1686,16 @@ mod tests {
                    |                             ^^^^^^
 
                 Rename
+                  --> main.hop (line 8, col 12)
+                 8 |     <case {Status::Active}><span>Active</span></case>
+                   |            ^^^^^^
+
+                Rename
+                  --> main.hop (line 9, col 12)
+                 9 |     <case {Status::Inactive}><span>Inactive</span></case>
+                   |            ^^^^^^
+
+                Rename
                   --> main.hop (line 13, col 37)
                 13 | component UsersPage(statuses: Array[Status]) {
                    |                                     ^^^^^^
@@ -1724,6 +1734,16 @@ mod tests {
                   --> main.hop (line 3, col 24)
                 3 | component Main(status: Status) {
                   |                        ^^^^^^
+
+                Rename
+                  --> main.hop (line 5, col 12)
+                5 |     <case {Status::Active}><span>Active</span></case>
+                  |            ^^^^^^
+
+                Rename
+                  --> main.hop (line 6, col 12)
+                6 |     <case {Status::Inactive}><span>Inactive</span></case>
+                  |            ^^^^^^
 
                 Rename
                   --> types.hop (line 1, col 10)

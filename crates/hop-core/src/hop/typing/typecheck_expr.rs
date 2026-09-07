@@ -4,18 +4,14 @@ use std::sync::Arc;
 use super::r#type::{NumericType, Type};
 use super::type_env::TypeBinding;
 use super::type_registry::{ResolvedType, TypeRegistry};
+use super::typecheck_match::{MatchArms, typecheck_match};
 use super::typecheck_node::typecheck_node;
 use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
 use crate::document::{CheapString, DocumentRange};
 use crate::document_id::DocumentId;
-use crate::hop::parsing::parsed_expr::{
-    Constructor, ParsedBinaryOp, ParsedExpr, ParsedMatchArm, ParsedMatchPattern,
-};
+use crate::hop::parsing::parsed_expr::{ParsedBinaryOp, ParsedExpr};
 use crate::hop::parsing::parsed_node::ParsedNode;
-use crate::hop::patterns::compiler::{Decision, compile_match};
-use crate::hop::patterns::typed::{TypedMatchPattern, typecheck_pattern};
-use crate::hop::patterns::{EnumMatchArm, EnumPattern, Match};
 use crate::hop::typing::TypedExpr;
 use crate::hop::typing::type_env::TypeEnv;
 use crate::hover_annotation::HoverAnnotation;
@@ -1480,64 +1476,18 @@ pub fn typecheck_expr(
                 }
             }
         }
-        ParsedExpr::Match { subject, arms, .. } => {
-            let typed_subject = typecheck_expr(
-                subject,
-                None,
-                forwarded_params,
-                var_env,
-                type_env,
-                registry,
-                annotations,
-                definition_links,
-                asset_references,
-                errors,
-            )?;
-
-            let subject_type = typed_subject.get_type();
-            if !subject_type.is_matchable() {
-                errors.push(TypeError::new(
-                    TypeErrorKind::MatchNotImplementedForType {
-                        found: subject_type,
-                    },
-                    subject.range().clone(),
-                ));
-                return None;
-            }
-            let typed_patterns = arms
-                .iter()
-                .map(|arm| typecheck_pattern(&arm.pattern, subject_type.clone(), registry, errors))
-                .collect::<Option<Vec<_>>>()?;
-
-            let tree = compile_match(
-                var_env.fresh_var_counter(),
-                registry,
-                &typed_patterns,
-                subject_type,
-                subject.range(),
-                errors,
-            );
-            let arm_bodies = typecheck_arm_bodies(
-                arms,
-                &typed_patterns,
-                forwarded_params,
-                var_env,
-                type_env,
-                registry,
-                annotations,
-                definition_links,
-                asset_references,
-                errors,
-            );
-            let (tree, (typed_bodies, result_type)) = (tree?, arm_bodies?);
-
-            Some(decision_to_typed_expr(
-                &tree,
-                &typed_bodies,
-                result_type,
-                Some(typed_subject),
-            ))
-        }
+        ParsedExpr::Match { subject, arms, .. } => typecheck_match(
+            subject,
+            MatchArms::Exprs(arms),
+            forwarded_params,
+            var_env,
+            type_env,
+            registry,
+            annotations,
+            definition_links,
+            asset_references,
+            errors,
+        ),
         ParsedExpr::MacroInvocation {
             name,
             subject_range,
@@ -1816,330 +1766,6 @@ pub fn typecheck_expr(
     }
 }
 
-/// Collect definition links for enum variant references in match patterns.
-fn collect_pattern_definition_links(
-    pattern: &ParsedMatchPattern,
-    type_env: &mut TypeEnv,
-    definition_links: &mut Vec<DefinitionLink>,
-) {
-    match pattern {
-        ParsedMatchPattern::Constructor {
-            constructor: Constructor::EnumVariant { enum_name, .. },
-            enum_name_range: Some(enum_name_range),
-            fields,
-            args,
-            ..
-        } => {
-            if let Some((_, def_range)) = type_env.lookup(enum_name) {
-                definition_links.push(DefinitionLink {
-                    use_range: enum_name_range.clone(),
-                    definition_range: def_range.clone(),
-                });
-            }
-            for (_, _, field_pattern) in fields {
-                collect_pattern_definition_links(field_pattern, type_env, definition_links);
-            }
-            for arg in args {
-                collect_pattern_definition_links(arg, type_env, definition_links);
-            }
-        }
-        ParsedMatchPattern::Constructor { fields, args, .. } => {
-            for (_, _, field_pattern) in fields {
-                collect_pattern_definition_links(field_pattern, type_env, definition_links);
-            }
-            for arg in args {
-                collect_pattern_definition_links(arg, type_env, definition_links);
-            }
-        }
-        ParsedMatchPattern::Wildcard { .. } | ParsedMatchPattern::Binding { .. } => {}
-    }
-}
-
-/// Typecheck all arm bodies and verify they all have the same type.
-/// Returns the typed bodies and the common result type.
-fn typecheck_arm_bodies(
-    arms: &[ParsedMatchArm],
-    typed_patterns: &[TypedMatchPattern],
-    forwarded_params: &[VarName],
-    var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
-    type_env: &mut TypeEnv,
-    registry: &TypeRegistry,
-    annotations: &mut Vec<HoverAnnotation>,
-    definition_links: &mut Vec<DefinitionLink>,
-    asset_references: &mut Vec<AssetReference>,
-    errors: &mut Vec<TypeError>,
-) -> Option<(Vec<TypedExpr>, Arc<Type>)> {
-    let mut typed_bodies = Vec::new();
-    let mut result_type: Option<Arc<Type>> = None;
-
-    for (arm, typed_pattern) in arms.iter().zip(typed_patterns) {
-        collect_pattern_definition_links(&arm.pattern, type_env, definition_links);
-
-        let bindings = typed_pattern.bindings();
-        let mut arm_ok = true;
-        let mut pushed = Vec::new();
-        for (name, typ, range) in &bindings {
-            match var_env.push(name.clone(), (typ.clone(), range.clone())) {
-                Ok(_) => {
-                    pushed.push(range);
-                }
-                Err(_) => {
-                    errors.push(TypeError::new(
-                        TypeErrorKind::VariableAlreadyDefined { name: name.clone() },
-                        range.clone(),
-                    ));
-                    arm_ok = false;
-                }
-            }
-        }
-
-        // Use the first arm's type as context for subsequent arms
-        let typed_body = typecheck_expr(
-            &arm.body,
-            result_type.as_ref(),
-            forwarded_params,
-            var_env,
-            type_env,
-            registry,
-            annotations,
-            definition_links,
-            asset_references,
-            errors,
-        );
-
-        for range in pushed.iter().rev() {
-            let (name, _, accessed) = var_env.pop();
-            if !accessed {
-                errors.push(TypeError::new(
-                    TypeErrorKind::MatchUnusedBinding { name },
-                    (*range).clone(),
-                ));
-                arm_ok = false;
-            }
-        }
-
-        let Some(typed_body) = typed_body else {
-            continue;
-        };
-        let body_type = typed_body.get_type();
-
-        match &result_type {
-            None => {
-                result_type = Some(body_type.clone());
-            }
-            Some(expected) => {
-                if *body_type != **expected {
-                    errors.push(TypeError::new(
-                        TypeErrorKind::MatchArmTypeMismatch {
-                            expected: expected.clone(),
-                            found: body_type,
-                        },
-                        arm.body.range().clone(),
-                    ));
-                    arm_ok = false;
-                }
-            }
-        }
-
-        if arm_ok {
-            typed_bodies.push(typed_body);
-        }
-    }
-
-    if typed_bodies.len() != arms.len() {
-        return None;
-    }
-
-    Some((typed_bodies, result_type?))
-}
-
-/// Convert a compiled Decision tree into a TypedExpr.
-///
-/// The root subject, when present, is the expression for the root switch node,
-/// used in place of a synthetic variable. Only the outermost call supplies it.
-pub fn decision_to_typed_expr(
-    decision: &Decision,
-    typed_bodies: &[TypedExpr],
-    result_type: Arc<Type>,
-    root_subject: Option<TypedExpr>,
-) -> TypedExpr {
-    match decision {
-        Decision::Success(body) => {
-            let mut result = typed_bodies[body.value].clone();
-            // The root binding binds the subject expression directly; nested
-            // bindings read fresh field/payload vars (root_subject is None).
-            let mut root_subject = root_subject;
-            // Wrap with Let expressions for each binding (in reverse order so first binding is outermost)
-            for binding in body.bindings.iter().rev() {
-                let value = Box::new(root_subject.take().unwrap_or_else(|| TypedExpr::Var {
-                    value: binding.source_name.clone(),
-                    typ: binding.typ.clone(),
-                }));
-                let typ = result.get_type();
-                result = TypedExpr::Let {
-                    var: binding.name.clone(),
-                    value,
-                    body: Box::new(result),
-                    typ,
-                };
-            }
-            result
-        }
-
-        Decision::SwitchBool {
-            variable,
-            true_case,
-            false_case,
-        } => {
-            let subject = Box::new(root_subject.unwrap_or_else(|| TypedExpr::Var {
-                value: variable.name.clone(),
-                typ: variable.typ.clone(),
-            }));
-            TypedExpr::Match {
-                match_: Match::Bool {
-                    subject,
-                    true_body: Box::new(decision_to_typed_expr(
-                        &true_case.body,
-                        typed_bodies,
-                        result_type.clone(),
-                        None,
-                    )),
-                    false_body: Box::new(decision_to_typed_expr(
-                        &false_case.body,
-                        typed_bodies,
-                        result_type.clone(),
-                        None,
-                    )),
-                },
-                typ: result_type,
-            }
-        }
-
-        Decision::SwitchOption {
-            variable,
-            some_case,
-            none_case,
-        } => {
-            let subject = Box::new(root_subject.unwrap_or_else(|| TypedExpr::Var {
-                value: variable.name.clone(),
-                typ: variable.typ.clone(),
-            }));
-            TypedExpr::Match {
-                match_: Match::Option {
-                    subject,
-                    some_arm_binding: some_case.bound_name.clone(),
-                    some_arm_body: Box::new(decision_to_typed_expr(
-                        &some_case.body,
-                        typed_bodies,
-                        result_type.clone(),
-                        None,
-                    )),
-                    none_arm_body: Box::new(decision_to_typed_expr(
-                        &none_case.body,
-                        typed_bodies,
-                        result_type.clone(),
-                        None,
-                    )),
-                },
-                typ: result_type,
-            }
-        }
-
-        Decision::SwitchEnum { variable, cases } => {
-            let subject = Box::new(root_subject.unwrap_or_else(|| TypedExpr::Var {
-                value: variable.name.clone(),
-                typ: variable.typ.clone(),
-            }));
-
-            let arms = cases
-                .iter()
-                .map(|case| {
-                    let pattern = EnumPattern::Variant {
-                        enum_name: case.enum_name.clone(),
-                        variant_name: case.variant_name.clone(),
-                    };
-
-                    // Filter out wildcard bindings (bound_name is None)
-                    let bindings: Vec<_> = case
-                        .bindings
-                        .iter()
-                        .filter_map(|b| {
-                            b.bound_name
-                                .as_ref()
-                                .map(|name| (b.field_name.clone(), name.clone()))
-                        })
-                        .collect();
-
-                    let body =
-                        decision_to_typed_expr(&case.body, typed_bodies, result_type.clone(), None);
-
-                    EnumMatchArm {
-                        pattern,
-                        bindings,
-                        body,
-                    }
-                })
-                .collect();
-
-            TypedExpr::Match {
-                match_: Match::Enum { subject, arms },
-                typ: result_type,
-            }
-        }
-
-        Decision::SwitchRecord { variable, case } => {
-            // The variable the fields are read from: the subject itself when it
-            // is already a variable, otherwise the synthetic variable which is
-            // bound to the subject expression below.
-            let (record_name, record_typ, subject_to_bind) = match root_subject {
-                Some(TypedExpr::Var { value, typ }) => (value, typ, None),
-                Some(subject) => (variable.name.clone(), variable.typ.clone(), Some(subject)),
-                None => (variable.name.clone(), variable.typ.clone(), None),
-            };
-
-            let mut body =
-                decision_to_typed_expr(&case.body, typed_bodies, result_type.clone(), None);
-
-            // Wrap with Let expressions for each field (using FieldAccess)
-            // Iterate in reverse so bindings are in the correct order
-            // Skip wildcard bindings (bound_name is None)
-            for binding in case.bindings.iter().rev() {
-                let Some(bound_name) = &binding.bound_name else {
-                    continue;
-                };
-
-                // Create field access: subject.field_name
-                let field_access = TypedExpr::FieldAccess {
-                    record: Box::new(TypedExpr::Var {
-                        value: record_name.clone(),
-                        typ: record_typ.clone(),
-                    }),
-                    field: binding.field_name.clone(),
-                    typ: binding.typ.clone(),
-                };
-
-                let typ = body.get_type();
-                body = TypedExpr::Let {
-                    var: bound_name.clone(),
-                    value: Box::new(field_access),
-                    body: Box::new(body),
-                    typ,
-                };
-            }
-
-            match subject_to_bind {
-                Some(subject) => TypedExpr::Let {
-                    var: record_name,
-                    value: Box::new(subject),
-                    body: Box::new(body),
-                    typ: result_type,
-                },
-                None => body,
-            }
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2194,8 +1820,8 @@ mod tests {
             &mut asset_references,
             &mut type_errors,
         ) {
-            Some(typed_expr) => (typed_expr.as_type().to_string(), true),
-            None => (
+            Some(typed_expr) if type_errors.is_empty() => (typed_expr.as_type().to_string(), true),
+            _ => (
                 DocumentAnnotator::new()
                     .with_label("error")
                     .without_location()

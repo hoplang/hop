@@ -5027,7 +5027,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                warning: Unused variable unused
+                warning: Unused binding 'unused' in match arm
                   --> main.hop (line 3, col 21)
                  2 |     <match {x}>
                  3 |         <case {Some(unused)}>
