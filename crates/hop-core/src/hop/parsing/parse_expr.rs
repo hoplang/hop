@@ -3,7 +3,6 @@ use std::iter::Peekable;
 
 use crate::document::{CheapString, DocumentCursor, DocumentRange};
 use crate::hop::parsing::token::LangTokenPair;
-use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 
@@ -13,7 +12,8 @@ use super::parse_helpers::{
 };
 use super::parse_nodes;
 use super::parsed_expr::{
-    Constructor, ParsedBinaryOp, ParsedExpr, ParsedMatchArm, ParsedMatchPattern,
+    Constructor, ParsedBinaryOp, ParsedExpr, ParsedFieldInitializer, ParsedMatchArm,
+    ParsedMatchPattern,
 };
 use super::token::LangToken;
 use super::tokenize_expr::peek;
@@ -453,7 +453,7 @@ fn parse_record_literal(
     name_range: DocumentRange,
 ) -> Result<ParsedExpr, ErrorEmitted> {
     enum Entry {
-        Field(FieldName, ParsedExpr),
+        Field(ParsedFieldInitializer),
         Spread(ParsedExpr, DocumentRange),
     }
     let left_brace = expect_token(iter, comments, errors, eof_range, &LangToken::LeftBrace)?;
@@ -471,19 +471,20 @@ fn parse_record_literal(
                 let spread_range = spread_range.to(subject.range().clone());
                 return Ok(Entry::Spread(subject, spread_range));
             }
-            let (field_name, _) = expect_field_name(iter, comments, errors, range)?;
+            let (field_name, field_name_range) = expect_field_name(iter, comments, errors, range)?;
             expect_token(iter, comments, errors, range, &LangToken::Colon)?;
-            Ok(Entry::Field(
-                field_name,
-                parse_expr(iter, comments, errors, range)?,
-            ))
+            Ok(Entry::Field(ParsedFieldInitializer {
+                name: field_name,
+                name_range: field_name_range,
+                value: parse_expr(iter, comments, errors, range)?,
+            }))
         },
     )?;
     let mut fields = Vec::new();
     let mut spread = None;
     for entry in entries {
         match entry {
-            Entry::Field(field_name, value) => fields.push((field_name, value)),
+            Entry::Field(field) => fields.push(field),
             Entry::Spread(subject, spread_range) => {
                 if spread.is_some() {
                     return Err(
@@ -535,11 +536,11 @@ fn parse_enum_literal(
                     let (field_name, field_name_range) =
                         expect_field_name(iter, comments, errors, range)?;
                     expect_token(iter, comments, errors, range, &LangToken::Colon)?;
-                    Ok((
-                        field_name,
-                        field_name_range,
-                        parse_expr(iter, comments, errors, range)?,
-                    ))
+                    Ok(ParsedFieldInitializer {
+                        name: field_name,
+                        name_range: field_name_range,
+                        value: parse_expr(iter, comments, errors, range)?,
+                    })
                 },
             )?
         } else {

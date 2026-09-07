@@ -56,7 +56,7 @@ pub enum ParsedExpr {
     RecordLiteral {
         record_name: TypeName,
         record_name_range: DocumentRange,
-        fields: Vec<(FieldName, Self)>,
+        fields: Vec<ParsedFieldInitializer>,
         spread: Option<Box<Self>>,
         range: DocumentRange,
     },
@@ -65,8 +65,7 @@ pub enum ParsedExpr {
         enum_name: TypeName,
         variant_name: TypeName,
         /// Field values for variants with fields (empty for unit variants)
-        /// The tuple is (field_name, field_name_range, field_expr)
-        fields: Vec<(FieldName, DocumentRange, Self)>,
+        fields: Vec<ParsedFieldInitializer>,
         /// Range of just the constructor (e.g., `Point::XY` without the field values)
         constructor_range: DocumentRange,
         /// Range of just the enum name (e.g., `Point` in `Point::XY`)
@@ -121,6 +120,13 @@ pub enum ParsedExpr {
         args: Vec<Self>,
         range: DocumentRange,
     },
+}
+
+#[derive(Debug, Clone)]
+pub struct ParsedFieldInitializer {
+    pub name: FieldName,
+    pub name_range: DocumentRange,
+    pub value: ParsedExpr,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -318,13 +324,13 @@ impl ParsedExpr {
                 if let Some(spread) = spread {
                     f(spread);
                 }
-                for (_, value) in fields {
-                    f(value);
+                for field in fields {
+                    f(&field.value);
                 }
             }
             ParsedExpr::EnumLiteral { fields, .. } => {
-                for (_, _, value) in fields {
-                    f(value);
+                for field in fields {
+                    f(&field.value);
                 }
             }
             ParsedExpr::Match { subject, arms, .. } => {
@@ -377,10 +383,10 @@ impl ParsedExpr {
                 elements.iter().all(|element| element.is_constant())
             }
             ParsedExpr::RecordLiteral { fields, spread, .. } => {
-                spread.is_none() && fields.iter().all(|(_, value)| value.is_constant())
+                spread.is_none() && fields.iter().all(|field| field.value.is_constant())
             }
             ParsedExpr::EnumLiteral { fields, .. } => {
-                fields.iter().all(|(_, _, value)| value.is_constant())
+                fields.iter().all(|field| field.value.is_constant())
             }
             ParsedExpr::OptionLiteral { value, .. } => {
                 value.as_ref().is_none_or(|value| value.is_constant())
@@ -506,10 +512,10 @@ impl ParsedExpr {
                     let entries = spread
                         .iter()
                         .map(|subject| BoxDoc::text("...").append(subject.to_doc()))
-                        .chain(fields.iter().map(|(key, value)| {
-                            BoxDoc::text(key.as_str())
+                        .chain(fields.iter().map(|field| {
+                            BoxDoc::text(field.name.as_str())
                                 .append(BoxDoc::text(": "))
-                                .append(value.to_doc())
+                                .append(field.value.to_doc())
                         }));
                     BoxDoc::text(record_name.as_str())
                         .append(BoxDoc::text(" {"))
@@ -558,10 +564,10 @@ impl ParsedExpr {
                 } else {
                     base.append(BoxDoc::text(" {"))
                         .append(BoxDoc::intersperse(
-                            fields.iter().map(|(field_name, _, field_value)| {
-                                BoxDoc::text(field_name.to_string())
+                            fields.iter().map(|field| {
+                                BoxDoc::text(field.name.to_string())
                                     .append(BoxDoc::text(": "))
-                                    .append(field_value.to_doc())
+                                    .append(field.value.to_doc())
                             }),
                             BoxDoc::text(", "),
                         ))

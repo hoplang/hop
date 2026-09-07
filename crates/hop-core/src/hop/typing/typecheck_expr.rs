@@ -1161,33 +1161,33 @@ pub fn typecheck_expr(
             let mut typed_fields = Vec::new();
             let mut provided_fields = HashSet::new();
 
-            for (field_name, field_value) in fields {
+            for field in fields {
                 // Check if this field exists in the record
-                let Some(expected_type) = expected_fields.get(field_name) else {
+                let Some(expected_type) = expected_fields.get(&field.name) else {
                     errors.push(TypeError::new(
                         TypeErrorKind::RecordUnknownField {
-                            field_name: field_name.clone(),
+                            field_name: field.name.clone(),
                             record_name: record_name.clone(),
                         },
-                        field_value.range().clone(),
+                        field.name_range.clone(),
                     ));
                     continue;
                 };
 
-                if !provided_fields.insert(field_name.clone()) {
+                if !provided_fields.insert(field.name.clone()) {
                     errors.push(TypeError::new(
                         TypeErrorKind::RecordDuplicateField {
-                            field_name: field_name.clone(),
+                            field_name: field.name.clone(),
                             record_name: record_name.clone(),
                         },
-                        field_value.range().clone(),
+                        field.name_range.clone(),
                     ));
                     continue;
                 }
 
                 // Type check the field value with expected type for bidirectional checking
                 let Some(typed_value) = typecheck_expr(
-                    field_value,
+                    &field.value,
                     Some(expected_type),
                     forwarded_params,
                     var_env,
@@ -1206,16 +1206,16 @@ pub fn typecheck_expr(
                 if *actual_type != **expected_type {
                     errors.push(TypeError::new(
                         TypeErrorKind::RecordLiteralFieldTypeMismatch {
-                            field_name: field_name.clone(),
+                            field_name: field.name.clone(),
                             expected: expected_type.clone(),
                             found: actual_type,
                         },
-                        field_value.range().clone(),
+                        field.value.range().clone(),
                     ));
                     continue;
                 }
 
-                typed_fields.push((field_name.clone(), typed_value));
+                typed_fields.push((field.name.clone(), typed_value));
             }
 
             // The desugaring below assumes every explicit field was typechecked.
@@ -1382,27 +1382,27 @@ pub fn typecheck_expr(
                 let mut typed_fields = Vec::new();
                 let mut provided_field_names: HashSet<FieldName> = HashSet::new();
 
-                for (field_name, field_name_range, field_expr) in fields {
+                for field in fields {
                     let expected_field = variant_fields
                         .iter()
-                        .find(|(name, _, _)| name.as_str() == field_name.as_str());
+                        .find(|(name, _, _)| name.as_str() == field.name.as_str());
 
                     match expected_field {
                         Some((_, expected_type, _)) => {
-                            if !provided_field_names.insert(field_name.clone()) {
+                            if !provided_field_names.insert(field.name.clone()) {
                                 errors.push(TypeError::new(
                                     TypeErrorKind::EnumVariantDuplicateField {
                                         enum_name: enum_name.clone(),
                                         variant_name: variant_name.clone(),
-                                        field_name: field_name.clone(),
+                                        field_name: field.name.clone(),
                                     },
-                                    field_name_range.clone(),
+                                    field.name_range.clone(),
                                 ));
                                 continue;
                             }
 
                             let Some(typed_field_expr) = typecheck_expr(
-                                field_expr,
+                                &field.value,
                                 Some(expected_type),
                                 forwarded_params,
                                 var_env,
@@ -1422,25 +1422,25 @@ pub fn typecheck_expr(
                                     TypeErrorKind::EnumVariantFieldTypeMismatch {
                                         enum_name: enum_name.clone(),
                                         variant_name: variant_name.clone(),
-                                        field_name: field_name.clone(),
+                                        field_name: field.name.clone(),
                                         expected: expected_type.clone(),
                                         found: actual_type,
                                     },
-                                    field_expr.range().clone(),
+                                    field.value.range().clone(),
                                 ));
                                 continue;
                             }
 
-                            typed_fields.push((field_name.clone(), typed_field_expr));
+                            typed_fields.push((field.name.clone(), typed_field_expr));
                         }
                         None => {
                             errors.push(TypeError::new(
                                 TypeErrorKind::EnumVariantUnknownField {
                                     enum_name: enum_name.clone(),
                                     variant_name: variant_name.clone(),
-                                    field_name: field_name.clone(),
+                                    field_name: field.name.clone(),
                                 },
-                                field_name_range.clone(),
+                                field.name_range.clone(),
                             ));
                         }
                     }
@@ -3339,7 +3339,7 @@ mod tests {
             expect![[r#"
                 error: Unknown field 'email' in record 'User'
                 User {name: "John", email: "john@example.com"}
-                                           ^^^^^^^^^^^^^^^^^^
+                                    ^^^^^
             "#]],
         );
     }
@@ -3389,7 +3389,7 @@ mod tests {
             expect![[r#"
                 error: Duplicate field 'name' in record literal for 'User'
                 User {name: "John", name: "Jane"}
-                                          ^^^^^^
+                                    ^^^^
             "#]],
         );
     }
@@ -3403,7 +3403,7 @@ mod tests {
             expect![[r#"
                 error: Duplicate field 'name' in record literal for 'User'
                 User {name: "John", name: 42}
-                                          ^^
+                                    ^^^^
             "#]],
         );
     }
@@ -3493,7 +3493,7 @@ mod tests {
             expect![[r#"
                 error: Unknown field 'email' in record 'User'
                 User {...user, email: "john@example.com"}
-                                      ^^^^^^^^^^^^^^^^^^
+                               ^^^^^
             "#]],
         );
     }
@@ -3507,7 +3507,7 @@ mod tests {
             expect![[r#"
                 error: Duplicate field 'name' in record literal for 'User'
                 User {...user, name: "John", name: "Jane"}
-                                                   ^^^^^^
+                                             ^^^^
             "#]],
         );
     }

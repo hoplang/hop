@@ -1064,14 +1064,14 @@ fn format_expr<'a>(
                         .append(arena.text("..."))
                         .append(format_expr(arena, subject, comments));
                 }
-                for (i, (key, value)) in fields.iter().enumerate() {
+                for (i, field) in fields.iter().enumerate() {
                     if i > 0 || spread.is_some() {
                         fields_doc = fields_doc.append(arena.text(",")).append(arena.line());
                     }
                     fields_doc = fields_doc
-                        .append(arena.text(key.as_str()))
+                        .append(arena.text(field.name.as_str()))
                         .append(arena.text(": "))
-                        .append(format_expr(arena, value, comments));
+                        .append(format_expr(arena, &field.value, comments));
                 }
                 arena
                     .text(record_name.as_str())
@@ -1113,14 +1113,14 @@ fn format_expr<'a>(
                 base
             } else {
                 let mut fields_doc = arena.nil();
-                for (i, (field_name, _, field_value)) in fields.iter().enumerate() {
+                for (i, field) in fields.iter().enumerate() {
                     if i > 0 {
                         fields_doc = fields_doc.append(arena.text(",")).append(arena.line());
                     }
                     fields_doc = fields_doc
-                        .append(arena.text(field_name.to_string()))
+                        .append(arena.text(field.name.to_string()))
                         .append(arena.text(": "))
-                        .append(format_expr(arena, field_value, comments));
+                        .append(format_expr(arena, &field.value, comments));
                 }
                 base.append(arena.text(" {"))
                     .append(soft_block(arena, fields_doc))
