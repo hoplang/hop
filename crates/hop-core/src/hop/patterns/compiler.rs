@@ -259,6 +259,7 @@ pub fn compile_match(
     fresh_vars: &mut FreshVarCounter,
     registry: &TypeRegistry,
     patterns: &[TypedMatchPattern],
+    subject_name: VarName,
     subject_type: Arc<Type>,
     subject_range: &DocumentRange,
     errors: &mut Vec<TypeError>,
@@ -272,7 +273,7 @@ pub fn compile_match(
         return None;
     }
 
-    let subject_var = fresh_var(fresh_vars, subject_type);
+    let subject_var = Variable::new(subject_name, subject_type);
 
     let rows: Vec<Row> = patterns
         .iter()
@@ -801,10 +802,12 @@ mod tests {
             .unwrap_or_else(|| panic!("pattern failed to typecheck: {type_errors:?}"));
 
         let mut fresh_vars = FreshVarCounter::new();
+        let subject_name = fresh_vars.fresh_var();
         let result = compile_match(
             &mut fresh_vars,
             types.registry(),
             &typed_patterns,
+            subject_name,
             subject_type,
             &subject_range,
             &mut type_errors,

@@ -2905,11 +2905,11 @@ mod tests {
                   y: String,
                 }
                 page Test() {
-                  let v1 = let v0 = Point {x: "hi", y: "bye"} in {
-                    v0.x
+                  let v2 = let v0 = Point {x: "hi", y: "bye"} in {
+                    let v1 = v0 in { v1.x }
                   } in {
                     write("got:")
-                    write_string(v1)
+                    write_string(v2)
                   }
                 }
                 -- ir (optimized) --
@@ -2959,15 +2959,17 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  match Option[String]::Some("hi") {
-                    Some(v0) => {
-                      let v1 = v0 in {
-                        write("got:")
-                        write_string(v1)
+                  let v0 = Option[String]::Some("hi") in {
+                    match v0 {
+                      Some(v1) => {
+                        let v2 = v1 in {
+                          write("got:")
+                          write_string(v2)
+                        }
                       }
-                    }
-                    None => {
-                      write("none")
+                      None => {
+                        write("none")
+                      }
                     }
                   }
                 }
@@ -3335,9 +3337,11 @@ mod tests {
                 page Test() {
                   let v0 = "" in {
                     let v1 = "main" in {
-                      write_string(match (v0 == "") {
-                        true => { v1 }
-                        false => { ((v1 + " - ") + v0) }
+                      write_string(let v2 = (v0 == "") in {
+                        match v2 {
+                          true => { v1 }
+                          false => { ((v1 + " - ") + v0) }
+                        }
                       })
                     }
                   }
@@ -5720,16 +5724,18 @@ mod tests {
                   Failure {message: String},
                 }
                 page Test() {
-                  let v4 = match Outcome::Success {value: "hi"} {
-                    Outcome::Success {value: v0} => {
-                      let v1 = v0 in { v1 }
-                    }
-                    Outcome::Failure {message: v2} => {
-                      let v3 = v2 in { v3 }
+                  let v5 = let v0 = Outcome::Success {value: "hi"} in {
+                    match v0 {
+                      Outcome::Success {value: v1} => {
+                        let v2 = v1 in { v2 }
+                      }
+                      Outcome::Failure {message: v3} => {
+                        let v4 = v3 in { v4 }
+                      }
                     }
                   } in {
                     write("got:")
-                    write_string(v4)
+                    write_string(v5)
                   }
                 }
                 -- ir (optimized) --
@@ -6338,12 +6344,14 @@ mod tests {
                 -- ir (unoptimized) --
                 page Test() {
                   let v0 = [] in {
-                    match v0.is_empty() {
-                      true => {
-                        write("empty")
-                      }
-                      false => {
-                        write("not empty")
+                    let v1 = v0.is_empty() in {
+                      match v1 {
+                        true => {
+                          write("empty")
+                        }
+                        false => {
+                          write("not empty")
+                        }
                       }
                     }
                   }
@@ -6393,12 +6401,14 @@ mod tests {
                 -- ir (unoptimized) --
                 page Test() {
                   let v0 = ["a", "b"] in {
-                    match v0.is_empty() {
-                      true => {
-                        write("empty")
-                      }
-                      false => {
-                        write("not empty")
+                    let v1 = v0.is_empty() in {
+                      match v1 {
+                        true => {
+                          write("empty")
+                        }
+                        false => {
+                          write("not empty")
+                        }
                       }
                     }
                   }
@@ -6448,12 +6458,14 @@ mod tests {
                 -- ir (unoptimized) --
                 page Test() {
                   let v0 = [1, 2, 3] in {
-                    match v0.is_empty() {
-                      true => {
-                        write("no numbers")
-                      }
-                      false => {
-                        write("has numbers")
+                    let v1 = v0.is_empty() in {
+                      match v1 {
+                        true => {
+                          write("no numbers")
+                        }
+                        false => {
+                          write("has numbers")
+                        }
                       }
                     }
                   }
@@ -7954,25 +7966,29 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  match Option[String]::Some("outer") {
-                    Some(v0) => {
-                      let v1 = v0 in {
-                        match Option[String]::Some("inner") {
-                          Some(v2) => {
-                            let v3 = v2 in {
-                              write_string(v1)
-                              write(":")
-                              write_string(v3)
+                  let v0 = Option[String]::Some("outer") in {
+                    match v0 {
+                      Some(v1) => {
+                        let v2 = v1 in {
+                          let v3 = Option[String]::Some("inner") in {
+                            match v3 {
+                              Some(v4) => {
+                                let v5 = v4 in {
+                                  write_string(v2)
+                                  write(":")
+                                  write_string(v5)
+                                }
+                              }
+                              None => {
+                                write("inner-none")
+                              }
                             }
-                          }
-                          None => {
-                            write("inner-none")
                           }
                         }
                       }
-                    }
-                    None => {
-                      write("outer-none")
+                      None => {
+                        write("outer-none")
+                      }
                     }
                   }
                 }
@@ -9874,12 +9890,14 @@ mod tests {
                 }
                 page Test() {
                   let v0 = Leaf {back: Option[test::Expr]::None} in {
-                    match v0.back {
-                      Some(_) => {
-                        write("some")
-                      }
-                      None => {
-                        write("none")
+                    let v1 = v0.back in {
+                      match v1 {
+                        Some(_) => {
+                          write("some")
+                        }
+                        None => {
+                          write("none")
+                        }
                       }
                     }
                   }
@@ -10012,14 +10030,16 @@ mod tests {
                     value: "leaf",
                     next: Option[test::Node]::None,
                   } in {
-                    let v1 = Node {
+                    let v2 = Node {
                       value: "head",
-                      next: match true {
-                        true => { Option[test::Node]::Some(v0) }
-                        false => { Option[test::Node]::None }
+                      next: let v1 = true in {
+                        match v1 {
+                          true => { Option[test::Node]::Some(v0) }
+                          false => { Option[test::Node]::None }
+                        }
                       },
                     } in {
-                      write_string(v1.value)
+                      write_string(v2.value)
                     }
                   }
                 }
@@ -10156,23 +10176,25 @@ mod tests {
                       next: Option[Option[test::Node]]::None,
                     })),
                   } in {
-                    match v0.next {
-                      Some(v1) => {
-                        let v2 = v1 in {
-                          match v2 {
-                            Some(v3) => {
-                              let v4 = v3 in {
-                                write_string(v4.value)
+                    let v1 = v0.next in {
+                      match v1 {
+                        Some(v2) => {
+                          let v3 = v2 in {
+                            match v3 {
+                              Some(v4) => {
+                                let v5 = v4 in {
+                                  write_string(v5.value)
+                                }
                               }
-                            }
-                            None => {
-                              write("inner-none")
+                              None => {
+                                write("inner-none")
+                              }
                             }
                           }
                         }
-                      }
-                      None => {
-                        write("outer-none")
+                        None => {
+                          write("outer-none")
+                        }
                       }
                     }
                   }
@@ -10248,12 +10270,14 @@ mod tests {
                     next: Option[test::Node]::None,
                   } in {
                     let v1 = Holder {held: v0.next} in {
-                      match v1.held {
-                        Some(_) => {
-                          write("some")
-                        }
-                        None => {
-                          write_string(v0.value)
+                      let v2 = v1.held in {
+                        match v2 {
+                          Some(_) => {
+                            write("some")
+                          }
+                          None => {
+                            write_string(v0.value)
+                          }
                         }
                       }
                     }
@@ -10331,12 +10355,14 @@ mod tests {
                     b: B {name: "b", a: Option[test::A]::None},
                   } in {
                     write_string(v0.b.name)
-                    match v0.b.a {
-                      Some(_) => {
-                        write("some")
-                      }
-                      None => {
-                        write("none")
+                    let v1 = v0.b.a in {
+                      match v1 {
+                        Some(_) => {
+                          write("some")
+                        }
+                        None => {
+                          write("none")
+                        }
                       }
                     }
                   }
@@ -10438,12 +10464,14 @@ mod tests {
                             let v6 = v3 in {
                               let v7 = Step {t: v5, rest: v6} in {
                                 write_string(v4)
-                                match v7.rest {
-                                  Some(_) => {
-                                    write("some")
-                                  }
-                                  None => {
-                                    write("none")
+                                let v8 = v7.rest in {
+                                  match v8 {
+                                    Some(_) => {
+                                      write("some")
+                                    }
+                                    None => {
+                                      write("none")
+                                    }
                                   }
                                 }
                               }
@@ -11022,13 +11050,15 @@ mod tests {
                 }
                 fn NodeView(node@v2: test::Node) -> Fragment {
                   call Badge(text = v2.value)
-                  match v2.next {
-                    Some(v3) => {
-                      let v4 = v3 in {
-                        call NodeView(node = v4)
+                  let v3 = v2.next in {
+                    match v3 {
+                      Some(v4) => {
+                        let v5 = v4 in {
+                          call NodeView(node = v5)
+                        }
                       }
-                    }
-                    None => {
+                      None => {
+                      }
                     }
                   }
                 }
@@ -11052,13 +11082,15 @@ mod tests {
                   write("<strong>")
                   write_string(v2.value)
                   write("</strong>")
-                  match v2.next {
-                    Some(v3) => {
-                      let v4 = v3 in {
-                        call NodeView(node = v4)
+                  let v3 = v2.next in {
+                    match v3 {
+                      Some(v4) => {
+                        let v5 = v4 in {
+                          call NodeView(node = v5)
+                        }
                       }
-                    }
-                    None => {
+                      None => {
+                      }
                     }
                   }
                 }
@@ -11142,13 +11174,15 @@ mod tests {
                   write(">")
                   write_string(v1.value)
                   write("</span>")
-                  match v1.next {
-                    Some(v2) => {
-                      let v3 = v2 in {
-                        call NodeView(node = v3)
+                  let v2 = v1.next in {
+                    match v2 {
+                      Some(v3) => {
+                        let v4 = v3 in {
+                          call NodeView(node = v4)
+                        }
                       }
-                    }
-                    None => {
+                      None => {
+                      }
                     }
                   }
                 }
@@ -11175,13 +11209,15 @@ mod tests {
                   write("<span>")
                   write_string(v1.value)
                   write("</span>")
-                  match v1.next {
-                    Some(v2) => {
-                      let v3 = v2 in {
-                        call NodeView(node = v3)
+                  let v2 = v1.next in {
+                    match v2 {
+                      Some(v3) => {
+                        let v4 = v3 in {
+                          call NodeView(node = v4)
+                        }
                       }
-                    }
-                    None => {
+                      None => {
+                      }
                     }
                   }
                 }
@@ -11669,12 +11705,14 @@ mod tests {
                 -- ir (unoptimized) --
                 page Test() {
                   let v0 = "" in {
-                    match v0.is_empty() {
-                      true => {
-                        write("empty")
-                      }
-                      false => {
-                        write("not empty")
+                    let v1 = v0.is_empty() in {
+                      match v1 {
+                        true => {
+                          write("empty")
+                        }
+                        false => {
+                          write("not empty")
+                        }
                       }
                     }
                   }
@@ -11724,12 +11762,14 @@ mod tests {
                 -- ir (unoptimized) --
                 page Test() {
                   let v0 = "hello" in {
-                    match v0.is_empty() {
-                      true => {
-                        write("empty")
-                      }
-                      false => {
-                        write("not empty")
+                    let v1 = v0.is_empty() in {
+                      match v1 {
+                        true => {
+                          write("empty")
+                        }
+                        false => {
+                          write("not empty")
+                        }
                       }
                     }
                   }
@@ -11779,12 +11819,14 @@ mod tests {
                 -- ir (unoptimized) --
                 page Test() {
                   let v0 = Option[String]::Some("hello") in {
-                    match v0.is_some() {
-                      true => {
-                        write("yes")
-                      }
-                      false => {
-                        write("no")
+                    let v1 = v0.is_some() in {
+                      match v1 {
+                        true => {
+                          write("yes")
+                        }
+                        false => {
+                          write("no")
+                        }
                       }
                     }
                   }
@@ -11834,12 +11876,14 @@ mod tests {
                 -- ir (unoptimized) --
                 page Test() {
                   let v0 = Option[String]::None in {
-                    match v0.is_some() {
-                      true => {
-                        write("yes")
-                      }
-                      false => {
-                        write("no")
+                    let v1 = v0.is_some() in {
+                      match v1 {
+                        true => {
+                          write("yes")
+                        }
+                        false => {
+                          write("no")
+                        }
                       }
                     }
                   }
@@ -11889,12 +11933,14 @@ mod tests {
                 -- ir (unoptimized) --
                 page Test() {
                   let v0 = Option[String]::None in {
-                    match v0.is_none() {
-                      true => {
-                        write("yes")
-                      }
-                      false => {
-                        write("no")
+                    let v1 = v0.is_none() in {
+                      match v1 {
+                        true => {
+                          write("yes")
+                        }
+                        false => {
+                          write("no")
+                        }
                       }
                     }
                   }
@@ -11944,12 +11990,14 @@ mod tests {
                 -- ir (unoptimized) --
                 page Test() {
                   let v0 = Option[String]::Some("hello") in {
-                    match v0.is_none() {
-                      true => {
-                        write("yes")
-                      }
-                      false => {
-                        write("no")
+                    let v1 = v0.is_none() in {
+                      match v1 {
+                        true => {
+                          write("yes")
+                        }
+                        false => {
+                          write("no")
+                        }
                       }
                     }
                   }
@@ -12302,17 +12350,21 @@ mod tests {
                   match v0 {
                     TimeAgo::MinutesAgo(count: v1) => {
                       let v2 = v1 in {
-                        write_string(match (v2 == 1) {
-                          true => { "1 minute ago" }
-                          false => { (v2.to_string() + " minutes ago") }
+                        write_string(let v3 = (v2 == 1) in {
+                          match v3 {
+                            true => { "1 minute ago" }
+                            false => { (v2.to_string() + " minutes ago") }
+                          }
                         })
                       }
                     }
-                    TimeAgo::HoursAgo(count: v3) => {
-                      let v4 = v3 in {
-                        write_string(match (v4 == 1) {
-                          true => { "1 hour ago" }
-                          false => { (v4.to_string() + " hours ago") }
+                    TimeAgo::HoursAgo(count: v4) => {
+                      let v5 = v4 in {
+                        write_string(let v6 = (v5 == 1) in {
+                          match v6 {
+                            true => { "1 hour ago" }
+                            false => { (v5.to_string() + " hours ago") }
+                          }
                         })
                       }
                     }
@@ -12777,17 +12829,19 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 fn Nest(depth@v0: Int, children@v1: Fragment) -> Fragment {
-                  match (0 < v0) {
-                    true => {
-                      write("<div")
-                      write(">")
-                      call Nest(depth = (v0 - 1), children = {
+                  let v2 = (0 < v0) in {
+                    match v2 {
+                      true => {
+                        write("<div")
+                        write(">")
+                        call Nest(depth = (v0 - 1), children = {
+                          write_fragment(v1)
+                        })
+                        write("</div>")
+                      }
+                      false => {
                         write_fragment(v1)
-                      })
-                      write("</div>")
-                    }
-                    false => {
-                      write_fragment(v1)
+                      }
                     }
                   }
                 }
@@ -12801,16 +12855,18 @@ mod tests {
                 }
                 -- ir (optimized) --
                 fn Nest(depth@v0: Int, children@v1: Fragment) -> Fragment {
-                  match (0 < v0) {
-                    true => {
-                      write("<div>")
-                      call Nest(depth = (v0 - 1), children = {
+                  let v2 = (0 < v0) in {
+                    match v2 {
+                      true => {
+                        write("<div>")
+                        call Nest(depth = (v0 - 1), children = {
+                          write_fragment(v1)
+                        })
+                        write("</div>")
+                      }
+                      false => {
                         write_fragment(v1)
-                      })
-                      write("</div>")
-                    }
-                    false => {
-                      write_fragment(v1)
+                      }
                     }
                   }
                 }
@@ -14648,26 +14704,28 @@ mod tests {
                   label: String,
                   selected: Bool,
                 }
-                fn Row(item@v1: test::Item) -> Fragment {
+                fn Row(item@v2: test::Item) -> Fragment {
                   write("<div")
                   write(">")
-                  write_string(v1.label)
+                  write_string(v2.label)
                   write("</div>")
                 }
                 page Test() {
                   for v0 in [Item {label: "a", selected: false}] {
-                    match v0.selected {
-                      true => {
-                        call Row(item = Item {
-                          label: "on",
-                          selected: v0.selected,
-                        })
-                      }
-                      false => {
-                        call Row(item = Item {
-                          label: "off",
-                          selected: v0.selected,
-                        })
+                    let v1 = v0.selected in {
+                      match v1 {
+                        true => {
+                          call Row(item = Item {
+                            label: "on",
+                            selected: v0.selected,
+                          })
+                        }
+                        false => {
+                          call Row(item = Item {
+                            label: "off",
+                            selected: v0.selected,
+                          })
+                        }
                       }
                     }
                   }
@@ -14679,12 +14737,14 @@ mod tests {
                 }
                 page Test() {
                   for v0 in [Item {label: "a", selected: false}] {
-                    match v0.selected {
-                      true => {
-                        write("<div>on</div>")
-                      }
-                      false => {
-                        write("<div>off</div>")
+                    let v1 = v0.selected in {
+                      match v1 {
+                        true => {
+                          write("<div>on</div>")
+                        }
+                        false => {
+                          write("<div>off</div>")
+                        }
                       }
                     }
                   }
@@ -15209,6 +15269,249 @@ mod tests {
                 }
                 -- expected output --
                 <div>hello</div>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    fn catch_all_after_constructor_on_expression_subject() {
+        check(
+            indoc! {r#"
+                enum Shape {
+                  Circle,
+                  Square,
+                }
+
+                fn mk() -> Shape {
+                  Shape::Square
+                }
+
+                fn f() -> Int {
+                  match mk() {
+                    Shape::Circle => 1,
+                    other => match other {
+                      Shape::Square => 2,
+                      Shape::Circle => 3,
+                    },
+                  }
+                }
+
+                view Test {
+                  <div>{f().to_string()}</div>
+                }
+            "#},
+            "<div>2</div>",
+            expect![[r#"
+                -- ir (unoptimized) --
+                enum Shape {
+                  Circle,
+                  Square,
+                }
+                fn mk() -> test::Shape {
+                  Shape::Square
+                }
+                fn f() -> Int {
+                  let v0 = call mk() in {
+                    match v0 {
+                      Shape::Circle => { 1 }
+                      Shape::Square => {
+                        let v1 = v0 in {
+                          match v1 {
+                            Shape::Circle => { 3 }
+                            Shape::Square => { 2 }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+                page Test() {
+                  write("<div")
+                  write(">")
+                  write_string(call f().to_string())
+                  write("</div>")
+                }
+                -- ir (optimized) --
+                enum Shape {
+                  Circle,
+                  Square,
+                }
+                page Test() {
+                  write("<div>2</div>")
+                }
+                -- expected output --
+                <div>2</div>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    fn catch_all_after_constructor_in_match_node_on_expression_subject() {
+        check(
+            indoc! {r#"
+                enum Shape {
+                  Circle,
+                  Square,
+                }
+
+                fn mk() -> Shape {
+                  Shape::Square
+                }
+
+                view Test {
+                  <match {mk()}>
+                    <case {Shape::Circle}>
+                      circle
+                    </case>
+                    <case {other}>
+                      <match {other}>
+                        <case {Shape::Square}>
+                          square
+                        </case>
+                        <case {Shape::Circle}>
+                          never
+                        </case>
+                      </match>
+                    </case>
+                  </match>
+                }
+            "#},
+            "square",
+            expect![[r#"
+                -- ir (unoptimized) --
+                enum Shape {
+                  Circle,
+                  Square,
+                }
+                fn mk() -> test::Shape {
+                  Shape::Square
+                }
+                page Test() {
+                  let v0 = call mk() in {
+                    match v0 {
+                      Shape::Circle => {
+                        write("circle")
+                      }
+                      Shape::Square => {
+                        let v1 = v0 in {
+                          match v1 {
+                            Shape::Circle => {
+                              write("never")
+                            }
+                            Shape::Square => {
+                              write("square")
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                enum Shape {
+                  Circle,
+                  Square,
+                }
+                page Test() {
+                  write("square")
+                }
+                -- expected output --
+                square
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    fn catch_all_after_constructor_on_option_expression_subject() {
+        check(
+            indoc! {r#"
+                fn mk() -> Option[String] {
+                  Some("hi")
+                }
+
+                fn f() -> String {
+                  match mk() {
+                    None => "none",
+                    other => match other {
+                      Some(x) => x,
+                      None => "never",
+                    },
+                  }
+                }
+
+                view Test {
+                  <div>{f()}</div>
+                }
+            "#},
+            "<div>hi</div>",
+            expect![[r#"
+                -- ir (unoptimized) --
+                fn mk() -> Option[String] {
+                  Option[String]::Some("hi")
+                }
+                fn f() -> String {
+                  let v0 = call mk() in {
+                    match v0 {
+                      Some(v1) => {
+                        let v2 = v0 in {
+                          match v2 {
+                            Some(v3) => { let v4 = v3 in { v4 } }
+                            None => { "never" }
+                          }
+                        }
+                      }
+                      None => { "none" }
+                    }
+                  }
+                }
+                page Test() {
+                  write("<div")
+                  write(">")
+                  write_string(call f())
+                  write("</div>")
+                }
+                -- ir (optimized) --
+                page Test() {
+                  write("<div>hi</div>")
+                }
+                -- expected output --
+                <div>hi</div>
                 -- eval (unoptimized) --
                 OK
                 -- eval (optimized) --

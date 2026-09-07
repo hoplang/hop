@@ -90,10 +90,19 @@ pub fn typecheck_match(
         .map(|index| typecheck_pattern(arms.pattern(index), subject_type.clone(), registry, errors))
         .collect::<Option<Vec<_>>>()?;
 
+    // A subject that is already a variable is matched on directly. Any other
+    // expression is bound to a fresh variable around the whole decision tree,
+    // so every switch and binding in the tree can refer to it by name.
+    let (subject_name, subject_to_bind) = match typed_subject {
+        TypedExpr::Var { value, .. } => (value, None),
+        subject => (var_env.fresh_var_counter().fresh_var(), Some(subject)),
+    };
+
     let tree = compile_match(
         var_env.fresh_var_counter(),
         registry,
         &typed_patterns,
+        subject_name.clone(),
         subject_type,
         subject.range(),
         errors,
@@ -112,12 +121,16 @@ pub fn typecheck_match(
     );
     let (tree, (typed_bodies, result_type)) = (tree?, arm_bodies?);
 
-    Some(decision_to_typed_expr(
-        &tree,
-        &typed_bodies,
-        result_type,
-        Some(typed_subject),
-    ))
+    let body = decision_to_typed_expr(&tree, &typed_bodies, result_type.clone());
+    Some(match subject_to_bind {
+        Some(subject) => TypedExpr::Let {
+            var: subject_name,
+            value: Box::new(subject),
+            body: Box::new(body),
+            typ: result_type,
+        },
+        None => body,
+    })
 }
 
 fn typecheck_arm_bodies(
@@ -282,30 +295,25 @@ fn collect_pattern_definition_links(
 
 /// Convert a compiled Decision tree into a TypedExpr.
 ///
-/// The root subject, when present, is the expression for the root switch node,
-/// used in place of a synthetic variable. Only the outermost call supplies it.
+/// Every variable the tree refers to is in scope: the subject variable is
+/// bound by the caller, and nested variables are bound by the enclosing switch.
 fn decision_to_typed_expr(
     decision: &Decision,
     typed_bodies: &[TypedExpr],
     result_type: Arc<Type>,
-    root_subject: Option<TypedExpr>,
 ) -> TypedExpr {
     match decision {
         Decision::Success(body) => {
             let mut result = typed_bodies[body.value].clone();
-            // The root binding binds the subject expression directly; nested
-            // bindings read fresh field/payload vars (root_subject is None).
-            let mut root_subject = root_subject;
             // Wrap with Let expressions for each binding (in reverse order so first binding is outermost)
             for binding in body.bindings.iter().rev() {
-                let value = Box::new(root_subject.take().unwrap_or_else(|| TypedExpr::Var {
-                    value: binding.source_name.clone(),
-                    typ: binding.typ.clone(),
-                }));
                 let typ = result.get_type();
                 result = TypedExpr::Let {
                     var: binding.name.clone(),
-                    value,
+                    value: Box::new(TypedExpr::Var {
+                        value: binding.source_name.clone(),
+                        typ: binding.typ.clone(),
+                    }),
                     body: Box::new(result),
                     typ,
                 };
@@ -317,67 +325,52 @@ fn decision_to_typed_expr(
             variable,
             true_case,
             false_case,
-        } => {
-            let subject = Box::new(root_subject.unwrap_or_else(|| TypedExpr::Var {
-                value: variable.name.clone(),
-                typ: variable.typ.clone(),
-            }));
-            TypedExpr::Match {
-                match_: Match::Bool {
-                    subject,
-                    true_body: Box::new(decision_to_typed_expr(
-                        &true_case.body,
-                        typed_bodies,
-                        result_type.clone(),
-                        None,
-                    )),
-                    false_body: Box::new(decision_to_typed_expr(
-                        &false_case.body,
-                        typed_bodies,
-                        result_type.clone(),
-                        None,
-                    )),
-                },
-                typ: result_type,
-            }
-        }
+        } => TypedExpr::Match {
+            match_: Match::Bool {
+                subject: Box::new(TypedExpr::Var {
+                    value: variable.name.clone(),
+                    typ: variable.typ.clone(),
+                }),
+                true_body: Box::new(decision_to_typed_expr(
+                    &true_case.body,
+                    typed_bodies,
+                    result_type.clone(),
+                )),
+                false_body: Box::new(decision_to_typed_expr(
+                    &false_case.body,
+                    typed_bodies,
+                    result_type.clone(),
+                )),
+            },
+            typ: result_type,
+        },
 
         Decision::SwitchOption {
             variable,
             some_case,
             none_case,
-        } => {
-            let subject = Box::new(root_subject.unwrap_or_else(|| TypedExpr::Var {
-                value: variable.name.clone(),
-                typ: variable.typ.clone(),
-            }));
-            TypedExpr::Match {
-                match_: Match::Option {
-                    subject,
-                    some_arm_binding: some_case.bound_name.clone(),
-                    some_arm_body: Box::new(decision_to_typed_expr(
-                        &some_case.body,
-                        typed_bodies,
-                        result_type.clone(),
-                        None,
-                    )),
-                    none_arm_body: Box::new(decision_to_typed_expr(
-                        &none_case.body,
-                        typed_bodies,
-                        result_type.clone(),
-                        None,
-                    )),
-                },
-                typ: result_type,
-            }
-        }
+        } => TypedExpr::Match {
+            match_: Match::Option {
+                subject: Box::new(TypedExpr::Var {
+                    value: variable.name.clone(),
+                    typ: variable.typ.clone(),
+                }),
+                some_arm_binding: some_case.bound_name.clone(),
+                some_arm_body: Box::new(decision_to_typed_expr(
+                    &some_case.body,
+                    typed_bodies,
+                    result_type.clone(),
+                )),
+                none_arm_body: Box::new(decision_to_typed_expr(
+                    &none_case.body,
+                    typed_bodies,
+                    result_type.clone(),
+                )),
+            },
+            typ: result_type,
+        },
 
         Decision::SwitchEnum { variable, cases } => {
-            let subject = Box::new(root_subject.unwrap_or_else(|| TypedExpr::Var {
-                value: variable.name.clone(),
-                typ: variable.typ.clone(),
-            }));
-
             let arms = cases
                 .iter()
                 .map(|case| {
@@ -398,7 +391,7 @@ fn decision_to_typed_expr(
                         .collect();
 
                     let body =
-                        decision_to_typed_expr(&case.body, typed_bodies, result_type.clone(), None);
+                        decision_to_typed_expr(&case.body, typed_bodies, result_type.clone());
 
                     EnumMatchArm {
                         pattern,
@@ -409,23 +402,19 @@ fn decision_to_typed_expr(
                 .collect();
 
             TypedExpr::Match {
-                match_: Match::Enum { subject, arms },
+                match_: Match::Enum {
+                    subject: Box::new(TypedExpr::Var {
+                        value: variable.name.clone(),
+                        typ: variable.typ.clone(),
+                    }),
+                    arms,
+                },
                 typ: result_type,
             }
         }
 
         Decision::SwitchRecord { variable, case } => {
-            // The variable the fields are read from: the subject itself when it
-            // is already a variable, otherwise the synthetic variable which is
-            // bound to the subject expression below.
-            let (record_name, record_typ, subject_to_bind) = match root_subject {
-                Some(TypedExpr::Var { value, typ }) => (value, typ, None),
-                Some(subject) => (variable.name.clone(), variable.typ.clone(), Some(subject)),
-                None => (variable.name.clone(), variable.typ.clone(), None),
-            };
-
-            let mut body =
-                decision_to_typed_expr(&case.body, typed_bodies, result_type.clone(), None);
+            let mut body = decision_to_typed_expr(&case.body, typed_bodies, result_type);
 
             // Wrap with Let expressions for each field (using FieldAccess)
             // Iterate in reverse so bindings are in the correct order
@@ -438,8 +427,8 @@ fn decision_to_typed_expr(
                 // Create field access: subject.field_name
                 let field_access = TypedExpr::FieldAccess {
                     record: Box::new(TypedExpr::Var {
-                        value: record_name.clone(),
-                        typ: record_typ.clone(),
+                        value: variable.name.clone(),
+                        typ: variable.typ.clone(),
                     }),
                     field: binding.field_name.clone(),
                     typ: binding.typ.clone(),
@@ -454,15 +443,7 @@ fn decision_to_typed_expr(
                 };
             }
 
-            match subject_to_bind {
-                Some(subject) => TypedExpr::Let {
-                    var: record_name,
-                    value: Box::new(subject),
-                    body: Box::new(body),
-                    typ: result_type,
-                },
-                None => body,
-            }
+            body
         }
     }
 }

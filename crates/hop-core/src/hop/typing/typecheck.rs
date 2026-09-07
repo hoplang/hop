@@ -3919,7 +3919,7 @@ mod tests {
                     tag: "div",
                     attrs: [],
                     children: concat(
-                      escape(match user.status {
+                      escape(let v__0 = user.status in match v__0 {
                         Status::Active => "active",
                         Status::Inactive => "inactive",
                       }),
@@ -4037,7 +4037,7 @@ mod tests {
                 }
 
                 fn Main(t: main::Tree) -> Fragment {
-                  match t.root {
+                  let v__0 = t.root in match v__0 {
                     Node::Leaf => let label = v__1 in concat(escape(label)),
                     Node::Branch => let children = v__2 in concat(
                       for _ in children {
@@ -4754,7 +4754,7 @@ mod tests {
                 -- main.hop --
                 fn Main(x: Option[String]) -> Fragment {
                   match x {
-                    Some(v__1) => let y = v__1 in concat(raw("found "), escape(y)),
+                    Some(v__0) => let y = v__0 in concat(raw("found "), escape(y)),
                     None => concat(raw("nothing")),
                   }
                 }
@@ -4820,7 +4820,7 @@ mod tests {
                 }
 
                 fn Main() -> Fragment {
-                  match Status::Active {name: "test"} {
+                  let v__0 = Status::Active {name: "test"} in match v__0 {
                     Status::Active => let n = v__1 in concat(escape(n)),
                     Status::Inactive => concat(raw("none")),
                   }
@@ -4891,7 +4891,7 @@ mod tests {
                 -- main.hop --
                 fn Main(x: Option[String]) -> Fragment {
                   match x {
-                    Some(v__1) => let name = v__1 in concat(
+                    Some(v__0) => let name = v__0 in concat(
                       html(tag: "div", attrs: [class: escape(name)], children: concat()),
                     ),
                     None => concat(raw("nothing")),
@@ -5184,9 +5184,9 @@ mod tests {
                 -- main.hop --
                 fn Main(x: Option[Option[String]]) -> Fragment {
                   match x {
-                    Some(v__1) => let inner = v__1 in concat(
+                    Some(v__0) => let inner = v__0 in concat(
                       match inner {
-                        Some(v__3) => let s = v__3 in concat(escape(s)),
+                        Some(v__1) => let s = v__1 in concat(escape(s)),
                         None => concat(raw("inner none")),
                       },
                     ),
@@ -5217,7 +5217,7 @@ mod tests {
                   for item in items {
                     concat(
                       match item {
-                        Some(v__1) => let s = v__1 in concat(escape(s)),
+                        Some(v__0) => let s = v__0 in concat(escape(s)),
                         None => concat(raw("-")),
                       },
                     )
@@ -5276,10 +5276,10 @@ mod tests {
                 -- main.hop --
                 fn Main(r1: Option[String], r2: Option[Bool]) -> Fragment {
                   match r1 {
-                    Some(v__1) => let bound = v__1 in concat(escape(bound)),
+                    Some(v__0) => let bound = v__0 in concat(escape(bound)),
                     None => concat(
                       match r2 {
-                        Some(v__3) => let bound = v__3 in concat(
+                        Some(v__1) => let bound = v__1 in concat(
                           match bound {true => concat(raw("yes")), false => concat()},
                         ),
                         None => concat(raw("both none")),
@@ -5311,7 +5311,7 @@ mod tests {
                 }
 
                 fn Main(user: main::User) -> Fragment {
-                  match user.name {
+                  let v__0 = user.name in match v__0 {
                     Some(v__1) => let n = v__1 in concat(escape(n)),
                     None => concat(raw("anonymous")),
                   }
@@ -5361,7 +5361,7 @@ mod tests {
                   match show {
                     true => concat(
                       match x {
-                        Some(v__1) => let v = v__1 in concat(escape(v)),
+                        Some(v__0) => let v = v__0 in concat(escape(v)),
                         None => concat(raw("none")),
                       },
                     ),
@@ -5394,7 +5394,7 @@ mod tests {
                     attrs: [],
                     children: concat(
                       match x {
-                        Some(v__1) => let v = v__1 in concat(
+                        Some(v__0) => let v = v__0 in concat(
                           html(tag: "span", attrs: [], children: concat(escape(v))),
                         ),
                         None => concat(
@@ -8408,7 +8408,7 @@ mod tests {
                 -- main.hop --
                 fn Render(item: Option[Int]) -> Fragment {
                   match item {
-                    Some(v__1) => let n = v__1 in concat(Wrap(n: n)),
+                    Some(v__0) => let n = v__0 in concat(Wrap(n: n)),
                     None => concat(raw("done")),
                   }
                 }
