@@ -153,11 +153,6 @@ pub fn typecheck_expr(
             right,
             ..
         } => {
-            // Try left first, if it fails, try right to infer left's type from right.
-            // Both attempts are speculative, so they collect into scratch
-            // sinks, only the errors of whichever attempt we settle on are
-            // reported.
-            let mut left_errors = Vec::new();
             let typed_left = typecheck_expr(
                 left,
                 None,
@@ -168,48 +163,8 @@ pub fn typecheck_expr(
                 annotations,
                 definition_links,
                 asset_references,
-                &mut left_errors,
-            );
-            let typed_left = match typed_left {
-                Some(typed_left) => typed_left,
-                None => {
-                    let mut retry_errors = Vec::new();
-                    let retried = typecheck_expr(
-                        right,
-                        None,
-                        forwarded_params,
-                        var_env,
-                        type_env,
-                        registry,
-                        annotations,
-                        definition_links,
-                        asset_references,
-                        &mut retry_errors,
-                    )
-                    .and_then(|typed_right| {
-                        typecheck_expr(
-                            left,
-                            Some(&typed_right.get_type()),
-                            forwarded_params,
-                            var_env,
-                            type_env,
-                            registry,
-                            annotations,
-                            definition_links,
-                            asset_references,
-                            &mut retry_errors,
-                        )
-                    });
-                    match retried {
-                        Some(typed_left) => typed_left,
-                        None => {
-                            errors.append(&mut left_errors);
-                            return None;
-                        }
-                    }
-                }
-            };
-            // Use left's type as context for right (allows Some(1) == None)
+                errors,
+            )?;
             let typed_right = typecheck_expr(
                 right,
                 Some(&typed_left.get_type()),
@@ -4187,7 +4142,7 @@ mod tests {
             &[],
             "None == Some(1)",
             expect![[r#"
-                error: Type Option[Int] is not comparable
+                error: Cannot infer type of None without context
                 None == Some(1)
                 ^^^^
             "#]],
