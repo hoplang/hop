@@ -9,25 +9,25 @@ use crate::symbols::var_name::VarName;
 
 use super::parse_helpers::{
     advance_if, expect_field_name, expect_right_delimiter, expect_token, expect_type_name,
-    expect_variable_name, next_if, parse_delimited, parse_delimited_list,
+    expect_variable_name, next_if_map, parse_delimited, parse_delimited_list,
 };
 use super::parse_nodes;
 use super::parsed_expr::{
     Constructor, ParsedBinaryOp, ParsedExpr, ParsedMatchArm, ParsedMatchPattern,
 };
 use super::token::LangToken;
-use super::tokenize_expr::{next, peek};
-use crate::parse_error::{ParseError, ParseErrorKind};
+use super::tokenize_expr::peek;
+use crate::parse_error::{ErrorEmitted, ParseErrorKind, ParseErrors};
 
 pub fn parse_expr(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
-    errors: &mut Vec<ParseError>,
-    range: &DocumentRange,
-) -> Option<ParsedExpr> {
-    let mut expr = parse_logical_and(iter, comments, errors, range)?;
+    errors: &mut ParseErrors,
+    eof_range: &DocumentRange,
+) -> Result<ParsedExpr, ErrorEmitted> {
+    let mut expr = parse_logical_and(iter, comments, errors, eof_range)?;
     while advance_if(iter, comments, errors, LangToken::LogicalOr).is_some() {
-        let right = parse_logical_and(iter, comments, errors, range)?;
+        let right = parse_logical_and(iter, comments, errors, eof_range)?;
         expr = ParsedExpr::BinaryOp {
             range: expr.range().clone().to(right.range().clone()),
             left: Box::new(expr),
@@ -35,18 +35,18 @@ pub fn parse_expr(
             right: Box::new(right),
         };
     }
-    Some(expr)
+    Ok(expr)
 }
 
 fn parse_logical_and(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
-    errors: &mut Vec<ParseError>,
-    range: &DocumentRange,
-) -> Option<ParsedExpr> {
-    let mut expr = parse_equality(iter, comments, errors, range)?;
+    errors: &mut ParseErrors,
+    eof_range: &DocumentRange,
+) -> Result<ParsedExpr, ErrorEmitted> {
+    let mut expr = parse_equality(iter, comments, errors, eof_range)?;
     while advance_if(iter, comments, errors, LangToken::LogicalAnd).is_some() {
-        let right = parse_equality(iter, comments, errors, range)?;
+        let right = parse_equality(iter, comments, errors, eof_range)?;
         expr = ParsedExpr::BinaryOp {
             range: expr.range().clone().to(right.range().clone()),
             left: Box::new(expr),
@@ -54,19 +54,19 @@ fn parse_logical_and(
             right: Box::new(right),
         };
     }
-    Some(expr)
+    Ok(expr)
 }
 
 fn parse_equality(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
-    errors: &mut Vec<ParseError>,
-    range: &DocumentRange,
-) -> Option<ParsedExpr> {
-    let mut expr = parse_relational(iter, comments, errors, range)?;
+    errors: &mut ParseErrors,
+    eof_range: &DocumentRange,
+) -> Result<ParsedExpr, ErrorEmitted> {
+    let mut expr = parse_relational(iter, comments, errors, eof_range)?;
     loop {
         if advance_if(iter, comments, errors, LangToken::Eq).is_some() {
-            let right = parse_relational(iter, comments, errors, range)?;
+            let right = parse_relational(iter, comments, errors, eof_range)?;
             expr = ParsedExpr::BinaryOp {
                 range: expr.range().clone().to(right.range().clone()),
                 left: Box::new(expr),
@@ -74,7 +74,7 @@ fn parse_equality(
                 right: Box::new(right),
             };
         } else if advance_if(iter, comments, errors, LangToken::NotEq).is_some() {
-            let right = parse_relational(iter, comments, errors, range)?;
+            let right = parse_relational(iter, comments, errors, eof_range)?;
             expr = ParsedExpr::BinaryOp {
                 range: expr.range().clone().to(right.range().clone()),
                 left: Box::new(expr),
@@ -85,19 +85,19 @@ fn parse_equality(
             break;
         }
     }
-    Some(expr)
+    Ok(expr)
 }
 
 fn parse_relational(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
-    errors: &mut Vec<ParseError>,
-    range: &DocumentRange,
-) -> Option<ParsedExpr> {
-    let mut expr = parse_additive(iter, comments, errors, range)?;
+    errors: &mut ParseErrors,
+    eof_range: &DocumentRange,
+) -> Result<ParsedExpr, ErrorEmitted> {
+    let mut expr = parse_additive(iter, comments, errors, eof_range)?;
     loop {
         if advance_if(iter, comments, errors, LangToken::LessThan).is_some() {
-            let right = parse_additive(iter, comments, errors, range)?;
+            let right = parse_additive(iter, comments, errors, eof_range)?;
             expr = ParsedExpr::BinaryOp {
                 range: expr.range().clone().to(right.range().clone()),
                 left: Box::new(expr),
@@ -105,7 +105,7 @@ fn parse_relational(
                 right: Box::new(right),
             };
         } else if advance_if(iter, comments, errors, LangToken::GreaterThan).is_some() {
-            let right = parse_additive(iter, comments, errors, range)?;
+            let right = parse_additive(iter, comments, errors, eof_range)?;
             expr = ParsedExpr::BinaryOp {
                 range: expr.range().clone().to(right.range().clone()),
                 left: Box::new(expr),
@@ -113,7 +113,7 @@ fn parse_relational(
                 right: Box::new(right),
             };
         } else if advance_if(iter, comments, errors, LangToken::LessThanOrEqual).is_some() {
-            let right = parse_additive(iter, comments, errors, range)?;
+            let right = parse_additive(iter, comments, errors, eof_range)?;
             expr = ParsedExpr::BinaryOp {
                 range: expr.range().clone().to(right.range().clone()),
                 left: Box::new(expr),
@@ -121,7 +121,7 @@ fn parse_relational(
                 right: Box::new(right),
             };
         } else if advance_if(iter, comments, errors, LangToken::GreaterThanOrEqual).is_some() {
-            let right = parse_additive(iter, comments, errors, range)?;
+            let right = parse_additive(iter, comments, errors, eof_range)?;
             expr = ParsedExpr::BinaryOp {
                 range: expr.range().clone().to(right.range().clone()),
                 left: Box::new(expr),
@@ -132,19 +132,19 @@ fn parse_relational(
             break;
         }
     }
-    Some(expr)
+    Ok(expr)
 }
 
 fn parse_additive(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
-    errors: &mut Vec<ParseError>,
-    range: &DocumentRange,
-) -> Option<ParsedExpr> {
-    let mut expr = parse_multiplicative(iter, comments, errors, range)?;
+    errors: &mut ParseErrors,
+    eof_range: &DocumentRange,
+) -> Result<ParsedExpr, ErrorEmitted> {
+    let mut expr = parse_multiplicative(iter, comments, errors, eof_range)?;
     loop {
         if advance_if(iter, comments, errors, LangToken::Plus).is_some() {
-            let right = parse_multiplicative(iter, comments, errors, range)?;
+            let right = parse_multiplicative(iter, comments, errors, eof_range)?;
             expr = ParsedExpr::BinaryOp {
                 range: expr.range().clone().to(right.range().clone()),
                 left: Box::new(expr),
@@ -152,7 +152,7 @@ fn parse_additive(
                 right: Box::new(right),
             };
         } else if advance_if(iter, comments, errors, LangToken::Minus).is_some() {
-            let right = parse_multiplicative(iter, comments, errors, range)?;
+            let right = parse_multiplicative(iter, comments, errors, eof_range)?;
             expr = ParsedExpr::BinaryOp {
                 range: expr.range().clone().to(right.range().clone()),
                 left: Box::new(expr),
@@ -163,18 +163,18 @@ fn parse_additive(
             break;
         }
     }
-    Some(expr)
+    Ok(expr)
 }
 
 fn parse_multiplicative(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
-    errors: &mut Vec<ParseError>,
-    range: &DocumentRange,
-) -> Option<ParsedExpr> {
-    let mut expr = parse_unary(iter, comments, errors, range)?;
+    errors: &mut ParseErrors,
+    eof_range: &DocumentRange,
+) -> Result<ParsedExpr, ErrorEmitted> {
+    let mut expr = parse_unary(iter, comments, errors, eof_range)?;
     while advance_if(iter, comments, errors, LangToken::Asterisk).is_some() {
-        let right = parse_unary(iter, comments, errors, range)?;
+        let right = parse_unary(iter, comments, errors, eof_range)?;
         expr = ParsedExpr::BinaryOp {
             range: expr.range().clone().to(right.range().clone()),
             left: Box::new(expr),
@@ -182,87 +182,87 @@ fn parse_multiplicative(
             right: Box::new(right),
         };
     }
-    Some(expr)
+    Ok(expr)
 }
 
 fn parse_unary(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
-    errors: &mut Vec<ParseError>,
-    range: &DocumentRange,
-) -> Option<ParsedExpr> {
+    errors: &mut ParseErrors,
+    eof_range: &DocumentRange,
+) -> Result<ParsedExpr, ErrorEmitted> {
     if let Some(operator_range) = advance_if(iter, comments, errors, LangToken::Not) {
-        let expr = parse_unary(iter, comments, errors, range)?; // Right associative for multiple !
-        Some(ParsedExpr::BooleanNegation {
+        let expr = parse_unary(iter, comments, errors, eof_range)?; // Right associative for multiple !
+        Ok(ParsedExpr::BooleanNegation {
             range: operator_range.to(expr.range().clone()),
             operand: Box::new(expr),
         })
     } else if let Some(operator_range) = advance_if(iter, comments, errors, LangToken::Minus) {
-        let expr = parse_unary(iter, comments, errors, range)?; // Right associative for multiple -
-        Some(ParsedExpr::NumericNegation {
+        let expr = parse_unary(iter, comments, errors, eof_range)?; // Right associative for multiple -
+        Ok(ParsedExpr::NumericNegation {
             range: operator_range.to(expr.range().clone()),
             operand: Box::new(expr),
         })
     } else {
-        parse_primary(iter, comments, errors, range)
+        parse_primary(iter, comments, errors, eof_range)
     }
 }
 
 fn parse_array_literal(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
-    errors: &mut Vec<ParseError>,
-    range: &DocumentRange,
+    errors: &mut ParseErrors,
+    eof_range: &DocumentRange,
     left_bracket: DocumentRange,
-) -> Option<ParsedExpr> {
+) -> Result<ParsedExpr, ErrorEmitted> {
     let (elements, range) = parse_delimited_list(
         iter,
         comments,
         errors,
-        range,
+        eof_range,
         LangTokenPair::Brackets,
         &left_bracket,
+        &[],
         parse_expr,
     )?;
-    Some(ParsedExpr::ArrayLiteral { elements, range })
+    Ok(ParsedExpr::ArrayLiteral { elements, range })
 }
 
 pub fn parse_primary(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
-    errors: &mut Vec<ParseError>,
-    range: &DocumentRange,
-) -> Option<ParsedExpr> {
-    let mut expr = match next(iter, comments, errors) {
-        Some((LangToken::Identifier(name), name_range)) => {
-            if let Some(bang_range) = advance_if(iter, comments, errors, LangToken::Not) {
-                return parse_macro_invocation(
-                    iter,
-                    comments,
-                    errors,
-                    range,
-                    name,
-                    name_range.to(bang_range),
-                );
-            }
-            let var_name = match VarName::from_cheap_string(name.clone()) {
-                Ok(var_name) => var_name,
-                Err(error) => {
-                    errors.push(ParseError::new(
-                        ParseErrorKind::InvalidVariableName { name, error },
-                        name_range,
-                    ));
-                    return None;
-                }
-            };
+    errors: &mut ParseErrors,
+    eof_range: &DocumentRange,
+) -> Result<ParsedExpr, ErrorEmitted> {
+    let mut expr = if let Some((name, name_range)) =
+        next_if_map(iter, comments, errors, LangToken::identifier)
+    {
+        // A macro invocation, a function call, or a variable reference.
+        if let Some(bang_range) = advance_if(iter, comments, errors, LangToken::Not) {
+            parse_macro_invocation(
+                iter,
+                comments,
+                errors,
+                eof_range,
+                name,
+                name_range.to(bang_range),
+            )?
+        } else {
+            let var_name = VarName::from_cheap_string(name.clone()).map_err(|error| {
+                errors.emit(
+                    ParseErrorKind::InvalidVariableName { name, error },
+                    name_range.clone(),
+                )
+            })?;
             if let Some(left_paren) = advance_if(iter, comments, errors, LangToken::LeftParen) {
                 let (args, parens) = parse_delimited_list(
                     iter,
                     comments,
                     errors,
-                    range,
+                    eof_range,
                     LangTokenPair::Parens,
                     &left_paren,
+                    &[],
                     parse_expr,
                 )?;
                 ParsedExpr::FunctionCall {
@@ -278,137 +278,140 @@ pub fn parse_primary(
                 }
             }
         }
-        Some((LangToken::TypeName(name), name_range)) => {
-            let type_name = match TypeName::from_cheap_string(name) {
-                Ok(type_name) => type_name,
-                Err(error) => {
-                    errors.push(ParseError::new(
-                        ParseErrorKind::InvalidTypeName { error },
-                        name_range,
-                    ));
-                    return None;
-                }
-            };
-            let is_enum_variant = peek(iter).map(|(t, _)| t) == Some(LangToken::ColonColon);
-            if is_enum_variant {
-                parse_enum_literal(iter, comments, errors, range, type_name, name_range)?
-            } else {
-                parse_record_literal(iter, comments, errors, range, type_name, name_range)?
-            }
+    } else if let Some((name, name_range)) =
+        next_if_map(iter, comments, errors, LangToken::type_name)
+    {
+        let type_name = TypeName::from_cheap_string(name).map_err(|error| {
+            errors.emit(
+                ParseErrorKind::InvalidTypeName { error },
+                name_range.clone(),
+            )
+        })?;
+        if let Some(colon_colon) = advance_if(iter, comments, errors, LangToken::ColonColon) {
+            parse_enum_literal(
+                iter,
+                comments,
+                errors,
+                eof_range,
+                type_name,
+                name_range,
+                colon_colon,
+            )?
+        } else {
+            parse_record_literal(iter, comments, errors, eof_range, type_name, name_range)?
         }
-        Some((LangToken::StringLiteral(value), lit_range)) => ParsedExpr::StringLiteral {
+    } else if let Some((value, lit_range)) =
+        next_if_map(iter, comments, errors, |token| match token {
+            LangToken::StringLiteral(value) => Some(value),
+            _ => None,
+        })
+    {
+        ParsedExpr::StringLiteral {
             value,
             range: lit_range,
-        },
-        Some((LangToken::True, lit_range)) => ParsedExpr::BooleanLiteral {
+        }
+    } else if let Some(lit_range) = advance_if(iter, comments, errors, LangToken::True) {
+        ParsedExpr::BooleanLiteral {
             value: true,
             range: lit_range,
-        },
-        Some((LangToken::False, lit_range)) => ParsedExpr::BooleanLiteral {
+        }
+    } else if let Some(lit_range) = advance_if(iter, comments, errors, LangToken::False) {
+        ParsedExpr::BooleanLiteral {
             value: false,
             range: lit_range,
-        },
-        Some((LangToken::IntLiteral(value), lit_range)) => ParsedExpr::IntLiteral {
+        }
+    } else if let Some((value, lit_range)) =
+        next_if_map(iter, comments, errors, |token| match token {
+            LangToken::IntLiteral(value) => Some(value),
+            _ => None,
+        })
+    {
+        ParsedExpr::IntLiteral {
             value,
             range: lit_range,
-        },
-        Some((LangToken::FloatLiteral(value), lit_range)) => ParsedExpr::FloatLiteral {
+        }
+    } else if let Some((value, lit_range)) =
+        next_if_map(iter, comments, errors, |token| match token {
+            LangToken::FloatLiteral(value) => Some(value),
+            _ => None,
+        })
+    {
+        ParsedExpr::FloatLiteral {
             value,
             range: lit_range,
-        },
-        Some((LangToken::LeftBracket, left_bracket)) => {
-            parse_array_literal(iter, comments, errors, range, left_bracket)?
         }
-        Some((LangToken::LeftParen, left_paren)) => {
-            let (inner, _) = parse_delimited(
-                iter,
-                comments,
-                errors,
-                range,
-                LangTokenPair::Parens,
-                &left_paren,
-                parse_expr,
-            )?;
-            inner
+    } else if let Some(left_bracket) = advance_if(iter, comments, errors, LangToken::LeftBracket) {
+        parse_array_literal(iter, comments, errors, eof_range, left_bracket)?
+    } else if let Some(left_paren) = advance_if(iter, comments, errors, LangToken::LeftParen) {
+        let (inner, _) = parse_delimited(
+            iter,
+            comments,
+            errors,
+            eof_range,
+            LangTokenPair::Parens,
+            &left_paren,
+            parse_expr,
+        )?;
+        inner
+    } else if let Some(match_range) = advance_if(iter, comments, errors, LangToken::Match) {
+        parse_match(iter, comments, errors, eof_range, match_range)?
+    } else if let Some(some_range) = advance_if(iter, comments, errors, LangToken::Some) {
+        let left_paren = expect_token(iter, comments, errors, eof_range, &LangToken::LeftParen)?;
+        let (value, parens) = parse_delimited(
+            iter,
+            comments,
+            errors,
+            eof_range,
+            LangTokenPair::Parens,
+            &left_paren,
+            parse_expr,
+        )?;
+        ParsedExpr::OptionLiteral {
+            value: Some(Box::new(value)),
+            range: some_range.to(parens),
         }
-        Some((LangToken::Match, match_range)) => {
-            parse_match(iter, comments, errors, range, match_range)?
-        }
-        Some((LangToken::Some, some_range)) => {
-            let left_paren = expect_token(iter, comments, errors, range, &LangToken::LeftParen)?;
-            let (value, parens) = parse_delimited(
-                iter,
-                comments,
-                errors,
-                range,
-                LangTokenPair::Parens,
-                &left_paren,
-                parse_expr,
-            )?;
-            ParsedExpr::OptionLiteral {
-                value: Some(Box::new(value)),
-                range: some_range.to(parens),
-            }
-        }
-        Some((LangToken::None, none_range)) => ParsedExpr::OptionLiteral {
+    } else if let Some(none_range) = advance_if(iter, comments, errors, LangToken::None) {
+        ParsedExpr::OptionLiteral {
             value: None,
             range: none_range,
-        },
-        Some((LangToken::TypeFragment, start_range)) => {
-            expect_token(iter, comments, errors, range, &LangToken::ColonColon)?;
-            let (method_name, method_range) = match next(iter, comments, errors) {
-                Some((LangToken::Identifier(name), name_range)) => (name, name_range),
+        }
+    } else if let Some(start_range) = advance_if(iter, comments, errors, LangToken::TypeFragment) {
+        expect_token(iter, comments, errors, eof_range, &LangToken::ColonColon)?;
+        let Some((method_name, method_range)) =
+            next_if_map(iter, comments, errors, LangToken::identifier)
+        else {
+            return Err(match peek(iter) {
                 Some((token, token_range)) => {
-                    errors.push(ParseError::new(
-                        ParseErrorKind::UnexpectedToken { token },
-                        token_range,
-                    ));
-                    return None;
+                    errors.emit(ParseErrorKind::UnexpectedToken { token }, token_range)
                 }
-                None => {
-                    errors.push(ParseError::new(
-                        ParseErrorKind::UnexpectedEof {},
-                        range.clone(),
-                    ));
-                    return None;
-                }
-            };
-            if method_name.as_str() != "empty" {
-                errors.push(ParseError::new(
-                    ParseErrorKind::UnexpectedToken {
-                        token: LangToken::Identifier(method_name),
-                    },
-                    method_range,
-                ));
-                return None;
-            }
-            let left_paren = expect_token(iter, comments, errors, range, &LangToken::LeftParen)?;
-            let right_paren =
-                expect_right_delimiter(iter, comments, errors, LangTokenPair::Parens, &left_paren)?;
-            ParsedExpr::FragmentEmpty {
-                range: start_range.to(right_paren),
-            }
-        }
-        Some((LangToken::LessThan, left_angle)) => {
-            parse_nodes::parse_markup(iter, comments, errors, left_angle)?
-        }
-        Some((token, token_range)) => {
-            errors.push(ParseError::new(
-                ParseErrorKind::UnexpectedToken { token },
-                token_range,
+                None => errors.emit(ParseErrorKind::UnexpectedEof {}, eof_range.clone()),
+            });
+        };
+        if method_name.as_str() != "empty" {
+            return Err(errors.emit(
+                ParseErrorKind::UnexpectedToken {
+                    token: LangToken::Identifier(method_name),
+                },
+                method_range,
             ));
-            return None;
         }
-        None => {
-            errors.push(ParseError::new(
-                ParseErrorKind::UnexpectedEof {},
-                range.clone(),
-            ));
-            return None;
+        let left_paren = expect_token(iter, comments, errors, eof_range, &LangToken::LeftParen)?;
+        let right_paren =
+            expect_right_delimiter(iter, comments, errors, LangTokenPair::Parens, &left_paren)?;
+        ParsedExpr::FragmentEmpty {
+            range: start_range.to(right_paren),
         }
+    } else if let Some(left_angle) = advance_if(iter, comments, errors, LangToken::LessThan) {
+        parse_nodes::parse_markup(iter, comments, errors, left_angle)?
+    } else {
+        return Err(match peek(iter) {
+            Some((token, token_range)) => {
+                errors.emit(ParseErrorKind::UnexpectedToken { token }, token_range)
+            }
+            None => errors.emit(ParseErrorKind::UnexpectedEof {}, eof_range.clone()),
+        });
     };
     while let Some(dot) = advance_if(iter, comments, errors, LangToken::Dot) {
-        // Range covering `expr.`, used when the field name is missing at EOF.
         let dot_range = expr.range().clone().to(dot);
         let (field_name, field_range) = expect_field_name(iter, comments, errors, &dot_range)?;
         if let Some(left_paren) = advance_if(iter, comments, errors, LangToken::LeftParen) {
@@ -430,36 +433,36 @@ pub fn parse_primary(
             };
         }
     }
-    Some(expr)
+    Ok(expr)
 }
 
 fn parse_macro_invocation(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
-    errors: &mut Vec<ParseError>,
-    range: &DocumentRange,
+    errors: &mut ParseErrors,
+    eof_range: &DocumentRange,
     macro_name: CheapString,
     subject_range: DocumentRange,
-) -> Option<ParsedExpr> {
+) -> Result<ParsedExpr, ErrorEmitted> {
     let name_str = macro_name.as_str();
     if name_str != "join" && name_str != "asset" {
-        errors.push(ParseError::new(
+        return Err(errors.emit(
             ParseErrorKind::UnknownMacro { name: macro_name },
             subject_range,
         ));
-        return None;
     }
-    let left_paren = expect_token(iter, comments, errors, range, &LangToken::LeftParen)?;
+    let left_paren = expect_token(iter, comments, errors, eof_range, &LangToken::LeftParen)?;
     let (args, parens) = parse_delimited_list(
         iter,
         comments,
         errors,
-        range,
+        eof_range,
         LangTokenPair::Parens,
         &left_paren,
+        &[],
         parse_expr,
     )?;
-    Some(ParsedExpr::MacroInvocation {
+    Ok(ParsedExpr::MacroInvocation {
         name: macro_name,
         subject_range: subject_range.clone(),
         args,
@@ -470,32 +473,33 @@ fn parse_macro_invocation(
 fn parse_record_literal(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
-    errors: &mut Vec<ParseError>,
-    range: &DocumentRange,
+    errors: &mut ParseErrors,
+    eof_range: &DocumentRange,
     name: TypeName,
     name_range: DocumentRange,
-) -> Option<ParsedExpr> {
+) -> Result<ParsedExpr, ErrorEmitted> {
     enum Entry {
         Field(FieldName, ParsedExpr),
         Spread(ParsedExpr, DocumentRange),
     }
-    let left_brace = expect_token(iter, comments, errors, range, &LangToken::LeftBrace)?;
+    let left_brace = expect_token(iter, comments, errors, eof_range, &LangToken::LeftBrace)?;
     let (entries, braces) = parse_delimited_list(
         iter,
         comments,
         errors,
-        range,
+        eof_range,
         LangTokenPair::Braces,
         &left_brace,
+        &[],
         |iter, comments, errors, range| {
             if let Some(spread_range) = advance_if(iter, comments, errors, LangToken::DotDotDot) {
                 let subject = parse_expr(iter, comments, errors, range)?;
                 let spread_range = spread_range.to(subject.range().clone());
-                return Some(Entry::Spread(subject, spread_range));
+                return Ok(Entry::Spread(subject, spread_range));
             }
             let (field_name, _) = expect_field_name(iter, comments, errors, range)?;
             expect_token(iter, comments, errors, range, &LangToken::Colon)?;
-            Some(Entry::Field(
+            Ok(Entry::Field(
                 field_name,
                 parse_expr(iter, comments, errors, range)?,
             ))
@@ -508,17 +512,15 @@ fn parse_record_literal(
             Entry::Field(field_name, value) => fields.push((field_name, value)),
             Entry::Spread(subject, spread_range) => {
                 if spread.is_some() {
-                    errors.push(ParseError::new(
-                        ParseErrorKind::DuplicateSpreadInRecordLiteral,
-                        spread_range,
-                    ));
-                    return None;
+                    return Err(
+                        errors.emit(ParseErrorKind::DuplicateSpreadInRecordLiteral, spread_range)
+                    );
                 }
                 spread = Some(Box::new(subject));
             }
         }
     }
-    Some(ParsedExpr::RecordLiteral {
+    Ok(ParsedExpr::RecordLiteral {
         record_name: name,
         record_name_range: name_range.clone(),
         fields,
@@ -530,47 +532,46 @@ fn parse_record_literal(
 fn parse_enum_literal(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
-    errors: &mut Vec<ParseError>,
-    range: &DocumentRange,
+    errors: &mut ParseErrors,
+    eof_range: &DocumentRange,
     enum_name: TypeName,
     enum_name_range: DocumentRange,
-) -> Option<ParsedExpr> {
-    expect_token(iter, comments, errors, range, &LangToken::ColonColon)?;
-    let (variant_name, variant_range) = expect_type_name(iter, comments, errors, range)?;
+    colon_colon: DocumentRange,
+) -> Result<ParsedExpr, ErrorEmitted> {
+    let path_range = enum_name_range.clone().to(colon_colon);
+    let (variant_name, variant_range) = expect_type_name(iter, comments, errors, &path_range)?;
     let constructor_range = enum_name_range.clone().to(variant_range.clone());
-    let (fields, end_range) = if let Some(left_delim) =
-        advance_if(iter, comments, errors, LangToken::LeftBrace)
-    {
-        parse_delimited_list(
-            iter,
-            comments,
-            errors,
-            range,
-            LangTokenPair::Braces,
-            &left_delim,
-            |iter, comments, errors, range| {
-                if let Some(spread_range) = advance_if(iter, comments, errors, LangToken::DotDotDot)
-                {
-                    errors.push(ParseError::new(
-                        ParseErrorKind::SpreadNotAllowedInEnumLiteral,
-                        spread_range,
-                    ));
-                    return None;
-                }
-                let (field_name, field_name_range) =
-                    expect_field_name(iter, comments, errors, range)?;
-                expect_token(iter, comments, errors, range, &LangToken::Colon)?;
-                Some((
-                    field_name,
-                    field_name_range,
-                    parse_expr(iter, comments, errors, range)?,
-                ))
-            },
-        )?
-    } else {
-        (Vec::new(), variant_range)
-    };
-    Some(ParsedExpr::EnumLiteral {
+    let (fields, end_range) =
+        if let Some(left_delim) = advance_if(iter, comments, errors, LangToken::LeftBrace) {
+            parse_delimited_list(
+                iter,
+                comments,
+                errors,
+                eof_range,
+                LangTokenPair::Braces,
+                &left_delim,
+                &[],
+                |iter, comments, errors, range| {
+                    if let Some(spread_range) =
+                        advance_if(iter, comments, errors, LangToken::DotDotDot)
+                    {
+                        return Err(errors
+                            .emit(ParseErrorKind::SpreadNotAllowedInEnumLiteral, spread_range));
+                    }
+                    let (field_name, field_name_range) =
+                        expect_field_name(iter, comments, errors, range)?;
+                    expect_token(iter, comments, errors, range, &LangToken::Colon)?;
+                    Ok((
+                        field_name,
+                        field_name_range,
+                        parse_expr(iter, comments, errors, range)?,
+                    ))
+                },
+            )?
+        } else {
+            (Vec::new(), variant_range)
+        };
+    Ok(ParsedExpr::EnumLiteral {
         enum_name,
         variant_name,
         fields,
@@ -583,27 +584,28 @@ fn parse_enum_literal(
 fn parse_match(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
-    errors: &mut Vec<ParseError>,
-    range: &DocumentRange,
+    errors: &mut ParseErrors,
+    eof_range: &DocumentRange,
     match_range: DocumentRange,
-) -> Option<ParsedExpr> {
-    let subject = parse_expr(iter, comments, errors, range)?;
-    let left_brace = expect_token(iter, comments, errors, range, &LangToken::LeftBrace)?;
+) -> Result<ParsedExpr, ErrorEmitted> {
+    let subject = parse_expr(iter, comments, errors, eof_range)?;
+    let left_brace = expect_token(iter, comments, errors, eof_range, &LangToken::LeftBrace)?;
     let (arms, braces) = parse_delimited_list(
         iter,
         comments,
         errors,
-        range,
+        eof_range,
         LangTokenPair::Braces,
         &left_brace,
+        &[],
         |iter, comments, errors, range| {
             let pattern = parse_match_pattern(iter, comments, errors, range)?;
             expect_token(iter, comments, errors, range, &LangToken::FatArrow)?;
             let body = parse_expr(iter, comments, errors, range)?;
-            Some(ParsedMatchArm { pattern, body })
+            Ok(ParsedMatchArm { pattern, body })
         },
     )?;
-    Some(ParsedExpr::Match {
+    Ok(ParsedExpr::Match {
         subject: Box::new(subject),
         arms,
         range: match_range.to(braces),
@@ -613,16 +615,16 @@ fn parse_match(
 pub fn parse_match_pattern(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
-    errors: &mut Vec<ParseError>,
-    range: &DocumentRange,
-) -> Option<ParsedMatchPattern> {
+    errors: &mut ParseErrors,
+    eof_range: &DocumentRange,
+) -> Result<ParsedMatchPattern, ErrorEmitted> {
     if let Some(pattern_range) = advance_if(iter, comments, errors, LangToken::Underscore) {
-        return Some(ParsedMatchPattern::Wildcard {
+        return Ok(ParsedMatchPattern::Wildcard {
             range: pattern_range,
         });
     }
     if let Some(pattern_range) = advance_if(iter, comments, errors, LangToken::True) {
-        return Some(ParsedMatchPattern::Constructor {
+        return Ok(ParsedMatchPattern::Constructor {
             constructor: Constructor::BooleanTrue,
             args: Vec::new(),
             fields: Vec::new(),
@@ -632,7 +634,7 @@ pub fn parse_match_pattern(
         });
     }
     if let Some(pattern_range) = advance_if(iter, comments, errors, LangToken::False) {
-        return Some(ParsedMatchPattern::Constructor {
+        return Ok(ParsedMatchPattern::Constructor {
             constructor: Constructor::BooleanFalse,
             args: Vec::new(),
             fields: Vec::new(),
@@ -642,17 +644,17 @@ pub fn parse_match_pattern(
         });
     }
     if let Some(some_range) = advance_if(iter, comments, errors, LangToken::Some) {
-        let left_paren = expect_token(iter, comments, errors, range, &LangToken::LeftParen)?;
+        let left_paren = expect_token(iter, comments, errors, eof_range, &LangToken::LeftParen)?;
         let (inner_pattern, parens) = parse_delimited(
             iter,
             comments,
             errors,
-            range,
+            eof_range,
             LangTokenPair::Parens,
             &left_paren,
             parse_match_pattern,
         )?;
-        return Some(ParsedMatchPattern::Constructor {
+        return Ok(ParsedMatchPattern::Constructor {
             constructor: Constructor::OptionSome,
             args: vec![inner_pattern],
             fields: Vec::new(),
@@ -662,7 +664,7 @@ pub fn parse_match_pattern(
         });
     }
     if let Some(pattern_range) = advance_if(iter, comments, errors, LangToken::None) {
-        return Some(ParsedMatchPattern::Constructor {
+        return Ok(ParsedMatchPattern::Constructor {
             constructor: Constructor::OptionNone,
             args: Vec::new(),
             fields: Vec::new(),
@@ -671,23 +673,18 @@ pub fn parse_match_pattern(
             range: pattern_range,
         });
     }
-    if let Some((LangToken::TypeName(type_name_str), type_name_range)) =
-        next_if(iter, comments, errors, |res| {
-            matches!(res, (LangToken::TypeName(_), _))
-        })
+    if let Some((type_name_str, type_name_range)) =
+        next_if_map(iter, comments, errors, LangToken::type_name)
     {
         let type_name = match TypeName::from_cheap_string(type_name_str) {
             Ok(name) => name,
             Err(error) => {
-                errors.push(ParseError::new(
-                    ParseErrorKind::InvalidTypeName { error },
-                    type_name_range,
-                ));
-                return None;
+                return Err(errors.emit(ParseErrorKind::InvalidTypeName { error }, type_name_range));
             }
         };
         if advance_if(iter, comments, errors, LangToken::ColonColon).is_some() {
-            let (variant_name, variant_range) = expect_type_name(iter, comments, errors, range)?;
+            let (variant_name, variant_range) =
+                expect_type_name(iter, comments, errors, eof_range)?;
 
             let (fields, end_range) = if let Some(left_brace) =
                 advance_if(iter, comments, errors, LangToken::LeftBrace)
@@ -696,9 +693,10 @@ pub fn parse_match_pattern(
                     iter,
                     comments,
                     errors,
-                    range,
+                    eof_range,
                     LangTokenPair::Braces,
                     &left_brace,
+                    &[],
                     |iter, comments, errors, range| {
                         let (field_name, field_range) =
                             expect_field_name(iter, comments, errors, range)?;
@@ -712,18 +710,17 @@ pub fn parse_match_pattern(
                                         range: field_range.clone(),
                                     },
                                     Err(error) => {
-                                        errors.push(ParseError::new(
+                                        return Err(errors.emit(
                                             ParseErrorKind::InvalidVariableName {
                                                 name: field_name.to_cheap_string(),
                                                 error,
                                             },
                                             field_range,
                                         ));
-                                        return None;
                                     }
                                 }
                             };
-                        Some((field_name, field_range, pattern))
+                        Ok((field_name, field_range, pattern))
                     },
                 )?
             } else {
@@ -731,7 +728,7 @@ pub fn parse_match_pattern(
             };
 
             let constructor_range = type_name_range.clone().to(variant_range);
-            return Some(ParsedMatchPattern::Constructor {
+            return Ok(ParsedMatchPattern::Constructor {
                 constructor: Constructor::EnumVariant {
                     enum_name: type_name,
                     variant_name,
@@ -743,14 +740,16 @@ pub fn parse_match_pattern(
                 range: type_name_range.to(end_range),
             });
         } else {
-            let left_brace = expect_token(iter, comments, errors, range, &LangToken::LeftBrace)?;
+            let left_brace =
+                expect_token(iter, comments, errors, eof_range, &LangToken::LeftBrace)?;
             let (fields, braces) = parse_delimited_list(
                 iter,
                 comments,
                 errors,
-                range,
+                eof_range,
                 LangTokenPair::Braces,
                 &left_brace,
+                &[],
                 |iter, comments, errors, range| {
                     let (field_name, field_range) =
                         expect_field_name(iter, comments, errors, range)?;
@@ -764,21 +763,20 @@ pub fn parse_match_pattern(
                                 range: field_range.clone(),
                             },
                             Err(error) => {
-                                errors.push(ParseError::new(
+                                return Err(errors.emit(
                                     ParseErrorKind::InvalidVariableName {
                                         name: field_name.to_cheap_string(),
                                         error,
                                     },
                                     field_range,
                                 ));
-                                return None;
                             }
                         }
                     };
-                    Some((field_name, field_range, pattern))
+                    Ok((field_name, field_range, pattern))
                 },
             )?;
-            return Some(ParsedMatchPattern::Constructor {
+            return Ok(ParsedMatchPattern::Constructor {
                 constructor: Constructor::Record { type_name },
                 args: Vec::new(),
                 fields,
@@ -788,8 +786,8 @@ pub fn parse_match_pattern(
             });
         }
     }
-    let (var_name, var_range) = expect_variable_name(iter, comments, errors, range)?;
-    Some(ParsedMatchPattern::Binding {
+    let (var_name, var_range) = expect_variable_name(iter, comments, errors, eof_range)?;
+    Ok(ParsedMatchPattern::Binding {
         name: var_name,
         range: var_range,
     })
@@ -798,9 +796,8 @@ pub fn parse_match_pattern(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::document_annotator::DocumentAnnotator;
     use crate::document_id::DocumentId;
-    use crate::simple_annotation::SimpleAnnotation;
-    use crate::{annotation::Annotation, document_annotator::DocumentAnnotator};
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
@@ -810,8 +807,8 @@ mod tests {
         let range = cursor.range();
         let mut iter = cursor.peekable();
         let mut comments = VecDeque::new();
-        let mut errors = Vec::new();
-        let Some(result) = parse_expr(&mut iter, &mut comments, &mut errors, &range) else {
+        let mut errors = ParseErrors::new();
+        let Ok(result) = parse_expr(&mut iter, &mut comments, &mut errors, &range) else {
             panic!("expected expression to parse, got errors: {errors:?}");
         };
         expected.assert_eq(&format!("{result}\n"));
@@ -823,23 +820,21 @@ mod tests {
         let range = cursor.range();
         let mut iter = cursor.peekable();
         let mut comments = VecDeque::new();
-        let mut errors = Vec::new();
-        if parse_expr(&mut iter, &mut comments, &mut errors, &range).is_some() {
-            panic!("expected parse error but expression parsed successfully");
+        let mut errors = ParseErrors::new();
+        let result = parse_expr(&mut iter, &mut comments, &mut errors, &range);
+        if errors.is_empty() {
+            panic!("expected parse errors but got none");
         }
-        let err = errors.clone().pop().expect("expected at least one error");
-        let actual = DocumentAnnotator::new()
+        let rendered = DocumentAnnotator::new()
             .with_label("error")
             .without_location()
             .without_line_numbers()
-            .annotate(
-                &document_id,
-                [SimpleAnnotation {
-                    message: err.message(),
-                    range: err.range().clone(),
-                }],
-            )
+            .annotate(&document_id, errors.clone())
             .render();
+        let actual = match result {
+            Ok(expr) => format!("-- errors --\n{rendered}-- ast --\n{expr}\n"),
+            Err(_) => format!("-- errors --\n{rendered}"),
+        };
         expected.assert_eq(&actual);
     }
 
@@ -926,6 +921,7 @@ mod tests {
         reject(
             r#"User {name: "John""#,
             expect![[r#"
+                -- errors --
                 error: Unmatched '{'
                 User {name: "John"
                      ^
@@ -938,9 +934,12 @@ mod tests {
         reject(
             r#"User {name "John"}"#,
             expect![[r#"
+                -- errors --
                 error: Expected token ':' but got '"John"'
                 User {name "John"}
                            ^^^^^^
+                -- ast --
+                User {}
             "#]],
         );
     }
@@ -1040,6 +1039,7 @@ mod tests {
         reject(
             "User {...a, ...b}",
             expect![[r#"
+                -- errors --
                 error: At most one spread is allowed in a record literal
                 User {...a, ...b}
                             ^^^^
@@ -1052,9 +1052,12 @@ mod tests {
         reject(
             "User {...}",
             expect![[r#"
+                -- errors --
                 error: Unexpected token '}'
                 User {...}
                          ^
+                -- ast --
+                User {}
             "#]],
         );
     }
@@ -1064,9 +1067,12 @@ mod tests {
         reject(
             r#"match x {User {...y} => "a"}"#,
             expect![[r#"
+                -- errors --
                 error: Expected field name but got '...'
                 match x {User {...y} => "a"}
                                ^^^
+                -- ast --
+                match x {User => "a"}
             "#]],
         );
     }
@@ -1076,6 +1082,7 @@ mod tests {
         reject(
             r#"Foo {bar: "baz")"#,
             expect![[r#"
+                -- errors --
                 error: Expected token '}' but got ')'
                 Foo {bar: "baz")
                                ^
@@ -1102,10 +1109,11 @@ mod tests {
         reject(
             "Fragment::nonempty()",
             expect![[r#"
-                    error: Unexpected token 'nonempty'
-                    Fragment::nonempty()
-                              ^^^^^^^^
-                "#]],
+                -- errors --
+                error: Unexpected token 'nonempty'
+                Fragment::nonempty()
+                          ^^^^^^^^
+            "#]],
         );
     }
 
@@ -1114,10 +1122,11 @@ mod tests {
         reject(
             "Fragment::empty",
             expect![[r#"
-                    error: Expected token '(' but got end of file
-                    Fragment::empty
-                    ^^^^^^^^^^^^^^^
-                "#]],
+                -- errors --
+                error: Expected token '(' but got end of file
+                Fragment::empty
+                ^^^^^^^^^^^^^^^
+            "#]],
         );
     }
 
@@ -1164,6 +1173,7 @@ mod tests {
         reject(
             "[foo, bar == [foo, bar]",
             expect![[r#"
+                -- errors --
                 error: Unmatched '['
                 [foo, bar == [foo, bar]
                 ^
@@ -1176,9 +1186,12 @@ mod tests {
         reject(
             "[foo, bar, == [foo, bar]",
             expect![[r#"
+                -- errors --
                 error: Unexpected token '=='
                 [foo, bar, == [foo, bar]
                            ^^
+                -- ast --
+                [foo, bar, bar]
             "#]],
         );
     }
@@ -1188,6 +1201,7 @@ mod tests {
         reject(
             "[1,2",
             expect![[r#"
+                -- errors --
                 error: Unmatched '['
                 [1,2
                 ^
@@ -1200,7 +1214,12 @@ mod tests {
         reject(
             "[1,2 id",
             expect![[r#"
-                error: Expected token ']' but got 'id'
+                -- errors --
+                error: Unmatched '['
+                [1,2 id
+                ^
+
+                error: Expected token ',' but got 'id'
                 [1,2 id
                      ^^
             "#]],
@@ -1212,6 +1231,7 @@ mod tests {
         reject(
             "user == user.",
             expect![[r#"
+                -- errors --
                 error: Unexpected end of expression
                 user == user.
                         ^^^^^
@@ -1224,6 +1244,7 @@ mod tests {
         reject(
             "user.123",
             expect![[r#"
+                -- errors --
                 error: Expected field name but got '123'
                 user.123
                      ^^^
@@ -1236,6 +1257,7 @@ mod tests {
         reject(
             "== x",
             expect![[r#"
+                -- errors --
                 error: Unexpected token '=='
                 == x
                 ^^
@@ -1248,6 +1270,7 @@ mod tests {
         reject(
             "(x == y",
             expect![[r#"
+                -- errors --
                 error: Unmatched '('
                 (x == y
                 ^
@@ -1260,6 +1283,7 @@ mod tests {
         reject(
             "()",
             expect![[r#"
+                -- errors --
                 error: Unexpected token ')'
                 ()
                  ^
@@ -1272,6 +1296,7 @@ mod tests {
         reject(
             "x == )",
             expect![[r#"
+                -- errors --
                 error: Unexpected token ')'
                 x == )
                      ^
@@ -1284,6 +1309,7 @@ mod tests {
         reject(
             ".field",
             expect![[r#"
+                -- errors --
                 error: Unexpected token '.'
                 .field
                 ^
@@ -1296,6 +1322,7 @@ mod tests {
         reject(
             "user..name",
             expect![[r#"
+                -- errors --
                 error: Expected field name but got '.'
                 user..name
                      ^
@@ -1308,10 +1335,11 @@ mod tests {
         reject(
             "x ==",
             expect![[r#"
-            error: Unexpected end of expression
-            x ==
-            ^^^^
-        "#]],
+                -- errors --
+                error: Unexpected end of expression
+                x ==
+                ^^^^
+            "#]],
         );
     }
 
@@ -1320,10 +1348,11 @@ mod tests {
         reject(
             "!",
             expect![[r#"
-            error: Unexpected end of expression
-            !
-            ^
-        "#]],
+                -- errors --
+                error: Unexpected end of expression
+                !
+                ^
+            "#]],
         );
     }
 
@@ -1332,6 +1361,7 @@ mod tests {
         reject(
             "x !",
             expect![[r#"
+                -- errors --
                 error: Unknown macro 'x'
                 x !
                 ^^^
@@ -1498,6 +1528,7 @@ mod tests {
         reject(
             "x.foo(",
             expect![[r#"
+                -- errors --
                 error: Unmatched '('
                 x.foo(
                      ^
@@ -2118,6 +2149,7 @@ mod tests {
         reject(
             "Color::red",
             expect![[r#"
+                -- errors --
                 error: Expected type name but got 'red'
                 Color::red
                        ^^^
@@ -2130,6 +2162,7 @@ mod tests {
         reject(
             "Color::",
             expect![[r#"
+                -- errors --
                 error: Expected type name but got end of file
                 Color::
                 ^^^^^^^
@@ -2182,9 +2215,12 @@ mod tests {
         reject(
             "Outcome::Success {...other, value: 42}",
             expect![[r#"
+                -- errors --
                 error: Spread is not allowed in an enum variant literal
                 Outcome::Success {...other, value: 42}
                                   ^^^
+                -- ast --
+                Outcome::Success {value: 42}
             "#]],
         );
     }
@@ -2322,6 +2358,7 @@ mod tests {
         reject(
             "Some",
             expect![[r#"
+                -- errors --
                 error: Expected token '(' but got end of file
                 Some
                 ^^^^
@@ -2334,6 +2371,7 @@ mod tests {
         reject(
             "Some()",
             expect![[r#"
+                -- errors --
                 error: Unexpected token ')'
                 Some()
                      ^
@@ -2559,6 +2597,11 @@ mod tests {
         reject(
             "match maybe { Some(x",
             expect![[r#"
+                -- errors --
+                error: Unmatched '{'
+                match maybe { Some(x
+                            ^
+
                 error: Unmatched '('
                 match maybe { Some(x
                                   ^
@@ -2605,6 +2648,7 @@ mod tests {
         reject(
             "unknown!(x)",
             expect![[r#"
+                -- errors --
                 error: Unknown macro 'unknown'
                 unknown!(x)
                 ^^^^^^^^
@@ -2627,6 +2671,7 @@ mod tests {
         reject(
             "[1, 2,",
             expect![[r#"
+                -- errors --
                 error: Unmatched '['
                 [1, 2,
                 ^
@@ -2639,6 +2684,7 @@ mod tests {
         reject(
             r#"User {name: "John","#,
             expect![[r#"
+                -- errors --
                 error: Unmatched '{'
                 User {name: "John",
                      ^

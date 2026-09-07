@@ -199,7 +199,7 @@ impl Display for ParsedParameter {
 impl ParsedParameter {
     pub fn to_doc(&self) -> BoxDoc<'_> {
         let prefix = if let Some(examples) = &self.examples {
-            BoxDoc::text(examples.to_annotation_string()).append(BoxDoc::line())
+            BoxDoc::text(examples.to_annotation_string()).append(BoxDoc::space())
         } else {
             BoxDoc::nil()
         };
@@ -329,7 +329,7 @@ impl ParsedAst {
 
 impl Display for ParsedAst {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.to_doc().pretty(80))
+        write!(f, "{}", self.to_doc().pretty(40))
     }
 }
 
@@ -346,7 +346,7 @@ impl ParsedImportDeclaration {
 impl ParsedFieldDeclaration {
     pub fn to_doc(&self) -> BoxDoc<'_> {
         let base = if let Some(examples) = &self.examples {
-            BoxDoc::text(examples.to_annotation_string()).append(BoxDoc::line())
+            BoxDoc::text(examples.to_annotation_string()).append(BoxDoc::space())
         } else {
             BoxDoc::nil()
         };

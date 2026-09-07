@@ -69,6 +69,14 @@ pub trait PeekingExt<I: Iterator> {
     fn peeking_take_while<F>(&mut self, predicate: F) -> PeekingTakeWhile<'_, I, F>
     where
         F: FnMut(&I::Item) -> bool;
+
+    /// Run `f` on a copy of the iterator, and keep the copy's progress only
+    /// if `f` returns `Some`. On `None` the iterator is left where it was,
+    /// so a lookahead that fails part-way through consumes nothing.
+    fn speculate<T, F>(&mut self, f: F) -> Option<T>
+    where
+        Self: Clone,
+        F: FnOnce(&mut Self) -> Option<T>;
 }
 
 impl<I: Iterator> PeekingExt<I> for Peekable<I> {
@@ -80,5 +88,16 @@ impl<I: Iterator> PeekingExt<I> for Peekable<I> {
             iter: self,
             predicate,
         }
+    }
+
+    fn speculate<T, F>(&mut self, f: F) -> Option<T>
+    where
+        Self: Clone,
+        F: FnOnce(&mut Self) -> Option<T>,
+    {
+        let mut ahead = self.clone();
+        let result = f(&mut ahead)?;
+        *self = ahead;
+        Some(result)
     }
 }

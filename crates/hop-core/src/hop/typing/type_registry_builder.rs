@@ -11,6 +11,7 @@ use crate::hop::typing::r#type::{EnumVariant, FunctionSignature, ParamEntry, Tai
 use crate::hop::typing::type_env::TypeBinding;
 use crate::hop::typing::type_env::TypeEnv;
 use crate::hop::typing::type_registry::{ResolvedType, TypeDef, TypeRegistry};
+use crate::parse_error::ParseErrors;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
@@ -269,9 +270,9 @@ impl TestTypes {
         let range = cursor.range();
         let mut iter = cursor.peekable();
         let mut comments = VecDeque::new();
-        let mut errors = Vec::new();
+        let mut errors = ParseErrors::new();
         let parsed = parse_type(&mut iter, &mut comments, &mut errors, &range);
-        let Some(parsed) = parsed else {
+        let Ok(parsed) = parsed else {
             panic!("failed to parse type `{type_str}`: {errors:?}");
         };
         if !errors.is_empty() {

@@ -1167,6 +1167,7 @@ mod tests {
     use crate::document_annotator::DocumentAnnotator;
     use crate::document_id::DocumentId;
     use crate::hop::parsing::parse::parse;
+    use crate::parse_error::ParseErrors;
     use crate::{document::Document, program::Severity};
     use expect_test::{Expect, expect};
     use indoc::indoc;
@@ -1198,7 +1199,7 @@ mod tests {
                 panic!("Got invalid file name")
             }
             let source_code = file.content.trim();
-            let mut parse_errors = Vec::new();
+            let mut parse_errors = ParseErrors::new();
             let document_id = DocumentId::new(&file.name).unwrap();
             document_ids.push(document_id.clone());
             let ast = parse(

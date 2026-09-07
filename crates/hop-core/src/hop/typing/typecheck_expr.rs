@@ -2193,6 +2193,7 @@ mod tests {
     use crate::document_annotator::DocumentAnnotator;
     use crate::hop::parsing::parse_expr;
     use crate::hop::typing::type_registry_builder::TypeRegistryBuilder;
+    use crate::parse_error::ParseErrors;
     use expect_test::{Expect, expect};
     use indoc::indoc;
     use std::collections::VecDeque;
@@ -2219,7 +2220,7 @@ mod tests {
         let range = cursor.range();
         let mut iter = cursor.peekable();
         let mut comments = VecDeque::new();
-        let mut errors = Vec::new();
+        let mut errors = ParseErrors::new();
         let expr = parse_expr::parse_expr(&mut iter, &mut comments, &mut errors, &range)
             .expect("Failed to parse expression");
 

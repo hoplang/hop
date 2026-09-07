@@ -6,7 +6,7 @@ use crate::itertools::PeekingExt as _;
 use crate::document::{CheapString, DocumentCursor, DocumentRange};
 
 use super::token::LangToken;
-use crate::parse_error::{ParseError, ParseErrorKind};
+use crate::parse_error::{ParseErrorKind, ParseErrors};
 
 /// Peeks at the next token without consuming it.
 ///
@@ -15,7 +15,7 @@ use crate::parse_error::{ParseError, ParseErrorKind};
 pub fn peek(iter: &Peekable<DocumentCursor>) -> Option<(LangToken, DocumentRange)> {
     let mut cloned = iter.clone();
     let mut dropped_comments = VecDeque::new();
-    let mut dropped_errors = Vec::new();
+    let mut dropped_errors = ParseErrors::new();
     next(&mut cloned, &mut dropped_comments, &mut dropped_errors)
 }
 
@@ -24,7 +24,7 @@ pub fn peek(iter: &Peekable<DocumentCursor>) -> Option<(LangToken, DocumentRange
 pub fn next(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
-    errors: &mut Vec<ParseError>,
+    errors: &mut ParseErrors,
 ) -> Option<(LangToken, DocumentRange)> {
     loop {
         // Skip whitespace
@@ -36,17 +36,15 @@ pub fn next(
 
         return Some(match start.ch() {
             '.' => {
-                // Check for ..= or ...
-                let mut lookahead = iter.clone();
-                let second_is_dot = lookahead.next_if(|s| s.ch() == '.').is_some();
-                let third = lookahead.peek().map(|s| s.ch());
-                if second_is_dot && third == Some('.') {
-                    iter.next(); // second dot
-                    let third = iter.next().unwrap(); // third dot
-                    (LangToken::DotDotDot, start.to(third))
-                } else if second_is_dot && third == Some('=') {
-                    iter.next(); // second dot
-                    let eq = iter.next().unwrap(); // '='
+                if let Some(third_dot) = iter.speculate(|iter| {
+                    iter.next_if(|s| s.ch() == '.')?;
+                    iter.next_if(|s| s.ch() == '.')
+                }) {
+                    (LangToken::DotDotDot, start.to(third_dot))
+                } else if let Some(eq) = iter.speculate(|iter| {
+                    iter.next_if(|s| s.ch() == '.')?;
+                    iter.next_if(|s| s.ch() == '=')
+                }) {
                     (LangToken::DotDotEq, start.to(eq))
                 } else {
                     (LangToken::Dot, start)
@@ -66,10 +64,7 @@ pub fn next(
             '#' => match iter.next_if(|s| s.ch() == '[') {
                 Some(end) => (LangToken::HashBracket, start.to(end)),
                 None => {
-                    errors.push(ParseError::new(
-                        ParseErrorKind::UnexpectedCharacter { ch: '#' },
-                        start,
-                    ));
+                    let _ = errors.emit(ParseErrorKind::UnexpectedCharacter { ch: '#' }, start);
                     continue;
                 }
             },
@@ -82,20 +77,14 @@ pub fn next(
             '&' => match iter.next_if(|s| s.ch() == '&') {
                 Some(end) => (LangToken::LogicalAnd, start.to(end)),
                 None => {
-                    errors.push(ParseError::new(
-                        ParseErrorKind::UnexpectedCharacter { ch: '&' },
-                        start,
-                    ));
+                    let _ = errors.emit(ParseErrorKind::UnexpectedCharacter { ch: '&' }, start);
                     continue;
                 }
             },
             '|' => match iter.next_if(|s| s.ch() == '|') {
                 Some(end) => (LangToken::LogicalOr, start.to(end)),
                 None => {
-                    errors.push(ParseError::new(
-                        ParseErrorKind::UnexpectedCharacter { ch: '|' },
-                        start,
-                    ));
+                    let _ = errors.emit(ParseErrorKind::UnexpectedCharacter { ch: '|' }, start);
                     continue;
                 }
             },
@@ -109,10 +98,7 @@ pub fn next(
                     continue;
                 }
                 None => {
-                    errors.push(ParseError::new(
-                        ParseErrorKind::UnexpectedCharacter { ch: '/' },
-                        start,
-                    ));
+                    let _ = errors.emit(ParseErrorKind::UnexpectedCharacter { ch: '/' }, start);
                     continue;
                 }
             },
@@ -128,92 +114,54 @@ pub fn next(
                 Some(end) => (LangToken::GreaterThanOrEqual, start.to(end)),
                 None => (LangToken::GreaterThan, start),
             },
-            '=' => match iter.peek().map(|s| s.ch()) {
-                Some('=') => {
-                    let end = iter.next().unwrap();
+            '=' => {
+                if let Some(end) = iter.next_if(|s| s.ch() == '=') {
                     (LangToken::Eq, start.to(end))
-                }
-                Some('>') => {
-                    let end = iter.next().unwrap();
+                } else if let Some(end) = iter.next_if(|s| s.ch() == '>') {
                     (LangToken::FatArrow, start.to(end))
+                } else {
+                    (LangToken::Assign, start)
                 }
-                _ => (LangToken::Assign, start),
-            },
+            }
             '"' => {
-                // Parse string with escape sequence validation
                 let mut content: Option<DocumentRange> = None;
                 loop {
-                    match iter.peek().map(|s| s.ch()) {
-                        None => {
-                            // Unterminated string
-                            errors.push(ParseError::new(
-                                ParseErrorKind::UnterminatedStringLiteral {},
-                                content.map(|c| start.clone().to(c)).unwrap_or(start),
-                            ));
-                            return None;
-                        }
-                        Some('"') => {
-                            // End of string
-                            let end = iter.next().unwrap();
+                    let Some(ch) = iter.next() else {
+                        let _ = errors.emit(
+                            ParseErrorKind::UnterminatedStringLiteral {},
+                            content.map(|c| start.clone().to(c)).unwrap_or(start),
+                        );
+                        return None;
+                    };
+                    match ch.ch() {
+                        '"' => {
                             let value = content
                                 .map(|c| c.to_cheap_string())
                                 .unwrap_or_else(|| CheapString::new(String::new()));
-                            break (LangToken::StringLiteral(value), start.to(end));
+                            break (LangToken::StringLiteral(value), start.to(ch));
                         }
-                        Some('\\') => {
-                            // Escape sequence - consume backslash
-                            let backslash = iter.next().unwrap();
-                            content = Some(
-                                content
-                                    .map(|c| c.to(backslash.clone()))
-                                    .unwrap_or(backslash.clone()),
-                            );
-
-                            // Check what follows the backslash
-                            match iter.peek().map(|s| s.ch()) {
-                                None => {
-                                    // Backslash at end of input
-                                    errors.push(ParseError::new(
-                                        ParseErrorKind::InvalidEscapeSequenceAtEndOfString {},
-                                        backslash.clone(),
-                                    ));
-                                    errors.push(ParseError::new(
-                                        ParseErrorKind::UnterminatedStringLiteral {},
-                                        start.to(backslash),
-                                    ));
-                                    return None;
-                                }
-                                Some(ch @ ('n' | 't' | 'r' | '\\' | '"')) => {
-                                    // Valid escape sequence - consume the character
-                                    let escape_char = iter.next().unwrap();
-                                    content = Some(
-                                        content
-                                            .map(|c| c.to(escape_char.clone()))
-                                            .unwrap_or(escape_char),
-                                    );
-                                    // Continue parsing - the raw escape sequence is kept
-                                    let _ = ch; // silence unused warning
-                                }
-                                Some(ch) => {
-                                    // Invalid escape sequence - report error but continue
-                                    let escape_char = iter.next().unwrap();
-                                    errors.push(ParseError::new(
-                                        ParseErrorKind::InvalidEscapeSequence { ch },
-                                        backslash.to(escape_char.clone()),
-                                    ));
-                                    content = Some(
-                                        content
-                                            .map(|c| c.to(escape_char.clone()))
-                                            .unwrap_or(escape_char),
-                                    );
-                                }
+                        '\\' => {
+                            let backslash = ch;
+                            let Some(escaped) = iter.next() else {
+                                let _ = errors.emit(
+                                    ParseErrorKind::InvalidEscapeSequenceAtEndOfString {},
+                                    backslash.clone(),
+                                );
+                                let _ = errors.emit(
+                                    ParseErrorKind::UnterminatedStringLiteral {},
+                                    start.to(backslash),
+                                );
+                                return None;
+                            };
+                            if !matches!(escaped.ch(), 'n' | 't' | 'r' | '\\' | '"') {
+                                let _ = errors.emit(
+                                    ParseErrorKind::InvalidEscapeSequence { ch: escaped.ch() },
+                                    backslash.clone().to(escaped.clone()),
+                                );
                             }
+                            content = content.into_iter().chain([backslash, escaped]).collect();
                         }
-                        Some(_) => {
-                            // Regular character - consume it
-                            let ch = iter.next().unwrap();
-                            content = Some(content.map(|c| c.to(ch.clone())).unwrap_or(ch));
-                        }
+                        _ => content = content.into_iter().chain(Some(ch)).collect(),
                     }
                 }
             }
@@ -249,8 +197,7 @@ pub fn next(
                     "Option" => LangToken::TypeOption,
                     "String" => LangToken::TypeString,
                     _ => {
-                        let first_char = identifier.as_str().chars().next().unwrap();
-                        if first_char.is_ascii_uppercase() {
+                        if identifier.ch().is_ascii_uppercase() {
                             LangToken::TypeName(identifier.to_cheap_string())
                         } else {
                             LangToken::Identifier(identifier.to_cheap_string())
@@ -262,41 +209,31 @@ pub fn next(
             ch if ch.is_ascii_digit() => {
                 let mut number_string =
                     start.extend(iter.peeking_take_while(|s| s.ch().is_ascii_digit()));
-                // Only consume '.' as decimal if followed by a digit
-                let has_decimal = if iter.peek().map(|s| s.ch()) == Some('.') {
-                    let mut lookahead = iter.clone();
-                    lookahead.next(); // consume dot in lookahead
-                    if lookahead.peek().is_some_and(|s| s.ch().is_ascii_digit()) {
-                        let dot = iter.next().unwrap();
-                        number_string = number_string.to(dot);
-                        number_string = number_string
-                            .extend(iter.peeking_take_while(|s| s.ch().is_ascii_digit()));
-                        true
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                };
+                // A '.' is part of the number only if a digit follows it.
+                let fraction = iter.speculate(|iter| {
+                    iter.next_if(|s| s.ch() == '.')?;
+                    iter.next_if(|s| s.ch().is_ascii_digit())
+                });
+                let has_decimal = fraction.is_some();
+                if let Some(first_digit) = fraction {
+                    number_string = number_string
+                        .to(first_digit)
+                        .extend(iter.peeking_take_while(|s| s.ch().is_ascii_digit()));
+                }
 
                 // Reject leading zeros (e.g. 000, 0123) but allow bare 0 and 0.x
                 let s = number_string.as_str();
                 let has_leading_zero = s.starts_with('0') && s.len() > 1 && !s.starts_with("0.");
 
                 if has_leading_zero {
-                    errors.push(ParseError::new(
-                        ParseErrorKind::InvalidNumberFormat {},
-                        number_string,
-                    ));
+                    let _ = errors.emit(ParseErrorKind::InvalidNumberFormat {}, number_string);
                     continue;
                 } else if has_decimal {
                     match number_string.as_str().parse::<f64>() {
                         Ok(f) => (LangToken::FloatLiteral(f), number_string),
                         Err(_) => {
-                            errors.push(ParseError::new(
-                                ParseErrorKind::InvalidNumberFormat {},
-                                number_string,
-                            ));
+                            let _ =
+                                errors.emit(ParseErrorKind::InvalidNumberFormat {}, number_string);
                             continue;
                         }
                     }
@@ -304,20 +241,15 @@ pub fn next(
                     match number_string.as_str().parse::<i32>() {
                         Ok(i) => (LangToken::IntLiteral(i), number_string),
                         Err(_) => {
-                            errors.push(ParseError::new(
-                                ParseErrorKind::IntLiteralOutOfRange {},
-                                number_string,
-                            ));
+                            let _ =
+                                errors.emit(ParseErrorKind::IntLiteralOutOfRange {}, number_string);
                             continue;
                         }
                     }
                 }
             }
             ch => {
-                errors.push(ParseError::new(
-                    ParseErrorKind::UnexpectedCharacter { ch },
-                    start,
-                ));
+                let _ = errors.emit(ParseErrorKind::UnexpectedCharacter { ch }, start);
                 continue;
             }
         });
@@ -335,7 +267,7 @@ mod tests {
     fn run_tokenizer(input: &str) -> (String, bool) {
         let mut cursor =
             DocumentCursor::new(DocumentId::new("test.hop").unwrap(), input.to_string()).peekable();
-        let mut errors = Vec::new();
+        let mut errors = ParseErrors::new();
         let mut comments = VecDeque::new();
         let mut annotations = Vec::new();
         while let Some((tok, range)) = next(&mut cursor, &mut comments, &mut errors) {

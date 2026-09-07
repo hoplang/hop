@@ -2,10 +2,27 @@ use std::fmt;
 
 use crate::document::{CheapString, DocumentRange};
 
+#[derive(Clone, Copy)]
 pub enum LangTokenPair {
     Parens,
     Brackets,
     Braces,
+}
+
+impl LangToken {
+    pub fn identifier(self) -> Option<CheapString> {
+        match self {
+            LangToken::Identifier(name) => Some(name),
+            _ => None,
+        }
+    }
+
+    pub fn type_name(self) -> Option<CheapString> {
+        match self {
+            LangToken::TypeName(name) => Some(name),
+            _ => None,
+        }
+    }
 }
 
 impl LangTokenPair {
@@ -205,12 +222,13 @@ pub struct RawTextToken {
     ///         ^^^^^^^^^^^
     /// ```
     pub content: Option<DocumentRange>,
-    /// The `>` that closed the element. E.g.
+    /// The `>` that closed the element, or `None` when the input ended
+    /// before the closing tag. E.g.
     /// ```text
     /// <script>let x = 20;</script>
     ///                            ^
     /// ```
-    pub closing_tag_end: DocumentRange,
+    pub closing_tag_end: Option<DocumentRange>,
 }
 
 /// A quoted attribute value.

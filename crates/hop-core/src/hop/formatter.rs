@@ -97,24 +97,29 @@ where
 fn format_ast<'a>(ast: &'a ParsedAst, arena: &'a Arena<'a>) -> DocBuilder<'a, Arena<'a>> {
     let declarations = ast.declarations();
     let mut comments: VecDeque<_> = ast.comments().iter().collect();
-    if declarations.is_empty() {
-        arena.nil()
-    } else {
-        let mut doc = arena.nil();
-        let mut prev_was_import = false;
-        for (i, decl) in declarations.iter().enumerate() {
-            if i > 0 {
+    let mut doc = arena.nil();
+    let mut prev_was_import = false;
+    for (i, decl) in declarations.iter().enumerate() {
+        if i > 0 {
+            doc = doc.append(arena.line());
+            let curr_is_import = matches!(decl, ParsedDeclaration::Import(_));
+            if !(prev_was_import && curr_is_import) {
                 doc = doc.append(arena.line());
-                let curr_is_import = matches!(decl, ParsedDeclaration::Import(_));
-                if !(prev_was_import && curr_is_import) {
-                    doc = doc.append(arena.line());
-                }
             }
-            doc = doc.append(format_declaration(arena, decl, &mut comments));
-            prev_was_import = matches!(decl, ParsedDeclaration::Import(_));
         }
-        doc.append(arena.line())
+        doc = doc.append(format_declaration(arena, decl, &mut comments));
+        prev_was_import = matches!(decl, ParsedDeclaration::Import(_));
     }
+    if !declarations.is_empty() {
+        doc = doc.append(arena.line());
+    }
+    if !comments.is_empty() {
+        if !declarations.is_empty() {
+            doc = doc.append(arena.line());
+        }
+        doc = doc.append(drain_comments_before(arena, &mut comments, usize::MAX));
+    }
+    doc
 }
 
 fn format_declaration<'a>(
@@ -1406,9 +1411,10 @@ mod tests {
     use crate::document::Document;
     use crate::document_id::DocumentId;
     use crate::hop::parsing::parse;
+    use crate::parse_error::ParseErrors;
 
     fn check(source: &str, expected: Expect) {
-        let mut errors = Vec::new();
+        let mut errors = ParseErrors::new();
         let document_id = DocumentId::new("test.hop").unwrap();
         let ast = parse::parse(
             document_id.clone(),
@@ -1465,7 +1471,7 @@ mod tests {
 
         fn format_source(source: &str) -> String {
             let document_id = DocumentId::new("test.hop").unwrap();
-            let mut errors = Vec::new();
+            let mut errors = ParseErrors::new();
             let ast = parse::parse(
                 document_id.clone(),
                 Document::new(document_id, source.to_string()),
@@ -3745,6 +3751,35 @@ mod tests {
                   <>
                   </>
                 }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn comment_at_end_of_file() {
+        check(
+            indoc! {"
+                record User { name: String }
+                // trailing
+            "},
+            expect![[r#"
+                record User {
+                  name: String,
+                }
+
+                // trailing
+            "#]],
+        );
+    }
+
+    #[test]
+    fn comment_only_file() {
+        check(
+            indoc! {"
+                // only a comment
+            "},
+            expect![[r#"
+                // only a comment
             "#]],
         );
     }

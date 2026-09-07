@@ -15,18 +15,14 @@ use crate::hop::parsing::parse_type::parse_type;
 use crate::hop::parsing::parsed_ast::ParsedParameter;
 use crate::hop::parsing::token::LangToken;
 use crate::hop::parsing::token::LangTokenPair;
-use crate::parse_error::{ParseError, ParseErrorKind};
+use crate::parse_error::{ErrorEmitted, ParseErrorKind, ParseErrors};
 use crate::symbols::module_name::ModuleName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use std::collections::{HashSet, VecDeque};
 use std::iter::Peekable;
 
-pub fn parse(
-    document_id: DocumentId,
-    document: Document,
-    errors: &mut Vec<ParseError>,
-) -> ParsedAst {
+pub fn parse(document_id: DocumentId, document: Document, errors: &mut ParseErrors) -> ParsedAst {
     let cursor = document.cursor();
     let document_range = cursor.range();
     let mut iter = cursor.peekable();
@@ -35,101 +31,96 @@ pub fn parse(
 
     loop {
         let pub_range = parse_helpers::advance_if(&mut iter, &mut comments, errors, LangToken::Pub);
-
-        match tokenize_expr::peek(&iter) {
-            Some((LangToken::Import, _)) => {
-                if let Some(pub_r) = pub_range {
-                    errors.push(ParseError::new(
-                        ParseErrorKind::UnexpectedPubKeyword {},
-                        pub_r,
-                    ));
-                }
-                if let Some(import) =
-                    parse_import_declaration(&mut iter, &mut comments, errors, &document_range)
-                {
-                    declarations.push(ParsedDeclaration::Import(import));
-                }
+        let declaration = if let Some(keyword) =
+            parse_helpers::advance_if(&mut iter, &mut comments, errors, LangToken::Import)
+        {
+            parse_import_declaration(
+                &mut iter,
+                &mut comments,
+                errors,
+                &document_range,
+                keyword,
+                pub_range,
+            )
+            .map(ParsedDeclaration::Import)
+        } else if let Some(keyword) =
+            parse_helpers::advance_if(&mut iter, &mut comments, errors, LangToken::Record)
+        {
+            parse_record_declaration(
+                &mut iter,
+                &mut comments,
+                errors,
+                &document_range,
+                keyword,
+                pub_range,
+            )
+            .map(ParsedDeclaration::Record)
+        } else if let Some(keyword) =
+            parse_helpers::advance_if(&mut iter, &mut comments, errors, LangToken::Enum)
+        {
+            parse_enum_declaration(
+                &mut iter,
+                &mut comments,
+                errors,
+                &document_range,
+                keyword,
+                pub_range,
+            )
+            .map(ParsedDeclaration::Enum)
+        } else if let Some(keyword) =
+            parse_helpers::advance_if(&mut iter, &mut comments, errors, LangToken::Component)
+        {
+            parse_component_declaration(&mut iter, &mut comments, errors, keyword, pub_range)
+                .map(ParsedDeclaration::Component)
+        } else if let Some(keyword) =
+            parse_helpers::advance_if(&mut iter, &mut comments, errors, LangToken::View)
+        {
+            parse_view_declaration(&mut iter, &mut comments, errors, keyword, pub_range)
+                .map(ParsedDeclaration::Page)
+        } else if let Some(keyword) =
+            parse_helpers::advance_if(&mut iter, &mut comments, errors, LangToken::Page)
+        {
+            parse_page_declaration(&mut iter, &mut comments, errors, keyword, pub_range)
+                .map(ParsedDeclaration::Page)
+        } else if let Some(keyword) =
+            parse_helpers::advance_if(&mut iter, &mut comments, errors, LangToken::Fn)
+        {
+            parse_function_declaration(
+                &mut iter,
+                &mut comments,
+                errors,
+                &document_range,
+                keyword,
+                pub_range,
+            )
+            .map(ParsedDeclaration::Function)
+        } else {
+            if let Some(pub_range) = pub_range {
+                let _ = errors.emit(ParseErrorKind::UnexpectedPubKeyword {}, pub_range);
             }
-            Some((LangToken::Record, _)) => {
-                if let Some(record) = parse_record_declaration(
-                    &mut iter,
-                    &mut comments,
-                    errors,
-                    &document_range,
-                    pub_range,
-                ) {
-                    declarations.push(ParsedDeclaration::Record(record));
-                }
-            }
-            Some((LangToken::Enum, _)) => {
-                if let Some(enum_decl) = parse_enum_declaration(
-                    &mut iter,
-                    &mut comments,
-                    errors,
-                    &document_range,
-                    pub_range,
-                ) {
-                    declarations.push(ParsedDeclaration::Enum(enum_decl));
-                }
-            }
-            Some((LangToken::Component, _)) => {
-                if let Some(component) =
-                    parse_component_declaration(&mut iter, &mut comments, errors, pub_range)
-                {
-                    declarations.push(ParsedDeclaration::Component(component));
-                }
-            }
-            Some((LangToken::View, _)) => {
-                if let Some(view) =
-                    parse_view_declaration(&mut iter, &mut comments, errors, pub_range)
-                {
-                    declarations.push(ParsedDeclaration::Page(view));
-                }
-            }
-            Some((LangToken::Page, _)) => {
-                if let Some(page) =
-                    parse_page_declaration(&mut iter, &mut comments, errors, pub_range)
-                {
-                    declarations.push(ParsedDeclaration::Page(page));
-                }
-            }
-            Some((LangToken::Fn, _)) => {
-                if let Some(pub_r) = pub_range {
-                    errors.push(ParseError::new(
-                        ParseErrorKind::UnexpectedPubKeyword {},
-                        pub_r,
-                    ));
-                }
-                if let Some(function) =
-                    parse_function_declaration(&mut iter, &mut comments, errors, &document_range)
-                {
-                    declarations.push(ParsedDeclaration::Function(function));
-                }
-            }
-            Some((_, token_range)) => {
-                if let Some(pub_r) = pub_range {
-                    errors.push(ParseError::new(
-                        ParseErrorKind::UnexpectedPubKeyword {},
-                        pub_r,
-                    ));
-                }
-                errors.push(ParseError::new(
-                    ParseErrorKind::UnexpectedTopLevelText {},
-                    token_range,
-                ));
+            // Consume rather than peek: at end of input this is the only
+            // chance to collect trailing comments and lexer errors.
+            let Some((_, token_range)) = tokenize_expr::next(&mut iter, &mut comments, errors)
+            else {
                 break;
-            }
-            None => {
-                if let Some(pub_r) = pub_range {
-                    errors.push(ParseError::new(
-                        ParseErrorKind::UnexpectedPubKeyword {},
-                        pub_r,
-                    ));
-                }
-                break; // EOF
+            };
+            let reported = errors.emit(ParseErrorKind::UnexpectedTopLevelText {}, token_range);
+            parse_helpers::skip_to(&mut iter, reported, |token| {
+                parse_helpers::DECLARATION_KEYWORDS.contains(token)
+            });
+            continue;
+        };
+        match declaration {
+            Ok(declaration) => declarations.push(declaration),
+            Err(reported) => {
+                parse_helpers::skip_to(&mut iter, reported, |token| {
+                    parse_helpers::DECLARATION_KEYWORDS.contains(token)
+                });
             }
         }
     }
+
+    debug_assert!(iter.peek().is_none(), "parser stopped before end of input");
 
     ParsedAst::new(document_id, declarations, comments)
 }
@@ -137,90 +128,71 @@ pub fn parse(
 fn parse_import_declaration(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
-    errors: &mut Vec<ParseError>,
-    range: &DocumentRange,
-) -> Option<ParsedImportDeclaration> {
-    let import_range =
-        parse_helpers::expect_token(iter, comments, errors, range, &LangToken::Import)?;
-    let mut path_segments: Vec<DocumentRange> = Vec::new();
-    let first_segment = match tokenize_expr::next(iter, comments, errors) {
-        Some((LangToken::Identifier(_), seg_range)) | Some((LangToken::TypeName(_), seg_range)) => {
-            seg_range
-        }
-        Some((_, seg_range)) => {
-            errors.push(ParseError::new(
-                ParseErrorKind::ExpectedModulePath {},
-                seg_range,
-            ));
-            return None;
+    errors: &mut ParseErrors,
+    eof_range: &DocumentRange,
+    keyword_range: DocumentRange,
+    pub_range: Option<DocumentRange>,
+) -> Result<ParsedImportDeclaration, ErrorEmitted> {
+    if let Some(pub_range) = pub_range {
+        let _ = errors.emit(ParseErrorKind::UnexpectedPubKeyword {}, pub_range);
+    }
+    let mut last_segment = match tokenize_expr::next(iter, comments, errors) {
+        Some((LangToken::Identifier(_) | LangToken::TypeName(_), segment)) => segment,
+        Some((_, range)) => {
+            return Err(errors.emit(ParseErrorKind::ExpectedModulePath {}, range));
         }
         None => {
-            errors.push(ParseError::new(
-                ParseErrorKind::ExpectedModulePath {},
-                range.clone(),
-            ));
-            return None;
+            return Err(errors.emit(ParseErrorKind::ExpectedModulePath {}, eof_range.clone()));
         }
     };
-    path_segments.push(first_segment);
+    let mut module_path: Option<DocumentRange> = None;
     while parse_helpers::advance_if(iter, comments, errors, LangToken::ColonColon).is_some() {
         let segment = match tokenize_expr::next(iter, comments, errors) {
-            Some((LangToken::Identifier(_), seg_range))
-            | Some((LangToken::TypeName(_), seg_range)) => seg_range,
-            Some((_, seg_range)) => {
-                errors.push(ParseError::new(
-                    ParseErrorKind::ExpectedIdentifierAfterColonColon {},
-                    seg_range,
-                ));
-                return None;
+            Some((LangToken::Identifier(_) | LangToken::TypeName(_), segment)) => segment,
+            Some((_, range)) => {
+                return Err(
+                    errors.emit(ParseErrorKind::ExpectedIdentifierAfterColonColon {}, range)
+                );
             }
             None => {
-                errors.push(ParseError::new(
+                return Err(errors.emit(
                     ParseErrorKind::ExpectedIdentifierAfterColonColon {},
-                    range.clone(),
+                    eof_range.clone(),
                 ));
-                return None;
             }
         };
-        path_segments.push(segment);
+        module_path = Some(match module_path {
+            Some(module_path) => module_path.to(last_segment),
+            None => last_segment,
+        });
+        last_segment = segment;
     }
-    if path_segments.len() < 2 {
-        errors.push(ParseError::new(
-            ParseErrorKind::ImportPathTooShort {},
-            path_segments[0].clone(),
-        ));
-        return None;
-    }
-    let type_name_range = path_segments.pop().unwrap();
+    let Some(module_path_range) = module_path else {
+        return Err(errors.emit(ParseErrorKind::ImportPathTooShort {}, last_segment));
+    };
+    let type_name_range = last_segment;
     let type_name = match TypeName::from_cheap_string(type_name_range.to_cheap_string()) {
         Ok(name) => name,
         Err(e) => {
-            errors.push(ParseError::new(
+            return Err(errors.emit(
                 ParseErrorKind::InvalidTypeName { error: e },
                 type_name_range,
             ));
-            return None;
         }
     };
-    let module_path_range = path_segments
-        .first()
-        .unwrap()
-        .clone()
-        .to(path_segments.last().unwrap().clone());
     let module_name = match ModuleName::new(module_path_range.as_str()) {
         Ok(name) => name,
         Err(e) => {
-            errors.push(ParseError::new(
+            return Err(errors.emit(
                 ParseErrorKind::InvalidModuleName { error: e },
                 module_path_range.clone(),
             ));
-            return None;
         }
     };
-    Some(ParsedImportDeclaration {
+    Ok(ParsedImportDeclaration {
         type_name,
         path_range: module_path_range.to(type_name_range.clone()),
-        import_range: import_range.to(type_name_range.clone()),
+        import_range: keyword_range.to(type_name_range.clone()),
         type_name_range,
         module_name,
     })
@@ -229,17 +201,16 @@ fn parse_import_declaration(
 fn parse_record_declaration(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
-    errors: &mut Vec<ParseError>,
-    range: &DocumentRange,
+    errors: &mut ParseErrors,
+    eof_range: &DocumentRange,
+    keyword_range: DocumentRange,
     pub_range: Option<DocumentRange>,
-) -> Option<ParsedRecordDeclaration> {
-    let keyword_range =
-        parse_helpers::expect_token(iter, comments, errors, range, &LangToken::Record)?;
-    let (name, name_range) = parse_helpers::expect_type_name(iter, comments, errors, range)?;
+) -> Result<ParsedRecordDeclaration, ErrorEmitted> {
+    let (name, name_range) = parse_helpers::expect_type_name(iter, comments, errors, eof_range)?;
     let left_brace =
-        parse_helpers::expect_token(iter, comments, errors, range, &LangToken::LeftBrace)?;
+        parse_helpers::expect_token(iter, comments, errors, eof_range, &LangToken::LeftBrace)?;
     let (fields, braces) = parse_field_declarations(iter, comments, errors, &left_brace)?;
-    Some(ParsedRecordDeclaration {
+    Ok(ParsedRecordDeclaration {
         name,
         name_range,
         range: pub_range
@@ -254,50 +225,49 @@ fn parse_record_declaration(
 fn parse_enum_declaration(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
-    errors: &mut Vec<ParseError>,
-    range: &DocumentRange,
+    errors: &mut ParseErrors,
+    eof_range: &DocumentRange,
+    keyword_range: DocumentRange,
     pub_range: Option<DocumentRange>,
-) -> Option<ParsedEnumDeclaration> {
-    let keyword_range =
-        parse_helpers::expect_token(iter, comments, errors, range, &LangToken::Enum)?;
-    let (name, name_range) = parse_helpers::expect_type_name(iter, comments, errors, range)?;
+) -> Result<ParsedEnumDeclaration, ErrorEmitted> {
+    let (name, name_range) = parse_helpers::expect_type_name(iter, comments, errors, eof_range)?;
     let left_brace =
-        parse_helpers::expect_token(iter, comments, errors, range, &LangToken::LeftBrace)?;
+        parse_helpers::expect_token(iter, comments, errors, eof_range, &LangToken::LeftBrace)?;
     let mut seen_names = HashSet::new();
     let (variants, braces) = parse_helpers::parse_delimited_list(
         iter,
         comments,
         errors,
-        range,
+        eof_range,
         LangTokenPair::Braces,
         &left_brace,
+        &[],
         |iter, comments, errors, range| {
             let (variant_name, variant_range) =
                 parse_helpers::expect_type_name(iter, comments, errors, range)?;
             if !seen_names.insert(variant_range.to_cheap_string()) {
-                errors.push(ParseError::new(
+                return Err(errors.emit(
                     ParseErrorKind::DuplicateVariant {
                         name: variant_range.to_cheap_string(),
                     },
                     variant_range,
                 ));
-                return None;
             }
             let fields =
                 match parse_helpers::advance_if(iter, comments, errors, LangToken::LeftBrace) {
                     Some(left_brace) => {
-                        parse_field_declarations(iter, comments, errors, &left_brace)
+                        parse_field_declarations(iter, comments, errors, &left_brace).ok()
                     }
                     None => None,
                 };
-            Some(ParsedEnumDeclarationVariant {
+            Ok(ParsedEnumDeclarationVariant {
                 name: variant_name,
                 name_range: variant_range,
                 fields: fields.map(|(f, _)| f).unwrap_or_else(Vec::new),
             })
         },
     )?;
-    Some(ParsedEnumDeclaration {
+    Ok(ParsedEnumDeclaration {
         name,
         name_range,
         range: pub_range
@@ -312,9 +282,9 @@ fn parse_enum_declaration(
 fn parse_field_declarations(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
-    errors: &mut Vec<ParseError>,
+    errors: &mut ParseErrors,
     left_brace: &DocumentRange,
-) -> Option<(Vec<ParsedFieldDeclaration>, DocumentRange)> {
+) -> Result<(Vec<ParsedFieldDeclaration>, DocumentRange), ErrorEmitted> {
     let mut seen_names = HashSet::new();
     parse_helpers::parse_delimited_list(
         iter,
@@ -323,23 +293,30 @@ fn parse_field_declarations(
         left_brace,
         LangTokenPair::Braces,
         left_brace,
+        &[],
         |iter, comments, errors, range| {
             let examples =
-                parse_examples_annotation(iter, comments, errors).map(|(examples, _)| examples);
+                match parse_helpers::advance_if(iter, comments, errors, LangToken::HashBracket) {
+                    Some(hash_bracket) => {
+                        let (examples, _) =
+                            parse_examples_annotation(iter, comments, errors, range, hash_bracket)?;
+                        Some(examples)
+                    }
+                    None => None,
+                };
             let (name, name_range) =
                 parse_helpers::expect_field_name(iter, comments, errors, range)?;
             parse_helpers::expect_token(iter, comments, errors, range, &LangToken::Colon)?;
             let field_type = parse_type(iter, comments, errors, range)?;
             if !seen_names.insert(name_range.to_cheap_string()) {
-                errors.push(ParseError::new(
+                return Err(errors.emit(
                     ParseErrorKind::DuplicateField {
                         name: name_range.to_cheap_string(),
                     },
                     name_range,
                 ));
-                return None;
             }
-            Some(ParsedFieldDeclaration {
+            Ok(ParsedFieldDeclaration {
                 name,
                 name_range,
                 field_type,
@@ -352,28 +329,17 @@ fn parse_field_declarations(
 fn parse_component_declaration(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
-    errors: &mut Vec<ParseError>,
+    errors: &mut ParseErrors,
+    keyword_range: DocumentRange,
     pub_range: Option<DocumentRange>,
-) -> Option<ParsedComponentDeclaration> {
-    let Some((LangToken::Component, keyword_range)) = tokenize_expr::next(iter, comments, errors)
-    else {
-        return None;
-    };
+) -> Result<ParsedComponentDeclaration, ErrorEmitted> {
     let (name_str, name_range) = match tokenize_expr::next(iter, comments, errors) {
         Some((LangToken::TypeName(name_str), range)) => (name_str, range),
         Some((actual, range)) => {
-            errors.push(ParseError::new(
-                ParseErrorKind::ExpectedTypeNameButGot { actual },
-                range,
-            ));
-            return None;
+            return Err(errors.emit(ParseErrorKind::ExpectedTypeNameButGot { actual }, range));
         }
         None => {
-            errors.push(ParseError::new(
-                ParseErrorKind::ExpectedTypeNameButGotEof {},
-                keyword_range,
-            ));
-            return None;
+            return Err(errors.emit(ParseErrorKind::ExpectedTypeNameButGotEof {}, keyword_range));
         }
     };
     let parsed_params =
@@ -392,16 +358,12 @@ fn parse_component_declaration(
                 ParameterItem::Parameter(parameter) => params.push(*parameter),
                 ParameterItem::Rest { var_name, range } => {
                     if index + 1 != count {
-                        errors.push(ParseError::new(
-                            ParseErrorKind::RestParamMustBeLast {},
-                            range.clone(),
-                        ));
+                        let _ = errors.emit(ParseErrorKind::RestParamMustBeLast {}, range.clone());
                     }
                     match rest_param {
-                        Some(_) => errors.push(ParseError::new(
-                            ParseErrorKind::DuplicateRestParam {},
-                            range,
-                        )),
+                        Some(_) => {
+                            let _ = errors.emit(ParseErrorKind::DuplicateRestParam {}, range);
+                        }
                         None => rest_param = Some((var_name, range)),
                     }
                 }
@@ -412,14 +374,10 @@ fn parse_component_declaration(
     let component_name = match TypeName::new(&name_str) {
         Ok(n) => n,
         Err(error) => {
-            errors.push(ParseError::new(
-                ParseErrorKind::InvalidTypeName { error },
-                name_range,
-            ));
-            return None;
+            return Err(errors.emit(ParseErrorKind::InvalidTypeName { error }, name_range));
         }
     };
-    Some(ParsedComponentDeclaration {
+    Ok(ParsedComponentDeclaration {
         component_name,
         name_range,
         params,
@@ -437,24 +395,19 @@ fn parse_component_declaration(
 fn parse_page_or_view_header(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
-    errors: &mut Vec<ParseError>,
+    errors: &mut ParseErrors,
     keyword_range: &DocumentRange,
-) -> Option<(TypeName, DocumentRange, Vec<ParsedParameter>, DocumentRange)> {
+) -> Result<(TypeName, DocumentRange, Vec<ParsedParameter>, DocumentRange), ErrorEmitted> {
     let (name_str, name_range) = match tokenize_expr::next(iter, comments, errors) {
         Some((LangToken::TypeName(name_str), range)) => (name_str, range),
         Some((actual, range)) => {
-            errors.push(ParseError::new(
-                ParseErrorKind::ExpectedTypeNameButGot { actual },
-                range,
-            ));
-            return None;
+            return Err(errors.emit(ParseErrorKind::ExpectedTypeNameButGot { actual }, range));
         }
         None => {
-            errors.push(ParseError::new(
+            return Err(errors.emit(
                 ParseErrorKind::ExpectedTypeNameButGotEof {},
                 keyword_range.clone(),
             ));
-            return None;
         }
     };
 
@@ -467,17 +420,17 @@ fn parse_page_or_view_header(
                     match item {
                         ParameterItem::Parameter(parameter) => {
                             if let Some(value) = &parameter.default_value {
-                                errors.push(ParseError::new(
+                                let _ = errors.emit(
                                     ParseErrorKind::DefaultValueNotAllowedOnView {},
                                     value.range().clone(),
-                                ));
+                                );
                             }
                             params.push(*parameter);
                         }
-                        ParameterItem::Rest { range, .. } => errors.push(ParseError::new(
-                            ParseErrorKind::RestParamNotAllowedOnView {},
-                            range,
-                        )),
+                        ParameterItem::Rest { range, .. } => {
+                            let _ =
+                                errors.emit(ParseErrorKind::RestParamNotAllowedOnView {}, range);
+                        }
                     }
                 }
                 (params, parens)
@@ -488,30 +441,24 @@ fn parse_page_or_view_header(
     let name = match TypeName::new(&name_str) {
         Ok(name) => name,
         Err(error) => {
-            errors.push(ParseError::new(
-                ParseErrorKind::InvalidTypeName { error },
-                name_range,
-            ));
-            return None;
+            return Err(errors.emit(ParseErrorKind::InvalidTypeName { error }, name_range));
         }
     };
 
-    Some((name, name_range, params, params_range))
+    Ok((name, name_range, params, params_range))
 }
 
 fn parse_view_declaration(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
-    errors: &mut Vec<ParseError>,
+    errors: &mut ParseErrors,
+    keyword_range: DocumentRange,
     pub_range: Option<DocumentRange>,
-) -> Option<ParsedPageDeclaration> {
-    let Some((LangToken::View, keyword_range)) = tokenize_expr::next(iter, comments, errors) else {
-        return None;
-    };
+) -> Result<ParsedPageDeclaration, ErrorEmitted> {
     let (name, name_range, params, params_range) =
         parse_page_or_view_header(iter, comments, errors, &keyword_range)?;
     let (body, body_end) = parse_declaration_body(iter, comments, errors, &params_range)?;
-    Some(ParsedPageDeclaration {
+    Ok(ParsedPageDeclaration {
         name,
         name_range,
         params,
@@ -529,42 +476,33 @@ fn parse_view_declaration(
 fn parse_page_declaration(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
-    errors: &mut Vec<ParseError>,
+    errors: &mut ParseErrors,
+    keyword_range: DocumentRange,
     pub_range: Option<DocumentRange>,
-) -> Option<ParsedPageDeclaration> {
-    let Some((LangToken::Page, keyword_range)) = tokenize_expr::next(iter, comments, errors) else {
-        return None;
-    };
+) -> Result<ParsedPageDeclaration, ErrorEmitted> {
     let (name, name_range, params, params_range) =
         parse_page_or_view_header(iter, comments, errors, &keyword_range)?;
     let outer_body_start =
         parse_helpers::expect_token(iter, comments, errors, &params_range, &LangToken::LeftBrace)?;
-    let head = if let Some((LangToken::Identifier(_), head_keyword_range)) = parse_helpers::next_if(
-        iter,
-        comments,
-        errors,
-        |(token, _)| matches!(token, LangToken::Identifier(word) if word.as_str() == "head"),
-    ) {
+    let head = if let Some((_, head_keyword_range)) =
+        parse_helpers::next_if_map(iter, comments, errors, |token| {
+            token.identifier().filter(|word| word.as_str() == "head")
+        }) {
         let (head, _) = parse_declaration_body(iter, comments, errors, &head_keyword_range)?;
         Some(head)
     } else {
         None
     };
-    let Some((LangToken::Identifier(_), body_keyword_range)) = parse_helpers::next_if(
-        iter,
-        comments,
-        errors,
-        |(token, _)| matches!(token, LangToken::Identifier(word) if word.as_str() == "body"),
-    ) else {
+    let Some((_, body_keyword_range)) =
+        parse_helpers::next_if_map(iter, comments, errors, |token| {
+            token.identifier().filter(|word| word.as_str() == "body")
+        })
+    else {
         let range = match tokenize_expr::peek(iter) {
             Some((_, range)) => range,
             None => name_range,
         };
-        errors.push(ParseError::new(
-            ParseErrorKind::ExpectedPageBodyBlock {},
-            range,
-        ));
-        return None;
+        return Err(errors.emit(ParseErrorKind::ExpectedPageBodyBlock {}, range));
     };
     let (body, _) = parse_declaration_body(iter, comments, errors, &body_keyword_range)?;
     let right_brace = parse_helpers::expect_right_delimiter(
@@ -574,7 +512,7 @@ fn parse_page_declaration(
         LangTokenPair::Braces,
         &outer_body_start,
     )?;
-    Some(ParsedPageDeclaration {
+    Ok(ParsedPageDeclaration {
         name,
         name_range,
         params,
@@ -592,62 +530,63 @@ fn parse_page_declaration(
 fn parse_function_declaration(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
-    errors: &mut Vec<ParseError>,
-    range: &DocumentRange,
-) -> Option<ParsedFunctionDeclaration> {
-    let keyword_range = parse_helpers::expect_token(iter, comments, errors, range, &LangToken::Fn)?;
-    let (name, name_range) = parse_helpers::expect_variable_name(iter, comments, errors, range)?;
+    errors: &mut ParseErrors,
+    eof_range: &DocumentRange,
+    keyword_range: DocumentRange,
+    pub_range: Option<DocumentRange>,
+) -> Result<ParsedFunctionDeclaration, ErrorEmitted> {
+    if let Some(pub_range) = pub_range {
+        let _ = errors.emit(ParseErrorKind::UnexpectedPubKeyword {}, pub_range);
+    }
+    let (name, name_range) =
+        parse_helpers::expect_variable_name(iter, comments, errors, eof_range)?;
     let left_paren =
-        parse_helpers::expect_token(iter, comments, errors, range, &LangToken::LeftParen)?;
+        parse_helpers::expect_token(iter, comments, errors, eof_range, &LangToken::LeftParen)?;
     let (items, _) = parse_parameters(iter, comments, errors, &left_paren)?;
     let mut params = Vec::new();
     for item in items {
         match item {
             ParameterItem::Parameter(parameter) => {
                 if let Some(examples_range) = &parameter.examples_range {
-                    errors.push(ParseError::new(
+                    let _ = errors.emit(
                         ParseErrorKind::ExamplesNotAllowedOnFunction {},
                         examples_range.clone(),
-                    ));
+                    );
                 }
                 if let Some(value) = &parameter.default_value {
-                    errors.push(ParseError::new(
+                    let _ = errors.emit(
                         ParseErrorKind::DefaultValueNotAllowedOnFunction {},
                         value.range().clone(),
-                    ));
+                    );
                 }
                 params.push(*parameter);
             }
-            ParameterItem::Rest { range, .. } => errors.push(ParseError::new(
-                ParseErrorKind::RestParamNotAllowedOnFunction {},
-                range,
-            )),
+            ParameterItem::Rest { range, .. } => {
+                let _ = errors.emit(ParseErrorKind::RestParamNotAllowedOnFunction {}, range);
+            }
         }
     }
     let return_type = match parse_helpers::advance_if(iter, comments, errors, LangToken::Arrow) {
-        Some(_) => parse_type(iter, comments, errors, range),
-        None => {
-            errors.push(ParseError::new(
-                ParseErrorKind::FunctionMissingReturnType {
-                    name: CheapString::new(name.as_str().to_string()),
-                },
-                name_range.clone(),
-            ));
-            None
-        }
+        Some(_) => parse_type(iter, comments, errors, eof_range),
+        None => Err(errors.emit(
+            ParseErrorKind::FunctionMissingReturnType {
+                name: CheapString::new(name.as_str().to_string()),
+            },
+            name_range.clone(),
+        )),
     };
     let left_brace =
-        parse_helpers::expect_token(iter, comments, errors, range, &LangToken::LeftBrace)?;
+        parse_helpers::expect_token(iter, comments, errors, eof_range, &LangToken::LeftBrace)?;
     let (body, braces) = parse_helpers::parse_delimited(
         iter,
         comments,
         errors,
-        range,
+        eof_range,
         LangTokenPair::Braces,
         &left_brace,
         parse_expr::parse_expr,
     )?;
-    Some(ParsedFunctionDeclaration {
+    Ok(ParsedFunctionDeclaration {
         name,
         name_range,
         params,
@@ -675,9 +614,9 @@ enum ParameterItem {
 fn parse_parameters(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
-    errors: &mut Vec<ParseError>,
+    errors: &mut ParseErrors,
     left_paren: &DocumentRange,
-) -> Option<(Vec<ParameterItem>, DocumentRange)> {
+) -> Result<(Vec<ParameterItem>, DocumentRange), ErrorEmitted> {
     parse_helpers::parse_delimited_list(
         iter,
         comments,
@@ -685,30 +624,41 @@ fn parse_parameters(
         left_paren,
         LangTokenPair::Parens,
         left_paren,
+        &[LangToken::LeftBrace, LangToken::Arrow],
         |iter, comments, errors, range| {
             if let Some(dots_range) =
                 parse_helpers::advance_if(iter, comments, errors, LangToken::DotDotDot)
             {
                 let (var_name, var_name_range) =
                     parse_helpers::expect_variable_name(iter, comments, errors, range)?;
-                return Some(ParameterItem::Rest {
+                return Ok(ParameterItem::Rest {
                     range: dots_range.to(var_name_range),
                     var_name,
                 });
             }
             let (examples, examples_range) =
-                parse_examples_annotation(iter, comments, errors).unzip();
+                match parse_helpers::advance_if(iter, comments, errors, LangToken::HashBracket) {
+                    Some(hash_bracket) => Some(parse_examples_annotation(
+                        iter,
+                        comments,
+                        errors,
+                        range,
+                        hash_bracket,
+                    )?),
+                    None => None,
+                }
+                .unzip();
             let (var_name, var_name_range) =
                 parse_helpers::expect_variable_name(iter, comments, errors, range)?;
             parse_helpers::expect_token(iter, comments, errors, range, &LangToken::Colon)?;
             let var_type = parse_type(iter, comments, errors, range)?;
             let default_value =
                 if parse_helpers::advance_if(iter, comments, errors, LangToken::Assign).is_some() {
-                    parse_expr::parse_primary(iter, comments, errors, range)
+                    Some(parse_expr::parse_primary(iter, comments, errors, range)?)
                 } else {
                     None
                 };
-            Some(ParameterItem::Parameter(Box::new(ParsedParameter {
+            Ok(ParameterItem::Parameter(Box::new(ParsedParameter {
                 var_name,
                 var_name_range,
                 var_type,
@@ -723,11 +673,11 @@ fn parse_parameters(
 fn parse_declaration_body(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
-    errors: &mut Vec<ParseError>,
-    before: &DocumentRange,
-) -> Option<(ParsedExpr, DocumentRange)> {
+    errors: &mut ParseErrors,
+    range: &DocumentRange,
+) -> Result<(ParsedExpr, DocumentRange), ErrorEmitted> {
     let left_brace =
-        parse_helpers::expect_token(iter, comments, errors, before, &LangToken::LeftBrace)?;
+        parse_helpers::expect_token(iter, comments, errors, range, &LangToken::LeftBrace)?;
     parse_helpers::parse_delimited(
         iter,
         comments,
@@ -737,11 +687,8 @@ fn parse_declaration_body(
         &left_brace,
         |iter, comments, errors, left_brace| {
             if let Some((LangToken::RightBrace, _)) = tokenize_expr::peek(iter) {
-                errors.push(ParseError::new(
-                    ParseErrorKind::EmptyBody {},
-                    left_brace.clone(),
-                ));
-                return Some(ParsedExpr::FragmentEmpty {
+                let _ = errors.emit(ParseErrorKind::EmptyBody {}, left_brace.clone());
+                return Ok(ParsedExpr::FragmentEmpty {
                     range: left_brace.clone(),
                 });
             }
@@ -750,103 +697,124 @@ fn parse_declaration_body(
     )
 }
 
-/// Parse a `#[examples(...)]` annotation using the expr tokenizer. Returns
-/// the annotation with its range.
+/// Parse an `#[examples(...)]` annotation from the `#[` the caller has
+/// already consumed. Returns the annotation with the range from `#[`
+/// through `]`.
 fn parse_examples_annotation(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
-    errors: &mut Vec<ParseError>,
-) -> Option<(ExamplesAnnotation, DocumentRange)> {
-    if let Some((LangToken::HashBracket, hash_bracket)) = tokenize_expr::peek(iter) {
-        tokenize_expr::next(iter, comments, errors);
-        match tokenize_expr::next(iter, comments, errors) {
-            Some((LangToken::Identifier(name), _)) if &*name == "examples" => {}
-            _ => return None,
-        }
-        if tokenize_expr::next(iter, comments, errors).map(|(t, _)| t) != Some(LangToken::LeftParen)
-        {
-            return None;
-        }
-        let mut annotation = ExamplesAnnotation::default();
-        loop {
-            let key = match tokenize_expr::next(iter, comments, errors) {
-                Some((LangToken::Identifier(name), _)) => name.to_string(),
-                _ => return None,
-            };
-            if tokenize_expr::next(iter, comments, errors).map(|(t, _)| t)
-                != Some(LangToken::Assign)
-            {
-                return None;
-            }
-            match key.as_str() {
-                "pattern" => {
-                    let pattern = match tokenize_expr::next(iter, comments, errors) {
-                        Some((LangToken::StringLiteral(s), _)) => s.to_string(),
-                        _ => return None,
-                    };
-                    annotation.pattern = Some(pattern);
-                }
-                "min" | "max" | "min_len" | "max_len" => {
-                    let (negative, token) = match tokenize_expr::peek(iter) {
-                        Some((LangToken::Minus, _)) => {
-                            tokenize_expr::next(iter, comments, errors);
-                            (true, tokenize_expr::next(iter, comments, errors))
-                        }
-                        _ => (false, tokenize_expr::next(iter, comments, errors)),
-                    };
-                    let n = match token {
-                        Some((LangToken::IntLiteral(n), _)) => {
-                            if negative {
-                                -n
-                            } else {
-                                n
-                            }
-                        }
-                        _ => return None,
-                    };
-                    match key.as_str() {
-                        "min" => annotation.min = Some(n),
-                        "max" => annotation.max = Some(n),
-                        "min_len" => annotation.min_len = Some(n),
-                        "max_len" => annotation.max_len = Some(n),
-                        _ => unreachable!(),
-                    }
-                }
-                _ => return None,
-            }
-            match tokenize_expr::peek(iter) {
-                Some((LangToken::Comma, _)) => {
-                    tokenize_expr::next(iter, comments, errors);
-                }
-                _ => break,
-            }
-        }
-        if tokenize_expr::next(iter, comments, errors).map(|(t, _)| t)
-            != Some(LangToken::RightParen)
-        {
-            return None;
-        }
-        let Some((LangToken::RightBracket, right_bracket)) =
-            tokenize_expr::next(iter, comments, errors)
-        else {
-            return None;
-        };
-        Some((annotation, hash_bracket.to(right_bracket)))
-    } else {
-        None
+    errors: &mut ParseErrors,
+    eof_range: &DocumentRange,
+    hash_bracket: DocumentRange,
+) -> Result<(ExamplesAnnotation, DocumentRange), ErrorEmitted> {
+    let Some((name, name_range)) =
+        parse_helpers::next_if_map(iter, comments, errors, LangToken::identifier)
+    else {
+        return Err(match tokenize_expr::peek(iter) {
+            Some((token, range)) => errors.emit(ParseErrorKind::UnexpectedToken { token }, range),
+            None => errors.emit(ParseErrorKind::UnexpectedEof {}, eof_range.clone()),
+        });
+    };
+    if name.as_str() != "examples" {
+        let reported = errors.emit(ParseErrorKind::UnknownAnnotation { name }, name_range);
+        // Skip the whole annotation, whatever it holds, so that the parse
+        // resumes after its `]` rather than inside it.
+        parse_helpers::skip_to(iter, reported, |token| {
+            *token == LangToken::RightBracket || parse_helpers::DECLARATION_KEYWORDS.contains(token)
+        });
+        parse_helpers::advance_if(iter, comments, errors, LangToken::RightBracket);
+        return Err(reported);
     }
+    let left_paren =
+        parse_helpers::expect_token(iter, comments, errors, eof_range, &LangToken::LeftParen)?;
+    let mut annotation = ExamplesAnnotation::default();
+    parse_helpers::parse_delimited_list(
+        iter,
+        comments,
+        errors,
+        eof_range,
+        LangTokenPair::Parens,
+        &left_paren,
+        &[],
+        |iter, comments, errors, range| {
+            let Some((key, key_range)) =
+                parse_helpers::next_if_map(iter, comments, errors, LangToken::identifier)
+            else {
+                return Err(match tokenize_expr::peek(iter) {
+                    Some((token, range)) => {
+                        errors.emit(ParseErrorKind::UnexpectedToken { token }, range)
+                    }
+                    None => errors.emit(ParseErrorKind::UnexpectedEof {}, range.clone()),
+                });
+            };
+            parse_helpers::expect_token(iter, comments, errors, range, &LangToken::Assign)?;
+            if key.as_str() == "pattern" {
+                let Some((value, _)) =
+                    parse_helpers::next_if_map(iter, comments, errors, |token| match token {
+                        LangToken::StringLiteral(value) => Some(value),
+                        _ => None,
+                    })
+                else {
+                    return Err(match tokenize_expr::peek(iter) {
+                        Some((actual, range)) => errors.emit(
+                            ParseErrorKind::ExpectedStringLiteralButGot { actual },
+                            range,
+                        ),
+                        None => errors.emit(ParseErrorKind::UnexpectedEof {}, range.clone()),
+                    });
+                };
+                annotation.pattern = Some(value.to_string());
+                return Ok(());
+            }
+            let slot = match key.as_str() {
+                "min" => &mut annotation.min,
+                "max" => &mut annotation.max,
+                "min_len" => &mut annotation.min_len,
+                "max_len" => &mut annotation.max_len,
+                _ => {
+                    return Err(
+                        errors.emit(ParseErrorKind::UnknownExamplesKey { name: key }, key_range)
+                    );
+                }
+            };
+            let negative =
+                parse_helpers::advance_if(iter, comments, errors, LangToken::Minus).is_some();
+            let Some((value, _)) =
+                parse_helpers::next_if_map(iter, comments, errors, |token| match token {
+                    LangToken::IntLiteral(value) => Some(value),
+                    _ => None,
+                })
+            else {
+                return Err(match tokenize_expr::peek(iter) {
+                    Some((actual, range)) => {
+                        errors.emit(ParseErrorKind::ExpectedIntLiteralButGot { actual }, range)
+                    }
+                    None => errors.emit(ParseErrorKind::UnexpectedEof {}, range.clone()),
+                });
+            };
+            *slot = Some(if negative { -value } else { value });
+            Ok(())
+        },
+    )?;
+    let right_bracket = parse_helpers::expect_right_delimiter(
+        iter,
+        comments,
+        errors,
+        LangTokenPair::Brackets,
+        &hash_bracket,
+    )?;
+    Ok((annotation, hash_bracket.to(right_bracket)))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::document_annotator::DocumentAnnotator;
-    use crate::hop::format;
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
     fn accept(input: &str, expected: Expect) {
-        let mut errors = Vec::new();
+        let mut errors = ParseErrors::new();
         let document_id = DocumentId::new("test.hop").unwrap();
         let module = parse(
             document_id.clone(),
@@ -861,11 +829,11 @@ mod tests {
                 .render();
             panic!("expected no parse errors, got:\n{rendered}");
         }
-        expected.assert_eq(&format(&module));
+        expected.assert_eq(&module.to_string());
     }
 
     fn reject(input: &str, expected: Expect) {
-        let mut errors = Vec::new();
+        let mut errors = ParseErrors::new();
         let document_id = DocumentId::new("test.hop").unwrap();
         let module = parse(
             document_id.clone(),
@@ -880,7 +848,7 @@ mod tests {
             .with_lines_before(1)
             .annotate(&DocumentId::new("test.hop").unwrap(), errors.clone())
             .render();
-        let actual = format!("-- errors --\n{rendered}-- ast --\n{}", format(&module));
+        let actual = format!("-- errors --\n{rendered}-- ast --\n{module}");
         expected.assert_eq(&actual);
     }
 
@@ -933,9 +901,11 @@ mod tests {
             "},
             expect![[r#"
                 component Card(children: Fragment) {
-                  <div>
-                    {children}
-                  </div>
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [interpolate(children)],
+                  )
                 }
             "#]],
         );
@@ -951,9 +921,11 @@ mod tests {
             "},
             expect![[r#"
                 pub component Button(label: String) {
-                  <button>
-                    {label}
-                  </button>
+                  html(
+                    tag: "button",
+                    attrs: [],
+                    children: [interpolate(label)],
+                  )
                 }
             "#]],
         );
@@ -968,10 +940,12 @@ mod tests {
                 }
             "},
             expect![[r#"
-                pub view Home {
-                  <div>
-                    hi
-                  </div>
+                pub view Home() {
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [text("hi")],
+                  )
                 }
             "#]],
         );
@@ -996,7 +970,7 @@ mod tests {
                 import other::Foo
 
                 component Main {
-                  <Foo/>
+                  Foo(attrs: [])
                 }
             "#]],
         );
@@ -1026,15 +1000,51 @@ mod tests {
             "},
             expect![[r#"
                 component First {
-                  <>
-                  </>
+                  fragment()
                 }
 
-                // This is a comment
                 component Second {
-                  <>
-                  </>
+                  fragment()
                 }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_lexer_error_at_end_of_file() {
+        reject(
+            indoc! {"
+                record A {}
+                // trailing
+                #
+            "},
+            expect![[r#"
+                -- errors --
+                error: Unexpected character: '#'
+                2 | // trailing
+                3 | #
+                  | ^
+                -- ast --
+                record A {}
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_unterminated_string_at_end_of_file() {
+        reject(
+            indoc! {"
+                record A {}
+                \"abc
+            "},
+            expect![[r#"
+                -- errors --
+                error: Unterminated string literal
+                1 | record A {}
+                2 | "abc
+                  | ^^^^
+                -- ast --
+                record A {}
             "#]],
         );
     }
@@ -1049,9 +1059,11 @@ mod tests {
             "},
             expect![[r#"
                 component Foo {
-                  <div>
-                    hello
-                  </div>
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [text("hello")],
+                  )
                 }
             "#]],
         );
@@ -1066,13 +1078,12 @@ mod tests {
                 }
             "},
             expect![[r#"
-                component Foo(
-                  name: String,
-                  count: Int,
-                ) {
-                  <div>
-                    {name}
-                  </div>
+                component Foo(name: String, count: Int) {
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [interpolate(name)],
+                  )
                 }
             "#]],
         );
@@ -1093,16 +1104,8 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                component Button(
-                  // The button label
-                  label: String,
-                  // Whether the button is disabled
-                  disabled: Bool = false,
-                  // More params to come
-                ) {
-                  <>
-                    {label}
-                  </>
+                component Button(label: String, disabled: Bool = false) {
+                  fragment(interpolate(label))
                 }
             "#]],
         );
@@ -1145,20 +1148,16 @@ mod tests {
                 }
 
                 component Main(i: Array[S]) {
-                  <>
-                    <for {j in i}>
-                      <for {k in j.s.t}>
-                        <if {k}>
-                        </if>
-                      </for>
-                    </for>
-                    <for {p in i}>
-                      <for {k in p.s.t}>
-                        <for {item in k}>
-                        </for>
-                      </for>
-                    </for>
-                  </>
+                  fragment(
+                    for j in i {
+                      for k in j.s.t { if k {} },
+                    },
+                    for p in i {
+                      for k in p.s.t {
+                        for item in k {},
+                      },
+                    },
+                  )
                 }
             "#]],
         );
@@ -1177,12 +1176,21 @@ mod tests {
             "#},
             expect![[r#"
                 component Main {
-                  <form id="form">
-                    <input type="text" required>
-                    <button type="submit">
-                      Send
-                    </button>
-                  </form>
+                  html(
+                    tag: "form",
+                    attrs: [id: "form"],
+                    children: [
+                      html(
+                        tag: "input",
+                        attrs: [type: "text", required],
+                      ),
+                      html(
+                        tag: "button",
+                        attrs: [type: "submit"],
+                        children: [text("Send")],
+                      ),
+                    ],
+                  )
                 }
             "#]],
         );
@@ -1198,14 +1206,18 @@ mod tests {
             "},
             expect![[r#"
                 component Main {
-                  <>
-                    <p>
-                      one
-                    </p>
-                    <p>
-                      two
-                    </p>
-                  </>
+                  fragment(
+                    html(
+                      tag: "p",
+                      attrs: [],
+                      children: [text("one")],
+                    ),
+                    html(
+                      tag: "p",
+                      attrs: [],
+                      children: [text("two")],
+                    ),
+                  )
                 }
             "#]],
         );
@@ -1221,8 +1233,7 @@ mod tests {
             "},
             expect![[r#"
                 component Main {
-                  <>
-                  </>
+                  fragment()
                 }
             "#]],
         );
@@ -1238,12 +1249,10 @@ mod tests {
             "},
             expect![[r#"
                 component Main {
-                  <>
-                    <>
-                      one
-                    </>
-                    two
-                  </>
+                  fragment(
+                    fragment(text("one")),
+                    text("two"),
+                  )
                 }
             "#]],
         );
@@ -1259,11 +1268,11 @@ mod tests {
             "},
             expect![[r#"
                 component Main {
-                  <div>
-                    <>
-                      one
-                    </>
-                  </div>
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [fragment(text("one"))],
+                  )
                 }
             "#]],
         );
@@ -1279,9 +1288,7 @@ mod tests {
             "},
             expect![[r#"
                 component Main {
-                  <>
-                    one
-                  </>
+                  fragment(text("one"))
                 }
             "#]],
         );
@@ -1297,7 +1304,11 @@ mod tests {
             "},
             expect![[r#"
                 component Main {
-                  <script><></script>
+                  html(
+                    tag: "script",
+                    attrs: [],
+                    children: [text("<>")],
+                  )
                 }
             "#]],
         );
@@ -1325,10 +1336,125 @@ mod tests {
                   |      ^
                 -- ast --
                 component Main {
-                  <div>
-                    <p>
-                    </p>
-                  </div>
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [
+                      html(
+                        tag: "p",
+                        attrs: [],
+                        children: [],
+                      ),
+                    ],
+                  )
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn recovers_at_the_next_declaration_after_a_broken_one() {
+        reject(
+            indoc! {r#"
+                record User {
+                  name: String
+                  age: Int,
+                }
+                enum Color { Red, Green }
+                fn double(x: Int) -> Int { x }
+                component Card(title: String) {
+                  <div>{title}</div>
+                }
+                view Home {
+                  <Card title="hi"/>
+                }
+            "#},
+            expect![[r#"
+                -- errors --
+                error: Expected token ',' but got 'age'
+                 2 |   name: String
+                 3 |   age: Int,
+                   |   ^^^
+                -- ast --
+                record User {
+                  name: String,
+                }
+
+                enum Color {
+                  Red,
+                  Green,
+                }
+
+                fn double(x: Int) -> Int {
+                  x
+                }
+
+                component Card(title: String) {
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [interpolate(title)],
+                  )
+                }
+
+                view Home() {
+                  Card(attrs: [title: "hi"])
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn recovers_after_broken_expression_inside_a_body() {
+        reject(
+            indoc! {"
+                component First {
+                  <div>{1 +}</div>
+                }
+                component Second {
+                  <></>
+                }
+            "},
+            expect![[r#"
+                -- errors --
+                error: Unexpected token '}'
+                1 | component First {
+                2 |   <div>{1 +}</div>
+                  |            ^
+                -- ast --
+                component First {
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [],
+                  )
+                }
+
+                component Second {
+                  fragment()
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn recovers_after_a_declaration_cut_short() {
+        reject(
+            indoc! {"
+                fn broken(x: Int
+                component Whole {
+                  <></>
+                }
+            "},
+            expect![[r#"
+                -- errors --
+                error: Expected token ')' but got 'component'
+                1 | fn broken(x: Int
+                2 | component Whole {
+                  | ^^^^^^^^^
+                -- ast --
+                component Whole {
+                  fragment()
                 }
             "#]],
         );
@@ -1350,10 +1476,17 @@ mod tests {
                   |           ^^^^
                 -- ast --
                 component Main {
-                  <div>
-                    <span>
-                    </span>
-                  </div>
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [
+                      html(
+                        tag: "span",
+                        attrs: [],
+                        children: [],
+                      ),
+                    ],
+                  )
                 }
             "#]],
         );
@@ -1385,14 +1518,25 @@ mod tests {
                   |                   ^
                 -- ast --
                 component Main {
-                  <div>
-                    <span>
-                      <>
-                        <b>
-                        </b>
-                      </>
-                    </span>
-                  </div>
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [
+                      html(
+                        tag: "span",
+                        attrs: [],
+                        children: [
+                          fragment(
+                            html(
+                              tag: "b",
+                              attrs: [],
+                              children: [],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  )
                 }
             "#]],
         );
@@ -1419,8 +1563,11 @@ mod tests {
                   |              ^^^
                 -- ast --
                 component Main {
-                  <div>
-                  </div>
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [],
+                  )
                 }
             "#]],
         );
@@ -1541,11 +1688,6 @@ mod tests {
                  3 |         <title>one</title>
                  4 |         <meta charset="utf-8"/>
                    |               ^^^^^^^
-
-                error: Unexpected text at top level
-                 3 |         <title>one</title>
-                 4 |         <meta charset="utf-8"/>
-                   |                      ^
                 -- ast --
             "#]],
         );
@@ -1561,12 +1703,11 @@ mod tests {
             "},
             expect![[r#"
                 component Greeting(name: String) {
-                  <>
-                    Hello,
-                    {" "}
-                    {name}
-                    !
-                  </>
+                  fragment(
+                    text("Hello, "),
+                    interpolate(name),
+                    text("!"),
+                  )
                 }
             "#]],
         );
@@ -1588,9 +1729,7 @@ mod tests {
                   |     ^^
                 -- ast --
                 component Main {
-                  <>
-                    one
-                  </>
+                  fragment(text("one"))
                 }
             "#]],
         );
@@ -1612,8 +1751,11 @@ mod tests {
                   |          ^^^
                 -- ast --
                 component Main {
-                  <div>
-                  </div>
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [],
+                  )
                 }
             "#]],
         );
@@ -1635,10 +1777,13 @@ mod tests {
                   |        ^^^
                 -- ast --
                 component Main {
-                  <>
-                    <div>
-                    </div>
-                  </>
+                  fragment(
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: [],
+                    ),
+                  )
                 }
             "#]],
         );
@@ -1658,11 +1803,6 @@ mod tests {
                 1 | component Main {
                 2 |     < >
                   |     ^
-
-                error: Unexpected text at top level
-                1 | component Main {
-                2 |     < >
-                  |       ^
                 -- ast --
             "#]],
         );
@@ -1684,7 +1824,7 @@ mod tests {
                   |                ^^^^^^^^
                 -- ast --
                 component Main {
-                  <match {x}></match>
+                  match x {}
                 }
             "#]],
         );
@@ -1711,7 +1851,7 @@ mod tests {
                   |                   ^^^^
                 -- ast --
                 component Main {
-                  <match {x}></match>
+                  match x {}
                 }
             "#]],
         );
@@ -1747,11 +1887,11 @@ mod tests {
                   |                ^^^^^^^^
                 -- ast --
                 component Main {
-                  <>
-                    <hr>
-                    <br>
-                    <input>
-                  </>
+                  fragment(
+                    html(tag: "hr", attrs: []),
+                    html(tag: "br", attrs: []),
+                    html(tag: "input", attrs: []),
+                  )
                 }
             "#]],
         );
@@ -1777,16 +1917,15 @@ mod tests {
                 import bar::Bar
 
                 component Main {
-                  <>
-                    <hr>
-                    <br>
-                    <input>
-                  </>
+                  fragment(
+                    html(tag: "hr", attrs: []),
+                    html(tag: "br", attrs: []),
+                    html(tag: "input", attrs: []),
+                  )
                 }
 
                 component Foo {
-                  <>
-                  </>
+                  fragment()
                 }
             "#]],
         );
@@ -1803,8 +1942,11 @@ mod tests {
                   |                      ^^^^^^
                 -- ast --
                 component Main {
-                  <div foo>
-                  </div>
+                  html(
+                    tag: "div",
+                    attrs: [foo],
+                    children: [],
+                  )
                 }
             "#]],
         );
@@ -1821,7 +1963,7 @@ mod tests {
                   |                             ^^^^^^^^
                 -- ast --
                 component Main {
-                  <input>
+                  html(tag: "input", attrs: [])
                 }
             "#]],
         );
@@ -1836,10 +1978,6 @@ mod tests {
                 error: Invalid markup declaration
                 1 | component Main {<!foo>}
                   |                 ^^
-
-                error: Unexpected text at top level
-                1 | component Main {<!foo>}
-                  |                   ^^^
                 -- ast --
             "#]],
         );
@@ -1872,10 +2010,23 @@ mod tests {
                 error: Unclosed <div>
                 1 | component Main {<div <div>}
                   |                  ^^^
+
+                error: Unclosed <div>
+                1 | component Main {<div <div>}
+                  |                       ^^^
                 -- ast --
                 component Main {
-                  <div>
-                  </div>
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [
+                      html(
+                        tag: "div",
+                        attrs: [],
+                        children: [],
+                      ),
+                    ],
+                  )
                 }
             "#]],
         );
@@ -1896,8 +2047,11 @@ mod tests {
                   |                        ^^^
                 -- ast --
                 component Main {
-                  <div>
-                  </div>
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [],
+                  )
                 }
             "#]],
         );
@@ -1914,8 +2068,11 @@ mod tests {
                   |                                  ^^^^^
                 -- ast --
                 component Main {
-                  <div class="foo">
-                  </div>
+                  html(
+                    tag: "div",
+                    attrs: [class: "foo"],
+                    children: [],
+                  )
                 }
             "#]],
         );
@@ -1932,9 +2089,11 @@ mod tests {
                   |                      ^^^
                 -- ast --
                 component Main {
-                  <div>
-                    text
-                  </div>
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [text("text")],
+                  )
                 }
             "#]],
         );
@@ -1949,10 +2108,6 @@ mod tests {
                 error: Unterminated tag start
                 1 | component Main {< div>}
                   |                 ^
-
-                error: Unexpected text at top level
-                1 | component Main {< div>}
-                  |                   ^^^
                 -- ast --
             "#]],
         );
@@ -1977,11 +2132,6 @@ mod tests {
                 1 | component Main(foo: String) {
                 2 |     <!DOCTYPE html>
                   |     ^^^^^^^^^^^^^^^
-
-                error: Unexpected text at top level
-                2 |     <!DOCTYPE html>
-                3 |     <html>
-                  |     ^
                 -- ast --
             "#]],
         );
@@ -2003,11 +2153,6 @@ mod tests {
                 1 | component Main {
                 2 |     <if>
                   |     ^^^^
-
-                error: Unexpected text at top level
-                4 |     </if>
-                5 | }
-                  | ^
                 -- ast --
             "#]],
         );
@@ -2029,11 +2174,6 @@ mod tests {
                 1 | component Main {
                 2 |     <for>
                   |     ^^^^^
-
-                error: Unexpected text at top level
-                4 |     </for>
-                5 | }
-                  | ^
                 -- ast --
             "#]],
         );
@@ -2055,11 +2195,6 @@ mod tests {
                 1 | component Main {
                 2 |     <for {foo}>
                   |              ^
-
-                error: Unexpected text at top level
-                4 |     </for>
-                5 | }
-                  | ^
                 -- ast --
             "#]],
         );
@@ -2086,11 +2221,6 @@ mod tests {
                 1 | component Main {
                 2 |     <if {~}>
                   |           ^
-
-                error: Unexpected text at top level
-                4 |     </if>
-                5 | }
-                  | ^
                 -- ast --
             "#]],
         );
@@ -2109,11 +2239,14 @@ mod tests {
                 error: Expected type name but got ')'
                 1 | component Main(data: Array[) {
                   |                            ^
-
-                error: Unexpected text at top level
-                1 | component Main(data: Array[) {
-                  |                              ^
                 -- ast --
+                component Main {
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [interpolate(data)],
+                  )
+                }
             "#]],
         );
     }
@@ -2137,9 +2270,14 @@ mod tests {
                 }
 
                 component Main(user: User) {
-                  <a href={user.url} class={user.theme}>
-                    Link
-                  </a>
+                  html(
+                    tag: "a",
+                    attrs: [
+                      href: user.url,
+                      class: user.theme,
+                    ],
+                    children: [text("Link")],
+                  )
                 }
             "#]],
         );
@@ -2160,12 +2298,10 @@ mod tests {
                 1 | record User {
                 2 |   url: x,
                   |        ^
-
-                error: Unexpected text at top level
-                1 | record User {
-                2 |   url: x,
-                  |         ^
                 -- ast --
+                record User {
+                  theme: String,
+                }
             "#]],
         );
     }
@@ -2180,24 +2316,17 @@ mod tests {
             "#},
             expect![[r#"
                 -- errors --
-                error: Unterminated opening tag
-                1 | component Main(style1: String, style2: String, style3: String) {
-                2 |     <div class={style1, style2, style3}>Content</div>
-                  |      ^^^
-
                 error: Expected token '}' but got ','
                 1 | component Main(style1: String, style2: String, style3: String) {
                 2 |     <div class={style1, style2, style3}>Content</div>
                   |                       ^
                 -- ast --
-                component Main(
-                  style1: String,
-                  style2: String,
-                  style3: String,
-                ) {
-                  <div style2>
-                    Content
-                  </div>
+                component Main(style1: String, style2: String, style3: String) {
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [text("Content")],
+                  )
                 }
             "#]],
         );
@@ -2220,7 +2349,7 @@ mod tests {
                   |        ^^^
                 -- ast --
                 component Main {
-                  <Foo/>
+                  Foo(attrs: [])
                 }
             "#]],
         );
@@ -2239,10 +2368,10 @@ mod tests {
             "},
             expect![[r#"
                 component Main(p: String) {
-                  <>
-                    <Foo/>
-                    <Foo/>
-                  </>
+                  fragment(
+                    Foo(attrs: []),
+                    Foo(attrs: []),
+                  )
                 }
             "#]],
         );
@@ -2273,10 +2402,10 @@ mod tests {
                 }
 
                 component Main(data: Data) {
-                  <>
-                    <Foo a={data}/>
-                    <Bar b={data.user}/>
-                  </>
+                  fragment(
+                    Foo(attrs: [a: data]),
+                    Bar(attrs: [b: data.user]),
+                  )
                 }
             "#]],
         );
@@ -2294,11 +2423,13 @@ mod tests {
             "},
             expect![[r#"
                 component Main(item: Array[String]) {
-                  <for {item in items}>
-                    <div>
-                      Item content
-                    </div>
-                  </for>
+                  for item in items {
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: [text("Item content")],
+                    ),
+                  }
                 }
             "#]],
         );
@@ -2316,11 +2447,13 @@ mod tests {
             "},
             expect![[r#"
                 component Main(foo: Array[String]) {
-                  <for {v in foo}>
-                    <div>
-                      {v}
-                    </div>
-                  </for>
+                  for v in foo {
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: [interpolate(v)],
+                    ),
+                  }
                 }
             "#]],
         );
@@ -2338,9 +2471,7 @@ mod tests {
             "},
             expect![[r#"
                 component Main {
-                  <for {i in 0..=5}>
-                    {i}
-                  </for>
+                  for i in 0..=5 { interpolate(i) }
                 }
             "#]],
         );
@@ -2357,13 +2488,10 @@ mod tests {
                 }
             "},
             expect![[r#"
-                component Main(
-                  start: Int,
-                  end: Int,
-                ) {
-                  <for {x in start..=end}>
-                    {x}
-                  </for>
+                component Main(start: Int, end: Int) {
+                  for x in start..=end {
+                    interpolate(x),
+                  }
                 }
             "#]],
         );
@@ -2381,9 +2509,9 @@ mod tests {
             "},
             expect![[r#"
                 component Main(count: Int) {
-                  <for {i in 1..=count + 1}>
-                    {i}
-                  </for>
+                  for i in 1..=count + 1 {
+                    interpolate(i),
+                  }
                 }
             "#]],
         );
@@ -2401,9 +2529,7 @@ mod tests {
             "},
             expect![[r#"
                 component Main(items: Array[String]) {
-                  <for {_ in items}>
-                    item
-                  </for>
+                  for _ in items { text("item") }
                 }
             "#]],
         );
@@ -2421,9 +2547,7 @@ mod tests {
             "},
             expect![[r#"
                 component Main {
-                  <for {_ in 0..=5}>
-                    item
-                  </for>
+                  for _ in 0..=5 { text("item") }
                 }
             "#]],
         );
@@ -2440,13 +2564,8 @@ mod tests {
                 }
             "},
             expect![[r#"
-                component Main(
-                  start: Int,
-                  end: Int,
-                ) {
-                  <for {_ in start..=end}>
-                    item
-                  </for>
+                component Main(start: Int, end: Int) {
+                  for _ in start..=end { text("item") }
                 }
             "#]],
         );
@@ -2463,15 +2582,74 @@ mod tests {
                 }
             "},
             expect![[r#"
-                component Main(
-                  x: Int,
-                  y: Int,
-                ) {
-                  <if {x == y}>
-                    <div>
-                      Equal
-                    </div>
-                  </if>
+                component Main(x: Int, y: Int) {
+                  if x == y {
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: [text("Equal")],
+                    ),
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_if_with_two_expressions() {
+        reject(
+            indoc! {"
+                component Main(x: Int, y: Int) {
+                    <if {x == 1} {y == 2}>
+                        <div>Which</div>
+                    </if>
+                }
+            "},
+            expect![[r#"
+                -- errors --
+                error: <if> already has an expression
+                1 | component Main(x: Int, y: Int) {
+                2 |     <if {x == 1} {y == 2}>
+                  |                  ^^^^^^^^
+                -- ast --
+                component Main(x: Int, y: Int) {
+                  if x == 1 {
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: [text("Which")],
+                    ),
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_for_with_two_expressions() {
+        reject(
+            indoc! {"
+                component Main(xs: Array[Int], ys: Array[Int]) {
+                    <for {x in xs} {y in ys}>
+                        <div>{x}</div>
+                    </for>
+                }
+            "},
+            expect![[r#"
+                -- errors --
+                error: <for> already has an expression
+                1 | component Main(xs: Array[Int], ys: Array[Int]) {
+                2 |     <for {x in xs} {y in ys}>
+                  |                    ^^^^^^^^^
+                -- ast --
+                component Main(xs: Array[Int], ys: Array[Int]) {
+                  for x in xs {
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: [interpolate(x)],
+                    ),
+                  }
                 }
             "#]],
         );
@@ -2490,15 +2668,10 @@ mod tests {
                 }
             "},
             expect![[r#"
-                component Main(
-                  x: Bool,
-                  data: Array[String],
-                ) {
-                  <if {x}>
-                    <for {d in data}>
-                      {d}
-                    </for>
-                  </if>
+                component Main(x: Bool, data: Array[String]) {
+                  if x {
+                    for d in data { interpolate(d) },
+                  }
                 }
             "#]],
         );
@@ -2518,11 +2691,6 @@ mod tests {
                 1 | component Main {
                 2 |     <dvi>oops</dvi>
                   |      ^^^
-
-                error: Unexpected text at top level
-                2 |     <dvi>oops</dvi>
-                3 | }
-                  | ^
                 -- ast --
             "#]],
         );
@@ -2542,11 +2710,6 @@ mod tests {
                 1 | component Main {
                 2 |     <math></math>
                   |      ^^^^
-
-                error: Unexpected text at top level
-                2 |     <math></math>
-                3 | }
-                  | ^
                 -- ast --
             "#]],
         );
@@ -2562,9 +2725,11 @@ mod tests {
             "#},
             expect![[r#"
                 component Main {
-                  <my-widget>
-                    hi
-                  </my-widget>
+                  html(
+                    tag: "my-widget",
+                    attrs: [],
+                    children: [text("hi")],
+                  )
                 }
             "#]],
         );
@@ -2591,32 +2756,73 @@ mod tests {
             "#},
             expect![[r#"
                 component Main {
-                  <div class="navbar">
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="128"
-                      height="128"
-                      version="1.1"
-                      viewBox="0 0 128 128"
-                      class="size-12"
-                    >
-                      <g style="fill: none; stroke: currentcolor; stroke-width: 5px; stroke-linecap: round; stroke-linejoin: round;">
-                        <path d="M20.04 38 64 22l43.96 16L64 54Z">
-                        </path>
-                        <path d="M17.54 47.09v48l35.099 12.775">
-                        </path>
-                        <path d="M64 112V64l46.46-16.91v48L77.988 106.91">
-                        </path>
-                      </g>
-                    </svg>
-                    <ul>
-                      <li>
-                        <a href="/">
-                          Home
-                        </a>
-                      </li>
-                    </ul>
-                  </div>
+                  html(
+                    tag: "div",
+                    attrs: [class: "navbar"],
+                    children: [
+                      html(
+                        tag: "svg",
+                        attrs: [
+                          xmlns: "http://www.w3.org/2000/svg",
+                          width: "128",
+                          height: "128",
+                          version: "1.1",
+                          viewBox: "0 0 128 128",
+                          class: "size-12",
+                        ],
+                        children: [
+                          html(
+                            tag: "g",
+                            attrs: [
+                              style: "fill: none; stroke: currentcolor; stroke-width: 5px; stroke-linecap: round; stroke-linejoin: round;",
+                            ],
+                            children: [
+                              html(
+                                tag: "path",
+                                attrs: [
+                                  d: "M20.04 38 64 22l43.96 16L64 54Z",
+                                ],
+                                children: [],
+                              ),
+                              html(
+                                tag: "path",
+                                attrs: [
+                                  d: "M17.54 47.09v48l35.099 12.775",
+                                ],
+                                children: [],
+                              ),
+                              html(
+                                tag: "path",
+                                attrs: [
+                                  d: "M64 112V64l46.46-16.91v48L77.988 106.91",
+                                ],
+                                children: [],
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      html(
+                        tag: "ul",
+                        attrs: [],
+                        children: [
+                          html(
+                            tag: "li",
+                            attrs: [],
+                            children: [
+                              html(
+                                tag: "a",
+                                attrs: [href: "/"],
+                                children: [
+                                  text("Home"),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ],
+                  )
                 }
             "#]],
         );
@@ -2632,9 +2838,11 @@ mod tests {
             "},
             expect![[r#"
                 component Main(data: String) {
-                  <div>
-                    {data}
-                  </div>
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [interpolate(data)],
+                  )
                 }
             "#]],
         );
@@ -2661,14 +2869,20 @@ mod tests {
                 }
 
                 component Main(data: Data) {
-                  <>
-                    <h1>
-                      Hello World
-                    </h1>
-                    <p>
-                      {data.message}
-                    </p>
-                  </>
+                  fragment(
+                    html(
+                      tag: "h1",
+                      attrs: [],
+                      children: [text("Hello World")],
+                    ),
+                    html(
+                      tag: "p",
+                      attrs: [],
+                      children: [
+                        interpolate(data.message),
+                      ],
+                    ),
+                  )
                 }
             "#]],
         );
@@ -2686,11 +2900,13 @@ mod tests {
             "},
             expect![[r#"
                 component Main(items: Array[String]) {
-                  <for {item in items}>
-                    <div>
-                      {item}
-                    </div>
-                  </for>
+                  for item in items {
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: [interpolate(item)],
+                    ),
+                  }
                 }
             "#]],
         );
@@ -2721,16 +2937,22 @@ mod tests {
                 }
 
                 component Main(data: Array[Section]) {
-                  <for {section in data}>
-                    <h1>
-                      {section.title}
-                    </h1>
-                    <for {item in section.items}>
-                      <div>
-                        {item}
-                      </div>
-                    </for>
-                  </for>
+                  for section in data {
+                    html(
+                      tag: "h1",
+                      attrs: [],
+                      children: [
+                        interpolate(section.title),
+                      ],
+                    ),
+                    for item in section.items {
+                      html(
+                        tag: "div",
+                        attrs: [],
+                        children: [interpolate(item)],
+                      ),
+                    },
+                  }
                 }
             "#]],
         );
@@ -2742,12 +2964,15 @@ mod tests {
             "component Main {<h1>Hello {name}!</h1>}",
             expect![[r#"
                 component Main {
-                  <h1>
-                    Hello
-                    {" "}
-                    {name}
-                    !
-                  </h1>
+                  html(
+                    tag: "h1",
+                    attrs: [],
+                    children: [
+                      text("Hello "),
+                      interpolate(name),
+                      text("!"),
+                    ],
+                  )
                 }
             "#]],
         );
@@ -2759,17 +2984,17 @@ mod tests {
             "component Main {<p>User {user.name} has {user.count} items</p>}",
             expect![[r#"
                 component Main {
-                  <p>
-                    User
-                    {" "}
-                    {user.name}
-                    {" "}
-                    has
-                    {" "}
-                    {user.count}
-                    {" "}
-                    items
-                  </p>
+                  html(
+                    tag: "p",
+                    attrs: [],
+                    children: [
+                      text("User "),
+                      interpolate(user.name),
+                      text(" has "),
+                      interpolate(user.count),
+                      text(" items"),
+                    ],
+                  )
                 }
             "#]],
         );
@@ -2781,11 +3006,14 @@ mod tests {
             "component Main {<span>{greeting} world!</span>}",
             expect![[r#"
                 component Main {
-                  <span>
-                    {greeting}
-                    {" "}
-                    world!
-                  </span>
+                  html(
+                    tag: "span",
+                    attrs: [],
+                    children: [
+                      interpolate(greeting),
+                      text(" world!"),
+                    ],
+                  )
                 }
             "#]],
         );
@@ -2797,11 +3025,14 @@ mod tests {
             "component Main {<div>Price: {price}</div>}",
             expect![[r#"
                 component Main {
-                  <div>
-                    Price:
-                    {" "}
-                    {price}
-                  </div>
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [
+                      text("Price: "),
+                      interpolate(price),
+                    ],
+                  )
                 }
             "#]],
         );
@@ -2813,9 +3044,11 @@ mod tests {
             "component Main {<h2>{title}</h2>}",
             expect![[r#"
                 component Main {
-                  <h2>
-                    {title}
-                  </h2>
+                  html(
+                    tag: "h2",
+                    attrs: [],
+                    children: [interpolate(title)],
+                  )
                 }
             "#]],
         );
@@ -2832,9 +3065,11 @@ mod tests {
                   |                              ^
                 -- ast --
                 component Main {
-                  <div>
-                    Empty:
-                  </div>
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [text("Empty:")],
+                  )
                 }
             "#]],
         );
@@ -2846,11 +3081,16 @@ mod tests {
             r#"component Main {<p>Status: {user.profile.status == "active"}</p>}"#,
             expect![[r#"
                 component Main {
-                  <p>
-                    Status:
-                    {" "}
-                    {user.profile.status == "active"}
-                  </p>
+                  html(
+                    tag: "p",
+                    attrs: [],
+                    children: [
+                      text("Status: "),
+                      interpolate(
+                        user.profile.status == "active",
+                      ),
+                    ],
+                  )
                 }
             "#]],
         );
@@ -2862,10 +3102,14 @@ mod tests {
             "component Main {<span>{first}{second}</span>}",
             expect![[r#"
                 component Main {
-                  <span>
-                    {first}
-                    {second}
-                  </span>
+                  html(
+                    tag: "span",
+                    attrs: [],
+                    children: [
+                      interpolate(first),
+                      interpolate(second),
+                    ],
+                  )
                 }
             "#]],
         );
@@ -2877,9 +3121,13 @@ mod tests {
             r#"component Main {<div>{"<div></div>"}</div>}"#,
             expect![[r#"
                 component Main {
-                  <div>
-                    {"<div></div>"}
-                  </div>
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [
+                      interpolate("<div></div>"),
+                    ],
+                  )
                 }
             "#]],
         );
@@ -2900,11 +3148,14 @@ mod tests {
                 2 | component Main {
                   | ^^^^^^^^^
 
-                error: Unexpected text at top level
+                error: Expected an expression: use <></> for an empty body
                 1 | record
                 2 | component Main {
-                  |           ^^^^
+                  |                ^
                 -- ast --
+                component Main {
+                  Fragment::empty()
+                }
             "#]],
         );
     }
@@ -2922,7 +3173,15 @@ mod tests {
                 error: Unexpected text at top level
                 1 | foo
                   | ^^^
+
+                error: Expected an expression: use <></> for an empty body
+                1 | foo
+                2 | component Main {
+                  |                ^
                 -- ast --
+                component Main {
+                  Fragment::empty()
+                }
             "#]],
         );
     }
@@ -2945,12 +3204,14 @@ mod tests {
                 }
 
                 component Main(color: Color) {
-                  <>
-                    {match color {
-                      Color::Red => "red",
-                      Color::Blue => "blue",
-                    }}
-                  </>
+                  fragment(
+                    interpolate(
+                      match color {
+                        Color::Red => "red",
+                        Color::Blue => "blue",
+                      },
+                    ),
+                  )
                 }
             "#]],
         );
@@ -2974,13 +3235,16 @@ mod tests {
                 }
 
                 component Main(color: Color) {
-                  <div class={
-                    match color {
-                      Color::Red => "text-red",
-                      Color::Blue => "text-blue",
-                    }
-                  }>
-                  </div>
+                  html(
+                    tag: "div",
+                    attrs: [
+                      class: match color {
+                        Color::Red => "text-red",
+                        Color::Blue => "text-blue",
+                      },
+                    ],
+                    children: [],
+                  )
                 }
             "#]],
         );
@@ -3010,13 +3274,15 @@ mod tests {
                 }
 
                 component Main(status: Status) {
-                  <>
-                    {match status {
-                      Status::Active => "active",
-                      Status::Inactive => "inactive",
-                      Status::Pending => "pending",
-                    }}
-                  </>
+                  fragment(
+                    interpolate(
+                      match status {
+                        Status::Active => "active",
+                        Status::Inactive => "inactive",
+                        Status::Pending => "pending",
+                      },
+                    ),
+                  )
                 }
             "#]],
         );
@@ -3032,9 +3298,11 @@ mod tests {
             "#},
             expect![[r#"
                 component Main(name: String = "World") {
-                  <div>
-                    {name}
-                  </div>
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [interpolate(name)],
+                  )
                 }
             "#]],
         );
@@ -3050,9 +3318,11 @@ mod tests {
             "},
             expect![[r#"
                 component Main(count: Int = 42) {
-                  <span>
-                    {count}
-                  </span>
+                  html(
+                    tag: "span",
+                    attrs: [],
+                    children: [interpolate(count)],
+                  )
                 }
             "#]],
         );
@@ -3068,8 +3338,11 @@ mod tests {
             "},
             expect![[r#"
                 component Main(enabled: Bool = true) {
-                  <div>
-                  </div>
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [],
+                  )
                 }
             "#]],
         );
@@ -3084,14 +3357,12 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                component Main(
-                  name: String,
-                  role: String = "user",
-                  active: Bool = true,
-                ) {
-                  <div>
-                    {name}
-                  </div>
+                component Main(name: String, role: String = "user", active: Bool = true) {
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [interpolate(name)],
+                  )
                 }
             "#]],
         );
@@ -3108,10 +3379,13 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                component Main(items: Array[String] = ["a", "b"]) {
-                  <for {item in items}>
-                    {item}
-                  </for>
+                component Main(items: Array[String] = [
+                  "a",
+                  "b",
+                ]) {
+                  for item in items {
+                    interpolate(item),
+                  }
                 }
             "#]],
         );
@@ -3132,11 +3406,15 @@ mod tests {
                   timeout: Int,
                 }
 
-                component Main(
-                  config: Config = Config {debug: false, timeout: 30},
-                ) {
-                  <div>
-                  </div>
+                component Main(config: Config = Config {
+                  debug: false,
+                  timeout: 30,
+                }) {
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [],
+                  )
                 }
             "#]],
         );
@@ -3159,8 +3437,11 @@ mod tests {
                 }
 
                 component Main(status: Status = Status::Active) {
-                  <div>
-                  </div>
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [],
+                  )
                 }
             "#]],
         );
@@ -3176,8 +3457,11 @@ mod tests {
             "},
             expect![[r#"
                 component Main(name: Option[String]) {
-                  <div>
-                  </div>
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [],
+                  )
                 }
             "#]],
         );
@@ -3193,8 +3477,11 @@ mod tests {
             "},
             expect![[r#"
                 component Main(name: Option[String] = None) {
-                  <div>
-                  </div>
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [],
+                  )
                 }
             "#]],
         );
@@ -3210,8 +3497,11 @@ mod tests {
             "#},
             expect![[r#"
                 component Main(name: Option[String] = Some("default")) {
-                  <div>
-                  </div>
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [],
+                  )
                 }
             "#]],
         );
@@ -3226,9 +3516,15 @@ mod tests {
                 }
             "},
             expect![[r#"
-                component Main(offsets: Array[Int] = [1, 2]) {
-                  <div>
-                  </div>
+                component Main(offsets: Array[Int] = [
+                  1,
+                  2,
+                ]) {
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [],
+                  )
                 }
             "#]],
         );
@@ -3244,8 +3540,36 @@ mod tests {
             "},
             expect![[r#"
                 component Main(children: Fragment = Fragment::empty()) {
-                  <div>
-                  </div>
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [],
+                  )
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_parameter_with_malformed_default_value() {
+        reject(
+            indoc! {"
+                component Main(x: Int = = 1, y: Int) {
+                    <div></div>
+                }
+            "},
+            expect![[r#"
+                -- errors --
+                error: Unexpected token '='
+                1 | component Main(x: Int = = 1, y: Int) {
+                  |                         ^
+                -- ast --
+                component Main(y: Int) {
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [],
+                  )
                 }
             "#]],
         );
@@ -3257,7 +3581,7 @@ mod tests {
             "component Main(x: Option[String]) {<match {x}/>}\n",
             expect![[r#"
                 component Main(x: Option[String]) {
-                  <match {x}></match>
+                  match x {}
                 }
             "#]],
         );
@@ -3276,15 +3600,13 @@ mod tests {
             "#},
             expect![[r#"
                 component Main(x: Option[String]) {
-                  <match {x}>
-                    <case {Some(y)}>
-                      found
-                      {" "}
-                      {y}
-                    </case>
-                    <case {None}>
-                    </case>
-                  </match>
+                  match x {
+                    Some(y) => {
+                      text("found "),
+                      interpolate(y),
+                    },
+                    None => {},
+                  }
                 }
             "#]],
         );
@@ -3307,16 +3629,13 @@ mod tests {
             "#},
             expect![[r#"
                 component Main(x: Option[String]) {
-                  <match {x}>
-                    <case {Some(y)}>
-                      found
-                      {" "}
-                      {y}
-                    </case>
-                    <case {None}>
-                      nothing
-                    </case>
-                  </match>
+                  match x {
+                    Some(y) => {
+                      text("found "),
+                      interpolate(y),
+                    },
+                    None => { text("nothing") },
+                  }
                 }
             "#]],
         );
@@ -3343,17 +3662,11 @@ mod tests {
                 }
 
                 component Main(c: Color) {
-                  <match {c}>
-                    <case {Color::Red}>
-                      red
-                    </case>
-                    <case {Color::Green}>
-                      green
-                    </case>
-                    <case {Color::Blue}>
-                      blue
-                    </case>
-                  </match>
+                  match c {
+                    Color::Red => { text("red") },
+                    Color::Green => { text("green") },
+                    Color::Blue => { text("blue") },
+                  }
                 }
             "#]],
         );
@@ -3377,27 +3690,21 @@ mod tests {
             "#},
             expect![[r#"
                 enum Outcome {
-                  Success {
-                    value: Int,
-                  },
-                  Failure {
-                    message: String,
-                  },
+                  Success { value: Int },
+                  Failure { message: String },
                 }
 
                 component Main(r: Outcome) {
-                  <match {r}>
-                    <case {Outcome::Success {value: v}}>
-                      Success:
-                      {" "}
-                      {v}
-                    </case>
-                    <case {Outcome::Failure {message: m}}>
-                      Error:
-                      {" "}
-                      {m}
-                    </case>
-                  </match>
+                  match r {
+                    Outcome::Success{value: v} => {
+                      text("Success: "),
+                      interpolate(v),
+                    },
+                    Outcome::Failure{message: m} => {
+                      text("Error: "),
+                      interpolate(m),
+                    },
+                  }
                 }
             "#]],
         );
@@ -3421,21 +3728,19 @@ mod tests {
             "#},
             expect![[r#"
                 enum Status {
-                  Active {
-                    name: String,
-                  },
+                  Active { name: String },
                   Inactive,
                 }
 
                 component Main {
-                  <match {Status::Active {name: "test"}}>
-                    <case {Status::Active {name: n}}>
-                      {n}
-                    </case>
-                    <case {Status::Inactive}>
-                      none
-                    </case>
-                  </match>
+                  match Status::Active {name: "test"} {
+                    Status::Active{name: n} => {
+                      interpolate(n),
+                    },
+                    Status::Inactive => {
+                      text("none"),
+                    },
+                  }
                 }
             "#]],
         );
@@ -3454,14 +3759,10 @@ mod tests {
             "#},
             expect![[r#"
                 component Main(flag: Bool) {
-                  <match {flag}>
-                    <case {true}>
-                      yes
-                    </case>
-                    <case {false}>
-                      no
-                    </case>
-                  </match>
+                  match flag {
+                    true => { text("yes") },
+                    false => { text("no") },
+                  }
                 }
             "#]],
         );
@@ -3483,11 +3784,6 @@ mod tests {
                 1 | component Main {
                 2 |     <match>
                   |     ^^^^^^^
-
-                error: Unexpected text at top level
-                4 |     </match>
-                5 | }
-                  | ^
                 -- ast --
             "#]],
         );
@@ -3511,7 +3807,7 @@ mod tests {
                   |         ^^^^^^
                 -- ast --
                 component Main(flag: Bool) {
-                  <match {flag}></match>
+                  match flag {}
                 }
             "#]],
         );
@@ -3535,7 +3831,7 @@ mod tests {
                   |         ^^^^^^^^^^^^^^^^^^^^^^
                 -- ast --
                 component Main(flag: Bool) {
-                  <match {flag}></match>
+                  match flag {}
                 }
             "#]],
         );
@@ -3555,11 +3851,6 @@ mod tests {
                 1 | component Main {
                 2 |     <case {true}>standalone case</case>
                   |      ^^^^
-
-                error: Unexpected text at top level
-                2 |     <case {true}>standalone case</case>
-                3 | }
-                  | ^
                 -- ast --
             "#]],
         );
@@ -3577,13 +3868,16 @@ mod tests {
             "#},
             expect![[r#"
                 component Main {
-                  <let {name: String = "World"}>
-                    <div>
-                      Hello
-                      {" "}
-                      {name}
-                    </div>
-                  </let>
+                  let name: String = "World" in {
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: [
+                        text("Hello "),
+                        interpolate(name),
+                      ],
+                    ),
+                  }
                 }
             "#]],
         );
@@ -3601,11 +3895,13 @@ mod tests {
             "},
             expect![[r#"
                 component Main {
-                  <let {count: Int = 42}>
-                    <span>
-                      {count}
-                    </span>
-                  </let>
+                  let count: Int = 42 in {
+                    html(
+                      tag: "span",
+                      attrs: [],
+                      children: [interpolate(count)],
+                    ),
+                  }
                 }
             "#]],
         );
@@ -3628,11 +3924,13 @@ mod tests {
                 }
 
                 component Main(user: User) {
-                  <let {greeting: String = user.name}>
-                    <div>
-                      {greeting}
-                    </div>
-                  </let>
+                  let greeting: String = user.name in {
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: [interpolate(greeting)],
+                    ),
+                  }
                 }
             "#]],
         );
@@ -3652,17 +3950,19 @@ mod tests {
             "#},
             expect![[r#"
                 component Main {
-                  <let {a: Int = 1}>
-                    <let {b: Int = 2}>
-                      <div>
-                        {a}
-                        {" "}
-                        +
-                        {" "}
-                        {b}
-                      </div>
-                    </let>
-                  </let>
+                  let a: Int = 1 in {
+                    let b: Int = 2 in {
+                      html(
+                        tag: "div",
+                        attrs: [],
+                        children: [
+                          interpolate(a),
+                          text(" + "),
+                          interpolate(b),
+                        ],
+                      ),
+                    },
+                  }
                 }
             "#]],
         );
@@ -3684,11 +3984,6 @@ mod tests {
                 1 | component Main {
                 2 |     <let>
                   |     ^^^^^
-
-                error: Unexpected text at top level
-                4 |     </let>
-                5 | }
-                  | ^
                 -- ast --
             "#]],
         );
@@ -3706,11 +4001,13 @@ mod tests {
             "},
             expect![[r#"
                 component Main {
-                  <let {x = 1}>
-                    <div>
-                      Content
-                    </div>
-                  </let>
+                  let x = 1 in {
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: [text("Content")],
+                    ),
+                  }
                 }
             "#]],
         );
@@ -3734,11 +4031,13 @@ mod tests {
                   |          ^^
                 -- ast --
                 component Main {
-                  <let {}>
-                    <div>
-                      Content
-                    </div>
-                  </let>
+                  let  in {
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: [text("Content")],
+                    ),
+                  }
                 }
             "#]],
         );
@@ -3760,12 +4059,16 @@ mod tests {
                 1 | component Main {
                 2 |     <let {x: String}>
                   |                    ^
-
-                error: Unexpected text at top level
-                4 |     </let>
-                5 | }
-                  | ^
                 -- ast --
+                component Main {
+                  let  in {
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: [text("Content")],
+                    ),
+                  }
+                }
             "#]],
         );
     }
@@ -3782,13 +4085,17 @@ mod tests {
             "#},
             expect![[r#"
                 component Main {
-                  <let {first: String = "Hello", second: String = "World"}>
-                    <div>
-                      {first}
-                      {" "}
-                      {second}
-                    </div>
-                  </let>
+                  let first: String = "Hello", second: String = "World" in {
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: [
+                        interpolate(first),
+                        text(" "),
+                        interpolate(second),
+                      ],
+                    ),
+                  }
                 }
             "#]],
         );
@@ -3806,19 +4113,19 @@ mod tests {
             "#},
             expect![[r#"
                 component Main {
-                  <let {a: Int = 1, b: Int = 2, c: Int = 3}>
-                    <div>
-                      {a}
-                      {" "}
-                      +
-                      {" "}
-                      {b}
-                      {" "}
-                      +
-                      {" "}
-                      {c}
-                    </div>
-                  </let>
+                  let a: Int = 1, b: Int = 2, c: Int = 3 in {
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: [
+                        interpolate(a),
+                        text(" + "),
+                        interpolate(b),
+                        text(" + "),
+                        interpolate(c),
+                      ],
+                    ),
+                  }
                 }
             "#]],
         );
@@ -3836,13 +4143,16 @@ mod tests {
             "#},
             expect![[r#"
                 component Main {
-                  <let {name: String = "World"}>
-                    <div>
-                      Hello
-                      {" "}
-                      {name}
-                    </div>
-                  </let>
+                  let name: String = "World" in {
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: [
+                        text("Hello "),
+                        interpolate(name),
+                      ],
+                    ),
+                  }
                 }
             "#]],
         );
@@ -3860,13 +4170,17 @@ mod tests {
             "#},
             expect![[r#"
                 component Main {
-                  <let {first: String = "Hello", second: String = "World"}>
-                    <div>
-                      {first}
-                      {" "}
-                      {second}
-                    </div>
-                  </let>
+                  let first: String = "Hello", second: String = "World" in {
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: [
+                        interpolate(first),
+                        text(" "),
+                        interpolate(second),
+                      ],
+                    ),
+                  }
                 }
             "#]],
         );
@@ -3889,11 +4203,13 @@ mod tests {
                 }
 
                 component Main(user: User) {
-                  <let {name: String = user.name}>
-                    <div>
-                      {name}
-                    </div>
-                  </let>
+                  let name: String = user.name in {
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: [interpolate(name)],
+                    ),
+                  }
                 }
             "#]],
         );
@@ -3911,21 +4227,24 @@ mod tests {
             "#},
             expect![[r#"
                 -- errors --
-                error: Unterminated opening tag
-                1 | component Main {
-                2 |     <let {first: String = "a" second: String = "b"}>
-                  |      ^^^
-
-                error: Expected token '}' but got 'second'
+                error: Expected token ',' but got 'second'
                 1 | component Main {
                 2 |     <let {first: String = "a" second: String = "b"}>
                   |                               ^^^^^^
-
-                error: Unexpected text at top level
-                4 |     </let>
-                5 | }
-                  | ^
                 -- ast --
+                component Main {
+                  let first: String = "a" in {
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: [
+                        interpolate(first),
+                        text(" "),
+                        interpolate(second),
+                      ],
+                    ),
+                  }
+                }
             "#]],
         );
     }
@@ -3947,14 +4266,14 @@ mod tests {
             "#},
             expect![[r#"
                 component Main {
-                  <>
-                    <let {a: String = "Hello"}>
-                      {a}
-                    </let>
-                    <let {b: String = "World"}>
-                      {b}
-                    </let>
-                  </>
+                  fragment(
+                    let a: String = "Hello" in {
+                      interpolate(a),
+                    },
+                    let b: String = "World" in {
+                      interpolate(b),
+                    },
+                  )
                 }
             "#]],
         );
@@ -3975,18 +4294,23 @@ mod tests {
             "#},
             expect![[r#"
                 component Main {
-                  <>
-                    <div>
-                      First
-                    </div>
-                    <let {name: String = "World"}>
-                      <div>
-                        Hello
-                        {" "}
-                        {name}
-                      </div>
-                    </let>
-                  </>
+                  fragment(
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: [text("First")],
+                    ),
+                    let name: String = "World" in {
+                      html(
+                        tag: "div",
+                        attrs: [],
+                        children: [
+                          text("Hello "),
+                          interpolate(name),
+                        ],
+                      ),
+                    },
+                  )
                 }
             "#]],
         );
@@ -4007,18 +4331,23 @@ mod tests {
             "#},
             expect![[r#"
                 component Main {
-                  <>
-                    <let {name: String = "World"}>
-                      <div>
-                        Hello
-                        {" "}
-                        {name}
-                      </div>
-                    </let>
-                    <div>
-                      Last
-                    </div>
-                  </>
+                  fragment(
+                    let name: String = "World" in {
+                      html(
+                        tag: "div",
+                        attrs: [],
+                        children: [
+                          text("Hello "),
+                          interpolate(name),
+                        ],
+                      ),
+                    },
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: [text("Last")],
+                    ),
+                  )
                 }
             "#]],
         );
@@ -4047,10 +4376,12 @@ mod tests {
                 }
             "},
             expect![[r#"
-                view Index {
-                  <div>
-                    Hello
-                  </div>
+                view Index() {
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [text("Hello")],
+                  )
                 }
             "#]],
         );
@@ -4065,10 +4396,12 @@ mod tests {
                 }
             "},
             expect![[r#"
-                view Index {
-                  <div>
-                    Hello
-                  </div>
+                view Index() {
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [text("Hello")],
+                  )
                 }
             "#]],
         );
@@ -4083,16 +4416,16 @@ mod tests {
                 }
             "},
             expect![[r#"
-                view Index(
-                  name: String,
-                  count: Int,
-                ) {
-                  <div>
-                    {name}
-                    :
-                    {" "}
-                    {count}
-                  </div>
+                view Index(name: String, count: Int) {
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [
+                      interpolate(name),
+                      text(": "),
+                      interpolate(count),
+                    ],
+                  )
                 }
             "#]],
         );
@@ -4112,13 +4445,15 @@ mod tests {
             "},
             expect![[r#"
                 component Header(title: String) {
-                  <h1>
-                    {title}
-                  </h1>
+                  html(
+                    tag: "h1",
+                    attrs: [],
+                    children: [interpolate(title)],
+                  )
                 }
 
                 view Index(title: String) {
-                  <Header title={title}/>
+                  Header(attrs: [title: title])
                 }
             "#]],
         );
@@ -4137,16 +4472,20 @@ mod tests {
                 }
             "},
             expect![[r#"
-                view Index {
-                  <div>
-                    Index
-                  </div>
+                view Index() {
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [text("Index")],
+                  )
                 }
 
-                view About {
-                  <div>
-                    About
-                  </div>
+                view About() {
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [text("About")],
+                  )
                 }
             "#]],
         );
@@ -4164,21 +4503,20 @@ mod tests {
             "#},
             expect![[r#"
                 -- errors --
-                error: Unterminated opening tag
-                1 | view Test {
-                2 |   <let {default: String = "x"}>
-                  |    ^^^
-
                 error: Invalid variable name 'default': Variable name is a reserved word
                 1 | view Test {
                 2 |   <let {default: String = "x"}>
                   |         ^^^^^^^
-
-                error: Unexpected text at top level
-                4 |   </let>
-                5 | }
-                  | ^
                 -- ast --
+                view Test() {
+                  let  in {
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: [],
+                    ),
+                  }
+                }
             "#]],
         );
     }
@@ -4196,10 +4534,6 @@ mod tests {
                 error: Type name 'Error' is a reserved word
                 1 | view Error() {
                   |      ^^^^^
-
-                error: Unexpected text at top level
-                1 | view Error() {
-                  |              ^
                 -- ast --
             "#]],
         );
@@ -4236,10 +4570,6 @@ mod tests {
                 error: Expected type name but got 'card'
                 1 | component card() {
                   |           ^^^^
-
-                error: Unexpected text at top level
-                1 | component card() {
-                  |               ^
                 -- ast --
             "#]],
         );
@@ -4259,11 +4589,6 @@ mod tests {
                 1 | component Card() {
                 2 |     <Foo-Bar />
                   |      ^^^^^^^
-
-                error: Unexpected text at top level
-                2 |     <Foo-Bar />
-                3 | }
-                  | ^
                 -- ast --
             "#]],
         );
@@ -4282,10 +4607,6 @@ mod tests {
                 error: Expected type name but got 'index'
                 1 | view index() {
                   |      ^^^^^
-
-                error: Unexpected text at top level
-                1 | view index() {
-                  |           ^
                 -- ast --
             "#]],
         );
@@ -4306,11 +4627,14 @@ mod tests {
                   |                           ^^^^^^^
                 -- ast --
                 view Index(name: String = "World") {
-                  <div>
-                    Hello
-                    {" "}
-                    {name}
-                  </div>
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [
+                      text("Hello "),
+                      interpolate(name),
+                    ],
+                  )
                 }
             "#]],
         );
@@ -4332,16 +4656,21 @@ mod tests {
             expect![[r#"
                 page Index(name: String) {
                   head {
-                    <title>
-                      My page
-                    </title>
+                    html(
+                      tag: "title",
+                      attrs: [],
+                      children: [text("My page")],
+                    )
                   }
                   body {
-                    <div>
-                      Hello
-                      {" "}
-                      {name}
-                    </div>
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: [
+                        text("Hello "),
+                        interpolate(name),
+                      ],
+                    )
                   }
                 }
             "#]],
@@ -4359,11 +4688,13 @@ mod tests {
                 }
             "},
             expect![[r#"
-                page Index {
+                page Index() {
                   body {
-                    <div>
-                      Hello
-                    </div>
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: [text("Hello")],
+                    )
                   }
                 }
             "#]],
@@ -4383,11 +4714,6 @@ mod tests {
             expect![[r#"
                 -- errors --
                 error: Expected a 'body' block
-                4 |     }
-                5 | }
-                  | ^
-
-                error: Unexpected text at top level
                 4 |     }
                 5 | }
                   | ^
@@ -4416,10 +4742,10 @@ mod tests {
                 5 |     head {
                   |     ^^^^
 
-                error: Unexpected text at top level
-                4 |     }
+                error: Expected type name but got '<'
                 5 |     head {
-                  |          ^
+                6 |         <title>My page</title>
+                  |                       ^
                 -- ast --
             "#]],
         );
@@ -4438,7 +4764,7 @@ mod tests {
                 1 | view Index() {
                   |              ^
                 -- ast --
-                view Index {
+                view Index() {
                   Fragment::empty()
                 }
             "#]],
@@ -4457,11 +4783,13 @@ mod tests {
             "},
             expect![[r#"
                 view Index(show: Bool) {
-                  <if {show}>
-                    <div>
-                      Visible
-                    </div>
-                  </if>
+                  if show {
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: [text("Visible")],
+                    ),
+                  }
                 }
             "#]],
         );
@@ -4479,11 +4807,13 @@ mod tests {
             "},
             expect![[r#"
                 view Index(items: Array[String]) {
-                  <for {item in items}>
-                    <div>
-                      {item}
-                    </div>
-                  </for>
+                  for item in items {
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: [interpolate(item)],
+                    ),
+                  }
                 }
             "#]],
         );
@@ -4500,14 +4830,17 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                view Index {
-                  <let {name: String = "World"}>
-                    <div>
-                      Hello
-                      {" "}
-                      {name}
-                    </div>
-                  </let>
+                view Index() {
+                  let name: String = "World" in {
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: [
+                        text("Hello "),
+                        interpolate(name),
+                      ],
+                    ),
+                  }
                 }
             "#]],
         );
@@ -4526,12 +4859,19 @@ mod tests {
                 }
             "},
             expect![[r#"
-                view Index {
-                  <div>
-                    <br>
-                    <input type="text">
-                    <hr>
-                  </div>
+                view Index() {
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [
+                      html(tag: "br", attrs: []),
+                      html(
+                        tag: "input",
+                        attrs: [type: "text"],
+                      ),
+                      html(tag: "hr", attrs: []),
+                    ],
+                  )
                 }
             "#]],
         );
@@ -4547,9 +4887,11 @@ mod tests {
             "},
             expect![[r#"
                 view Index(name: String) {
-                  <div>
-                    {name}
-                  </div>
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [interpolate(name)],
+                  )
                 }
             "#]],
         );
@@ -4572,18 +4914,22 @@ mod tests {
             "},
             expect![[r#"
                 view Index(value: Option[String]) {
-                  <match {value}>
-                    <case {Some(s)}>
-                      <div>
-                        {s}
-                      </div>
-                    </case>
-                    <case {None}>
-                      <div>
-                        No value
-                      </div>
-                    </case>
-                  </match>
+                  match value {
+                    Some(s) => {
+                      html(
+                        tag: "div",
+                        attrs: [],
+                        children: [interpolate(s)],
+                      ),
+                    },
+                    None => {
+                      html(
+                        tag: "div",
+                        attrs: [],
+                        children: [text("No value")],
+                      ),
+                    },
+                  }
                 }
             "#]],
         );
@@ -4611,25 +4957,35 @@ mod tests {
             "},
             expect![[r#"
                 component Header(title: String) {
-                  <h1>
-                    {title}
-                  </h1>
+                  html(
+                    tag: "h1",
+                    attrs: [],
+                    children: [interpolate(title)],
+                  )
                 }
 
                 component Footer {
-                  <p>
-                    Copyright 2024
-                  </p>
+                  html(
+                    tag: "p",
+                    attrs: [],
+                    children: [text("Copyright 2024")],
+                  )
                 }
 
                 view Index(title: String) {
-                  <div>
-                    <Header title={title}/>
-                    <main>
-                      Content
-                    </main>
-                    <Footer/>
-                  </div>
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [
+                      Header(attrs: [title: title]),
+                      html(
+                        tag: "main",
+                        attrs: [],
+                        children: [text("Content")],
+                      ),
+                      Footer(attrs: []),
+                    ],
+                  )
                 }
             "#]],
         );
@@ -4653,21 +5009,27 @@ mod tests {
             "},
             expect![[r#"
                 component Header {
-                  <h1>
-                    Header
-                  </h1>
+                  html(
+                    tag: "h1",
+                    attrs: [],
+                    children: [text("Header")],
+                  )
                 }
 
-                view Index {
-                  <div>
-                    Index
-                  </div>
+                view Index() {
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [text("Index")],
+                  )
                 }
 
                 component Footer {
-                  <p>
-                    Footer
-                  </p>
+                  html(
+                    tag: "p",
+                    attrs: [],
+                    children: [text("Footer")],
+                  )
                 }
             "#]],
         );
@@ -4687,16 +5049,16 @@ mod tests {
                 1 | view Index(required: String, optional: Int = 42) {
                   |                                              ^^
                 -- ast --
-                view Index(
-                  required: String,
-                  optional: Int = 42,
-                ) {
-                  <div>
-                    {required}
-                    :
-                    {" "}
-                    {optional}
-                  </div>
+                view Index(required: String, optional: Int = 42) {
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [
+                      interpolate(required),
+                      text(": "),
+                      interpolate(optional),
+                    ],
+                  )
                 }
             "#]],
         );
@@ -4716,11 +5078,6 @@ mod tests {
                 1 | view Test {
                 2 |   hello world
                   |         ^^^^^
-
-                error: Unexpected text at top level
-                2 |   hello world
-                3 | }
-                  | ^
                 -- ast --
             "#]],
         );
@@ -4741,12 +5098,12 @@ mod tests {
             "#},
             expect![[r#"
                 component Test {
-                  <>
-                    {"hello\nworld"}
-                    {"tab\there"}
-                    {"back\\slash"}
-                    {"quote\"here"}
-                  </>
+                  fragment(
+                    interpolate("hello\nworld"),
+                    interpolate("tab\there"),
+                    interpolate("back\\slash"),
+                    interpolate("quote\"here"),
+                  )
                 }
             "#]],
         );
@@ -4778,12 +5135,12 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                component Foo(
-                  class: String,
-                  ...rest,
-                ) {
-                  <div ...rest>
-                  </div>
+                component Foo(class: String, ...rest) {
+                  html(
+                    tag: "div",
+                    attrs: [...rest],
+                    children: [],
+                  )
                 }
             "#]],
         );
@@ -4803,13 +5160,12 @@ mod tests {
                 1 | component Foo(...rest, a: String, b: String) {
                   |               ^^^^^^^
                 -- ast --
-                component Foo(
-                  a: String,
-                  b: String,
-                  ...rest,
-                ) {
-                  <div ...rest>
-                  </div>
+                component Foo(a: String, b: String, ...rest) {
+                  html(
+                    tag: "div",
+                    attrs: [...rest],
+                    children: [],
+                  )
                 }
             "#]],
         );
@@ -4834,8 +5190,11 @@ mod tests {
                   |                     ^^^^
                 -- ast --
                 component Foo(...a) {
-                  <div ...a>
-                  </div>
+                  html(
+                    tag: "div",
+                    attrs: [...a],
+                    children: [],
+                  )
                 }
             "#]],
         );
@@ -4851,8 +5210,11 @@ mod tests {
             "#},
             expect![[r#"
                 component Foo(...rest) {
-                  <button ...rest>
-                  </button>
+                  html(
+                    tag: "button",
+                    attrs: [...rest],
+                    children: [],
+                  )
                 }
             "#]],
         );
@@ -4868,8 +5230,7 @@ mod tests {
             "#},
             expect![[r#"
                 component Bar(...rest) {
-                  <Foo ...rest>
-                  </Foo>
+                  Foo(attrs: [...rest], children: [])
                 }
             "#]],
         );
@@ -4891,8 +5252,11 @@ mod tests {
                   |              ^^^
                 -- ast --
                 component Foo {
-                  <button>
-                  </button>
+                  html(
+                    tag: "button",
+                    attrs: [],
+                    children: [],
+                  )
                 }
             "#]],
         );
@@ -4914,8 +5278,11 @@ mod tests {
                   |              ^^
                 -- ast --
                 component Foo {
-                  <button>
-                  </button>
+                  html(
+                    tag: "button",
+                    attrs: [],
+                    children: [],
+                  )
                 }
             "#]],
         );
@@ -4944,12 +5311,16 @@ mod tests {
                 }
 
                 component Foo {
-                  <div>
-                    <for {x in 0..=foo(10)}>
-                      {x.to_string()}
-                    </for>
-                    {foo(10)}
-                  </div>
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [
+                      for x in 0..=foo(10) {
+                        interpolate(x.to_string()),
+                      },
+                      interpolate(foo(10)),
+                    ],
+                  )
                 }
             "#]],
         );
@@ -4980,11 +5351,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                fn clamp(
-                  value: Int,
-                  low: Int,
-                  high: Int,
-                ) -> Int {
+                fn clamp(value: Int, low: Int, high: Int) -> Int {
                   value
                 }
             "#]],
@@ -5043,10 +5410,6 @@ mod tests {
                 error: Expected token '(' but got '->'
                 1 | fn foo -> Int {
                   |        ^^
-
-                error: Unexpected text at top level
-                1 | fn foo -> Int {
-                  |           ^^^
                 -- ast --
             "#]],
         );
@@ -5108,9 +5471,12 @@ mod tests {
                 1 | view Foo(...rest) {
                   |          ^^^^^^^
                 -- ast --
-                view Foo {
-                  <div>
-                  </div>
+                view Foo() {
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [],
+                  )
                 }
             "#]],
         );
@@ -5130,10 +5496,7 @@ mod tests {
                 1 | fn foo(#[examples(min = 1)] x: Int) -> Int {
                   |        ^^^^^^^^^^^^^^^^^^^^
                 -- ast --
-                fn foo(
-                  #[examples(min = 1)]
-                  x: Int,
-                ) -> Int {
+                fn foo(#[examples(min = 1)] x: Int) -> Int {
                   x
                 }
             "#]],
@@ -5154,12 +5517,12 @@ mod tests {
                 1 | component Foo(...rest, class: String) {
                   |               ^^^^^^^
                 -- ast --
-                component Foo(
-                  class: String,
-                  ...rest,
-                ) {
-                  <div ...rest>
-                  </div>
+                component Foo(class: String, ...rest) {
+                  html(
+                    tag: "div",
+                    attrs: [...rest],
+                    children: [],
+                  )
                 }
             "#]],
         );
@@ -5175,9 +5538,11 @@ mod tests {
             "},
             expect![[r#"
                 fn card() -> Fragment {
-                  <div>
-                    hello
-                  </div>
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [text("hello")],
+                  )
                 }
             "#]],
         );
@@ -5193,8 +5558,7 @@ mod tests {
             "},
             expect![[r#"
                 fn card() -> Fragment {
-                  <>
-                  </>
+                  fragment()
                 }
             "#]],
         );
@@ -5209,12 +5573,20 @@ mod tests {
                 }
             "},
             expect![[r#"
-                view Test {
-                  <div>
-                    {<span>
-                      hello
-                    </span>}
-                  </div>
+                view Test() {
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [
+                      interpolate(
+                        html(
+                          tag: "span",
+                          attrs: [],
+                          children: [text("hello")],
+                        ),
+                      ),
+                    ],
+                  )
                 }
             "#]],
         );
@@ -5229,14 +5601,30 @@ mod tests {
                 }
             "},
             expect![[r#"
-                view Test {
-                  <div>
-                    {<span>
-                      {<b>
-                        hello
-                      </b>}
-                    </span>}
-                  </div>
+                view Test() {
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [
+                      interpolate(
+                        html(
+                          tag: "span",
+                          attrs: [],
+                          children: [
+                            interpolate(
+                              html(
+                                tag: "b",
+                                attrs: [],
+                                children: [
+                                  text("hello"),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  )
                 }
             "#]],
         );
@@ -5256,13 +5644,21 @@ mod tests {
             "},
             expect![[r#"
                 fn wrap(children: Fragment) -> Fragment {
-                  <div>
-                    {children}
-                  </div>
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [interpolate(children)],
+                  )
                 }
 
                 fn card() -> Fragment {
-                  wrap(<span>hello</span>)
+                  wrap(
+                    html(
+                      tag: "span",
+                      attrs: [],
+                      children: [text("hello")],
+                    ),
+                  )
                 }
             "#]],
         );
@@ -5278,7 +5674,18 @@ mod tests {
             "},
             expect![[r#"
                 fn cards() -> Array[Fragment] {
-                  [<div>a</div>, <div>b</div>]
+                  [
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: [text("a")],
+                    ),
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: [text("b")],
+                    ),
+                  ]
                 }
             "#]],
         );
@@ -5297,7 +5704,18 @@ mod tests {
             "},
             expect![[r#"
                 fn badge(on: Bool) -> Fragment {
-                  match on {true => <b>yes</b>, false => <i>no</i>}
+                  match on {
+                    true => html(
+                      tag: "b",
+                      attrs: [],
+                      children: [text("yes")],
+                    ),
+                    false => html(
+                      tag: "i",
+                      attrs: [],
+                      children: [text("no")],
+                    ),
+                  }
                 }
             "#]],
         );
@@ -5317,13 +5735,23 @@ mod tests {
             "},
             expect![[r#"
                 component Card(slot: Fragment) {
-                  <div>
-                    {slot}
-                  </div>
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [interpolate(slot)],
+                  )
                 }
 
-                view Test {
-                  <Card slot={<span>hello</span>}/>
+                view Test() {
+                  Card(
+                    attrs: [
+                      slot: html(
+                        tag: "span",
+                        attrs: [],
+                        children: [text("hello")],
+                      ),
+                    ],
+                  )
                 }
             "#]],
         );
@@ -5341,11 +5769,13 @@ mod tests {
             "},
             expect![[r#"
                 fn card(on: Bool) -> Fragment {
-                  <if {on}>
-                    <div>
-                      hello
-                    </div>
-                  </if>
+                  if on {
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: [text("hello")],
+                    ),
+                  }
                 }
             "#]],
         );
@@ -5362,10 +5792,11 @@ mod tests {
             "},
             expect![[r#"
                 fn card() -> Fragment {
-                  // a note
-                  <div>
-                    hello
-                  </div>
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [text("hello")],
+                  )
                 }
             "#]],
         );
@@ -5381,7 +5812,7 @@ mod tests {
             "},
             expect![[r#"
                 fn card() -> Fragment {
-                  <!-- a note -->
+                  comment("<!-- a note -->")
                 }
             "#]],
         );
@@ -5400,19 +5831,11 @@ mod tests {
                 }
             "},
             expect![[r#"
-                fn check(
-                  a: Int,
-                  b: Int,
-                  c: Int,
-                  d: Int,
-                ) -> Bool {
+                fn check(a: Int, b: Int, c: Int, d: Int) -> Bool {
                   a < b && c > d
                 }
 
-                fn at_most(
-                  a: Int,
-                  b: Int,
-                ) -> Bool {
+                fn at_most(a: Int, b: Int) -> Bool {
                   a <= b
                 }
             "#]],
@@ -5457,11 +5880,6 @@ mod tests {
                 1 | fn card() -> Fragment {
                 2 |   < div
                   |   ^
-
-                error: Unexpected text at top level
-                1 | fn card() -> Fragment {
-                2 |   < div
-                  |     ^^^
                 -- ast --
             "#]],
         );
@@ -5483,9 +5901,431 @@ mod tests {
                   |    ^^^
                 -- ast --
                 fn card() -> Fragment {
-                  <div>
-                  </div>
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [],
+                  )
                 }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_newline_between_text_lines() {
+        accept(
+            indoc! {"
+                component Main {
+                  <p>
+                    first line
+                    second line
+                  </p>
+                }
+            "},
+            expect![[r#"
+                component Main {
+                  html(
+                    tag: "p",
+                    attrs: [],
+                    children: [
+                      text("first line"),
+                      newline(),
+                      text("second line"),
+                    ],
+                  )
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_examples_annotations_on_fields_and_params() {
+        accept(
+            indoc! {r#"
+                record User {
+                  #[examples(pattern = "[a-z]+", min_len = 1)]
+                  name: String,
+                  #[examples(min = 0, max = 120)]
+                  age: Int,
+                }
+
+                component Main(#[examples(min = 1)] count: Int) {
+                  <div>{count}</div>
+                }
+            "#},
+            expect![[r#"
+                record User {
+                  #[examples(pattern = "[a-z]+", min_len = 1)] name: String,
+                  #[examples(min = 0, max = 120)] age: Int,
+                }
+
+                component Main(#[examples(min = 1)] count: Int) {
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [interpolate(count)],
+                  )
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_negative_examples_bounds() {
+        accept(
+            indoc! {"
+                record Reading {
+                  #[examples(min = -40, max = 60)]
+                  celsius: Int,
+                }
+            "},
+            expect![[r#"
+                record Reading {
+                  #[examples(min = -40, max = 60)] celsius: Int,
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_unknown_annotation() {
+        reject(
+            indoc! {"
+                record User {
+                  #[docs(min = 1)]
+                  age: Int,
+                }
+            "},
+            expect![[r#"
+                -- errors --
+                error: Unknown annotation 'docs'
+                1 | record User {
+                2 |   #[docs(min = 1)]
+                  |     ^^^^
+                -- ast --
+                record User {}
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_examples_key_without_value() {
+        reject(
+            indoc! {"
+                record User {
+                  #[examples(bogus)]
+                  age: Int,
+                }
+            "},
+            expect![[r#"
+                -- errors --
+                error: Expected token '=' but got ')'
+                1 | record User {
+                2 |   #[examples(bogus)]
+                  |                   ^
+                -- ast --
+                record User {
+                  #[examples()] age: Int,
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_unknown_examples_key() {
+        reject(
+            indoc! {"
+                record User {
+                  #[examples(minimum = 1, max = 5)]
+                  age: Int,
+                }
+            "},
+            expect![[r#"
+                -- errors --
+                error: Unknown examples key 'minimum'
+                1 | record User {
+                2 |   #[examples(minimum = 1, max = 5)]
+                  |              ^^^^^^^
+                -- ast --
+                record User {
+                  #[examples(max = 5)] age: Int,
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_examples_value_of_wrong_kind() {
+        reject(
+            indoc! {r#"
+                record User {
+                  #[examples(pattern = 5)]
+                  name: String,
+                  #[examples(min = "a", max = 5)]
+                  age: Int,
+                }
+            "#},
+            expect![[r#"
+                -- errors --
+                error: Expected string literal but got '5'
+                1 | record User {
+                2 |   #[examples(pattern = 5)]
+                  |                        ^
+
+                error: Expected integer literal but got '"a"'
+                3 |   name: String,
+                4 |   #[examples(min = "a", max = 5)]
+                  |                    ^^^
+                -- ast --
+                record User {
+                  #[examples()] name: String,
+                  #[examples(max = 5)] age: Int,
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_unterminated_examples_annotation() {
+        reject(
+            indoc! {"
+                component Main(#[examples(min = 1 count: Int) {
+                  <div>{count}</div>
+                }
+            "},
+            expect![[r#"
+                -- errors --
+                error: Expected token ',' but got 'count'
+                1 | component Main(#[examples(min = 1 count: Int) {
+                  |                                   ^^^^^
+
+                error: Expected token ']' but got '{'
+                1 | component Main(#[examples(min = 1 count: Int) {
+                  |                                               ^
+
+                error: Expected token ')' but got '{'
+                1 | component Main(#[examples(min = 1 count: Int) {
+                  |                                               ^
+                -- ast --
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_unexpected_token_inside_opening_tag() {
+        reject(
+            indoc! {r#"
+                component Main {
+                  <div class="a" @ id="b">hi</div>
+                }
+            "#},
+            expect![[r#"
+                -- errors --
+                error: Unexpected character: '@'
+                1 | component Main {
+                2 |   <div class="a" @ id="b">hi</div>
+                  |                  ^
+                -- ast --
+                component Main {
+                  html(
+                    tag: "div",
+                    attrs: [class: "a", id: "b"],
+                    children: [text("hi")],
+                  )
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_slash_inside_opening_tag() {
+        reject(
+            indoc! {r#"
+                component Main {
+                  <div / class="a">hi</div>
+                }
+            "#},
+            expect![[r#"
+                -- errors --
+                error: Unexpected character: '/'
+                1 | component Main {
+                2 |   <div / class="a">hi</div>
+                  |        ^
+                -- ast --
+                component Main {
+                  html(
+                    tag: "div",
+                    attrs: [class: "a"],
+                    children: [text("hi")],
+                  )
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_opening_tag_ended_by_next_tag() {
+        reject(
+            indoc! {r#"
+                component Main {
+                  <div class="a" <span>hi</span>
+                }
+            "#},
+            expect![[r#"
+                -- errors --
+                error: Unterminated opening tag
+                1 | component Main {
+                2 |   <div class="a" <span>hi</span>
+                  |    ^^^
+
+                error: Unclosed <div>
+                1 | component Main {
+                2 |   <div class="a" <span>hi</span>
+                  |    ^^^
+                -- ast --
+                component Main {
+                  html(
+                    tag: "div",
+                    attrs: [class: "a"],
+                    children: [
+                      html(
+                        tag: "span",
+                        attrs: [],
+                        children: [text("hi")],
+                      ),
+                    ],
+                  )
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_unclosed_raw_text_element() {
+        reject(
+            indoc! {r#"
+                component Main {
+                  <script>alert(1)
+            "#},
+            expect![[r#"
+                -- errors --
+                error: Unmatched '{'
+                1 | component Main {
+                  |                ^
+
+                error: Unclosed <script>
+                1 | component Main {
+                2 |   <script>alert(1)
+                  |    ^^^^^^
+                -- ast --
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_unterminated_raw_text_opening_tag() {
+        reject(
+            "component Main {<style",
+            expect![[r#"
+                -- errors --
+                error: Unmatched '{'
+                1 | component Main {<style
+                  |                ^
+
+                error: Unterminated opening tag
+                1 | component Main {<style
+                  |                  ^^^^^
+
+                error: Unclosed <style>
+                1 | component Main {<style
+                  |                  ^^^^^
+                -- ast --
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_expression_on_html_element() {
+        reject(
+            indoc! {"
+                component Main {
+                  <div {x}>hi</div>
+                }
+            "},
+            expect![[r#"
+                -- errors --
+                error: Unexpected expression on <div>: use attribute syntax instead (e.g. attr={value})
+                1 | component Main {
+                2 |   <div {x}>hi</div>
+                  |        ^^^
+                -- ast --
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_expression_on_component() {
+        reject(
+            indoc! {"
+                component Main {
+                  <Card {x} title=\"a\"/>
+                }
+            "},
+            expect![[r#"
+                -- errors --
+                error: Unexpected expression on <Card>: use attribute syntax instead (e.g. attr={value})
+                1 | component Main {
+                2 |   <Card {x} title="a"/>
+                  |         ^^^
+                -- ast --
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_duplicate_expression_on_html_element() {
+        reject(
+            indoc! {"
+                component Main {
+                  <div {x} {y}>hi</div>
+                }
+            "},
+            expect![[r#"
+                -- errors --
+                error: Unexpected expression on <div>: use attribute syntax instead (e.g. attr={value})
+                1 | component Main {
+                2 |   <div {x} {y}>hi</div>
+                  |        ^^^
+
+                error: <div> already has an expression
+                1 | component Main {
+                2 |   <div {x} {y}>hi</div>
+                  |            ^^^
+                -- ast --
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_unparseable_expression_on_html_element() {
+        reject(
+            indoc! {"
+                component Main {
+                  <div {x +}>hi</div>
+                }
+            "},
+            expect![[r#"
+                -- errors --
+                error: Unexpected expression on <div>: use attribute syntax instead (e.g. attr={value})
+                1 | component Main {
+                2 |   <div {x +}>hi</div>
+                  |        ^
+
+                error: Unexpected token '}'
+                1 | component Main {
+                2 |   <div {x +}>hi</div>
+                  |            ^
+                -- ast --
             "#]],
         );
     }

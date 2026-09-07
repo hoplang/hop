@@ -7,6 +7,66 @@ use crate::symbols::type_name::InvalidTypeNameError;
 use crate::symbols::var_name::InvalidVarNameError;
 use thiserror::Error;
 
+/// Proof that a parse error has been recorded.
+#[derive(Clone, Copy, Debug)]
+#[must_use]
+pub struct ErrorEmitted(());
+
+/// A container for parse errors.
+///
+/// Recording an error in this container is the only way to obtain an
+/// [`ErrorEmitted`].
+#[derive(Debug, Clone, Default)]
+pub struct ParseErrors {
+    errors: Vec<ParseError>,
+}
+
+impl ParseErrors {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Record an error, and return the proof that it was recorded.
+    pub(crate) fn emit(&mut self, kind: ParseErrorKind, range: DocumentRange) -> ErrorEmitted {
+        self.errors.push(ParseError { kind, range });
+        ErrorEmitted(())
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.errors.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.errors.len()
+    }
+
+    pub fn clear(&mut self) {
+        self.errors.clear();
+    }
+
+    pub fn iter(&self) -> std::slice::Iter<'_, ParseError> {
+        self.errors.iter()
+    }
+}
+
+impl<'a> IntoIterator for &'a ParseErrors {
+    type Item = &'a ParseError;
+    type IntoIter = std::slice::Iter<'a, ParseError>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.errors.iter()
+    }
+}
+
+impl IntoIterator for ParseErrors {
+    type Item = ParseError;
+    type IntoIter = std::vec::IntoIter<ParseError>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.errors.into_iter()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ParseError {
     kind: ParseErrorKind,
@@ -14,10 +74,6 @@ pub struct ParseError {
 }
 
 impl ParseError {
-    pub(crate) fn new(kind: ParseErrorKind, range: DocumentRange) -> Self {
-        ParseError { kind, range }
-    }
-
     pub(crate) fn range(&self) -> &DocumentRange {
         &self.range
     }
@@ -79,6 +135,9 @@ pub(crate) enum ParseErrorKind {
     #[error("Missing expression in <if> tag")]
     MissingIfExpression,
 
+    #[error("<{tag_name}> already has an expression")]
+    DuplicateTagExpression { tag_name: CheapString },
+
     #[error("Missing loop generator expression in <for> tag")]
     MissingForExpression,
 
@@ -115,7 +174,7 @@ pub(crate) enum ParseErrorKind {
     #[error(
         "Unexpected expression on <{tag_name}>: use attribute syntax instead (e.g. attr={{value}})"
     )]
-    UnexpectedComponentExpression { tag_name: CheapString },
+    UnexpectedTagExpression { tag_name: CheapString },
 
     #[error("Unexpected text at top level")]
     UnexpectedTopLevelText,
@@ -227,6 +286,18 @@ pub(crate) enum ParseErrorKind {
 
     #[error("Unknown macro '{name}'")]
     UnknownMacro { name: CheapString },
+
+    #[error("Unknown annotation '{name}'")]
+    UnknownAnnotation { name: CheapString },
+
+    #[error("Unknown examples key '{name}'")]
+    UnknownExamplesKey { name: CheapString },
+
+    #[error("Expected string literal but got '{actual}'")]
+    ExpectedStringLiteralButGot { actual: LangToken },
+
+    #[error("Expected integer literal but got '{actual}'")]
+    ExpectedIntLiteralButGot { actual: LangToken },
 
     #[error("Unknown HTML element <{tag}>")]
     UnknownHtmlElement { tag: CheapString },

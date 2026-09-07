@@ -88,6 +88,7 @@ mod tests {
     use crate::document_annotator::DocumentAnnotator;
     use crate::document_id::DocumentId;
     use crate::hop::parsing::parse::parse;
+    use crate::parse_error::ParseErrors;
     use crate::simple_annotation::SimpleAnnotation;
     use crate::{document::Document, extract_position::extract_position};
     use expect_test::{Expect, expect};
@@ -95,7 +96,7 @@ mod tests {
 
     fn check_find_node_at_position(input: &str, expected: Expect) {
         let (source, position) = extract_position(input).expect("Position marker not found");
-        let mut errors = Vec::new();
+        let mut errors = ParseErrors::new();
         let document_id = DocumentId::new("test.hop").unwrap();
         let ast = parse(
             document_id.clone(),
