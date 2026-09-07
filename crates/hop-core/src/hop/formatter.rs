@@ -666,6 +666,7 @@ fn format_node<'a>(
                     .append(arena.text(">")),
             }
         }
+        ParsedNode::Fragment { children, .. } if children.is_empty() => arena.text("<></>"),
         ParsedNode::Fragment { children, .. } => arena
             .text("<>")
             .append(format_children(arena, children, comments))
@@ -1271,7 +1272,6 @@ fn format_expr<'a>(
                     .append(arena.text(")"))
             }
         }
-        ParsedExpr::FragmentEmpty { .. } => arena.text("Fragment::empty()"),
         ParsedExpr::FunctionCall { name, args, .. } => {
             if args.is_empty() {
                 arena.text(name.as_str()).append(arena.text("()"))
@@ -1770,8 +1770,7 @@ mod tests {
                   active: Bool,
                   role: String,
                 ) {
-                  <>
-                  </>
+                  <></>
                 }
             "#]],
         );
@@ -1988,8 +1987,7 @@ mod tests {
                 }
 
                 component Main {
-                  <>
-                  </>
+                  <></>
                 }
             "#]],
         );
@@ -2596,8 +2594,7 @@ mod tests {
             "},
             expect![[r#"
                 component Toggle(enabled: Bool = true) {
-                  <>
-                  </>
+                  <></>
                 }
             "#]],
         );
@@ -2635,8 +2632,7 @@ mod tests {
             "#},
             expect![[r#"
                 component ItemList(items: Array[String] = ["one", "two"]) {
-                  <>
-                  </>
+                  <></>
                 }
             "#]],
         );
@@ -2650,8 +2646,21 @@ mod tests {
             "},
             expect![[r#"
                 component ItemList(items: Array[String] = []) {
-                  <>
-                  </>
+                  <></>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn component_with_default_empty_fragment_parameter() {
+        check(
+            indoc! {"
+                component Card(children: Fragment = <></>) {<></>}
+            "},
+            expect![[r#"
+                component Card(children: Fragment = <></>) {
+                  <></>
                 }
             "#]],
         );
@@ -2673,8 +2682,7 @@ mod tests {
                 component Settings(
                   config: Config = Config {debug: false, timeout: 30},
                 ) {
-                  <>
-                  </>
+                  <></>
                 }
             "#]],
         );
@@ -2695,8 +2703,7 @@ mod tests {
                 }
 
                 component Badge(status: Status = Status::Active) {
-                  <>
-                  </>
+                  <></>
                 }
             "#]],
         );
@@ -3036,8 +3043,7 @@ mod tests {
                     "this is a very long string that causes a line break because Some uses soft lines"
                   ),
                 ) {
-                  <>
-                  </>
+                  <></>
                 }
             "#]],
         );
@@ -3636,8 +3642,7 @@ mod tests {
                 import components::Button
 
                 component Main {
-                  <>
-                  </>
+                  <></>
                 }
             "#]],
         );
@@ -3748,8 +3753,7 @@ mod tests {
 
                 // Main component
                 component Main {
-                  <>
-                  </>
+                  <></>
                 }
             "#]],
         );
@@ -3859,8 +3863,7 @@ mod tests {
 
                 // e
                 component Main {
-                  <>
-                  </>
+                  <></>
                 }
             "#]],
         );

@@ -111,10 +111,6 @@ pub enum ParsedExpr {
         range: DocumentRange,
     },
 
-    FragmentEmpty {
-        range: DocumentRange,
-    },
-
     Markup {
         node: Box<ParsedNode>,
     },
@@ -348,8 +344,7 @@ impl ParsedExpr {
             | ParsedExpr::StringLiteral { .. }
             | ParsedExpr::BooleanLiteral { .. }
             | ParsedExpr::IntLiteral { .. }
-            | ParsedExpr::FloatLiteral { .. }
-            | ParsedExpr::FragmentEmpty { .. } => {}
+            | ParsedExpr::FloatLiteral { .. } => {}
         }
     }
 
@@ -374,8 +369,10 @@ impl ParsedExpr {
             ParsedExpr::StringLiteral { .. }
             | ParsedExpr::BooleanLiteral { .. }
             | ParsedExpr::IntLiteral { .. }
-            | ParsedExpr::FloatLiteral { .. }
-            | ParsedExpr::FragmentEmpty { .. } => true,
+            | ParsedExpr::FloatLiteral { .. } => true,
+            ParsedExpr::Markup { node } => {
+                matches!(node.as_ref(), ParsedNode::Fragment { children, .. } if children.is_empty())
+            }
             ParsedExpr::ArrayLiteral { elements, .. } => {
                 elements.iter().all(|element| element.is_constant())
             }
@@ -396,7 +393,6 @@ impl ParsedExpr {
             | ParsedExpr::NumericNegation { .. }
             | ParsedExpr::Match { .. }
             | ParsedExpr::MacroInvocation { .. }
-            | ParsedExpr::Markup { .. }
             | ParsedExpr::FunctionCall { .. } => false,
         }
     }
@@ -419,7 +415,6 @@ impl ParsedExpr {
             | ParsedExpr::Match { range, .. }
             | ParsedExpr::OptionLiteral { range, .. }
             | ParsedExpr::MacroInvocation { range, .. }
-            | ParsedExpr::FragmentEmpty { range, .. }
             | ParsedExpr::FunctionCall { range, .. } => range,
             ParsedExpr::Markup { node } => node.range(),
         }
@@ -627,7 +622,6 @@ impl ParsedExpr {
                         .append(BoxDoc::text(")"))
                 }
             }
-            ParsedExpr::FragmentEmpty { .. } => BoxDoc::text("Fragment::empty()"),
             ParsedExpr::Markup { node } => node.to_doc(),
             ParsedExpr::FunctionCall { name, args, .. } => {
                 if args.is_empty() {

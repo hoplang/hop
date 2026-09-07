@@ -4490,6 +4490,53 @@ mod tests {
     }
 
     #[test]
+    fn accepts_default_empty_fragment_parameter() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                component Card(children: Fragment = <></>) {
+                  <div>
+                    {children}
+                  </div>
+                }
+                component Main {
+                  <Card />
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn Card(children: Fragment) -> Fragment {
+                  html(tag: "div", attrs: [], children: concat(children))
+                }
+
+                fn Main() -> Fragment {
+                  Card(children: concat())
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_default_non_empty_fragment_parameter() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component Card(children: Fragment = <div></div>) {
+                  <div>
+                    {children}
+                  </div>
+                }
+            "#},
+            expect![[r#"
+                error: Default values must be constant
+                  --> main.hop (line 1, col 37)
+                1 | component Card(children: Fragment = <div></div>) {
+                  |                                     ^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
     fn accepts_default_record_parameter() {
         accept(
             indoc! {r#"

@@ -1525,7 +1525,6 @@ pub fn typecheck_expr(
                 }
             }
         }
-        ParsedExpr::FragmentEmpty { .. } => Some(TypedExpr::FragmentConcat { nodes: Vec::new() }),
         ParsedExpr::Match { subject, arms, .. } => {
             let typed_subject = typecheck_expr(
                 subject,

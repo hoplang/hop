@@ -375,32 +375,6 @@ pub fn parse_primary(
             value: None,
             range: none_range,
         }
-    } else if let Some(start_range) = advance_if(iter, comments, errors, LangToken::TypeFragment) {
-        expect_token(iter, comments, errors, eof_range, &LangToken::ColonColon)?;
-        let Some((method_name, method_range)) =
-            next_if_map(iter, comments, errors, LangToken::identifier)
-        else {
-            return Err(match peek(iter) {
-                Some((token, token_range)) => {
-                    errors.emit(ParseErrorKind::UnexpectedToken { token }, token_range)
-                }
-                None => errors.emit(ParseErrorKind::UnexpectedEof {}, eof_range.clone()),
-            });
-        };
-        if method_name.as_str() != "empty" {
-            return Err(errors.emit(
-                ParseErrorKind::UnexpectedToken {
-                    token: LangToken::Identifier(method_name),
-                },
-                method_range,
-            ));
-        }
-        let left_paren = expect_token(iter, comments, errors, eof_range, &LangToken::LeftParen)?;
-        let right_paren =
-            expect_right_delimiter(iter, comments, errors, LangTokenPair::Parens, &left_paren)?;
-        ParsedExpr::FragmentEmpty {
-            range: start_range.to(right_paren),
-        }
     } else if let Some(left_angle) = advance_if(iter, comments, errors, LangToken::LessThan) {
         parse_nodes::parse_markup(iter, comments, errors, left_angle)?
     } else {
@@ -1095,37 +1069,11 @@ mod tests {
     ///////////////////////////////////////////////////////////////////////////
 
     #[test]
-    fn accepts_empty_fragment_literal() {
+    fn accepts_empty_fragment() {
         accept(
-            "Fragment::empty()",
+            "<></>",
             expect![[r#"
-                    Fragment::empty()
-                "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_fragment_literal_with_unknown_method() {
-        reject(
-            "Fragment::nonempty()",
-            expect![[r#"
-                -- errors --
-                error: Unexpected token 'nonempty'
-                Fragment::nonempty()
-                          ^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_empty_fragment_literal_without_parentheses() {
-        reject(
-            "Fragment::empty",
-            expect![[r#"
-                -- errors --
-                error: Expected token '(' but got end of file
-                Fragment::empty
-                ^^^^^^^^^^^^^^^
+                fragment()
             "#]],
         );
     }

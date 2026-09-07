@@ -11513,7 +11513,7 @@ mod tests {
             indoc! {r#"
                 component Card(
                   title: String,
-                  children: Fragment = Fragment::empty(),
+                  children: Fragment = <></>,
                 ) {
                   <div class="card">
                     <h2>
@@ -11576,7 +11576,7 @@ mod tests {
             indoc! {r#"
                 component Card(
                   title: String,
-                  children: Fragment = Fragment::empty(),
+                  children: Fragment = <></>,
                 ) {
                   <div class="card">
                     <h2>

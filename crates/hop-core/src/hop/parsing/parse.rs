@@ -13,6 +13,7 @@ use crate::examples_annotation::ExamplesAnnotation;
 use crate::hop::parsing::ParsedExpr;
 use crate::hop::parsing::parse_type::parse_type;
 use crate::hop::parsing::parsed_ast::ParsedParameter;
+use crate::hop::parsing::parsed_node::ParsedNode;
 use crate::hop::parsing::token::LangToken;
 use crate::hop::parsing::token::LangTokenPair;
 use crate::parse_error::{ErrorEmitted, ParseErrorKind, ParseErrors};
@@ -688,8 +689,11 @@ fn parse_declaration_body(
         |iter, comments, errors, left_brace| {
             if let Some((LangToken::RightBrace, _)) = tokenize_expr::peek(iter) {
                 let _ = errors.emit(ParseErrorKind::EmptyBody {}, left_brace.clone());
-                return Ok(ParsedExpr::FragmentEmpty {
-                    range: left_brace.clone(),
+                return Ok(ParsedExpr::Markup {
+                    node: Box::new(ParsedNode::Fragment {
+                        children: Vec::new(),
+                        range: left_brace.clone(),
+                    }),
                 });
             }
             parse_expr::parse_expr(iter, comments, errors, left_brace)
@@ -1611,7 +1615,7 @@ mod tests {
                   |                ^
                 -- ast --
                 component Main {
-                  Fragment::empty()
+                  fragment()
                 }
             "#]],
         );
@@ -3154,7 +3158,7 @@ mod tests {
                   |                ^
                 -- ast --
                 component Main {
-                  Fragment::empty()
+                  fragment()
                 }
             "#]],
         );
@@ -3180,7 +3184,7 @@ mod tests {
                   |                ^
                 -- ast --
                 component Main {
-                  Fragment::empty()
+                  fragment()
                 }
             "#]],
         );
@@ -3531,15 +3535,15 @@ mod tests {
     }
 
     #[test]
-    fn accepts_parameter_with_default_fragment_empty() {
+    fn accepts_parameter_with_default_empty_fragment() {
         accept(
             indoc! {"
-                component Main(children: Fragment = Fragment::empty()) {
+                component Main(children: Fragment = <></>) {
                     <div></div>
                 }
             "},
             expect![[r#"
-                component Main(children: Fragment = Fragment::empty()) {
+                component Main(children: Fragment = fragment()) {
                   html(
                     tag: "div",
                     attrs: [],
@@ -4765,7 +4769,7 @@ mod tests {
                   |              ^
                 -- ast --
                 view Index() {
-                  Fragment::empty()
+                  fragment()
                 }
             "#]],
         );
