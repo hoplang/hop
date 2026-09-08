@@ -1,7 +1,6 @@
 use super::{FunctionSignature, ParamEntry, Tail, Type, TypeBinding, TypedExpr};
 use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
-use crate::dependency_graph::DependencyGraph;
 use crate::document::DocumentRange;
 use crate::examples_annotation::ExamplesAnnotation;
 use crate::hop::parsing::parsed_ast::ParsedDeclaration;
@@ -24,11 +23,10 @@ use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use crate::type_error::{TypeError, TypeErrorKind};
 use crate::variable_scope::VariableScope;
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 
 use crate::document_id::DocumentId;
 use crate::hop::parsing::parsed_ast::ParsedAst;
-use crate::hop::parsing::parsed_node::ParsedNode;
 use crate::hop::typing::typed_ast::{
     TypedAst, TypedEnumDeclaration, TypedFunctionDeclaration, TypedPageDeclaration, TypedParameter,
     TypedRecordDeclaration,
@@ -252,43 +250,17 @@ fn typecheck_module(
         ));
     }
 
-    // Type check components in dependency order so that callee signatures
-    // are final before their callers are checked.
-    let component_by_name: HashMap<_, _> = parsed_ast
-        .component_declarations()
-        .map(|c| (c.component_name.clone(), c))
-        .collect();
-    let mut call_graph = DependencyGraph::new();
-    for (name, c) in &component_by_name {
-        let mut deps = BTreeSet::new();
-        let mut stack: Vec<&ParsedNode> = c.body.nodes();
-        while let Some(node) = stack.pop() {
-            if let ParsedNode::ComponentInvocation { component_name, .. } = node {
-                if component_by_name.contains_key(component_name) {
-                    deps.insert(component_name.clone());
-                }
-            }
-            for expr in node.expressions() {
-                stack.extend(expr.nodes());
-            }
-            stack.extend(node.children());
-        }
-        call_graph.set_dependencies(name.clone(), deps);
-    }
-
     let mut pending_components = Vec::new();
-    for scc in call_graph.sorted_sccs() {
-        for name in &scc {
-            pending_components.push(register_component_signature(
-                component_by_name[name],
-                &mut type_env,
-                registry,
-                errors,
-                annotations,
-                definition_links,
-                asset_references,
-            ));
-        }
+    for component in parsed_ast.component_declarations() {
+        pending_components.push(register_component_signature(
+            component,
+            &mut type_env,
+            registry,
+            errors,
+            annotations,
+            definition_links,
+            asset_references,
+        ));
     }
 
     // Pair each component's rest parameter with the spread that forwards it.
