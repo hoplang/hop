@@ -397,14 +397,6 @@ pub(crate) enum TypeErrorKind {
     #[error("Function {name} is already defined")]
     FunctionNameIsAlreadyDefined { name: VarName },
 
-    #[error(
-        "Function {function} collides with component {component}: both compile to the same generated name"
-    )]
-    FunctionNameCollidesWithComponent {
-        function: VarName,
-        component: TypeName,
-    },
-
     #[error("Mismatched type for function body: expected `{expected}` got `{found}`")]
     FunctionBodyTypeMismatch { expected: Type, found: Type },
 

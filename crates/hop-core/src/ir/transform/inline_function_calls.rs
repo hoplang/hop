@@ -3,12 +3,12 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use crate::dependency_graph::DependencyGraph;
 use crate::hop::patterns::Match;
 use crate::ir::expr_id::ExprIdCounter;
+use crate::ir::function_id::FunctionId;
 use crate::ir::ir_var::IrVar;
 use crate::ir::pure_module::{
     PureArgument, PureExpr, PureForSource, PureFunctionDeclaration, PureModule, PurePageDeclaration,
 };
 use crate::ir::var_id::{VarId, VarIdCounter};
-use crate::symbols::function_name::FunctionName;
 
 /// A pass that replaces a call to a non-recursive function with the callee's
 /// body.
@@ -20,15 +20,15 @@ pub fn inline_function_calls(module: PureModule) -> PureModule {
         mut var_ids,
     } = module;
 
-    let mut graph: DependencyGraph<FunctionName> = DependencyGraph::new();
+    let mut graph: DependencyGraph<FunctionId> = DependencyGraph::new();
     for function in &functions {
         let mut callees = BTreeSet::new();
         collect_callees(&function.body, &mut callees);
-        graph.set_dependencies(function.name.clone(), callees);
+        graph.set_dependencies(function.function.id, callees);
     }
 
     let sccs = graph.sorted_sccs();
-    let recursive: HashSet<FunctionName> = sccs
+    let recursive: HashSet<FunctionId> = sccs
         .iter()
         .filter(|scc| scc.len() > 1 || scc.iter().any(|name| graph.depends_on(name, name)))
         .flatten()
@@ -36,20 +36,20 @@ pub fn inline_function_calls(module: PureModule) -> PureModule {
         .collect();
 
     // Declaration order is part of the module's identity, so keep it.
-    let order: Vec<FunctionName> = functions.iter().map(|f| f.name.clone()).collect();
-    let mut decls: HashMap<FunctionName, PureFunctionDeclaration> =
-        functions.into_iter().map(|f| (f.name.clone(), f)).collect();
+    let order: Vec<FunctionId> = functions.iter().map(|f| f.function.id).collect();
+    let mut decls: HashMap<FunctionId, PureFunctionDeclaration> =
+        functions.into_iter().map(|f| (f.function.id, f)).collect();
 
     // sorted_sccs puts dependencies before dependents, which for a call graph
     // means every callee is inlined before the callers that copy it.
-    for name in sccs.into_iter().flatten() {
+    for id in sccs.into_iter().flatten() {
         // Taking the declaration out while its own body is inlined keeps the
         // map borrow-free, and means a self-call finds nothing to inline.
-        let Some(mut decl) = decls.remove(&name) else {
+        let Some(mut decl) = decls.remove(&id) else {
             continue;
         };
         decl.body = inline(decl.body, &decls, &recursive, &mut expr_ids, &mut var_ids);
-        decls.insert(name, decl);
+        decls.insert(id, decl);
     }
 
     let pages = pages
@@ -62,7 +62,7 @@ pub fn inline_function_calls(module: PureModule) -> PureModule {
 
     let functions = order
         .into_iter()
-        .map(|name| decls.remove(&name).expect("each function is declared once"))
+        .map(|id| decls.remove(&id).expect("each function is declared once"))
         .collect();
 
     PureModule {
@@ -73,23 +73,23 @@ pub fn inline_function_calls(module: PureModule) -> PureModule {
     }
 }
 
-fn collect_callees(expr: &PureExpr, out: &mut BTreeSet<FunctionName>) {
-    if let PureExpr::FunctionCall { function_name, .. } = expr {
-        out.insert(function_name.clone());
+fn collect_callees(expr: &PureExpr, out: &mut BTreeSet<FunctionId>) {
+    if let PureExpr::FunctionCall { function, .. } = expr {
+        out.insert(function.id);
     }
     expr.for_each_child(&mut |child| collect_callees(child, out));
 }
 
 fn inline(
     expr: PureExpr,
-    decls: &HashMap<FunctionName, PureFunctionDeclaration>,
-    recursive: &HashSet<FunctionName>,
+    decls: &HashMap<FunctionId, PureFunctionDeclaration>,
+    recursive: &HashSet<FunctionId>,
     expr_ids: &mut ExprIdCounter,
     var_ids: &mut VarIdCounter,
 ) -> PureExpr {
     match expr {
         PureExpr::FunctionCall {
-            function_name,
+            function,
             args,
             typ,
             id,
@@ -102,11 +102,11 @@ fn inline(
                 })
                 .collect();
 
-            let callee = match decls.get(&function_name) {
-                Some(decl) if !recursive.contains(&function_name) => decl,
+            let callee = match decls.get(&function.id) {
+                Some(decl) if !recursive.contains(&function.id) => decl,
                 _ => {
                     return PureExpr::FunctionCall {
-                        function_name,
+                        function,
                         args,
                         typ,
                         id,
@@ -117,7 +117,7 @@ fn inline(
             match instantiate(callee, args, expr_ids, var_ids) {
                 Ok(body) => body,
                 Err(args) => PureExpr::FunctionCall {
-                    function_name,
+                    function,
                     args,
                     typ,
                     id,
@@ -470,15 +470,15 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                fn Badge(label@v0: String) -> Fragment {
+                fn Badge@f0(label@v0: String) -> Fragment {
                   concat(raw("<b>"), escape(v0), raw("</b>"))
                 }
                 page Main(title@v1: String) {
-                  call Badge(label = v1)
+                  call Badge@f0(label = v1)
                 }
 
                 -- after --
-                fn Badge(label@v0: String) -> Fragment {
+                fn Badge@f0(label@v0: String) -> Fragment {
                   concat(raw("<b>"), escape(v0), raw("</b>"))
                 }
                 page Main(title@v1: String) {
@@ -501,15 +501,15 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                fn Twice(body@v0: Fragment) -> Fragment {
+                fn Twice@f0(body@v0: Fragment) -> Fragment {
                   concat(v0, v0)
                 }
                 page Main(name@v1: String) {
-                  call Twice(body = escape(v1))
+                  call Twice@f0(body = escape(v1))
                 }
 
                 -- after --
-                fn Twice(body@v0: Fragment) -> Fragment {
+                fn Twice@f0(body@v0: Fragment) -> Fragment {
                   concat(v0, v0)
                 }
                 page Main(name@v1: String) {
@@ -534,15 +534,15 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                fn Repeat(body@v0: Fragment) -> Fragment {
+                fn Repeat@f0(body@v0: Fragment) -> Fragment {
                   for _ in ["a", "b"] { v0 }
                 }
                 page Main(name@v1: String) {
-                  call Repeat(body = escape(v1))
+                  call Repeat@f0(body = escape(v1))
                 }
 
                 -- after --
-                fn Repeat(body@v0: Fragment) -> Fragment {
+                fn Repeat@f0(body@v0: Fragment) -> Fragment {
                   for _ in ["a", "b"] { v0 }
                 }
                 page Main(name@v1: String) {
@@ -572,21 +572,21 @@ mod tests {
                 .build(),
             expect![[r#"
                 -- before --
-                fn Inner(x@v0: String) -> Fragment {
+                fn Inner@f0(x@v0: String) -> Fragment {
                   concat(raw("["), escape(v0), raw("]"))
                 }
-                fn Outer(x@v1: String) -> Fragment {
-                  concat(raw("<i>"), call Inner(x = v1), raw("</i>"))
+                fn Outer@f1(x@v1: String) -> Fragment {
+                  concat(raw("<i>"), call Inner@f0(x = v1), raw("</i>"))
                 }
                 page Main(name@v2: String) {
-                  call Outer(x = v2)
+                  call Outer@f1(x = v2)
                 }
 
                 -- after --
-                fn Inner(x@v0: String) -> Fragment {
+                fn Inner@f0(x@v0: String) -> Fragment {
                   concat(raw("["), escape(v0), raw("]"))
                 }
-                fn Outer(x@v1: String) -> Fragment {
+                fn Outer@f1(x@v1: String) -> Fragment {
                   concat(
                     raw("<i>"),
                     concat(raw("["), escape(v1), raw("]")),
@@ -611,10 +611,17 @@ mod tests {
     /// cycle has to be closed after the fact.
     fn patch_to_call(module: &mut PureModule, caller: &str, callee: &str, marker: &str) {
         let mut expr_ids = module.expr_ids;
+        let callee = module
+            .functions
+            .iter()
+            .find(|f| f.function.name.as_str() == callee)
+            .unwrap_or_else(|| panic!("{callee} is declared"))
+            .function
+            .clone();
         let decl = module
             .functions
             .iter_mut()
-            .find(|f| f.name.as_str() == caller)
+            .find(|f| f.function.name.as_str() == caller)
             .unwrap_or_else(|| panic!("{caller} is declared"));
         let param = decl.parameters[0].clone();
         let name = param.name.clone();
@@ -625,7 +632,7 @@ mod tests {
                     id: expr_ids.next(),
                 },
                 PureExpr::FunctionCall {
-                    function_name: FunctionName::new(callee).unwrap(),
+                    function: callee,
                     args: vec![PureArgument {
                         name,
                         expr: PureExpr::VariableReference {
@@ -653,22 +660,22 @@ mod tests {
         check(
             module,
             expect![[r#"
-            -- before --
-            fn Loop(n@v0: Int) -> Fragment {
-              concat(raw("<li>"), call Loop(n = v0))
-            }
-            page Main() {
-              call Loop(n = 3)
-            }
+                -- before --
+                fn Loop@f0(n@v0: Int) -> Fragment {
+                  concat(raw("<li>"), call Loop@f0(n = v0))
+                }
+                page Main() {
+                  call Loop@f0(n = 3)
+                }
 
-            -- after --
-            fn Loop(n@v0: Int) -> Fragment {
-              concat(raw("<li>"), call Loop(n = v0))
-            }
-            page Main() {
-              call Loop(n = 3)
-            }
-        "#]],
+                -- after --
+                fn Loop@f0(n@v0: Int) -> Fragment {
+                  concat(raw("<li>"), call Loop@f0(n = v0))
+                }
+                page Main() {
+                  call Loop@f0(n = 3)
+                }
+            "#]],
         );
     }
 
@@ -685,28 +692,28 @@ mod tests {
         check(
             module,
             expect![[r#"
-            -- before --
-            fn Ping(n@v0: Int) -> Fragment {
-              concat(raw("<ping>"), call Pong(n = v0))
-            }
-            fn Pong(n@v1: Int) -> Fragment {
-              call Ping(n = v1)
-            }
-            page Main() {
-              call Pong(n = 3)
-            }
+                -- before --
+                fn Ping@f0(n@v0: Int) -> Fragment {
+                  concat(raw("<ping>"), call Pong@f1(n = v0))
+                }
+                fn Pong@f1(n@v1: Int) -> Fragment {
+                  call Ping@f0(n = v1)
+                }
+                page Main() {
+                  call Pong@f1(n = 3)
+                }
 
-            -- after --
-            fn Ping(n@v0: Int) -> Fragment {
-              concat(raw("<ping>"), call Pong(n = v0))
-            }
-            fn Pong(n@v1: Int) -> Fragment {
-              call Ping(n = v1)
-            }
-            page Main() {
-              call Pong(n = 3)
-            }
-        "#]],
+                -- after --
+                fn Ping@f0(n@v0: Int) -> Fragment {
+                  concat(raw("<ping>"), call Pong@f1(n = v0))
+                }
+                fn Pong@f1(n@v1: Int) -> Fragment {
+                  call Ping@f0(n = v1)
+                }
+                page Main() {
+                  call Pong@f1(n = 3)
+                }
+            "#]],
         );
     }
 }

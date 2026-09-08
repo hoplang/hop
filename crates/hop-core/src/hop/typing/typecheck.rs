@@ -26,7 +26,6 @@ use crate::hop::typing::typed_ast::{
 };
 use crate::hop::typing::variable_scope::VariableScope;
 use crate::hover_annotation::HoverAnnotation;
-use crate::symbols::function_name::FunctionName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use crate::type_error::{TypeError, TypeErrorKind};
@@ -103,15 +102,6 @@ fn typecheck_module(
     //
     // Register all names in document order. Duplicates are reported at the
     // second occurrence.
-    let component_snake_names: HashMap<String, TypeName> = parsed_ast
-        .component_declarations()
-        .map(|c| {
-            (
-                FunctionName::from(c.component_name.clone()).to_snake_case(),
-                c.component_name.clone(),
-            )
-        })
-        .collect();
     let mut names: HashMap<TypeName, Name> = HashMap::new();
     let mut imported_components: HashMap<TypeName, FunctionSignature> = HashMap::new();
     let mut function_names: HashSet<VarName> = HashSet::new();
@@ -268,14 +258,6 @@ fn typecheck_module(
                     errors.push(TypeError::new(
                         TypeErrorKind::FunctionNameIsAlreadyDefined {
                             name: f.name.clone(),
-                        },
-                        f.name_range.clone(),
-                    ));
-                } else if let Some(component) = component_snake_names.get(f.name.as_str()) {
-                    errors.push(TypeError::new(
-                        TypeErrorKind::FunctionNameCollidesWithComponent {
-                            function: f.name.clone(),
-                            component: component.clone(),
                         },
                         f.name_range.clone(),
                     ));
@@ -9407,8 +9389,8 @@ mod tests {
     }
 
     #[test]
-    fn rejects_function_name_colliding_with_component() {
-        reject(
+    fn accepts_function_and_component_sharing_a_snake_case_name() {
+        accept(
             indoc! {r#"
                 -- main.hop --
                 fn nav_bar(x: Int) -> Int {
@@ -9420,10 +9402,14 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Function nav_bar collides with component NavBar: both compile to the same generated name
-                  --> main.hop (line 1, col 4)
-                1 | fn nav_bar(x: Int) -> Int {
-                  |    ^^^^^^^
+                -- main.hop --
+                fn NavBar() -> Fragment {
+                  html(tag: "div", attrs: [], children: concat())
+                }
+
+                fn nav_bar(x: Int) -> Int {
+                  x
+                }
             "#]],
         );
     }

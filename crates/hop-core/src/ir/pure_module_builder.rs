@@ -5,6 +5,8 @@ use crate::hop::typing::r#type::{ComparableType, EquatableType, NumericType};
 use crate::hop::typing::type_registry::{EnumVariant, ResolvedType, TypeRegistry};
 use crate::hop::typing::type_registry_builder::{TestTypes, TypeRegistryBuilder};
 use crate::ir::expr_id::{ExprId, ExprIdCounter};
+use crate::ir::function_id::FunctionIdCounter;
+use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_var::IrVar;
 use crate::ir::pure_module::{
     PureArgument, PureExpr, PureForSource, PureFunctionDeclaration, PureModule, PurePageDeclaration,
@@ -66,6 +68,7 @@ impl PureModuleBuilder {
             types: Rc::new(self.types_builder.build()),
             expr_ids: Rc::new(RefCell::new(ExprIdCounter::new())),
             var_ids: Rc::new(RefCell::new(VarIdCounter::new())),
+            function_ids: Rc::new(RefCell::new(FunctionIdCounter::new())),
             pages: Vec::new(),
             functions: Vec::new(),
             callees: Rc::new(RefCell::new(HashMap::new())),
@@ -119,7 +122,7 @@ impl From<PureModuleBuilder> for PureModuleBodiesBuilder {
 
 /// A function's parameters and return type, keyed by name so call sites can
 /// look up the callee's return type.
-type FunctionSignature = (Vec<WriterParameter>, Type);
+type FunctionSignature = (IrFunction, Vec<WriterParameter>, Type);
 
 /// Collects view and function bodies against a frozen set of types.
 pub struct PureModuleBodiesBuilder {
@@ -128,6 +131,7 @@ pub struct PureModuleBodiesBuilder {
     var_ids: Rc<RefCell<VarIdCounter>>,
     pages: Vec<PurePageDeclaration>,
     functions: Vec<PureFunctionDeclaration>,
+    function_ids: Rc<RefCell<FunctionIdCounter>>,
     callees: Rc<RefCell<HashMap<String, FunctionSignature>>>,
 }
 
@@ -169,11 +173,16 @@ impl PureModuleBodiesBuilder {
     {
         let return_type = self.types.resolve(return_type);
         let (parameters, body) = self.declaration(params, return_type.clone(), body_fn);
-        self.callees
-            .borrow_mut()
-            .insert(name.to_string(), (parameters.clone(), return_type.clone()));
+        let function = IrFunction::new(
+            self.function_ids.borrow_mut().next(),
+            FunctionName::new(name).expect("Test function name should be valid"),
+        );
+        self.callees.borrow_mut().insert(
+            name.to_string(),
+            (function.clone(), parameters.clone(), return_type.clone()),
+        );
         self.functions.push(PureFunctionDeclaration {
-            name: FunctionName::new(name).expect("Test function name should be valid"),
+            function,
             parameters,
             return_type,
             body,
@@ -210,6 +219,7 @@ impl PureModuleBodiesBuilder {
             types: self.types.clone(),
             expr_ids: self.expr_ids.clone(),
             var_ids: self.var_ids.clone(),
+            function_ids: self.function_ids.clone(),
             callees: self.callees.clone(),
         };
         let body = body_fn(&builder);
@@ -245,6 +255,7 @@ pub struct PureBuilder {
     types: Rc<TestTypes>,
     expr_ids: Rc<RefCell<ExprIdCounter>>,
     var_ids: Rc<RefCell<VarIdCounter>>,
+    function_ids: Rc<RefCell<FunctionIdCounter>>,
     callees: Rc<RefCell<HashMap<String, FunctionSignature>>>,
 }
 
@@ -265,6 +276,7 @@ impl PureBuilder {
             types: self.types.clone(),
             expr_ids: self.expr_ids.clone(),
             var_ids: self.var_ids.clone(),
+            function_ids: self.function_ids.clone(),
             callees: self.callees.clone(),
         }
     }
@@ -1102,7 +1114,7 @@ impl PureBuilder {
     }
 
     pub fn call(&self, name: &str, args: Vec<(&str, PureExpr)>) -> PureExpr {
-        let (_, return_type) = self
+        let (function, _, return_type) = self
             .callees
             .borrow()
             .get(name)
@@ -1118,7 +1130,7 @@ impl PureBuilder {
             .collect();
 
         PureExpr::FunctionCall {
-            function_name: FunctionName::new(name).unwrap(),
+            function,
             args: pure_args,
             typ: return_type,
             id: self.next_expr_id(),

@@ -187,15 +187,11 @@ fn evaluate_expr(
             Ok(Value::String(result))
         }
 
-        PureExpr::FunctionCall {
-            function_name,
-            args,
-            ..
-        } => {
+        PureExpr::FunctionCall { function, args, .. } => {
             let func = function_decls
                 .iter()
-                .find(|c| c.name.as_str() == function_name.as_str())
-                .unwrap_or_else(|| panic!("Undefined function: {}", function_name.as_str()));
+                .find(|c| c.function.id == function.id)
+                .unwrap_or_else(|| panic!("Undefined function: {function}"));
 
             for arg in args {
                 assert!(
@@ -204,14 +200,13 @@ fn evaluate_expr(
                         .any(|p| p.name().as_str() == arg.name.as_str()),
                     "Unknown argument '{}' for function '{}'",
                     arg.name.as_str(),
-                    function_name.as_str()
+                    function
                 );
             }
             assert_eq!(
                 args.len(),
                 func.parameters.len(),
-                "Duplicate argument for function '{}'",
-                function_name.as_str()
+                "Duplicate argument for function '{function}'",
             );
 
             let mut callee_env = VariableEnv::new();
@@ -226,7 +221,7 @@ fn evaluate_expr(
                     panic!(
                         "Missing required parameter '{}' for function '{}'",
                         param.name(),
-                        function_name.as_str()
+                        function
                     );
                 }
             }
@@ -884,11 +879,11 @@ mod tests {
             vec![("p0", Value::Int(42))],
             expect![[r#"
                 -- before --
-                fn C(p0@v0: Int, p1@v1: Int) -> Fragment {
+                fn C@f0(p0@v0: Int, p1@v1: Int) -> Fragment {
                   escape(v1.to_string())
                 }
                 page Test(p0@v2: Int) {
-                  call C(p0 = 999, p1 = v2)
+                  call C@f0(p0 = 999, p1 = v2)
                 }
 
                 -- after --

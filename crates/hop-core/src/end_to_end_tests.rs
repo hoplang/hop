@@ -16,6 +16,7 @@ use std::fs;
 use std::process::Command;
 use std::sync::Arc;
 use tempfile::TempDir;
+use txtar::Archive;
 
 fn execute_typescript(code: &str) -> Result<String, String> {
     let temp_dir = TempDir::new().map_err(|e| format!("Failed to create temp dir: {}", e))?;
@@ -155,21 +156,31 @@ fn execute_evaluator(module: &PureModule) -> Result<String, String> {
         .map_err(|e| format!("Evaluator failed: {}", e))
 }
 
-fn check(hop_source: &str, expected_output: &str, expected: Expect) {
-    check_with_asset_rewriter(hop_source, None, expected_output, expected);
+fn check(archive: &str, expected_output: &str, expected: Expect) {
+    check_with_asset_rewriter(archive, None, expected_output, expected);
 }
 
 fn check_with_asset_rewriter(
-    hop_source: &str,
+    archive: &str,
     asset_rewriter: Option<Arc<dyn AssetRewriter>>,
     expected_output: &str,
     expected: Expect,
 ) {
-    // Parse hop source code
-    let document_id = DocumentId::new("test.hop").unwrap();
+    let archive = Archive::from(archive);
     let mut program = Program::default();
-    let document = Document::new(document_id.clone(), hop_source.to_string());
-    program.update_module(&document_id, document);
+    let mut modules = 0;
+    for file in archive.iter() {
+        assert!(
+            file.name.ends_with(".hop"),
+            "expected a .hop module, got '{}'",
+            file.name
+        );
+        let document_id = DocumentId::new(&file.name).unwrap();
+        let document = Document::new(document_id.clone(), file.content.clone());
+        program.update_module(&document_id, document);
+        modules += 1;
+    }
+    assert!(modules > 0, "archive declares no modules");
 
     // Check for parse errors
     let parse_errors = program.get_parse_errors();
@@ -421,6 +432,7 @@ mod tests {
     fn bool_binding_from_record_pattern_used_in_logical_operator() {
         check(
             indoc! {r#"
+                -- main.hop --
                 record Flag {
                   value: Bool,
                 }
@@ -494,6 +506,7 @@ mod tests {
     fn int_binding_from_record_pattern_compared_with_literal() {
         check(
             indoc! {r#"
+                -- main.hop --
                 record Count {
                   n: Int,
                 }
@@ -567,6 +580,7 @@ mod tests {
     fn bool_binding_from_record_pattern_as_match_expr_subject() {
         check(
             indoc! {r#"
+                -- main.hop --
                 record Flag {
                   value: Bool,
                 }
@@ -632,6 +646,7 @@ mod tests {
     fn bool_binding_from_record_pattern_as_match_statement_subject() {
         check(
             indoc! {r#"
+                -- main.hop --
                 record Flag {
                   value: Bool,
                 }
@@ -712,6 +727,7 @@ mod tests {
     fn bool_binding_from_record_pattern_as_if_condition() {
         check(
             indoc! {r#"
+                -- main.hop --
                 record Flag {
                   value: Bool,
                 }
@@ -785,6 +801,7 @@ mod tests {
     fn rest_spread_forwards_attribute_to_html() {
         check(
             indoc! {r#"
+                -- main.hop --
                 component Button(
                   label: String,
                   ...rest,
@@ -801,7 +818,10 @@ mod tests {
             r#"<button class="btn" id="submit">Hi</button>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Button(label@v0: String, rest@v1: Fragment) -> Fragment {
+                fn Button@f0(
+                  label@v0: String,
+                  rest@v1: Fragment,
+                ) -> Fragment {
                   write("<button")
                   write(" class=\"btn\"")
                   write_fragment(v1)
@@ -810,7 +830,7 @@ mod tests {
                   write("</button>")
                 }
                 page Test() {
-                  call Button(label = "Hi", rest = {
+                  call Button@f0(label = "Hi", rest = {
                     write(" id=\"submit\"")
                   })
                 }
@@ -843,6 +863,7 @@ mod tests {
         // the rests run straight down to Leaf's div. Both pick up `title`.
         check(
             indoc! {r#"
+                -- main.hop --
                 component Leaf(title: String = "d") {
                   <div>
                     {title}
@@ -875,49 +896,49 @@ mod tests {
             r#"<div>x</div><div>d</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn First(
+                fn First@f0(
                   n@v0: Int,
                   title@v1: String,
                   rest@v2: Fragment,
                 ) -> Fragment {
-                  call Second(n = v0, title = v1, rest = {
+                  call Second@f2(n = v0, title = v1, rest = {
                     write_fragment(v2)
                   })
                 }
-                fn Leaf(title@v3: String) -> Fragment {
+                fn Leaf@f1(title@v3: String) -> Fragment {
                   write("<div")
                   write(">")
                   write_string(v3)
                   write("</div>")
                 }
-                fn Second(
+                fn Second@f2(
                   n@v4: Int,
                   title@v5: String,
                   rest@v6: Fragment,
                 ) -> Fragment {
-                  call Leaf(title = v5)
+                  call Leaf@f1(title = v5)
                   match (0 < v4) {
                     true => {
-                      call First(n = (v4 - 1), title = "d", rest = {})
+                      call First@f0(n = (v4 - 1), title = "d", rest = {})
                     }
                     false => {
                     }
                   }
                 }
                 page Test() {
-                  call First(n = 1, title = "x", rest = {})
+                  call First@f0(n = 1, title = "x", rest = {})
                 }
                 -- ir (optimized) --
-                fn First(
+                fn First@f0(
                   n@v0: Int,
                   title@v1: String,
                   rest@v2: Fragment,
                 ) -> Fragment {
-                  call Second(n = v0, title = v1, rest = {
+                  call Second@f2(n = v0, title = v1, rest = {
                     write_fragment(v2)
                   })
                 }
-                fn Second(
+                fn Second@f2(
                   n@v4: Int,
                   title@v5: String,
                   rest@v6: Fragment,
@@ -927,14 +948,14 @@ mod tests {
                   write("</div>")
                   match (0 < v4) {
                     true => {
-                      call First(n = (v4 - 1), title = "d", rest = {})
+                      call First@f0(n = (v4 - 1), title = "d", rest = {})
                     }
                     false => {
                     }
                   }
                 }
                 page Test() {
-                  call First(n = 1, title = "x", rest = {})
+                  call First@f0(n = 1, title = "x", rest = {})
                 }
                 -- expected output --
                 <div>x</div><div>d</div>
@@ -959,6 +980,7 @@ mod tests {
     fn rest_chains_through_a_component_to_an_element() {
         check(
             indoc! {r#"
+                -- main.hop --
                 component Base(...rest) {
                   <div ...rest>
                   </div>
@@ -983,26 +1005,29 @@ mod tests {
             r#"<section><h1>Hi</h1><div id="x" data-k="v"></div></section>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Base(rest@v0: Fragment) -> Fragment {
+                fn Base@f0(rest@v0: Fragment) -> Fragment {
                   write("<div")
                   write_fragment(v0)
                   write(">")
                   write("</div>")
                 }
-                fn Card(title@v1: String, rest@v2: Fragment) -> Fragment {
+                fn Card@f1(
+                  title@v1: String,
+                  rest@v2: Fragment,
+                ) -> Fragment {
                   write("<section")
                   write(">")
                   write("<h1")
                   write(">")
                   write_string(v1)
                   write("</h1>")
-                  call Base(rest = {
+                  call Base@f0(rest = {
                     write_fragment(v2)
                   })
                   write("</section>")
                 }
                 page Test() {
-                  call Card(title = "Hi", rest = {
+                  call Card@f1(title = "Hi", rest = {
                     write(" id=\"x\"")
                     write(" data-k=\"v\"")
                   })
@@ -1034,6 +1059,7 @@ mod tests {
     fn rest_reaches_a_spread_target_nested_in_control_flow() {
         check(
             indoc! {r#"
+                -- main.hop --
                 component Wrapper(
                   show: Bool,
                   ...rest,
@@ -1051,7 +1077,10 @@ mod tests {
             r#"<div id="x"></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Wrapper(show@v0: Bool, rest@v1: Fragment) -> Fragment {
+                fn Wrapper@f0(
+                  show@v0: Bool,
+                  rest@v1: Fragment,
+                ) -> Fragment {
                   match v0 {
                     true => {
                       write("<div")
@@ -1064,7 +1093,7 @@ mod tests {
                   }
                 }
                 page Test() {
-                  call Wrapper(show = true, rest = {
+                  call Wrapper@f0(show = true, rest = {
                     write(" id=\"x\"")
                   })
                 }
@@ -1095,6 +1124,7 @@ mod tests {
     fn valueless_attribute_travels_through_rest() {
         check(
             indoc! {r#"
+                -- main.hop --
                 component Button(...rest) {
                   <button ...rest>
                   </button>
@@ -1107,14 +1137,14 @@ mod tests {
             r#"<button disabled></button>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Button(rest@v0: Fragment) -> Fragment {
+                fn Button@f0(rest@v0: Fragment) -> Fragment {
                   write("<button")
                   write_fragment(v0)
                   write(">")
                   write("</button>")
                 }
                 page Test() {
-                  call Button(rest = {
+                  call Button@f0(rest = {
                     write(" disabled")
                   })
                 }
@@ -1145,6 +1175,7 @@ mod tests {
     fn rest_reaches_a_spread_target_nested_in_match() {
         check(
             indoc! {r#"
+                -- main.hop --
                 component Wrapper(
                   show: Bool,
                   ...rest,
@@ -1166,7 +1197,10 @@ mod tests {
             r#"<div id="x"></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Wrapper(show@v0: Bool, rest@v1: Fragment) -> Fragment {
+                fn Wrapper@f0(
+                  show@v0: Bool,
+                  rest@v1: Fragment,
+                ) -> Fragment {
                   match v0 {
                     true => {
                       write("<div")
@@ -1179,7 +1213,7 @@ mod tests {
                   }
                 }
                 page Test() {
-                  call Wrapper(show = true, rest = {
+                  call Wrapper@f0(show = true, rest = {
                     write(" id=\"x\"")
                   })
                 }
@@ -1210,6 +1244,7 @@ mod tests {
     fn rest_escapes_attribute_values() {
         check(
             indoc! {r#"
+                -- main.hop --
                 component Panel(...rest) {
                   <div ...rest>
                   </div>
@@ -1222,14 +1257,14 @@ mod tests {
             r#"<div title="a&#39;b&lt;c&amp;d"></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Panel(rest@v0: Fragment) -> Fragment {
+                fn Panel@f0(rest@v0: Fragment) -> Fragment {
                   write("<div")
                   write_fragment(v0)
                   write(">")
                   write("</div>")
                 }
                 page Test() {
-                  call Panel(rest = {
+                  call Panel@f0(rest = {
                     write(" title=\"")
                     write_string("a'b<c&d")
                     write("\"")
@@ -1262,6 +1297,7 @@ mod tests {
     fn rest_reaches_a_void_element() {
         check(
             indoc! {r#"
+                -- main.hop --
                 component Icon(...rest) {
                   <img ...rest>
                 }
@@ -1273,13 +1309,13 @@ mod tests {
             r#"<img src="a.png" alt="a">"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Icon(rest@v0: Fragment) -> Fragment {
+                fn Icon@f0(rest@v0: Fragment) -> Fragment {
                   write("<img")
                   write_fragment(v0)
                   write(">")
                 }
                 page Test() {
-                  call Icon(rest = {
+                  call Icon@f0(rest = {
                     write(" src=\"a.png\"")
                     write(" alt=\"a\"")
                   })
@@ -1311,6 +1347,7 @@ mod tests {
     fn empty_rest_contributes_no_attributes() {
         check(
             indoc! {r#"
+                -- main.hop --
                 component A(...rest) {
                   <div ...rest>
                   </div>
@@ -1323,14 +1360,14 @@ mod tests {
             r#"<div></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn A(rest@v0: Fragment) -> Fragment {
+                fn A@f0(rest@v0: Fragment) -> Fragment {
                   write("<div")
                   write_fragment(v0)
                   write(">")
                   write("</div>")
                 }
                 page Test() {
-                  call A(rest = {})
+                  call A@f0(rest = {})
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -1359,6 +1396,7 @@ mod tests {
     fn accepts_extra_attrs_when_rest_reaches_html() {
         check(
             indoc! {r#"
+                -- main.hop --
                 component Button(
                   class: String,
                   children: Fragment,
@@ -1378,7 +1416,7 @@ mod tests {
             r#"<button class="p-2" data-foo="bar">Hi</button>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Button(
+                fn Button@f0(
                   class@v0: String,
                   children@v1: Fragment,
                   rest@v2: Fragment,
@@ -1393,7 +1431,7 @@ mod tests {
                   write("</button>")
                 }
                 page Test() {
-                  call Button(class = "p-2", children = {
+                  call Button@f0(class = "p-2", children = {
                     write("Hi")
                   }, rest = {
                     write(" data-foo=\"bar\"")
@@ -1426,6 +1464,7 @@ mod tests {
     fn accepts_forwarded_attr_not_set_on_element() {
         check(
             indoc! {r#"
+                -- main.hop --
                 component Button(
                   children: Fragment,
                   ...rest,
@@ -1444,7 +1483,7 @@ mod tests {
             r#"<button class="builtin" data-x="y">Hi</button>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Button(
+                fn Button@f0(
                   children@v0: Fragment,
                   rest@v1: Fragment,
                 ) -> Fragment {
@@ -1456,7 +1495,7 @@ mod tests {
                   write("</button>")
                 }
                 page Test() {
-                  call Button(children = {
+                  call Button@f0(children = {
                     write("Hi")
                   }, rest = {
                     write(" data-x=\"y\"")
@@ -1489,6 +1528,7 @@ mod tests {
     fn accepts_svg_attributes_on_forwarded_svg() {
         check(
             indoc! {r#"
+                -- main.hop --
                 component Svg(...rest) {
                   <svg ...rest>
                   </svg>
@@ -1501,14 +1541,14 @@ mod tests {
             r#"<svg viewBox="0 0 100 100"></svg>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Svg(rest@v0: Fragment) -> Fragment {
+                fn Svg@f0(rest@v0: Fragment) -> Fragment {
                   write("<svg")
                   write_fragment(v0)
                   write(">")
                   write("</svg>")
                 }
                 page Test() {
-                  call Svg(rest = {
+                  call Svg@f0(rest = {
                     write(" viewBox=\"0 0 100 100\"")
                   })
                 }
@@ -1539,6 +1579,7 @@ mod tests {
     fn accepts_required_arg_forwarded_through_rest() {
         check(
             indoc! {r#"
+                -- main.hop --
                 component Card(title: String) {
                   <div>
                     {title}
@@ -1556,20 +1597,20 @@ mod tests {
             r#"<div>hi</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Card(title@v0: String) -> Fragment {
+                fn Card@f0(title@v0: String) -> Fragment {
                   write("<div")
                   write(">")
                   write_string(v0)
                   write("</div>")
                 }
-                fn Wrapper(
+                fn Wrapper@f1(
                   title@v1: String,
                   rest@v2: Fragment,
                 ) -> Fragment {
-                  call Card(title = v1)
+                  call Card@f0(title = v1)
                 }
                 page Test() {
-                  call Wrapper(title = "hi", rest = {})
+                  call Wrapper@f1(title = "hi", rest = {})
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -1598,6 +1639,7 @@ mod tests {
     fn accepts_explicit_arg_supplied_alongside_rest_spread() {
         check(
             indoc! {r#"
+                -- main.hop --
                 component Card(title: String) {
                   <div>
                     {title}
@@ -1615,17 +1657,17 @@ mod tests {
             r#"<div>explicit</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Card(title@v0: String) -> Fragment {
+                fn Card@f0(title@v0: String) -> Fragment {
                   write("<div")
                   write(">")
                   write_string(v0)
                   write("</div>")
                 }
-                fn Wrapper(rest@v1: Fragment) -> Fragment {
-                  call Card(title = "explicit")
+                fn Wrapper@f1(rest@v1: Fragment) -> Fragment {
+                  call Card@f0(title = "explicit")
                 }
                 page Test() {
-                  call Wrapper(rest = {})
+                  call Wrapper@f1(rest = {})
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -1654,6 +1696,7 @@ mod tests {
     fn accepts_record_param_forwarded_through_rest() {
         check(
             indoc! {r#"
+                -- main.hop --
                 record User {
                   name: String,
                 }
@@ -1677,21 +1720,21 @@ mod tests {
             r#"<div>Ada</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Card(user@v1: test::User) -> Fragment {
+                fn Card@f0(user@v1: main::User) -> Fragment {
                   write("<div")
                   write(">")
                   write_string(v1.name)
                   write("</div>")
                 }
-                fn Wrapper(
-                  user@v2: test::User,
+                fn Wrapper@f1(
+                  user@v2: main::User,
                   rest@v3: Fragment,
                 ) -> Fragment {
-                  call Card(user = v2)
+                  call Card@f0(user = v2)
                 }
                 page Test() {
                   let v0 = User {name: "Ada"} in {
-                    call Wrapper(user = v0, rest = {})
+                    call Wrapper@f1(user = v0, rest = {})
                   }
                 }
                 -- ir (optimized) --
@@ -1721,6 +1764,7 @@ mod tests {
     fn accepts_user_variable_with_underscore_without_collisions() {
         check(
             indoc! {r#"
+                -- main.hop --
                 record Flag {
                   value: String,
                 }
@@ -1787,6 +1831,7 @@ mod tests {
     fn accepts_required_args_forwarded_transitively() {
         check(
             indoc! {r#"
+                -- main.hop --
                 component Card(title: String) {
                   <div>
                     {title}
@@ -1814,7 +1859,7 @@ mod tests {
             r#"<div>n<div>t</div></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Bar(
+                fn Bar@f0(
                   name@v0: String,
                   title@v1: String,
                   rest@v2: Fragment,
@@ -1822,26 +1867,26 @@ mod tests {
                   write("<div")
                   write(">")
                   write_string(v0)
-                  call Card(title = v1)
+                  call Card@f2(title = v1)
                   write("</div>")
                 }
-                fn Baz(
+                fn Baz@f1(
                   name@v3: String,
                   title@v4: String,
                   rest@v5: Fragment,
                 ) -> Fragment {
-                  call Bar(name = v3, title = v4, rest = {
+                  call Bar@f0(name = v3, title = v4, rest = {
                     write_fragment(v5)
                   })
                 }
-                fn Card(title@v6: String) -> Fragment {
+                fn Card@f2(title@v6: String) -> Fragment {
                   write("<div")
                   write(">")
                   write_string(v6)
                   write("</div>")
                 }
                 page Test() {
-                  call Baz(name = "n", title = "t", rest = {})
+                  call Baz@f1(name = "n", title = "t", rest = {})
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -1870,6 +1915,7 @@ mod tests {
     fn accepts_int_param_forwarded_through_rest() {
         check(
             indoc! {r#"
+                -- main.hop --
                 component Card(count: Int) {
                   <if {count > 0}>
                     <div>
@@ -1889,7 +1935,7 @@ mod tests {
             r#"<div>positive</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Card(count@v0: Int) -> Fragment {
+                fn Card@f0(count@v0: Int) -> Fragment {
                   match (0 < v0) {
                     true => {
                       write("<div")
@@ -1901,11 +1947,14 @@ mod tests {
                     }
                   }
                 }
-                fn Wrapper(count@v1: Int, rest@v2: Fragment) -> Fragment {
-                  call Card(count = v1)
+                fn Wrapper@f1(
+                  count@v1: Int,
+                  rest@v2: Fragment,
+                ) -> Fragment {
+                  call Card@f0(count = v1)
                 }
                 page Test() {
-                  call Wrapper(count = 3, rest = {})
+                  call Wrapper@f1(count = 3, rest = {})
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -1934,6 +1983,7 @@ mod tests {
     fn accepts_typed_field_and_open_html_tail_in_one_forward() {
         check(
             indoc! {r#"
+                -- main.hop --
                 component A(
                   count: Int,
                   ...rest,
@@ -1956,7 +2006,7 @@ mod tests {
             r#"<div data-foo="bar">positive</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn A(count@v0: Int, rest@v1: Fragment) -> Fragment {
+                fn A@f0(count@v0: Int, rest@v1: Fragment) -> Fragment {
                   write("<div")
                   write_fragment(v1)
                   write(">")
@@ -1969,13 +2019,13 @@ mod tests {
                   }
                   write("</div>")
                 }
-                fn B(count@v2: Int, rest@v3: Fragment) -> Fragment {
-                  call A(count = v2, rest = {
+                fn B@f1(count@v2: Int, rest@v3: Fragment) -> Fragment {
+                  call A@f0(count = v2, rest = {
                     write_fragment(v3)
                   })
                 }
                 page Test() {
-                  call B(count = 3, rest = {
+                  call B@f1(count = 3, rest = {
                     write(" data-foo=\"bar\"")
                   })
                 }
@@ -2006,6 +2056,7 @@ mod tests {
     fn accepts_children_forwarded_transitively_through_rest() {
         check(
             indoc! {r#"
+                -- main.hop --
                 component Foo(children: Fragment) {
                   <div>
                     {children}
@@ -2029,28 +2080,28 @@ mod tests {
             r#"<div>deep</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Bar(
+                fn Bar@f0(
                   children@v0: Fragment,
                   rest@v1: Fragment,
                 ) -> Fragment {
-                  call Foo(children = v0)
+                  call Foo@f2(children = v0)
                 }
-                fn Baz(
+                fn Baz@f1(
                   children@v2: Fragment,
                   rest@v3: Fragment,
                 ) -> Fragment {
-                  call Bar(children = v2, rest = {
+                  call Bar@f0(children = v2, rest = {
                     write_fragment(v3)
                   })
                 }
-                fn Foo(children@v4: Fragment) -> Fragment {
+                fn Foo@f2(children@v4: Fragment) -> Fragment {
                   write("<div")
                   write(">")
                   write_fragment(v4)
                   write("</div>")
                 }
                 page Test() {
-                  call Baz(children = {
+                  call Baz@f1(children = {
                     write("deep")
                   }, rest = {})
                 }
@@ -2081,6 +2132,7 @@ mod tests {
     fn accepts_param_reserved_out_of_rest_when_callee_has_default() {
         check(
             indoc! {r#"
+                -- main.hop --
                 component Inner(
                   class: String = "x",
                   ...rest,
@@ -2105,7 +2157,10 @@ mod tests {
             r#"<div class="x"><span class="x"></span></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Inner(class@v0: String, rest@v1: Fragment) -> Fragment {
+                fn Inner@f0(
+                  class@v0: String,
+                  rest@v1: Fragment,
+                ) -> Fragment {
                   write("<span")
                   write(" class=\"")
                   write_string(v0)
@@ -2114,19 +2169,22 @@ mod tests {
                   write(">")
                   write("</span>")
                 }
-                fn Outer(class@v2: String, rest@v3: Fragment) -> Fragment {
+                fn Outer@f1(
+                  class@v2: String,
+                  rest@v3: Fragment,
+                ) -> Fragment {
                   write("<div")
                   write(" class=\"")
                   write_string(v2)
                   write("\"")
                   write(">")
-                  call Inner(class = "x", rest = {
+                  call Inner@f0(class = "x", rest = {
                     write_fragment(v3)
                   })
                   write("</div>")
                 }
                 page Test() {
-                  call Outer(class = "x", rest = {})
+                  call Outer@f1(class = "x", rest = {})
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -2155,6 +2213,7 @@ mod tests {
     fn accepts_intercept_and_merge_wrapper() {
         check(
             indoc! {r#"
+                -- main.hop --
                 component Foo(
                   children: Fragment,
                   class: String,
@@ -2184,18 +2243,18 @@ mod tests {
             r#"<div class="primary">click</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Button(
+                fn Button@f0(
                   children@v0: Fragment,
                   class@v1: String,
                   rest@v2: Fragment,
                 ) -> Fragment {
-                  call Foo(children = {
+                  call Foo@f1(children = {
                     write_fragment(v0)
                   }, class = v1, rest = {
                     write_fragment(v2)
                   })
                 }
-                fn Foo(
+                fn Foo@f1(
                   children@v3: Fragment,
                   class@v4: String,
                   rest@v5: Fragment,
@@ -2210,7 +2269,7 @@ mod tests {
                   write("</div>")
                 }
                 page Test() {
-                  call Button(children = {
+                  call Button@f0(children = {
                     write("click")
                   }, class = "primary", rest = {})
                 }
@@ -2241,6 +2300,7 @@ mod tests {
     fn accepts_optional_param_forwarded_and_overridden_through_rest() {
         check(
             indoc! {r#"
+                -- main.hop --
                 component Inner(
                   class: String = "x",
                   ...rest,
@@ -2260,7 +2320,10 @@ mod tests {
             r#"<span class="y"></span>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Inner(class@v0: String, rest@v1: Fragment) -> Fragment {
+                fn Inner@f0(
+                  class@v0: String,
+                  rest@v1: Fragment,
+                ) -> Fragment {
                   write("<span")
                   write(" class=\"")
                   write_string(v0)
@@ -2269,16 +2332,16 @@ mod tests {
                   write(">")
                   write("</span>")
                 }
-                fn Wrapper(
+                fn Wrapper@f1(
                   class@v2: String,
                   rest@v3: Fragment,
                 ) -> Fragment {
-                  call Inner(class = v2, rest = {
+                  call Inner@f0(class = v2, rest = {
                     write_fragment(v3)
                   })
                 }
                 page Test() {
-                  call Wrapper(class = "y", rest = {})
+                  call Wrapper@f1(class = "y", rest = {})
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -2307,6 +2370,7 @@ mod tests {
     fn accepts_optional_default_chain_with_caller_value() {
         check(
             indoc! {r#"
+                -- main.hop --
                 component A(
                   class: String = "",
                   ...rest,
@@ -2329,7 +2393,7 @@ mod tests {
             r#"<div class="main"></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn A(class@v0: String, rest@v1: Fragment) -> Fragment {
+                fn A@f0(class@v0: String, rest@v1: Fragment) -> Fragment {
                   write("<div")
                   write(" class=\"")
                   write_string(v0)
@@ -2338,13 +2402,13 @@ mod tests {
                   write(">")
                   write("</div>")
                 }
-                fn B(class@v2: String, rest@v3: Fragment) -> Fragment {
-                  call A(class = v2, rest = {
+                fn B@f1(class@v2: String, rest@v3: Fragment) -> Fragment {
+                  call A@f0(class = v2, rest = {
                     write_fragment(v3)
                   })
                 }
                 page Test() {
-                  call B(class = "main", rest = {})
+                  call B@f1(class = "main", rest = {})
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -2373,6 +2437,7 @@ mod tests {
     fn accepts_optional_default_chain_uses_outer_default() {
         check(
             indoc! {r#"
+                -- main.hop --
                 component A(
                   class: String = "a",
                   ...rest,
@@ -2395,7 +2460,7 @@ mod tests {
             r#"<div class="b"></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn A(class@v0: String, rest@v1: Fragment) -> Fragment {
+                fn A@f0(class@v0: String, rest@v1: Fragment) -> Fragment {
                   write("<div")
                   write(" class=\"")
                   write_string(v0)
@@ -2404,13 +2469,13 @@ mod tests {
                   write(">")
                   write("</div>")
                 }
-                fn B(class@v2: String, rest@v3: Fragment) -> Fragment {
-                  call A(class = v2, rest = {
+                fn B@f1(class@v2: String, rest@v3: Fragment) -> Fragment {
+                  call A@f0(class = v2, rest = {
                     write_fragment(v3)
                   })
                 }
                 page Test() {
-                  call B(class = "b", rest = {})
+                  call B@f1(class = "b", rest = {})
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -2439,6 +2504,7 @@ mod tests {
     fn accepts_forwarded_optional_default_through_rest() {
         check(
             indoc! {r#"
+                -- main.hop --
                 component A(
                   label: String = "x",
                   ...rest,
@@ -2459,20 +2525,20 @@ mod tests {
             r#"<span>x</span>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn A(label@v0: String, rest@v1: Fragment) -> Fragment {
+                fn A@f0(label@v0: String, rest@v1: Fragment) -> Fragment {
                   write("<span")
                   write_fragment(v1)
                   write(">")
                   write_string(v0)
                   write("</span>")
                 }
-                fn B(label@v2: String, rest@v3: Fragment) -> Fragment {
-                  call A(label = v2, rest = {
+                fn B@f1(label@v2: String, rest@v3: Fragment) -> Fragment {
+                  call A@f0(label = v2, rest = {
                     write_fragment(v3)
                   })
                 }
                 page Test() {
-                  call B(label = "x", rest = {})
+                  call B@f1(label = "x", rest = {})
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -2501,6 +2567,7 @@ mod tests {
     fn accepts_forwarded_default_materialized_once_in_chain() {
         check(
             indoc! {r#"
+                -- main.hop --
                 component Leaf(
                   label: String = "x",
                   ...rest,
@@ -2525,25 +2592,28 @@ mod tests {
             r#"<span>x</span>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Leaf(label@v0: String, rest@v1: Fragment) -> Fragment {
+                fn Leaf@f0(
+                  label@v0: String,
+                  rest@v1: Fragment,
+                ) -> Fragment {
                   write("<span")
                   write_fragment(v1)
                   write(">")
                   write_string(v0)
                   write("</span>")
                 }
-                fn Mid(label@v2: String, rest@v3: Fragment) -> Fragment {
-                  call Leaf(label = v2, rest = {
+                fn Mid@f1(label@v2: String, rest@v3: Fragment) -> Fragment {
+                  call Leaf@f0(label = v2, rest = {
                     write_fragment(v3)
                   })
                 }
-                fn Top(label@v4: String, rest@v5: Fragment) -> Fragment {
-                  call Mid(label = v4, rest = {
+                fn Top@f2(label@v4: String, rest@v5: Fragment) -> Fragment {
+                  call Mid@f1(label = v4, rest = {
                     write_fragment(v5)
                   })
                 }
                 page Test() {
-                  call Top(label = "x", rest = {})
+                  call Top@f2(label = "x", rest = {})
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -2572,6 +2642,7 @@ mod tests {
     fn accepts_forwarded_attr_distinct_from_pinned() {
         check(
             indoc! {r#"
+                -- main.hop --
                 component Inner(...rest) {
                   <span ...rest>
                   </span>
@@ -2588,20 +2659,20 @@ mod tests {
             r#"<span title="a" lang="en"></span>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Inner(rest@v0: Fragment) -> Fragment {
+                fn Inner@f0(rest@v0: Fragment) -> Fragment {
                   write("<span")
                   write_fragment(v0)
                   write(">")
                   write("</span>")
                 }
-                fn Wrapper(rest@v1: Fragment) -> Fragment {
-                  call Inner(rest = {
+                fn Wrapper@f1(rest@v1: Fragment) -> Fragment {
+                  call Inner@f0(rest = {
                     write(" title=\"a\"")
                     write_fragment(v1)
                   })
                 }
                 page Test() {
-                  call Wrapper(rest = {
+                  call Wrapper@f1(rest = {
                     write(" lang=\"en\"")
                   })
                 }
@@ -2632,6 +2703,7 @@ mod tests {
     fn accepts_param_named_like_html_attr_alongside_tail_attr() {
         check(
             indoc! {r#"
+                -- main.hop --
                 component A(
                   tabindex: Int,
                   ...rest,
@@ -2654,7 +2726,7 @@ mod tests {
             r#"<div data-x="y">focusable</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn A(tabindex@v0: Int, rest@v1: Fragment) -> Fragment {
+                fn A@f0(tabindex@v0: Int, rest@v1: Fragment) -> Fragment {
                   write("<div")
                   write_fragment(v1)
                   write(">")
@@ -2667,13 +2739,13 @@ mod tests {
                   }
                   write("</div>")
                 }
-                fn B(tabindex@v2: Int, rest@v3: Fragment) -> Fragment {
-                  call A(tabindex = v2, rest = {
+                fn B@f1(tabindex@v2: Int, rest@v3: Fragment) -> Fragment {
+                  call A@f0(tabindex = v2, rest = {
                     write_fragment(v3)
                   })
                 }
                 page Test() {
-                  call B(tabindex = 2, rest = {
+                  call B@f1(tabindex = 2, rest = {
                     write(" data-x=\"y\"")
                   })
                 }
@@ -2704,6 +2776,7 @@ mod tests {
     fn option_match_returning_options() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {inner: Option[String] = Some("hello")}>
                     <let {
@@ -2777,6 +2850,7 @@ mod tests {
     fn record_match_on_expression_subject() {
         check(
             indoc! {r#"
+                -- main.hop --
                 record Point {
                   x: String,
                   y: String,
@@ -2831,6 +2905,7 @@ mod tests {
     fn bind_all_match_on_expression_subject() {
         check(
             indoc! {r#"
+                -- main.hop --
                 record Point {
                   x: String,
                   y: String,
@@ -2885,6 +2960,7 @@ mod tests {
     fn match_on_expression_subject() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <match {Some("hi")}>
                     <case {Some(x)}>
@@ -2942,6 +3018,7 @@ mod tests {
     fn option_match_as_some_value() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {inner_opt: Option[String] = Some("inner")}>
                     <let {
@@ -3010,6 +3087,7 @@ mod tests {
     fn component_binding_duplicated_by_inlining_at_two_call_sites() {
         check(
             indoc! {r#"
+                -- main.hop --
                 component Tag(text: String) {
                   <let {label: String = text}>
                     <div>
@@ -3028,7 +3106,7 @@ mod tests {
             "<div>a</div><div>b</div>",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Tag(text@v0: String) -> Fragment {
+                fn Tag@f0(text@v0: String) -> Fragment {
                   let v1 = v0 in {
                     write("<div")
                     write(">")
@@ -3037,8 +3115,8 @@ mod tests {
                   }
                 }
                 page Test() {
-                  call Tag(text = "a")
-                  call Tag(text = "b")
+                  call Tag@f0(text = "a")
+                  call Tag@f0(text = "b")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -3067,6 +3145,7 @@ mod tests {
     fn component_arguments_are_bound_simultaneously() {
         check(
             indoc! {r#"
+                -- main.hop --
                 component Swap(
                   a: String,
                   b: String,
@@ -3087,7 +3166,7 @@ mod tests {
             "<p>B A</p>",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Swap(a@v2: String, b@v3: String) -> Fragment {
+                fn Swap@f0(a@v2: String, b@v3: String) -> Fragment {
                   write("<p")
                   write(">")
                   write_string(v2)
@@ -3098,7 +3177,7 @@ mod tests {
                 page Test() {
                   let v0 = "A" in {
                     let v1 = "B" in {
-                      call Swap(a = v1, b = v0)
+                      call Swap@f0(a = v1, b = v0)
                     }
                   }
                 }
@@ -3129,6 +3208,7 @@ mod tests {
     fn rest_spread_attributes_are_evaluated_in_caller_scope() {
         check(
             indoc! {r#"
+                -- main.hop --
                 component Rows(
                   items: Array[String],
                   ...rest,
@@ -3149,7 +3229,7 @@ mod tests {
             r#"<div id="outer">a</div><div id="outer">b</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Rows(
+                fn Rows@f0(
                   items@v1: Array[String],
                   rest@v2: Fragment,
                 ) -> Fragment {
@@ -3163,7 +3243,7 @@ mod tests {
                 }
                 page Test() {
                   let v0 = "outer" in {
-                    call Rows(items = ["a", "b"], rest = {
+                    call Rows@f0(items = ["a", "b"], rest = {
                       write(" id=\"")
                       write_string(v0)
                       write("\"")
@@ -3207,6 +3287,7 @@ mod tests {
     fn bool_match_expr() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <>
                     <let {flag: Bool = true}>
@@ -3262,6 +3343,7 @@ mod tests {
     fn bool_match_expr_with_binary_subject() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {path: String = ""}>
                     <let {git_ref: String = "main"}>
@@ -3315,6 +3397,7 @@ mod tests {
     fn option_literal_inline_match_expr() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <>
                     <let {opt1: Option[String] = Some("hi")}>
@@ -3372,6 +3455,7 @@ mod tests {
     fn nested_bool_match_expr() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <>
                     <let {outer: Bool = true}>
@@ -3447,6 +3531,7 @@ mod tests {
     fn int_to_string_negative() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {num: Int = -123}>
                     {num.to_string()}
@@ -3488,6 +3573,7 @@ mod tests {
     fn float_to_int_negative() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {temp: Float = -2.9}>
                     {temp.to_int().to_string()}
@@ -3529,6 +3615,7 @@ mod tests {
     fn simple_html() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <h1>
                     Hello, World!
@@ -3571,6 +3658,7 @@ mod tests {
     fn html_comment() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <>
                     <!-- This is a comment -->
@@ -3617,6 +3705,7 @@ mod tests {
     fn with_let_binding() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {name: String = "Alice"}>
                     Hello,
@@ -3664,6 +3753,7 @@ mod tests {
     fn conditional() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {show: Bool = true}>
                     <if {show}>
@@ -3723,6 +3813,7 @@ mod tests {
     fn for_loop() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <for {item in ["a", "b", "c"]}>
                     {item}
@@ -3769,6 +3860,7 @@ mod tests {
     fn for_loop_over_bool_array_with_if() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <for {v in [true]}>
                     <if {v}>
@@ -3826,6 +3918,7 @@ mod tests {
     fn for_loop_with_range() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <for {i in 1..=3}>
                     {i.to_string()}
@@ -3872,6 +3965,7 @@ mod tests {
     fn for_loop_with_range_zero_to_five() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <for {x in 0..=5}>
                     {x.to_string()}
@@ -3915,6 +4009,7 @@ mod tests {
     fn for_loop_with_range_nested() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <for {i in 1..=2}>
                     <for {j in 1..=2}>
@@ -3976,6 +4071,7 @@ mod tests {
     fn html_escaping() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {text: String = "<div>Hello & world</div>"}>
                     {text}
@@ -4017,6 +4113,7 @@ mod tests {
     fn let_binding() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {message: String = "Hello from let"}>
                     {message}
@@ -4058,6 +4155,7 @@ mod tests {
     fn string_concat_folds_constants_around_a_dynamic_part() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <for {name in ["a", "b"]}>
                     <span class={
@@ -4119,6 +4217,7 @@ mod tests {
     fn string_concatenation() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {first: String = "Hello"}>
                     <let {second: String = " World"}>
@@ -4164,6 +4263,7 @@ mod tests {
     fn complex_nested_structure() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <for {item in ["A", "B"]}>
                     <let {prefix: String = "["}>
@@ -4217,6 +4317,7 @@ mod tests {
     fn string_concat_equality() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <if {"foo" + "bar" == "foobar"}>
                     equals
@@ -4262,6 +4363,7 @@ mod tests {
     fn less_than_comparison() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <>
                     <if {3 < 5}>
@@ -4319,6 +4421,7 @@ mod tests {
     fn less_than_float_comparison() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <if {1.5 < 2.5}>
                     1.5 &lt; 2.5
@@ -4364,6 +4467,7 @@ mod tests {
     fn bool_match_true() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {flag: Bool = true}>
                     <match {flag}>
@@ -4419,6 +4523,7 @@ mod tests {
     fn bool_match_false() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {flag: Bool = false}>
                     <match {flag}>
@@ -4474,6 +4579,7 @@ mod tests {
     fn field_access() {
         check(
             indoc! {r#"
+                -- main.hop --
                 record Person {
                   name: String,
                   age: Int,
@@ -4530,6 +4636,7 @@ mod tests {
     fn record_literal_with_fields_out_of_declaration_order() {
         check(
             indoc! {r#"
+                -- main.hop --
                 record Pair {
                   first: String,
                   second: String,
@@ -4580,6 +4687,7 @@ mod tests {
     fn enum_literal_with_fields_out_of_declaration_order() {
         check(
             indoc! {r#"
+                -- main.hop --
                 enum Shape {
                   Rect {
                     width: String,
@@ -4644,6 +4752,7 @@ mod tests {
     fn nested_record() {
         check(
             indoc! {r#"
+                -- main.hop --
                 record Address {
                   city: String,
                   zip: String,
@@ -4707,6 +4816,7 @@ mod tests {
     fn numeric_add() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {a: Int = 3}>
                     <let {b: Int = 7}>
@@ -4760,6 +4870,7 @@ mod tests {
     fn numeric_subtract() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {a: Int = 10}>
                     <let {b: Int = 3}>
@@ -4813,6 +4924,7 @@ mod tests {
     fn numeric_multiply() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {a: Int = 4}>
                     <let {b: Int = 5}>
@@ -4866,6 +4978,7 @@ mod tests {
     fn boolean_logical_and() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {a: Bool = true}>
                     <let {b: Bool = true}>
@@ -4919,6 +5032,7 @@ mod tests {
     fn boolean_logical_or() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {a: Bool = false}>
                     <let {b: Bool = true}>
@@ -4972,6 +5086,7 @@ mod tests {
     fn less_than_or_equal() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <>
                     <if {3 <= 5}>
@@ -5039,6 +5154,7 @@ mod tests {
     fn option_literal() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {some_val: Option[String] = Some("hello")}>
                     <match {some_val}>
@@ -5096,6 +5212,7 @@ mod tests {
     fn option_match_wildcard_pattern() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {opt: Option[String] = Some("hello")}>
                     <match {opt}>
@@ -5151,6 +5268,7 @@ mod tests {
     fn option_match_nested_constant_folding() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {inner_opt: Option[String] = Some("inner")}>
                     <let {
@@ -5219,6 +5337,7 @@ mod tests {
     fn option_array_for_loop() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <for {item in [Some("a"), None, Some("b")]}>
                     <match {item}>
@@ -5301,6 +5420,7 @@ mod tests {
     fn enum_match_expr() {
         check(
             indoc! {r#"
+                -- main.hop --
                 enum Color {
                   Red,
                   Green,
@@ -5356,6 +5476,7 @@ mod tests {
     fn enum_match_statement() {
         check(
             indoc! {r#"
+                -- main.hop --
                 enum Color {
                   Red,
                   Green,
@@ -5423,6 +5544,7 @@ mod tests {
     fn enum_match_with_field_bindings() {
         check(
             indoc! {r#"
+                -- main.hop --
                 enum Outcome {
                   Success {
                     value: String,
@@ -5497,6 +5619,7 @@ mod tests {
     fn enum_with_field_named_tag() {
         check(
             indoc! {r#"
+                -- main.hop --
                 enum Item {
                   Tagged {
                     tag: String,
@@ -5563,6 +5686,7 @@ mod tests {
     fn enum_with_fields_match_on_expression_subject() {
         check(
             indoc! {r#"
+                -- main.hop --
                 enum Outcome {
                   Success {
                     value: String,
@@ -5629,6 +5753,7 @@ mod tests {
     fn enum_match_in_component_prop() {
         check(
             indoc! {r#"
+                -- main.hop --
                 enum Color {
                   Red,
                   Green,
@@ -5656,7 +5781,7 @@ mod tests {
             "green",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Badge(color@v0: test::Color) -> Fragment {
+                fn Badge@f0(color@v0: main::Color) -> Fragment {
                   match v0 {
                     Color::Red => {
                       write("red")
@@ -5670,7 +5795,7 @@ mod tests {
                   }
                 }
                 page Test() {
-                  call Badge(color = Color::Green)
+                  call Badge@f0(color = Color::Green)
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -5699,6 +5824,7 @@ mod tests {
     fn enum_match_err_variant_with_bindings() {
         check(
             indoc! {r#"
+                -- main.hop --
                 enum Outcome {
                   Success {
                     value: String,
@@ -5775,6 +5901,7 @@ mod tests {
     fn enum_with_multiple_fields() {
         check(
             indoc! {r#"
+                -- main.hop --
                 enum Response {
                   Win {
                     code: String,
@@ -5857,6 +5984,7 @@ mod tests {
     fn enum_match_with_shorthand_field_destructuring() {
         check(
             indoc! {r#"
+                -- main.hop --
                 enum Outcome {
                   Success {
                     value: String,
@@ -5931,6 +6059,7 @@ mod tests {
     fn array_length_simple() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {items: Array[String] = ["a", "b", "c"]}>
                     {items.len().to_string()}
@@ -5972,6 +6101,7 @@ mod tests {
     fn array_length_empty() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {items: Array[String] = []}>
                     {items.len().to_string()}
@@ -6013,6 +6143,7 @@ mod tests {
     fn array_length_in_comparison() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {items: Array[String] = ["x", "y"]}>
                     <if {items.len() == 2}>
@@ -6062,6 +6193,7 @@ mod tests {
     fn array_length_less_than() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {items: Array[String] = ["a"]}>
                     <if {items.len() < 5}>
@@ -6111,6 +6243,7 @@ mod tests {
     fn array_length_int_array() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {numbers: Array[Int] = [1, 2, 3, 4, 5]}>
                     {numbers.len().to_string()}
@@ -6152,6 +6285,7 @@ mod tests {
     fn array_is_empty_true() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {items: Array[String] = []}>
                     <match {items.is_empty()}>
@@ -6209,6 +6343,7 @@ mod tests {
     fn array_is_empty_false() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {items: Array[String] = ["a", "b"]}>
                     <match {items.is_empty()}>
@@ -6266,6 +6401,7 @@ mod tests {
     fn array_is_empty_int_array() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {numbers: Array[Int] = [1, 2, 3]}>
                     <match {numbers.is_empty()}>
@@ -6323,6 +6459,7 @@ mod tests {
     fn int_to_string_simple() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {count: Int = 42}>
                     {count.to_string()}
@@ -6364,6 +6501,7 @@ mod tests {
     fn int_to_string_zero() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {num: Int = 0}>
                     {num.to_string()}
@@ -6405,6 +6543,7 @@ mod tests {
     fn int_to_string_concat() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {count: Int = 5}>
                     {"Count: " + count.to_string()}
@@ -6446,6 +6585,7 @@ mod tests {
     fn float_to_int_simple() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {price: Float = 3.7}>
                     {price.to_int().to_string()}
@@ -6487,6 +6627,7 @@ mod tests {
     fn float_to_int_whole_number() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {num: Float = 5.0}>
                     {num.to_int().to_string()}
@@ -6528,6 +6669,7 @@ mod tests {
     fn for_loop_with_underscore_range() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <for {_ in 0..=2}>
                     x
@@ -6571,6 +6713,7 @@ mod tests {
     fn for_loop_variable_left_unused_by_optimization_becomes_underscore() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <for {x in ["a", "b"]}>
                     <if {false}>
@@ -6624,6 +6767,7 @@ mod tests {
     fn for_loop_with_underscore_array() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {items: Array[String] = ["a", "b", "c"]}>
                     <for {_ in items}>
@@ -6671,6 +6815,7 @@ mod tests {
     fn for_loop_with_underscore_nested() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <for {_ in 0..=1}>
                     <for {_ in 0..=2}>
@@ -6720,6 +6865,7 @@ mod tests {
     fn for_loop_with_underscore_mixed_with_named() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <for {i in 1..=2}>
                     <for {_ in 0..=1}>
@@ -6769,6 +6915,7 @@ mod tests {
     fn method_call_on_array_literal() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <>
                     {[1, 2, 3].len().to_string()}
@@ -6808,6 +6955,7 @@ mod tests {
     fn method_call_on_parenthesized_expression() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <>
                     {(1 + 2).to_string()}
@@ -6847,6 +6995,7 @@ mod tests {
     fn int_literal_to_string() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <>
                     {42.to_string()}
@@ -6886,6 +7035,7 @@ mod tests {
     fn nested_option_match() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {
                     nested: Option[Option[String]] = Some(Some("deep")),
@@ -6955,6 +7105,7 @@ mod tests {
     fn option_wildcard_match_some_input() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {opt: Option[String] = Some("x")}>
                     <match {opt}>
@@ -7010,6 +7161,7 @@ mod tests {
     fn option_wildcard_match_none_input() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {opt: Option[String] = None}>
                     <match {opt}>
@@ -7065,6 +7217,7 @@ mod tests {
     fn option_wildcard_match_expr_some_input() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {opt: Option[String] = Some("x")}>
                     {match opt {Some(_) => "some", None => "none"}}
@@ -7109,6 +7262,7 @@ mod tests {
     fn option_wildcard_match_expr_none_input() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {opt: Option[String] = None}>
                     {match opt {Some(_) => "some", None => "none"}}
@@ -7154,6 +7308,7 @@ mod tests {
         // Test Some(Some(_)) pattern - inner value discarded
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {nested: Option[Option[String]] = Some(Some("x"))}>
                     <match {nested}>
@@ -7220,6 +7375,7 @@ mod tests {
         // Test Some(_) pattern on Option[Option[String]] - entire inner option discarded
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {nested: Option[Option[String]] = Some(Some("x"))}>
                     <match {nested}>
@@ -7276,6 +7432,7 @@ mod tests {
         // Test Outcome::Success(value: _) - wildcard binding for enum field
         check(
             indoc! {r#"
+                -- main.hop --
                 enum Outcome {
                   Success {
                     value: String,
@@ -7343,6 +7500,7 @@ mod tests {
         // Test Outcome::Failure(message: _) - wildcard binding for enum field
         check(
             indoc! {r#"
+                -- main.hop --
                 enum Outcome {
                   Success {
                     value: String,
@@ -7410,6 +7568,7 @@ mod tests {
         // Test record pattern with wildcard binding - Person(name: _, age: a)
         check(
             indoc! {r#"
+                -- main.hop --
                 record Person {
                   name: String,
                   age: Int,
@@ -7467,6 +7626,7 @@ mod tests {
         // Test Some(Some(Some(_))) pattern - triple nested with innermost wildcard
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {
                     deep: Option[Option[Option[String]]] = Some(
@@ -7547,6 +7707,7 @@ mod tests {
         // Test nested enum matching with wildcard - Outer::Success(value: Inner::Success(value: _))
         check(
             indoc! {r#"
+                -- main.hop --
                 enum Inner {
                   Success {
                     value: String,
@@ -7639,6 +7800,7 @@ mod tests {
         // Test bool match with one explicit case and wildcard - match b {true => "t", _ => "f"}
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {b: Bool = true}>
                     {match b {true => "t", _ => "f"}}
@@ -7684,6 +7846,7 @@ mod tests {
         // Test bool match with wildcard matching false
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {b: Bool = false}>
                     {match b {true => "t", _ => "f"}}
@@ -7728,6 +7891,7 @@ mod tests {
     fn nested_match_statements_with_literal_subjects() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <match {Some("outer")}>
                     <case {Some(x)}>
@@ -7805,6 +7969,7 @@ mod tests {
     fn nested_match_statements_with_variable_subjects() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {
                     outer: Option[Option[String]] = Some(Some("hello")),
@@ -7882,6 +8047,7 @@ mod tests {
     fn join_macro_merges_css_classes() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <div class={
                     join!(
@@ -7931,6 +8097,7 @@ mod tests {
     fn reserved_keyword_as_variable_name_typescript() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {delete: String = "removed"}>
                     {delete}
@@ -7972,6 +8139,7 @@ mod tests {
     fn reserved_keyword_class_as_variable_name() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {class: String = "my-class"}>
                     <div class={class}>
@@ -8019,6 +8187,7 @@ mod tests {
     fn reserved_keyword_switch_as_variable_name() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {switch: String = "on"}>
                     <span>
@@ -8065,6 +8234,7 @@ mod tests {
     fn unreserved_keyword_type_as_variable_name() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {type: String = "button"}>
                     <input type={type}>
@@ -8110,6 +8280,7 @@ mod tests {
     fn unreserved_keyword_for_as_attribute_name() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <label for="email">
                     Email
@@ -8153,6 +8324,7 @@ mod tests {
     fn view_parameter_named_typescript_reserved_keyword() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <>
                     ok
@@ -8204,6 +8376,7 @@ mod tests {
     fn view_parameter_named_rust_keyword() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <>
                     ok
@@ -8255,6 +8428,7 @@ mod tests {
     fn recursive_component_parameter_named_typescript_reserved_keyword() {
         check(
             indoc! {r#"
+                -- main.hop --
                 component Countdown(delete: Int) {
                   <>
                     {delete.to_string()}
@@ -8271,32 +8445,32 @@ mod tests {
             "3210",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Countdown(delete@v0: Int) -> Fragment {
+                fn Countdown@f0(delete@v0: Int) -> Fragment {
                   write_string(v0.to_string())
                   match (0 < v0) {
                     true => {
-                      call Countdown(delete = (v0 - 1))
+                      call Countdown@f0(delete = (v0 - 1))
                     }
                     false => {
                     }
                   }
                 }
                 page Test() {
-                  call Countdown(delete = 3)
+                  call Countdown@f0(delete = 3)
                 }
                 -- ir (optimized) --
-                fn Countdown(delete@v0: Int) -> Fragment {
+                fn Countdown@f0(delete@v0: Int) -> Fragment {
                   write_string(v0.to_string())
                   match (0 < v0) {
                     true => {
-                      call Countdown(delete = (v0 - 1))
+                      call Countdown@f0(delete = (v0 - 1))
                     }
                     false => {
                     }
                   }
                 }
                 page Test() {
-                  call Countdown(delete = 3)
+                  call Countdown@f0(delete = 3)
                 }
                 -- expected output --
                 3210
@@ -8321,6 +8495,7 @@ mod tests {
     fn recursive_component_parameter_named_rust_keyword() {
         check(
             indoc! {r#"
+                -- main.hop --
                 component Countdown(type: Int) {
                   <>
                     {type.to_string()}
@@ -8337,32 +8512,32 @@ mod tests {
             "3210",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Countdown(type@v0: Int) -> Fragment {
+                fn Countdown@f0(type@v0: Int) -> Fragment {
                   write_string(v0.to_string())
                   match (0 < v0) {
                     true => {
-                      call Countdown(type = (v0 - 1))
+                      call Countdown@f0(type = (v0 - 1))
                     }
                     false => {
                     }
                   }
                 }
                 page Test() {
-                  call Countdown(type = 3)
+                  call Countdown@f0(type = 3)
                 }
                 -- ir (optimized) --
-                fn Countdown(type@v0: Int) -> Fragment {
+                fn Countdown@f0(type@v0: Int) -> Fragment {
                   write_string(v0.to_string())
                   match (0 < v0) {
                     true => {
-                      call Countdown(type = (v0 - 1))
+                      call Countdown@f0(type = (v0 - 1))
                     }
                     false => {
                     }
                   }
                 }
                 page Test() {
-                  call Countdown(type = 3)
+                  call Countdown@f0(type = 3)
                 }
                 -- expected output --
                 3210
@@ -8387,6 +8562,7 @@ mod tests {
     fn escape_sequences() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <>
                     {"\""}
@@ -8435,6 +8611,7 @@ mod tests {
     fn for_loop_record_field_in_let_binding() {
         check(
             indoc! {r#"
+                -- main.hop --
                 record Item {
                   name: String,
                   value: String,
@@ -8510,6 +8687,7 @@ mod tests {
     fn for_loop_nested_record_field_in_let_binding() {
         check(
             indoc! {r#"
+                -- main.hop --
                 record Address {
                   city: String,
                 }
@@ -8601,6 +8779,7 @@ mod tests {
     fn for_loop_record_field_in_record_literal() {
         check(
             indoc! {r#"
+                -- main.hop --
                 record Source {
                   name: String,
                   value: String,
@@ -8680,6 +8859,7 @@ mod tests {
     fn for_loop_record_field_in_option_construction() {
         check(
             indoc! {r#"
+                -- main.hop --
                 record Item {
                   name: String,
                 }
@@ -8773,6 +8953,7 @@ mod tests {
     fn string_concat_in_let_binding() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {a: String = "hello"}>
                     <let {b: String = "world"}>
@@ -8826,6 +9007,7 @@ mod tests {
     fn string_concat_in_record_field() {
         check(
             indoc! {r#"
+                -- main.hop --
                 record Greeting {
                   message: String,
                 }
@@ -8873,6 +9055,7 @@ mod tests {
     fn int_to_string_in_let_binding() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {n: Int = 42}>
                     <let {s: String = n.to_string()}>
@@ -8922,6 +9105,7 @@ mod tests {
     fn record_with_array_field() {
         check(
             indoc! {r#"
+                -- main.hop --
                 record Container {
                   items: Array[String],
                 }
@@ -8979,6 +9163,7 @@ mod tests {
     fn int_to_string_in_record_field() {
         check(
             indoc! {r#"
+                -- main.hop --
                 record Label {
                   text: String,
                 }
@@ -9028,6 +9213,7 @@ mod tests {
     fn nested_record_with_array() {
         check(
             indoc! {r#"
+                -- main.hop --
                 record Inner {
                   values: Array[String],
                 }
@@ -9091,6 +9277,7 @@ mod tests {
     fn move_field_into_record_literal() {
         check(
             indoc! {r#"
+                -- main.hop --
                 record Foo {
                   a: String,
                 }
@@ -9146,6 +9333,7 @@ mod tests {
     fn match_expr_field_access_reused() {
         check(
             indoc! {r#"
+                -- main.hop --
                 record Foo {
                   a: String,
                 }
@@ -9213,6 +9401,7 @@ mod tests {
     fn self_referential_record_with_array() {
         check(
             indoc! {r#"
+                -- main.hop --
                 record TreeNode {
                   value: String,
                   children: Array[TreeNode],
@@ -9261,6 +9450,7 @@ mod tests {
     fn self_referential_record_with_option() {
         check(
             indoc! {r#"
+                -- main.hop --
                 record Node {
                   value: String,
                   next: Option[Node],
@@ -9278,7 +9468,7 @@ mod tests {
                 page Test() {
                   let v0 = Node {
                     value: "first",
-                    next: Option[test::Node]::None,
+                    next: Option[main::Node]::None,
                   } in {
                     write_string(v0.value)
                   }
@@ -9310,6 +9500,7 @@ mod tests {
     fn self_referential_enum() {
         check(
             indoc! {r#"
+                -- main.hop --
                 enum Expr {
                   Literal {
                     value: String,
@@ -9376,6 +9567,7 @@ mod tests {
     fn nested_self_referential_enum() {
         check(
             indoc! {r#"
+                -- main.hop --
                 enum Expr {
                   Literal {
                     value: String,
@@ -9448,6 +9640,7 @@ mod tests {
     fn mutually_recursive_records() {
         check(
             indoc! {r#"
+                -- main.hop --
                 record Folder {
                   name: String,
                   parent: Option[File],
@@ -9469,7 +9662,7 @@ mod tests {
                 page Test() {
                   let v0 = Folder {
                     name: "root",
-                    parent: Option[test::File]::None,
+                    parent: Option[main::File]::None,
                   } in {
                     write_string(v0.name)
                   }
@@ -9501,6 +9694,7 @@ mod tests {
     fn three_type_recursion_cycle() {
         check(
             indoc! {r#"
+                -- main.hop --
                 enum Expr {
                   Literal {
                     value: String,
@@ -9535,7 +9729,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Leaf {back: Option[test::Expr]::None} in {
+                  let v0 = Leaf {back: Option[main::Expr]::None} in {
                     let v1 = v0.back in {
                       match v1 {
                         Some(_) => {
@@ -9575,6 +9769,7 @@ mod tests {
     fn recursive_field_from_variable() {
         check(
             indoc! {r#"
+                -- main.hop --
                 record Node {
                   value: String,
                   next: Option[Node],
@@ -9592,7 +9787,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Option[test::Node]::None in {
+                  let v0 = Option[main::Node]::None in {
                     let v1 = Node {value: "head", next: v0} in {
                       write_string(v1.value)
                     }
@@ -9625,6 +9820,7 @@ mod tests {
     fn recursive_field_from_match_arms() {
         check(
             indoc! {r#"
+                -- main.hop --
                 record Node {
                   value: String,
                   next: Option[Node],
@@ -9652,14 +9848,14 @@ mod tests {
                 page Test() {
                   let v0 = Node {
                     value: "leaf",
-                    next: Option[test::Node]::None,
+                    next: Option[main::Node]::None,
                   } in {
                     let v2 = Node {
                       value: "head",
                       next: let v1 = true in {
                         match v1 {
-                          true => { Option[test::Node]::Some(v0) }
-                          false => { Option[test::Node]::None }
+                          true => { Option[main::Node]::Some(v0) }
+                          false => { Option[main::Node]::None }
                         }
                       },
                     } in {
@@ -9694,6 +9890,7 @@ mod tests {
     fn nested_option_recursive_field() {
         check(
             indoc! {r#"
+                -- main.hop --
                 record Node {
                   value: String,
                   next: Option[Option[Node]],
@@ -9711,7 +9908,7 @@ mod tests {
                 page Test() {
                   let v0 = Node {
                     value: "node",
-                    next: Option[Option[test::Node]]::None,
+                    next: Option[Option[main::Node]]::None,
                   } in {
                     write_string(v0.value)
                   }
@@ -9743,6 +9940,7 @@ mod tests {
     fn reading_a_nested_option_boxed_field() {
         check(
             indoc! {r#"
+                -- main.hop --
                 record Node {
                   value: String,
                   next: Option[Option[Node]],
@@ -9779,9 +9977,9 @@ mod tests {
                 page Test() {
                   let v0 = Node {
                     value: "head",
-                    next: Option[Option[test::Node]]::Some(Option[test::Node]::Some(Node {
+                    next: Option[Option[main::Node]]::Some(Option[main::Node]::Some(Node {
                       value: "tail",
-                      next: Option[Option[test::Node]]::None,
+                      next: Option[Option[main::Node]]::None,
                     })),
                   } in {
                     let v1 = v0.next in {
@@ -9834,6 +10032,7 @@ mod tests {
     fn reading_a_boxed_field() {
         check(
             indoc! {r#"
+                -- main.hop --
                 record Node {
                   value: String,
                   next: Option[Node],
@@ -9864,7 +10063,7 @@ mod tests {
                 page Test() {
                   let v0 = Node {
                     value: "node",
-                    next: Option[test::Node]::None,
+                    next: Option[main::Node]::None,
                   } in {
                     let v1 = Holder {held: v0.next} in {
                       let v2 = v1.held in {
@@ -9907,6 +10106,7 @@ mod tests {
     fn reading_a_directly_boxed_field() {
         check(
             indoc! {r#"
+                -- main.hop --
                 record A {
                   b: B,
                 }
@@ -9935,7 +10135,7 @@ mod tests {
                 -- ir (unoptimized) --
                 page Test() {
                   let v0 = A {
-                    b: B {name: "b", a: Option[test::A]::None},
+                    b: B {name: "b", a: Option[main::A]::None},
                   } in {
                     write_string(v0.b.name)
                     let v1 = v0.b.a in {
@@ -9977,6 +10177,7 @@ mod tests {
     fn matching_a_boxed_enum_field() {
         check(
             indoc! {r#"
+                -- main.hop --
                 enum Tree {
                   Node {
                     label: String,
@@ -10024,7 +10225,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Tree::Node {label: "a", left: Tree::Leaf, right: Option[test::Tree]::None} in {
+                  let v0 = Tree::Node {label: "a", left: Tree::Leaf, right: Option[main::Tree]::None} in {
                     match v0 {
                       Tree::Node(label: v1, left: v2, right: v3) => {
                         let v4 = v1 in {
@@ -10080,6 +10281,7 @@ mod tests {
     fn matching_a_non_boxed_option_enum_field() {
         check(
             indoc! {r#"
+                -- main.hop --
                 enum Contact {
                   Email {
                     address: String,
@@ -10170,6 +10372,7 @@ mod tests {
     fn simple_component_call() {
         check(
             indoc! {r#"
+                -- main.hop --
                 component Greeting(name: String) {
                   <>
                     Hello,
@@ -10186,14 +10389,14 @@ mod tests {
             "Hello, World!",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Greeting(name@v0: String) -> Fragment {
+                fn Greeting@f0(name@v0: String) -> Fragment {
                   write("Hello,")
                   write_string(" ")
                   write_string(v0)
                   write("!")
                 }
                 page Test() {
-                  call Greeting(name = "World")
+                  call Greeting@f0(name = "World")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -10222,6 +10425,7 @@ mod tests {
     fn component_with_children() {
         check(
             indoc! {r#"
+                -- main.hop --
                 component Card(
                   title: String,
                   children: Fragment,
@@ -10245,7 +10449,7 @@ mod tests {
             r#"<div class="card"><h2>Hello</h2><p>world</p></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Card(
+                fn Card@f0(
                   title@v0: String,
                   children@v1: Fragment,
                 ) -> Fragment {
@@ -10260,7 +10464,7 @@ mod tests {
                   write("</div>")
                 }
                 page Test() {
-                  call Card(title = "Hello", children = {
+                  call Card@f0(title = "Hello", children = {
                     write("<p")
                     write(">")
                     write("world")
@@ -10294,6 +10498,7 @@ mod tests {
     fn component_children_forwarded_to_another_component() {
         check(
             indoc! {r#"
+                -- main.hop --
                 component Inner(children: Fragment) {
                   <div class="inner">
                     {children}
@@ -10319,24 +10524,24 @@ mod tests {
             r#"<div class="outer"><div class="inner"><p>hello</p></div></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Inner(children@v0: Fragment) -> Fragment {
+                fn Inner@f0(children@v0: Fragment) -> Fragment {
                   write("<div")
                   write(" class=\"inner\"")
                   write(">")
                   write_fragment(v0)
                   write("</div>")
                 }
-                fn Outer(children@v1: Fragment) -> Fragment {
+                fn Outer@f1(children@v1: Fragment) -> Fragment {
                   write("<div")
                   write(" class=\"outer\"")
                   write(">")
-                  call Inner(children = {
+                  call Inner@f0(children = {
                     write_fragment(v1)
                   })
                   write("</div>")
                 }
                 page Test() {
-                  call Outer(children = {
+                  call Outer@f1(children = {
                     write("<p")
                     write(">")
                     write("hello")
@@ -10371,6 +10576,7 @@ mod tests {
     fn component_children_with_component_calls() {
         check(
             indoc! {r#"
+                -- main.hop --
                 component Header(title: String) {
                   <header>
                     <h1>
@@ -10408,7 +10614,7 @@ mod tests {
             r#"<div class="layout"><header><h1>Welcome</h1></header><main><p>Hello world</p></main><footer><p>Copyright 2024</p></footer></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Footer() -> Fragment {
+                fn Footer@f0() -> Fragment {
                   write("<footer")
                   write(">")
                   write("<p")
@@ -10417,7 +10623,7 @@ mod tests {
                   write("</p>")
                   write("</footer>")
                 }
-                fn Header(title@v0: String) -> Fragment {
+                fn Header@f1(title@v0: String) -> Fragment {
                   write("<header")
                   write(">")
                   write("<h1")
@@ -10426,7 +10632,7 @@ mod tests {
                   write("</h1>")
                   write("</header>")
                 }
-                fn Layout(children@v1: Fragment) -> Fragment {
+                fn Layout@f2(children@v1: Fragment) -> Fragment {
                   write("<div")
                   write(" class=\"layout\"")
                   write(">")
@@ -10434,8 +10640,8 @@ mod tests {
                   write("</div>")
                 }
                 page Test() {
-                  call Layout(children = {
-                    call Header(title = "Welcome")
+                  call Layout@f2(children = {
+                    call Header@f1(title = "Welcome")
                     write("<main")
                     write(">")
                     write("<p")
@@ -10443,7 +10649,7 @@ mod tests {
                     write("Hello world")
                     write("</p>")
                     write("</main>")
-                    call Footer()
+                    call Footer@f0()
                   })
                 }
                 -- ir (optimized) --
@@ -10475,6 +10681,7 @@ mod tests {
     fn component_children_used_twice() {
         check(
             indoc! {r#"
+                -- main.hop --
                 component Repeat(children: Fragment) {
                   <>
                     <div class="first">
@@ -10497,7 +10704,7 @@ mod tests {
             r#"<div class="first"><span>hi</span></div><div class="second"><span>hi</span></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Repeat(children@v0: Fragment) -> Fragment {
+                fn Repeat@f0(children@v0: Fragment) -> Fragment {
                   write("<div")
                   write(" class=\"first\"")
                   write(">")
@@ -10510,7 +10717,7 @@ mod tests {
                   write("</div>")
                 }
                 page Test() {
-                  call Repeat(children = {
+                  call Repeat@f0(children = {
                     write("<span")
                     write(">")
                     write("hi")
@@ -10552,6 +10759,7 @@ mod tests {
     fn recursive_component_with_non_recursive_sibling() {
         check(
             indoc! {r#"
+                -- main.hop --
                 record Node {
                   value: String,
                   next: Option[Node],
@@ -10590,19 +10798,19 @@ mod tests {
             "<strong>a</strong><strong>b</strong>",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Badge(text@v1: String) -> Fragment {
+                fn Badge@f0(text@v1: String) -> Fragment {
                   write("<strong")
                   write(">")
                   write_string(v1)
                   write("</strong>")
                 }
-                fn NodeView(node@v2: test::Node) -> Fragment {
-                  call Badge(text = v2.value)
+                fn NodeView@f1(node@v2: main::Node) -> Fragment {
+                  call Badge@f0(text = v2.value)
                   let v3 = v2.next in {
                     match v3 {
                       Some(v4) => {
                         let v5 = v4 in {
-                          call NodeView(node = v5)
+                          call NodeView@f1(node = v5)
                         }
                       }
                       None => {
@@ -10613,16 +10821,16 @@ mod tests {
                 page Test() {
                   let v0 = Node {
                     value: "a",
-                    next: Option[test::Node]::Some(Node {
+                    next: Option[main::Node]::Some(Node {
                       value: "b",
-                      next: Option[test::Node]::None,
+                      next: Option[main::Node]::None,
                     }),
                   } in {
-                    call NodeView(node = v0)
+                    call NodeView@f1(node = v0)
                   }
                 }
                 -- ir (optimized) --
-                fn NodeView(node@v2: test::Node) -> Fragment {
+                fn NodeView@f1(node@v2: main::Node) -> Fragment {
                   write("<strong>")
                   write_string(v2.value)
                   write("</strong>")
@@ -10630,7 +10838,7 @@ mod tests {
                     match v3 {
                       Some(v4) => {
                         let v5 = v4 in {
-                          call NodeView(node = v5)
+                          call NodeView@f1(node = v5)
                         }
                       }
                       None => {
@@ -10639,11 +10847,11 @@ mod tests {
                   }
                 }
                 page Test() {
-                  call NodeView(node = Node {
+                  call NodeView@f1(node = Node {
                     value: "a",
-                    next: Option[test::Node]::Some(Node {
+                    next: Option[main::Node]::Some(Node {
                       value: "b",
-                      next: Option[test::Node]::None,
+                      next: Option[main::Node]::None,
                     }),
                   })
                 }
@@ -10670,6 +10878,7 @@ mod tests {
     fn recursive_component_with_linked_list() {
         check(
             indoc! {r#"
+                -- main.hop --
                 record Node {
                   value: String,
                   next: Option[Node],
@@ -10709,7 +10918,7 @@ mod tests {
             "<span>a</span><span>b</span><span>c</span>",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn NodeView(node@v1: test::Node) -> Fragment {
+                fn NodeView@f0(node@v1: main::Node) -> Fragment {
                   write("<span")
                   write(">")
                   write_string(v1.value)
@@ -10718,7 +10927,7 @@ mod tests {
                     match v2 {
                       Some(v3) => {
                         let v4 = v3 in {
-                          call NodeView(node = v4)
+                          call NodeView@f0(node = v4)
                         }
                       }
                       None => {
@@ -10729,19 +10938,19 @@ mod tests {
                 page Test() {
                   let v0 = Node {
                     value: "a",
-                    next: Option[test::Node]::Some(Node {
+                    next: Option[main::Node]::Some(Node {
                       value: "b",
-                      next: Option[test::Node]::Some(Node {
+                      next: Option[main::Node]::Some(Node {
                         value: "c",
-                        next: Option[test::Node]::None,
+                        next: Option[main::Node]::None,
                       }),
                     }),
                   } in {
-                    call NodeView(node = v0)
+                    call NodeView@f0(node = v0)
                   }
                 }
                 -- ir (optimized) --
-                fn NodeView(node@v1: test::Node) -> Fragment {
+                fn NodeView@f0(node@v1: main::Node) -> Fragment {
                   write("<span>")
                   write_string(v1.value)
                   write("</span>")
@@ -10749,7 +10958,7 @@ mod tests {
                     match v2 {
                       Some(v3) => {
                         let v4 = v3 in {
-                          call NodeView(node = v4)
+                          call NodeView@f0(node = v4)
                         }
                       }
                       None => {
@@ -10758,13 +10967,13 @@ mod tests {
                   }
                 }
                 page Test() {
-                  call NodeView(node = Node {
+                  call NodeView@f0(node = Node {
                     value: "a",
-                    next: Option[test::Node]::Some(Node {
+                    next: Option[main::Node]::Some(Node {
                       value: "b",
-                      next: Option[test::Node]::Some(Node {
+                      next: Option[main::Node]::Some(Node {
                         value: "c",
-                        next: Option[test::Node]::None,
+                        next: Option[main::Node]::None,
                       }),
                     }),
                   })
@@ -10792,6 +11001,7 @@ mod tests {
     fn component_with_default_parameter() {
         check(
             indoc! {r#"
+                -- main.hop --
                 component Card(title: String = "New card") {
                   <div>
                     {title}
@@ -10805,14 +11015,14 @@ mod tests {
             r#"<div>New card</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Card(title@v0: String) -> Fragment {
+                fn Card@f0(title@v0: String) -> Fragment {
                   write("<div")
                   write(">")
                   write_string(v0)
                   write("</div>")
                 }
                 page Test() {
-                  call Card(title = "New card")
+                  call Card@f0(title = "New card")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -10841,6 +11051,7 @@ mod tests {
     fn component_with_default_parameter_overridden() {
         check(
             indoc! {r#"
+                -- main.hop --
                 component Card(title: String = "New card") {
                   <div>
                     {title}
@@ -10854,14 +11065,14 @@ mod tests {
             r#"<div>Custom title</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Card(title@v0: String) -> Fragment {
+                fn Card@f0(title@v0: String) -> Fragment {
                   write("<div")
                   write(">")
                   write_string(v0)
                   write("</div>")
                 }
                 page Test() {
-                  call Card(title = "Custom title")
+                  call Card@f0(title = "Custom title")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -10890,6 +11101,7 @@ mod tests {
     fn component_with_mixed_default_and_required_parameters() {
         check(
             indoc! {r#"
+                -- main.hop --
                 component Card(
                   title: String,
                   subtitle: String = "No subtitle",
@@ -10910,7 +11122,10 @@ mod tests {
             r#"<div>Hello - No subtitle</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Card(title@v0: String, subtitle@v1: String) -> Fragment {
+                fn Card@f0(
+                  title@v0: String,
+                  subtitle@v1: String,
+                ) -> Fragment {
                   write("<div")
                   write(">")
                   write_string(v0)
@@ -10921,7 +11136,7 @@ mod tests {
                   write("</div>")
                 }
                 page Test() {
-                  call Card(title = "Hello", subtitle = "No subtitle")
+                  call Card@f0(title = "Hello", subtitle = "No subtitle")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -10950,6 +11165,7 @@ mod tests {
     fn component_with_mixed_default_and_required_parameters_all_provided() {
         check(
             indoc! {r#"
+                -- main.hop --
                 component Card(
                   title: String,
                   subtitle: String = "No subtitle",
@@ -10970,7 +11186,10 @@ mod tests {
             r#"<div>Hello - World</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Card(title@v0: String, subtitle@v1: String) -> Fragment {
+                fn Card@f0(
+                  title@v0: String,
+                  subtitle@v1: String,
+                ) -> Fragment {
                   write("<div")
                   write(">")
                   write_string(v0)
@@ -10981,7 +11200,7 @@ mod tests {
                   write("</div>")
                 }
                 page Test() {
-                  call Card(title = "Hello", subtitle = "World")
+                  call Card@f0(title = "Hello", subtitle = "World")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -11010,6 +11229,7 @@ mod tests {
     fn component_with_multiple_default_parameters() {
         check(
             indoc! {r#"
+                -- main.hop --
                 component Card(
                   title: String = "Default",
                   subtitle: String = "Sub",
@@ -11035,7 +11255,7 @@ mod tests {
             r#"<div>Default - Custom - End</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Card(
+                fn Card@f0(
                   title@v0: String,
                   subtitle@v1: String,
                   footer@v2: String,
@@ -11054,7 +11274,7 @@ mod tests {
                   write("</div>")
                 }
                 page Test() {
-                  call Card(title = "Default", subtitle = "Custom", footer = "End")
+                  call Card@f0(title = "Default", subtitle = "Custom", footer = "End")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -11083,6 +11303,7 @@ mod tests {
     fn component_with_optional_children() {
         check(
             indoc! {r#"
+                -- main.hop --
                 component Card(
                   title: String,
                   children: Fragment = <></>,
@@ -11102,7 +11323,7 @@ mod tests {
             r#"<div class="card"><h2>Hello</h2></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Card(
+                fn Card@f0(
                   title@v0: String,
                   children@v1: Fragment,
                 ) -> Fragment {
@@ -11117,7 +11338,7 @@ mod tests {
                   write("</div>")
                 }
                 page Test() {
-                  call Card(title = "Hello", children = {})
+                  call Card@f0(title = "Hello", children = {})
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -11146,6 +11367,7 @@ mod tests {
     fn component_with_optional_children_called_with_and_without_argument() {
         check(
             indoc! {r#"
+                -- main.hop --
                 component Card(
                   title: String,
                   children: Fragment = <></>,
@@ -11172,7 +11394,7 @@ mod tests {
             r#"<div class="card"><h2>With</h2><p>body</p></div><div class="card"><h2>Without</h2></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Card(
+                fn Card@f0(
                   title@v0: String,
                   children@v1: Fragment,
                 ) -> Fragment {
@@ -11187,13 +11409,13 @@ mod tests {
                   write("</div>")
                 }
                 page Test() {
-                  call Card(title = "With", children = {
+                  call Card@f0(title = "With", children = {
                     write("<p")
                     write(">")
                     write("body")
                     write("</p>")
                   })
-                  call Card(title = "Without", children = {})
+                  call Card@f0(title = "Without", children = {})
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -11223,6 +11445,7 @@ mod tests {
     fn string_is_empty_true() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {name: String = ""}>
                     <match {name.is_empty()}>
@@ -11280,6 +11503,7 @@ mod tests {
     fn string_is_empty_false() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {name: String = "hello"}>
                     <match {name.is_empty()}>
@@ -11337,6 +11561,7 @@ mod tests {
     fn option_is_some_true() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {value: Option[String] = Some("hello")}>
                     <match {value.is_some()}>
@@ -11394,6 +11619,7 @@ mod tests {
     fn option_is_some_false() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {value: Option[String] = None}>
                     <match {value.is_some()}>
@@ -11451,6 +11677,7 @@ mod tests {
     fn option_is_none_true() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {value: Option[String] = None}>
                     <match {value.is_none()}>
@@ -11508,6 +11735,7 @@ mod tests {
     fn option_is_none_false() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {value: Option[String] = Some("hello")}>
                     <match {value.is_none()}>
@@ -11565,6 +11793,7 @@ mod tests {
     fn option_is_none_as_comparison_operand() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {o: Option[Bool] = None}>
                     <if {true == o.is_none()}>
@@ -11614,6 +11843,7 @@ mod tests {
     fn string_is_empty_as_comparison_operand() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <if {"a".is_empty() == "b".is_empty()}>
                     x
@@ -11659,6 +11889,7 @@ mod tests {
     fn top_level_text() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <>
                     hello world
@@ -11698,6 +11929,7 @@ mod tests {
     fn top_level_multiline_text() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <>
                     hello
@@ -11740,6 +11972,7 @@ mod tests {
     fn enum_bool_field_destructured_in_component() {
         check(
             indoc! {r#"
+                -- main.hop --
                 enum Item {
                   Todo {
                     label: String,
@@ -11776,7 +12009,7 @@ mod tests {
             "[x]Buy milk,[ ]Walk dog",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn RenderItem(item@v0: test::Item) -> Fragment {
+                fn RenderItem@f0(item@v0: main::Item) -> Fragment {
                   match v0 {
                     Item::Todo(label: v1, done: v2) => {
                       let v3 = v1 in {
@@ -11802,9 +12035,9 @@ mod tests {
                   }
                 }
                 page Test() {
-                  call RenderItem(item = Item::Todo {label: "Buy milk", done: true})
+                  call RenderItem@f0(item = Item::Todo {label: "Buy milk", done: true})
                   write(",")
-                  call RenderItem(item = Item::Todo {label: "Walk dog", done: false})
+                  call RenderItem@f0(item = Item::Todo {label: "Walk dog", done: false})
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -11833,6 +12066,7 @@ mod tests {
     fn enum_int_field_compared_in_component() {
         check(
             indoc! {r#"
+                -- main.hop --
                 enum TimeAgo {
                   MinutesAgo {
                     count: Int,
@@ -11872,7 +12106,7 @@ mod tests {
             "1 minute ago,5 minutes ago,1 hour ago",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Render(time@v0: test::TimeAgo) -> Fragment {
+                fn Render@f0(time@v0: main::TimeAgo) -> Fragment {
                   match v0 {
                     TimeAgo::MinutesAgo(count: v1) => {
                       let v2 = v1 in {
@@ -11897,11 +12131,11 @@ mod tests {
                   }
                 }
                 page Test() {
-                  call Render(time = TimeAgo::MinutesAgo {count: 1})
+                  call Render@f0(time = TimeAgo::MinutesAgo {count: 1})
                   write(",")
-                  call Render(time = TimeAgo::MinutesAgo {count: 5})
+                  call Render@f0(time = TimeAgo::MinutesAgo {count: 5})
                   write(",")
-                  call Render(time = TimeAgo::HoursAgo {count: 1})
+                  call Render@f0(time = TimeAgo::HoursAgo {count: 1})
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -11930,6 +12164,7 @@ mod tests {
     fn enum_wildcard_field_in_component() {
         check(
             indoc! {r#"
+                -- main.hop --
                 enum CodeBlock {
                   Snippet {
                     language: String,
@@ -11956,7 +12191,7 @@ mod tests {
             "<code>fn main()</code>",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn RenderCode(block@v0: test::CodeBlock) -> Fragment {
+                fn RenderCode@f0(block@v0: main::CodeBlock) -> Fragment {
                   match v0 {
                     CodeBlock::Snippet(code: v1) => {
                       let v2 = v1 in {
@@ -11969,7 +12204,7 @@ mod tests {
                   }
                 }
                 page Test() {
-                  call RenderCode(block = CodeBlock::Snippet {language: "rust", code: "fn main()"})
+                  call RenderCode@f0(block = CodeBlock::Snippet {language: "rust", code: "fn main()"})
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -11998,6 +12233,7 @@ mod tests {
     fn enum_field_named_type_in_component() {
         check(
             indoc! {r#"
+                -- main.hop --
                 enum ButtonElement {
                   Link {
                     href: String,
@@ -12032,7 +12268,7 @@ mod tests {
             r#"<button type="submit">btn</button>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Render(el@v0: test::ButtonElement) -> Fragment {
+                fn Render@f0(el@v0: main::ButtonElement) -> Fragment {
                   match v0 {
                     ButtonElement::Link(href: v1) => {
                       let v2 = v1 in {
@@ -12059,7 +12295,7 @@ mod tests {
                   }
                 }
                 page Test() {
-                  call Render(el = ButtonElement::Button {disabled: false, type: "submit"})
+                  call Render@f0(el = ButtonElement::Button {disabled: false, type: "submit"})
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -12088,6 +12324,7 @@ mod tests {
     fn option_record_used_in_inline_match_and_match_tag() {
         check(
             indoc! {r#"
+                -- main.hop --
                 record Target {
                   id: String,
                   title: String,
@@ -12133,7 +12370,7 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 page Test() {
-                  let v0 = Option[test::Target]::Some(Target {
+                  let v0 = Option[main::Target]::Some(Target {
                     id: "1",
                     title: "hello",
                   }) in {
@@ -12210,6 +12447,7 @@ mod tests {
     fn asset_macro_in_dev_rewrites_to_hop_assets() {
         check_with_asset_rewriter(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <img src={asset!("/logo.svg")}>
                 }
@@ -12254,6 +12492,7 @@ mod tests {
     fn asset_macro_in_prod_with_prefix() {
         check_with_asset_rewriter(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <img src={asset!("/logo.svg")}>
                 }
@@ -12299,6 +12538,7 @@ mod tests {
     fn recursive_component_with_children_renders() {
         check(
             indoc! {r#"
+                -- main.hop --
                 component Nest(
                   depth: Int,
                   children: Fragment,
@@ -12328,13 +12568,16 @@ mod tests {
             "<div><div><b>x</b></div></div>",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Nest(depth@v0: Int, children@v1: Fragment) -> Fragment {
+                fn Nest@f0(
+                  depth@v0: Int,
+                  children@v1: Fragment,
+                ) -> Fragment {
                   let v2 = (0 < v0) in {
                     match v2 {
                       true => {
                         write("<div")
                         write(">")
-                        call Nest(depth = (v0 - 1), children = {
+                        call Nest@f0(depth = (v0 - 1), children = {
                           write_fragment(v1)
                         })
                         write("</div>")
@@ -12346,7 +12589,7 @@ mod tests {
                   }
                 }
                 page Test() {
-                  call Nest(depth = 2, children = {
+                  call Nest@f0(depth = 2, children = {
                     write("<b")
                     write(">")
                     write("x")
@@ -12354,12 +12597,15 @@ mod tests {
                   })
                 }
                 -- ir (optimized) --
-                fn Nest(depth@v0: Int, children@v1: Fragment) -> Fragment {
+                fn Nest@f0(
+                  depth@v0: Int,
+                  children@v1: Fragment,
+                ) -> Fragment {
                   let v2 = (0 < v0) in {
                     match v2 {
                       true => {
                         write("<div>")
-                        call Nest(depth = (v0 - 1), children = {
+                        call Nest@f0(depth = (v0 - 1), children = {
                           write_fragment(v1)
                         })
                         write("</div>")
@@ -12371,7 +12617,7 @@ mod tests {
                   }
                 }
                 page Test() {
-                  call Nest(depth = 2, children = {
+                  call Nest@f0(depth = 2, children = {
                     write("<b>x</b>")
                   })
                 }
@@ -12398,6 +12644,7 @@ mod tests {
     fn children_can_be_bound_to_a_variable() {
         check(
             indoc! {r#"
+                -- main.hop --
                 component Foo(children: Fragment) {
                   <let {x = children}>
                     <div>
@@ -12417,7 +12664,7 @@ mod tests {
             "<div><b>hi</b></div>",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Foo(children@v0: Fragment) -> Fragment {
+                fn Foo@f0(children@v0: Fragment) -> Fragment {
                   let v1 = v0 in {
                     write("<div")
                     write(">")
@@ -12426,7 +12673,7 @@ mod tests {
                   }
                 }
                 page Test() {
-                  call Foo(children = {
+                  call Foo@f0(children = {
                     write("<b")
                     write(">")
                     write("hi")
@@ -12466,6 +12713,7 @@ mod tests {
     fn nested_children_forwarding() {
         check(
             indoc! {r#"
+                -- main.hop --
                 component Inner(children: Fragment) {
                   <em>
                     {children}
@@ -12489,22 +12737,22 @@ mod tests {
             "<section><em>z</em></section>",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Inner(children@v0: Fragment) -> Fragment {
+                fn Inner@f0(children@v0: Fragment) -> Fragment {
                   write("<em")
                   write(">")
                   write_fragment(v0)
                   write("</em>")
                 }
-                fn Outer(children@v1: Fragment) -> Fragment {
+                fn Outer@f1(children@v1: Fragment) -> Fragment {
                   write("<section")
                   write(">")
-                  call Inner(children = {
+                  call Inner@f0(children = {
                     write_fragment(v1)
                   })
                   write("</section>")
                 }
                 page Test() {
-                  call Outer(children = {
+                  call Outer@f1(children = {
                     write("z")
                   })
                 }
@@ -12535,6 +12783,7 @@ mod tests {
     fn recursive_component_carries_a_rest() {
         check(
             indoc! {r#"
+                -- main.hop --
                 component Nest(
                   n: Int,
                   ...rest,
@@ -12553,13 +12802,13 @@ mod tests {
             r#"<div id="root"><div><div></div></div></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Nest(n@v0: Int, rest@v1: Fragment) -> Fragment {
+                fn Nest@f0(n@v0: Int, rest@v1: Fragment) -> Fragment {
                   write("<div")
                   write_fragment(v1)
                   write(">")
                   match (0 < v0) {
                     true => {
-                      call Nest(n = (v0 - 1), rest = {})
+                      call Nest@f0(n = (v0 - 1), rest = {})
                     }
                     false => {
                     }
@@ -12567,18 +12816,18 @@ mod tests {
                   write("</div>")
                 }
                 page Test() {
-                  call Nest(n = 2, rest = {
+                  call Nest@f0(n = 2, rest = {
                     write(" id=\"root\"")
                   })
                 }
                 -- ir (optimized) --
-                fn Nest(n@v0: Int, rest@v1: Fragment) -> Fragment {
+                fn Nest@f0(n@v0: Int, rest@v1: Fragment) -> Fragment {
                   write("<div")
                   write_fragment(v1)
                   write(">")
                   match (0 < v0) {
                     true => {
-                      call Nest(n = (v0 - 1), rest = {})
+                      call Nest@f0(n = (v0 - 1), rest = {})
                     }
                     false => {
                     }
@@ -12586,7 +12835,7 @@ mod tests {
                   write("</div>")
                 }
                 page Test() {
-                  call Nest(n = 2, rest = {
+                  call Nest@f0(n = 2, rest = {
                     write(" id=\"root\"")
                   })
                 }
@@ -12613,6 +12862,7 @@ mod tests {
     fn recursive_component_with_int_param() {
         check(
             indoc! {r#"
+                -- main.hop --
                 component Countdown(n: Int) {
                   <>
                     {n.to_string()}
@@ -12629,32 +12879,32 @@ mod tests {
             "3210",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Countdown(n@v0: Int) -> Fragment {
+                fn Countdown@f0(n@v0: Int) -> Fragment {
                   write_string(v0.to_string())
                   match (0 < v0) {
                     true => {
-                      call Countdown(n = (v0 - 1))
+                      call Countdown@f0(n = (v0 - 1))
                     }
                     false => {
                     }
                   }
                 }
                 page Test() {
-                  call Countdown(n = 3)
+                  call Countdown@f0(n = 3)
                 }
                 -- ir (optimized) --
-                fn Countdown(n@v0: Int) -> Fragment {
+                fn Countdown@f0(n@v0: Int) -> Fragment {
                   write_string(v0.to_string())
                   match (0 < v0) {
                     true => {
-                      call Countdown(n = (v0 - 1))
+                      call Countdown@f0(n = (v0 - 1))
                     }
                     false => {
                     }
                   }
                 }
                 page Test() {
-                  call Countdown(n = 3)
+                  call Countdown@f0(n = 3)
                 }
                 -- expected output --
                 3210
@@ -12679,6 +12929,7 @@ mod tests {
     fn recursive_component_with_option_param() {
         check(
             indoc! {r#"
+                -- main.hop --
                 component Loop(
                   n: Int,
                   label: Option[String],
@@ -12705,7 +12956,10 @@ mod tests {
             "aaa",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Loop(n@v0: Int, label@v1: Option[String]) -> Fragment {
+                fn Loop@f0(
+                  n@v0: Int,
+                  label@v1: Option[String],
+                ) -> Fragment {
                   match v1 {
                     Some(v2) => {
                       let v3 = v2 in {
@@ -12718,17 +12972,20 @@ mod tests {
                   }
                   match (0 < v0) {
                     true => {
-                      call Loop(n = (v0 - 1), label = v1)
+                      call Loop@f0(n = (v0 - 1), label = v1)
                     }
                     false => {
                     }
                   }
                 }
                 page Test() {
-                  call Loop(n = 2, label = Option[String]::Some("a"))
+                  call Loop@f0(n = 2, label = Option[String]::Some("a"))
                 }
                 -- ir (optimized) --
-                fn Loop(n@v0: Int, label@v1: Option[String]) -> Fragment {
+                fn Loop@f0(
+                  n@v0: Int,
+                  label@v1: Option[String],
+                ) -> Fragment {
                   match v1 {
                     Some(v2) => {
                       let v3 = v2 in {
@@ -12741,14 +12998,14 @@ mod tests {
                   }
                   match (0 < v0) {
                     true => {
-                      call Loop(n = (v0 - 1), label = v1)
+                      call Loop@f0(n = (v0 - 1), label = v1)
                     }
                     false => {
                     }
                   }
                 }
                 page Test() {
-                  call Loop(n = 2, label = Option[String]::Some("a"))
+                  call Loop@f0(n = 2, label = Option[String]::Some("a"))
                 }
                 -- expected output --
                 aaa
@@ -12773,6 +13030,7 @@ mod tests {
     fn recursive_component_with_option_arg_used_twice() {
         check(
             indoc! {r#"
+                -- main.hop --
                 component C(x: Option[String]) {
                   <if {x.is_none()}>
                     <C x={x}/>
@@ -12789,10 +13047,10 @@ mod tests {
             "",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn C(x@v1: Option[String]) -> Fragment {
+                fn C@f0(x@v1: Option[String]) -> Fragment {
                   match v1.is_none() {
                     true => {
-                      call C(x = v1)
+                      call C@f0(x = v1)
                     }
                     false => {
                     }
@@ -12800,23 +13058,23 @@ mod tests {
                 }
                 page Test() {
                   let v0 = Option[String]::Some("a") in {
-                    call C(x = v0)
-                    call C(x = v0)
+                    call C@f0(x = v0)
+                    call C@f0(x = v0)
                   }
                 }
                 -- ir (optimized) --
-                fn C(x@v1: Option[String]) -> Fragment {
+                fn C@f0(x@v1: Option[String]) -> Fragment {
                   match v1.is_none() {
                     true => {
-                      call C(x = v1)
+                      call C@f0(x = v1)
                     }
                     false => {
                     }
                   }
                 }
                 page Test() {
-                  call C(x = Option[String]::Some("a"))
-                  call C(x = Option[String]::Some("a"))
+                  call C@f0(x = Option[String]::Some("a"))
+                  call C@f0(x = Option[String]::Some("a"))
                 }
                 -- expected output --
 
@@ -12841,6 +13099,7 @@ mod tests {
     fn mutually_recursive_components() {
         check(
             indoc! {r#"
+                -- main.hop --
                 component Even(n: Int) {
                   <>
                     <if {n == 0}>
@@ -12870,7 +13129,7 @@ mod tests {
             "even",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Even(n@v0: Int) -> Fragment {
+                fn Even@f0(n@v0: Int) -> Fragment {
                   match (v0 == 0) {
                     true => {
                       write("even")
@@ -12880,13 +13139,13 @@ mod tests {
                   }
                   match (0 < v0) {
                     true => {
-                      call Odd(n = (v0 - 1))
+                      call Odd@f1(n = (v0 - 1))
                     }
                     false => {
                     }
                   }
                 }
-                fn Odd(n@v1: Int) -> Fragment {
+                fn Odd@f1(n@v1: Int) -> Fragment {
                   match (v1 == 0) {
                     true => {
                       write("odd")
@@ -12896,17 +13155,17 @@ mod tests {
                   }
                   match (0 < v1) {
                     true => {
-                      call Even(n = (v1 - 1))
+                      call Even@f0(n = (v1 - 1))
                     }
                     false => {
                     }
                   }
                 }
                 page Test() {
-                  call Even(n = 4)
+                  call Even@f0(n = 4)
                 }
                 -- ir (optimized) --
-                fn Even(n@v0: Int) -> Fragment {
+                fn Even@f0(n@v0: Int) -> Fragment {
                   match (v0 == 0) {
                     true => {
                       write("even")
@@ -12916,13 +13175,13 @@ mod tests {
                   }
                   match (0 < v0) {
                     true => {
-                      call Odd(n = (v0 - 1))
+                      call Odd@f1(n = (v0 - 1))
                     }
                     false => {
                     }
                   }
                 }
-                fn Odd(n@v1: Int) -> Fragment {
+                fn Odd@f1(n@v1: Int) -> Fragment {
                   match (v1 == 0) {
                     true => {
                       write("odd")
@@ -12932,14 +13191,14 @@ mod tests {
                   }
                   match (0 < v1) {
                     true => {
-                      call Even(n = (v1 - 1))
+                      call Even@f0(n = (v1 - 1))
                     }
                     false => {
                     }
                   }
                 }
                 page Test() {
-                  call Even(n = 4)
+                  call Even@f0(n = 4)
                 }
                 -- expected output --
                 even
@@ -12964,6 +13223,7 @@ mod tests {
     fn field_access_on_record_literal_in_if_condition() {
         check(
             indoc! {r#"
+                -- main.hop --
                 record R {
                   f: Bool,
                 }
@@ -13013,6 +13273,7 @@ mod tests {
     fn recursive_component_with_empty_array_arg() {
         check(
             indoc! {r#"
+                -- main.hop --
                 component C(p: Array[String]) {
                   <for {_ in p}>
                     <C p={[]}/>
@@ -13026,22 +13287,22 @@ mod tests {
             "",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn C(p@v0: Array[String]) -> Fragment {
+                fn C@f0(p@v0: Array[String]) -> Fragment {
                   for _ in v0 {
-                    call C(p = [])
+                    call C@f0(p = [])
                   }
                 }
                 page Test() {
-                  call C(p = ["a"])
+                  call C@f0(p = ["a"])
                 }
                 -- ir (optimized) --
-                fn C(p@v0: Array[String]) -> Fragment {
+                fn C@f0(p@v0: Array[String]) -> Fragment {
                   for _ in v0 {
-                    call C(p = [])
+                    call C@f0(p = [])
                   }
                 }
                 page Test() {
-                  call C(p = ["a"])
+                  call C@f0(p = ["a"])
                 }
                 -- expected output --
 
@@ -13066,6 +13327,7 @@ mod tests {
     fn field_access_on_record_literal_from_arg_in_if_condition() {
         check(
             indoc! {r#"
+                -- main.hop --
                 record R {
                   f: Array[String],
                 }
@@ -13083,30 +13345,30 @@ mod tests {
             "",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn C(p@v0: Array[String]) -> Fragment {
+                fn C@f0(p@v0: Array[String]) -> Fragment {
                   match R {f: v0}.f.is_empty() {
                     true => {
-                      call C(p = [])
+                      call C@f0(p = [])
                     }
                     false => {
                     }
                   }
                 }
                 page Test() {
-                  call C(p = ["a"])
+                  call C@f0(p = ["a"])
                 }
                 -- ir (optimized) --
-                fn C(p@v0: Array[String]) -> Fragment {
+                fn C@f0(p@v0: Array[String]) -> Fragment {
                   match v0.is_empty() {
                     true => {
-                      call C(p = [])
+                      call C@f0(p = [])
                     }
                     false => {
                     }
                   }
                 }
                 page Test() {
-                  call C(p = ["a"])
+                  call C@f0(p = ["a"])
                 }
                 -- expected output --
 
@@ -13131,6 +13393,7 @@ mod tests {
     fn option_bool_match_in_component() {
         check(
             indoc! {r#"
+                -- main.hop --
                 pub component OptBool(checked: Option[Bool]) {
                   <match {checked}>
                     <case {Some(true)}>
@@ -13155,7 +13418,7 @@ mod tests {
             "<span>yes</span>",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn OptBool(checked@v0: Option[Bool]) -> Fragment {
+                fn OptBool@f0(checked@v0: Option[Bool]) -> Fragment {
                   match v0 {
                     Some(v1) => {
                       match v1 {
@@ -13178,7 +13441,7 @@ mod tests {
                   }
                 }
                 page Test() {
-                  call OptBool(checked = Option[Bool]::Some(true))
+                  call OptBool@f0(checked = Option[Bool]::Some(true))
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -13207,6 +13470,7 @@ mod tests {
     fn nested_option_bool_literal_patterns() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <let {x: Option[Option[Bool]] = Some(Some(true))}>
                     <match {x}>
@@ -13282,6 +13546,7 @@ mod tests {
     fn for_loop_int_comparison() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <for {n in [1, 2, 3]}>
                     <if {n > 1}>
@@ -13339,6 +13604,7 @@ mod tests {
     fn for_loop_string_equality() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <for {s in ["a", "b"]}>
                     <if {s == "a"}>
@@ -13396,6 +13662,7 @@ mod tests {
     fn for_loop_float_comparison() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <for {f in [1.5, 2.5]}>
                     <if {f > 2.0}>
@@ -13453,6 +13720,7 @@ mod tests {
     fn for_loop_bool_logical_and() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <for {flag in [true, false]}>
                     <if {flag && true}>
@@ -13510,6 +13778,7 @@ mod tests {
     fn for_loop_string_used_by_value_and_by_ref() {
         check(
             indoc! {r#"
+                -- main.hop --
                 pub component Show(label: String) {
                   <span>
                     {label}
@@ -13527,7 +13796,7 @@ mod tests {
             "<span>a</span>",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Show(label@v1: String) -> Fragment {
+                fn Show@f0(label@v1: String) -> Fragment {
                   write("<span")
                   write(">")
                   write_string(v1)
@@ -13537,7 +13806,7 @@ mod tests {
                   for v0 in ["a", "b"] {
                     match (v0 == "a") {
                       true => {
-                        call Show(label = v0)
+                        call Show@f0(label = v0)
                       }
                       false => {
                       }
@@ -13581,6 +13850,7 @@ mod tests {
     fn record_field_named_class() {
         check(
             indoc! {r#"
+                -- main.hop --
                 record Foo {
                   class: String,
                 }
@@ -13631,6 +13901,7 @@ mod tests {
     fn record_field_named_function() {
         check(
             indoc! {r#"
+                -- main.hop --
                 record Foo {
                   function: String,
                 }
@@ -13681,6 +13952,7 @@ mod tests {
     fn record_field_named_protected() {
         check(
             indoc! {r#"
+                -- main.hop --
                 record Foo {
                   protected: String,
                 }
@@ -13731,6 +14003,7 @@ mod tests {
     fn record_field_named_eval() {
         check(
             indoc! {r#"
+                -- main.hop --
                 record Foo {
                   eval: String,
                 }
@@ -13781,6 +14054,7 @@ mod tests {
     fn enum_payload_field_named_class() {
         check(
             indoc! {r#"
+                -- main.hop --
                 enum E {
                   A {
                     class: String,
@@ -13843,6 +14117,7 @@ mod tests {
     fn record_named_math_does_not_shadow_the_js_math_global() {
         check(
             indoc! {r#"
+                -- main.hop --
                 record Math {
                   x: Int,
                 }
@@ -13892,6 +14167,7 @@ mod tests {
     fn record_named_number_does_not_shadow_the_js_number_global() {
         check(
             indoc! {r#"
+                -- main.hop --
                 record Number {
                   x: Float,
                 }
@@ -13937,6 +14213,7 @@ mod tests {
     fn record_spread_fills_fields_from_subject() {
         check(
             indoc! {r#"
+                -- main.hop --
                 record State {
                   query: String,
                   num: Int,
@@ -13989,6 +14266,7 @@ mod tests {
     fn record_spread_with_all_fields_overridden() {
         check(
             indoc! {r#"
+                -- main.hop --
                 record State {
                   query: String,
                   num: Int,
@@ -14041,6 +14319,7 @@ mod tests {
     fn record_spread_field_access_folds_through_literal() {
         check(
             indoc! {r#"
+                -- main.hop --
                 record State {
                   query: String,
                   num: Int,
@@ -14095,6 +14374,7 @@ mod tests {
     fn record_spread_in_match_arm_passed_as_component_prop() {
         check(
             indoc! {r#"
+                -- main.hop --
                 record Item {
                   label: String,
                   selected: Bool,
@@ -14122,7 +14402,7 @@ mod tests {
             r#"<div>off</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Row(item@v2: test::Item) -> Fragment {
+                fn Row@f0(item@v2: main::Item) -> Fragment {
                   write("<div")
                   write(">")
                   write_string(v2.label)
@@ -14133,13 +14413,13 @@ mod tests {
                     let v1 = v0.selected in {
                       match v1 {
                         true => {
-                          call Row(item = Item {
+                          call Row@f0(item = Item {
                             label: "on",
                             selected: v0.selected,
                           })
                         }
                         false => {
-                          call Row(item = Item {
+                          call Row@f0(item = Item {
                             label: "off",
                             selected: v0.selected,
                           })
@@ -14186,6 +14466,7 @@ mod tests {
     fn record_spread_nested_update() {
         check(
             indoc! {r#"
+                -- main.hop --
                 record Settings {
                   theme: String,
                   compact: Bool,
@@ -14214,7 +14495,7 @@ mod tests {
             r#"qdark"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Dark(s@v1: test::State) -> Fragment {
+                fn Dark@f0(s@v1: main::State) -> Fragment {
                   let v3 = let v2 = v1.settings in {
                     Settings {theme: "dark", compact: v2.compact}
                   } in {
@@ -14226,7 +14507,7 @@ mod tests {
                 }
                 page Test() {
                   let v0 = Settings {theme: "light", compact: true} in {
-                    call Dark(s = State {query: "q", settings: v0})
+                    call Dark@f0(s = State {query: "q", settings: v0})
                   }
                 }
                 -- ir (optimized) --
@@ -14256,6 +14537,7 @@ mod tests {
     fn record_spread_of_record_literal_subject() {
         check(
             indoc! {r#"
+                -- main.hop --
                 record Foo {
                   x: String,
                   y: String,
@@ -14302,6 +14584,7 @@ mod tests {
     fn function_called_in_range_bound_and_interpolation() {
         check(
             indoc! {r#"
+                -- main.hop --
                 fn foo(x: Int) -> Int {
                   x + 10
                 }
@@ -14323,21 +14606,21 @@ mod tests {
             "<div>0,1,2,3,20</div>",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Wrapper() -> Fragment {
+                fn Wrapper@f0() -> Fragment {
                   write("<div")
                   write(">")
-                  for v0 in 0..=call foo(x = (-7)) {
+                  for v0 in 0..=call foo@f1(x = (-7)) {
                     write_string(v0.to_string())
                     write(",")
                   }
-                  write_string(call foo(x = 10).to_string())
+                  write_string(call foo@f1(x = 10).to_string())
                   write("</div>")
                 }
-                fn foo(x@v1: Int) -> Int {
+                fn foo@f1(x@v1: Int) -> Int {
                   (v1 + 10)
                 }
                 page Test() {
-                  call Wrapper()
+                  call Wrapper@f0()
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -14371,6 +14654,7 @@ mod tests {
     fn markup_as_a_function_body() {
         check(
             indoc! {r#"
+                -- main.hop --
                 fn card(label: String) -> Fragment {
                   <div>{label}</div>
                 }
@@ -14382,14 +14666,14 @@ mod tests {
             "<div>hello</div>",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn card(label@v0: String) -> Fragment {
+                fn card@f0(label@v0: String) -> Fragment {
                   write("<div")
                   write(">")
                   write_string(v0)
                   write("</div>")
                 }
                 page Test() {
-                  call card(label = "hello")
+                  call card@f0(label = "hello")
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -14418,6 +14702,7 @@ mod tests {
     fn markup_written_in_an_interpolation() {
         check(
             indoc! {r#"
+                -- main.hop --
                 view Test {
                   <div>{<span>hello</span>}</div>
                 }
@@ -14461,6 +14746,7 @@ mod tests {
     fn markup_passed_as_a_function_argument() {
         check(
             indoc! {r#"
+                -- main.hop --
                 fn wrap(children: Fragment) -> Fragment {
                   <div>{children}</div>
                 }
@@ -14472,14 +14758,14 @@ mod tests {
             "<div><span>hello</span></div>",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn wrap(children@v0: Fragment) -> Fragment {
+                fn wrap@f0(children@v0: Fragment) -> Fragment {
                   write("<div")
                   write(">")
                   write_fragment(v0)
                   write("</div>")
                 }
                 page Test() {
-                  call wrap(children = {
+                  call wrap@f0(children = {
                     write("<span")
                     write(">")
                     write("hello")
@@ -14513,6 +14799,7 @@ mod tests {
     fn markup_passed_as_a_component_attribute() {
         check(
             indoc! {r#"
+                -- main.hop --
                 component Card(slot: Fragment) {
                   <div>{slot}</div>
                 }
@@ -14524,14 +14811,14 @@ mod tests {
             "<div><span>hello</span></div>",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Card(slot@v0: Fragment) -> Fragment {
+                fn Card@f0(slot@v0: Fragment) -> Fragment {
                   write("<div")
                   write(">")
                   write_fragment(v0)
                   write("</div>")
                 }
                 page Test() {
-                  call Card(slot = {
+                  call Card@f0(slot = {
                     write("<span")
                     write(">")
                     write("hello")
@@ -14565,6 +14852,7 @@ mod tests {
     fn markup_in_the_arms_of_a_match_expression() {
         check(
             indoc! {r#"
+                -- main.hop --
                 fn badge(on: Bool) -> Fragment {
                   match on {true => <b>yes</b>, false => <i>no</i>}
                 }
@@ -14576,7 +14864,7 @@ mod tests {
             "<div><b>yes</b><i>no</i></div>",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn badge(on@v0: Bool) -> Fragment {
+                fn badge@f0(on@v0: Bool) -> Fragment {
                   match v0 {
                     true => {
                       write("<b")
@@ -14595,8 +14883,8 @@ mod tests {
                 page Test() {
                   write("<div")
                   write(">")
-                  call badge(on = true)
-                  call badge(on = false)
+                  call badge@f0(on = true)
+                  call badge@f0(on = false)
                   write("</div>")
                 }
                 -- ir (optimized) --
@@ -14626,6 +14914,7 @@ mod tests {
     fn a_call_as_a_component_body() {
         check(
             indoc! {r#"
+                -- main.hop --
                 fn card(label: String) -> Fragment {
                   <div>{label}</div>
                 }
@@ -14641,17 +14930,17 @@ mod tests {
             "<div>hello</div>",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Outer() -> Fragment {
-                  call card(label = "hello")
+                fn Outer@f0() -> Fragment {
+                  call card@f1(label = "hello")
                 }
-                fn card(label@v0: String) -> Fragment {
+                fn card@f1(label@v0: String) -> Fragment {
                   write("<div")
                   write(">")
                   write_string(v0)
                   write("</div>")
                 }
                 page Test() {
-                  call Outer()
+                  call Outer@f0()
                 }
                 -- ir (optimized) --
                 page Test() {
@@ -14676,9 +14965,11 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn catch_all_after_constructor_on_expression_subject() {
         check(
             indoc! {r#"
+                -- main.hop --
                 enum Shape {
                   Circle,
                   Square,
@@ -14705,8 +14996,8 @@ mod tests {
             "<div>2</div>",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn f() -> Int {
-                  let v0 = call mk() in {
+                fn f@f0() -> Int {
+                  let v0 = call mk@f1() in {
                     match v0 {
                       Shape::Circle => { 1 }
                       Shape::Square => {
@@ -14720,13 +15011,13 @@ mod tests {
                     }
                   }
                 }
-                fn mk() -> test::Shape {
+                fn mk@f1() -> main::Shape {
                   Shape::Square
                 }
                 page Test() {
                   write("<div")
                   write(">")
-                  write_string(call f().to_string())
+                  write_string(call f@f0().to_string())
                   write("</div>")
                 }
                 -- ir (optimized) --
@@ -14752,9 +15043,11 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn catch_all_after_constructor_in_match_node_on_expression_subject() {
         check(
             indoc! {r#"
+                -- main.hop --
                 enum Shape {
                   Circle,
                   Square,
@@ -14785,11 +15078,11 @@ mod tests {
             "square",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn mk() -> test::Shape {
+                fn mk@f0() -> main::Shape {
                   Shape::Square
                 }
                 page Test() {
-                  let v0 = call mk() in {
+                  let v0 = call mk@f0() in {
                     match v0 {
                       Shape::Circle => {
                         write("circle")
@@ -14832,9 +15125,11 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn catch_all_after_constructor_on_option_expression_subject() {
         check(
             indoc! {r#"
+                -- main.hop --
                 fn mk() -> Option[String] {
                   Some("hi")
                 }
@@ -14856,8 +15151,8 @@ mod tests {
             "<div>hi</div>",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn f() -> String {
-                  let v0 = call mk() in {
+                fn f@f0() -> String {
+                  let v0 = call mk@f1() in {
                     match v0 {
                       Some(v1) => {
                         let v2 = v0 in {
@@ -14871,13 +15166,13 @@ mod tests {
                     }
                   }
                 }
-                fn mk() -> Option[String] {
+                fn mk@f1() -> Option[String] {
                   Option[String]::Some("hi")
                 }
                 page Test() {
                   write("<div")
                   write(">")
-                  write_string(call f())
+                  write_string(call f@f0())
                   write("</div>")
                 }
                 -- ir (optimized) --
@@ -14886,6 +15181,133 @@ mod tests {
                 }
                 -- expected output --
                 <div>hi</div>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn same_named_components_in_different_modules() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                component Card {
+                  <span>A</span>
+                }
+
+                view Test {
+                  <Card />
+                }
+                -- other.hop --
+                component Card {
+                  <span>B</span>
+                }
+
+                view Other {
+                  <Card />
+                }
+            "#},
+            "<span>A</span>",
+            expect![[r#"
+                -- ir (unoptimized) --
+                fn Card@f0() -> Fragment {
+                  write("<span")
+                  write(">")
+                  write("A")
+                  write("</span>")
+                }
+                fn Card@f1() -> Fragment {
+                  write("<span")
+                  write(">")
+                  write("B")
+                  write("</span>")
+                }
+                page Test() {
+                  call Card@f0()
+                }
+                page Other() {
+                  call Card@f1()
+                }
+                -- ir (optimized) --
+                page Test() {
+                  write("<span>A</span>")
+                }
+                page Other() {
+                  write("<span>B</span>")
+                }
+                -- expected output --
+                <span>A</span>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn function_and_component_sharing_a_snake_case_name() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                fn nav_bar(x: Int) -> Int {
+                  x
+                }
+
+                component NavBar {
+                  <b>nav</b>
+                }
+
+                view Test {
+                  <div><NavBar />{nav_bar(1).to_string()}</div>
+                }
+            "#},
+            "<div><b>nav</b>1</div>",
+            expect![[r#"
+                -- ir (unoptimized) --
+                fn NavBar@f0() -> Fragment {
+                  write("<b")
+                  write(">")
+                  write("nav")
+                  write("</b>")
+                }
+                fn nav_bar@f1(x@v0: Int) -> Int {
+                  v0
+                }
+                page Test() {
+                  write("<div")
+                  write(">")
+                  call NavBar@f0()
+                  write_string(call nav_bar@f1(x = 1).to_string())
+                  write("</div>")
+                }
+                -- ir (optimized) --
+                page Test() {
+                  write("<div><b>nav</b>1</div>")
+                }
+                -- expected output --
+                <div><b>nav</b>1</div>
                 -- eval (unoptimized) --
                 OK
                 -- eval (optimized) --

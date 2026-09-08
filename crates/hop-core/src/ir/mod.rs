@@ -1,5 +1,7 @@
 mod compiler;
 mod expr_id;
+mod function_id;
+mod ir_function;
 mod ir_var;
 mod lower_pure;
 mod optimizer;

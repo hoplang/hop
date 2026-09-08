@@ -12,11 +12,15 @@ use crate::hop::typing::typed_ast::TypedFunctionDeclaration;
 use crate::hop::typing::{TypedAttribute, TypedAttributeValue, TypedLoopSource};
 use crate::ir::expr_id::ExprId;
 use crate::ir::expr_id::ExprIdCounter;
+use crate::ir::function_id::FunctionIdCounter;
+use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_var::IrVar;
 use crate::ir::pure_module::PureForSource;
 use crate::ir::var_id::VarId;
 use crate::ir::var_id::VarIdCounter;
+use crate::symbols::function_name::FunctionName;
 use crate::symbols::var_name::VarName;
+use std::collections::HashMap;
 
 use super::pure_module::{
     PureArgument, PureExpr, PureFunctionDeclaration, PureModule, PurePageDeclaration,
@@ -25,12 +29,24 @@ use super::writer_module::WriterParameter;
 
 pub fn compile(
     pages: Vec<AssembledPageDeclaration>,
-    source_functions: &[&TypedFunctionDeclaration],
+    source_functions: &[(&DocumentId, &TypedFunctionDeclaration)],
     asset_rewriter: Option<Arc<dyn AssetRewriter>>,
 ) -> PureModule {
     let mut expr_ids = ExprIdCounter::new();
     let mut var_ids = VarIdCounter::new();
-    let mut compiler = Compiler::new(&mut expr_ids, &mut var_ids, asset_rewriter);
+    let mut function_ids = FunctionIdCounter::new();
+
+    let declared: HashMap<(DocumentId, FunctionName), IrFunction> = source_functions
+        .iter()
+        .map(|(module, decl)| {
+            (
+                ((*module).clone(), decl.name.clone()),
+                IrFunction::new(function_ids.next(), decl.name.clone()),
+            )
+        })
+        .collect();
+
+    let mut compiler = Compiler::new(&mut expr_ids, &mut var_ids, &declared, asset_rewriter);
 
     let pages = pages
         .into_iter()
@@ -38,7 +54,7 @@ pub fn compile(
         .collect();
     let functions: Vec<PureFunctionDeclaration> = source_functions
         .iter()
-        .map(|decl| compiler.compile_function_decl(decl))
+        .map(|(module, decl)| compiler.compile_function_decl(module, decl))
         .collect();
 
     PureModule {
@@ -52,6 +68,7 @@ pub fn compile(
 struct Compiler<'a> {
     expr_id_counter: &'a mut ExprIdCounter,
     var_id_counter: &'a mut VarIdCounter,
+    declared: &'a HashMap<(DocumentId, FunctionName), IrFunction>,
     scopes: Vec<Vec<(VarName, VarId)>>,
     asset_rewriter: Option<Arc<dyn AssetRewriter>>,
 }
@@ -60,11 +77,13 @@ impl<'a> Compiler<'a> {
     fn new(
         expr_id_counter: &'a mut ExprIdCounter,
         var_id_counter: &'a mut VarIdCounter,
+        declared: &'a HashMap<(DocumentId, FunctionName), IrFunction>,
         asset_rewriter: Option<Arc<dyn AssetRewriter>>,
     ) -> Self {
         Compiler {
             expr_id_counter,
             var_id_counter,
+            declared,
             scopes: vec![Vec::new()],
             asset_rewriter,
         }
@@ -72,6 +91,7 @@ impl<'a> Compiler<'a> {
 
     fn compile_function_decl(
         &mut self,
+        module: &DocumentId,
         decl: &TypedFunctionDeclaration,
     ) -> PureFunctionDeclaration {
         self.push_scope();
@@ -92,7 +112,7 @@ impl<'a> Compiler<'a> {
         }
 
         let declaration = PureFunctionDeclaration {
-            name: decl.name.clone(),
+            function: self.declared[&(module.clone(), decl.name.clone())].clone(),
             parameters,
             return_type: decl.return_type.clone(),
             body: self.compile_expr(&decl.body),
@@ -540,10 +560,11 @@ impl<'a> Compiler<'a> {
             }
             TypedExpr::FunctionCall {
                 function_name,
+                module,
                 args,
                 typ,
             } => PureExpr::FunctionCall {
-                function_name: function_name.clone(),
+                function: self.declared[&(module.clone(), function_name.clone())].clone(),
                 args: args
                     .iter()
                     .map(|(name, value)| PureArgument {
@@ -699,8 +720,9 @@ mod tests {
         let before = page.to_string();
         let mut expr_ids = ExprIdCounter::new();
         let mut var_ids = VarIdCounter::new();
+        let declared = HashMap::new();
         let compiled_view =
-            Compiler::new(&mut expr_ids, &mut var_ids, None).compile_page_decl(page);
+            Compiler::new(&mut expr_ids, &mut var_ids, &declared, None).compile_page_decl(page);
         let after = compiled_view.to_string();
         let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
         expected.assert_eq(&output);

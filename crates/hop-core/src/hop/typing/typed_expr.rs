@@ -1,6 +1,7 @@
 use std::fmt::{self, Display};
 
 use crate::document::CheapString;
+use crate::document_id::DocumentId;
 use crate::hop::patterns::{EnumPattern, Match};
 use crate::html::HtmlElementKind;
 use crate::symbols::field_name::FieldName;
@@ -270,6 +271,8 @@ pub enum TypedExpr {
     /// A function call expression, e.g. foo(1, 2)
     FunctionCall {
         function_name: FunctionName,
+        /// The module that declares the callee.
+        module: DocumentId,
         args: Vec<(VarName, Self)>,
         typ: Type,
     },

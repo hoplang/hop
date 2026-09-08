@@ -170,7 +170,7 @@ mod tests {
             .functions
             .into_iter()
             .map(|function| PureFunctionDeclaration {
-                name: function.name,
+                function: function.function,
                 parameters: function.parameters,
                 return_type: function.return_type,
                 body: normalize_fragments(function.body, &mut expr_ids, limit),

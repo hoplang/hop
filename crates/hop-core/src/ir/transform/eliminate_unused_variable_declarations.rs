@@ -208,7 +208,7 @@ mod tests {
                 .functions
                 .into_iter()
                 .map(|function| PureFunctionDeclaration {
-                    name: function.name,
+                    function: function.function,
                     parameters: function.parameters,
                     return_type: function.return_type,
                     body: eliminate_unused_variable_declarations(function.body),

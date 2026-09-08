@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
+use crate::ir::function_id::FunctionId;
 use crate::ir::pure_module::{PureExpr, PureModule};
-use crate::symbols::function_name::FunctionName;
 
 /// A pass that drops the functions no page can reach.
 pub fn retain_reachable(module: PureModule) -> PureModule {
@@ -12,34 +12,34 @@ pub fn retain_reachable(module: PureModule) -> PureModule {
         var_ids,
     } = module;
 
-    let callees: HashMap<FunctionName, HashSet<FunctionName>> = functions
+    let callees: HashMap<FunctionId, HashSet<FunctionId>> = functions
         .iter()
         .map(|function| {
             let mut out = HashSet::new();
             collect_callees(&function.body, &mut out);
-            (function.name.clone(), out)
+            (function.function.id, out)
         })
         .collect();
 
-    let mut reachable: HashSet<FunctionName> = HashSet::new();
-    let mut frontier: Vec<FunctionName> = Vec::new();
+    let mut reachable: HashSet<FunctionId> = HashSet::new();
+    let mut frontier: Vec<FunctionId> = Vec::new();
     for page in &pages {
         let mut out = HashSet::new();
         collect_callees(&page.body, &mut out);
         frontier.extend(out);
     }
-    while let Some(name) = frontier.pop() {
-        if !reachable.insert(name.clone()) {
+    while let Some(id) = frontier.pop() {
+        if !reachable.insert(id) {
             continue;
         }
-        if let Some(next) = callees.get(&name) {
-            frontier.extend(next.iter().cloned());
+        if let Some(next) = callees.get(&id) {
+            frontier.extend(next.iter().copied());
         }
     }
 
     let functions = functions
         .into_iter()
-        .filter(|function| reachable.contains(&function.name))
+        .filter(|function| reachable.contains(&function.function.id))
         .collect();
 
     PureModule {
@@ -50,9 +50,9 @@ pub fn retain_reachable(module: PureModule) -> PureModule {
     }
 }
 
-fn collect_callees(expr: &PureExpr, out: &mut HashSet<FunctionName>) {
-    if let PureExpr::FunctionCall { function_name, .. } = expr {
-        out.insert(function_name.clone());
+fn collect_callees(expr: &PureExpr, out: &mut HashSet<FunctionId>) {
+    if let PureExpr::FunctionCall { function, .. } = expr {
+        out.insert(function.id);
     }
     expr.for_each_child(&mut |child| collect_callees(child, out));
 }

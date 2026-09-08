@@ -25,7 +25,7 @@ pub fn optimize(module: PureModule) -> PureModule {
         .functions
         .into_iter()
         .map(|function| PureFunctionDeclaration {
-            name: function.name,
+            function: function.function,
             parameters: function.parameters,
             return_type: function.return_type,
             body: optimize_body(function.body, &mut expr_ids),

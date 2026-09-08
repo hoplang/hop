@@ -751,7 +751,7 @@ mod tests {
             .functions
             .into_iter()
             .map(|function| PureFunctionDeclaration {
-                name: function.name,
+                function: function.function,
                 parameters: function.parameters,
                 return_type: function.return_type,
                 body: perform_partial_evaluation(function.body, &mut expr_ids),

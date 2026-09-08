@@ -3,10 +3,10 @@ use std::fmt;
 use crate::document::CheapString;
 use crate::hop::patterns::{EnumPattern, Match};
 use crate::hop::typing::r#type::{ComparableType, EquatableType, NumericType, Type};
+use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_var::IrVar;
 use crate::ir::var_id::VarIdCounter;
 use crate::symbols::field_name::FieldName;
-use crate::symbols::function_name::FunctionName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use pretty::BoxDoc;
@@ -64,8 +64,8 @@ pub struct WriterPageDeclaration {
 
 #[derive(Debug)]
 pub struct WriterFunctionDeclaration {
-    /// Function name
-    pub name: FunctionName,
+    /// The function's identity, carrying its source name.
+    pub function: IrFunction,
     /// Parameter names with their types
     pub parameters: Vec<WriterParameter>,
     /// The function's return type.
@@ -112,7 +112,7 @@ pub enum WriterStatement {
 
     /// Invoke a function and write its effects to the output stream.
     WriteFunction {
-        function_name: FunctionName,
+        function: IrFunction,
         args: Vec<WriterArgument>,
     },
 
@@ -200,7 +200,7 @@ pub enum WriterExpr {
     ///
     /// Invokes a value-returning function and produces its result.
     FunctionCall {
-        function_name: FunctionName,
+        function: IrFunction,
         args: Vec<WriterArgument>,
         typ: Type,
     },
@@ -566,13 +566,9 @@ impl WriterStatement {
                     }
                 }
             }
-            WriterStatement::WriteFunction {
-                function_name,
-                args,
-                ..
-            } => {
+            WriterStatement::WriteFunction { function, args, .. } => {
                 let mut doc = BoxDoc::text("call ")
-                    .append(BoxDoc::text(function_name.as_str()))
+                    .append(BoxDoc::text(function.to_string()))
                     .append(BoxDoc::text("("));
                 if !args.is_empty() {
                     doc = doc.append(BoxDoc::intersperse(
@@ -666,13 +662,9 @@ impl WriterExpr {
                         .nest(2)
                 })
                 .append(BoxDoc::text("}")),
-            WriterExpr::FunctionCall {
-                function_name,
-                args,
-                ..
-            } => {
+            WriterExpr::FunctionCall { function, args, .. } => {
                 let mut doc = BoxDoc::text("call ")
-                    .append(BoxDoc::text(function_name.as_str()))
+                    .append(BoxDoc::text(function.to_string()))
                     .append(BoxDoc::text("("));
                 if !args.is_empty() {
                     doc = doc.append(BoxDoc::intersperse(
@@ -1072,7 +1064,7 @@ impl<'a> WriterFunctionDeclaration {
             .group();
 
         let head = BoxDoc::text("fn ")
-            .append(BoxDoc::text(self.name.as_str()))
+            .append(BoxDoc::text(self.function.to_string()))
             .append(BoxDoc::text("("))
             .append(params_doc)
             .append(BoxDoc::text(") -> "))

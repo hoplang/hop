@@ -4,10 +4,10 @@ use crate::document::CheapString;
 use crate::hop::patterns::{EnumMatchArm, EnumPattern, Match};
 use crate::hop::typing::r#type::{ComparableType, EquatableType, NumericType, Type};
 use crate::ir::expr_id::{ExprId, ExprIdCounter};
+use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_var::IrVar;
 use crate::ir::var_id::VarIdCounter;
 use crate::symbols::field_name::FieldName;
-use crate::symbols::function_name::FunctionName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use pretty::BoxDoc;
@@ -39,8 +39,8 @@ pub struct PurePageDeclaration {
 /// A function declaration in Pure.
 #[derive(Debug)]
 pub struct PureFunctionDeclaration {
-    /// Function name
-    pub name: FunctionName,
+    /// The function's identity, carrying its source name.
+    pub function: IrFunction,
     /// Parameter names with their types
     pub parameters: Vec<WriterParameter>,
     /// The function's return type. The body must be of this type.
@@ -145,7 +145,7 @@ pub enum PureExpr {
     ///
     /// Invokes a function and produces its result.
     FunctionCall {
-        function_name: FunctionName,
+        function: IrFunction,
         args: Vec<PureArgument>,
         typ: Type,
         id: ExprId,
@@ -671,12 +671,12 @@ impl PureExpr {
             },
 
             PureExpr::FunctionCall {
-                function_name,
+                function,
                 args,
                 typ,
                 id,
             } => PureExpr::FunctionCall {
-                function_name,
+                function,
                 args: args
                     .into_iter()
                     .map(|arg| PureArgument {
@@ -903,7 +903,7 @@ impl PurePageDeclaration {
 impl PureFunctionDeclaration {
     pub fn to_doc(&self) -> BoxDoc<'_> {
         BoxDoc::text("fn ")
-            .append(BoxDoc::text(self.name.as_str()))
+            .append(BoxDoc::text(self.function.to_string()))
             .append(BoxDoc::text("("))
             .append(params_to_doc(&self.parameters))
             .append(BoxDoc::text(") -> "))
@@ -995,13 +995,9 @@ impl PureExpr {
                     .append(BoxDoc::text("}"))
                     .group()
             }
-            PureExpr::FunctionCall {
-                function_name,
-                args,
-                ..
-            } => {
+            PureExpr::FunctionCall { function, args, .. } => {
                 let mut doc = BoxDoc::text("call ")
-                    .append(BoxDoc::text(function_name.as_str()))
+                    .append(BoxDoc::text(function.to_string()))
                     .append(BoxDoc::text("("));
                 if !args.is_empty() {
                     doc = doc.append(BoxDoc::intersperse(

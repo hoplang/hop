@@ -41,7 +41,7 @@ fn lower_function(decl: PureFunctionDeclaration) -> WriterFunctionDeclaration {
         WriterFunctionBody::Returns(lower_value(decl.body))
     };
     WriterFunctionDeclaration {
-        name: decl.name,
+        function: decl.function,
         parameters: decl.parameters,
         return_type: decl.return_type,
         body,
@@ -80,7 +80,7 @@ fn lower_output(expr: PureExpr, out: &mut Vec<WriterStatement>) {
         }
 
         PureExpr::FunctionCall {
-            function_name,
+            function,
             args,
             typ,
             ..
@@ -88,7 +88,7 @@ fn lower_output(expr: PureExpr, out: &mut Vec<WriterStatement>) {
             assert!(
                 matches!(typ, Type::Fragment),
                 "non-Fragment function call in output position: {}",
-                function_name
+                function
             );
             let args = args
                 .into_iter()
@@ -97,10 +97,7 @@ fn lower_output(expr: PureExpr, out: &mut Vec<WriterStatement>) {
                     expr: lower_value(arg.expr),
                 })
                 .collect();
-            out.push(WriterStatement::WriteFunction {
-                function_name,
-                args,
-            });
+            out.push(WriterStatement::WriteFunction { function, args });
         }
 
         PureExpr::Let {
@@ -284,7 +281,7 @@ fn lower_value(expr: PureExpr) -> WriterExpr {
         }
 
         PureExpr::FunctionCall {
-            function_name,
+            function,
             args,
             typ: Type::Fragment,
             ..
@@ -297,20 +294,17 @@ fn lower_value(expr: PureExpr) -> WriterExpr {
                 })
                 .collect();
             WriterExpr::FragmentLiteral {
-                body: vec![WriterStatement::WriteFunction {
-                    function_name,
-                    args,
-                }],
+                body: vec![WriterStatement::WriteFunction { function, args }],
             }
         }
 
         PureExpr::FunctionCall {
-            function_name,
+            function,
             args,
             typ,
             ..
         } => WriterExpr::FunctionCall {
-            function_name,
+            function,
             args: args
                 .into_iter()
                 .map(|arg| WriterArgument {

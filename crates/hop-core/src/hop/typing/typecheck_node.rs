@@ -449,6 +449,8 @@ pub fn typecheck_node(
                 }
             };
 
+            let callee_module = component_def_range.document_id().clone();
+
             // Add definition link for the opening tag
             definition_links.push(DefinitionLink {
                 use_range: component_name_opening_range.clone(),
@@ -501,6 +503,7 @@ pub fn typecheck_node(
 
             Some(TypedExpr::FunctionCall {
                 function_name: component_name.clone().into(),
+                module: callee_module,
                 args,
                 typ: Type::Fragment,
             })

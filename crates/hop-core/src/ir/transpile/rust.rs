@@ -7,13 +7,13 @@ use crate::dependency_graph::DependencyGraph;
 use crate::hop::patterns::{EnumPattern, Match};
 use crate::hop::typing::r#type::Type;
 use crate::hop::typing::type_registry::{EnumVariant, ResolvedType, TypeRegistry};
+use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_var::IrVar;
 use crate::ir::writer_module::{
     WriterArgument, WriterExpr, WriterForSource, WriterFunctionBody, WriterFunctionDeclaration,
     WriterModule, WriterPageDeclaration, WriterStatement,
 };
 use crate::symbols::field_name::FieldName;
-use crate::symbols::function_name::FunctionName;
 use crate::symbols::type_name::TypeName;
 
 /// Names every variable in the generated code, derived from the IR's variable
@@ -24,6 +24,10 @@ use crate::symbols::type_name::TypeName;
 /// can collide with a Rust keyword.
 fn var_ident(var: &IrVar) -> String {
     format!("v_{}", var.id)
+}
+
+fn function_ident(function: &IrFunction) -> String {
+    format!("render_{}_{}", function.name.to_snake_case(), function.id)
 }
 
 pub struct RustTranspiler {
@@ -687,12 +691,10 @@ impl Transpiler for RustTranspiler {
     fn transpile_write_function_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        name: &'a FunctionName,
+        function: &'a IrFunction,
         args: &'a [WriterArgument],
     ) -> Doc<'a> {
-        let func_name = format!("render_{}", name.to_snake_case());
-
-        let mut doc = arena.text(func_name);
+        let mut doc = arena.text(function_ident(function));
 
         doc = doc.append(arena.text("("));
 
@@ -722,8 +724,9 @@ impl Transpiler for RustTranspiler {
         arena: &'a Arena<'a>,
         function: &'a WriterFunctionDeclaration,
     ) -> Doc<'a> {
-        let func_name = format!("render_{}", function.name.to_snake_case());
-        let mut result = arena.text("fn ").append(arena.text(func_name));
+        let mut result = arena
+            .text("fn ")
+            .append(arena.text(function_ident(&function.function)));
 
         match &function.body {
             WriterFunctionBody::Writes(statements) => {
@@ -784,12 +787,10 @@ impl Transpiler for RustTranspiler {
     fn transpile_function_call_expr<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        name: &'a FunctionName,
+        function: &'a IrFunction,
         args: &'a [WriterArgument],
     ) -> Doc<'a> {
-        let func_name = format!("render_{}", name.to_snake_case());
-
-        let mut doc = arena.text(func_name).append(arena.text("("));
+        let mut doc = arena.text(function_ident(function)).append(arena.text("("));
 
         let all_args: Vec<Doc<'a>> = args
             .iter()
@@ -2607,7 +2608,7 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
-                fn Badge(color@v0: test::Color) -> Fragment {
+                fn Badge@f0(color@v0: test::Color) -> Fragment {
                   match v0 {
                     Color::Red => {
                       write("red")
@@ -2621,7 +2622,7 @@ mod tests {
                   }
                 }
                 page Test() {
-                  call Badge(color = Color::Green)
+                  call Badge@f0(color = Color::Green)
                 }
 
                 -- after --
@@ -2643,7 +2644,7 @@ mod tests {
 
                 pub struct Test {}
 
-                fn render_badge(output: &mut String, v_0: &Color) {
+                fn render_badge_0(output: &mut String, v_0: &Color) {
                     match &v_0 {
                         Color::Red => {
                             output.push_str("red");
@@ -2665,7 +2666,7 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        render_badge(output, &Color::Green);
+                        render_badge_0(output, &Color::Green);
                     }
                 }
             "#]],
@@ -2734,12 +2735,12 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
-                fn Frag() -> Fragment {
+                fn Frag@f0() -> Fragment {
                   write("<b>hi</b>")
                 }
                 page Test() {
                   let v0 = {
-                    call Frag()
+                    call Frag@f0()
                   } in {
                     write_fragment(v0)
                   }
@@ -2760,7 +2761,7 @@ mod tests {
 
                 pub struct Test {}
 
-                fn render_frag(output: &mut String) {
+                fn render_frag_0(output: &mut String) {
                     output.push_str("<b>hi</b>");
                 }
 
@@ -2775,7 +2776,7 @@ mod tests {
                         let v_0 = {
                             let mut buf = String::new();
                             let mut output = &mut buf;
-                            render_frag(output);
+                            render_frag_0(output);
                             Fragment(buf)
                         };
                         output.push_str(&v_0.0);
@@ -2797,11 +2798,11 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
-                fn format_price(price@v0: Int) -> Int {
+                fn format_price@f0(price@v0: Int) -> Int {
                   v0
                 }
                 page Test() {
-                  write_string(call format_price(price = 5).to_string())
+                  write_string(call format_price@f0(price = 5).to_string())
                 }
 
                 -- after --
@@ -2829,7 +2830,7 @@ mod tests {
 
                 pub struct Test {}
 
-                fn render_format_price(v_0: i32) -> i32 {
+                fn render_format_price_0(v_0: i32) -> i32 {
                     v_0.clone()
                 }
 
@@ -2841,7 +2842,7 @@ mod tests {
                     }
 
                     fn write(self, output: &mut String) {
-                        write_escaped_html(&(render_format_price(5_i32)).to_string(), output);
+                        write_escaped_html(&(render_format_price_0(5_i32)).to_string(), output);
                     }
                 }
             "#]],
@@ -2870,16 +2871,16 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
-                fn foo(x@v0: Int) -> Int {
+                fn foo@f0(x@v0: Int) -> Int {
                   (v0 + 10)
                 }
                 page Test() {
                   write("<div>")
-                  for v1 in 0..=call foo(x = -7) {
+                  for v1 in 0..=call foo@f0(x = -7) {
                     write_string(v1.to_string())
                     write(",")
                   }
-                  write_string(call foo(x = 10).to_string())
+                  write_string(call foo@f0(x = 10).to_string())
                   write("</div>")
                 }
 
@@ -2908,7 +2909,7 @@ mod tests {
 
                 pub struct Test {}
 
-                fn render_foo(v_0: i32) -> i32 {
+                fn render_foo_0(v_0: i32) -> i32 {
                     (v_0).wrapping_add(10_i32)
                 }
 
@@ -2921,11 +2922,11 @@ mod tests {
 
                     fn write(self, output: &mut String) {
                         output.push_str("<div>");
-                        for v_1 in 0_i32..=render_foo(-7_i32) {
+                        for v_1 in 0_i32..=render_foo_0(-7_i32) {
                             write_escaped_html(&(v_1).to_string(), output);
                             output.push_str(",");
                         }
-                        write_escaped_html(&(render_foo(10_i32)).to_string(), output);
+                        write_escaped_html(&(render_foo_0(10_i32)).to_string(), output);
                         output.push_str("</div>");
                     }
                 }

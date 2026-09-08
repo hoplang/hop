@@ -64,7 +64,12 @@ pub fn orchestrate_pure(
 
     let functions: Vec<_> = document_ids
         .iter()
-        .flat_map(|id| typed_asts[id].function_declarations())
+        .flat_map(|id| {
+            typed_asts[id]
+                .function_declarations()
+                .iter()
+                .map(move |decl| (id, decl))
+        })
         .collect();
 
     let pure_module = compile(assembled_pages, &functions, options.asset_rewriter);

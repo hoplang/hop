@@ -1701,6 +1701,8 @@ pub fn typecheck_expr(
                 return None;
             }
 
+            let callee_module = def_range.document_id().clone();
+
             definition_links.push(DefinitionLink {
                 use_range: name_range.clone(),
                 definition_range: def_range,
@@ -1744,6 +1746,7 @@ pub fn typecheck_expr(
 
             Some(TypedExpr::FunctionCall {
                 function_name: name.clone().into(),
+                module: callee_module,
                 args: typed_args,
                 typ: signature.return_type.clone(),
             })

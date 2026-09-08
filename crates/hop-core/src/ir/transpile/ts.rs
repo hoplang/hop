@@ -4,6 +4,7 @@ use super::{Doc, Transpiler};
 use crate::hop::patterns::{EnumPattern, Match};
 use crate::hop::typing::r#type::Type;
 use crate::hop::typing::type_registry::TypeRegistry;
+use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_var::IrVar;
 use crate::ir::var_id::{VarId, VarIdCounter};
 use crate::ir::writer_module::{
@@ -11,7 +12,6 @@ use crate::ir::writer_module::{
     WriterModule, WriterPageDeclaration, WriterParameter, WriterStatement,
 };
 use crate::symbols::field_name::FieldName;
-use crate::symbols::function_name::FunctionName;
 use crate::symbols::type_name::TypeName;
 
 /// Names every variable in the generated code, derived from the IR's variable
@@ -37,6 +37,10 @@ fn transpile_param_binding<'a>(arena: &'a Arena<'a>, param: &'a WriterParameter)
         .text(param.name().as_str())
         .append(arena.text(": "))
         .append(arena.text(var_ident(&param.var)))
+}
+
+fn function_ident(function: &IrFunction) -> String {
+    format!("render{}_{}", function.name.to_pascal_case(), function.id)
 }
 
 pub struct TsTranspiler {
@@ -624,13 +628,13 @@ impl Transpiler for TsTranspiler {
     fn transpile_write_function_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        name: &'a FunctionName,
+        function: &'a IrFunction,
         args: &'a [WriterArgument],
     ) -> Doc<'a> {
         let mut doc = arena
             .nil()
-            .append(arena.text("output += render"))
-            .append(arena.text(name.to_pascal_case()))
+            .append(arena.text("output += "))
+            .append(arena.text(function_ident(function)))
             .append(arena.text("("));
 
         if !args.is_empty() {
@@ -661,8 +665,8 @@ impl Transpiler for TsTranspiler {
     ) -> Doc<'a> {
         let parameters = self.transpile_parameter_list(arena, &function.parameters);
         let head = arena
-            .text("function render")
-            .append(arena.text(function.name.to_pascal_case()))
+            .text("function ")
+            .append(arena.text(function_ident(&function.function)))
             .append(arena.text("("))
             .append(parameters);
 
@@ -706,13 +710,12 @@ impl Transpiler for TsTranspiler {
     fn transpile_function_call_expr<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        name: &'a FunctionName,
+        function: &'a IrFunction,
         args: &'a [WriterArgument],
     ) -> Doc<'a> {
         let mut doc = arena
             .nil()
-            .append(arena.text("render"))
-            .append(arena.text(name.to_pascal_case()))
+            .append(arena.text(function_ident(function)))
             .append(arena.text("("));
 
         if !args.is_empty() {
@@ -3397,12 +3400,12 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
-                fn Frag() -> Fragment {
+                fn Frag@f0() -> Fragment {
                   write("<b>hi</b>")
                 }
                 page Test() {
                   let v0 = {
-                    call Frag()
+                    call Frag@f0()
                   } in {
                     write_fragment(v0)
                   }
@@ -3418,7 +3421,7 @@ mod tests {
                     return str as Fragment;
                 }
 
-                function renderFrag(): string {
+                function renderFrag_0(): string {
                     let output: string = "";
                     output += "<b>hi</b>";
                     return output;
@@ -3428,7 +3431,7 @@ mod tests {
                     let output: string = "";
                     const v_0: Fragment = (() => {
                         let output: string = "";
-                        output += renderFrag();
+                        output += renderFrag_0();
                         return output as Fragment;
                     })();
                     output += v_0;
@@ -3450,11 +3453,11 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
-                fn format_price(price@v0: Int) -> Int {
+                fn format_price@f0(price@v0: Int) -> Int {
                   v0
                 }
                 page Test() {
-                  write_string(call format_price(price = 5).to_string())
+                  write_string(call format_price@f0(price = 5).to_string())
                 }
 
                 -- after --
@@ -3469,13 +3472,13 @@ mod tests {
                         .replace(/'/g, '&#39;');
                 }
 
-                function renderFormatPrice({price: v_0}: {price: number}): number {
+                function renderFormatPrice_0({price: v_0}: {price: number}): number {
                     return v_0;
                 }
 
                 export function Test(): string {
                     let output: string = "";
-                    output += escapeHtml((renderFormatPrice({price: (5 as number)})).toString());
+                    output += escapeHtml((renderFormatPrice_0({price: (5 as number)})).toString());
                     return output;
                 }
             "#]],
@@ -3504,16 +3507,16 @@ mod tests {
                 }),
             expect![[r#"
                 -- before --
-                fn foo(x@v0: Int) -> Int {
+                fn foo@f0(x@v0: Int) -> Int {
                   (v0 + 10)
                 }
                 page Test() {
                   write("<div>")
-                  for v1 in 0..=call foo(x = -7) {
+                  for v1 in 0..=call foo@f0(x = -7) {
                     write_string(v1.to_string())
                     write(",")
                   }
-                  write_string(call foo(x = 10).to_string())
+                  write_string(call foo@f0(x = 10).to_string())
                   write("</div>")
                 }
 
@@ -3529,7 +3532,7 @@ mod tests {
                         .replace(/'/g, '&#39;');
                 }
 
-                function renderFoo({x: v_0}: {x: number}): number {
+                function renderFoo_0({x: v_0}: {x: number}): number {
                     return ((v_0 + (10 as number)) | 0);
                 }
 
@@ -3537,12 +3540,12 @@ mod tests {
                     let output: string = "";
                     output += "<div>";
                     const v_2: number = (0 as number);
-                    const v_3: number = renderFoo({x: (-7 as number)});
+                    const v_3: number = renderFoo_0({x: (-7 as number)});
                     for (let v_1 = v_2; v_1 <= v_3; v_1++) {
                         output += escapeHtml((v_1).toString());
                         output += ",";
                     }
-                    output += escapeHtml((renderFoo({x: (10 as number)})).toString());
+                    output += escapeHtml((renderFoo_0({x: (10 as number)})).toString());
                     output += "</div>";
                     return output;
                 }
