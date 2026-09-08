@@ -99,7 +99,6 @@ fn typecheck_module(
     asset_references: &mut Vec<AssetReference>,
 ) -> TypedAst {
     let mut type_env = TypeEnv::new();
-    let mut var_env = VariableScope::new();
     let mut module_exports: HashMap<TypeName, TypeExport> = HashMap::new();
 
     let mut typed_records = Vec::new();
@@ -346,7 +345,6 @@ fn typecheck_module(
             &forwarded_params,
             registry,
             errors,
-            &mut var_env,
             &mut type_env,
             &mut module_exports,
             annotations,
@@ -362,7 +360,6 @@ fn typecheck_module(
             page,
             registry,
             errors,
-            &mut var_env,
             &mut type_env,
             annotations,
             definition_links,
@@ -702,7 +699,6 @@ fn typecheck_component_body(
     forwarded_params: &HashMap<TypeName, Vec<ParamEntry>>,
     registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
-    var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
     type_env: &mut TypeEnv,
     module_exports: &mut HashMap<TypeName, TypeExport>,
     annotations: &mut Vec<HoverAnnotation>,
@@ -725,6 +721,7 @@ fn typecheck_component_body(
         ..
     } = component;
 
+    let mut var_env = VariableScope::new();
     for (param, param_type) in &resolved_params {
         let _ = var_env.push(
             param.var_name.clone(),
@@ -742,7 +739,7 @@ fn typecheck_component_body(
         body,
         None,
         &forwarded_names,
-        var_env,
+        &mut var_env,
         type_env,
         registry,
         annotations,
@@ -833,7 +830,6 @@ fn typecheck_page_declaration(
     page: &ParsedPageDeclaration,
     registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
-    var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
     type_env: &mut TypeEnv,
     annotations: &mut Vec<HoverAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
@@ -856,6 +852,7 @@ fn typecheck_page_declaration(
     collect_spreads(body, &mut spreads);
     pair_rest_spread(None, spreads, errors);
 
+    let mut var_env = VariableScope::new();
     let mut pushed_params = Vec::new();
     let mut typed_params = Vec::new();
     let mut seen_param_names: HashSet<VarName> = HashSet::new();
@@ -904,7 +901,7 @@ fn typecheck_page_declaration(
             head,
             None,
             &[],
-            var_env,
+            &mut var_env,
             type_env,
             registry,
             annotations,
@@ -917,7 +914,7 @@ fn typecheck_page_declaration(
         body,
         None,
         &[],
-        var_env,
+        &mut var_env,
         type_env,
         registry,
         annotations,
