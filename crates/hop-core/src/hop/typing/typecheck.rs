@@ -282,11 +282,19 @@ fn typecheck_module(
             ),
         );
     }
-    // A function cannot declare a rest, so every spread in its body fails to
-    // name one.
+    // Functions and pages cannot declare a rest, so every spread in their
+    // bodies fails to name one.
     for function in parsed_ast.function_declarations() {
         let mut spreads = Vec::new();
         collect_spreads(&function.body, &mut spreads);
+        pair_rest_spread(None, spreads, errors);
+    }
+    for page in parsed_ast.page_declarations() {
+        let mut spreads = Vec::new();
+        if let Some(head) = &page.head {
+            collect_spreads(head, &mut spreads);
+        }
+        collect_spreads(&page.body, &mut spreads);
         pair_rest_spread(None, spreads, errors);
     }
     // Settle every signature before checking a single body: a call site needs
@@ -805,15 +813,6 @@ fn typecheck_page_declaration(
         name,
         ..
     } = page;
-
-    // Pages and views cannot declare a rest parameter, so any spread in the
-    // head or body fails to name one.
-    let mut spreads = Vec::new();
-    if let Some(head) = head {
-        collect_spreads(head, &mut spreads);
-    }
-    collect_spreads(body, &mut spreads);
-    pair_rest_spread(None, spreads, errors);
 
     let mut var_env = VariableScope::new();
     let mut pushed_params = 0;
