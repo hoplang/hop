@@ -1,4 +1,4 @@
-use super::r#type::FunctionSignature;
+use super::type_env::FunctionSignature;
 use crate::document::DocumentRange;
 
 /// A type or component exported by a module. Non-pub declarations are

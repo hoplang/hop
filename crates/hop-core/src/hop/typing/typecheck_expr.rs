@@ -113,11 +113,11 @@ pub fn typecheck_expr(
                     fields,
                     ..
                 }) => {
-                    if let Some((_, field_type, _)) =
-                        fields.iter().find(|(f, _, _)| f.as_str() == field.as_str())
+                    if let Some(record_field) =
+                        fields.iter().find(|f| f.name.as_str() == field.as_str())
                     {
                         Some(TypedExpr::FieldAccess {
-                            typ: field_type.clone(),
+                            typ: record_field.typ.clone(),
                             record: Box::new(typed_base),
                             field: field.clone(),
                         })
@@ -1073,7 +1073,7 @@ pub fn typecheck_expr(
             // Build a map of expected fields from the record type
             let expected_fields = record_fields
                 .iter()
-                .map(|(name, typ, _)| (name.clone(), typ.clone()))
+                .map(|field| (field.name.clone(), field.typ.clone()))
                 .collect::<HashMap<_, _>>();
 
             // The spread subject must have exactly the record type being
@@ -1207,7 +1207,7 @@ pub fn typecheck_expr(
             // expressions are pure, dropping the subject is unobservable.
             if record_fields
                 .iter()
-                .all(|(name, _, _)| provided_fields.contains(name))
+                .all(|field| provided_fields.contains(&field.name))
             {
                 return Some(TypedExpr::RecordLiteral {
                     record_name: record_name.clone(),
@@ -1228,18 +1228,18 @@ pub fn typecheck_expr(
             let mut explicit: HashMap<FieldName, TypedExpr> = typed_fields.into_iter().collect();
             let all_fields = record_fields
                 .iter()
-                .map(|(name, typ, _)| {
-                    let value = explicit
-                        .remove(name)
-                        .unwrap_or_else(|| TypedExpr::FieldAccess {
+                .map(|record_field| {
+                    let value = explicit.remove(&record_field.name).unwrap_or_else(|| {
+                        TypedExpr::FieldAccess {
                             record: Box::new(TypedExpr::Var {
                                 value: subject_var.clone(),
                                 typ: record_type.clone(),
                             }),
-                            field: name.clone(),
-                            typ: typ.clone(),
-                        });
-                    (name.clone(), value)
+                            field: record_field.name.clone(),
+                            typ: record_field.typ.clone(),
+                        }
+                    });
+                    (record_field.name.clone(), value)
                 })
                 .collect();
 
@@ -1336,10 +1336,10 @@ pub fn typecheck_expr(
                 for field in fields {
                     let expected_field = variant_fields
                         .iter()
-                        .find(|(name, _, _)| name.as_str() == field.name.as_str());
+                        .find(|f| f.name.as_str() == field.name.as_str());
 
                     match expected_field {
-                        Some((_, expected_type, _)) => {
+                        Some(expected_field) => {
                             if !provided_field_names.insert(field.name.clone()) {
                                 errors.push(TypeError::new(
                                     TypeErrorKind::EnumVariantDuplicateField {
@@ -1354,7 +1354,7 @@ pub fn typecheck_expr(
 
                             let Some(typed_field_expr) = typecheck_expr(
                                 &field.value,
-                                Some(expected_type),
+                                Some(&expected_field.typ),
                                 forwarded_params,
                                 var_env,
                                 type_env,
@@ -1368,13 +1368,13 @@ pub fn typecheck_expr(
                             };
 
                             let actual_type = typed_field_expr.get_type();
-                            if *actual_type != **expected_type {
+                            if *actual_type != *expected_field.typ {
                                 errors.push(TypeError::new(
                                     TypeErrorKind::EnumVariantFieldTypeMismatch {
                                         enum_name: enum_name.clone(),
                                         variant_name: variant_name.clone(),
                                         field_name: field.name.clone(),
-                                        expected: expected_type.clone(),
+                                        expected: expected_field.typ.clone(),
                                         found: actual_type,
                                     },
                                     field.value.range().clone(),
@@ -1403,8 +1403,8 @@ pub fn typecheck_expr(
 
                 let missing_fields: Vec<FieldName> = variant_fields
                     .iter()
-                    .filter(|(name, _, _)| !provided_field_names.contains(name))
-                    .map(|(name, _, _)| name.clone())
+                    .filter(|f| !provided_field_names.contains(&f.name))
+                    .map(|f| f.name.clone())
                     .collect();
                 if !missing_fields.is_empty() {
                     errors.push(TypeError::new(

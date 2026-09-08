@@ -13,10 +13,10 @@ use crate::hop::typing::resolve_type::resolve_type;
 use crate::hop::typing::rest_spread::{
     RestSpreadTarget, collect_spreads, pair_rest_spread, resolve_rest_targets,
 };
-use crate::hop::typing::r#type::EnumVariant;
+
 use crate::hop::typing::type_env::TypeEnv;
 use crate::hop::typing::type_export::TypeExport;
-use crate::hop::typing::type_registry::{TypeDef, TypeRegistry};
+use crate::hop::typing::type_registry::{EnumVariant, RecordField, TypeDef, TypeRegistry};
 use crate::hop::typing::typecheck_expr::typecheck_expr;
 use crate::hover_annotation::HoverAnnotation;
 use crate::symbols::function_name::FunctionName;
@@ -490,7 +490,11 @@ fn typecheck_record_declaration(
             continue;
         };
         validate_examples_annotation(&field.examples, &resolved_type, &field.name_range, errors);
-        typed_fields.push((field.name.clone(), resolved_type, field.examples.clone()));
+        typed_fields.push(RecordField {
+            name: field.name.clone(),
+            typ: resolved_type,
+            examples: field.examples.clone(),
+        });
     }
 
     registry.insert(
@@ -543,7 +547,11 @@ fn typecheck_enum_declaration(
                 &field.name_range,
                 errors,
             );
-            typed_fields.push((field.name.clone(), resolved_type, field.examples.clone()));
+            typed_fields.push(RecordField {
+                name: field.name.clone(),
+                typ: resolved_type,
+                examples: field.examples.clone(),
+            });
         }
         typed_variants.push(EnumVariant {
             name: variant.name.clone(),

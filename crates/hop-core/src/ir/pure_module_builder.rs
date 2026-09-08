@@ -1,8 +1,8 @@
 use crate::document::CheapString;
 use crate::hop::patterns::{EnumMatchArm, EnumPattern, Match};
 use crate::hop::typing::Type;
-use crate::hop::typing::r#type::{ComparableType, EnumVariant, EquatableType, NumericType};
-use crate::hop::typing::type_registry::{ResolvedType, TypeRegistry};
+use crate::hop::typing::r#type::{ComparableType, EquatableType, NumericType};
+use crate::hop::typing::type_registry::{EnumVariant, ResolvedType, TypeRegistry};
 use crate::hop::typing::type_registry_builder::{TestTypes, TypeRegistryBuilder};
 use crate::ir::expr_id::{ExprId, ExprIdCounter};
 use crate::ir::ir_var::IrVar;
@@ -586,8 +586,8 @@ impl PureBuilder {
         for (field_name, value) in &fields {
             let declared_type = record_fields
                 .iter()
-                .find(|(f, _, _)| f.as_str() == *field_name)
-                .map(|(_, t, _)| t)
+                .find(|f| f.name.as_str() == *field_name)
+                .map(|f| &f.typ)
                 .unwrap_or_else(|| {
                     panic!(
                         "Field '{}' not found in record '{}'",
@@ -606,8 +606,8 @@ impl PureBuilder {
 
         let missing_fields: Vec<&str> = record_fields
             .iter()
-            .filter(|(f, _, _)| !fields.iter().any(|(name, _)| *name == f.as_str()))
-            .map(|(f, _, _)| f.as_str())
+            .filter(|f| !fields.iter().any(|(name, _)| *name == f.name.as_str()))
+            .map(|f| f.name.as_str())
             .collect();
         assert!(
             missing_fields.is_empty(),
@@ -655,8 +655,8 @@ impl PureBuilder {
         for (field_name, value) in &field_values {
             let declared_type = variant_fields
                 .iter()
-                .find(|(f, _, _)| f.as_str() == *field_name)
-                .map(|(_, t, _)| t)
+                .find(|f| f.name.as_str() == *field_name)
+                .map(|f| &f.typ)
                 .unwrap_or_else(|| {
                     panic!(
                         "Field '{}' not found in variant '{}::{}'",
@@ -676,8 +676,12 @@ impl PureBuilder {
 
         let missing_fields: Vec<&str> = variant_fields
             .iter()
-            .filter(|(f, _, _)| !field_values.iter().any(|(name, _)| *name == f.as_str()))
-            .map(|(f, _, _)| f.as_str())
+            .filter(|f| {
+                !field_values
+                    .iter()
+                    .any(|(name, _)| *name == f.name.as_str())
+            })
+            .map(|f| f.name.as_str())
             .collect();
         assert!(
             missing_fields.is_empty(),
@@ -862,8 +866,8 @@ impl PureBuilder {
                 ..
             }) => fields
                 .iter()
-                .find(|(f, _, _)| f.as_str() == field_str)
-                .map(|(_, t, _)| t.clone())
+                .find(|f| f.name.as_str() == field_str)
+                .map(|f| f.typ.clone())
                 .unwrap_or_else(|| {
                     panic!(
                         "Field '{}' not found in record type '{}'",
@@ -1221,8 +1225,8 @@ fn resolve_arm_bindings<'s>(
     for (field_name, binding_name) in field_bindings {
         let field_type = variant_fields
             .iter()
-            .find(|(f, _, _)| f.as_str() == field_name)
-            .map(|(_, t, _)| t.clone())
+            .find(|f| f.name.as_str() == field_name)
+            .map(|f| f.typ.clone())
             .unwrap_or_else(|| {
                 panic!(
                     "Field '{}' not found in variant '{}::{}'",

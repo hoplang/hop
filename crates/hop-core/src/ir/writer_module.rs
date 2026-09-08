@@ -2,9 +2,9 @@ use std::fmt;
 use std::sync::Arc;
 
 use crate::document::CheapString;
-use crate::examples_annotation::ExamplesAnnotation;
 use crate::hop::patterns::{EnumPattern, Match};
-use crate::hop::typing::r#type::{ComparableType, EnumVariant, EquatableType, NumericType, Type};
+use crate::hop::typing::r#type::{ComparableType, EquatableType, NumericType, Type};
+use crate::hop::typing::type_registry::{EnumVariant, RecordField};
 use crate::ir::ir_var::IrVar;
 use crate::ir::var_id::VarIdCounter;
 use crate::symbols::field_name::FieldName;
@@ -69,7 +69,7 @@ pub struct WriterPageDeclaration {
 #[derive(Debug, Clone)]
 pub struct WriterRecordDeclaration {
     pub name: TypeName,
-    pub fields: Vec<(FieldName, Arc<Type>, Option<ExamplesAnnotation>)>,
+    pub fields: Vec<RecordField>,
 }
 
 #[derive(Debug, Clone)]
@@ -1123,7 +1123,7 @@ impl fmt::Display for WriterEnumDeclaration {
                 let fields_str: Vec<String> = variant
                     .fields
                     .iter()
-                    .map(|(name, typ, _)| format!("{}: {}", name, typ))
+                    .map(|field| format!("{}: {}", field.name, field.typ))
                     .collect();
                 writeln!(
                     f,
@@ -1149,12 +1149,12 @@ impl WriterRecordDeclaration {
 impl fmt::Display for WriterRecordDeclaration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "record {} {{", self.name)?;
-        for (field_name, field_type, _) in &self.fields {
+        for field in &self.fields {
             writeln!(
                 f,
                 "  {}: {},",
-                field_name.as_str(),
-                Self::type_name_without_module(field_type)
+                field.name.as_str(),
+                Self::type_name_without_module(&field.typ)
             )?;
         }
         write!(f, "}}")

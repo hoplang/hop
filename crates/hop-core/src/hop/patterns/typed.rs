@@ -225,16 +225,16 @@ pub fn typecheck_pattern(
                     let found = variant_fields
                         .iter()
                         .enumerate()
-                        .find(|(_, (name, _, _))| name == field_name);
+                        .find(|(_, f)| &f.name == field_name);
 
                     match found {
-                        Some((index, (_, typ, _))) => {
+                        Some((index, field)) => {
                             typed_fields.push(TypedField {
                                 name: field_name.clone(),
                                 index,
                                 pattern: typecheck_pattern(
                                     field_pattern,
-                                    typ.clone(),
+                                    field.typ.clone(),
                                     registry,
                                     errors,
                                 )?,
@@ -259,8 +259,8 @@ pub fn typecheck_pattern(
                         fields.iter().map(|(name, _, _)| name).collect();
                     let missing_fields = variant_fields
                         .iter()
-                        .filter(|(name, _, _)| !pattern_field_names.contains(&name))
-                        .map(|(name, _, _)| name.clone())
+                        .filter(|f| !pattern_field_names.contains(&&f.name))
+                        .map(|f| f.name.clone())
                         .collect::<Vec<_>>();
                     errors.push(TypeError::new(
                         TypeErrorKind::EnumVariantMissingFields {
@@ -308,16 +308,16 @@ pub fn typecheck_pattern(
                     let found = subject_fields
                         .iter()
                         .enumerate()
-                        .find(|(_, (name, _, _))| name == field_name);
+                        .find(|(_, f)| &f.name == field_name);
 
                     match found {
-                        Some((index, (_, typ, _))) => {
+                        Some((index, field)) => {
                             typed_fields.push(TypedField {
                                 name: field_name.clone(),
                                 index,
                                 pattern: typecheck_pattern(
                                     field_pattern,
-                                    typ.clone(),
+                                    field.typ.clone(),
                                     registry,
                                     errors,
                                 )?,
@@ -341,8 +341,8 @@ pub fn typecheck_pattern(
                         fields.iter().map(|(name, _, _)| name).collect::<Vec<_>>();
                     let missing_fields = subject_fields
                         .iter()
-                        .filter(|(name, _, _)| !pattern_field_names.contains(&name))
-                        .map(|(name, _, _)| name.clone())
+                        .filter(|f| !pattern_field_names.contains(&&f.name))
+                        .map(|f| f.name.clone())
                         .collect::<Vec<_>>();
                     errors.push(TypeError::new(
                         TypeErrorKind::RecordMissingFields {

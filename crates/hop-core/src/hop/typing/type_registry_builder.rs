@@ -4,13 +4,13 @@ use std::sync::Arc;
 use crate::document::DocumentCursor;
 use crate::document_annotator::DocumentAnnotator;
 use crate::document_id::DocumentId;
-use crate::examples_annotation::ExamplesAnnotation;
 use crate::hop::parsing::parse_type::parse_type;
 use crate::hop::typing::resolve_type::resolve_type;
-use crate::hop::typing::r#type::{EnumVariant, FunctionSignature, ParamEntry, Tail, Type};
-use crate::hop::typing::type_env::TypeBinding;
-use crate::hop::typing::type_env::TypeEnv;
-use crate::hop::typing::type_registry::{ResolvedType, TypeDef, TypeRegistry};
+use crate::hop::typing::r#type::Type;
+use crate::hop::typing::type_env::{FunctionSignature, ParamEntry, Tail, TypeBinding, TypeEnv};
+use crate::hop::typing::type_registry::{
+    EnumVariant, RecordField, ResolvedType, TypeDef, TypeRegistry,
+};
 use crate::parse_error::ParseErrors;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
@@ -164,7 +164,11 @@ impl TypeRegistryBuilder {
                 Decl::Record { name, fields } => {
                     let fields = fields
                         .iter()
-                        .map(|(f, t)| (field_name(f), types.resolve(t), None))
+                        .map(|(f, t)| RecordField {
+                            name: field_name(f),
+                            typ: types.resolve(t),
+                            examples: None,
+                        })
                         .collect();
                     types.registry.insert(
                         types.module.clone(),
@@ -193,7 +197,11 @@ impl TypeRegistryBuilder {
                             name: type_name(v),
                             fields: fields
                                 .iter()
-                                .map(|(f, t)| (field_name(f), types.resolve(t), None))
+                                .map(|(f, t)| RecordField {
+                                    name: field_name(f),
+                                    typ: types.resolve(t),
+                                    examples: None,
+                                })
                                 .collect(),
                         })
                         .collect();
@@ -313,10 +321,7 @@ impl TestTypes {
         })
     }
 
-    pub fn record_fields(
-        &self,
-        name: &str,
-    ) -> &[(FieldName, Arc<Type>, Option<ExamplesAnnotation>)] {
+    pub fn record_fields(&self, name: &str) -> &[RecordField] {
         let typ = self.named.get(&type_name(name));
         match typ.map(|typ| self.registry.resolve(typ)) {
             Some(Some(ResolvedType::Record { fields, .. })) => fields,

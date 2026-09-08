@@ -9,8 +9,8 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
-use super::r#type::{FunctionSignature, ParamEntry, Tail, Type};
-use super::type_env::{TypeBinding, TypeEnv};
+use super::r#type::Type;
+use super::type_env::{FunctionSignature, ParamEntry, Tail, TypeBinding, TypeEnv};
 use crate::dependency_graph::DependencyGraph;
 use crate::document::{CheapString, DocumentRange};
 use crate::hop::parsing::ParsedExpr;

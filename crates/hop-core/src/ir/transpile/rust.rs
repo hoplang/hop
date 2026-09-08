@@ -5,8 +5,8 @@ use pretty::{Arena, DocAllocator};
 use super::{Doc, Transpiler};
 use crate::dependency_graph::DependencyGraph;
 use crate::hop::patterns::{EnumPattern, Match};
-use crate::hop::typing::r#type::{EnumVariant, Type};
-use crate::hop::typing::type_registry::{ResolvedType, TypeRegistry};
+use crate::hop::typing::r#type::Type;
+use crate::hop::typing::type_registry::{EnumVariant, ResolvedType, TypeRegistry};
 use crate::ir::ir_var::IrVar;
 use crate::ir::writer_module::{
     WriterArgument, WriterExpr, WriterForSource, WriterFunctionBody, WriterFunctionDeclaration,
@@ -201,16 +201,16 @@ impl RustTranspiler {
         let mut graph = DependencyGraph::new();
         for record in &module.records {
             let mut refs = BTreeSet::new();
-            for (_, field_type, _) in &record.fields {
-                Self::inline_refs(field_type, &mut refs);
+            for field in &record.fields {
+                Self::inline_refs(&field.typ, &mut refs);
             }
             graph.set_dependencies(record.name.clone(), refs);
         }
         for enum_def in &module.enums {
             let mut refs = BTreeSet::new();
             for variant in &enum_def.variants {
-                for (_, field_type, _) in &variant.fields {
-                    Self::inline_refs(field_type, &mut refs);
+                for field in &variant.fields {
+                    Self::inline_refs(&field.typ, &mut refs);
                 }
             }
             graph.set_dependencies(enum_def.name.clone(), refs);
@@ -313,8 +313,8 @@ impl RustTranspiler {
         };
         let field_type = fields
             .iter()
-            .find(|(f, _, _)| f == field)
-            .map(|(_, t, _)| t)
+            .find(|f| f.name == *field)
+            .map(|f| &f.typ)
             .expect("field access fields exist on the record");
         self.unboxing(field_type, name.as_str())
     }
@@ -334,8 +334,8 @@ impl RustTranspiler {
         let field_type = variants
             .iter()
             .find(|v| v.name == *variant_name)
-            .and_then(|v| v.fields.iter().find(|(f, _, _)| f == field))
-            .map(|(_, t, _)| t);
+            .and_then(|v| v.fields.iter().find(|f| f.name == *field))
+            .map(|f| &f.typ);
         match field_type.and_then(|t| self.unboxing(t, enum_name.as_str())) {
             Some(BoxConversion::Direct) => format!("(**{var}).clone()"),
             Some(BoxConversion::Mapped(mapper)) => format!("{var}.clone().map({mapper})"),
@@ -458,14 +458,14 @@ impl Transpiler for RustTranspiler {
                     let field_docs: Vec<_> = variant
                         .fields
                         .iter()
-                        .map(|(field_name, field_type, _)| {
+                        .map(|field| {
                             let ft = self.transpile_field_type(
                                 arena,
-                                field_type,
+                                &field.typ,
                                 enum_def.name.as_str(),
                             );
                             arena
-                                .text(Self::escape_ident(field_name.as_str()))
+                                .text(Self::escape_ident(field.name.as_str()))
                                 .append(arena.text(": "))
                                 .append(ft)
                         })
@@ -494,11 +494,11 @@ impl Transpiler for RustTranspiler {
                 .append(arena.text(" {"))
                 .append(arena.line());
 
-            for (field_name, field_type, _) in &record.fields {
-                let ft = self.transpile_field_type(arena, field_type, record.name.as_str());
+            for field in &record.fields {
+                let ft = self.transpile_field_type(arena, &field.typ, record.name.as_str());
                 result = result
                     .append(arena.text("    pub "))
-                    .append(arena.text(Self::escape_ident(field_name.as_str())))
+                    .append(arena.text(Self::escape_ident(field.name.as_str())))
                     .append(arena.text(": "))
                     .append(ft)
                     .append(arena.text(","))

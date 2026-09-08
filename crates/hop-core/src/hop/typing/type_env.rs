@@ -1,10 +1,36 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use super::r#type::{FunctionSignature, Type};
-use crate::document::DocumentRange;
+use super::r#type::Type;
+use super::typed_expr::TypedExpr;
+use crate::document::{CheapString, DocumentRange};
+use crate::html::HtmlElementKind;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
+
+#[derive(Debug, Clone)]
+pub struct FunctionSignature {
+    pub params: Vec<ParamEntry>,
+    pub return_type: Arc<Type>,
+    pub tail: Tail,
+    pub rest_param: Option<VarName>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ParamEntry {
+    pub name: VarName,
+    pub typ: Arc<Type>,
+    pub default: Option<TypedExpr>,
+}
+
+#[derive(Debug, Clone)]
+pub enum Tail {
+    Closed,
+    Html {
+        element: HtmlElementKind,
+        reserved: Vec<CheapString>,
+    },
+}
 
 #[derive(Debug, Clone)]
 pub enum TypeBinding {

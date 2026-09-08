@@ -1,17 +1,28 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use super::r#type::{EnumVariant, Type};
+use super::r#type::Type;
 use crate::document_id::DocumentId;
 use crate::examples_annotation::ExamplesAnnotation;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 
-type RecordFields = Vec<(FieldName, Arc<Type>, Option<ExamplesAnnotation>)>;
+#[derive(Debug, Clone)]
+pub struct RecordField {
+    pub name: FieldName,
+    pub typ: Arc<Type>,
+    pub examples: Option<ExamplesAnnotation>,
+}
+
+#[derive(Debug, Clone)]
+pub struct EnumVariant {
+    pub name: TypeName,
+    pub fields: Vec<RecordField>,
+}
 
 #[derive(Debug, Clone)]
 pub enum TypeDef {
-    Record { fields: RecordFields },
+    Record { fields: Vec<RecordField> },
     Enum { variants: Vec<EnumVariant> },
 }
 
@@ -29,7 +40,7 @@ pub enum ResolvedType<'a> {
     Option(&'a Arc<Type>),
     Record {
         name: &'a TypeName,
-        fields: &'a [(FieldName, Arc<Type>, Option<ExamplesAnnotation>)],
+        fields: &'a [RecordField],
     },
     Enum {
         name: &'a TypeName,

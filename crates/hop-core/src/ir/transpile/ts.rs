@@ -283,12 +283,12 @@ impl Transpiler for TsTranspiler {
                         let field_docs: Vec<_> = variant
                             .fields
                             .iter()
-                            .map(|(field_name, field_type, _)| {
+                            .map(|field| {
                                 arena
                                     .text(", readonly ")
-                                    .append(arena.text(field_name.as_str()))
+                                    .append(arena.text(field.name.as_str()))
                                     .append(arena.text(": "))
-                                    .append(self.transpile_type(arena, field_type))
+                                    .append(self.transpile_type(arena, &field.typ))
                             })
                             .collect();
                         base.append(arena.intersperse(field_docs, arena.nil()))
@@ -332,22 +332,22 @@ impl Transpiler for TsTranspiler {
                     let param_with_type_docs: Vec<_> = variant
                         .fields
                         .iter()
-                        .map(|(field_name, field_type, _)| {
+                        .map(|field| {
                             arena
-                                .text(field_name.as_str())
+                                .text(field.name.as_str())
                                 .append(arena.text(": "))
-                                .append(self.transpile_type(arena, field_type))
+                                .append(self.transpile_type(arena, &field.typ))
                         })
                         .collect();
                     let field_name_docs: Vec<_> = variant
                         .fields
                         .iter()
-                        .map(|(field_name, _, _)| {
+                        .map(|field| {
                             arena
                                 .text(", ")
-                                .append(arena.text(field_name.as_str()))
+                                .append(arena.text(field.name.as_str()))
                                 .append(arena.text(": init."))
-                                .append(arena.text(field_name.as_str()))
+                                .append(arena.text(field.name.as_str()))
                         })
                         .collect();
                     result = result
@@ -390,34 +390,34 @@ impl Transpiler for TsTranspiler {
                     let field_docs: Vec<_> = record
                         .fields
                         .iter()
-                        .map(|(name, ty, _)| {
+                        .map(|field| {
                             arena
                                 .text("public readonly ")
-                                .append(arena.text(name.as_str()))
+                                .append(arena.text(field.name.as_str()))
                                 .append(arena.text(": "))
-                                .append(self.transpile_type(arena, ty))
+                                .append(self.transpile_type(arena, &field.typ))
                                 .append(arena.text(";"))
                         })
                         .collect();
                     let param_with_type_docs: Vec<_> = record
                         .fields
                         .iter()
-                        .map(|(field_name, field_type, _)| {
+                        .map(|field| {
                             arena
-                                .text(field_name.as_str())
+                                .text(field.name.as_str())
                                 .append(arena.text(": "))
-                                .append(self.transpile_type(arena, field_type))
+                                .append(self.transpile_type(arena, &field.typ))
                         })
                         .collect();
                     let assignment_docs: Vec<_> = record
                         .fields
                         .iter()
-                        .map(|(name, _, _)| {
+                        .map(|field| {
                             arena
                                 .text("this.")
-                                .append(arena.text(name.as_str()))
+                                .append(arena.text(field.name.as_str()))
                                 .append(arena.text(" = init."))
-                                .append(arena.text(name.as_str()))
+                                .append(arena.text(field.name.as_str()))
                                 .append(arena.text(";"))
                         })
                         .collect();

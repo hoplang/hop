@@ -2,9 +2,8 @@ use std::fmt::{self, Display};
 use std::sync::Arc;
 
 use crate::examples_annotation::ExamplesAnnotation;
-use crate::hop::typing::r#type::EnumVariant;
+use crate::hop::typing::type_registry::{EnumVariant, RecordField};
 use crate::hop::typing::{Type, TypedExpr};
-use crate::symbols::field_name::FieldName;
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
@@ -21,7 +20,7 @@ pub struct TypedAst {
 #[derive(Debug, Clone)]
 pub struct TypedRecordDeclaration {
     pub name: TypeName,
-    pub fields: Vec<(FieldName, Arc<Type>, Option<ExamplesAnnotation>)>,
+    pub fields: Vec<RecordField>,
 }
 
 #[derive(Debug, Clone)]
@@ -123,10 +122,10 @@ impl TypedRecordDeclaration {
             } else {
                 BoxDoc::line()
                     .append(BoxDoc::intersperse(
-                        self.fields.iter().map(|(name, ty, _)| {
-                            BoxDoc::text(name.as_str())
+                        self.fields.iter().map(|field| {
+                            BoxDoc::text(field.name.as_str())
                                 .append(BoxDoc::text(": "))
-                                .append(ty.to_doc())
+                                .append(field.typ.to_doc())
                         }),
                         BoxDoc::text(",").append(BoxDoc::line()),
                     ))
@@ -157,10 +156,10 @@ impl TypedEnumDeclaration {
                                 BoxDoc::text(variant.name.as_str())
                                     .append(BoxDoc::text(" { "))
                                     .append(BoxDoc::intersperse(
-                                        variant.fields.iter().map(|(field_name, field_type, _)| {
-                                            BoxDoc::text(field_name.as_str())
+                                        variant.fields.iter().map(|field| {
+                                            BoxDoc::text(field.name.as_str())
                                                 .append(BoxDoc::text(": "))
-                                                .append(field_type.to_doc())
+                                                .append(field.typ.to_doc())
                                         }),
                                         BoxDoc::text(", "),
                                     ))

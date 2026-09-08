@@ -3,14 +3,8 @@ use std::sync::Arc;
 
 use pretty::BoxDoc;
 
-use super::typed_expr::TypedExpr;
-use crate::document::CheapString;
 use crate::document_id::DocumentId;
-use crate::examples_annotation::ExamplesAnnotation;
-use crate::html::HtmlElementKind;
-use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
-use crate::symbols::var_name::VarName;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Type {
@@ -23,30 +17,6 @@ pub enum Type {
     Array(Arc<Type>),
     Option(Arc<Type>),
     Named { module: DocumentId, name: TypeName },
-}
-
-#[derive(Debug, Clone)]
-pub struct FunctionSignature {
-    pub params: Vec<ParamEntry>,
-    pub return_type: Arc<Type>,
-    pub tail: Tail,
-    pub rest_param: Option<VarName>,
-}
-
-#[derive(Debug, Clone)]
-pub struct ParamEntry {
-    pub name: VarName,
-    pub typ: Arc<Type>,
-    pub default: Option<TypedExpr>,
-}
-
-#[derive(Debug, Clone)]
-pub enum Tail {
-    Closed,
-    Html {
-        element: HtmlElementKind,
-        reserved: Vec<CheapString>,
-    },
 }
 
 /// An EquatableType is a type where its values can be compared
@@ -73,12 +43,6 @@ pub enum ComparableType {
 pub enum NumericType {
     Int,
     Float,
-}
-
-#[derive(Debug, Clone)]
-pub struct EnumVariant {
-    pub name: TypeName,
-    pub fields: Vec<(FieldName, Arc<Type>, Option<ExamplesAnnotation>)>,
 }
 
 impl Type {

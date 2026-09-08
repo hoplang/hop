@@ -2,9 +2,7 @@ use super::value::Value;
 use crate::document_id::DocumentId;
 use crate::examples_annotation::ExamplesAnnotation;
 use crate::hop::typing::Type;
-use crate::hop::typing::r#type::EnumVariant;
-use crate::hop::typing::type_registry::{ResolvedType, TypeRegistry};
-use crate::symbols::field_name::FieldName;
+use crate::hop::typing::type_registry::{EnumVariant, ResolvedType, TypeRegistry};
 use crate::symbols::type_name::TypeName;
 use rand::{Rng, RngExt};
 
@@ -50,11 +48,11 @@ pub(crate) fn can_construct(
         | ResolvedType::Option(_) => true,
         ResolvedType::Record { fields, .. } => fields
             .iter()
-            .all(|(_, ty, _)| can_construct(ty, registry, visiting)),
+            .all(|field| can_construct(&field.typ, registry, visiting)),
         ResolvedType::Enum { variants, .. } => variants.iter().any(|v| {
             v.fields
                 .iter()
-                .all(|(_, ty, _)| can_construct(ty, registry, visiting))
+                .all(|field| can_construct(&field.typ, registry, visiting))
         }),
     };
     if matches!(ty, Type::Named { .. }) {
@@ -158,13 +156,13 @@ fn generate(
         ResolvedType::Record { fields, .. } => {
             let map = fields
                 .iter()
-                .map(|(name, ty, examples)| {
+                .map(|field| {
                     (
-                        name.clone(),
+                        field.name.clone(),
                         random_value_at_depth(
                             rng,
-                            ty,
-                            examples.as_ref(),
+                            &field.typ,
+                            field.examples.as_ref(),
                             registry,
                             depth + 1,
                             visiting,
@@ -183,7 +181,7 @@ fn generate(
                     .filter(|v| {
                         v.fields
                             .iter()
-                            .all(|(_, ty, _)| can_construct(ty, registry, visiting))
+                            .all(|field| can_construct(&field.typ, registry, visiting))
                     })
                     .collect();
                 candidates[rng.random_range(0..candidates.len())]
@@ -193,13 +191,13 @@ fn generate(
             let fields = variant
                 .fields
                 .iter()
-                .map(|(name, ty, examples): &(_, _, _)| {
+                .map(|field| {
                     (
-                        FieldName::new(name.as_str()).unwrap(),
+                        field.name.clone(),
                         random_value_at_depth(
                             rng,
-                            ty,
-                            examples.as_ref(),
+                            &field.typ,
+                            field.examples.as_ref(),
                             registry,
                             depth + 1,
                             visiting,

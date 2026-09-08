@@ -411,7 +411,7 @@ fn compile_rows(
                 let field_vars: Vec<Variable> = variant
                     .fields
                     .iter()
-                    .map(|(_, field_type, _)| fresh_var(fresh_vars, field_type.clone()))
+                    .map(|field| fresh_var(fresh_vars, field.typ.clone()))
                     .collect();
                 (
                     Constructor::EnumVariant {
@@ -427,7 +427,7 @@ fn compile_rows(
             // Records have a single constructor with fresh variables for each field
             let field_vars: Vec<Variable> = fields
                 .iter()
-                .map(|(_, field_type, _)| fresh_var(fresh_vars, field_type.clone()))
+                .map(|field| fresh_var(fresh_vars, field.typ.clone()))
                 .collect();
             vec![(
                 Constructor::Record {
@@ -512,7 +512,7 @@ fn compile_rows(
             {
                 vars.iter()
                     .zip(fields.iter())
-                    .map(|(v, (field_name, _, _))| (v.name.clone(), Some(field_name.clone())))
+                    .map(|(v, field)| (v.name.clone(), Some(field.name.clone())))
                     .collect()
             } else {
                 Vec::new()
@@ -529,7 +529,7 @@ fn compile_rows(
                 if let Some(fields) = variant_fields {
                     vars.iter()
                         .zip(fields.iter())
-                        .map(|(v, (field_name, _, _))| (v.name.clone(), Some(field_name.clone())))
+                        .map(|(v, field)| (v.name.clone(), Some(field.name.clone())))
                         .collect()
                 } else {
                     vars.iter().map(|v| (v.name.clone(), None)).collect()
@@ -632,8 +632,8 @@ fn compile_rows(
                     let bindings = variant_fields
                         .iter()
                         .zip(vars)
-                        .map(|((field_name, _, _), var)| FieldBinding {
-                            field_name: field_name.clone(),
+                        .map(|(field, var)| FieldBinding {
+                            field_name: field.name.clone(),
                             bound_name: if var.is_free_from_bindings {
                                 None
                             } else {
@@ -667,8 +667,8 @@ fn compile_rows(
             let bindings = type_fields
                 .iter()
                 .zip(vars)
-                .map(|((field_name, _, _), var)| FieldBinding {
-                    field_name: field_name.clone(),
+                .map(|(field, var)| FieldBinding {
+                    field_name: field.name.clone(),
                     bound_name: if var.is_free_from_bindings {
                         None
                     } else {
