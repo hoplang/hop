@@ -18,7 +18,6 @@ use crate::symbols::var_name::VarName;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::sync::Arc;
 
 /// Declares the record and enum types of a module under construction.
 pub struct PureModuleBuilder {
@@ -120,7 +119,7 @@ impl From<PureModuleBuilder> for PureModuleBodiesBuilder {
 
 /// A function's parameters and return type, keyed by name so call sites can
 /// look up the callee's return type.
-type FunctionSignature = (Vec<WriterParameter>, Arc<Type>);
+type FunctionSignature = (Vec<WriterParameter>, Type);
 
 /// Collects view and function bodies against a frozen set of types.
 pub struct PureModuleBodiesBuilder {
@@ -149,7 +148,7 @@ impl PureModuleBodiesBuilder {
     where
         F: FnOnce(&PureBuilder) -> PureExpr,
     {
-        let (parameters, body) = self.declaration(params, Arc::new(Type::Fragment), body_fn);
+        let (parameters, body) = self.declaration(params, Type::Fragment, body_fn);
         self.pages.push(PurePageDeclaration {
             name: TypeName::new(name).expect("Test view name should be valid"),
             parameters,
@@ -185,7 +184,7 @@ impl PureModuleBodiesBuilder {
     fn declaration<'a, F>(
         &self,
         params: impl IntoIterator<Item = (&'a str, &'a str)>,
-        expected_type: Arc<Type>,
+        expected_type: Type,
         body_fn: F,
     ) -> (Vec<WriterParameter>, PureExpr)
     where
@@ -215,8 +214,8 @@ impl PureModuleBodiesBuilder {
         };
         let body = body_fn(&builder);
         assert_eq!(
-            *body.as_type(),
-            *expected_type,
+            body.typ(),
+            expected_type,
             "Declaration body must be of type {:?}, got: {}",
             expected_type,
             body
@@ -260,7 +259,7 @@ impl PureModuleBodiesBuilder {
     }
 }
 
-type ScopedVar = (String, IrVar, Arc<Type>);
+type ScopedVar = (String, IrVar, Type);
 
 pub struct PureBuilder {
     var_stack: Vec<ScopedVar>,
@@ -297,7 +296,7 @@ impl PureBuilder {
     }
 
     /// Resolve a source-syntax type string, e.g. `Array[Int]`.
-    pub fn resolve_type(&self, type_str: &str) -> Arc<Type> {
+    pub fn resolve_type(&self, type_str: &str) -> Type {
         self.types.resolve(type_str)
     }
 
@@ -355,7 +354,7 @@ impl PureBuilder {
     }
 
     pub fn eq(&self, left: PureExpr, right: PureExpr) -> PureExpr {
-        let operand_types = match (left.as_type(), right.as_type()) {
+        let operand_types = match (left.typ(), right.typ()) {
             (Type::Bool, Type::Bool) => EquatableType::Bool,
             (Type::String, Type::String) => EquatableType::String,
             (Type::Int, Type::Int) => EquatableType::Int,
@@ -374,7 +373,7 @@ impl PureBuilder {
     }
 
     pub fn lt(&self, left: PureExpr, right: PureExpr) -> PureExpr {
-        let operand_types = match (left.as_type(), right.as_type()) {
+        let operand_types = match (left.typ(), right.typ()) {
             (Type::Int, Type::Int) => ComparableType::Int,
             (Type::Float, Type::Float) => ComparableType::Float,
             (l, r) => panic!(
@@ -391,7 +390,7 @@ impl PureBuilder {
     }
 
     pub fn lte(&self, left: PureExpr, right: PureExpr) -> PureExpr {
-        let operand_types = match (left.as_type(), right.as_type()) {
+        let operand_types = match (left.typ(), right.typ()) {
             (Type::Int, Type::Int) => ComparableType::Int,
             (Type::Float, Type::Float) => ComparableType::Float,
             (l, r) => panic!(
@@ -408,7 +407,7 @@ impl PureBuilder {
     }
 
     pub fn add(&self, left: PureExpr, right: PureExpr) -> PureExpr {
-        let operand_types = match (left.as_type(), right.as_type()) {
+        let operand_types = match (left.typ(), right.typ()) {
             (Type::Int, Type::Int) => NumericType::Int,
             (Type::Float, Type::Float) => NumericType::Float,
             (l, r) => panic!("Unsupported types for addition: {:?} + {:?}", l, r),
@@ -422,7 +421,7 @@ impl PureBuilder {
     }
 
     pub fn sub(&self, left: PureExpr, right: PureExpr) -> PureExpr {
-        let operand_types = match (left.as_type(), right.as_type()) {
+        let operand_types = match (left.typ(), right.typ()) {
             (Type::Int, Type::Int) => NumericType::Int,
             (Type::Float, Type::Float) => NumericType::Float,
             (l, r) => panic!("Unsupported types for subtraction: {:?} - {:?}", l, r),
@@ -436,7 +435,7 @@ impl PureBuilder {
     }
 
     pub fn mul(&self, left: PureExpr, right: PureExpr) -> PureExpr {
-        let operand_types = match (left.as_type(), right.as_type()) {
+        let operand_types = match (left.typ(), right.typ()) {
             (Type::Int, Type::Int) => NumericType::Int,
             (Type::Float, Type::Float) => NumericType::Float,
             (l, r) => panic!("Unsupported types for multiplication: {:?} * {:?}", l, r),
@@ -451,7 +450,7 @@ impl PureBuilder {
 
     pub fn not(&self, operand: PureExpr) -> PureExpr {
         assert_eq!(
-            *operand.as_type(),
+            operand.typ(),
             Type::Bool,
             "BooleanNegation expects Bool operand, got: {}",
             operand
@@ -463,7 +462,7 @@ impl PureBuilder {
     }
 
     pub fn neg(&self, operand: PureExpr) -> PureExpr {
-        let operand_type = match operand.as_type() {
+        let operand_type = match operand.typ() {
             Type::Int => NumericType::Int,
             Type::Float => NumericType::Float,
             t => panic!("Unsupported type for numeric negation: -{:?}", t),
@@ -477,13 +476,13 @@ impl PureBuilder {
 
     pub fn and(&self, left: PureExpr, right: PureExpr) -> PureExpr {
         assert_eq!(
-            *left.as_type(),
+            left.typ(),
             Type::Bool,
             "BooleanLogicalAnd expects Bool operands, got: {}",
             left
         );
         assert_eq!(
-            *right.as_type(),
+            right.typ(),
             Type::Bool,
             "BooleanLogicalAnd expects Bool operands, got: {}",
             right
@@ -497,13 +496,13 @@ impl PureBuilder {
 
     pub fn or(&self, left: PureExpr, right: PureExpr) -> PureExpr {
         assert_eq!(
-            *left.as_type(),
+            left.typ(),
             Type::Bool,
             "BooleanLogicalOr expects Bool operands, got: {}",
             left
         );
         assert_eq!(
-            *right.as_type(),
+            right.typ(),
             Type::Bool,
             "BooleanLogicalOr expects Bool operands, got: {}",
             right
@@ -518,16 +517,16 @@ impl PureBuilder {
     pub fn array(&self, elements: Vec<PureExpr>) -> PureExpr {
         let element_type = elements
             .first()
-            .map(|first| first.get_type())
+            .map(|first| first.typ())
             .expect("Cannot create empty array literal in test builder");
         self.array_typed(element_type, elements)
     }
 
-    pub fn array_typed(&self, element_type: Arc<Type>, elements: Vec<PureExpr>) -> PureExpr {
+    pub fn array_typed(&self, element_type: Type, elements: Vec<PureExpr>) -> PureExpr {
         for element in &elements {
             assert_eq!(
-                *element.as_type(),
-                *element_type,
+                element.typ(),
+                element_type,
                 "Array elements must all have the same type, got: {}",
                 element
             );
@@ -535,14 +534,14 @@ impl PureBuilder {
 
         PureExpr::ArrayLiteral {
             elements,
-            typ: Arc::new(Type::Array(element_type)),
+            typ: Type::Array(Box::new(element_type)),
             id: self.next_expr_id(),
         }
     }
 
     pub fn int_to_string(&self, value: PureExpr) -> PureExpr {
         assert_eq!(
-            *value.as_type(),
+            value.typ(),
             Type::Int,
             "IntToString expects Int operand, got: {}",
             value
@@ -555,7 +554,7 @@ impl PureBuilder {
 
     pub fn float_to_int(&self, value: PureExpr) -> PureExpr {
         assert_eq!(
-            *value.as_type(),
+            value.typ(),
             Type::Float,
             "FloatToInt expects Float operand, got: {}",
             value
@@ -568,7 +567,7 @@ impl PureBuilder {
 
     pub fn int_to_float(&self, value: PureExpr) -> PureExpr {
         assert_eq!(
-            *value.as_type(),
+            value.typ(),
             Type::Int,
             "IntToFloat expects Int operand, got: {}",
             value
@@ -595,8 +594,8 @@ impl PureBuilder {
                     )
                 });
             assert_eq!(
-                value.as_type(),
-                declared_type.as_ref(),
+                value.typ(),
+                *declared_type,
                 "Field '{}' of record '{}' has mismatched type, got: {}",
                 field_name,
                 record_name,
@@ -664,8 +663,8 @@ impl PureBuilder {
                     )
                 });
             assert_eq!(
-                value.as_type(),
-                declared_type.as_ref(),
+                value.typ(),
+                *declared_type,
                 "Field '{}' of variant '{}::{}' has mismatched type, got: {}",
                 field_name,
                 enum_name,
@@ -704,10 +703,10 @@ impl PureBuilder {
     }
 
     pub fn some(&self, inner: PureExpr) -> PureExpr {
-        let inner_type = inner.get_type();
+        let inner_type = inner.typ();
         PureExpr::OptionLiteral {
             value: Some(Box::new(inner)),
-            typ: Arc::new(Type::Option(inner_type)),
+            typ: Type::Option(Box::new(inner_type)),
             id: self.next_expr_id(),
         }
     }
@@ -716,10 +715,10 @@ impl PureBuilder {
         self.none_typed(self.types.resolve(inner_type))
     }
 
-    pub fn none_typed(&self, inner_type: Arc<Type>) -> PureExpr {
+    pub fn none_typed(&self, inner_type: Type) -> PureExpr {
         PureExpr::OptionLiteral {
             value: None,
-            typ: Arc::new(Type::Option(inner_type)),
+            typ: Type::Option(Box::new(inner_type)),
             id: self.next_expr_id(),
         }
     }
@@ -728,8 +727,9 @@ impl PureBuilder {
     where
         F: FnOnce(&mut EnumMatchExprArms<'_>),
     {
+        let subject_type = subject.typ();
         let Some(ResolvedType::Enum { name, variants, .. }) =
-            self.types.registry().resolve(subject.as_type())
+            self.types.registry().resolve(&subject_type)
         else {
             panic!("Match subject must be an enum type")
         };
@@ -764,15 +764,15 @@ impl PureBuilder {
         true_body: PureExpr,
         false_body: PureExpr,
     ) -> PureExpr {
-        assert_eq!(*subject.as_type(), Type::Bool, "{}", subject);
+        assert_eq!(subject.typ(), Type::Bool, "{}", subject);
         assert_eq!(
-            *true_body.as_type(),
-            *false_body.as_type(),
+            true_body.typ(),
+            false_body.typ(),
             "Match arms must all have the same type, got: {} and {}",
             true_body,
             false_body
         );
-        let result_type = true_body.get_type();
+        let result_type = true_body.typ();
 
         PureExpr::Match {
             match_: Match::Bool {
@@ -792,18 +792,18 @@ impl PureBuilder {
         none_body: PureExpr,
     ) -> PureExpr {
         assert!(
-            matches!(subject.as_type(), Type::Option(_)),
+            matches!(subject.typ(), Type::Option(_)),
             "Match subject must be an option type, got: {}",
             subject
         );
         assert_eq!(
-            *some_body.as_type(),
-            *none_body.as_type(),
+            some_body.typ(),
+            none_body.typ(),
             "Match arms must all have the same type, got: {} and {}",
             some_body,
             none_body
         );
-        let result_type = some_body.get_type();
+        let result_type = some_body.typ();
 
         PureExpr::Match {
             match_: Match::Option {
@@ -827,8 +827,8 @@ impl PureBuilder {
     where
         F: FnOnce(&Self) -> PureExpr,
     {
-        let inner_type = match subject.as_type() {
-            Type::Option(inner) => inner.clone(),
+        let inner_type = match subject.typ() {
+            Type::Option(inner) => inner.as_ref().clone(),
             _ => panic!("Match subject must be an option type, got: {}", subject),
         };
 
@@ -837,13 +837,13 @@ impl PureBuilder {
             some_body_fn(&self.scoped([(binding_name.to_string(), binding, inner_type)]));
 
         assert_eq!(
-            *some_body.as_type(),
-            *none_body.as_type(),
+            some_body.typ(),
+            none_body.typ(),
             "Match arms must all have the same type, got: {} and {}",
             some_body,
             none_body
         );
-        let result_type = some_body.get_type();
+        let result_type = some_body.typ();
 
         PureExpr::Match {
             match_: Match::Option {
@@ -859,7 +859,8 @@ impl PureBuilder {
 
     pub fn field_access(&self, object: PureExpr, field_str: &str) -> PureExpr {
         let field_name = FieldName::new(field_str).unwrap();
-        let field_type = match self.types.registry().resolve(object.as_type()) {
+        let object_type = object.typ();
+        let field_type = match self.types.registry().resolve(&object_type) {
             Some(ResolvedType::Record {
                 name: record_name,
                 fields,
@@ -889,12 +890,12 @@ impl PureBuilder {
     where
         F: FnOnce(&Self) -> PureExpr,
     {
-        let value_type = value.get_type();
+        let value_type = value.typ();
 
         let var = self.bind();
         let body = body_fn(&self.scoped([(var_name.to_string(), var, value_type)]));
 
-        let typ = body.get_type();
+        let typ = body.typ();
 
         PureExpr::Let {
             var,
@@ -908,7 +909,7 @@ impl PureBuilder {
     pub fn string_concat(&self, parts: Vec<PureExpr>) -> PureExpr {
         for part in &parts {
             assert_eq!(
-                *part.as_type(),
+                part.typ(),
                 Type::String,
                 "StringConcat expects String parts, got: {}",
                 part
@@ -923,7 +924,7 @@ impl PureBuilder {
     pub fn join(&self, args: Vec<PureExpr>) -> PureExpr {
         for arg in &args {
             assert_eq!(
-                *arg.as_type(),
+                arg.typ(),
                 Type::String,
                 "join expects String arguments, got: {}",
                 arg
@@ -948,7 +949,7 @@ impl PureBuilder {
 
     pub fn array_length(&self, operand: PureExpr) -> PureExpr {
         assert!(
-            matches!(operand.as_type(), Type::Array(_)),
+            matches!(operand.typ(), Type::Array(_)),
             "ArrayLength expects Array operand, got: {}",
             operand
         );
@@ -960,7 +961,7 @@ impl PureBuilder {
 
     pub fn array_is_empty(&self, operand: PureExpr) -> PureExpr {
         assert!(
-            matches!(operand.as_type(), Type::Array(_)),
+            matches!(operand.typ(), Type::Array(_)),
             "ArrayIsEmpty expects Array operand, got: {}",
             operand
         );
@@ -972,7 +973,7 @@ impl PureBuilder {
 
     pub fn string_is_empty(&self, operand: PureExpr) -> PureExpr {
         assert_eq!(
-            *operand.as_type(),
+            operand.typ(),
             Type::String,
             "StringIsEmpty expects String operand, got: {}",
             operand
@@ -985,7 +986,7 @@ impl PureBuilder {
 
     pub fn option_is_some(&self, operand: PureExpr) -> PureExpr {
         assert!(
-            matches!(operand.as_type(), Type::Option(_)),
+            matches!(operand.typ(), Type::Option(_)),
             "OptionIsSome expects Option operand, got: {}",
             operand
         );
@@ -997,7 +998,7 @@ impl PureBuilder {
 
     pub fn option_is_none(&self, operand: PureExpr) -> PureExpr {
         assert!(
-            matches!(operand.as_type(), Type::Option(_)),
+            matches!(operand.typ(), Type::Option(_)),
             "OptionIsNone expects Option operand, got: {}",
             operand
         );
@@ -1017,7 +1018,7 @@ impl PureBuilder {
 
     pub fn escape(&self, expr: PureExpr) -> PureExpr {
         assert_eq!(
-            *expr.as_type(),
+            expr.typ(),
             Type::String,
             "FragmentEscape expects String operand, got: {}",
             expr
@@ -1031,7 +1032,7 @@ impl PureBuilder {
     pub fn concat(&self, parts: Vec<PureExpr>) -> PureExpr {
         for part in &parts {
             assert_eq!(
-                *part.as_type(),
+                part.typ(),
                 Type::Fragment,
                 "FragmentConcat expects Fragment parts, got: {}",
                 part
@@ -1047,8 +1048,8 @@ impl PureBuilder {
     where
         F: FnOnce(&Self) -> PureExpr,
     {
-        let element_type = match array.as_type() {
-            Type::Array(elem_type) => elem_type.clone(),
+        let element_type = match array.typ() {
+            Type::Array(elem_type) => elem_type.as_ref().clone(),
             _ => panic!("Cannot iterate over non-array type"),
         };
 
@@ -1061,7 +1062,7 @@ impl PureBuilder {
             .collect();
         let body = body_fn(&self.scoped(bindings));
         assert_eq!(
-            *body.as_type(),
+            body.typ(),
             Type::Fragment,
             "FragmentFor expects a Fragment body, got: {}",
             body
@@ -1086,13 +1087,13 @@ impl PureBuilder {
         F: FnOnce(&Self) -> PureExpr,
     {
         assert_eq!(
-            *start.as_type(),
+            start.typ(),
             Type::Int,
             "Range bounds must be Int, got: {}",
             start
         );
         assert_eq!(
-            *end.as_type(),
+            end.typ(),
             Type::Int,
             "Range bounds must be Int, got: {}",
             end
@@ -1103,11 +1104,11 @@ impl PureBuilder {
         let bindings: Vec<_> = name
             .into_iter()
             .zip(var)
-            .map(|(name, v)| (name.to_string(), v, Arc::new(Type::Int)))
+            .map(|(name, v)| (name.to_string(), v, Type::Int))
             .collect();
         let body = body_fn(&self.scoped(bindings));
         assert_eq!(
-            *body.as_type(),
+            body.typ(),
             Type::Fragment,
             "FragmentFor expects a Fragment body, got: {}",
             body
@@ -1151,7 +1152,7 @@ pub struct EnumMatchExprArms<'a> {
     enum_name: TypeName,
     variants: Vec<EnumVariant>,
     arms: Vec<EnumMatchArm<PureExpr, IrVar>>,
-    result_type: Option<Arc<Type>>,
+    result_type: Option<Type>,
 }
 
 impl EnumMatchExprArms<'_> {
@@ -1183,12 +1184,12 @@ impl EnumMatchExprArms<'_> {
         let body = body_fn(&self.builder.scoped(scoped_vars));
         match &self.result_type {
             Some(result_type) => assert_eq!(
-                *body.as_type(),
-                **result_type,
+                body.typ(),
+                *result_type,
                 "Match arms must all have the same type, got: {}",
                 body
             ),
-            None => self.result_type = Some(body.get_type()),
+            None => self.result_type = Some(body.typ()),
         }
         self.arms.push(EnumMatchArm {
             pattern: EnumPattern::Variant {

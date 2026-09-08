@@ -1,5 +1,4 @@
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
 
 use super::r#type::{NumericType, Type};
 use super::type_env::TypeBinding;
@@ -26,9 +25,9 @@ use crate::variable_scope::VariableScope;
 /// empty array literals to infer their element type from context.
 pub fn typecheck_expr(
     parsed_expr: &ParsedExpr,
-    inferred_type: Option<&Arc<Type>>,
+    inferred_type: Option<&Type>,
     forwarded_params: &[VarName],
-    var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
+    var_env: &mut VariableScope<VarName, (Type, DocumentRange)>,
     type_env: &mut TypeEnv,
     registry: &TypeRegistry,
     annotations: &mut Vec<HoverAnnotation>,
@@ -105,9 +104,9 @@ pub fn typecheck_expr(
                 asset_references,
                 errors,
             )?;
-            let base_type = typed_base.as_type();
+            let base_type = typed_base.typ();
 
-            match registry.resolve(base_type) {
+            match registry.resolve(&base_type) {
                 Some(ResolvedType::Record {
                     name: record_name,
                     fields,
@@ -135,7 +134,7 @@ pub fn typecheck_expr(
                 _ => {
                     errors.push(TypeError::new(
                         TypeErrorKind::CannotUseAsRecord {
-                            typ: typed_base.get_type(),
+                            typ: typed_base.typ(),
                         },
                         record.range().clone(),
                     ));
@@ -163,7 +162,7 @@ pub fn typecheck_expr(
             )?;
             let typed_right = typecheck_expr(
                 right,
-                Some(&typed_left.get_type()),
+                Some(&typed_left.typ()),
                 forwarded_params,
                 var_env,
                 type_env,
@@ -174,13 +173,13 @@ pub fn typecheck_expr(
                 errors,
             )?;
 
-            let left_type = typed_left.as_type();
-            let right_type = typed_right.as_type();
+            let left_type = typed_left.typ();
+            let right_type = typed_right.typ();
 
             let Some(left_comparable) = left_type.as_equatable_type() else {
                 errors.push(TypeError::new(
                     TypeErrorKind::TypeIsNotComparable {
-                        t: typed_left.get_type(),
+                        t: typed_left.typ(),
                     },
                     left.range().clone(),
                 ));
@@ -190,7 +189,7 @@ pub fn typecheck_expr(
             let Some(right_comparable) = right_type.as_equatable_type() else {
                 errors.push(TypeError::new(
                     TypeErrorKind::TypeIsNotComparable {
-                        t: typed_right.get_type(),
+                        t: typed_right.typ(),
                     },
                     right.range().clone(),
                 ));
@@ -200,8 +199,8 @@ pub fn typecheck_expr(
             if left_comparable != right_comparable {
                 errors.push(TypeError::new(
                     TypeErrorKind::CannotCompareTypes {
-                        left: typed_left.get_type(),
-                        right: typed_right.get_type(),
+                        left: typed_left.typ(),
+                        right: typed_right.typ(),
                     },
                     parsed_expr.range().clone(),
                 ));
@@ -245,13 +244,13 @@ pub fn typecheck_expr(
                 errors,
             );
             let (typed_left, typed_right) = (typed_left?, typed_right?);
-            let left_type = typed_left.as_type();
-            let right_type = typed_right.as_type();
+            let left_type = typed_left.typ();
+            let right_type = typed_right.typ();
 
             let Some(left_comparable) = left_type.as_equatable_type() else {
                 errors.push(TypeError::new(
                     TypeErrorKind::TypeIsNotComparable {
-                        t: typed_left.get_type(),
+                        t: typed_left.typ(),
                     },
                     left.range().clone(),
                 ));
@@ -261,7 +260,7 @@ pub fn typecheck_expr(
             let Some(right_comparable) = right_type.as_equatable_type() else {
                 errors.push(TypeError::new(
                     TypeErrorKind::TypeIsNotComparable {
-                        t: typed_right.get_type(),
+                        t: typed_right.typ(),
                     },
                     right.range().clone(),
                 ));
@@ -271,8 +270,8 @@ pub fn typecheck_expr(
             if left_comparable != right_comparable {
                 errors.push(TypeError::new(
                     TypeErrorKind::CannotCompareTypes {
-                        left: typed_left.get_type(),
-                        right: typed_right.get_type(),
+                        left: typed_left.typ(),
+                        right: typed_right.typ(),
                     },
                     parsed_expr.range().clone(),
                 ));
@@ -316,13 +315,13 @@ pub fn typecheck_expr(
                 errors,
             );
             let (typed_left, typed_right) = (typed_left?, typed_right?);
-            let left_type = typed_left.as_type();
-            let right_type = typed_right.as_type();
+            let left_type = typed_left.typ();
+            let right_type = typed_right.typ();
 
             let Some(left_comparable) = left_type.as_comparable_type() else {
                 errors.push(TypeError::new(
                     TypeErrorKind::TypeIsNotComparable {
-                        t: typed_left.get_type(),
+                        t: typed_left.typ(),
                     },
                     left.range().clone(),
                 ));
@@ -332,7 +331,7 @@ pub fn typecheck_expr(
             let Some(right_comparable) = right_type.as_comparable_type() else {
                 errors.push(TypeError::new(
                     TypeErrorKind::TypeIsNotComparable {
-                        t: typed_right.get_type(),
+                        t: typed_right.typ(),
                     },
                     right.range().clone(),
                 ));
@@ -343,8 +342,8 @@ pub fn typecheck_expr(
             if left_comparable != right_comparable {
                 errors.push(TypeError::new(
                     TypeErrorKind::CannotCompareTypes {
-                        left: typed_left.get_type(),
-                        right: typed_right.get_type(),
+                        left: typed_left.typ(),
+                        right: typed_right.typ(),
                     },
                     parsed_expr.range().clone(),
                 ));
@@ -389,13 +388,13 @@ pub fn typecheck_expr(
                 errors,
             );
             let (typed_left, typed_right) = (typed_left?, typed_right?);
-            let left_type = typed_left.as_type();
-            let right_type = typed_right.as_type();
+            let left_type = typed_left.typ();
+            let right_type = typed_right.typ();
 
             let Some(left_comparable) = left_type.as_comparable_type() else {
                 errors.push(TypeError::new(
                     TypeErrorKind::TypeIsNotComparable {
-                        t: typed_left.get_type(),
+                        t: typed_left.typ(),
                     },
                     left.range().clone(),
                 ));
@@ -405,7 +404,7 @@ pub fn typecheck_expr(
             let Some(right_comparable) = right_type.as_comparable_type() else {
                 errors.push(TypeError::new(
                     TypeErrorKind::TypeIsNotComparable {
-                        t: typed_right.get_type(),
+                        t: typed_right.typ(),
                     },
                     right.range().clone(),
                 ));
@@ -416,8 +415,8 @@ pub fn typecheck_expr(
             if left_comparable != right_comparable {
                 errors.push(TypeError::new(
                     TypeErrorKind::CannotCompareTypes {
-                        left: typed_left.get_type(),
-                        right: typed_right.get_type(),
+                        left: typed_left.typ(),
+                        right: typed_right.typ(),
                     },
                     parsed_expr.range().clone(),
                 ));
@@ -462,13 +461,13 @@ pub fn typecheck_expr(
                 errors,
             );
             let (typed_left, typed_right) = (typed_left?, typed_right?);
-            let left_type = typed_left.as_type();
-            let right_type = typed_right.as_type();
+            let left_type = typed_left.typ();
+            let right_type = typed_right.typ();
 
             let Some(left_comparable) = left_type.as_comparable_type() else {
                 errors.push(TypeError::new(
                     TypeErrorKind::TypeIsNotComparable {
-                        t: typed_left.get_type(),
+                        t: typed_left.typ(),
                     },
                     left.range().clone(),
                 ));
@@ -478,7 +477,7 @@ pub fn typecheck_expr(
             let Some(right_comparable) = right_type.as_comparable_type() else {
                 errors.push(TypeError::new(
                     TypeErrorKind::TypeIsNotComparable {
-                        t: typed_right.get_type(),
+                        t: typed_right.typ(),
                     },
                     right.range().clone(),
                 ));
@@ -489,8 +488,8 @@ pub fn typecheck_expr(
             if left_comparable != right_comparable {
                 errors.push(TypeError::new(
                     TypeErrorKind::CannotCompareTypes {
-                        left: typed_left.get_type(),
-                        right: typed_right.get_type(),
+                        left: typed_left.typ(),
+                        right: typed_right.typ(),
                     },
                     parsed_expr.range().clone(),
                 ));
@@ -534,13 +533,13 @@ pub fn typecheck_expr(
                 errors,
             );
             let (typed_left, typed_right) = (typed_left?, typed_right?);
-            let left_type = typed_left.as_type();
-            let right_type = typed_right.as_type();
+            let left_type = typed_left.typ();
+            let right_type = typed_right.typ();
 
             let Some(left_comparable) = left_type.as_comparable_type() else {
                 errors.push(TypeError::new(
                     TypeErrorKind::TypeIsNotComparable {
-                        t: typed_left.get_type(),
+                        t: typed_left.typ(),
                     },
                     left.range().clone(),
                 ));
@@ -550,7 +549,7 @@ pub fn typecheck_expr(
             let Some(right_comparable) = right_type.as_comparable_type() else {
                 errors.push(TypeError::new(
                     TypeErrorKind::TypeIsNotComparable {
-                        t: typed_right.get_type(),
+                        t: typed_right.typ(),
                     },
                     right.range().clone(),
                 ));
@@ -561,8 +560,8 @@ pub fn typecheck_expr(
             if left_comparable != right_comparable {
                 errors.push(TypeError::new(
                     TypeErrorKind::CannotCompareTypes {
-                        left: typed_left.get_type(),
-                        right: typed_right.get_type(),
+                        left: typed_left.typ(),
+                        right: typed_right.typ(),
                     },
                     parsed_expr.range().clone(),
                 ));
@@ -606,11 +605,11 @@ pub fn typecheck_expr(
                 errors,
             );
             let (typed_left, typed_right) = (typed_left?, typed_right?);
-            let left_type = typed_left.as_type();
-            let right_type = typed_right.as_type();
+            let left_type = typed_left.typ();
+            let right_type = typed_right.typ();
 
             // LogicalAnd only works with Bool expressions
-            if *left_type != Type::Bool {
+            if left_type != Type::Bool {
                 errors.push(TypeError::new(
                     TypeErrorKind::LogicalAndTypeMismatch {},
                     left.range().clone(),
@@ -618,7 +617,7 @@ pub fn typecheck_expr(
                 return None;
             }
 
-            if *right_type != Type::Bool {
+            if right_type != Type::Bool {
                 errors.push(TypeError::new(
                     TypeErrorKind::LogicalAndTypeMismatch {},
                     right.range().clone(),
@@ -662,10 +661,10 @@ pub fn typecheck_expr(
                 errors,
             );
             let (typed_left, typed_right) = (typed_left?, typed_right?);
-            let left_type = typed_left.as_type();
-            let right_type = typed_right.as_type();
+            let left_type = typed_left.typ();
+            let right_type = typed_right.typ();
 
-            if *left_type != Type::Bool {
+            if left_type != Type::Bool {
                 errors.push(TypeError::new(
                     TypeErrorKind::LogicalOrTypeMismatch {},
                     left.range().clone(),
@@ -673,7 +672,7 @@ pub fn typecheck_expr(
                 return None;
             }
 
-            if *right_type != Type::Bool {
+            if right_type != Type::Bool {
                 errors.push(TypeError::new(
                     TypeErrorKind::LogicalOrTypeMismatch {},
                     right.range().clone(),
@@ -717,8 +716,8 @@ pub fn typecheck_expr(
                 errors,
             );
             let (typed_left, typed_right) = (typed_left?, typed_right?);
-            let left_type = typed_left.as_type();
-            let right_type = typed_right.as_type();
+            let left_type = typed_left.typ();
+            let right_type = typed_right.typ();
 
             match (left_type, right_type) {
                 (Type::String, Type::String) => Some(TypedExpr::StringConcat {
@@ -738,8 +737,8 @@ pub fn typecheck_expr(
                     // Incompatible types for addition
                     errors.push(TypeError::new(
                         TypeErrorKind::IncompatibleTypesForAddition {
-                            left_type: typed_left.get_type(),
-                            right_type: typed_right.get_type(),
+                            left_type: typed_left.typ(),
+                            right_type: typed_right.typ(),
                         },
                         left.range().clone().to(right.range().clone()),
                     ));
@@ -778,8 +777,8 @@ pub fn typecheck_expr(
                 errors,
             );
             let (typed_left, typed_right) = (typed_left?, typed_right?);
-            let left_type = typed_left.as_type();
-            let right_type = typed_right.as_type();
+            let left_type = typed_left.typ();
+            let right_type = typed_right.typ();
 
             match (left_type, right_type) {
                 (Type::Int, Type::Int) => Some(TypedExpr::NumericSubtract {
@@ -796,8 +795,8 @@ pub fn typecheck_expr(
                     // Incompatible types for subtraction
                     errors.push(TypeError::new(
                         TypeErrorKind::IncompatibleTypesForSubtraction {
-                            left_type: typed_left.get_type(),
-                            right_type: typed_right.get_type(),
+                            left_type: typed_left.typ(),
+                            right_type: typed_right.typ(),
                         },
                         left.range().clone().to(right.range().clone()),
                     ));
@@ -836,8 +835,8 @@ pub fn typecheck_expr(
                 errors,
             );
             let (typed_left, typed_right) = (typed_left?, typed_right?);
-            let left_type = typed_left.as_type();
-            let right_type = typed_right.as_type();
+            let left_type = typed_left.typ();
+            let right_type = typed_right.typ();
 
             match (left_type, right_type) {
                 (Type::Int, Type::Int) => Some(TypedExpr::NumericMultiply {
@@ -854,8 +853,8 @@ pub fn typecheck_expr(
                     // Incompatible types for multiplication
                     errors.push(TypeError::new(
                         TypeErrorKind::IncompatibleTypesForMultiplication {
-                            left_type: typed_left.get_type(),
-                            right_type: typed_right.get_type(),
+                            left_type: typed_left.typ(),
+                            right_type: typed_right.typ(),
                         },
                         left.range().clone().to(right.range().clone()),
                     ));
@@ -876,12 +875,12 @@ pub fn typecheck_expr(
                 asset_references,
                 errors,
             )?;
-            let operand_type = typed_operand.as_type();
+            let operand_type = typed_operand.typ();
 
-            if *operand_type != Type::Bool {
+            if operand_type != Type::Bool {
                 errors.push(TypeError::new(
                     TypeErrorKind::BooleanNegationTypeMismatch {
-                        found: typed_operand.get_type(),
+                        found: typed_operand.typ(),
                     },
                     operand.range().clone(),
                 ));
@@ -905,7 +904,7 @@ pub fn typecheck_expr(
                 asset_references,
                 errors,
             )?;
-            let operand_type = typed_operand.as_type();
+            let operand_type = typed_operand.typ();
 
             match operand_type {
                 Type::Int => Some(TypedExpr::NumericNegation {
@@ -919,7 +918,7 @@ pub fn typecheck_expr(
                 _ => {
                     errors.push(TypeError::new(
                         TypeErrorKind::NumericNegationTypeMismatch {
-                            found: typed_operand.get_type(),
+                            found: typed_operand.typ(),
                         },
                         operand.range().clone(),
                     ));
@@ -930,7 +929,7 @@ pub fn typecheck_expr(
         ParsedExpr::ArrayLiteral { elements, range } => {
             if elements.is_empty() {
                 // Empty array: infer element type from expected type
-                let elem_type = match inferred_type.map(|t| t.as_ref()) {
+                let elem_type = match inferred_type {
                     Some(Type::Array(elem)) => elem.clone(),
                     _ => {
                         errors.push(TypeError::new(
@@ -942,13 +941,12 @@ pub fn typecheck_expr(
                 };
                 Some(TypedExpr::ArrayLiteral {
                     elements: vec![],
-                    typ: Arc::new(Type::Array(elem_type)),
+                    typ: Type::Array(elem_type),
                 })
             } else {
                 // Determine expected element type from context if available
-                let expected_elem_type: Option<Arc<Type>> = match inferred_type.map(|t| t.as_ref())
-                {
-                    Some(Type::Array(elem)) => Some(elem.clone()),
+                let expected_elem_type: Option<Type> = match inferred_type {
+                    Some(Type::Array(elem)) => Some(elem.as_ref().clone()),
                     _ => None,
                 };
 
@@ -966,7 +964,7 @@ pub fn typecheck_expr(
                     asset_references,
                     errors,
                 );
-                let first_type = first_typed.as_ref().map(|typed| typed.get_type());
+                let first_type = first_typed.as_ref().map(|typed| typed.typ());
                 typed_elements.extend(first_typed);
 
                 // Check that all elements have the same type
@@ -987,9 +985,9 @@ pub fn typecheck_expr(
                     ) else {
                         continue;
                     };
-                    let element_type = typed_element.get_type();
+                    let element_type = typed_element.typ();
                     if let Some(first_type) = &first_type {
-                        if *element_type != **first_type {
+                        if element_type != *first_type {
                             errors.push(TypeError::new(
                                 TypeErrorKind::ArrayElementTypeMismatch {
                                     expected: first_type.clone(),
@@ -1009,7 +1007,7 @@ pub fn typecheck_expr(
 
                 Some(TypedExpr::ArrayLiteral {
                     elements: typed_elements,
-                    typ: Arc::new(Type::Array(first_type?)),
+                    typ: Type::Array(Box::new(first_type?)),
                 })
             }
         }
@@ -1093,8 +1091,8 @@ pub fn typecheck_expr(
                         asset_references,
                         errors,
                     )?;
-                    let subject_type = typed_subject.get_type();
-                    if *subject_type != *record_type {
+                    let subject_type = typed_subject.typ();
+                    if subject_type != record_type {
                         errors.push(TypeError::new(
                             TypeErrorKind::RecordSpreadTypeMismatch {
                                 expected: record_type.clone(),
@@ -1151,10 +1149,10 @@ pub fn typecheck_expr(
                 ) else {
                     continue;
                 };
-                let actual_type = typed_value.get_type();
+                let actual_type = typed_value.typ();
 
                 // Check that the types match
-                if *actual_type != **expected_type {
+                if actual_type != *expected_type {
                     errors.push(TypeError::new(
                         TypeErrorKind::RecordLiteralFieldTypeMismatch {
                             field_name: field.name.clone(),
@@ -1367,8 +1365,8 @@ pub fn typecheck_expr(
                                 continue;
                             };
 
-                            let actual_type = typed_field_expr.get_type();
-                            if *actual_type != *expected_field.typ {
+                            let actual_type = typed_field_expr.typ();
+                            if actual_type != expected_field.typ {
                                 errors.push(TypeError::new(
                                     TypeErrorKind::EnumVariantFieldTypeMismatch {
                                         enum_name: enum_name.clone(),
@@ -1432,11 +1430,10 @@ pub fn typecheck_expr(
             match value {
                 Some(inner_expr) => {
                     // Some(value): determine expected inner type from context if available
-                    let expected_inner_type: Option<Arc<Type>> =
-                        match inferred_type.map(|t| t.as_ref()) {
-                            Some(Type::Option(elem)) => Some(elem.clone()),
-                            _ => None,
-                        };
+                    let expected_inner_type: Option<Type> = match inferred_type {
+                        Some(Type::Option(elem)) => Some(elem.as_ref().clone()),
+                        _ => None,
+                    };
 
                     // Type check the inner value
                     let typed_inner = typecheck_expr(
@@ -1451,15 +1448,15 @@ pub fn typecheck_expr(
                         asset_references,
                         errors,
                     )?;
-                    let inner_type = typed_inner.get_type();
+                    let inner_type = typed_inner.typ();
                     Some(TypedExpr::OptionLiteral {
                         value: Some(Box::new(typed_inner)),
-                        typ: Arc::new(Type::Option(inner_type)),
+                        typ: Type::Option(Box::new(inner_type)),
                     })
                 }
                 None => {
                     // None: infer element type from expected type
-                    let elem_type = match inferred_type.map(|t| t.as_ref()) {
+                    let elem_type = match inferred_type {
                         Some(Type::Option(elem)) => elem.clone(),
                         _ => {
                             errors.push(TypeError::new(
@@ -1471,7 +1468,7 @@ pub fn typecheck_expr(
                     };
                     Some(TypedExpr::OptionLiteral {
                         value: None,
-                        typ: Arc::new(Type::Option(elem_type)),
+                        typ: Type::Option(elem_type),
                     })
                 }
             }
@@ -1496,7 +1493,7 @@ pub fn typecheck_expr(
             ..
         } => match name.as_str() {
             "join" => {
-                let string_type = Arc::new(Type::String);
+                let string_type = Type::String;
 
                 let mut typed_args = Vec::with_capacity(args.len());
                 for arg in args {
@@ -1514,12 +1511,12 @@ pub fn typecheck_expr(
                     ) else {
                         continue;
                     };
-                    if typed.as_type() != &Type::String {
+                    if typed.typ() != Type::String {
                         errors.push(TypeError::new(
                             TypeErrorKind::MacroArgumentTypeMismatch {
                                 macro_name: "join".to_string(),
-                                expected: Arc::new(Type::String),
-                                found: typed.get_type(),
+                                expected: Type::String,
+                                found: typed.typ(),
                             },
                             arg.range().clone(),
                         ));
@@ -1614,9 +1611,9 @@ pub fn typecheck_expr(
                 asset_references,
                 errors,
             )?;
-            let receiver_type = typed_receiver.get_type();
+            let receiver_type = typed_receiver.typ();
 
-            match (receiver_type.as_ref(), method.as_str()) {
+            match (&receiver_type, method.as_str()) {
                 (Type::Array(_), "len") => {
                     annotations.push(HoverAnnotation::Description {
                         title: "Array::len() -> Int".to_string(),
@@ -1737,8 +1734,8 @@ pub fn typecheck_expr(
                 ) else {
                     continue;
                 };
-                let arg_type = typed_arg.get_type();
-                if *arg_type != *param.typ {
+                let arg_type = typed_arg.typ();
+                if arg_type != param.typ {
                     errors.push(TypeError::new(
                         TypeErrorKind::FunctionArgumentTypeMismatch {
                             name: name.clone(),
@@ -1788,7 +1785,7 @@ mod tests {
         let mut type_env = types.type_env();
 
         let decl_range = DocumentCursor::new(types.module().clone(), String::new()).range();
-        let mut env: VariableScope<VarName, (Arc<Type>, DocumentRange)> = VariableScope::new();
+        let mut env: VariableScope<VarName, (Type, DocumentRange)> = VariableScope::new();
         for (var_name, type_str) in env_vars {
             let typ = types.resolve(type_str);
             let _ = env.push(VarName::new(var_name).unwrap(), (typ, decl_range.clone()));
@@ -1820,7 +1817,7 @@ mod tests {
             &mut asset_references,
             &mut type_errors,
         ) {
-            Some(typed_expr) if type_errors.is_empty() => (typed_expr.as_type().to_string(), true),
+            Some(typed_expr) if type_errors.is_empty() => (typed_expr.typ().to_string(), true),
             _ => (
                 DocumentAnnotator::new()
                     .with_label("error")

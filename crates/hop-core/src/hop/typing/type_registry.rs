@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::sync::Arc;
 
 use super::r#type::Type;
 use crate::document_id::DocumentId;
@@ -10,7 +9,7 @@ use crate::symbols::type_name::TypeName;
 #[derive(Debug, Clone)]
 pub struct RecordField {
     pub name: FieldName,
-    pub typ: Arc<Type>,
+    pub typ: Type,
     pub examples: Option<ExamplesAnnotation>,
 }
 
@@ -36,8 +35,8 @@ pub enum ResolvedType<'a> {
     Int,
     Float,
     Fragment,
-    Array(&'a Arc<Type>),
-    Option(&'a Arc<Type>),
+    Array(&'a Type),
+    Option(&'a Type),
     Record {
         name: &'a TypeName,
         fields: &'a [RecordField],

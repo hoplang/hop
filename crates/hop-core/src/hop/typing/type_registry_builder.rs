@@ -1,5 +1,4 @@
 use std::collections::{BTreeMap, HashMap, VecDeque};
-use std::sync::Arc;
 
 use crate::document::DocumentCursor;
 use crate::document_annotator::DocumentAnnotator;
@@ -143,10 +142,10 @@ impl TypeRegistryBuilder {
                 Decl::Function { .. } => continue,
             };
             let type_name = type_name(name);
-            let typ = Arc::new(Type::Named {
+            let typ = Type::Named {
                 module: module.clone(),
                 name: type_name.clone(),
-            });
+            };
             if named.insert(type_name, typ).is_some() {
                 panic!("duplicate declaration of type `{name}`");
             }
@@ -248,7 +247,7 @@ impl TypeRegistryBuilder {
 pub struct TestTypes {
     module: DocumentId,
     registry: TypeRegistry,
-    named: BTreeMap<TypeName, Arc<Type>>,
+    named: BTreeMap<TypeName, Type>,
     functions: HashMap<VarName, FunctionSignature>,
 }
 
@@ -261,7 +260,7 @@ impl TestTypes {
         &self.module
     }
 
-    pub fn named(&self, name: &str) -> Arc<Type> {
+    pub fn named(&self, name: &str) -> Type {
         self.named
             .get(&type_name(name))
             .cloned()
@@ -273,7 +272,7 @@ impl TestTypes {
             })
     }
 
-    pub fn resolve(&self, type_str: &str) -> Arc<Type> {
+    pub fn resolve(&self, type_str: &str) -> Type {
         let cursor = DocumentCursor::new(self.module.clone(), type_str.to_string());
         let range = cursor.range();
         let mut iter = cursor.peekable();

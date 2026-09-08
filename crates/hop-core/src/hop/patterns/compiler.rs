@@ -11,7 +11,6 @@
 //! errors in some languages). Make sure that this invariant holds when
 //! introducing new match subjects.
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
 
 use crate::document::DocumentRange;
 use crate::hop::parsing::parsed_expr::Constructor;
@@ -33,11 +32,11 @@ pub struct Binding {
     /// The name of the source variable to bind from.
     pub source_name: VarName,
     /// The type of the binding.
-    pub typ: Arc<Type>,
+    pub typ: Type,
 }
 
 impl Binding {
-    pub fn new(name: VarName, source_name: VarName, typ: Arc<Type>) -> Self {
+    pub fn new(name: VarName, source_name: VarName, typ: Type) -> Self {
         Self {
             name,
             source_name,
@@ -68,14 +67,14 @@ impl Body {
 #[derive(Clone, Debug)]
 pub struct Variable {
     pub name: VarName,
-    pub typ: Arc<Type>,
+    pub typ: Type,
     /// Whether this variable's pattern introduces no bindings.
     /// When true, the variable should not generate a binding in the output.
     is_free_from_bindings: bool,
 }
 
 impl Variable {
-    pub fn new(name: VarName, typ: Arc<Type>) -> Self {
+    pub fn new(name: VarName, typ: Type) -> Self {
         Self {
             name,
             typ,
@@ -149,7 +148,7 @@ pub struct FieldBinding {
     /// The name to bind this field's value to, or None if wildcard pattern.
     pub bound_name: Option<VarName>,
     /// The type of the field.
-    pub typ: Arc<Type>,
+    pub typ: Type,
 }
 
 /// A case for an enum variant - may have multiple field bindings.
@@ -260,7 +259,7 @@ pub fn compile_match(
     registry: &TypeRegistry,
     patterns: &[TypedMatchPattern],
     subject_name: VarName,
-    subject_type: Arc<Type>,
+    subject_type: Type,
     subject_range: &DocumentRange,
     errors: &mut Vec<TypeError>,
 ) -> Option<Decision> {
@@ -385,7 +384,7 @@ fn compile_rows(
     let branch_var = find_branch_variable(&rows);
 
     let mut cases = match registry
-        .resolve(branch_var.typ.as_ref())
+        .resolve(&branch_var.typ)
         .expect("named type must be registered")
     {
         ResolvedType::Bool => {
@@ -507,9 +506,7 @@ fn compile_rows(
 
     for (cons, vars, rows) in cases {
         let args: Vec<(VarName, Option<FieldName>)> = if let Constructor::Record { .. } = &cons {
-            if let Some(ResolvedType::Record { fields, .. }) =
-                registry.resolve(branch_var.typ.as_ref())
-            {
+            if let Some(ResolvedType::Record { fields, .. }) = registry.resolve(&branch_var.typ) {
                 vars.iter()
                     .zip(fields.iter())
                     .map(|(v, field)| (v.name.clone(), Some(field.name.clone())))
@@ -519,9 +516,7 @@ fn compile_rows(
             }
         } else if let Constructor::EnumVariant { variant_name, .. } = &cons {
             // For enum variants with fields, include field names
-            if let Some(ResolvedType::Enum { variants, .. }) =
-                registry.resolve(branch_var.typ.as_ref())
-            {
+            if let Some(ResolvedType::Enum { variants, .. }) = registry.resolve(&branch_var.typ) {
                 let variant_fields = variants
                     .iter()
                     .find(|v| v.name.as_str() == variant_name.as_str())
@@ -571,7 +566,7 @@ fn compile_rows(
     // Clone the type to avoid borrow issues when moving branch_var
     let branch_typ = branch_var.typ.clone();
     match registry
-        .resolve(branch_typ.as_ref())
+        .resolve(&branch_typ)
         .expect("named type must be registered")
     {
         ResolvedType::Bool => {
@@ -708,7 +703,7 @@ fn find_branch_variable(rows: &[Row]) -> Variable {
 }
 
 /// Returns a new variable to use in the decision tree.
-fn fresh_var(fresh_vars: &mut FreshVarCounter, typ: Arc<Type>) -> Variable {
+fn fresh_var(fresh_vars: &mut FreshVarCounter, typ: Type) -> Variable {
     Variable::new(fresh_vars.fresh_var(), typ)
 }
 

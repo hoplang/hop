@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use pretty::BoxDoc;
 
 use crate::document::DocumentRange;
@@ -17,12 +15,12 @@ pub enum TypedMatchPattern {
     },
     Binding {
         name: VarName,
-        typ: Arc<Type>,
+        typ: Type,
         range: DocumentRange,
     },
     Constructor {
         constructor: Constructor,
-        typ: Arc<Type>,
+        typ: Type,
         args: Vec<TypedMatchPattern>,
         fields: Vec<TypedField>,
         range: DocumentRange,
@@ -40,7 +38,7 @@ impl TypedMatchPattern {
 
     /// Extract the binding variables introduced by this pattern with their types
     /// and ranges.
-    pub fn bindings(&self) -> Vec<(VarName, Arc<Type>, DocumentRange)> {
+    pub fn bindings(&self) -> Vec<(VarName, Type, DocumentRange)> {
         match self {
             TypedMatchPattern::Binding { name, typ, range } => {
                 vec![(name.clone(), typ.clone(), range.clone())]
@@ -122,7 +120,7 @@ pub struct TypedField {
 /// corresponding `TypedMatchPattern`.
 pub fn typecheck_pattern(
     parsed: &ParsedMatchPattern,
-    subject_type: Arc<Type>,
+    subject_type: Type,
     registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
 ) -> Option<TypedMatchPattern> {

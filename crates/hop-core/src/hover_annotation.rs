@@ -4,17 +4,16 @@ use crate::hop::typing::Type;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use std::fmt::{self, Display};
-use std::sync::Arc;
 
 #[derive(Debug, Clone)]
 pub enum HoverAnnotation {
     TypeForTypeName {
-        typ: Arc<Type>,
+        typ: Type,
         type_name: TypeName,
         range: DocumentRange,
     },
     TypeForVarName {
-        typ: Arc<Type>,
+        typ: Type,
         var_name: VarName,
         range: DocumentRange,
     },

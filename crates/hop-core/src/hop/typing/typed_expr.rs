@@ -1,5 +1,4 @@
 use std::fmt::{self, Display};
-use std::sync::Arc;
 
 use crate::document::CheapString;
 use crate::hop::patterns::{EnumPattern, Match};
@@ -17,14 +16,14 @@ pub enum TypedExpr {
     /// A variable expression, e.g. foo
     Var {
         value: VarName,
-        typ: Arc<Type>,
+        typ: Type,
     },
 
     /// A field access expression, e.g. foo.bar
     FieldAccess {
         record: Box<Self>,
         field: FieldName,
-        typ: Arc<Type>,
+        typ: Type,
     },
 
     /// A string literal expression, e.g. "foo bar"
@@ -50,14 +49,14 @@ pub enum TypedExpr {
     /// An array literal expression, e.g. [1, 2, 3]
     ArrayLiteral {
         elements: Vec<Self>,
-        typ: Arc<Type>,
+        typ: Type,
     },
 
     /// A record literal expression, e.g. User(name: "John", age: 30)
     RecordLiteral {
         record_name: TypeName,
         fields: Vec<(FieldName, Self)>,
-        typ: Arc<Type>,
+        typ: Type,
     },
 
     /// An enum literal expression, e.g. Color::Red or Result::Ok(value: 42)
@@ -66,20 +65,20 @@ pub enum TypedExpr {
         variant_name: TypeName,
         /// Field values for variants with fields (empty for unit variants)
         fields: Vec<(FieldName, Self)>,
-        typ: Arc<Type>,
+        typ: Type,
     },
 
     /// An option literal expression, e.g. Some(42) or None
     OptionLiteral {
         /// The inner value (Some) or None
         value: Option<Box<Self>>,
-        typ: Arc<Type>,
+        typ: Type,
     },
 
     /// A match expression (enum, bool, or option)
     Match {
         match_: Match<Self, Self>,
-        typ: Arc<Type>,
+        typ: Type,
     },
 
     /// String concatenation expression for joining a sequence of string
@@ -179,7 +178,7 @@ pub enum TypedExpr {
         var: VarName,
         value: Box<Self>,
         body: Box<Self>,
-        typ: Arc<Type>,
+        typ: Type,
     },
 
     /// FoldMap over a monoid
@@ -187,7 +186,7 @@ pub enum TypedExpr {
         var_name: Option<VarName>,
         source: Box<TypedLoopSource>,
         body: Box<Self>,
-        typ: Arc<Type>,
+        typ: Type,
     },
 
     /// Array length expression, e.g. items.len()
@@ -272,7 +271,7 @@ pub enum TypedExpr {
     FunctionCall {
         function_name: FunctionName,
         args: Vec<(VarName, Self)>,
-        typ: Arc<Type>,
+        typ: Type,
     },
 }
 
@@ -316,7 +315,7 @@ impl TypedAttributeValue {
 }
 
 impl TypedExpr {
-    pub fn get_type(&self) -> Arc<Type> {
+    pub fn typ(&self) -> Type {
         match self {
             TypedExpr::Var { typ, .. }
             | TypedExpr::FieldAccess { typ, .. }
@@ -329,13 +328,13 @@ impl TypedExpr {
             | TypedExpr::For { typ, .. }
             | TypedExpr::FunctionCall { typ, .. } => typ.clone(),
 
-            TypedExpr::FloatLiteral { .. } | TypedExpr::IntToFloat { .. } => Arc::new(Type::Float),
-            TypedExpr::IntLiteral { .. } => Arc::new(Type::Int),
+            TypedExpr::FloatLiteral { .. } | TypedExpr::IntToFloat { .. } => Type::Float,
+            TypedExpr::IntLiteral { .. } => Type::Int,
 
             TypedExpr::StringConcat { .. }
             | TypedExpr::StringLiteral { .. }
             | TypedExpr::IntToString { .. }
-            | TypedExpr::Asset { .. } => Arc::new(Type::String),
+            | TypedExpr::Asset { .. } => Type::String,
 
             TypedExpr::NumericAdd { operand_types, .. }
             | TypedExpr::NumericSubtract { operand_types, .. }
@@ -344,8 +343,8 @@ impl TypedExpr {
                 operand_type: operand_types,
                 ..
             } => match operand_types {
-                NumericType::Int => Arc::new(Type::Int),
-                NumericType::Float => Arc::new(Type::Float),
+                NumericType::Int => Type::Int,
+                NumericType::Float => Type::Float,
             },
 
             TypedExpr::BooleanLiteral { .. }
@@ -361,81 +360,16 @@ impl TypedExpr {
             | TypedExpr::ArrayIsEmpty { .. }
             | TypedExpr::StringIsEmpty { .. }
             | TypedExpr::OptionIsSome { .. }
-            | TypedExpr::OptionIsNone { .. } => Arc::new(Type::Bool),
+            | TypedExpr::OptionIsNone { .. } => Type::Bool,
 
-            TypedExpr::ArrayLength { .. } | TypedExpr::FloatToInt { .. } => Arc::new(Type::Int),
-
-            TypedExpr::FragmentConcat { .. }
-            | TypedExpr::FragmentRaw { .. }
-            | TypedExpr::FragmentEscape { .. }
-            | TypedExpr::FragmentHtml { .. } => Arc::new(Type::Fragment),
-
-            TypedExpr::AttrsConcat { .. } | TypedExpr::AttrsLiteral { .. } => Arc::new(Type::Attrs),
-        }
-    }
-
-    pub fn as_type(&self) -> &Type {
-        static STRING_TYPE: Type = Type::String;
-        static BOOL_TYPE: Type = Type::Bool;
-        static FLOAT_TYPE: Type = Type::Float;
-        static INT_TYPE: Type = Type::Int;
-        static FRAGMENT_TYPE: Type = Type::Fragment;
-        static ATTRS_TYPE: Type = Type::Attrs;
-
-        match self {
-            TypedExpr::Var { typ, .. }
-            | TypedExpr::FieldAccess { typ, .. }
-            | TypedExpr::ArrayLiteral { typ, .. }
-            | TypedExpr::RecordLiteral { typ, .. }
-            | TypedExpr::EnumLiteral { typ, .. }
-            | TypedExpr::OptionLiteral { typ, .. }
-            | TypedExpr::Match { typ, .. }
-            | TypedExpr::Let { typ, .. }
-            | TypedExpr::For { typ, .. }
-            | TypedExpr::FunctionCall { typ, .. } => typ.as_ref(),
-
-            TypedExpr::FloatLiteral { .. } | TypedExpr::IntToFloat { .. } => &FLOAT_TYPE,
-            TypedExpr::IntLiteral { .. } => &INT_TYPE,
-
-            TypedExpr::StringConcat { .. }
-            | TypedExpr::StringLiteral { .. }
-            | TypedExpr::IntToString { .. }
-            | TypedExpr::Asset { .. } => &STRING_TYPE,
-
-            TypedExpr::NumericAdd { operand_types, .. }
-            | TypedExpr::NumericSubtract { operand_types, .. }
-            | TypedExpr::NumericMultiply { operand_types, .. }
-            | TypedExpr::NumericNegation {
-                operand_type: operand_types,
-                ..
-            } => match operand_types {
-                NumericType::Int => &INT_TYPE,
-                NumericType::Float => &FLOAT_TYPE,
-            },
-
-            TypedExpr::BooleanLiteral { .. }
-            | TypedExpr::BooleanNegation { .. }
-            | TypedExpr::Equals { .. }
-            | TypedExpr::NotEquals { .. }
-            | TypedExpr::LessThan { .. }
-            | TypedExpr::GreaterThan { .. }
-            | TypedExpr::LessThanOrEqual { .. }
-            | TypedExpr::GreaterThanOrEqual { .. }
-            | TypedExpr::BooleanLogicalAnd { .. }
-            | TypedExpr::BooleanLogicalOr { .. }
-            | TypedExpr::ArrayIsEmpty { .. }
-            | TypedExpr::StringIsEmpty { .. }
-            | TypedExpr::OptionIsSome { .. }
-            | TypedExpr::OptionIsNone { .. } => &BOOL_TYPE,
-
-            TypedExpr::ArrayLength { .. } | TypedExpr::FloatToInt { .. } => &INT_TYPE,
+            TypedExpr::ArrayLength { .. } | TypedExpr::FloatToInt { .. } => Type::Int,
 
             TypedExpr::FragmentConcat { .. }
             | TypedExpr::FragmentRaw { .. }
             | TypedExpr::FragmentEscape { .. }
-            | TypedExpr::FragmentHtml { .. } => &FRAGMENT_TYPE,
+            | TypedExpr::FragmentHtml { .. } => Type::Fragment,
 
-            TypedExpr::AttrsConcat { .. } | TypedExpr::AttrsLiteral { .. } => &ATTRS_TYPE,
+            TypedExpr::AttrsConcat { .. } | TypedExpr::AttrsLiteral { .. } => Type::Attrs,
         }
     }
 

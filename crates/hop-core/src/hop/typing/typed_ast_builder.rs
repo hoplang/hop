@@ -1,5 +1,4 @@
 use std::cell::RefCell;
-use std::sync::Arc;
 
 use crate::document::CheapString;
 use crate::hop::assembly::AssembledPageDeclaration;
@@ -24,9 +23,9 @@ pub fn build_page<F, P, T>(page_name: &str, params: P, children_fn: F) -> Assemb
 where
     F: FnOnce(&mut TypedAstBuilder),
     P: IntoIterator<Item = (&'static str, T)>,
-    T: Into<Arc<Type>>,
+    T: Into<Type>,
 {
-    let params_owned: Vec<(String, Arc<Type>)> = params
+    let params_owned: Vec<(String, Type)> = params
         .into_iter()
         .map(|(k, v)| (k.to_string(), v.into()))
         .collect();
@@ -36,13 +35,13 @@ where
 }
 
 pub struct TypedAstBuilder {
-    var_stack: RefCell<Vec<(String, Arc<Type>)>>,
+    var_stack: RefCell<Vec<(String, Type)>>,
     params: Vec<TypedParameter>,
     children: Vec<TypedExpr>,
 }
 
 impl TypedAstBuilder {
-    fn new(params: Vec<(String, Arc<Type>)>) -> Self {
+    fn new(params: Vec<(String, Type)>) -> Self {
         let initial_vars = params.clone();
 
         Self {
@@ -110,7 +109,7 @@ impl TypedAstBuilder {
     }
 
     pub fn text_expr(&mut self, expr: TypedExpr) {
-        assert_eq!(*expr.as_type(), Type::String, "{}", expr);
+        assert_eq!(expr.typ(), Type::String, "{}", expr);
         self.children.push(TypedExpr::FragmentEscape {
             expr: Box::new(expr),
         });
@@ -120,7 +119,7 @@ impl TypedAstBuilder {
     where
         F: FnOnce(&mut Self),
     {
-        assert_eq!(*cond.as_type(), Type::Bool, "{}", cond);
+        assert_eq!(cond.typ(), Type::Bool, "{}", cond);
         self.bool_match_node(cond, children_fn, |_| {});
     }
 
@@ -128,8 +127,8 @@ impl TypedAstBuilder {
     where
         F: FnOnce(&mut Self),
     {
-        let element_type = match array.as_type() {
-            Type::Array(elem_type) => elem_type.clone(),
+        let element_type = match array.typ() {
+            Type::Array(elem_type) => elem_type.as_ref().clone(),
             _ => panic!("Cannot iterate over non-array type"),
         };
 
@@ -147,7 +146,7 @@ impl TypedAstBuilder {
             var_name: Some(VarName::try_from(var.to_string()).unwrap()),
             source: Box::new(TypedLoopSource::Array(array)),
             body: Box::new(TypedExpr::FragmentConcat { nodes: children }),
-            typ: Arc::new(Type::Fragment),
+            typ: Type::Fragment,
         });
     }
 
@@ -243,7 +242,7 @@ impl TypedAstBuilder {
                     nodes: false_builder.children,
                 }),
             },
-            typ: Arc::new(Type::Fragment),
+            typ: Type::Fragment,
         });
     }
 }
@@ -313,7 +312,7 @@ mod tests {
         check(
             build_page(
                 "ItemList",
-                [("items", Type::Array(Arc::new(Type::String)))],
+                [("items", Type::Array(Box::new(Type::String)))],
                 |b| {
                     b.ul(vec![], |b| {
                         b.for_node("item", b.var_expr("items"), |b| {
@@ -390,7 +389,7 @@ mod tests {
     fn loop_variable_not_accessible_outside_loop() {
         build_page(
             "Bad",
-            [("items", Type::Array(Arc::new(Type::String)))],
+            [("items", Type::Array(Box::new(Type::String)))],
             |b| {
                 b.for_node("item", b.var_expr("items"), |_| {});
                 // item should not be accessible here

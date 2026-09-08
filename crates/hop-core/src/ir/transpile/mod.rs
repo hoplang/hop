@@ -121,12 +121,11 @@ pub trait Transpiler {
     fn transpile_float_type<'a>(&mut self, arena: &'a Arena<'a>) -> Doc<'a>;
     fn transpile_int_type<'a>(&mut self, arena: &'a Arena<'a>) -> Doc<'a>;
     fn transpile_fragment_type<'a>(&mut self, arena: &'a Arena<'a>) -> Doc<'a>;
-    fn transpile_array_type<'a>(&mut self, arena: &'a Arena<'a>, element_type: &'a Type)
-    -> Doc<'a>;
-    fn transpile_option_type<'a>(&mut self, arena: &'a Arena<'a>, inner_type: &'a Type) -> Doc<'a>;
-    fn transpile_named_type<'a>(&mut self, arena: &'a Arena<'a>, name: &'a str) -> Doc<'a>;
-    fn transpile_enum_type<'a>(&mut self, arena: &'a Arena<'a>, name: &'a str) -> Doc<'a>;
-    fn transpile_type<'a>(&mut self, arena: &'a Arena<'a>, t: &'a Type) -> Doc<'a> {
+    fn transpile_array_type<'a>(&mut self, arena: &'a Arena<'a>, element_type: &Type) -> Doc<'a>;
+    fn transpile_option_type<'a>(&mut self, arena: &'a Arena<'a>, inner_type: &Type) -> Doc<'a>;
+    fn transpile_named_type<'a>(&mut self, arena: &'a Arena<'a>, name: &str) -> Doc<'a>;
+    fn transpile_enum_type<'a>(&mut self, arena: &'a Arena<'a>, name: &str) -> Doc<'a>;
+    fn transpile_type<'a>(&mut self, arena: &'a Arena<'a>, t: &Type) -> Doc<'a> {
         match t {
             Type::Bool => self.transpile_bool_type(arena),
             Type::String => self.transpile_string_type(arena),
@@ -378,7 +377,7 @@ pub trait Transpiler {
             }
             WriterExpr::FloatLiteral { value, .. } => self.transpile_float_literal(arena, *value),
             WriterExpr::IntLiteral { value, .. } => self.transpile_int_literal(arena, *value),
-            WriterExpr::ArrayLiteral { elements, typ, .. } => match typ.as_ref() {
+            WriterExpr::ArrayLiteral { elements, typ, .. } => match typ {
                 Type::Array(elem_type) => self.transpile_array_literal(arena, elements, elem_type),
                 _ => {
                     unreachable!()
@@ -475,7 +474,7 @@ pub trait Transpiler {
                 fields,
             ),
             WriterExpr::OptionLiteral { value, typ, .. } => {
-                let inner_type = match typ.as_ref() {
+                let inner_type = match typ {
                     Type::Option(inner) => inner.as_ref(),
                     _ => unreachable!("OptionLiteral must have Option type"),
                 };

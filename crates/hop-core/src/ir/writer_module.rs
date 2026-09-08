@@ -1,5 +1,4 @@
 use std::fmt;
-use std::sync::Arc;
 
 use crate::document::CheapString;
 use crate::hop::patterns::{EnumPattern, Match};
@@ -32,7 +31,7 @@ pub struct WriterModule {
 pub struct WriterParameter {
     pub name: VarName,
     pub var: IrVar,
-    pub typ: Arc<Type>,
+    pub typ: Type,
 }
 
 impl WriterParameter {
@@ -85,7 +84,7 @@ pub struct WriterFunctionDeclaration {
     /// Parameter names with their types
     pub parameters: Vec<WriterParameter>,
     /// The function's return type.
-    pub return_type: Arc<Type>,
+    pub return_type: Type,
     /// The function's body. Must produce `return_type`.
     pub body: WriterFunctionBody,
 }
@@ -176,7 +175,7 @@ pub enum WriterExpr {
         var: IrVar,
         value: Box<WriterExpr>,
         body: Box<WriterExpr>,
-        typ: Arc<Type>,
+        typ: Type,
     },
 
     /// A Match expression over an Enum, Boolean, or Option.
@@ -184,7 +183,7 @@ pub enum WriterExpr {
     /// Matching is exhaustive, a value must match at least one branch.
     Match {
         match_: Match<WriterExpr, WriterExpr, IrVar>,
-        typ: Arc<Type>,
+        typ: Type,
     },
 
     /// A VariableReference expression.
@@ -192,7 +191,7 @@ pub enum WriterExpr {
     /// Reads the value bound by its binder.
     ///
     /// The `typ` field must match the binder's type.
-    VariableReference { value: IrVar, typ: Arc<Type> },
+    VariableReference { value: IrVar, typ: Type },
 
     /// A FieldAccess expression.
     ///
@@ -201,7 +200,7 @@ pub enum WriterExpr {
     FieldAccess {
         record: Box<WriterExpr>,
         field: FieldName,
-        typ: Arc<Type>,
+        typ: Type,
     },
 
     /// A StringLiteral expression.
@@ -218,7 +217,7 @@ pub enum WriterExpr {
     FunctionCall {
         function_name: FunctionName,
         args: Vec<WriterArgument>,
-        typ: Arc<Type>,
+        typ: Type,
     },
 
     /// A BooleanLiteral expression.
@@ -233,14 +232,14 @@ pub enum WriterExpr {
     /// An ArrayLiteral expression.
     ArrayLiteral {
         elements: Vec<WriterExpr>,
-        typ: Arc<Type>,
+        typ: Type,
     },
 
     /// A RecordLiteral expression.
     RecordLiteral {
         record_name: TypeName,
         fields: Vec<(FieldName, WriterExpr)>,
-        typ: Arc<Type>,
+        typ: Type,
     },
 
     /// An EnumLiteral expression.
@@ -249,13 +248,13 @@ pub enum WriterExpr {
         variant_name: TypeName,
         /// Field values for variants with fields (empty for unit variants)
         fields: Vec<(FieldName, WriterExpr)>,
-        typ: Arc<Type>,
+        typ: Type,
     },
 
     /// An OptionLiteral expression.
     OptionLiteral {
         value: Option<Box<WriterExpr>>,
-        typ: Arc<Type>,
+        typ: Type,
     },
 
     /// A StringConcat expression.
@@ -608,8 +607,8 @@ impl WriterStatement {
 }
 
 impl WriterExpr {
-    /// Get the type of this expression as an Arc
-    pub fn get_type(&self) -> Arc<Type> {
+    /// The type of this expression.
+    pub fn typ(&self) -> Type {
         match self {
             WriterExpr::VariableReference { typ, .. }
             | WriterExpr::FieldAccess { typ, .. }
@@ -621,16 +620,14 @@ impl WriterExpr {
             | WriterExpr::Let { typ, .. }
             | WriterExpr::FunctionCall { typ, .. } => typ.clone(),
 
-            WriterExpr::FloatLiteral { .. } | WriterExpr::IntToFloat { .. } => {
-                Arc::new(Type::Float)
-            }
-            WriterExpr::IntLiteral { .. } => Arc::new(Type::Int),
+            WriterExpr::FloatLiteral { .. } | WriterExpr::IntToFloat { .. } => Type::Float,
+            WriterExpr::IntLiteral { .. } => Type::Int,
 
-            WriterExpr::FragmentLiteral { .. } => Arc::new(Type::Fragment),
+            WriterExpr::FragmentLiteral { .. } => Type::Fragment,
 
             WriterExpr::StringConcat { .. }
             | WriterExpr::StringLiteral { .. }
-            | WriterExpr::IntToString { .. } => Arc::new(Type::String),
+            | WriterExpr::IntToString { .. } => Type::String,
 
             WriterExpr::NumericAdd { operand_types, .. }
             | WriterExpr::NumericSubtract { operand_types, .. }
@@ -639,8 +636,8 @@ impl WriterExpr {
                 operand_type: operand_types,
                 ..
             } => match operand_types {
-                NumericType::Int => Arc::new(Type::Int),
-                NumericType::Float => Arc::new(Type::Float),
+                NumericType::Int => Type::Int,
+                NumericType::Float => Type::Float,
             },
 
             WriterExpr::BooleanLiteral { .. }
@@ -653,64 +650,9 @@ impl WriterExpr {
             | WriterExpr::ArrayIsEmpty { .. }
             | WriterExpr::StringIsEmpty { .. }
             | WriterExpr::OptionIsSome { .. }
-            | WriterExpr::OptionIsNone { .. } => Arc::new(Type::Bool),
+            | WriterExpr::OptionIsNone { .. } => Type::Bool,
 
-            WriterExpr::ArrayLength { .. } | WriterExpr::FloatToInt { .. } => Arc::new(Type::Int),
-        }
-    }
-
-    /// Get the type of this expression
-    pub fn as_type(&self) -> &Type {
-        static STRING_TYPE: Type = Type::String;
-        static BOOL_TYPE: Type = Type::Bool;
-        static FLOAT_TYPE: Type = Type::Float;
-        static INT_TYPE: Type = Type::Int;
-        static FRAGMENT_TYPE: Type = Type::Fragment;
-
-        match self {
-            WriterExpr::VariableReference { typ, .. }
-            | WriterExpr::FieldAccess { typ, .. }
-            | WriterExpr::ArrayLiteral { typ, .. }
-            | WriterExpr::RecordLiteral { typ, .. }
-            | WriterExpr::EnumLiteral { typ, .. }
-            | WriterExpr::OptionLiteral { typ, .. }
-            | WriterExpr::Match { typ, .. }
-            | WriterExpr::Let { typ, .. }
-            | WriterExpr::FunctionCall { typ, .. } => typ,
-
-            WriterExpr::FloatLiteral { .. } | WriterExpr::IntToFloat { .. } => &FLOAT_TYPE,
-            WriterExpr::IntLiteral { .. } => &INT_TYPE,
-
-            WriterExpr::FragmentLiteral { .. } => &FRAGMENT_TYPE,
-
-            WriterExpr::StringConcat { .. }
-            | WriterExpr::StringLiteral { .. }
-            | WriterExpr::IntToString { .. } => &STRING_TYPE,
-
-            WriterExpr::NumericAdd { operand_types, .. }
-            | WriterExpr::NumericSubtract { operand_types, .. }
-            | WriterExpr::NumericMultiply { operand_types, .. }
-            | WriterExpr::NumericNegation {
-                operand_type: operand_types,
-                ..
-            } => match operand_types {
-                NumericType::Int => &INT_TYPE,
-                NumericType::Float => &FLOAT_TYPE,
-            },
-
-            WriterExpr::BooleanLiteral { .. }
-            | WriterExpr::BooleanNegation { .. }
-            | WriterExpr::Equals { .. }
-            | WriterExpr::LessThan { .. }
-            | WriterExpr::LessThanOrEqual { .. }
-            | WriterExpr::BooleanLogicalAnd { .. }
-            | WriterExpr::BooleanLogicalOr { .. }
-            | WriterExpr::ArrayIsEmpty { .. }
-            | WriterExpr::StringIsEmpty { .. }
-            | WriterExpr::OptionIsSome { .. }
-            | WriterExpr::OptionIsNone { .. } => &BOOL_TYPE,
-
-            WriterExpr::ArrayLength { .. } | WriterExpr::FloatToInt { .. } => &INT_TYPE,
+            WriterExpr::ArrayLength { .. } | WriterExpr::FloatToInt { .. } => Type::Int,
         }
     }
 
@@ -900,7 +842,7 @@ impl WriterExpr {
             }
             WriterExpr::OptionLiteral { value, typ, .. } => {
                 // Extract inner type from Option[T] -> T
-                let inner_type = match typ.as_ref() {
+                let inner_type = match typ {
                     Type::Option(inner) => inner.to_doc(),
                     _ => panic!("OptionLiteral must have Option type, got {:?}", typ),
                 };

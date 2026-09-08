@@ -141,7 +141,7 @@ impl RustTranspiler {
                 self.transpile_expr(arena, expr)
             }
             WriterExpr::FieldAccess { .. } | WriterExpr::VariableReference { .. } => {
-                let method = match expr.as_type() {
+                let method = match expr.typ() {
                     Type::Array(_) => ".to_vec()",
                     Type::String => ".to_string()",
                     _ => ".clone()",
@@ -292,7 +292,7 @@ impl RustTranspiler {
         owner: &str,
         value: &'a WriterExpr,
     ) -> Doc<'a> {
-        match self.boxing(value.as_type(), owner) {
+        match self.boxing(&value.typ(), owner) {
             Some(BoxConversion::Direct) => arena
                 .text("Box::new(")
                 .append(self.transpile_expr_owned(arena, value))
@@ -306,8 +306,8 @@ impl RustTranspiler {
 
     /// The conversion undoing the `Box` on reads of `field` off `object`.
     fn field_unboxing(&self, object: &WriterExpr, field: &FieldName) -> Option<BoxConversion> {
-        let Some(ResolvedType::Record { name, fields, .. }) =
-            self.registry.resolve(object.as_type())
+        let object_type = object.typ();
+        let Some(ResolvedType::Record { name, fields, .. }) = self.registry.resolve(&object_type)
         else {
             unreachable!("field access objects resolve to a record");
         };
@@ -705,7 +705,7 @@ impl Transpiler for RustTranspiler {
         all_args.push(arena.text("output"));
 
         for arg in args {
-            if Self::passed_by_ref(arg.expr.as_type()) {
+            if Self::passed_by_ref(&arg.expr.typ()) {
                 all_args.push(
                     arena
                         .text("&")
@@ -798,7 +798,7 @@ impl Transpiler for RustTranspiler {
         let all_args: Vec<Doc<'a>> = args
             .iter()
             .map(|arg| {
-                if Self::passed_by_ref(arg.expr.as_type()) {
+                if Self::passed_by_ref(&arg.expr.typ()) {
                     arena
                         .text("&")
                         .append(self.transpile_expr(arena, &arg.expr))
@@ -1006,9 +1006,9 @@ impl Transpiler for RustTranspiler {
             }
             Match::Enum { subject, arms } => {
                 // Extract variant information from the subject's type
-                let subject_type = subject.get_type();
+                let subject_type = subject.typ();
                 let Some(ResolvedType::Enum { variants, .. }) =
-                    self.registry.resolve(subject_type.as_ref())
+                    self.registry.resolve(&subject_type)
                 else {
                     unreachable!("Enum match subject must have Named enum type")
                 };
@@ -1136,30 +1136,26 @@ impl Transpiler for RustTranspiler {
         arena.text("Fragment")
     }
 
-    fn transpile_array_type<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        element_type: &'a Type,
-    ) -> Doc<'a> {
+    fn transpile_array_type<'a>(&mut self, arena: &'a Arena<'a>, element_type: &Type) -> Doc<'a> {
         arena
             .text("Vec<")
             .append(self.transpile_type(arena, element_type))
             .append(arena.text(">"))
     }
 
-    fn transpile_option_type<'a>(&mut self, arena: &'a Arena<'a>, inner_type: &'a Type) -> Doc<'a> {
+    fn transpile_option_type<'a>(&mut self, arena: &'a Arena<'a>, inner_type: &Type) -> Doc<'a> {
         arena
             .text("Option<")
             .append(self.transpile_type(arena, inner_type))
             .append(arena.text(">"))
     }
 
-    fn transpile_named_type<'a>(&mut self, arena: &'a Arena<'a>, name: &'a str) -> Doc<'a> {
-        arena.text(name)
+    fn transpile_named_type<'a>(&mut self, arena: &'a Arena<'a>, name: &str) -> Doc<'a> {
+        arena.text(name.to_string())
     }
 
-    fn transpile_enum_type<'a>(&mut self, arena: &'a Arena<'a>, name: &'a str) -> Doc<'a> {
-        arena.text(name)
+    fn transpile_enum_type<'a>(&mut self, arena: &'a Arena<'a>, name: &str) -> Doc<'a> {
+        arena.text(name.to_string())
     }
 
     fn transpile_var<'a>(&mut self, arena: &'a Arena<'a>, var: &'a IrVar) -> Doc<'a> {
@@ -1708,9 +1704,9 @@ impl Transpiler for RustTranspiler {
             }
             Match::Enum { subject, arms } => {
                 // Extract variant information from the subject's type
-                let subject_type = subject.get_type();
+                let subject_type = subject.typ();
                 let Some(ResolvedType::Enum { variants, .. }) =
-                    self.registry.resolve(subject_type.as_ref())
+                    self.registry.resolve(&subject_type)
                 else {
                     unreachable!("Enum match subject must have Named enum type")
                 };

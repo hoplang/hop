@@ -193,7 +193,7 @@ impl TsTranspiler {
             .text("const ")
             .append(arena.text(name))
             .append(arena.text(": "))
-            .append(self.transpile_type(arena, subject.as_type()))
+            .append(self.transpile_type(arena, &subject.typ()))
             .append(arena.text(" = "))
             .append(self.transpile_expr(arena, subject))
             .append(arena.text(";"))
@@ -214,7 +214,7 @@ impl TsTranspiler {
             .text("((")
             .append(arena.text(name))
             .append(arena.text(": "))
-            .append(self.transpile_type(arena, subject.as_type()))
+            .append(self.transpile_type(arena, &subject.typ()))
             .append(arena.text(") => {"))
             .append(arena.line().append(switch_body).nest(2))
             .append(arena.line())
@@ -790,7 +790,7 @@ impl Transpiler for TsTranspiler {
                     .text("const ")
                     .append(arena.text(source_name.clone()))
                     .append(arena.text(": "))
-                    .append(self.transpile_type(arena, array.as_type()))
+                    .append(self.transpile_type(arena, &array.typ()))
                     .append(arena.text(" = "))
                     .append(self.transpile_expr(arena, array))
                     .append(arena.text(";"))
@@ -817,7 +817,7 @@ impl Transpiler for TsTranspiler {
                     .text("const ")
                     .append(arena.text(start_name.clone()))
                     .append(arena.text(": "))
-                    .append(self.transpile_type(arena, start.as_type()))
+                    .append(self.transpile_type(arena, &start.typ()))
                     .append(arena.text(" = "))
                     .append(self.transpile_expr(arena, start))
                     .append(arena.text(";"))
@@ -825,7 +825,7 @@ impl Transpiler for TsTranspiler {
                     .append(arena.text("const "))
                     .append(arena.text(end_name.clone()))
                     .append(arena.text(": "))
-                    .append(self.transpile_type(arena, end.as_type()))
+                    .append(self.transpile_type(arena, &end.typ()))
                     .append(arena.text(" = "))
                     .append(self.transpile_expr(arena, end))
                     .append(arena.text(";"))
@@ -861,7 +861,7 @@ impl Transpiler for TsTranspiler {
         value: &'a WriterExpr,
         body: &'a [WriterStatement],
     ) -> Doc<'a> {
-        let binding_type = self.transpile_type(arena, value.as_type());
+        let binding_type = self.transpile_type(arena, &value.typ());
         let value = self.transpile_expr(arena, value);
         self.const_binding(arena, var, binding_type, value, body)
     }
@@ -1647,7 +1647,7 @@ impl Transpiler for TsTranspiler {
         value: &'a WriterExpr,
         body: &'a WriterExpr,
     ) -> Doc<'a> {
-        let param_type = self.transpile_type(arena, value.as_type());
+        let param_type = self.transpile_type(arena, &value.typ());
         let value = self.transpile_expr(arena, value);
         arena
             .text("((")
@@ -1775,16 +1775,12 @@ impl Transpiler for TsTranspiler {
         arena.text("number")
     }
 
-    fn transpile_array_type<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        element_type: &'a Type,
-    ) -> Doc<'a> {
+    fn transpile_array_type<'a>(&mut self, arena: &'a Arena<'a>, element_type: &Type) -> Doc<'a> {
         self.transpile_type(arena, element_type)
             .append(arena.text("[]"))
     }
 
-    fn transpile_option_type<'a>(&mut self, arena: &'a Arena<'a>, inner_type: &'a Type) -> Doc<'a> {
+    fn transpile_option_type<'a>(&mut self, arena: &'a Arena<'a>, inner_type: &Type) -> Doc<'a> {
         self.needs_option = true;
         arena
             .text("Option.Option<")
@@ -1792,15 +1788,15 @@ impl Transpiler for TsTranspiler {
             .append(arena.text(">"))
     }
 
-    fn transpile_named_type<'a>(&mut self, arena: &'a Arena<'a>, name: &'a str) -> Doc<'a> {
-        arena.text(name)
+    fn transpile_named_type<'a>(&mut self, arena: &'a Arena<'a>, name: &str) -> Doc<'a> {
+        arena.text(name.to_string())
     }
 
-    fn transpile_enum_type<'a>(&mut self, arena: &'a Arena<'a>, name: &'a str) -> Doc<'a> {
+    fn transpile_enum_type<'a>(&mut self, arena: &'a Arena<'a>, name: &str) -> Doc<'a> {
         arena
-            .text(name)
+            .text(name.to_string())
             .append(arena.text("."))
-            .append(arena.text(name))
+            .append(arena.text(name.to_string()))
     }
 }
 

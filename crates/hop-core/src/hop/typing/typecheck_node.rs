@@ -19,14 +19,13 @@ use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use crate::type_error::{TypeError, TypeErrorKind};
 use crate::variable_scope::VariableScope;
-use std::sync::Arc;
 
 pub fn typecheck_node(
     node: &ParsedNode,
     forwarded_params: &[VarName],
     registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
-    var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
+    var_env: &mut VariableScope<VarName, (Type, DocumentRange)>,
     type_env: &mut TypeEnv,
     annotations: &mut Vec<HoverAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
@@ -91,8 +90,8 @@ pub fn typecheck_node(
                 errors,
             )?;
 
-            let condition_type = typed_condition.get_type();
-            if *condition_type != Type::Bool {
+            let condition_type = typed_condition.typ();
+            if condition_type != Type::Bool {
                 errors.push(TypeError::new(
                     TypeErrorKind::ConditionTypeMismatch {
                         found: condition_type,
@@ -109,7 +108,7 @@ pub fn typecheck_node(
                     }),
                     false_body: Box::new(TypedExpr::FragmentConcat { nodes: Vec::new() }),
                 },
-                typ: Arc::new(Type::Fragment),
+                typ: Type::Fragment,
             })
         }
 
@@ -135,9 +134,9 @@ pub fn typecheck_node(
                         asset_references,
                         errors,
                     )?;
-                    let array_type = typed_array.get_type();
-                    let element_type = match array_type.as_ref() {
-                        Type::Array(inner) => inner.clone(),
+                    let array_type = typed_array.typ();
+                    let element_type = match &array_type {
+                        Type::Array(inner) => inner.as_ref().clone(),
                         _ => {
                             errors.push(TypeError::new(
                                 TypeErrorKind::IterateeTypeMismatch { found: array_type },
@@ -175,15 +174,15 @@ pub fn typecheck_node(
                     )?;
 
                     // Both bounds must be Int
-                    let start_type = typed_start.get_type();
-                    if *start_type != Type::Int {
+                    let start_type = typed_start.typ();
+                    if start_type != Type::Int {
                         errors.push(TypeError::new(
                             TypeErrorKind::RangeBoundTypeMismatch { found: start_type },
                             start.range().clone(),
                         ));
                     }
-                    let end_type = typed_end.get_type();
-                    if *end_type != Type::Int {
+                    let end_type = typed_end.typ();
+                    if end_type != Type::Int {
                         errors.push(TypeError::new(
                             TypeErrorKind::RangeBoundTypeMismatch { found: end_type },
                             end.range().clone(),
@@ -195,7 +194,7 @@ pub fn typecheck_node(
                             start: typed_start,
                             end: typed_end,
                         },
-                        Arc::new(Type::Int),
+                        Type::Int,
                     )
                 }
             };
@@ -265,7 +264,7 @@ pub fn typecheck_node(
                 body: Box::new(TypedExpr::FragmentConcat {
                     nodes: typed_children,
                 }),
-                typ: Arc::new(Type::Fragment),
+                typ: Type::Fragment,
             })
         }
 
@@ -305,7 +304,7 @@ pub fn typecheck_node(
 
                 let binding_type = match (&declared_type, &typed_value) {
                     (Some(declared), _) => Some(declared.clone()),
-                    (None, Some(typed_value)) => Some(typed_value.get_type()),
+                    (None, Some(typed_value)) => Some(typed_value.typ()),
                     (None, None) => None,
                 };
 
@@ -339,8 +338,8 @@ pub fn typecheck_node(
 
                 // Validate that the value type matches the declared type.
                 if let Some(declared) = &declared_type {
-                    let value_type = typed_value.get_type();
-                    if *value_type != **declared {
+                    let value_type = typed_value.typ();
+                    if value_type != *declared {
                         errors.push(TypeError::new(
                             TypeErrorKind::LetBindingTypeMismatch {
                                 expected: declared.clone(),
@@ -389,7 +388,7 @@ pub fn typecheck_node(
                 nodes: typed_children,
             };
             for (binding, typed_value) in typed_bindings.into_iter().rev() {
-                let typ = result.get_type();
+                let typ = result.typ();
                 result = TypedExpr::Let {
                     var: binding.var_name.clone(),
                     value: Box::new(typed_value),
@@ -500,7 +499,7 @@ pub fn typecheck_node(
             Some(TypedExpr::FunctionCall {
                 function_name: component_name.clone().into(),
                 args,
-                typ: Arc::new(Type::Fragment),
+                typ: Type::Fragment,
             })
         }
 
@@ -588,8 +587,8 @@ pub fn typecheck_node(
                 asset_references,
                 errors,
             ) {
-                let expr_type = typed_expr.get_type();
-                match *expr_type {
+                let expr_type = typed_expr.typ();
+                match expr_type {
                     Type::Fragment => Some(typed_expr),
                     Type::String => Some(TypedExpr::FragmentEscape {
                         expr: Box::new(typed_expr),
@@ -637,7 +636,7 @@ fn typecheck_attribute_value(
     forwarded_params: &[VarName],
     registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
-    var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
+    var_env: &mut VariableScope<VarName, (Type, DocumentRange)>,
     type_env: &mut TypeEnv,
     annotations: &mut Vec<HoverAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
@@ -657,11 +656,11 @@ fn typecheck_attribute_value(
                 asset_references,
                 errors,
             )?;
-            if *typed_expr.get_type() != Type::String {
+            if typed_expr.typ() != Type::String {
                 errors.push(TypeError::new(
                     TypeErrorKind::ArgumentTypeMismatch {
-                        expected: Arc::new(Type::String),
-                        found: typed_expr.get_type(),
+                        expected: Type::String,
+                        found: typed_expr.typ(),
                     },
                     value.range().clone(),
                 ));
@@ -687,7 +686,7 @@ fn attrs_expr(attributes: Vec<TypedAttribute>, spread: Option<VarName>) -> Typed
                 literal,
                 TypedExpr::Var {
                     value: name,
-                    typ: Arc::new(Type::Attrs),
+                    typ: Type::Attrs,
                 },
             ],
         },
@@ -705,7 +704,7 @@ fn typecheck_arguments(
     forwarded_params: &[VarName],
     registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
-    var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
+    var_env: &mut VariableScope<VarName, (Type, DocumentRange)>,
     type_env: &mut TypeEnv,
     annotations: &mut Vec<HoverAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
@@ -718,7 +717,7 @@ fn typecheck_arguments(
     let has_body = children.is_some();
     let children_param = callee_params
         .iter()
-        .find(|p| p.name.as_str() == "children" && *p.typ == Type::Fragment);
+        .find(|p| p.name.as_str() == "children" && p.typ == Type::Fragment);
     let has_explicit_children_arg = attributes.iter().any(|a| {
         a.name_range()
             .is_some_and(|name| name.as_str() == "children")
@@ -840,9 +839,9 @@ fn typecheck_arguments(
         ) else {
             continue;
         };
-        let arg_type = typed_expr.get_type();
+        let arg_type = typed_expr.typ();
 
-        if *arg_type != **param_type {
+        if arg_type != *param_type {
             errors.push(TypeError::new(
                 TypeErrorKind::ArgumentTypeMismatch {
                     expected: param_type.clone(),
@@ -930,7 +929,7 @@ fn typecheck_attributes(
     forwarded_params: &[VarName],
     registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
-    var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
+    var_env: &mut VariableScope<VarName, (Type, DocumentRange)>,
     type_env: &mut TypeEnv,
     annotations: &mut Vec<HoverAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
@@ -964,7 +963,7 @@ fn typecheck_html_attribute(
     forwarded_params: &[VarName],
     registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
-    var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
+    var_env: &mut VariableScope<VarName, (Type, DocumentRange)>,
     type_env: &mut TypeEnv,
     annotations: &mut Vec<HoverAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,

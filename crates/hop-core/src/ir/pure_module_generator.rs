@@ -241,7 +241,7 @@ impl PureGenerator<'_, '_> {
         let mut candidates = Vec::new();
         for rec in &self.records {
             for (field, field_ty) in &rec.fields {
-                if *b.resolve_type(field_ty) == *target {
+                if b.resolve_type(field_ty) == *target {
                     candidates.push((rec.name.clone(), field.clone()));
                 }
             }
@@ -368,7 +368,7 @@ impl PureGenerator<'_, '_> {
             Call,
         }
         let mut productions = vec![P::Lit];
-        if b.vars().iter().any(|(_, _, ty)| **ty == *target) {
+        if b.vars().iter().any(|(_, _, ty)| *ty == *target) {
             productions.push(P::Var);
         }
         let record_fields = self.record_fields_of_type(b, target);
@@ -423,7 +423,7 @@ impl PureGenerator<'_, '_> {
             if self
                 .functions
                 .iter()
-                .any(|f| *b.resolve_type(&f.return_type) == *target)
+                .any(|f| b.resolve_type(&f.return_type) == *target)
             {
                 productions.push(P::Call);
             }
@@ -434,7 +434,7 @@ impl PureGenerator<'_, '_> {
                 let candidates: Vec<&str> = b
                     .vars()
                     .iter()
-                    .filter(|(_, _, ty)| **ty == *target)
+                    .filter(|(_, _, ty)| *ty == *target)
                     .map(|(name, _, _)| name.as_str())
                     .collect();
                 b.var(self.u.choose(&candidates).unwrap())
@@ -459,7 +459,7 @@ impl PureGenerator<'_, '_> {
                 b.bool_match_expr(subject, true_body, false_body)
             }
             P::OptionMatch => {
-                let option_ty = Type::Option(b.resolve_type(&self.random_type_string(1)));
+                let option_ty = Type::Option(Box::new(b.resolve_type(&self.random_type_string(1))));
                 let subject = self.expr(b, &option_ty, depth - 1);
                 if self.coin() {
                     let binding = self.fresh_var_name();
@@ -547,12 +547,12 @@ impl PureGenerator<'_, '_> {
                 b.int_to_float(operand)
             }
             P::OptionIsNone => {
-                let option_ty = Type::Option(b.resolve_type(&self.random_type_string(1)));
+                let option_ty = Type::Option(Box::new(b.resolve_type(&self.random_type_string(1))));
                 let operand = self.expr(b, &option_ty, depth - 1);
                 b.option_is_none(operand)
             }
             P::OptionIsSome => {
-                let option_ty = Type::Option(b.resolve_type(&self.random_type_string(1)));
+                let option_ty = Type::Option(Box::new(b.resolve_type(&self.random_type_string(1))));
                 let operand = self.expr(b, &option_ty, depth - 1);
                 b.option_is_some(operand)
             }
@@ -561,12 +561,12 @@ impl PureGenerator<'_, '_> {
                 b.string_is_empty(operand)
             }
             P::ArrayIsEmpty => {
-                let array_ty = Type::Array(b.resolve_type(&self.random_type_string(1)));
+                let array_ty = Type::Array(Box::new(b.resolve_type(&self.random_type_string(1))));
                 let operand = self.expr(b, &array_ty, depth - 1);
                 b.array_is_empty(operand)
             }
             P::ArrayLength => {
-                let array_ty = Type::Array(b.resolve_type(&self.random_type_string(1)));
+                let array_ty = Type::Array(Box::new(b.resolve_type(&self.random_type_string(1))));
                 let operand = self.expr(b, &array_ty, depth - 1);
                 b.array_length(operand)
             }
@@ -601,7 +601,7 @@ impl PureGenerator<'_, '_> {
                 b.concat(parts)
             }
             P::FragmentForArray => {
-                let array_ty = Type::Array(b.resolve_type(&self.random_type_string(1)));
+                let array_ty = Type::Array(Box::new(b.resolve_type(&self.random_type_string(1))));
                 let array = self.expr(b, &array_ty, depth);
                 let var = self.fresh_var_name();
                 b.fragment_for(Some(&var), array, |b| {
@@ -628,7 +628,7 @@ impl PureGenerator<'_, '_> {
                 let candidates: Vec<FunctionInfo> = self
                     .functions
                     .iter()
-                    .filter(|f| *b.resolve_type(&f.return_type) == *target)
+                    .filter(|f| b.resolve_type(&f.return_type) == *target)
                     .cloned()
                     .collect();
                 let info = self.u.choose(&candidates).unwrap().clone();
@@ -671,14 +671,14 @@ impl PureGenerator<'_, '_> {
                 let elements = (0..len)
                     .map(|_| self.expr(b, inner, depth.saturating_sub(1)))
                     .collect();
-                b.array_typed(inner.clone(), elements)
+                b.array_typed(inner.as_ref().clone(), elements)
             }
             Type::Option(inner) => {
                 if depth > 0 && self.coin() {
                     let value = self.expr(b, inner, depth.saturating_sub(1));
                     b.some(value)
                 } else {
-                    b.none_typed(inner.clone())
+                    b.none_typed(inner.as_ref().clone())
                 }
             }
             Type::Named { name, .. } => {

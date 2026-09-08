@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use super::r#type::Type;
 use super::type_registry::TypeRegistry;
 use super::typecheck_expr::typecheck_expr;
@@ -55,7 +53,7 @@ pub fn typecheck_match(
     subject: &ParsedExpr,
     arms: MatchArms<'_>,
     forwarded_params: &[VarName],
-    var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
+    var_env: &mut VariableScope<VarName, (Type, DocumentRange)>,
     type_env: &mut TypeEnv,
     registry: &TypeRegistry,
     annotations: &mut Vec<HoverAnnotation>,
@@ -76,7 +74,7 @@ pub fn typecheck_match(
         errors,
     )?;
 
-    let subject_type = typed_subject.get_type();
+    let subject_type = typed_subject.typ();
     if !subject_type.is_matchable() {
         errors.push(TypeError::new(
             TypeErrorKind::MatchNotImplementedForType {
@@ -137,16 +135,16 @@ fn typecheck_arm_bodies(
     arms: MatchArms<'_>,
     typed_patterns: &[TypedMatchPattern],
     forwarded_params: &[VarName],
-    var_env: &mut VariableScope<VarName, (Arc<Type>, DocumentRange)>,
+    var_env: &mut VariableScope<VarName, (Type, DocumentRange)>,
     type_env: &mut TypeEnv,
     registry: &TypeRegistry,
     annotations: &mut Vec<HoverAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
     asset_references: &mut Vec<AssetReference>,
     errors: &mut Vec<TypeError>,
-) -> Option<(Vec<TypedExpr>, Arc<Type>)> {
+) -> Option<(Vec<TypedExpr>, Type)> {
     let mut typed_bodies = Vec::new();
-    let mut result_type: Option<Arc<Type>> = None;
+    let mut result_type: Option<Type> = None;
 
     for (index, typed_pattern) in typed_patterns.iter().enumerate() {
         collect_pattern_definition_links(arms.pattern(index), type_env, definition_links);
@@ -222,14 +220,14 @@ fn typecheck_arm_bodies(
         let Some(typed_body) = typed_body else {
             continue;
         };
-        let body_type = typed_body.get_type();
+        let body_type = typed_body.typ();
 
         match &result_type {
             None => {
                 result_type = Some(body_type.clone());
             }
             Some(expected) => {
-                if *body_type != **expected {
+                if body_type != *expected {
                     errors.push(TypeError::new(
                         TypeErrorKind::MatchArmTypeMismatch {
                             expected: expected.clone(),
@@ -300,14 +298,14 @@ fn collect_pattern_definition_links(
 fn decision_to_typed_expr(
     decision: &Decision,
     typed_bodies: &[TypedExpr],
-    result_type: Arc<Type>,
+    result_type: Type,
 ) -> TypedExpr {
     match decision {
         Decision::Success(body) => {
             let mut result = typed_bodies[body.value].clone();
             // Wrap with Let expressions for each binding (in reverse order so first binding is outermost)
             for binding in body.bindings.iter().rev() {
-                let typ = result.get_type();
+                let typ = result.typ();
                 result = TypedExpr::Let {
                     var: binding.name.clone(),
                     value: Box::new(TypedExpr::Var {
@@ -434,7 +432,7 @@ fn decision_to_typed_expr(
                     typ: binding.typ.clone(),
                 };
 
-                let typ = body.get_type();
+                let typ = body.typ();
                 body = TypedExpr::Let {
                     var: bound_name.clone(),
                     value: Box::new(field_access),

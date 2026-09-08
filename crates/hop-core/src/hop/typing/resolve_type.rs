@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use super::r#type::Type;
 use super::type_env::{TypeBinding, TypeEnv};
 use crate::definition_link::DefinitionLink;
@@ -12,20 +10,20 @@ pub fn resolve_type(
     type_env: &mut TypeEnv,
     definition_links: &mut Vec<DefinitionLink>,
     errors: &mut Vec<TypeError>,
-) -> Option<Arc<Type>> {
+) -> Option<Type> {
     let (typ, _) = match parsed_type {
-        ParsedType::String { range } => (Arc::new(Type::String), range),
-        ParsedType::Bool { range } => (Arc::new(Type::Bool), range),
-        ParsedType::Int { range } => (Arc::new(Type::Int), range),
-        ParsedType::Float { range } => (Arc::new(Type::Float), range),
-        ParsedType::Fragment { range } => (Arc::new(Type::Fragment), range),
+        ParsedType::String { range } => (Type::String, range),
+        ParsedType::Bool { range } => (Type::Bool, range),
+        ParsedType::Int { range } => (Type::Int, range),
+        ParsedType::Float { range } => (Type::Float, range),
+        ParsedType::Fragment { range } => (Type::Fragment, range),
         ParsedType::Option { element, range } => {
             let elem_type = resolve_type(element, type_env, definition_links, errors)?;
-            (Arc::new(Type::Option(elem_type)), range)
+            (Type::Option(Box::new(elem_type)), range)
         }
         ParsedType::Array { element, range } => {
             let elem_type = resolve_type(element, type_env, definition_links, errors)?;
-            (Arc::new(Type::Array(elem_type)), range)
+            (Type::Array(Box::new(elem_type)), range)
         }
         ParsedType::Named { name, range } => {
             let Some((binding, def_range)) = type_env.lookup(name) else {

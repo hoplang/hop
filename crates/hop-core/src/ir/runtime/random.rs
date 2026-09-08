@@ -219,7 +219,6 @@ mod tests {
     use crate::hop::typing::type_registry_builder::TypeRegistryBuilder;
     use rand::SeedableRng;
     use rand::rngs::StdRng;
-    use std::sync::Arc;
 
     #[test]
     fn recursive_enum_generation_terminates() {
@@ -292,7 +291,7 @@ mod tests {
 
     #[test]
     fn array_length_respects_min_len_and_max_len() {
-        let ty = Type::Array(Arc::new(Type::Int));
+        let ty = Type::Array(Box::new(Type::Int));
         let examples = ExamplesAnnotation {
             min_len: Some(3),
             max_len: Some(4),
@@ -316,7 +315,7 @@ mod tests {
 
     #[test]
     fn array_length_defaults_to_zero_through_five() {
-        let ty = Type::Array(Arc::new(Type::Int));
+        let ty = Type::Array(Box::new(Type::Int));
         let registry = TypeRegistry::default();
         for seed in 0..50 {
             let mut rng = StdRng::seed_from_u64(seed);

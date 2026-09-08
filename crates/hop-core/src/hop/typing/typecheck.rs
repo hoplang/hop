@@ -25,7 +25,6 @@ use crate::symbols::var_name::VarName;
 use crate::type_error::{TypeError, TypeErrorKind};
 use crate::variable_scope::VariableScope;
 use std::collections::{BTreeSet, HashMap, HashSet};
-use std::sync::Arc;
 
 use crate::document_id::DocumentId;
 use crate::hop::parsing::parsed_ast::ParsedAst;
@@ -144,10 +143,10 @@ fn typecheck_module(
             }) => {
                 let insertion = type_env.insert_local(
                     name.clone(),
-                    TypeBinding::Type(Arc::new(Type::Named {
+                    TypeBinding::Type(Type::Named {
                         module: parsed_ast.document_id.clone(),
                         name: name.clone(),
-                    })),
+                    }),
                     name_range.clone(),
                 );
                 if insertion.is_ok() {
@@ -172,7 +171,7 @@ fn typecheck_module(
                     c.component_name.clone(),
                     TypeBinding::Component(FunctionSignature {
                         params: Vec::new(),
-                        return_type: Arc::new(Type::Fragment),
+                        return_type: Type::Fragment,
                         tail: Tail::Closed,
                         rest_param: c.rest_param.as_ref().map(|(name, _)| name.clone()),
                     }),
@@ -442,10 +441,10 @@ fn typecheck_import_declaration(
     });
 
     let binding = match export {
-        TypeExport::Type { .. } => TypeBinding::Type(Arc::new(Type::Named {
+        TypeExport::Type { .. } => TypeBinding::Type(Type::Named {
             module: imported_module.to_document_id(),
             name: imported_name.clone(),
-        })),
+        }),
         TypeExport::Component { signature, .. } => TypeBinding::Component(signature.clone()),
     };
     if type_env
@@ -580,7 +579,7 @@ fn typecheck_enum_declaration(
 
 struct PendingComponent<'a> {
     component: &'a ParsedComponentDeclaration,
-    resolved_params: Vec<(&'a ParsedParameter, Arc<Type>)>,
+    resolved_params: Vec<(&'a ParsedParameter, Type)>,
     declared_params: Vec<ParamEntry>,
     typed_params: Vec<TypedParameter>,
 }
@@ -643,8 +642,8 @@ fn register_component_signature<'a>(
                     asset_references,
                     errors,
                 ) {
-                    let default_type = typed_default.get_type();
-                    if *default_type != *param_type {
+                    let default_type = typed_default.typ();
+                    if default_type != param_type {
                         errors.push(TypeError::new(
                             TypeErrorKind::DefaultValueTypeMismatch {
                                 param_name: param.var_name.clone(),
@@ -687,7 +686,7 @@ fn register_component_signature<'a>(
 
     let component_signature = FunctionSignature {
         params: declared_params.clone(),
-        return_type: Arc::new(Type::Fragment),
+        return_type: Type::Fragment,
         tail: Tail::Closed,
         rest_param: component.rest_param.as_ref().map(|(name, _)| name.clone()),
     };
@@ -782,7 +781,7 @@ fn typecheck_component_body(
         Some((TypeBinding::Component(settled), _)) => settled.clone(),
         _ => FunctionSignature {
             params: declared_params,
-            return_type: Arc::new(Type::Fragment),
+            return_type: Type::Fragment,
             tail: Tail::Closed,
             rest_param: rest_param.as_ref().map(|(name, _)| name.clone()),
         },
@@ -800,7 +799,7 @@ fn typecheck_component_body(
     if let Some((rest, _)) = rest_param {
         typed_params.push(TypedParameter {
             var_name: rest.clone(),
-            var_type: Arc::new(Type::Attrs),
+            var_type: Type::Attrs,
             examples: None,
         });
     }
@@ -808,7 +807,7 @@ fn typecheck_component_body(
     TypedFunctionDeclaration {
         name: component_name.clone().into(),
         params: typed_params,
-        return_type: Arc::new(Type::Fragment),
+        return_type: Type::Fragment,
         body: check_declaration_body(typed_body, body.range(), errors),
     }
 }
@@ -823,8 +822,8 @@ fn check_declaration_body(
     let Some(typed_body) = typed_body else {
         return TypedExpr::FragmentConcat { nodes: Vec::new() };
     };
-    let found = typed_body.get_type();
-    if *found != Type::Fragment {
+    let found = typed_body.typ();
+    if found != Type::Fragment {
         errors.push(TypeError::new(
             TypeErrorKind::DeclarationBodyTypeMismatch { found },
             range.clone(),
@@ -954,9 +953,9 @@ fn typecheck_page_declaration(
 
 struct PendingFunction<'a> {
     function: &'a ParsedFunctionDeclaration,
-    resolved_params: Vec<(&'a ParsedParameter, Arc<Type>)>,
+    resolved_params: Vec<(&'a ParsedParameter, Type)>,
     typed_params: Vec<TypedParameter>,
-    return_type: Arc<Type>,
+    return_type: Type,
 }
 
 fn register_function_signature<'a>(
@@ -1077,8 +1076,8 @@ fn typecheck_function_body(
     }
 
     let typed_body = typed_body?;
-    let body_type = typed_body.get_type();
-    if *body_type != *return_type {
+    let body_type = typed_body.typ();
+    if body_type != return_type {
         errors.push(TypeError::new(
             TypeErrorKind::FunctionBodyTypeMismatch {
                 expected: return_type.clone(),
@@ -1098,13 +1097,13 @@ fn typecheck_function_body(
 
 fn validate_examples_annotation(
     examples: &Option<ExamplesAnnotation>,
-    resolved_type: &Arc<Type>,
+    resolved_type: &Type,
     range: &DocumentRange,
     errors: &mut Vec<TypeError>,
 ) {
     let Some(examples) = examples else { return };
     if let Some(pattern) = &examples.pattern {
-        if **resolved_type != Type::String {
+        if *resolved_type != Type::String {
             errors.push(TypeError::new(
                 TypeErrorKind::PatternOnNonString {
                     found: resolved_type.clone(),
@@ -1121,7 +1120,7 @@ fn validate_examples_annotation(
         }
     }
     if examples.min.is_some() || examples.max.is_some() {
-        if **resolved_type != Type::Int {
+        if *resolved_type != Type::Int {
             errors.push(TypeError::new(
                 TypeErrorKind::MinMaxOnNonInt {
                     found: resolved_type.clone(),
@@ -1139,7 +1138,7 @@ fn validate_examples_annotation(
         }
     }
     if examples.min_len.is_some() || examples.max_len.is_some() {
-        if !matches!(**resolved_type, Type::Array(_)) {
+        if !matches!(*resolved_type, Type::Array(_)) {
             errors.push(TypeError::new(
                 TypeErrorKind::MinMaxLenOnNonArray {
                     found: resolved_type.clone(),

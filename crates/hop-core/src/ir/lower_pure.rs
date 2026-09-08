@@ -35,7 +35,7 @@ fn lower_page(decl: PurePageDeclaration) -> WriterPageDeclaration {
 /// return type. Fragment compiles to destination-passing, everything else
 /// compiles as an ordinary value-returning function.
 fn lower_function(decl: PureFunctionDeclaration) -> WriterFunctionDeclaration {
-    let body = if matches!(*decl.return_type, Type::Fragment) {
+    let body = if matches!(decl.return_type, Type::Fragment) {
         let mut statements = Vec::new();
         lower_output(decl.body, &mut statements);
         WriterFunctionBody::Writes(statements)
@@ -88,7 +88,7 @@ fn lower_output(expr: PureExpr, out: &mut Vec<WriterStatement>) {
             ..
         } => {
             assert!(
-                matches!(*typ, Type::Fragment),
+                matches!(typ, Type::Fragment),
                 "non-Fragment function call in output position: {}",
                 function_name
             );
@@ -125,7 +125,7 @@ fn lower_output(expr: PureExpr, out: &mut Vec<WriterStatement>) {
 
         PureExpr::VariableReference { ref typ, .. } | PureExpr::FieldAccess { ref typ, .. } => {
             assert!(
-                matches!(**typ, Type::Fragment),
+                matches!(*typ, Type::Fragment),
                 "non-Fragment expression in output position: {:?}",
                 expr
             );
@@ -288,9 +288,9 @@ fn lower_value(expr: PureExpr) -> WriterExpr {
         PureExpr::FunctionCall {
             function_name,
             args,
-            typ,
+            typ: Type::Fragment,
             ..
-        } if matches!(*typ, Type::Fragment) => {
+        } => {
             let args = args
                 .into_iter()
                 .map(|arg| WriterArgument {

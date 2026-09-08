@@ -109,9 +109,9 @@ impl<'a> Compiler<'a> {
                 var: self.bind(&param.var_name),
                 name: param.var_name.clone(),
                 typ: {
-                    let typ: &Arc<Type> = &param.var_type;
-                    match **typ {
-                        Type::Attrs => Arc::new(Type::Fragment),
+                    let typ: &Type = &param.var_type;
+                    match *typ {
+                        Type::Attrs => Type::Fragment,
                         _ => typ.clone(),
                     }
                 },
@@ -195,10 +195,10 @@ impl<'a> Compiler<'a> {
             }),
             Some(TypedAttributeValue::Expression(expr)) => {
                 assert!(
-                    expr.as_type() == &Type::String,
+                    expr.typ() == Type::String,
                     "attribute `{}` holds {}, but attribute values must be String",
                     attr.name.as_str(),
-                    expr.as_type()
+                    expr.typ()
                 );
                 output.push(PureExpr::FragmentRaw {
                     content: format!(" {}=\"", attr.name.as_str()),
@@ -222,8 +222,8 @@ impl<'a> Compiler<'a> {
         match expr {
             TypedExpr::Var { value, typ, .. } => PureExpr::VariableReference {
                 value: self.resolve(value),
-                typ: match **typ {
-                    Type::Attrs => Arc::new(Type::Fragment),
+                typ: match *typ {
+                    Type::Attrs => Type::Fragment,
                     _ => typ.clone(),
                 },
                 id: expr_id,
@@ -508,7 +508,7 @@ impl<'a> Compiler<'a> {
                 let mut parts = Vec::with_capacity(nodes.len());
                 for node in nodes {
                     assert_eq!(
-                        *node.as_type(),
+                        node.typ(),
                         Type::Fragment,
                         "FragmentConcat must hold Fragments, but holds {node}"
                     );
@@ -533,7 +533,7 @@ impl<'a> Compiler<'a> {
             },
             TypedExpr::FragmentEscape { expr } => {
                 assert_eq!(
-                    *expr.as_type(),
+                    expr.typ(),
                     Type::String,
                     "FragmentEscape must hold a String, but holds {expr}"
                 );
@@ -607,7 +607,7 @@ impl<'a> Compiler<'a> {
                 typ,
             } => {
                 assert_eq!(
-                    **typ,
+                    *typ,
                     Type::Fragment,
                     "For must fold into a Fragment, but folds into {typ}"
                 );
@@ -717,7 +717,6 @@ fn process_escape_sequences(s: &str) -> Cow<'_, str> {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
 
     use super::*;
     use crate::hop::typing::typed_ast_builder::{build_page, build_page_no_params};
@@ -866,7 +865,7 @@ mod tests {
         check(
             build_page(
                 "MainComp",
-                vec![("items", Type::Array(Arc::new(Type::String)))],
+                vec![("items", Type::Array(Box::new(Type::String)))],
                 |t| {
                     t.ul(vec![], |t| {
                         t.for_node("item", t.var_expr("items"), |t| {

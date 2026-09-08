@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use crate::annotation::Annotation;
 use crate::document::DocumentRange;
 use crate::hop::patterns::typed::TypedMatchPattern;
@@ -109,7 +107,7 @@ pub(crate) enum TypeErrorKind {
     },
 
     #[error("Mismatched type for condition: expected `Bool` got `{found}`")]
-    ConditionTypeMismatch { found: Arc<Type> },
+    ConditionTypeMismatch { found: Type },
 
     #[error("Component requires arguments: {args}")]
     MissingArguments { args: String },
@@ -130,10 +128,7 @@ pub(crate) enum TypeErrorKind {
     SpreadNotDeclaredRest { name: VarName },
 
     #[error("Mismatched type: expected `{expected}` got `{found}`")]
-    ArgumentTypeMismatch {
-        expected: Arc<Type>,
-        found: Arc<Type>,
-    },
+    ArgumentTypeMismatch { expected: Type, found: Type },
 
     #[error("Default values must be constant")]
     DefaultValueMustBeConstant,
@@ -141,27 +136,24 @@ pub(crate) enum TypeErrorKind {
     #[error("Mismatched type: expected `{expected}` got `{found}`")]
     DefaultValueTypeMismatch {
         param_name: VarName,
-        expected: Arc<Type>,
-        found: Arc<Type>,
+        expected: Type,
+        found: Type,
     },
 
     #[error("`<{element}>` does not accept attribute `{attr}`")]
     ElementDoesNotAcceptAttribute { element: String, attr: String },
 
     #[error("Mismatched type: expected `Array[...]` got `{found}`")]
-    IterateeTypeMismatch { found: Arc<Type> },
+    IterateeTypeMismatch { found: Type },
 
     #[error("Mismatched type for range bound: expected `Int` got `{found}`")]
-    RangeBoundTypeMismatch { found: Arc<Type> },
+    RangeBoundTypeMismatch { found: Type },
 
     #[error("Mismatched type: expected `{expected}` got `{found}`")]
-    LetBindingTypeMismatch {
-        expected: Arc<Type>,
-        found: Arc<Type>,
-    },
+    LetBindingTypeMismatch { expected: Type, found: Type },
 
     #[error("Mismatched type for interpolation: expected `String` or `Fragment` got {found}")]
-    InterpolationTypeMismatch { found: Arc<Type> },
+    InterpolationTypeMismatch { found: Type },
 
     #[error("Undefined variable: {name}")]
     UndefinedVariable { name: VarName },
@@ -173,22 +165,19 @@ pub(crate) enum TypeErrorKind {
     },
 
     #[error("{typ} can not be used as a record")]
-    CannotUseAsRecord { typ: Arc<Type> },
+    CannotUseAsRecord { typ: Type },
 
     #[error("Cannot compare {left} to {right}")]
-    CannotCompareTypes { left: Arc<Type>, right: Arc<Type> },
+    CannotCompareTypes { left: Type, right: Type },
 
     #[error("Mismatched type for negation: expected `Bool` got `{found}`")]
-    BooleanNegationTypeMismatch { found: Arc<Type> },
+    BooleanNegationTypeMismatch { found: Type },
 
     #[error("Mismatched type for negation: expected `Int` or `Float` got {found}")]
-    NumericNegationTypeMismatch { found: Arc<Type> },
+    NumericNegationTypeMismatch { found: Type },
 
     #[error("Mismatched type for array element: expected `{expected}` got `{found}`")]
-    ArrayElementTypeMismatch {
-        expected: Arc<Type>,
-        found: Arc<Type>,
-    },
+    ArrayElementTypeMismatch { expected: Type, found: Type },
 
     #[error("Cannot infer type of empty array")]
     CannotInferEmptyArrayType,
@@ -197,7 +186,7 @@ pub(crate) enum TypeErrorKind {
     CannotInferNoneType,
 
     #[error("Type {t} is not comparable")]
-    TypeIsNotComparable { t: Arc<Type> },
+    TypeIsNotComparable { t: Type },
 
     #[error("&& operator can only be applied to Bool values")]
     LogicalAndTypeMismatch,
@@ -206,22 +195,13 @@ pub(crate) enum TypeErrorKind {
     LogicalOrTypeMismatch,
 
     #[error("Cannot add values of incompatible types: {left_type} + {right_type}")]
-    IncompatibleTypesForAddition {
-        left_type: Arc<Type>,
-        right_type: Arc<Type>,
-    },
+    IncompatibleTypesForAddition { left_type: Type, right_type: Type },
 
     #[error("Cannot subtract values of incompatible types: {left_type} - {right_type}")]
-    IncompatibleTypesForSubtraction {
-        left_type: Arc<Type>,
-        right_type: Arc<Type>,
-    },
+    IncompatibleTypesForSubtraction { left_type: Type, right_type: Type },
 
     #[error("Cannot multiply values of incompatible types: {left_type} * {right_type}")]
-    IncompatibleTypesForMultiplication {
-        left_type: Arc<Type>,
-        right_type: Arc<Type>,
-    },
+    IncompatibleTypesForMultiplication { left_type: Type, right_type: Type },
 
     #[error("Type '{type_name}' is not defined")]
     UndefinedType { type_name: TypeName },
@@ -247,8 +227,8 @@ pub(crate) enum TypeErrorKind {
     #[error("Mismatched type for `{field_name}`: expected `{expected}` got `{found}`")]
     RecordLiteralFieldTypeMismatch {
         field_name: FieldName,
-        expected: Arc<Type>,
-        found: Arc<Type>,
+        expected: Type,
+        found: Type,
     },
 
     #[error("Duplicate field '{field_name}' in record literal for '{record_name}'")]
@@ -258,10 +238,7 @@ pub(crate) enum TypeErrorKind {
     },
 
     #[error("Mismatched type for spread: expected `{expected}` got `{found}`")]
-    RecordSpreadTypeMismatch {
-        expected: Arc<Type>,
-        found: Arc<Type>,
-    },
+    RecordSpreadTypeMismatch { expected: Type, found: Type },
 
     #[error("Enum type '{enum_name}' is not defined")]
     UndefinedEnum { enum_name: TypeName },
@@ -291,8 +268,8 @@ pub(crate) enum TypeErrorKind {
         enum_name: TypeName,
         variant_name: TypeName,
         field_name: FieldName,
-        expected: Arc<Type>,
-        found: Arc<Type>,
+        expected: Type,
+        found: Type,
     },
 
     #[error(
@@ -305,7 +282,7 @@ pub(crate) enum TypeErrorKind {
     },
 
     #[error("Match is not implemented for type {found}")]
-    MatchNotImplementedForType { found: Arc<Type> },
+    MatchNotImplementedForType { found: Type },
 
     #[error("Match pattern enum '{pattern_enum}' does not match subject enum '{subject_enum}'")]
     MatchPatternEnumMismatch {
@@ -322,10 +299,7 @@ pub(crate) enum TypeErrorKind {
     },
 
     #[error("Mismatched type: expected `{expected}` got `{found}`")]
-    MatchArmTypeMismatch {
-        expected: Arc<Type>,
-        found: Arc<Type>,
-    },
+    MatchArmTypeMismatch { expected: Type, found: Type },
 
     #[error("Match expression is missing arms for: {}", variants.join(", "))]
     MatchMissingVariants { variants: Vec<String> },
@@ -335,8 +309,8 @@ pub(crate) enum TypeErrorKind {
 
     #[error("Mismatched pattern type: expected `{expected}` got `{found}`")]
     MatchPatternTypeMismatch {
-        expected: Arc<Type>,
-        // TODO: Make into Arc<Type>
+        expected: Type,
+        // TODO: Make into Type
         found: String,
     },
 
@@ -361,21 +335,21 @@ pub(crate) enum TypeErrorKind {
     #[error("Mismatched type for '{macro_name}': expected `{expected}` got `{found}`")]
     MacroArgumentTypeMismatch {
         macro_name: String,
-        expected: Arc<Type>,
-        found: Arc<Type>,
+        expected: Type,
+        found: Type,
     },
 
     #[error("Method '{method}' is not available on type {typ}")]
-    MethodNotAvailable { method: FieldName, typ: Arc<Type> },
+    MethodNotAvailable { method: FieldName, typ: Type },
 
     #[error("#[examples(pattern = ...)] is only valid on String fields, found {found}")]
-    PatternOnNonString { found: Arc<Type> },
+    PatternOnNonString { found: Type },
 
     #[error("Invalid regex in #[examples(pattern = ...)]: {message}")]
     InvalidPatternRegex { message: String },
 
     #[error("#[examples(min = ..., max = ...)] is only valid on Int fields, found {found}")]
-    MinMaxOnNonInt { found: Arc<Type> },
+    MinMaxOnNonInt { found: Type },
 
     #[error("#[examples(min = {min})] must be less than or equal to max = {max}")]
     MinGreaterThanMax { min: i32, max: i32 },
@@ -383,7 +357,7 @@ pub(crate) enum TypeErrorKind {
     #[error(
         "#[examples(min_len = ..., max_len = ...)] is only valid on Array fields, found {found}"
     )]
-    MinMaxLenOnNonArray { found: Arc<Type> },
+    MinMaxLenOnNonArray { found: Type },
 
     #[error("#[examples(min_len = ..., max_len = ...)] must be non-negative, found {value}")]
     NegativeLen { value: i32 },
@@ -416,8 +390,8 @@ pub(crate) enum TypeErrorKind {
     FunctionArgumentTypeMismatch {
         name: VarName,
         param_name: VarName,
-        expected: Arc<Type>,
-        found: Arc<Type>,
+        expected: Type,
+        found: Type,
     },
 
     #[error("Function {name} is already defined")]
@@ -432,13 +406,10 @@ pub(crate) enum TypeErrorKind {
     },
 
     #[error("Mismatched type for function body: expected `{expected}` got `{found}`")]
-    FunctionBodyTypeMismatch {
-        expected: Arc<Type>,
-        found: Arc<Type>,
-    },
+    FunctionBodyTypeMismatch { expected: Type, found: Type },
 
     #[error("Mismatched type for declaration: expected `Fragment` got `{found}`")]
-    DeclarationBodyTypeMismatch { found: Arc<Type> },
+    DeclarationBodyTypeMismatch { found: Type },
 }
 
 impl TypeErrorKind {

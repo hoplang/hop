@@ -7,7 +7,6 @@
 //! the parameters its callee ends up forwarding.
 
 use std::collections::{BTreeSet, HashMap, HashSet};
-use std::sync::Arc;
 
 use super::r#type::Type;
 use super::type_env::{FunctionSignature, ParamEntry, Tail, TypeBinding, TypeEnv};
@@ -238,7 +237,7 @@ pub fn resolve_rest_targets(
                 name,
                 TypeBinding::Component(FunctionSignature {
                     params,
-                    return_type: Arc::new(Type::Fragment),
+                    return_type: Type::Fragment,
                     tail,
                     rest_param,
                 }),

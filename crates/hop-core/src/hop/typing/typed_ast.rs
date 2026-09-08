@@ -1,5 +1,4 @@
 use std::fmt::{self, Display};
-use std::sync::Arc;
 
 use crate::examples_annotation::ExamplesAnnotation;
 use crate::hop::typing::type_registry::{EnumVariant, RecordField};
@@ -40,7 +39,7 @@ pub struct TypedPageDeclaration {
 #[derive(Debug, Clone)]
 pub struct TypedParameter {
     pub var_name: VarName,
-    pub var_type: Arc<Type>,
+    pub var_type: Type,
     pub examples: Option<ExamplesAnnotation>,
 }
 
@@ -48,7 +47,7 @@ pub struct TypedParameter {
 pub struct TypedFunctionDeclaration {
     pub name: FunctionName,
     pub params: Vec<TypedParameter>,
-    pub return_type: Arc<Type>,
+    pub return_type: Type,
     pub body: TypedExpr,
 }
 

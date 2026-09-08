@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::sync::Arc;
 
 use super::r#type::Type;
 use super::typed_expr::TypedExpr;
@@ -11,7 +10,7 @@ use crate::symbols::var_name::VarName;
 #[derive(Debug, Clone)]
 pub struct FunctionSignature {
     pub params: Vec<ParamEntry>,
-    pub return_type: Arc<Type>,
+    pub return_type: Type,
     pub tail: Tail,
     pub rest_param: Option<VarName>,
 }
@@ -19,7 +18,7 @@ pub struct FunctionSignature {
 #[derive(Debug, Clone)]
 pub struct ParamEntry {
     pub name: VarName,
-    pub typ: Arc<Type>,
+    pub typ: Type,
     pub default: Option<TypedExpr>,
 }
 
@@ -34,7 +33,7 @@ pub enum Tail {
 
 #[derive(Debug, Clone)]
 pub enum TypeBinding {
-    Type(Arc<Type>),
+    Type(Type),
     Component(FunctionSignature),
     Page,
 }

@@ -351,7 +351,6 @@ mod tests {
     use crate::symbols::var_name::VarName;
     use expect_test::{Expect, expect};
     use rand::{SeedableRng, rngs::StdRng};
-    use std::sync::Arc;
 
     use crate::hop::typing::r#type::Type;
 
@@ -639,7 +638,7 @@ mod tests {
                             id: expr_ids.next(),
                         },
                     }],
-                    typ: Arc::new(Type::Fragment),
+                    typ: Type::Fragment,
                     id: expr_ids.next(),
                 },
             ],

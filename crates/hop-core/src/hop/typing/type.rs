@@ -1,12 +1,11 @@
 use core::fmt;
-use std::sync::Arc;
 
 use pretty::BoxDoc;
 
 use crate::document_id::DocumentId;
 use crate::symbols::type_name::TypeName;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
     String,
     Bool,
@@ -14,8 +13,8 @@ pub enum Type {
     Float,
     Fragment,
     Attrs,
-    Array(Arc<Type>),
-    Option(Arc<Type>),
+    Array(Box<Type>),
+    Option(Box<Type>),
     Named { module: DocumentId, name: TypeName },
 }
 

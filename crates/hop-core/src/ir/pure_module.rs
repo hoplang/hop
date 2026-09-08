@@ -1,5 +1,4 @@
 use std::fmt;
-use std::sync::Arc;
 
 use crate::document::CheapString;
 use crate::hop::patterns::{EnumMatchArm, EnumPattern, Match};
@@ -47,7 +46,7 @@ pub struct PureFunctionDeclaration {
     /// Parameter names with their types
     pub parameters: Vec<WriterParameter>,
     /// The function's return type. The body must be of this type.
-    pub return_type: Arc<Type>,
+    pub return_type: Type,
     /// PureIR expression for the function body. Must be of type `return_type`.
     pub body: PureExpr,
 }
@@ -75,7 +74,7 @@ pub enum PureExpr {
         var: IrVar,
         value: Box<PureExpr>,
         body: Box<PureExpr>,
-        typ: Arc<Type>,
+        typ: Type,
         id: ExprId,
     },
 
@@ -84,7 +83,7 @@ pub enum PureExpr {
     /// Matching is exhaustive, a value must match at least one branch.
     Match {
         match_: Match<PureExpr, PureExpr, IrVar>,
-        typ: Arc<Type>,
+        typ: Type,
         id: ExprId,
     },
 
@@ -93,11 +92,7 @@ pub enum PureExpr {
     /// Reads the value bound by its binder.
     ///
     /// The `typ` field must match the binder's type.
-    VariableReference {
-        value: IrVar,
-        typ: Arc<Type>,
-        id: ExprId,
-    },
+    VariableReference { value: IrVar, typ: Type, id: ExprId },
 
     /// A FieldAccess expression.
     ///
@@ -106,7 +101,7 @@ pub enum PureExpr {
     FieldAccess {
         record: Box<PureExpr>,
         field: FieldName,
-        typ: Arc<Type>,
+        typ: Type,
         id: ExprId,
     },
 
@@ -154,7 +149,7 @@ pub enum PureExpr {
     FunctionCall {
         function_name: FunctionName,
         args: Vec<PureArgument>,
-        typ: Arc<Type>,
+        typ: Type,
         id: ExprId,
     },
 
@@ -170,7 +165,7 @@ pub enum PureExpr {
     /// An ArrayLiteral expression.
     ArrayLiteral {
         elements: Vec<PureExpr>,
-        typ: Arc<Type>,
+        typ: Type,
         id: ExprId,
     },
 
@@ -178,7 +173,7 @@ pub enum PureExpr {
     RecordLiteral {
         record_name: TypeName,
         fields: Vec<(FieldName, PureExpr)>,
-        typ: Arc<Type>,
+        typ: Type,
         id: ExprId,
     },
 
@@ -188,14 +183,14 @@ pub enum PureExpr {
         variant_name: TypeName,
         /// Field values for variants with fields (empty for unit variants)
         fields: Vec<(FieldName, PureExpr)>,
-        typ: Arc<Type>,
+        typ: Type,
         id: ExprId,
     },
 
     /// An OptionLiteral expression.
     OptionLiteral {
         value: Option<Box<PureExpr>>,
-        typ: Arc<Type>,
+        typ: Type,
         id: ExprId,
     },
 
@@ -358,9 +353,9 @@ pub enum PureExpr {
 }
 
 impl PureExpr {
-    /// Get the type of this expression as an Arc
+    /// The type of this expression.
     #[cfg(test)]
-    pub fn get_type(&self) -> Arc<Type> {
+    pub fn typ(&self) -> Type {
         match self {
             PureExpr::VariableReference { typ, .. }
             | PureExpr::FieldAccess { typ, .. }
@@ -372,17 +367,17 @@ impl PureExpr {
             | PureExpr::Let { typ, .. }
             | PureExpr::FunctionCall { typ, .. } => typ.clone(),
 
-            PureExpr::FloatLiteral { .. } | PureExpr::IntToFloat { .. } => Arc::new(Type::Float),
-            PureExpr::IntLiteral { .. } => Arc::new(Type::Int),
+            PureExpr::FloatLiteral { .. } | PureExpr::IntToFloat { .. } => Type::Float,
+            PureExpr::IntLiteral { .. } => Type::Int,
 
             PureExpr::FragmentRaw { .. }
             | PureExpr::FragmentEscape { .. }
             | PureExpr::FragmentConcat { .. }
-            | PureExpr::FragmentFor { .. } => Arc::new(Type::Fragment),
+            | PureExpr::FragmentFor { .. } => Type::Fragment,
 
             PureExpr::StringConcat { .. }
             | PureExpr::StringLiteral { .. }
-            | PureExpr::IntToString { .. } => Arc::new(Type::String),
+            | PureExpr::IntToString { .. } => Type::String,
 
             PureExpr::NumericAdd { operand_types, .. }
             | PureExpr::NumericSubtract { operand_types, .. }
@@ -391,8 +386,8 @@ impl PureExpr {
                 operand_type: operand_types,
                 ..
             } => match operand_types {
-                NumericType::Int => Arc::new(Type::Int),
-                NumericType::Float => Arc::new(Type::Float),
+                NumericType::Int => Type::Int,
+                NumericType::Float => Type::Float,
             },
 
             PureExpr::BooleanLiteral { .. }
@@ -405,68 +400,9 @@ impl PureExpr {
             | PureExpr::ArrayIsEmpty { .. }
             | PureExpr::StringIsEmpty { .. }
             | PureExpr::OptionIsSome { .. }
-            | PureExpr::OptionIsNone { .. } => Arc::new(Type::Bool),
+            | PureExpr::OptionIsNone { .. } => Type::Bool,
 
-            PureExpr::ArrayLength { .. } | PureExpr::FloatToInt { .. } => Arc::new(Type::Int),
-        }
-    }
-
-    /// Get the type of this expression
-    #[cfg(test)]
-    pub fn as_type(&self) -> &Type {
-        static STRING_TYPE: Type = Type::String;
-        static BOOL_TYPE: Type = Type::Bool;
-        static FLOAT_TYPE: Type = Type::Float;
-        static INT_TYPE: Type = Type::Int;
-        static FRAGMENT_TYPE: Type = Type::Fragment;
-
-        match self {
-            PureExpr::VariableReference { typ, .. }
-            | PureExpr::FieldAccess { typ, .. }
-            | PureExpr::ArrayLiteral { typ, .. }
-            | PureExpr::RecordLiteral { typ, .. }
-            | PureExpr::EnumLiteral { typ, .. }
-            | PureExpr::OptionLiteral { typ, .. }
-            | PureExpr::Match { typ, .. }
-            | PureExpr::Let { typ, .. }
-            | PureExpr::FunctionCall { typ, .. } => typ,
-
-            PureExpr::FloatLiteral { .. } | PureExpr::IntToFloat { .. } => &FLOAT_TYPE,
-            PureExpr::IntLiteral { .. } => &INT_TYPE,
-
-            PureExpr::FragmentRaw { .. }
-            | PureExpr::FragmentEscape { .. }
-            | PureExpr::FragmentConcat { .. }
-            | PureExpr::FragmentFor { .. } => &FRAGMENT_TYPE,
-
-            PureExpr::StringConcat { .. }
-            | PureExpr::StringLiteral { .. }
-            | PureExpr::IntToString { .. } => &STRING_TYPE,
-
-            PureExpr::NumericAdd { operand_types, .. }
-            | PureExpr::NumericSubtract { operand_types, .. }
-            | PureExpr::NumericMultiply { operand_types, .. }
-            | PureExpr::NumericNegation {
-                operand_type: operand_types,
-                ..
-            } => match operand_types {
-                NumericType::Int => &INT_TYPE,
-                NumericType::Float => &FLOAT_TYPE,
-            },
-
-            PureExpr::BooleanLiteral { .. }
-            | PureExpr::BooleanNegation { .. }
-            | PureExpr::Equals { .. }
-            | PureExpr::LessThan { .. }
-            | PureExpr::LessThanOrEqual { .. }
-            | PureExpr::BooleanLogicalAnd { .. }
-            | PureExpr::BooleanLogicalOr { .. }
-            | PureExpr::ArrayIsEmpty { .. }
-            | PureExpr::StringIsEmpty { .. }
-            | PureExpr::OptionIsSome { .. }
-            | PureExpr::OptionIsNone { .. } => &BOOL_TYPE,
-
-            PureExpr::ArrayLength { .. } | PureExpr::FloatToInt { .. } => &INT_TYPE,
+            PureExpr::ArrayLength { .. } | PureExpr::FloatToInt { .. } => Type::Int,
         }
     }
 
@@ -1221,7 +1157,7 @@ impl PureExpr {
                 }
             }
             PureExpr::OptionLiteral { value, typ, .. } => {
-                let inner_type = match typ.as_ref() {
+                let inner_type = match typ {
                     Type::Option(inner) => inner.to_doc(),
                     _ => panic!("OptionLiteral must have Option type, got {:?}", typ),
                 };
