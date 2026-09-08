@@ -1,4 +1,4 @@
-use super::{ParamEntry, Tail, Type, TypeBinding, TypedExpr};
+use super::{ParamEntry, Tail, Type, TypedExpr};
 use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
 use crate::document::{CheapString, DocumentRange};
@@ -26,7 +26,7 @@ pub fn typecheck_node(
     registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
     var_env: &mut VariableScope,
-    type_env: &mut TypeEnv,
+    type_env: &TypeEnv,
     annotations: &mut Vec<HoverAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
     asset_references: &mut Vec<AssetReference>,
@@ -279,7 +279,8 @@ pub fn typecheck_node(
                 // Resolve the declared type, if an annotation is present.
                 let declared_type = match &binding.var_type {
                     Some(parsed_type) => {
-                        let Some(t) = resolve_type(parsed_type, type_env, definition_links, errors)
+                        let Some(t) =
+                            resolve_type(parsed_type, &type_env.names, definition_links, errors)
                         else {
                             continue;
                         };
@@ -427,24 +428,26 @@ pub fn typecheck_node(
                 .collect::<Vec<_>>();
 
             // Look up the component signature from type_env
-            let (callee_rest_param, callee_params, callee_tail, component_def_range) =
-                match type_env.lookup(component_name) {
-                    Some((TypeBinding::Component(sig), def_range)) => (
-                        sig.rest_param.clone(),
-                        sig.params.clone(),
-                        sig.tail.clone(),
-                        def_range.clone(),
-                    ),
-                    _ => {
-                        errors.push(TypeError::new(
-                            TypeErrorKind::UndefinedComponent {
-                                tag_name: component_name.clone(),
-                            },
-                            component_name_opening_range.clone(),
-                        ));
-                        return None;
-                    }
-                };
+            let (callee_rest_param, callee_params, callee_tail, component_def_range) = match (
+                type_env.components.get(component_name),
+                type_env.names.get(component_name),
+            ) {
+                (Some(sig), Some(name)) => (
+                    sig.rest_param.clone(),
+                    sig.params.clone(),
+                    sig.tail.clone(),
+                    name.definition_range.clone(),
+                ),
+                _ => {
+                    errors.push(TypeError::new(
+                        TypeErrorKind::UndefinedComponent {
+                            tag_name: component_name.clone(),
+                        },
+                        component_name_opening_range.clone(),
+                    ));
+                    return None;
+                }
+            };
 
             // Add definition link for the opening tag
             definition_links.push(DefinitionLink {
@@ -637,7 +640,7 @@ fn typecheck_attribute_value(
     registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
     var_env: &mut VariableScope,
-    type_env: &mut TypeEnv,
+    type_env: &TypeEnv,
     annotations: &mut Vec<HoverAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
     asset_references: &mut Vec<AssetReference>,
@@ -705,7 +708,7 @@ fn typecheck_arguments(
     registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
     var_env: &mut VariableScope,
-    type_env: &mut TypeEnv,
+    type_env: &TypeEnv,
     annotations: &mut Vec<HoverAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
     asset_references: &mut Vec<AssetReference>,
@@ -930,7 +933,7 @@ fn typecheck_attributes(
     registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
     var_env: &mut VariableScope,
-    type_env: &mut TypeEnv,
+    type_env: &TypeEnv,
     annotations: &mut Vec<HoverAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
     asset_references: &mut Vec<AssetReference>,
@@ -964,7 +967,7 @@ fn typecheck_html_attribute(
     registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
     var_env: &mut VariableScope,
-    type_env: &mut TypeEnv,
+    type_env: &TypeEnv,
     annotations: &mut Vec<HoverAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
     asset_references: &mut Vec<AssetReference>,

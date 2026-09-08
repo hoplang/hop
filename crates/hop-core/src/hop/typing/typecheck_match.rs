@@ -54,7 +54,7 @@ pub fn typecheck_match(
     arms: MatchArms<'_>,
     forwarded_params: &[VarName],
     var_env: &mut VariableScope,
-    type_env: &mut TypeEnv,
+    type_env: &TypeEnv,
     registry: &TypeRegistry,
     annotations: &mut Vec<HoverAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
@@ -136,7 +136,7 @@ fn typecheck_arm_bodies(
     typed_patterns: &[TypedMatchPattern],
     forwarded_params: &[VarName],
     var_env: &mut VariableScope,
-    type_env: &mut TypeEnv,
+    type_env: &TypeEnv,
     registry: &TypeRegistry,
     annotations: &mut Vec<HoverAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
@@ -255,7 +255,7 @@ fn typecheck_arm_bodies(
 /// Collect definition links for enum variant references in match patterns.
 fn collect_pattern_definition_links(
     pattern: &ParsedMatchPattern,
-    type_env: &mut TypeEnv,
+    type_env: &TypeEnv,
     definition_links: &mut Vec<DefinitionLink>,
 ) {
     match pattern {
@@ -266,10 +266,10 @@ fn collect_pattern_definition_links(
             args,
             ..
         } => {
-            if let Some((_, def_range)) = type_env.lookup(enum_name) {
+            if let Some(name) = type_env.names.get(enum_name) {
                 definition_links.push(DefinitionLink {
                     use_range: enum_name_range.clone(),
-                    definition_range: def_range.clone(),
+                    definition_range: name.definition_range.clone(),
                 });
             }
             for (_, _, field_pattern) in fields {

@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use super::r#type::{NumericType, Type};
-use super::type_env::TypeBinding;
+use super::type_env::{Name, NameKind};
 use super::type_registry::{ResolvedType, TypeRegistry};
 use super::typecheck_match::{MatchArms, typecheck_match};
 use super::typecheck_node::typecheck_node;
@@ -28,7 +28,7 @@ pub fn typecheck_expr(
     inferred_type: Option<&Type>,
     forwarded_params: &[VarName],
     var_env: &mut VariableScope,
-    type_env: &mut TypeEnv,
+    type_env: &TypeEnv,
     registry: &TypeRegistry,
     annotations: &mut Vec<HoverAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
@@ -1019,7 +1019,12 @@ pub fn typecheck_expr(
             range,
         } => {
             // Check if the record type is defined
-            let Some((binding, def_range)) = type_env.lookup(record_name) else {
+            let Some(Name {
+                kind: NameKind::Type(record_type),
+                definition_range: def_range,
+                ..
+            }) = type_env.names.get(record_name)
+            else {
                 errors.push(TypeError::new(
                     TypeErrorKind::UndefinedRecord {
                         record_name: record_name.clone(),
@@ -1029,18 +1034,7 @@ pub fn typecheck_expr(
                 return None;
             };
             let def_range = def_range.clone();
-            let record_type = match binding {
-                TypeBinding::Type(typ) => typ.clone(),
-                TypeBinding::Component(_) | TypeBinding::Page => {
-                    errors.push(TypeError::new(
-                        TypeErrorKind::UndefinedRecord {
-                            record_name: record_name.clone(),
-                        },
-                        range.clone(),
-                    ));
-                    return None;
-                }
-            };
+            let record_type = record_type.clone();
 
             // Add type annotation and definition link for the record name
             annotations.push(HoverAnnotation::TypeForTypeName {
@@ -1265,7 +1259,12 @@ pub fn typecheck_expr(
             range,
         } => {
             // Look up the enum type in the type environment
-            let Some((binding, def_range)) = type_env.lookup(enum_name) else {
+            let Some(Name {
+                kind: NameKind::Type(enum_type),
+                definition_range: def_range,
+                ..
+            }) = type_env.names.get(enum_name)
+            else {
                 errors.push(TypeError::new(
                     TypeErrorKind::UndefinedEnum {
                         enum_name: enum_name.clone(),
@@ -1275,18 +1274,7 @@ pub fn typecheck_expr(
                 return None;
             };
             let def_range = def_range.clone();
-            let enum_type = match binding {
-                TypeBinding::Type(typ) => typ.clone(),
-                TypeBinding::Component(_) | TypeBinding::Page => {
-                    errors.push(TypeError::new(
-                        TypeErrorKind::UndefinedEnum {
-                            enum_name: enum_name.clone(),
-                        },
-                        range.clone(),
-                    ));
-                    return None;
-                }
-            };
+            let enum_type = enum_type.clone();
 
             // Add type annotation and definition link for the constructor
             annotations.push(HoverAnnotation::TypeForTypeName {
@@ -1691,7 +1679,7 @@ pub fn typecheck_expr(
             args,
             range,
         } => {
-            let Some((signature, def_range)) = type_env.lookup_function(name) else {
+            let Some((signature, def_range)) = type_env.functions.get(name) else {
                 errors.push(TypeError::new(
                     TypeErrorKind::UndefinedFunction { name: name.clone() },
                     name_range.clone(),
@@ -1782,7 +1770,7 @@ mod tests {
     ) -> (String, bool) {
         let types = types.build();
 
-        let mut type_env = types.type_env();
+        let type_env = types.type_env();
 
         let decl_range = DocumentCursor::new(types.module().clone(), String::new()).range();
         let mut env = VariableScope::new();
@@ -1810,7 +1798,7 @@ mod tests {
             None,
             &[],
             &mut env,
-            &mut type_env,
+            &type_env,
             types.registry(),
             &mut annotations,
             &mut definition_links,

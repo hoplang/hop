@@ -9,7 +9,7 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 
 use super::r#type::Type;
-use super::type_env::{FunctionSignature, ParamEntry, Tail, TypeBinding, TypeEnv};
+use super::type_env::{FunctionSignature, ParamEntry, Tail};
 use crate::dependency_graph::DependencyGraph;
 use crate::document::{CheapString, DocumentRange};
 use crate::hop::parsing::ParsedExpr;
@@ -177,13 +177,13 @@ pub fn pair_rest_spread(
 /// while their rests run down a perfectly straight line to an element, and that
 /// line is what decides the tail.
 ///
-/// Returns the forwarded parameters per component, which the declarations need
-/// and which the settled signatures no longer distinguish from declared ones.
+/// Returns the settled signature per component: the declared parameters
+/// followed by the forwarded ones.
 pub fn resolve_rest_targets(
     rest_targets: &HashMap<TypeName, Option<RestSpreadTarget>>,
-    type_env: &mut TypeEnv,
+    declared: &HashMap<TypeName, FunctionSignature>,
     errors: &mut Vec<TypeError>,
-) -> HashMap<TypeName, Vec<ParamEntry>> {
+) -> HashMap<TypeName, FunctionSignature> {
     let mut spread_graph: DependencyGraph<TypeName> = DependencyGraph::new();
     for (name, rest_target) in rest_targets {
         let mut target = BTreeSet::new();
@@ -197,7 +197,7 @@ pub fn resolve_rest_targets(
         spread_graph.set_dependencies(name.clone(), target);
     }
 
-    let mut forwarded_params = HashMap::new();
+    let mut settled = declared.clone();
     for scc in spread_graph.sorted_sccs() {
         // With one spread per component an SCC is a cycle outright, whether it
         // runs through several components or a component straight back to
@@ -209,13 +209,9 @@ pub fn resolve_rest_targets(
             let Some(rest_target) = rest_targets.get(name) else {
                 continue;
             };
-            let Some((TypeBinding::Component(provisional), _)) = type_env.lookup(name) else {
+            let Some(provisional) = declared.get(name) else {
                 continue;
             };
-            // Nothing has extended this signature yet, so its parameters are
-            // exactly the declared ones.
-            let declared: Vec<ParamEntry> = provisional.params.clone();
-            let rest_param = provisional.rest_param.clone();
 
             let (forwarded, tail) = if is_cycle {
                 if let Some(target) = rest_target {
@@ -228,24 +224,23 @@ pub fn resolve_rest_targets(
                 }
                 (Vec::new(), Tail::Closed)
             } else {
-                rest_target_signature(rest_target.as_ref(), &declared, type_env)
+                rest_target_signature(rest_target.as_ref(), &provisional.params, &settled)
             };
 
-            let mut params = declared;
-            params.extend(forwarded.iter().cloned());
-            type_env.replace_binding(
-                name,
-                TypeBinding::Component(FunctionSignature {
+            let mut params = provisional.params.clone();
+            params.extend(forwarded);
+            settled.insert(
+                name.clone(),
+                FunctionSignature {
                     params,
                     return_type: Type::Fragment,
                     tail,
-                    rest_param,
-                }),
+                    rest_param: provisional.rest_param.clone(),
+                },
             );
-            forwarded_params.insert(name.clone(), forwarded);
         }
     }
-    forwarded_params
+    settled
 }
 
 /// Where this component's rest lands, and the callee parameters it carries.
@@ -255,7 +250,7 @@ pub fn resolve_rest_targets(
 fn rest_target_signature(
     rest_target: Option<&RestSpreadTarget>,
     declared: &[ParamEntry],
-    type_env: &mut TypeEnv,
+    settled: &HashMap<TypeName, FunctionSignature>,
 ) -> (Vec<ParamEntry>, Tail) {
     let declared_names: Vec<&VarName> = declared.iter().map(|p| &p.name).collect();
     match rest_target {
@@ -275,8 +270,8 @@ fn rest_target_signature(
             supplied_attrs,
             has_children,
             ..
-        }) => match type_env.lookup(callee) {
-            Some((TypeBinding::Component(callee_sig), _)) => {
+        }) => match settled.get(callee) {
+            Some(callee_sig) => {
                 let tail = match callee_sig.tail.clone() {
                     Tail::Html {
                         element,

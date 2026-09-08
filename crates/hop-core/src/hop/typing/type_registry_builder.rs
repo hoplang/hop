@@ -6,7 +6,7 @@ use crate::document_id::DocumentId;
 use crate::hop::parsing::parse_type::parse_type;
 use crate::hop::typing::resolve_type::resolve_type;
 use crate::hop::typing::r#type::Type;
-use crate::hop::typing::type_env::{FunctionSignature, ParamEntry, Tail, TypeBinding, TypeEnv};
+use crate::hop::typing::type_env::{FunctionSignature, Name, NameKind, ParamEntry, Tail, TypeEnv};
 use crate::hop::typing::type_registry::{
     EnumVariant, RecordField, ResolvedType, TypeDef, TypeRegistry,
 };
@@ -288,12 +288,12 @@ impl TestTypes {
         if iter.peek().is_some() {
             panic!("trailing input after type `{type_str}`");
         }
-        let mut type_env = self.type_env();
+        let type_env = self.type_env();
         let mut definition_links = Vec::new();
         let mut type_errors = Vec::new();
         resolve_type(
             &parsed,
-            &mut type_env,
+            &type_env.names,
             &mut definition_links,
             &mut type_errors,
         )
@@ -326,19 +326,27 @@ impl TestTypes {
 
     pub fn type_env(&self) -> TypeEnv {
         let decl_range = DocumentCursor::new(self.module.clone(), String::new()).range();
-        let mut env = TypeEnv::new();
-        for (name, typ) in &self.named {
-            // Names come from a HashMap so they are unique and cannot collide.
-            let _ = env.insert_local(
-                name.clone(),
-                TypeBinding::Type(typ.clone()),
-                decl_range.clone(),
-            );
+        TypeEnv {
+            names: self
+                .named
+                .iter()
+                .map(|(name, typ)| {
+                    (
+                        name.clone(),
+                        Name {
+                            kind: NameKind::Type(typ.clone()),
+                            definition_range: decl_range.clone(),
+                            import_range: None,
+                        },
+                    )
+                })
+                .collect(),
+            components: HashMap::new(),
+            functions: self
+                .functions
+                .iter()
+                .map(|(name, signature)| (name.clone(), (signature.clone(), decl_range.clone())))
+                .collect(),
         }
-        for (name, signature) in &self.functions {
-            // Names come from a HashMap so they are unique and cannot collide.
-            let _ = env.insert_local_function(name.clone(), signature.clone(), decl_range.clone());
-        }
-        env
     }
 }

@@ -1,22 +1,29 @@
-use super::{FunctionSignature, ParamEntry, Tail, Type, TypeBinding, TypedExpr};
+use super::{FunctionSignature, ParamEntry, Tail, Type, TypedExpr};
 use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
 use crate::document::DocumentRange;
+use crate::document_id::DocumentId;
 use crate::examples_annotation::ExamplesAnnotation;
+use crate::hop::parsing::ParsedType;
+use crate::hop::parsing::parsed_ast::ParsedAst;
 use crate::hop::parsing::parsed_ast::ParsedDeclaration;
 use crate::hop::parsing::parsed_ast::{
     ParsedComponentDeclaration, ParsedEnumDeclaration, ParsedFunctionDeclaration,
     ParsedImportDeclaration, ParsedPageDeclaration, ParsedParameter, ParsedRecordDeclaration,
 };
+use crate::hop::parsing::parsed_expr::{Constructor, ParsedExpr, ParsedMatchPattern};
+use crate::hop::parsing::parsed_node::ParsedNode;
 use crate::hop::typing::resolve_type::resolve_type;
 use crate::hop::typing::rest_spread::{
     RestSpreadTarget, collect_spreads, pair_rest_spread, resolve_rest_targets,
 };
-
-use crate::hop::typing::type_env::TypeEnv;
+use crate::hop::typing::type_env::{Name, NameKind, TypeEnv};
 use crate::hop::typing::type_export::TypeExport;
 use crate::hop::typing::type_registry::{EnumVariant, RecordField, TypeDef, TypeRegistry};
 use crate::hop::typing::typecheck_expr::typecheck_expr;
+use crate::hop::typing::typed_ast::{
+    TypedAst, TypedFunctionDeclaration, TypedPageDeclaration, TypedParameter,
+};
 use crate::hop::typing::variable_scope::VariableScope;
 use crate::hover_annotation::HoverAnnotation;
 use crate::symbols::function_name::FunctionName;
@@ -24,12 +31,6 @@ use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use crate::type_error::{TypeError, TypeErrorKind};
 use std::collections::{HashMap, HashSet};
-
-use crate::document_id::DocumentId;
-use crate::hop::parsing::parsed_ast::ParsedAst;
-use crate::hop::typing::typed_ast::{
-    TypedAst, TypedFunctionDeclaration, TypedPageDeclaration, TypedParameter,
-};
 
 pub fn typecheck(
     modules: &[&ParsedAst],
@@ -94,7 +95,6 @@ fn typecheck_module(
     definition_links: &mut Vec<DefinitionLink>,
     asset_references: &mut Vec<AssetReference>,
 ) -> TypedAst {
-    let mut type_env = TypeEnv::new();
     let mut module_exports: HashMap<TypeName, TypeExport> = HashMap::new();
 
     let mut typed_pages = Vec::new();
@@ -112,6 +112,8 @@ fn typecheck_module(
             )
         })
         .collect();
+    let mut names: HashMap<TypeName, Name> = HashMap::new();
+    let mut imported_components: HashMap<TypeName, FunctionSignature> = HashMap::new();
     let mut function_names: HashSet<VarName> = HashSet::new();
     for decl in parsed_ast.declarations() {
         match decl {
@@ -157,31 +159,33 @@ fn typecheck_module(
                     use_range: imported_name_range.clone(),
                     definition_range: export.definition_range().clone(),
                 });
-                let binding = match export {
-                    TypeExport::Type { .. } => TypeBinding::Type(Type::Named {
-                        module: imported_module.to_document_id(),
-                        name: imported_name.clone(),
-                    }),
-                    TypeExport::Component { signature, .. } => {
-                        TypeBinding::Component(signature.clone())
-                    }
-                };
-                if type_env
-                    .insert_import(
-                        imported_name.clone(),
-                        binding,
-                        export.definition_range().clone(),
-                        import_range.clone(),
-                    )
-                    .is_err()
-                {
+                if names.contains_key(imported_name) {
                     errors.push(TypeError::new(
                         TypeErrorKind::TypeNameIsAlreadyDefined {
                             name: imported_name.clone(),
                         },
                         imported_name_range.clone(),
                     ));
+                    continue;
+                }
+                let kind = match export {
+                    TypeExport::Type { .. } => NameKind::Type(Type::Named {
+                        module: imported_module.to_document_id(),
+                        name: imported_name.clone(),
+                    }),
+                    TypeExport::Component { signature, .. } => {
+                        imported_components.insert(imported_name.clone(), signature.clone());
+                        NameKind::Component
+                    }
                 };
+                names.insert(
+                    imported_name.clone(),
+                    Name {
+                        kind,
+                        definition_range: export.definition_range().clone(),
+                        import_range: Some(import_range.clone()),
+                    },
+                );
             }
             ParsedDeclaration::Record(ParsedRecordDeclaration {
                 name,
@@ -195,62 +199,69 @@ fn typecheck_module(
                 pub_range,
                 ..
             }) => {
-                let insertion = type_env.insert_local(
-                    name.clone(),
-                    TypeBinding::Type(Type::Named {
-                        module: parsed_ast.document_id.clone(),
-                        name: name.clone(),
-                    }),
-                    name_range.clone(),
-                );
-                if insertion.is_ok() {
-                    module_exports.insert(
-                        name.clone(),
-                        TypeExport::Type {
-                            definition_range: name_range.clone(),
-                            is_pub: pub_range.is_some(),
-                        },
-                    );
-                } else {
+                if names.contains_key(name) {
                     errors.push(TypeError::new(
                         TypeErrorKind::TypeNameIsAlreadyDefined { name: name.clone() },
                         name_range.clone(),
                     ));
+                    continue;
                 }
+                names.insert(
+                    name.clone(),
+                    Name {
+                        kind: NameKind::Type(Type::Named {
+                            module: parsed_ast.document_id.clone(),
+                            name: name.clone(),
+                        }),
+                        definition_range: name_range.clone(),
+                        import_range: None,
+                    },
+                );
+                module_exports.insert(
+                    name.clone(),
+                    TypeExport::Type {
+                        definition_range: name_range.clone(),
+                        is_pub: pub_range.is_some(),
+                    },
+                );
             }
             ParsedDeclaration::Component(c) => {
-                // Placeholder so type positions naming a component error
-                // correctly.
-                let insertion = type_env.insert_local(
-                    c.component_name.clone(),
-                    TypeBinding::Component(FunctionSignature {
-                        params: Vec::new(),
-                        return_type: Type::Fragment,
-                        tail: Tail::Closed,
-                        rest_param: c.rest_param.as_ref().map(|(name, _)| name.clone()),
-                    }),
-                    c.name_range.clone(),
-                );
-                if insertion.is_err() {
+                if names.contains_key(&c.component_name) {
                     errors.push(TypeError::new(
                         TypeErrorKind::TypeNameIsAlreadyDefined {
                             name: c.component_name.clone(),
                         },
                         c.name_range.clone(),
                     ));
+                    continue;
                 }
+                names.insert(
+                    c.component_name.clone(),
+                    Name {
+                        kind: NameKind::Component,
+                        definition_range: c.name_range.clone(),
+                        import_range: None,
+                    },
+                );
             }
             ParsedDeclaration::Page(v) => {
-                let insertion =
-                    type_env.insert_local(v.name.clone(), TypeBinding::Page, v.name_range.clone());
-                if insertion.is_err() {
+                if names.contains_key(&v.name) {
                     errors.push(TypeError::new(
                         TypeErrorKind::TypeNameIsAlreadyDefined {
                             name: v.name.clone(),
                         },
                         v.name_range.clone(),
                     ));
+                    continue;
                 }
+                names.insert(
+                    v.name.clone(),
+                    Name {
+                        kind: NameKind::Page,
+                        definition_range: v.name_range.clone(),
+                        import_range: None,
+                    },
+                );
             }
             ParsedDeclaration::Function(f) => {
                 if !function_names.insert(f.name.clone()) {
@@ -280,7 +291,7 @@ fn typecheck_module(
         typecheck_record_declaration(
             record,
             &parsed_ast.document_id,
-            &mut type_env,
+            &names,
             registry,
             errors,
             definition_links,
@@ -290,7 +301,7 @@ fn typecheck_module(
         typecheck_enum_declaration(
             enum_decl,
             &parsed_ast.document_id,
-            &mut type_env,
+            &names,
             registry,
             errors,
             definition_links,
@@ -300,22 +311,29 @@ fn typecheck_module(
     // Phase 3
     //
     // Register signatures and resolve rest spreads.
+    let mut functions: HashMap<VarName, (FunctionSignature, DocumentRange)> = HashMap::new();
     let mut pending_functions = Vec::new();
     for function in parsed_ast.function_declarations() {
-        pending_functions.extend(register_function_signature(
-            function,
-            &mut type_env,
-            errors,
-            annotations,
-            definition_links,
-        ));
+        let Some(pending) =
+            create_function_signature(function, &names, errors, annotations, definition_links)
+        else {
+            continue;
+        };
+        if functions.contains_key(&function.name) {
+            continue;
+        }
+        functions.insert(
+            function.name.clone(),
+            (pending.signature.clone(), function.name_range.clone()),
+        );
+        pending_functions.push(pending);
     }
 
     let mut pending_components = Vec::new();
     for component in parsed_ast.component_declarations() {
-        pending_components.push(register_component_signature(
+        pending_components.push(create_component_signature(
             component,
-            &mut type_env,
+            &names,
             registry,
             errors,
             annotations,
@@ -323,26 +341,35 @@ fn typecheck_module(
             asset_references,
         ));
     }
+
+    let mut declared = imported_components;
+    for pending in &pending_components {
+        let name = &pending.component.component_name;
+        // The first declaration owns the name, Phase 1 reported the rest.
+        if names[name].definition_range == pending.component.name_range {
+            declared.insert(name.clone(), pending.signature.clone());
+        }
+    }
     // Pair each component's rest parameter with the spread that forwards it.
     // This is purely syntactic, so it runs before any signature is settled.
     let mut rest_targets: HashMap<TypeName, Option<RestSpreadTarget>> = HashMap::new();
     for component in parsed_ast.component_declarations() {
         let mut spreads = Vec::new();
         collect_spreads(&component.body, &mut spreads);
-        rest_targets.insert(
-            component.component_name.clone(),
-            pair_rest_spread(
-                component
-                    .rest_param
-                    .as_ref()
-                    .map(|rest| (&component.component_name, rest)),
-                spreads,
-                errors,
-            ),
+        let rest_target = pair_rest_spread(
+            component
+                .rest_param
+                .as_ref()
+                .map(|rest| (&component.component_name, rest)),
+            spreads,
+            errors,
         );
+        if names[&component.component_name].definition_range == component.name_range {
+            rest_targets.insert(component.component_name.clone(), rest_target);
+        }
     }
     // Functions and pages cannot declare a rest, so every spread in their
-    // bodies fails to name one.
+    // bodies fail to name one.
     for function in parsed_ast.function_declarations() {
         let mut spreads = Vec::new();
         collect_spreads(&function.body, &mut spreads);
@@ -356,23 +383,36 @@ fn typecheck_module(
         collect_spreads(&page.body, &mut spreads);
         pair_rest_spread(None, spreads, errors);
     }
-    // Settle every signature before checking a single body: a call site needs
-    // the parameters its callee ends up forwarding, and those are not known
-    // until the rest has been followed to wherever it lands.
-    let forwarded_params = resolve_rest_targets(&rest_targets, &mut type_env, errors);
+    let type_env = TypeEnv {
+        names,
+        components: resolve_rest_targets(&rest_targets, &declared, errors),
+        functions,
+    };
+    for component in parsed_ast.component_declarations() {
+        let name = &component.component_name;
+        if type_env.names[name].definition_range != component.name_range {
+            continue;
+        }
+        module_exports.insert(
+            name.clone(),
+            TypeExport::Component {
+                signature: type_env.components[name].clone(),
+                definition_range: component.name_range.clone(),
+                is_pub: component.pub_range.is_some(),
+            },
+        );
+    }
 
     // Phase 4
     //
     // Typecheck bodies.
     let mut typed_function_declarations = Vec::new();
-    for p in pending_components {
+    for pending in pending_components {
         typed_function_declarations.push(typecheck_component_body(
-            p,
-            &forwarded_params,
+            pending,
             registry,
             errors,
-            &mut type_env,
-            &mut module_exports,
+            &type_env,
             annotations,
             definition_links,
             asset_references,
@@ -383,7 +423,7 @@ fn typecheck_module(
             pending,
             registry,
             errors,
-            &mut type_env,
+            &type_env,
             annotations,
             definition_links,
             asset_references,
@@ -395,7 +435,7 @@ fn typecheck_module(
             page,
             registry,
             errors,
-            &mut type_env,
+            &type_env,
             annotations,
             definition_links,
             asset_references,
@@ -404,17 +444,24 @@ fn typecheck_module(
 
     // Phase 5
     //
-    // Check for unused imports.
-    for (imported_name, import_range) in type_env.unused_imports() {
+    // Check for unused imports. A name counts as used wherever it is written,
+    // whether or not it resolved.
+    let referenced = referenced_type_names(parsed_ast);
+    for (name, entry) in &type_env.names {
+        let Some(import_range) = &entry.import_range else {
+            continue;
+        };
+        if referenced.contains(name) {
+            continue;
+        }
         errors.push(TypeError::new(
             TypeErrorKind::UnusedImport {
-                import_name: imported_name.clone(),
+                import_name: name.clone(),
             },
             import_range.clone(),
         ));
     }
 
-    // Persist the exports as the module's interface for other modules
     exports.insert(parsed_ast.document_id.clone(), module_exports);
 
     TypedAst::new(typed_pages, typed_function_declarations)
@@ -423,7 +470,7 @@ fn typecheck_module(
 fn typecheck_record_declaration(
     record: &ParsedRecordDeclaration,
     document_id: &DocumentId,
-    type_env: &mut TypeEnv,
+    names: &HashMap<TypeName, Name>,
     registry: &mut TypeRegistry,
     errors: &mut Vec<TypeError>,
     definition_links: &mut Vec<DefinitionLink>,
@@ -438,8 +485,7 @@ fn typecheck_record_declaration(
     let mut typed_fields = Vec::new();
 
     for field in fields {
-        let Some(resolved_type) =
-            resolve_type(&field.field_type, type_env, definition_links, errors)
+        let Some(resolved_type) = resolve_type(&field.field_type, names, definition_links, errors)
         else {
             continue;
         };
@@ -468,7 +514,7 @@ fn typecheck_record_declaration(
 fn typecheck_enum_declaration(
     enum_decl: &ParsedEnumDeclaration,
     document_id: &DocumentId,
-    type_env: &mut TypeEnv,
+    names: &HashMap<TypeName, Name>,
     registry: &mut TypeRegistry,
     errors: &mut Vec<TypeError>,
     definition_links: &mut Vec<DefinitionLink>,
@@ -486,7 +532,7 @@ fn typecheck_enum_declaration(
         let mut typed_fields = Vec::new();
         for field in &variant.fields {
             let Some(resolved_type) =
-                resolve_type(&field.field_type, type_env, definition_links, errors)
+                resolve_type(&field.field_type, names, definition_links, errors)
             else {
                 continue;
             };
@@ -525,29 +571,32 @@ fn typecheck_enum_declaration(
 struct PendingComponent<'a> {
     component: &'a ParsedComponentDeclaration,
     resolved_params: Vec<(&'a ParsedParameter, Type)>,
-    declared_params: Vec<ParamEntry>,
+    signature: FunctionSignature,
     typed_params: Vec<TypedParameter>,
 }
 
-fn register_component_signature<'a>(
+fn create_component_signature<'a>(
     component: &'a ParsedComponentDeclaration,
-    type_env: &mut TypeEnv,
+    names: &HashMap<TypeName, Name>,
     registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
     annotations: &mut Vec<HoverAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
     asset_references: &mut Vec<AssetReference>,
 ) -> PendingComponent<'a> {
-    let ParsedComponentDeclaration {
-        params,
-        component_name,
-        ..
-    } = component;
+    let ParsedComponentDeclaration { params, .. } = component;
 
     let mut resolved_params = Vec::new();
     let mut declared_params: Vec<ParamEntry> = Vec::new();
     let mut typed_params = Vec::new();
     let mut seen_param_names: HashSet<VarName> = HashSet::new();
+
+    let type_env = TypeEnv {
+        names: names.clone(),
+        components: HashMap::new(),
+        functions: HashMap::new(),
+    };
+
     for param in params {
         if !seen_param_names.insert(param.var_name.clone()) {
             errors.push(TypeError::new(
@@ -559,7 +608,7 @@ fn register_component_signature<'a>(
             continue;
         }
 
-        let Some(param_type) = resolve_type(&param.var_type, type_env, definition_links, errors)
+        let Some(param_type) = resolve_type(&param.var_type, names, definition_links, errors)
         else {
             continue;
         };
@@ -580,7 +629,7 @@ fn register_component_signature<'a>(
                     // are constant and can't reference anything from
                     // the environment.
                     &mut VariableScope::new(),
-                    type_env,
+                    &type_env,
                     registry,
                     annotations,
                     definition_links,
@@ -629,30 +678,24 @@ fn register_component_signature<'a>(
         });
     }
 
-    let component_signature = FunctionSignature {
-        params: declared_params.clone(),
-        return_type: Type::Fragment,
-        tail: Tail::Closed,
-        rest_param: component.rest_param.as_ref().map(|(name, _)| name.clone()),
-    };
-
-    type_env.replace_binding(component_name, TypeBinding::Component(component_signature));
-
     PendingComponent {
         component,
         resolved_params,
-        declared_params,
+        signature: FunctionSignature {
+            params: declared_params,
+            return_type: Type::Fragment,
+            tail: Tail::Closed,
+            rest_param: component.rest_param.as_ref().map(|(name, _)| name.clone()),
+        },
         typed_params,
     }
 }
 
 fn typecheck_component_body(
     pending: PendingComponent<'_>,
-    forwarded_params: &HashMap<TypeName, Vec<ParamEntry>>,
     registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
-    type_env: &mut TypeEnv,
-    module_exports: &mut HashMap<TypeName, TypeExport>,
+    type_env: &TypeEnv,
     annotations: &mut Vec<HoverAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
     asset_references: &mut Vec<AssetReference>,
@@ -660,7 +703,7 @@ fn typecheck_component_body(
     let PendingComponent {
         component,
         resolved_params,
-        declared_params,
+        signature,
         typed_params,
     } = pending;
 
@@ -669,7 +712,6 @@ fn typecheck_component_body(
         component_name,
         name_range,
         rest_param,
-        pub_range,
         ..
     } = component;
 
@@ -682,10 +724,15 @@ fn typecheck_component_body(
         );
     }
 
-    let forwarded = forwarded_params
-        .get(component_name)
-        .map(Vec::as_slice)
-        .unwrap_or_default();
+    // The settled signature is the declared parameters followed by the
+    // forwarded ones. A component that lost its name to an earlier declaration
+    // has no settled signature of its own.
+    let forwarded: &[ParamEntry] = match type_env.components.get(component_name) {
+        Some(settled) if type_env.names[component_name].definition_range == *name_range => {
+            &settled.params[signature.params.len()..]
+        }
+        _ => &[],
+    };
     let forwarded_names: Vec<VarName> = forwarded.iter().map(|p| p.name.clone()).collect();
 
     let typed_body = typecheck_expr(
@@ -722,24 +769,6 @@ fn typecheck_component_body(
         var_type: param.typ.clone(),
         examples: None,
     }));
-
-    let signature = match type_env.lookup(component_name) {
-        Some((TypeBinding::Component(settled), _)) => settled.clone(),
-        _ => FunctionSignature {
-            params: declared_params,
-            return_type: Type::Fragment,
-            tail: Tail::Closed,
-            rest_param: rest_param.as_ref().map(|(name, _)| name.clone()),
-        },
-    };
-    module_exports.insert(
-        component_name.clone(),
-        TypeExport::Component {
-            signature,
-            definition_range: name_range.clone(),
-            is_pub: pub_range.is_some(),
-        },
-    );
 
     // The rest is an ordinary parameter holding pre-rendered attribute text.
     if let Some((rest, _)) = rest_param {
@@ -783,7 +812,7 @@ fn typecheck_page_declaration(
     page: &ParsedPageDeclaration,
     registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
-    type_env: &mut TypeEnv,
+    type_env: &TypeEnv,
     annotations: &mut Vec<HoverAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
     asset_references: &mut Vec<AssetReference>,
@@ -812,7 +841,8 @@ fn typecheck_page_declaration(
             continue;
         }
 
-        let Some(param_type) = resolve_type(&param.var_type, type_env, definition_links, errors)
+        let Some(param_type) =
+            resolve_type(&param.var_type, &type_env.names, definition_links, errors)
         else {
             continue;
         };
@@ -893,12 +923,12 @@ struct PendingFunction<'a> {
     function: &'a ParsedFunctionDeclaration,
     resolved_params: Vec<(&'a ParsedParameter, Type)>,
     typed_params: Vec<TypedParameter>,
-    return_type: Type,
+    signature: FunctionSignature,
 }
 
-fn register_function_signature<'a>(
+fn create_function_signature<'a>(
     function: &'a ParsedFunctionDeclaration,
-    type_env: &mut TypeEnv,
+    names: &HashMap<TypeName, Name>,
     errors: &mut Vec<TypeError>,
     annotations: &mut Vec<HoverAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
@@ -919,7 +949,7 @@ fn register_function_signature<'a>(
             continue;
         }
 
-        let Some(param_type) = resolve_type(&param.var_type, type_env, definition_links, errors)
+        let Some(param_type) = resolve_type(&param.var_type, names, definition_links, errors)
         else {
             continue;
         };
@@ -943,26 +973,18 @@ fn register_function_signature<'a>(
         });
     }
 
-    let return_type = resolve_type(&function.return_type, type_env, definition_links, errors)?;
-
-    type_env
-        .insert_local_function(
-            function.name.clone(),
-            FunctionSignature {
-                params: declared_params,
-                return_type: return_type.clone(),
-                tail: Tail::Closed,
-                rest_param: None,
-            },
-            function.name_range.clone(),
-        )
-        .ok()?;
+    let return_type = resolve_type(&function.return_type, names, definition_links, errors)?;
 
     Some(PendingFunction {
         function,
         resolved_params,
         typed_params,
-        return_type,
+        signature: FunctionSignature {
+            params: declared_params,
+            return_type,
+            tail: Tail::Closed,
+            rest_param: None,
+        },
     })
 }
 
@@ -970,7 +992,7 @@ fn typecheck_function_body(
     pending: PendingFunction<'_>,
     registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
-    type_env: &mut TypeEnv,
+    type_env: &TypeEnv,
     annotations: &mut Vec<HoverAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
     asset_references: &mut Vec<AssetReference>,
@@ -979,8 +1001,9 @@ fn typecheck_function_body(
         function,
         resolved_params,
         typed_params,
-        return_type,
+        signature,
     } = pending;
+    let return_type = signature.return_type;
 
     let mut var_env = VariableScope::new();
     for (param, param_type) in &resolved_params {
@@ -1101,6 +1124,148 @@ fn validate_examples_annotation(
                 ));
             }
         }
+    }
+}
+
+/// Every type name written in the module, whether or not it resolves: in
+/// type positions, record and enum literals, patterns, and component
+/// invocations.
+fn referenced_type_names(parsed_ast: &ParsedAst) -> HashSet<TypeName> {
+    let mut names = HashSet::new();
+    for decl in parsed_ast.declarations() {
+        match decl {
+            ParsedDeclaration::Import(_) => {}
+            ParsedDeclaration::Record(record) => {
+                for field in &record.fields {
+                    collect_type_names_in_type(&field.field_type, &mut names);
+                }
+            }
+            ParsedDeclaration::Enum(enum_decl) => {
+                for variant in &enum_decl.variants {
+                    for field in &variant.fields {
+                        collect_type_names_in_type(&field.field_type, &mut names);
+                    }
+                }
+            }
+            ParsedDeclaration::Component(component) => {
+                for param in &component.params {
+                    collect_type_names_in_type(&param.var_type, &mut names);
+                    if let Some(default) = &param.default_value {
+                        collect_type_names_in_expr(default, &mut names);
+                    }
+                }
+                collect_type_names_in_expr(&component.body, &mut names);
+            }
+            ParsedDeclaration::Page(page) => {
+                for param in &page.params {
+                    collect_type_names_in_type(&param.var_type, &mut names);
+                }
+                if let Some(head) = &page.head {
+                    collect_type_names_in_expr(head, &mut names);
+                }
+                collect_type_names_in_expr(&page.body, &mut names);
+            }
+            ParsedDeclaration::Function(function) => {
+                for param in &function.params {
+                    collect_type_names_in_type(&param.var_type, &mut names);
+                }
+                collect_type_names_in_type(&function.return_type, &mut names);
+                collect_type_names_in_expr(&function.body, &mut names);
+            }
+        }
+    }
+    names
+}
+
+fn collect_type_names_in_type(parsed_type: &ParsedType, out: &mut HashSet<TypeName>) {
+    match parsed_type {
+        ParsedType::Named { name, .. } => {
+            out.insert(name.clone());
+        }
+        ParsedType::Option { element, .. } | ParsedType::Array { element, .. } => {
+            collect_type_names_in_type(element, out);
+        }
+        ParsedType::String { .. }
+        | ParsedType::Bool { .. }
+        | ParsedType::Int { .. }
+        | ParsedType::Float { .. }
+        | ParsedType::Fragment { .. } => {}
+    }
+}
+
+fn collect_type_names_in_expr(expr: &ParsedExpr, out: &mut HashSet<TypeName>) {
+    match expr {
+        ParsedExpr::RecordLiteral { record_name, .. } => {
+            out.insert(record_name.clone());
+        }
+        ParsedExpr::EnumLiteral { enum_name, .. } => {
+            out.insert(enum_name.clone());
+        }
+        ParsedExpr::Match { arms, .. } => {
+            for arm in arms {
+                collect_type_names_in_pattern(&arm.pattern, out);
+            }
+        }
+        ParsedExpr::Markup { node } => collect_type_names_in_node(node, out),
+        _ => {}
+    }
+    expr.for_each_child(&mut |child| collect_type_names_in_expr(child, out));
+}
+
+fn collect_type_names_in_node(node: &ParsedNode, out: &mut HashSet<TypeName>) {
+    match node {
+        ParsedNode::ComponentInvocation { component_name, .. } => {
+            out.insert(component_name.clone());
+        }
+        ParsedNode::Let { bindings, .. } => {
+            for binding in bindings {
+                if let Some(parsed_type) = &binding.var_type {
+                    collect_type_names_in_type(parsed_type, out);
+                }
+            }
+        }
+        ParsedNode::Match { cases, .. } => {
+            for case in cases {
+                collect_type_names_in_pattern(&case.pattern, out);
+            }
+        }
+        _ => {}
+    }
+    for expr in node.expressions() {
+        collect_type_names_in_expr(expr, out);
+    }
+    for child in node.children() {
+        collect_type_names_in_node(child, out);
+    }
+}
+
+fn collect_type_names_in_pattern(pattern: &ParsedMatchPattern, out: &mut HashSet<TypeName>) {
+    let ParsedMatchPattern::Constructor {
+        constructor,
+        args,
+        fields,
+        ..
+    } = pattern
+    else {
+        return;
+    };
+    match constructor {
+        Constructor::EnumVariant {
+            enum_name: name, ..
+        }
+        | Constructor::Record { type_name: name } => {
+            out.insert(name.clone());
+        }
+        Constructor::BooleanTrue
+        | Constructor::BooleanFalse
+        | Constructor::OptionSome
+        | Constructor::OptionNone => {}
+    }
+    for arg in args {
+        collect_type_names_in_pattern(arg, out);
+    }
+    for (_, _, field_pattern) in fields {
+        collect_type_names_in_pattern(field_pattern, out);
     }
 }
 
@@ -1956,6 +2121,90 @@ mod tests {
         );
     }
 
+    #[test]
+    fn rejects_duplicate_component_and_checks_calls_against_the_first() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                component Foo(a: Int) {
+                  <>{a.to_string()}</>
+                }
+                component Foo(b: String) {
+                  <>{b}</>
+                }
+                component Main {
+                  <Foo a={1}/>
+                }
+            "#},
+            expect![[r#"
+                error: Foo is already defined
+                  --> main.hop (line 4, col 11)
+                3 | }
+                4 | component Foo(b: String) {
+                  |           ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_import_used_only_in_a_record_pattern() {
+        accept(
+            indoc! {r#"
+                -- other.hop --
+                pub record User {name: String}
+                pub record Account {user: User}
+                -- main.hop --
+                import other::Account
+                import other::User
+                component Main(account: Account) {
+                  <match {account.user}>
+                    <case {User {name: n}}>{n}</case>
+                  </match>
+                }
+            "#},
+            expect![[r#"
+                -- other.hop --
+
+                -- main.hop --
+                fn Main(account: other::Account) -> Fragment {
+                  let v__0 = account.user in let v__1 = v__0.name in let n = v__1 in concat(
+                    escape(n),
+                  )
+                }
+
+                -- type registry --
+                record other::Account {
+                  user: other::User,
+                }
+
+                record other::User {
+                  name: String,
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_undefined_function_without_flagging_imports_in_its_arguments() {
+        reject(
+            indoc! {r#"
+                -- other.hop --
+                pub record User {name: String}
+                -- main.hop --
+                import other::User
+                component Main {
+                  <>{missing(User {name: "x"})}</>
+                }
+            "#},
+            expect![[r#"
+                error: Undefined function: missing
+                  --> main.hop (line 3, col 6)
+                2 | component Main {
+                3 |   <>{missing(User {name: "x"})}</>
+                  |      ^^^^^^^
+            "#]],
+        );
+    }
     #[test]
     fn accepts_components_in_different_modules_to_have_same_name() {
         accept(

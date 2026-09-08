@@ -17,5 +17,5 @@ pub mod typed_expr;
 pub mod variable_scope;
 
 pub use r#type::Type;
-pub use type_env::{FunctionSignature, ParamEntry, Tail, TypeBinding};
+pub use type_env::{FunctionSignature, ParamEntry, Tail};
 pub use typed_expr::{TypedAttribute, TypedAttributeValue, TypedExpr, TypedLoopSource};
