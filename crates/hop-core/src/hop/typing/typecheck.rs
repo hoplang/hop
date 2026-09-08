@@ -9210,6 +9210,113 @@ mod tests {
     }
 
     #[test]
+    fn accepts_named_arguments_in_any_order() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn label(prefix: String, count: Int) -> String {
+                  prefix + count.to_string()
+                }
+
+                view Test {
+                  <div>{label(count: 2, prefix: "n")}</div>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                page Test() {
+                  body {
+                    html(
+                      tag: "div",
+                      attrs: [],
+                      children: concat(escape(label(prefix: "n", count: 2))),
+                    )
+                  }
+                }
+
+                fn label(prefix: String, count: Int) -> String {
+                  (prefix + count.to_string())
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_named_argument_the_function_does_not_declare() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn add_ten(x: Int) -> Int {
+                  x + 10
+                }
+
+                view Test {
+                  <div>{add_ten(y: 1).to_string()}</div>
+                }
+            "#},
+            expect![[r#"
+                error: Function add_ten requires arguments: x
+                  --> main.hop (line 6, col 9)
+                5 | view Test {
+                6 |   <div>{add_ten(y: 1).to_string()}</div>
+                  |         ^^^^^^^^^^^^^
+
+                error: Function add_ten does not accept argument `y`
+                  --> main.hop (line 6, col 17)
+                5 | view Test {
+                6 |   <div>{add_ten(y: 1).to_string()}</div>
+                  |                 ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_argument_supplied_twice() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn add_ten(x: Int) -> Int {
+                  x + 10
+                }
+
+                view Test {
+                  <div>{add_ten(x: 1, x: 2).to_string()}</div>
+                }
+            "#},
+            expect![[r#"
+                error: Argument `x` is supplied more than once
+                  --> main.hop (line 6, col 23)
+                5 | view Test {
+                6 |   <div>{add_ten(x: 1, x: 2).to_string()}</div>
+                  |                       ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_named_call_missing_an_argument() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn label(prefix: String, count: Int) -> String {
+                  prefix + count.to_string()
+                }
+
+                view Test {
+                  <div>{label(prefix: "n")}</div>
+                }
+            "#},
+            expect![[r#"
+                error: Function label requires arguments: count
+                  --> main.hop (line 6, col 9)
+                5 | view Test {
+                6 |   <div>{label(prefix: "n")}</div>
+                  |         ^^^^^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
     fn accepts_function_call_in_component_body_and_for_range() {
         accept(
             indoc! {r#"

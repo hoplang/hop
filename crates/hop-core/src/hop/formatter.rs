@@ -6,7 +6,7 @@ use crate::hop::parsing::parsed_ast::{
     ParsedImportDeclaration, ParsedPageDeclaration, ParsedParameter, ParsedRecordDeclaration,
 };
 use crate::hop::parsing::parsed_expr::{
-    Constructor, ParsedExpr, ParsedMatchArm, ParsedMatchPattern,
+    Constructor, ParsedArguments, ParsedExpr, ParsedMatchArm, ParsedMatchPattern,
 };
 use crate::hop::parsing::parsed_node::{
     ParsedAttribute, ParsedLetBinding, ParsedLoopSource, ParsedMatchCase, ParsedNode,
@@ -1273,15 +1273,34 @@ fn format_expr<'a>(
             }
         }
         ParsedExpr::FunctionCall { name, args, .. } => {
-            if args.is_empty() {
+            let is_empty = match args {
+                ParsedArguments::Positional(values) => values.is_empty(),
+                ParsedArguments::Named(named) => named.is_empty(),
+            };
+            if is_empty {
                 arena.text(name.as_str()).append(arena.text("()"))
             } else {
                 let mut args_doc = arena.nil();
-                for (i, arg) in args.iter().enumerate() {
-                    if i > 0 {
-                        args_doc = args_doc.append(arena.text(",")).append(arena.line());
+                match args {
+                    ParsedArguments::Positional(values) => {
+                        for (i, value) in values.iter().enumerate() {
+                            if i > 0 {
+                                args_doc = args_doc.append(arena.text(",")).append(arena.line());
+                            }
+                            args_doc = args_doc.append(format_expr(arena, value, comments));
+                        }
                     }
-                    args_doc = args_doc.append(format_expr(arena, arg, comments));
+                    ParsedArguments::Named(named) => {
+                        for (i, arg) in named.iter().enumerate() {
+                            if i > 0 {
+                                args_doc = args_doc.append(arena.text(",")).append(arena.line());
+                            }
+                            args_doc = args_doc
+                                .append(arena.text(arg.name.as_str()))
+                                .append(arena.text(": "))
+                                .append(format_expr(arena, &arg.value, comments));
+                        }
+                    }
                 }
                 arena
                     .text(name.as_str())
@@ -1540,6 +1559,36 @@ mod tests {
             );
             Ok(())
         });
+    }
+
+    #[test]
+    fn named_call_arguments() {
+        check(
+            indoc! {r#"
+                fn label(prefix: String, count: Int) -> String {
+                  prefix + count.to_string()
+                }
+
+                view Test {
+                  <div>{label(count: 2, prefix: "n")}{label("a", 1)}</div>
+                }
+            "#},
+            expect![[r#"
+                fn label(
+                  prefix: String,
+                  count: Int,
+                ) -> String {
+                  prefix + count.to_string()
+                }
+
+                view Test {
+                  <div>
+                    {label(count: 2, prefix: "n")}
+                    {label("a", 1)}
+                  </div>
+                }
+            "#]],
+        );
     }
 
     #[test]

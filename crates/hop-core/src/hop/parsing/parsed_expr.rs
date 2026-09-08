@@ -117,9 +117,22 @@ pub enum ParsedExpr {
     FunctionCall {
         name: VarName,
         name_range: DocumentRange,
-        args: Vec<Self>,
+        args: ParsedArguments,
         range: DocumentRange,
     },
+}
+
+#[derive(Debug, Clone)]
+pub enum ParsedArguments {
+    Positional(Vec<ParsedExpr>),
+    Named(Vec<ParsedNamedArgument>),
+}
+
+#[derive(Debug, Clone)]
+pub struct ParsedNamedArgument {
+    pub name: VarName,
+    pub name_range: DocumentRange,
+    pub value: ParsedExpr,
 }
 
 #[derive(Debug, Clone)]
@@ -314,12 +327,23 @@ impl ParsedExpr {
                 f(right);
             }
             ParsedExpr::ArrayLiteral { elements, .. }
-            | ParsedExpr::MacroInvocation { args: elements, .. }
-            | ParsedExpr::FunctionCall { args: elements, .. } => {
+            | ParsedExpr::MacroInvocation { args: elements, .. } => {
                 for element in elements {
                     f(element);
                 }
             }
+            ParsedExpr::FunctionCall { args, .. } => match args {
+                ParsedArguments::Positional(values) => {
+                    for value in values {
+                        f(value);
+                    }
+                }
+                ParsedArguments::Named(named) => {
+                    for arg in named {
+                        f(&arg.value);
+                    }
+                }
+            },
             ParsedExpr::RecordLiteral { fields, spread, .. } => {
                 if let Some(spread) = spread {
                     f(spread);
@@ -630,7 +654,20 @@ impl ParsedExpr {
             }
             ParsedExpr::Markup { node } => node.to_doc(),
             ParsedExpr::FunctionCall { name, args, .. } => {
-                if args.is_empty() {
+                let arg_docs: Vec<BoxDoc<'_>> = match args {
+                    ParsedArguments::Positional(values) => {
+                        values.iter().map(|value| value.to_doc()).collect()
+                    }
+                    ParsedArguments::Named(named) => named
+                        .iter()
+                        .map(|arg| {
+                            BoxDoc::text(arg.name.as_str())
+                                .append(BoxDoc::text(": "))
+                                .append(arg.value.to_doc())
+                        })
+                        .collect(),
+                };
+                if arg_docs.is_empty() {
                     BoxDoc::text(name.as_str()).append(BoxDoc::text("()"))
                 } else {
                     BoxDoc::text(name.as_str())
@@ -638,7 +675,7 @@ impl ParsedExpr {
                         .append(
                             BoxDoc::line_()
                                 .append(BoxDoc::intersperse(
-                                    args.iter().map(|e| e.to_doc()),
+                                    arg_docs,
                                     BoxDoc::text(",").append(BoxDoc::line()),
                                 ))
                                 .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))

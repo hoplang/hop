@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use super::r#type::{NumericType, Type};
-use super::type_env::{Name, NameKind};
+use super::type_env::{Name, NameKind, ParamEntry};
 use super::type_registry::{ResolvedType, TypeRegistry};
 use super::typecheck_match::{MatchArms, typecheck_match};
 use super::typecheck_node::typecheck_node;
@@ -10,7 +10,7 @@ use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
 use crate::document::CheapString;
 use crate::document_id::DocumentId;
-use crate::hop::parsing::parsed_expr::{ParsedBinaryOp, ParsedExpr};
+use crate::hop::parsing::parsed_expr::{ParsedArguments, ParsedBinaryOp, ParsedExpr};
 use crate::hop::parsing::parsed_node::ParsedNode;
 use crate::hop::typing::TypedExpr;
 use crate::hop::typing::type_env::TypeEnv;
@@ -1689,18 +1689,6 @@ pub fn typecheck_expr(
             let signature = signature.clone();
             let def_range = def_range.clone();
 
-            if args.len() != signature.params.len() {
-                errors.push(TypeError::new(
-                    TypeErrorKind::FunctionArgumentCountMismatch {
-                        name: name.clone(),
-                        expected: signature.params.len(),
-                        found: args.len(),
-                    },
-                    range.clone(),
-                ));
-                return None;
-            }
-
             let callee_module = def_range.document_id().clone();
 
             definition_links.push(DefinitionLink {
@@ -1708,8 +1696,70 @@ pub fn typecheck_expr(
                 definition_range: def_range,
             });
 
-            let mut typed_args = Vec::with_capacity(args.len());
-            for (arg, param) in args.iter().zip(signature.params.iter()) {
+            let mut failed = false;
+
+            let paired: Vec<(&ParamEntry, &ParsedExpr)> = match args {
+                ParsedArguments::Positional(values) => {
+                    if values.len() != signature.params.len() {
+                        errors.push(TypeError::new(
+                            TypeErrorKind::FunctionArgumentCountMismatch {
+                                name: name.clone(),
+                                expected: signature.params.len(),
+                                found: values.len(),
+                            },
+                            range.clone(),
+                        ));
+                        return None;
+                    }
+                    signature.params.iter().zip(values.iter()).collect()
+                }
+                ParsedArguments::Named(named) => {
+                    let mut supplied: HashSet<&VarName> = HashSet::new();
+                    for arg in named {
+                        if !supplied.insert(&arg.name) {
+                            errors.push(TypeError::new(
+                                TypeErrorKind::DuplicateArgument {
+                                    argument: arg.name.clone(),
+                                },
+                                arg.name_range.clone(),
+                            ));
+                            failed = true;
+                        } else if !signature.params.iter().any(|p| p.name == arg.name) {
+                            errors.push(TypeError::new(
+                                TypeErrorKind::FunctionDoesNotAcceptArgument {
+                                    name: name.clone(),
+                                    argument: arg.name.clone(),
+                                },
+                                arg.name_range.clone(),
+                            ));
+                            failed = true;
+                        }
+                    }
+
+                    let mut paired = Vec::with_capacity(signature.params.len());
+                    let mut missing = Vec::new();
+                    for param in &signature.params {
+                        match named.iter().find(|arg| arg.name == param.name) {
+                            Some(arg) => paired.push((param, &arg.value)),
+                            None => missing.push(param.name.as_str()),
+                        }
+                    }
+                    if !missing.is_empty() {
+                        errors.push(TypeError::new(
+                            TypeErrorKind::MissingFunctionArguments {
+                                name: name.clone(),
+                                args: missing.join(", "),
+                            },
+                            range.clone(),
+                        ));
+                        failed = true;
+                    }
+                    paired
+                }
+            };
+
+            let mut typed_args = Vec::with_capacity(paired.len());
+            for (param, arg) in &paired {
                 let Some(typed_arg) = typecheck_expr(
                     arg,
                     Some(&param.typ),
@@ -1722,6 +1772,7 @@ pub fn typecheck_expr(
                     asset_references,
                     errors,
                 ) else {
+                    failed = true;
                     continue;
                 };
                 let arg_type = typed_arg.typ();
@@ -1735,12 +1786,13 @@ pub fn typecheck_expr(
                         },
                         arg.range().clone(),
                     ));
+                    failed = true;
                     continue;
                 }
                 typed_args.push((param.name.clone(), typed_arg));
             }
 
-            if typed_args.len() != args.len() {
+            if failed {
                 return None;
             }
 

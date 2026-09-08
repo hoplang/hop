@@ -397,6 +397,15 @@ pub(crate) enum TypeErrorKind {
     #[error("Function {name} is already defined")]
     FunctionNameIsAlreadyDefined { name: VarName },
 
+    #[error("Function {name} does not accept argument `{argument}`")]
+    FunctionDoesNotAcceptArgument { name: VarName, argument: VarName },
+
+    #[error("Argument `{argument}` is supplied more than once")]
+    DuplicateArgument { argument: VarName },
+
+    #[error("Function {name} requires arguments: {args}")]
+    MissingFunctionArguments { name: VarName, args: String },
+
     #[error("Mismatched type for function body: expected `{expected}` got `{found}`")]
     FunctionBodyTypeMismatch { expected: Type, found: Type },
 

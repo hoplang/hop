@@ -12,11 +12,11 @@ use super::parse_helpers::{
 };
 use super::parse_nodes;
 use super::parsed_expr::{
-    Constructor, ParsedBinaryOp, ParsedExpr, ParsedFieldInitializer, ParsedMatchArm,
-    ParsedMatchPattern,
+    Constructor, ParsedArguments, ParsedBinaryOp, ParsedExpr, ParsedFieldInitializer,
+    ParsedMatchArm, ParsedMatchPattern, ParsedNamedArgument,
 };
 use super::token::LangToken;
-use super::tokenize_expr::peek;
+use super::tokenize_expr::{peek, peek2};
 use crate::parse_error::{ErrorEmitted, ParseErrorKind, ParseErrors};
 
 pub fn parse_expr(
@@ -263,12 +263,50 @@ pub fn parse_primary(
                     LangTokenPair::Parens,
                     &left_paren,
                     &[],
-                    parse_expr,
+                    |iter, comments, errors, range| {
+                        let name = if matches!(peek(iter), Some((LangToken::Identifier(_), _)))
+                            && matches!(peek2(iter), Some((LangToken::Colon, _)))
+                        {
+                            let (name, name_range) =
+                                expect_variable_name(iter, comments, errors, range)?;
+                            expect_token(iter, comments, errors, range, &LangToken::Colon)?;
+                            Some((name, name_range))
+                        } else {
+                            None
+                        };
+                        Ok((name, parse_expr(iter, comments, errors, range)?))
+                    },
                 )?;
+                let is_named = args.first().is_some_and(|(name, _)| name.is_some());
+                let mut positional = Vec::new();
+                let mut named = Vec::new();
+                for (name, value) in args {
+                    match (is_named, name) {
+                        (false, None) => positional.push(value),
+                        (true, Some((name, name_range))) => named.push(ParsedNamedArgument {
+                            name,
+                            name_range,
+                            value,
+                        }),
+                        (_, name) => {
+                            let _ = errors.emit(
+                                ParseErrorKind::MixedNamedAndPositionalArguments {},
+                                match name {
+                                    Some((_, name_range)) => name_range.to(value.range().clone()),
+                                    None => value.range().clone(),
+                                },
+                            );
+                        }
+                    }
+                }
                 ParsedExpr::FunctionCall {
                     name: var_name,
                     name_range: name_range.clone(),
-                    args,
+                    args: if is_named {
+                        ParsedArguments::Named(named)
+                    } else {
+                        ParsedArguments::Positional(positional)
+                    },
                     range: name_range.to(parens),
                 }
             } else {
@@ -1428,6 +1466,66 @@ mod tests {
             "x.field.method()",
             expect![[r#"
                 x.field.method()
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_positional_call_arguments() {
+        accept(
+            "foo(1, x)",
+            expect![[r#"
+                foo(1, x)
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_named_call_arguments() {
+        accept(
+            "foo(x: 1, y: bar)",
+            expect![[r#"
+                foo(x: 1, y: bar)
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_variable_as_positional_argument() {
+        accept(
+            "foo(x)",
+            expect![[r#"
+                foo(x)
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_call_mixing_positional_and_named_arguments() {
+        reject(
+            "foo(1, y: 2)",
+            expect![[r#"
+                -- errors --
+                error: Arguments must either all be named or all be positional
+                foo(1, y: 2)
+                       ^^^^
+                -- ast --
+                foo(1)
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_call_mixing_named_and_positional_arguments() {
+        reject(
+            "foo(x: 1, 2)",
+            expect![[r#"
+                -- errors --
+                error: Arguments must either all be named or all be positional
+                foo(x: 1, 2)
+                          ^
+                -- ast --
+                foo(x: 1)
             "#]],
         );
     }

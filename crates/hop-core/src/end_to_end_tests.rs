@@ -15323,4 +15323,52 @@ mod tests {
             "#]],
         );
     }
+
+    #[test]
+    #[ignore]
+    fn named_call_arguments_written_out_of_order() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                fn label(prefix: String, count: Int) -> String {
+                  prefix + count.to_string()
+                }
+
+                view Test {
+                  <div>{label(count: 2, prefix: "n")}</div>
+                }
+            "#},
+            "<div>n2</div>",
+            expect![[r#"
+                -- ir (unoptimized) --
+                fn label@f0(prefix@v0: String, count@v1: Int) -> String {
+                  (v0 + v1.to_string())
+                }
+                page Test() {
+                  write("<div")
+                  write(">")
+                  write_string(call label@f0(prefix = "n", count = 2))
+                  write("</div>")
+                }
+                -- ir (optimized) --
+                page Test() {
+                  write("<div>n2</div>")
+                }
+                -- expected output --
+                <div>n2</div>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
 }
