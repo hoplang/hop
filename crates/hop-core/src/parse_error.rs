@@ -281,6 +281,9 @@ pub(crate) enum ParseErrorKind {
     #[error("Examples annotations are not allowed on function parameters")]
     ExamplesNotAllowedOnFunction,
 
+    #[error("Examples annotations are not allowed on component parameters")]
+    ExamplesNotAllowedOnComponent,
+
     #[error("Function '{name}' is missing a return type")]
     FunctionMissingReturnType { name: CheapString },
 

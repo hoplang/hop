@@ -663,7 +663,6 @@ fn create_component_signature<'a>(
             typ: param_type.clone(),
             var_name: param.var_name.clone(),
         });
-        validate_examples_annotation(&param.examples, &param_type, &param.var_name_range, errors);
 
         resolved_params.push((param, param_type.clone()));
         declared_params.push(ParamEntry {
@@ -674,7 +673,7 @@ fn create_component_signature<'a>(
         typed_params.push(TypedParameter {
             var_name: param.var_name.clone(),
             var_type: param_type,
-            examples: param.examples.clone(),
+            examples: None,
         });
     }
 

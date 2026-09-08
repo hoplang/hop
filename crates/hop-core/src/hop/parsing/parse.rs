@@ -356,7 +356,15 @@ fn parse_component_declaration(
         let count = items.len();
         for (index, item) in items.into_iter().enumerate() {
             match item {
-                ParameterItem::Parameter(parameter) => params.push(*parameter),
+                ParameterItem::Parameter(parameter) => {
+                    if let Some(examples_range) = &parameter.examples_range {
+                        let _ = errors.emit(
+                            ParseErrorKind::ExamplesNotAllowedOnComponent {},
+                            examples_range.clone(),
+                        );
+                    }
+                    params.push(*parameter);
+                }
                 ParameterItem::Rest { var_name, range } => {
                     if index + 1 != count {
                         let _ = errors.emit(ParseErrorKind::RestParamMustBeLast {}, range.clone());
@@ -5487,6 +5495,31 @@ mod tests {
     }
 
     #[test]
+    fn rejects_examples_annotation_on_component() {
+        reject(
+            indoc! {"
+                component Main(#[examples(min = 1)] count: Int) {
+                  <div>{count}</div>
+                }
+            "},
+            expect![[r#"
+                -- errors --
+                error: Examples annotations are not allowed on component parameters
+                1 | component Main(#[examples(min = 1)] count: Int) {
+                  |                ^^^^^^^^^^^^^^^^^^^^
+                -- ast --
+                component Main(#[examples(min = 1)] count: Int) {
+                  html(
+                    tag: "div",
+                    attrs: [],
+                    children: [interpolate(count)],
+                  )
+                }
+            "#]],
+        );
+    }
+
+    #[test]
     fn rejects_examples_annotation_on_function() {
         reject(
             indoc! {"
@@ -5953,7 +5986,7 @@ mod tests {
                   age: Int,
                 }
 
-                component Main(#[examples(min = 1)] count: Int) {
+                view Main(#[examples(min = 1)] count: Int) {
                   <div>{count}</div>
                 }
             "#},
@@ -5963,7 +5996,7 @@ mod tests {
                   #[examples(min = 0, max = 120)] age: Int,
                 }
 
-                component Main(#[examples(min = 1)] count: Int) {
+                view Main(#[examples(min = 1)] count: Int) {
                   html(
                     tag: "div",
                     attrs: [],
